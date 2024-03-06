@@ -1,5 +1,5 @@
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-enum Kind {
+enum MonKind {
     Demon,
     Drainer,
     Angel,
@@ -9,13 +9,13 @@ enum Kind {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 struct Mon {
-    kind: Kind,
+    kind: MonKind,
     color: Color,
     cooldown: i32,
 }
 
 impl Mon {
-    pub fn new(kind: Kind, color: Color, cooldown: i32) -> Self {
+    pub fn new(kind: MonKind, color: Color, cooldown: i32) -> Self {
         Mon { kind, color, cooldown }
     }
 
