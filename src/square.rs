@@ -3,7 +3,7 @@ enum Square {
     Regular,
     ConsumableBase,
     SupermanaBase,
-    ManaBase(Color),
-    ManaPool(Color),
+    ManaBase { color: Color },
+    ManaPool { color: Color },
     MonBase { kind: MonKind, color: Color },
 }
