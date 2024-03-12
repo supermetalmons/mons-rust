@@ -1,9 +1,6 @@
 pub mod models;
 pub use models::*;
 
-use serde::Serialize;
-use serde::Deserialize;
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -11,11 +8,11 @@ mod tests {
     use std::io::{self, Read};
     use std::path::Path;
 
-    #[derive(Serialize, Deserialize, Hash, PartialEq, Eq, Clone, Debug)]
+    #[derive(Hash, PartialEq, Eq, Clone, Debug)]
     struct TestCase {
         fen_before: String,
-        input: Vec<Input>,
-        output: Output,
+        // input_pgn: String,
+        // output_pgn: String,
         fen_after: String,
     }
 
@@ -27,16 +24,14 @@ mod tests {
             let path = entry.path();
             if path.is_file() {
                 println!("Testing with file: {:?}", path);
-
                 let mut file = File::open(path)?;
                 let mut contents = String::new();
                 file.read_to_string(&mut contents)?;
+                // let test_case: TestCase = serde_json::from_str(&contents).expect("Failed to deserialize the test case");
+                // TODO: custom testcase encoding, no jsons
 
-                let test_case: TestCase = serde_json::from_str(&contents)
-                    .expect("Failed to deserialize the test case");
-
-                // Implement your test logic here using test_case
-                // For example, assert_eq!(test_case.fen_before, "Expected FEN before state");
+                // TODO: encode input and output back and forth
+                // assert_eq!(test_case.fen_before, "Expected FEN before state");
             }
         }
         Ok(())

@@ -1,6 +1,6 @@
 use crate::*;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum NextInputKind {
     MonMove,
     ManaMove,
@@ -13,7 +13,7 @@ pub enum NextInputKind {
     BombAttack,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct NextInput {
     pub input: Input,
     pub kind: NextInputKind,

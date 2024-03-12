@@ -1,8 +1,6 @@
 use crate::*;
-use serde::Serialize;
-use serde::Deserialize;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum MonKind {
     Demon,
     Drainer,
@@ -11,7 +9,7 @@ pub enum MonKind {
     Mystic,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Mon {
     pub kind: MonKind,
     pub color: Color,

@@ -1,7 +1,6 @@
 use crate::*;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Output {
     InvalidInput,
     LocationsToStartFrom(Vec<Location>),

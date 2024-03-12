@@ -1,8 +1,6 @@
 use crate::*;
-use serde::Serialize;
-use serde::Deserialize;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Item {
     Mon { mon: Mon },
     Mana { mana: Mana },
