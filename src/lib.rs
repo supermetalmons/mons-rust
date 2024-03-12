@@ -1,6 +1,9 @@
 pub mod models;
 pub use models::*;
 
+use serde::Serialize;
+use serde::Deserialize;
+
 #[cfg(test)]
 mod tests {
     use super::*;

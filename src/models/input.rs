@@ -1,12 +1,12 @@
 use crate::*;
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Input {
     Location(Location),
     Modifier(Modifier),
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Modifier {
     SelectPotion,
     SelectBomb,
