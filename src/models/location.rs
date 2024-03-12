@@ -47,8 +47,8 @@ impl Location {
 
     pub fn reachable_by_spirit_action(&self) -> Vec<Location> {
         let mut locations = Vec::new();
-        for x in -2..=2 {
-            for y in -2..=2 {
+        for x in -2i32..=2 {
+            for y in -2i32..=2 {
                 if x.abs().max(y.abs()) == 2 && Self::valid_range().contains(&(self.i + x)) && Self::valid_range().contains(&(self.j + y)) {
                     locations.push(Location::new(self.i + x, self.j + y));
                 }
