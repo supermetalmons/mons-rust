@@ -52,10 +52,30 @@ impl Config {
     pub fn initial_items() -> HashMap<Location, Item> {
         Self::squares().iter().filter_map(|(location, square)| {
             match square {
-                Square::MonBase { kind, color } => Some((*location, Item::Mon(Mon::new(*kind, *color)))),
-                Square::ManaBase { color } => Some((*location, Item::Mana(Mana::Regular { color: *color }))),
-                Square::SupermanaBase => Some((*location, Item::Mana(Mana::Supermana))),
-                Square::ConsumableBase => Some((*location, Item::Consumable(Consumable::BombOrPotion))),
+                Square::MonBase { kind, color } => Some((
+                    *location,
+                    Item::Mon {
+                        mon: Mon::new(*kind, *color, 0),
+                    },
+                )),
+                Square::ManaBase { color } => Some((
+                    *location,
+                    Item::Mana {
+                        mana: Mana::Regular(*color),
+                    },
+                )),
+                Square::SupermanaBase => Some((
+                    *location,
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                )),
+                Square::ConsumableBase => Some((
+                    *location,
+                    Item::Consumable {
+                        consumable: Consumable::BombOrPotion,
+                    },
+                )),
                 _ => None,
             }
         }).collect()
