@@ -52,7 +52,7 @@ impl Board {
         self.items
             .iter()
             .filter_map(|(location, item)| match item {
-                Item::Mon(mon) if mon.color == color => Some(*location),
+                Item::Mon { mon } if mon.color == color => Some(*location),
                 _ => None,
             })
             .collect()
@@ -62,7 +62,7 @@ impl Board {
         self.items
             .iter()
             .filter_map(|(location, item)| match item {
-                Item::Mana(mana) => match mana {
+                Item::Mana { mana } => match mana {
                     Mana::Regular(mana_color) if *mana_color == color => Some(*location),
                     _ => None,
                 },
@@ -74,7 +74,7 @@ impl Board {
     pub fn base(&self, mon: Mon) -> Location {
         *Config::squares()
             .iter()
-            .find(|(_, square)| matches!(square, Square::MonBase(kind, color) if kind == &mon.kind && color == &mon.color))
+            .find(|(_, square)| matches!(square, Square::MonBase { kind, color } if kind == &mon.kind && color == &mon.color))
             .expect("Expected at least one base for the given mon")
             .0
     }
@@ -83,7 +83,7 @@ impl Board {
         self.items
             .iter()
             .filter_map(|(location, item)| match item {
-                Item::Mon(mon) if mon.color == color && mon.is_fainted => Some(*location),
+                Item::Mon { mon } if mon.color == color && mon.is_fainted() => Some(*location),
                 _ => None,
             })
             .collect()
@@ -93,7 +93,7 @@ impl Board {
         self.items
             .iter()
             .find_map(|(location, item)| match item {
-                Item::Mana(mana) => match mana {
+                Item::Mana { mana } => match mana {
                     Mana::Regular(mana_color) if *mana_color == color => Some(*location),
                     _ => None,
                 },
@@ -105,7 +105,7 @@ impl Board {
         self.items
             .iter()
             .find_map(|(location, item)| match item {
-                Item::Mon(mon) if mon.color == color && mon.kind == MonKind::Angel && !mon.is_fainted => Some(*location),
+                Item::Mon { mon } if mon.color == color && mon.kind == MonKind::Angel && !mon.is_fainted() => Some(*location),
                 _ => None,
             })
     }
