@@ -1,3 +1,10 @@
+use serde::{Serialize, Deserialize};
+
+mod input;
+use input::Input;
+mod output;
+use output::Output;
+
 #[cfg(test)]
 mod tests {
     use super::*;
