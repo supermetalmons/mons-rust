@@ -125,15 +125,15 @@ impl MonsGame {
     }
 
     fn player_can_move_mon(&self) -> bool {
-        self.mons_moves_count < Config::mons_moves_per_turn()
+        self.mons_moves_count < Config::MONS_MOVES_PER_TURN
     }
 
     fn player_can_move_mana(&self) -> bool {
-        !self.is_first_turn() && self.mana_moves_count < Config::mana_moves_per_turn()
+        !self.is_first_turn() && self.mana_moves_count < Config::MANA_MOVES_PER_TURN
     }
 
     fn player_can_use_action(&self) -> bool {
-        !self.is_first_turn() && (self.player_potions_count() > 0 || self.actions_used_count < Config::actions_per_turn())
+        !self.is_first_turn() && (self.player_potions_count() > 0 || self.actions_used_count < Config::ACTIONS_PER_TURN)
     }
 
     fn protected_by_opponents_angel(&self) -> std::collections::HashSet<Location> {

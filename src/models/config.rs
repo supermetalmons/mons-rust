@@ -4,12 +4,12 @@ use std::collections::{HashMap, HashSet};
 pub struct Config;
 
 impl Config {
-    const BOARD_SIZE: usize = 11;
-    const TARGET_SCORE: usize = 5;
+    pub const BOARD_SIZE: i32 = 11;
+    pub const TARGET_SCORE: i32 = 5;
 
-    const MONS_MOVES_PER_TURN: usize = 5;
-    const MANA_MOVES_PER_TURN: usize = 1;
-    const ACTIONS_PER_TURN: usize = 1;
+    pub const MONS_MOVES_PER_TURN: i32 = 5;
+    pub const MANA_MOVES_PER_TURN: i32 = 1;
+    pub const ACTIONS_PER_TURN: i32 = 1;
 
     pub fn squares() -> std::collections::HashMap<Location, Square> {
         use Square::*;
@@ -61,8 +61,8 @@ impl Config {
         }).collect()
     }
 
-    const BOARD_CENTER_INDEX: usize = Self::BOARD_SIZE / 2;
-    const MAX_LOCATION_INDEX: usize = Self::BOARD_SIZE - 1;
+    pub const BOARD_CENTER_INDEX: i32 = Self::BOARD_SIZE / 2;
+    pub const MAX_LOCATION_INDEX: i32 = Self::BOARD_SIZE - 1;
 
     pub fn mons_bases() -> HashSet<Location> {
         Self::squares().iter().filter_map(|(location, square)| {

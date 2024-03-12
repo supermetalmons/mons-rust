@@ -12,7 +12,7 @@ impl Location {
     }
 
     pub fn valid_range() -> std::ops::Range<i32> {
-        0..Config::board_size() as i32
+        0..Config::BOARD_SIZE
     }
 
     pub fn nearby_locations(&self, distance: i32) -> Vec<Location> {
