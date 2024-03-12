@@ -34,7 +34,7 @@ impl Board {
         Config::squares()
             .iter()
             .filter_map(|(location, square)| match square {
-                Square::MonBase => Some(*location),
+                Square::MonBase { .. }=> Some(*location),
                 _ => None,
             })
             .collect()
