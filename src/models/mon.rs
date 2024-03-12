@@ -11,9 +11,9 @@ pub enum MonKind {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Mon {
-    kind: MonKind,
-    color: Color,
-    cooldown: i32,
+    pub kind: MonKind,
+    pub color: Color,
+    pub cooldown: i32,
 }
 
 impl Mon {

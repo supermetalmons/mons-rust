@@ -2,20 +2,20 @@ use crate::*;
 
 #[derive(Debug, Clone)]
 pub struct MonsGame {
-    board: Board,
-    white_score: i32,
-    black_score: i32,
-    active_color: Color,
-    actions_used_count: i32,
-    mana_moves_count: i32,
-    mons_moves_count: i32,
-    white_potions_count: i32,
-    black_potions_count: i32,
-    turn_number: i32,
+    pub board: Board,
+    pub white_score: i32,
+    pub black_score: i32,
+    pub active_color: Color,
+    pub actions_used_count: i32,
+    pub mana_moves_count: i32,
+    pub mons_moves_count: i32,
+    pub white_potions_count: i32,
+    pub black_potions_count: i32,
+    pub turn_number: i32,
 }
 
 impl MonsGame {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             board: Board::new(),
             white_score: 0,
@@ -30,7 +30,7 @@ impl MonsGame {
         }
     }
 
-    fn with_params(
+    pub fn with_params(
         board: Board,
         white_score: i32,
         black_score: i32,
@@ -56,7 +56,7 @@ impl MonsGame {
         }
     }
 
-    fn update_with(&mut self, other_game: &MonsGame) {
+    pub fn update_with(&mut self, other_game: &MonsGame) {
         self.board = Board::new_with_items(other_game.board.items.clone());
         self.white_score = other_game.white_score;
         self.black_score = other_game.black_score;
@@ -70,7 +70,7 @@ impl MonsGame {
     }
 
     // MARK: - process input
-    fn process_input(&self, input: Vec<Input>, do_not_apply_events: bool, one_option_enough: bool) -> Output {
+    pub fn process_input(&self, input: Vec<Input>, do_not_apply_events: bool, one_option_enough: bool) -> Output {
         todo!();
     }
 

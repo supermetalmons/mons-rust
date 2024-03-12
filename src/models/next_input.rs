@@ -15,13 +15,13 @@ pub enum NextInputKind {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct NextInput {
-    input: Input,
-    kind: NextInputKind,
-    actor_mon_item: Option<Item>,
+    pub input: Input,
+    pub kind: NextInputKind,
+    pub actor_mon_item: Option<Item>,
 }
 
 impl NextInput {
-    fn new(input: Input, kind: NextInputKind, actor_mon_item: Option<Item>) -> Self {
+    pub fn new(input: Input, kind: NextInputKind, actor_mon_item: Option<Item>) -> Self {
         Self {
             input,
             kind,

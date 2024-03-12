@@ -11,7 +11,7 @@ impl Config {
     const MANA_MOVES_PER_TURN: usize = 1;
     const ACTIONS_PER_TURN: usize = 1;
 
-    fn squares() -> std::collections::HashMap<Location, Square> {
+    pub fn squares() -> std::collections::HashMap<Location, Square> {
         use Square::*;
         let mut squares = std::collections::HashMap::new();
         squares.insert(Location::new(0, 0), ManaPool { color: Color::Black });
@@ -49,7 +49,7 @@ impl Config {
         squares
     }
 
-    fn initial_items() -> HashMap<Location, Item> {
+    pub fn initial_items() -> HashMap<Location, Item> {
         Self::squares().iter().filter_map(|(location, square)| {
             match square {
                 Square::MonBase { kind, color } => Some((*location, Item::Mon(Mon::new(*kind, *color)))),
@@ -64,7 +64,7 @@ impl Config {
     const BOARD_CENTER_INDEX: usize = Self::BOARD_SIZE / 2;
     const MAX_LOCATION_INDEX: usize = Self::BOARD_SIZE - 1;
 
-    fn mons_bases() -> HashSet<Location> {
+    pub fn mons_bases() -> HashSet<Location> {
         Self::squares().iter().filter_map(|(location, square)| {
             match square {
                 Square::MonBase { .. } => Some(*location),

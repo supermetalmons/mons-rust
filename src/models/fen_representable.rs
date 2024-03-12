@@ -1,6 +1,6 @@
 use crate::*;
 
-trait FenRepresentable {
+pub trait FenRepresentable {
     fn fen(&self) -> String;
 }
 

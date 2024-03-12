@@ -10,7 +10,7 @@ pub enum Item {
 }
 
 impl Item {
-    fn mon(&self) -> Option<&Mon> {
+    pub fn mon(&self) -> Option<&Mon> {
         match self {
             Item::Mon { mon }
             | Item::MonWithMana { mon, .. }
@@ -19,14 +19,14 @@ impl Item {
         }
     }
 
-    fn mana(&self) -> Option<&Mana> {
+    pub fn mana(&self) -> Option<&Mana> {
         match self {
             Item::Mana { mana } | Item::MonWithMana { mana, .. } => Some(mana),
             _ => None,
         }
     }
 
-    fn consumable(&self) -> Option<&Consumable> {
+    pub fn consumable(&self) -> Option<&Consumable> {
         match self {
             Item::MonWithConsumable { consumable, .. } | Item::Consumable { consumable } => Some(consumable),
             _ => None,

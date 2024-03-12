@@ -2,20 +2,20 @@ use crate::*;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Location {
-    i: i32,
-    j: i32,
+    pub i: i32,
+    pub j: i32,
 }
 
 impl Location {
-    fn new(i: i32, j: i32) -> Self {
+    pub fn new(i: i32, j: i32) -> Self {
         Self { i, j }
     }
 
-    fn valid_range() -> std::ops::Range<i32> {
+    pub fn valid_range() -> std::ops::Range<i32> {
         0..Config::board_size() as i32
     }
 
-    fn nearby_locations(&self, distance: i32) -> Vec<Location> {
+    pub fn nearby_locations(&self, distance: i32) -> Vec<Location> {
         let mut locations = Vec::new();
         for x in (self.i - distance)..=(self.i + distance) {
             for y in (self.j - distance)..=(self.j + distance) {
@@ -57,7 +57,7 @@ impl Location {
         locations
     }
 
-    fn reachable_by_action<'a, I>(&self, deltas: I) -> Vec<Location>
+    pub fn reachable_by_action<'a, I>(&self, deltas: I) -> Vec<Location>
     where
         I: Iterator<Item = &'a (i32, i32)>,
     {

@@ -1,31 +1,32 @@
 use crate::*;
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Board {
-    items: std::collections::HashMap<Location, Item>,
+    pub items: std::collections::HashMap<Location, Item>,
 }
 
 impl Board {
-    fn new(items: std::collections::HashMap<Location, Item>) -> Self {
+    pub fn new(items: std::collections::HashMap<Location, Item>) -> Self {
         Self { items: items }
     }
 
-    fn remove_item(&mut self, location: Location) {
+    pub fn remove_item(&mut self, location: Location) {
         self.items.remove(&location);
     }
 
-    fn put(&mut self, item: Item, location: Location) {
+    pub fn put(&mut self, item: Item, location: Location) {
         self.items.insert(location, item);
     }
 
-    fn item(&self, location: Location) -> Option<&Item> {
+    pub fn item(&self, location: Location) -> Option<&Item> {
         self.items.get(&location)
     }
 
-    fn square(&self, location: Location) -> Square {
+    pub fn square(&self, location: Location) -> Square {
         *Config::squares().get(&location).unwrap_or(&Square::Regular)
     }
 
-    fn all_mons_bases(&self) -> Vec<Location> {
+    pub fn all_mons_bases(&self) -> Vec<Location> {
         Config::squares()
             .iter()
             .filter_map(|(location, square)| match square {
@@ -35,7 +36,7 @@ impl Board {
             .collect()
     }
 
-    fn supermana_base(&self) -> Location {
+    pub fn supermana_base(&self) -> Location {
         *Config::squares()
             .iter()
             .find(|(_, square)| matches!(square, Square::SupermanaBase))
@@ -43,7 +44,7 @@ impl Board {
             .0
     }
 
-    fn all_mons_locations(&self, color: Color) -> Vec<Location> {
+    pub fn all_mons_locations(&self, color: Color) -> Vec<Location> {
         self.items
             .iter()
             .filter_map(|(location, item)| match item {
@@ -53,7 +54,7 @@ impl Board {
             .collect()
     }
 
-    fn all_free_regular_mana_locations(&self, color: Color) -> Vec<Location> {
+    pub fn all_free_regular_mana_locations(&self, color: Color) -> Vec<Location> {
         self.items
             .iter()
             .filter_map(|(location, item)| match item {
@@ -66,7 +67,7 @@ impl Board {
             .collect()
     }
 
-    fn base(&self, mon: Mon) -> Location {
+    pub fn base(&self, mon: Mon) -> Location {
         *Config::squares()
             .iter()
             .find(|(_, square)| matches!(square, Square::MonBase(kind, color) if kind == &mon.kind && color == &mon.color))
@@ -74,7 +75,7 @@ impl Board {
             .0
     }
 
-    fn fainted_mons_locations(&self, color: Color) -> Vec<Location> {
+    pub fn fainted_mons_locations(&self, color: Color) -> Vec<Location> {
         self.items
             .iter()
             .filter_map(|(location, item)| match item {
@@ -84,7 +85,7 @@ impl Board {
             .collect()
     }
 
-    fn find_mana(&self, color: Color) -> Option<Location> {
+    pub fn find_mana(&self, color: Color) -> Option<Location> {
         self.items
             .iter()
             .find_map(|(location, item)| match item {
@@ -96,7 +97,7 @@ impl Board {
             })
     }
 
-    fn find_awake_angel(&self, color: Color) -> Option<Location> {
+    pub fn find_awake_angel(&self, color: Color) -> Option<Location> {
         self.items
             .iter()
             .find_map(|(location, item)| match item {
