@@ -1,5 +1,5 @@
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-enum Event {
+pub enum Event {
     MonMove { item: Item, from: Location, to: Location },
     ManaMove { mana: Mana, from: Location, to: Location },
     ManaScored { mana: Mana, at: Location },

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-struct Config;
+pub struct Config;
 
 impl Config {
     const BOARD_SIZE: usize = 11;

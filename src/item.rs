@@ -1,5 +1,5 @@
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-enum Item {
+pub enum Item {
     Mon { mon: Mon },
     Mana { mana: Mana },
     MonWithMana { mon: Mon, mana: Mana },

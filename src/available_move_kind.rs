@@ -1,4 +1,4 @@
-enum AvailableMoveKind {
+pub enum AvailableMoveKind {
     MonMove,
     ManaMove,
     Action,

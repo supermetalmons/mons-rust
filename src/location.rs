@@ -1,5 +1,5 @@
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-struct Location {
+pub struct Location {
     i: i32,
     j: i32,
 }

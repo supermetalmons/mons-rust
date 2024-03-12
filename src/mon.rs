@@ -1,5 +1,5 @@
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-enum MonKind {
+pub enum MonKind {
     Demon,
     Drainer,
     Angel,
@@ -8,7 +8,7 @@ enum MonKind {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-struct Mon {
+pub struct Mon {
     kind: MonKind,
     color: Color,
     cooldown: i32,

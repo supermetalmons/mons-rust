@@ -1,5 +1,5 @@
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-enum Kind {
+pub enum NextInputKind {
     MonMove,
     ManaMove,
     MysticAction,
@@ -12,14 +12,14 @@ enum Kind {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-struct NextInput {
+pub struct NextInput {
     input: Input,
-    kind: Kind,
+    kind: NextInputKind,
     actor_mon_item: Option<Item>,
 }
 
 impl NextInput {
-    fn new(input: Input, kind: Kind, actor_mon_item: Option<Item>) -> Self {
+    fn new(input: Input, kind: NextInputKind, actor_mon_item: Option<Item>) -> Self {
         Self {
             input,
             kind,

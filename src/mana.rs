@@ -1,5 +1,5 @@
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-enum Mana {
+pub enum Mana {
     Regular(Color),
     Supermana,
 }

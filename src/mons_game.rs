@@ -1,5 +1,5 @@
 #[derive(Debug, Clone)]
-struct MonsGame {
+pub struct MonsGame {
     board: Board,
     white_score: i32,
     black_score: i32,

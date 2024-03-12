@@ -1,5 +1,5 @@
 #[derive(Debug, PartialEq)]
-enum Square {
+pub enum Square {
     Regular,
     ConsumableBase,
     SupermanaBase,
