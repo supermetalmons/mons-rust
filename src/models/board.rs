@@ -1,12 +1,16 @@
 use crate::*;
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Board {
     pub items: std::collections::HashMap<Location, Item>,
 }
 
 impl Board {
-    pub fn new(items: std::collections::HashMap<Location, Item>) -> Self {
+    pub fn new() -> Self {
+        Self { items: Config::initial_items() }
+    }
+
+    pub fn new_with_items(items: std::collections::HashMap<Location, Item>) -> Self {
         Self { items: items }
     }
 
