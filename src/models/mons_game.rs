@@ -1,3 +1,5 @@
+use crate::*;
+
 #[derive(Debug, Clone)]
 pub struct MonsGame {
     board: Board,

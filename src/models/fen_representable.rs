@@ -1,3 +1,5 @@
+use crate::*;
+
 trait FenRepresentable {
     fn fen(&self) -> String;
 }

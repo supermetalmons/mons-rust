@@ -1,9 +1,7 @@
-use serde::{Serialize, Deserialize};
+pub mod models;
+pub use models::*;
 
-mod input;
-use input::Input;
-mod output;
-use output::Output;
+use serde::{Serialize, Deserialize};
 
 #[cfg(test)]
 mod tests {

@@ -1,3 +1,5 @@
+use crate::*;
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Input {
     Location(Location),

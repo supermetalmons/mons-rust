@@ -1,4 +1,6 @@
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+use crate::*;
+
+#[derive(Debug, Eq, Hash, Clone)]
 pub enum Output {
     InvalidInput,
     LocationsToStartFrom(Vec<Location>),

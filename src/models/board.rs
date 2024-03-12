@@ -1,3 +1,5 @@
+use crate::*;
+
 pub struct Board {
     items: std::collections::HashMap<Location, Item>,
 }
