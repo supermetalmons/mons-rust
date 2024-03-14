@@ -1,6 +1,6 @@
 use crate::*;
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum NextInputKind {
     MonMove,
     ManaMove,

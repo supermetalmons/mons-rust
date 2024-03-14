@@ -1,4 +1,5 @@
 use crate::*;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct MonsGame {
@@ -97,46 +98,104 @@ impl MonsGame {
     }
 
     // MARK: - helpers
-    fn next_inputs(&self, locations: Vec<Location>, kind: NextInputKind, only_one: bool, specific: Option<Location>, filter: impl Fn(Location) -> bool) -> Vec<NextInput> {
-        todo!();
+    pub fn next_inputs<F>(&self, locations: Vec<Location>, kind: NextInputKind, only_one: bool, specific: Option<Location>, filter: F) -> Vec<NextInput>
+    where
+        F: Fn(Location) -> bool,
+    {
+        if let Some(specific_location) = specific {
+            if locations.contains(&specific_location) && filter(specific_location) {
+                return vec![NextInput { input: Input::Location(specific_location), kind, actor_mon_item: None }];
+            } else {
+                return vec![];
+            }
+        } else if only_one {
+            if let Some(one) = locations.into_iter().find(|&loc| filter(loc)) {
+                return vec![NextInput { input: Input::Location(one), kind, actor_mon_item: None }];
+            } else {
+                return vec![];
+            }
+        } else {
+            return locations.into_iter().filter_map(|loc| {
+                if filter(loc) {
+                    Some(NextInput { input: Input::Location(loc), kind, actor_mon_item: None })
+                } else {
+                    None
+                }
+            }).collect();
+        }
     }
 
-    fn available_move_kinds(&self) -> std::collections::HashMap<AvailableMoveKind, i32> {
-        todo!();
+    pub fn available_move_kinds(&self) -> HashMap<AvailableMoveKind, i32> {
+        let mut moves = HashMap::new();
+        moves.insert(AvailableMoveKind::MonMove, Config::MONS_MOVES_PER_TURN - self.mons_moves_count);
+        moves.insert(AvailableMoveKind::Action, 0);
+        moves.insert(AvailableMoveKind::Potion, 0);
+        moves.insert(AvailableMoveKind::ManaMove, 0);
+
+        if self.turn_number == 1 {
+            return moves;
+        }
+
+        moves.insert(AvailableMoveKind::Action, Config::ACTIONS_PER_TURN - self.actions_used_count);
+        moves.insert(AvailableMoveKind::Potion, self.player_potions_count());
+        moves.insert(AvailableMoveKind::ManaMove, Config::MANA_MOVES_PER_TURN - self.mana_moves_count);
+
+        moves
     }
 
-    fn winner_color(&self) -> Option<Color> {
-        todo!();
+    pub fn winner_color(&self) -> Option<Color> {
+        if self.white_score >= Config::TARGET_SCORE {
+            Some(Color::White)
+        } else if self.black_score >= Config::TARGET_SCORE {
+            Some(Color::Black)
+        } else {
+            None
+        }
     }
 
-    fn is_later_than(&self, game: &MonsGame) -> bool {
-        todo!();
+    pub fn is_later_than(&self, game: &MonsGame) -> bool {
+        if self.turn_number > game.turn_number {
+            true
+        } else if self.turn_number == game.turn_number {
+            self.player_potions_count() < game.player_potions_count() ||
+            self.actions_used_count > game.actions_used_count ||
+            self.mana_moves_count > game.mana_moves_count ||
+            self.mons_moves_count > game.mons_moves_count ||
+            self.board.fainted_mons_locations(self.active_color.other()).len() > game.board.fainted_mons_locations(game.active_color.other()).len()
+        } else {
+            false
+        }
     }
 
-    fn is_first_turn(&self) -> bool {
-        self.turn_number == 1
+    pub fn is_first_turn(&self) -> bool { 
+        self.turn_number == 1 
     }
 
-    fn player_potions_count(&self) -> i32 {
+    pub fn player_potions_count(&self) -> i32 {
         match self.active_color {
             Color::White => self.white_potions_count,
             Color::Black => self.black_potions_count,
         }
     }
 
-    fn player_can_move_mon(&self) -> bool {
-        self.mons_moves_count < Config::MONS_MOVES_PER_TURN
+    pub fn player_can_move_mon(&self) -> bool { 
+        self.mons_moves_count < Config::MONS_MOVES_PER_TURN 
     }
 
-    fn player_can_move_mana(&self) -> bool {
-        !self.is_first_turn() && self.mana_moves_count < Config::MANA_MOVES_PER_TURN
+    pub fn player_can_move_mana(&self) -> bool { 
+        !self.is_first_turn() && self.mana_moves_count < Config::MANA_MOVES_PER_TURN 
     }
 
-    fn player_can_use_action(&self) -> bool {
-        !self.is_first_turn() && (self.player_potions_count() > 0 || self.actions_used_count < Config::ACTIONS_PER_TURN)
+    pub fn player_can_use_action(&self) -> bool { 
+        !self.is_first_turn() && (self.player_potions_count() > 0 || self.actions_used_count < Config::ACTIONS_PER_TURN) 
     }
 
-    fn protected_by_opponents_angel(&self) -> std::collections::HashSet<Location> {
-        todo!();
+    pub fn protected_by_opponents_angel(&self) -> std::collections::HashSet<Location> {
+        if let Some(location) = self.board.find_awake_angel(self.active_color.other()) {
+            let protected: Vec<Location> = location.nearby_locations(1);
+            protected.into_iter().collect()
+        } else {
+            std::collections::HashSet::new()
+        }
     }
 }
