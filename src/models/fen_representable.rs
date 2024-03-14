@@ -534,8 +534,8 @@ impl FenRepresentable for Output {
             Output::LocationsToStartFrom(locations) => {
                 "l".to_owned() + &locations.iter().map(|location| location.fen()).collect::<Vec<_>>().join("/")
             },
-            Output::NextInputOptions(nextInputs) => {
-                "n".to_owned() + &nextInputs.iter().map(|nextInput| nextInput.fen()).collect::<Vec<_>>().join("/")
+            Output::NextInputOptions(next_inputs) => {
+                "n".to_owned() + &next_inputs.iter().map(|next_input| next_input.fen()).collect::<Vec<_>>().join("/")
             },
             Output::Events(events) => {
                 "e".to_owned() + &events.iter().map(|event| event.fen()).collect::<Vec<_>>().join("/")
@@ -558,9 +558,9 @@ impl Output {
                 }
             },
             "n" => {
-                let nextInputs = data.split('/').filter_map(|f| NextInput::from_fen(f)).collect::<Vec<_>>();
-                if nextInputs.len() > 0 {
-                    Some(Output::NextInputOptions(nextInputs))
+                let next_inputs = data.split('/').filter_map(|f| NextInput::from_fen(f)).collect::<Vec<_>>();
+                if next_inputs.len() > 0 {
+                    Some(Output::NextInputOptions(next_inputs))
                 } else {
                     None
                 }
