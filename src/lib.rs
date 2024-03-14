@@ -36,34 +36,30 @@ mod tests {
 
                 for i in 0..parts.len() {
                     match parts[i] {
-                        "fenBefore" => test_case.fen_before = parts[i + 2].to_string(),
-                        "inputFen" => test_case.input_fen = parts[i + 2].to_string(),
-                        "outputFen" => test_case.output_fen = parts[i + 2].to_string(),
-                        "fenAfter" => test_case.fen_after = parts[i + 2].to_string(),
+                        "fenBefore" => test_case.fen_before = parts[i + 2].replace('\\', ""),
+                        "inputFen" => test_case.input_fen = parts[i + 2].replace('\\', ""),
+                        "outputFen" => test_case.output_fen = parts[i + 2].replace('\\', ""),
+                        "fenAfter" => test_case.fen_after = parts[i + 2].replace('\\', ""),
                         _ => {}
                     }
                 }
 
                 let inputs = Input::array_from_fen(&test_case.input_fen);
                 let recreated_inputs_fen = Input::fen_from_array(&inputs);
+                assert!(recreated_inputs_fen == test_case.input_fen);
 
-                println!("fen_after: {}", test_case.fen_after);
                 let game_after = MonsGame::from_fen(&test_case.fen_after);
                 let recreated_game_after_fen = game_after.unwrap().fen();
                 assert!(recreated_game_after_fen == test_case.fen_after);
 
-                println!("fen_before: {}", test_case.fen_before);
                 let game_before = MonsGame::from_fen(&test_case.fen_before);
                 let recreated_game_before_fen = game_before.unwrap().fen();
                 assert!(recreated_game_before_fen == test_case.fen_before);
 
                 let output = Output::from_fen(&test_case.output_fen);
                 let recreated_output_fen = output.unwrap().fen();
-                println!("recreated_output_fen: {}", recreated_output_fen);
-                println!("output_fen: {}", test_case.output_fen);
                 assert!(recreated_output_fen == test_case.output_fen);
 
-                assert!(recreated_inputs_fen == test_case.input_fen);
                 assert!(!test_case.fen_before.is_empty() && !test_case.fen_after.is_empty() && !test_case.output_fen.is_empty(), "test data must not be empty");
             }
         }

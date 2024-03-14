@@ -62,19 +62,23 @@ impl Item {
         }
 
         let mon_fen = &fen[0..2];
-        let item_fen = &fen[2..3];
+        let item_fen = &fen[2..];
 
-        let mon = Mon::from_fen(mon_fen);
-        let mana = Mana::from_fen(item_fen);
-        let consumable = Consumable::from_fen(item_fen);
-
-        match (mon, mana, consumable) {
-            (Some(mon), Some(mana), _) => Some(Item::MonWithMana { mon, mana }),
-            (Some(mon), _, Some(consumable)) => Some(Item::MonWithConsumable { mon, consumable }),
-            (Some(mon), None, None) => Some(Item::Mon { mon }),
-            (None, Some(mana), _) => Some(Item::Mana { mana }),
-            (None, _, Some(consumable)) => Some(Item::Consumable { consumable }),
-            _ => None,
+        match mon_fen {
+            "xx" => match Mana::from_fen(item_fen) {
+                Some(mana) => Some(Item::Mana { mana }),
+                None => Consumable::from_fen(item_fen).map(|consumable| Item::Consumable { consumable }),
+            },
+            _ => {
+                let mon = Mon::from_fen(mon_fen)?;
+                if let Some(mana) = Mana::from_fen(item_fen) {
+                    Some(Item::MonWithMana { mon, mana })
+                } else if let Some(consumable) = Consumable::from_fen(item_fen) {
+                    Some(Item::MonWithConsumable { mon, consumable })
+                } else {
+                    Some(Item::Mon { mon })
+                }
+            }
         }
     }
 }
@@ -109,40 +113,39 @@ impl FenRepresentable for Board {
 }
 
 impl Board {
-    fn from_fen(fen: &str) -> Option<Self> {
+    pub fn from_fen(fen: &str) -> Option<Self> {
         let lines: Vec<&str> = fen.split('/').collect();
-        if lines.len() as i32 != Config::BOARD_SIZE {
+        if lines.len() != Config::BOARD_SIZE as usize {
             return None;
         }
         let mut items = std::collections::HashMap::new();
-
         for (i, line) in lines.iter().enumerate() {
             let mut j = 0;
             let mut chars = line.chars().peekable();
-            while let Some(ch) = chars.next() {
-                if ch == 'n' {
-                    if let Some(next_ch) = chars.next() {
-                        if let Some(digit) = next_ch.to_digit(10) {
-                            j += digit as usize;
-                            if chars.peek().is_some() {
-                                if let Some(second_digit) = chars.next().unwrap().to_digit(10) {
-                                    j += (second_digit + 10 * digit - digit) as usize;
-                                }
-                            }
+
+            while let Some(ch) = chars.peek() {
+                match ch {
+                    'n' => {
+                        chars.next();
+                        let num_chars: String = chars.by_ref().take(2).collect();
+                        if let Ok(num) = num_chars.parse::<usize>() {
+                            j += num;
                         }
+                    },
+                    _ => {
+                        let item_fen: String = chars.by_ref().take(3).collect();
+                        if let Some(item) = Item::from_fen(&item_fen) {
+                            items.insert(Location { i: i as i32, j: j as i32 }, item);
+                        }
+                        j += 1;
                     }
-                } else {
-                    let item_fen = ch.to_string() + &chars.next().unwrap().to_string() + &chars.next().unwrap().to_string();
-                    if let Some(item) = Item::from_fen(&item_fen) {
-                        items.insert(Location { i: i as i32, j: j as i32 }, item);
-                    }
-                    j += 1;
                 }
             }
         }
         Some(Self { items })
     }
 }
+
 
 impl FenRepresentable for Mon {
     fn fen(&self) -> String {
