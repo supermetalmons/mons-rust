@@ -3,6 +3,7 @@ pub use models::*;
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::fs::{self, File};
     use std::io::{self, Read};
     use std::path::Path;
@@ -43,8 +44,11 @@ mod tests {
                     }
                 }
 
+                let inputs = Input::array_from_fen(&test_case.input_fen);
+                let recreated_inputs_fen = Input::fen_from_array(&inputs);
+
+                assert!(recreated_inputs_fen == test_case.input_fen);
                 assert!(!test_case.fen_before.is_empty() && !test_case.fen_after.is_empty() && !test_case.output_fen.is_empty(), "test data must not be empty");
-                println!("{}\n\n", test_case.fen_after);
             }
         }
         Ok(())

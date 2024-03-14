@@ -498,12 +498,29 @@ impl FenRepresentable for Input {
 }
 
 impl Input {
-    fn from_fen(fen: &str) -> Option<Self> {
+    pub fn fen_from_array(inputs: &[Input]) -> String {
+        inputs.iter()
+            .map(|input| input.fen())
+            .collect::<Vec<_>>()
+            .join(";")
+    }
+
+    pub fn from_fen(fen: &str) -> Option<Self> {
         fen.chars().next().and_then(|prefix| match prefix {
             'l' => Location::from_fen(&fen[1..]).map(Input::Location),
             'm' => Modifier::from_fen(&fen[1..]).map(Input::Modifier),
             _ => None,
         })
+    }
+
+    pub fn array_from_fen(fen: &str) -> Vec<Self> {
+        if fen.is_empty() {
+            vec![]
+        } else {
+            fen.split(';')
+               .filter_map(|f| Input::from_fen(f))
+               .collect()
+        }
     }
 }
 
