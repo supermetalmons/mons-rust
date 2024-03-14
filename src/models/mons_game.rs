@@ -93,8 +93,131 @@ impl MonsGame {
     }
 
     // MARK: - apply events
-    fn apply_and_add_resulting_events(&self, events: Vec<Event>) -> Vec<Event> {
-        todo!();
+    pub fn apply_and_add_resulting_events(&mut self, events: Vec<Event>) -> Vec<Event> {
+        let mut extra_events = Vec::new();
+
+        let mut did_use_action = || {
+            if self.actions_used_count >= Config::ACTIONS_PER_TURN {
+                match self.active_color {
+                    Color::White => self.white_potions_count -= 1,
+                    Color::Black => self.black_potions_count -= 1,
+                }
+            } else {
+                self.actions_used_count += 1;
+            }
+        };
+
+        for event in events.iter() {
+            match event {
+                Event::MonMove { item, from, to } => {
+                    self.mons_moves_count += 1;
+                    self.board.remove_item(*from);
+                    self.board.put(*item, *to);
+                }
+                Event::ManaMove { mana, from, to } => {
+                    self.mana_moves_count += 1;
+                    self.board.remove_item(*from);
+                    self.board.put(Item::Mana { mana: *mana }, *to);
+                }
+                Event::ManaScored { mana, at } => {
+                    let score = mana.score(self.active_color);
+                    match self.active_color {
+                        Color::White => self.white_score += score,
+                        Color::Black => self.black_score += score,
+                    }
+                    if let Some(Item::Mon { mon }) = self.board.item(*at) {
+                        self.board.put(Item::Mon { mon: *mon }, *at);
+                    } else {
+                        self.board.remove_item(*at);
+                    }
+                }
+                Event::MysticAction { mystic, from, to } => {
+                    did_use_action();
+                    self.board.remove_item(*to);
+                }
+                Event::DemonAction { demon, from, to } => {
+                    did_use_action();
+                    self.board.remove_item(*from);
+                    self.board.put(Item::Mon { mon: *demon }, *to);
+                }
+                Event::DemonAdditionalStep { demon, from: _, to } => {
+                    self.board.put(Item::Mon { mon: *demon }, *to);
+                }
+                Event::SpiritTargetMove { item, from, to } => {
+                    did_use_action();
+                    self.board.remove_item(*from);
+                    self.board.put(*item, *to);
+                }
+                Event::PickupBomb { by, at } => {
+                    self.board.put(Item::MonWithConsumable { mon: *by, consumable: Consumable::Bomb }, *at);
+                }
+                Event::PickupPotion { by, at } => {
+                    let mon_color = if let Item::Mon { mon } = *by { mon.color } else { continue; };
+                    match mon_color {
+                        Color::White => self.white_potions_count += 1,
+                        Color::Black => self.black_potions_count += 1,
+                    }
+                    self.board.put(*by, *at);
+                }
+                Event::PickupMana { mana, by, at } => {
+                    self.board.put(Item::MonWithMana { mon: *by, mana: *mana }, *at);
+                }
+                Event::MonFainted { mon, from: _, to } => {
+                    let mut fainted_mon = *mon;
+                    fainted_mon.faint();
+                    self.board.put(Item::Mon { mon: fainted_mon }, *to);
+                }
+                Event::ManaDropped { mana, at } => {
+                    self.board.put(Item::Mana { mana: *mana }, *at);
+                }
+                Event::SupermanaBackToBase { from: _, to } => {
+                    self.board.put(Item::Mana { mana: Mana::Supermana }, *to);
+                }
+                Event::BombAttack { by, from, to } => {
+                    self.board.remove_item(*to);
+                    self.board.put(Item::Mon { mon: *by }, *from);
+                }
+                Event::BombExplosion { at } => {
+                    self.board.remove_item(*at);
+                }
+                Event::MonAwake { mon, at } => {
+                    self.board.put(Item::Mon { mon: *mon }, *at);
+                }
+                Event::GameOver { winner } => extra_events.push(Event::GameOver { winner: *winner }),
+                Event::NextTurn { color } => {
+                    self.active_color = *color;
+                    self.reset_turn_state();
+                    for mon_location in self.board.fainted_mons_locations(self.active_color) {
+                        if let Some(Item::Mon { mon }) = self.board.item(mon_location) {
+                            let mut awake_mon = mon;
+                            awake_mon.decrease_cooldown();
+                            self.board.put(Item::Mon { mon: awake_mon }, mon_location);
+                            if !awake_mon.is_fainted() {
+                                extra_events.push(Event::MonAwake { mon: awake_mon, at: mon_location });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(winner) = self.winner_color() {
+            extra_events.push(Event::GameOver { winner });
+        } else if self.is_first_turn() && !self.player_can_move_mon() ||
+                  !self.is_first_turn() && (!self.player_can_move_mana() || !self.player_can_move_mon() && self.board.find_mana(self.active_color).is_none()) {
+            self.active_color = self.active_color.other();
+            self.turn_number += 1;
+            self.reset_turn_state();
+            extra_events.push(Event::NextTurn { color: self.active_color });
+        }
+
+        events.into_iter().chain(extra_events.into_iter()).collect()
+    }
+
+    fn reset_turn_state(&mut self) {
+        self.actions_used_count = 0;
+        self.mana_moves_count = 0;
+        self.mons_moves_count = 0;
     }
 
     // MARK: - helpers
