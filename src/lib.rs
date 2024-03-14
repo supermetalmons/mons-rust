@@ -11,8 +11,8 @@ mod tests {
     #[derive(Hash, PartialEq, Eq, Clone, Debug)]
     struct TestCase {
         fen_before: String,
-        // input_pgn: String,
-        // output_pgn: String,
+        input_fen: String,
+        output_fen: String,
         fen_after: String,
     }
 
@@ -23,15 +23,29 @@ mod tests {
             let entry = entry?;
             let path = entry.path();
             if path.is_file() {
-                println!("Testing with file: {:?}", path);
-                let mut file = File::open(path)?;
+                let mut file = File::open(&path)?;
                 let mut contents = String::new();
                 file.read_to_string(&mut contents)?;
-                // let test_case: TestCase = serde_json::from_str(&contents).expect("Failed to deserialize the test case");
-                // TODO: custom testcase encoding, no jsons
+                let parts: Vec<&str> = contents.split("\"").collect();
+                let mut test_case = TestCase {
+                    fen_before: String::new(),
+                    input_fen: String::new(),
+                    output_fen: String::new(),
+                    fen_after: String::new(),
+                };
 
-                // TODO: encode input and output back and forth
-                // assert_eq!(test_case.fen_before, "Expected FEN before state");
+                for i in 0..parts.len() {
+                    match parts[i] {
+                        "fenBefore" => test_case.fen_before = parts[i + 2].to_string(),
+                        "inputFen" => test_case.input_fen = parts[i + 2].to_string(),
+                        "outputFen" => test_case.output_fen = parts[i + 2].to_string(),
+                        "fenAfter" => test_case.fen_after = parts[i + 2].to_string(),
+                        _ => {}
+                    }
+                }
+
+                assert!(!test_case.fen_before.is_empty() && !test_case.fen_after.is_empty() && !test_case.output_fen.is_empty(), "test data must not be empty");
+                println!("{}\n\n", test_case.fen_after);
             }
         }
         Ok(())
