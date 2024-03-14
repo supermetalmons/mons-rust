@@ -23,7 +23,7 @@ impl FenRepresentable for MonsGame {
 }
 
 impl MonsGame {
-    fn from_fen(fen: &str) -> Option<Self> {
+    pub fn from_fen(fen: &str) -> Option<Self> {
         let fields: Vec<&str> = fen.split_whitespace().collect();
         if fields.len() != 10 {
             return None;
@@ -542,7 +542,7 @@ impl FenRepresentable for Output {
 }
 
 impl Output {
-    fn from_fen(fen: &str) -> Option<Self> {
+    pub fn from_fen(fen: &str) -> Option<Self> {
         let (prefix, data) = fen.split_at(1);
         match prefix {
             "i" => Some(Output::InvalidInput),
