@@ -76,8 +76,8 @@ mod tests {
                     oks += 1;
                 }
 
-                // assert!(game_before.fen() == test_case.fen_after);
-                // assert!(actual_output.fen() == test_case.output_fen);
+                assert!(game_before.fen() == test_case.fen_after);
+                assert!(actual_output.fen() == test_case.output_fen);
             }
         }
         println!("\n\n\n\n\n TOTAL ERRORS {}", count);
