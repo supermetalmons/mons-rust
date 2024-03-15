@@ -88,9 +88,9 @@ impl MonsGame {
             None => return Output::InvalidInput,
         };
         let specific_second_input = input.get(1).cloned();
-        let second_input_options = self.second_input_options(start_location, &start_item, one_option_enough, specific_second_input);
+        let second_input_options = self.second_input_options(start_location, &start_item, one_option_enough, specific_second_input.clone());
     
-        let second_input = match specific_second_input {
+        let second_input = match &specific_second_input {
             None => {
                 if second_input_options.is_empty() {
                     return Output::InvalidInput;
@@ -98,7 +98,7 @@ impl MonsGame {
                     return Output::NextInputOptions(second_input_options);
                 }
             }
-            Some(input) => input,
+            Some(input) => input.clone(),
         };
     
         let target_location = match second_input {
@@ -111,7 +111,7 @@ impl MonsGame {
         };
     
         let specific_third_input = input.get(2).cloned();
-        let (mut events, third_input_options) = match self.process_second_input(second_input_kind, start_item.clone(), start_location, target_location, specific_third_input) {
+        let (mut events, third_input_options) = match self.process_second_input(second_input_kind, start_item.clone(), start_location, target_location, specific_third_input.clone()) {
             Some((events, options)) => (events, options),
             None => (vec![], vec![]),
         };
@@ -120,7 +120,7 @@ impl MonsGame {
             if !third_input_options.is_empty() {
                 return Output::NextInputOptions(third_input_options);
             } else if !events.is_empty() {
-                return Output::Events(if do_not_apply_events { events } else { self.apply_and_add_resulting_events(events) });
+                return Output::Events(if do_not_apply_events { events.clone() } else { self.apply_and_add_resulting_events(events) });
             } else {
                 return Output::InvalidInput;
             }
@@ -133,7 +133,7 @@ impl MonsGame {
             None => return Output::InvalidInput,
         };
     
-        let (forth_events, forth_input_options) = match self.process_third_input(*third_input, start_item, start_location, target_location) {
+        let (forth_events, forth_input_options) = match self.process_third_input(third_input.clone(), start_item, start_location, target_location) {
             Some((events, options)) => (events, options),
             None => (vec![], vec![]),
         };
