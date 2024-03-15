@@ -173,7 +173,7 @@ impl MonsGame {
             Output::LocationsToStartFrom(suggested_locations)
         }
     }
-    
+
     fn second_input_options(&self, start_location: Location, start_item: &Item, only_one: bool, specific_next: Option<Input>) -> Vec<NextInput> {
         let specific_location = match specific_next {
             Some(Input::Location(location)) => Some(location),
@@ -257,8 +257,7 @@ impl MonsGame {
                             second_input_options.extend(
                                 self.next_inputs(start_location.reachable_by_spirit_action(), NextInputKind::SpiritTargetMove, only_one, specific_location, |_| true),
                             );
-                        }
-                        _ => (),
+                        },
                     }
                 }
             }
@@ -604,7 +603,6 @@ impl MonsGame {
                                     }
                                 }
                             },
-                            _ => (),
                         }
                     }
                 }
@@ -656,7 +654,7 @@ impl MonsGame {
                             }
                         },
                         Item::Mana { .. } | Item::Consumable { .. } => return None,
-                        _ => (),
+
                     }
                 }
             },            
