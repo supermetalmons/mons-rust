@@ -149,11 +149,11 @@ impl MonsGame {
     // MARK: - process step by step
 
     fn suggested_input_to_start_with(&self) -> Output {
-        let locations_filter = |location: &Location| -> Option<Location> {
-            let output = self.process_input(&[InputOption::Location(*location)], true, true);
+        let locations_filter = |location: Location| -> Option<Location> {
+            let output = self.process_input(vec![Input::Location(location)], true, true);
             if let Output::NextInputOptions(options) = output {
                 if !options.is_empty() {
-                    Some(*location)
+                    Some(location)
                 } else {
                     None
                 }
@@ -161,28 +161,28 @@ impl MonsGame {
                 None
             }
         };
-
+    
         let mut suggested_locations: Vec<Location> = self.board.all_mons_locations(self.active_color)
-            .iter()
+            .into_iter()
             .filter_map(locations_filter)
             .collect();
         
         if (!self.player_can_move_mon() && !self.player_can_use_action() || suggested_locations.is_empty()) && self.player_can_move_mana() {
             suggested_locations.append(
                 &mut self.board.all_free_regular_mana_locations(self.active_color)
-                    .iter()
+                    .into_iter()
                     .filter_map(locations_filter)
                     .collect(),
             );
         }
-
+    
         if suggested_locations.is_empty() {
             Output::InvalidInput
         } else {
             Output::LocationsToStartFrom(suggested_locations)
         }
     }
-
+    
     fn second_input_options(&self, start_location: Location, start_item: &Item, only_one: bool, specific_next: Option<Input>) -> Vec<NextInput> {
         let specific_location = match specific_next {
             Some(Input::Location(location)) => Some(location),
