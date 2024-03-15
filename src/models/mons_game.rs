@@ -192,41 +192,47 @@ impl MonsGame {
         let start_square = self.board.square(start_location);
         let mut second_input_options = Vec::new();
         match start_item {
-            Item::Mon { mon } if mon.color == self.active_color && !mon.is_fainted => {
+            Item::Mon { mon } if mon.color == self.active_color && !mon.is_fainted() => {
                 if self.player_can_move_mon() {
                     second_input_options.extend(
-                        self.next_inputs(start_location.nearby_locations(), AvailableMoveKind::MonMove, only_one, specific_location, |location| {
+                        self.next_inputs(start_location.nearby_locations_default(), NextInputKind::MonMove, only_one, specific_next.map(|input| match input {
+                            Input::Location(loc) => loc,
+                            _ => start_location,
+                        }), |location| {
                             let item = self.board.item(location);
                             let square = self.board.square(location);
-    
+                    
                             match item {
                                 Some(Item::Mon { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => false,
                                 Some(Item::Mana { mana }) => !(mon.kind != MonKind::Drainer && *mana != Mana::Regular(mon.color)),
                                 Some(Item::Consumable { .. }) => true,
                                 None => match square {
-                                    Square::Regular | Square::ConsumableBase | Square::ManaBase | Square::ManaPool => true,
-                                    Square::SupermanaBase => matches!(item, Some(Item::Mana { mana: Mana::Supermana }) && mon.kind == MonKind::Drainer),
-                                    Square::MonBase { kind, color } => mon.kind == *kind && mon.color == *color,
+                                    Square::Regular | Square::ConsumableBase => true,
+                                    Square::ManaBase { color } if color == mon.color => true,
+                                    Square::ManaPool { color } if color == mon.color => true,
+                                    Square::SupermanaBase => matches!(item, Some(Item::Mana { mana: Mana::Supermana })) && mon.kind == MonKind::Drainer,
+                                    Square::MonBase { kind, color } if kind == mon.kind && color == mon.color => true,
+                                    _ => false,
                                 },
                             }
                         }),
                     );
                 }
-    
+            
                 if !matches!(start_square, Square::MonBase { .. }) && self.player_can_use_action() {
                     match mon.kind {
                         MonKind::Angel | MonKind::Drainer => (),
                         MonKind::Mystic => {
                             second_input_options.extend(
-                                self.next_inputs(start_location.reachable_by_mystic_action(), AvailableMoveKind::Action, only_one, specific_location, |location| {
+                                self.next_inputs(start_location.reachable_by_mystic_action(), NextInputKind::MysticAction, only_one, specific_location, |location| {
                                     if let Some(item) = self.board.item(location) {
-                                        if self.protected_by_opponents_angel.contains(&location) {
+                                        if self.protected_by_opponents_angel().contains(&location) {
                                             return false;
                                         }
-    
+            
                                         match item {
                                             Item::Mon { mon: target_mon } | Item::MonWithMana { mon: target_mon, .. } | Item::MonWithConsumable { mon: target_mon, .. } => {
-                                                mon.color != target_mon.color && !target_mon.is_fainted
+                                                mon.color != target_mon.color && !target_mon.is_fainted()
                                             }
                                             _ => false,
                                         }
@@ -238,15 +244,15 @@ impl MonsGame {
                         }
                         MonKind::Demon => {
                             second_input_options.extend(
-                                self.next_inputs(start_location.reachable_by_demon_action(), AvailableMoveKind::Action, only_one, specific_location, |location| {
+                                self.next_inputs(start_location.reachable_by_demon_action(), NextInputKind::DemonAction, only_one, specific_location, |location| {
                                     if let Some(item) = self.board.item(location) {
-                                        if self.protected_by_opponents_angel.contains(&location) || self.board.item(start_location.location_between(location)).is_some() {
+                                        if self.protected_by_opponents_angel().contains(&location) || self.board.item(start_location.location_between(&location)).is_some() {
                                             return false;
                                         }
-    
+            
                                         match item {
                                             Item::Mon { mon: target_mon } | Item::MonWithMana { mon: target_mon, .. } | Item::MonWithConsumable { mon: target_mon, .. } => {
-                                                mon.color != target_mon.color && !target_mon.is_fainted
+                                                mon.color != target_mon.color && !target_mon.is_fainted()
                                             }
                                             _ => false,
                                         }
@@ -258,32 +264,31 @@ impl MonsGame {
                         }
                         MonKind::Spirit => {
                             second_input_options.extend(
-                                self.next_inputs(start_location.reachable_by_spirit_action(), AvailableMoveKind::Action, only_one, specific_location, |location| {
-                                    self.board.item(location).is_some()
-                                }),
+                                self.next_inputs(start_location.reachable_by_spirit_action(), NextInputKind::SpiritTargetMove, only_one, specific_location, |_| true),
                             );
                         }
                         _ => (),
                     }
                 }
             }
+            
             Item::Mana { mana } if matches!(mana, Mana::Regular(color) if color == &self.active_color) && self.player_can_move_mana() => {
                 second_input_options.extend(
-                    self.next_inputs(start_location.nearby_locations(), AvailableMoveKind::ManaMove, only_one, specific_location, |location| {
+                    self.next_inputs(start_location.nearby_locations_default(), NextInputKind::ManaMove, only_one, specific_location, |location| {
                         let item = self.board.item(location);
                         let square = self.board.square(location);
     
                         match item {
                             Some(Item::Mon { mon }) => mon.kind == MonKind::Drainer,
                             Some(Item::MonWithConsumable { .. }) | Some(Item::Consumable { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::Mana { .. }) => false,
-                            None => matches!(square, Square::Regular | Square::ConsumableBase | Square::ManaBase | Square::ManaPool),
+                            None => matches!(square, Square::Regular | Square::ConsumableBase | Square::ManaBase { .. } | Square::ManaPool { .. }),
                         }
                     }),
                 );
             }
             Item::MonWithMana { mon, mana } if mon.color == self.active_color && self.player_can_move_mon() => {
                 second_input_options.extend(
-                    self.next_inputs(start_location.nearby_locations(), AvailableMoveKind::MonMove, only_one, specific_location, |location| {
+                    self.next_inputs(start_location.nearby_locations_default(), NextInputKind::MonMove, only_one, specific_location, |location| {
                         let item = self.board.item(location);
                         let square = self.board.square(location);
     
@@ -291,8 +296,8 @@ impl MonsGame {
                             Some(Item::Mon { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => false,
                             Some(Item::Consumable { .. }) | Some(Item::Mana { .. }) => true,
                             None => match square {
-                                Square::Regular | Square::ConsumableBase | Square::ManaBase | Square::ManaPool => true,
-                                Square::SupermanaBase => *mana == Mana::Supermana || matches!(item, Some(Item::Mana { mana: Mana::Supermana })),
+                                Square::Regular | Square::ConsumableBase | Square::ManaBase { .. } | Square::ManaPool { .. } => true,
+                                Square::SupermanaBase => *mana == Mana::Supermana,
                                 Square::MonBase { .. } => false,
                             },
                         }
@@ -302,14 +307,14 @@ impl MonsGame {
             Item::MonWithConsumable { mon, consumable } if mon.color == self.active_color => {
                 if self.player_can_move_mon() {
                     second_input_options.extend(
-                        self.next_inputs(start_location.nearby_locations(), AvailableMoveKind::MonMove, only_one, specific_location, |location| {
+                        self.next_inputs(start_location.nearby_locations_default(), NextInputKind::MonMove, only_one, specific_location, |location| {
                             let item = self.board.item(location);
                             let square = self.board.square(location);
     
                             match item {
                                 Some(Item::Mon { .. }) | Some(Item::Mana { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => false,
                                 Some(Item::Consumable { .. }) => true,
-                                None => matches!(square, Square::Regular | Square::ConsumableBase | Square::ManaBase | Square::ManaPool),
+                                None => matches!(square, Square::Regular | Square::ConsumableBase | Square::ManaBase { .. } | Square::ManaPool { .. }),
                             }
                         }),
                     );
@@ -317,11 +322,11 @@ impl MonsGame {
     
                 if matches!(consumable, Consumable::Bomb) {
                     second_input_options.extend(
-                        self.next_inputs(start_location.reachable_by_bomb(), AvailableMoveKind::Action, only_one, specific_location, |location| {
+                        self.next_inputs(start_location.reachable_by_bomb(), NextInputKind::BombAttack, only_one, specific_location, |location| {
                             self.board.item(location).map_or(false, |item| {
                                 match item {
                                     Item::Mon { mon: target_mon } | Item::MonWithMana { mon: target_mon, .. } | Item::MonWithConsumable { mon: target_mon, .. } => {
-                                        mon.color != target_mon.color && !target_mon.is_fainted
+                                        mon.color != target_mon.color && !target_mon.is_fainted()
                                     }
                                     _ => false,
                                 }
