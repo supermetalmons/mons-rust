@@ -71,25 +71,542 @@ impl MonsGame {
     }
 
     // MARK: - process input
-    pub fn process_input(&self, input: Vec<Input>, do_not_apply_events: bool, one_option_enough: bool) -> Output {
-        todo!();
-    }
+    // TODO: fix rewrite
+    fn process_input(&mut self, input: Vec<Input>, do_not_apply_events: bool, one_option_enough: bool) -> Output {
+        if self.winner_color.is_some() {
+            return Output::InvalidInput;
+        }
+        if input.is_empty() {
+            return self.suggested_input_to_start_with();
+        }
+        let start_location = match input.get(0) {
+            Some(Input::Location(location)) => location,
+            _ => return Output::InvalidInput,
+        };
+        let start_item = match self.board.item(*start_location) {
+            Some(item) => item,
+            None => return Output::InvalidInput,
+        };
+        let specific_second_input = input.get(1);
+        let second_input_options = self.second_input_options(*start_location, start_item, one_option_enough, specific_second_input.cloned());
+    
+        let second_input = match specific_second_input {
+            None => {
+                if second_input_options.is_empty() {
+                    return Output::InvalidInput;
+                } else {
+                    return Output::NextInputOptions(second_input_options);
+                }
+            }
+            Some(input) => input,
+        };
+    
+        let target_location = match second_input {
+            Input::Location(location) => location,
+            _ => return Output::InvalidInput,
+        };
+        let second_input_kind = match second_input_options.iter().find(|option| &option.input == second_input) {
+            Some(option) => option.kind,
+            None => return Output::InvalidInput,
+        };
+    
+        let specific_third_input = input.get(2);
+        let (mut events, third_input_options) = match self.process_second_input(second_input_kind, start_item, *start_location, *target_location, specific_third_input.cloned()) {
+            Some((events, options)) => (events, options),
+            None => (vec![], vec![]),
+        };
+    
+        let specific_third_input = match specific_third_input {
+            None => {
+                if !third_input_options.is_empty() {
+                    return Output::NextInputOptions(third_input_options);
+                } else if !events.is_empty() {
+                    return Output::Events(if do_not_apply_events { events } else { self.apply_and_add_resulting_events(events) });
+                } else {
+                    return Output::InvalidInput;
+                }
+            }
+            Some(input) => input,
+        };
+    
+        let third_input = match third_input_options.iter().find(|option| &option.input == *specific_third_input) {
+            Some(option) => option,
+            None => return Output::InvalidInput,
+        };
+    
+        let specific_forth_input = input.get(3);
+        let (forth_events, forth_input_options) = match self.process_third_input(third_input, start_item, *start_location, *target_location) {
+            Some((events, options)) => (events, options),
+            None => (vec![], vec![]),
+        };
+        events.extend(forth_events);
+    
+        let specific_forth_input = match specific_forth_input {
+            None => {
+                if !forth_input_options.is_empty() {
+                    return Output::NextInputOptions(forth_input_options);
+                } else if !events.is_empty() {
+                    return Output::Events(if do_not_apply_events { events } else { self.apply_and_add_resulting_events(events) });
+                } else {
+                    return Output::InvalidInput;
+                }
+            }
+            Some(input) => input,
+        };
+    
+        let modifier = match specific_forth_input {
+            Input::Modifier(modifier) => modifier,
+            _ => return Output::InvalidInput,
+        };
+        let forth_input = match forth_input_options.iter().find(|option| &option.input == *specific_forth_input) {
+            Some(option) => option,
+            None => return Output::InvalidInput,
+        };
+        let destination_location = match third_input.input {
+            Input::Location(location) => location,
+            _ => return Output::InvalidInput,
+        };
+        let actor_mon_item = match forth_input.actor_mon_item {
+            Some(item) => item,
+            None => return Output::InvalidInput,
+        };
+        let actor_mon = match actor_mon_item.mon {
+            Some(mon) => mon,
+            None => return Output::InvalidInput,
+        };
+    
+        match modifier {
+            Modifier::SelectBomb => events.push(Event::PickupBomb { by: actor_mon, at: destination_location }),
+            Modifier::SelectPotion => events.push(Event::PickupPotion { by: actor_mon_item, at: destination_location }),
+            Modifier::Cancel => return Output::InvalidInput,
+        }
+        Output::Events(if do_not_apply_events { events } else { self.apply_and_add_resulting_events(events) })
+    }    
 
     // MARK: - process step by step
+    // TODO: fix rewrite
     fn suggested_input_to_start_with(&self) -> Output {
-        todo!();
+        let locations_filter = |location: &Location| -> Option<Location> {
+            let output = self.process_input(&[InputOption::Location(*location)], true, true);
+            if let Output::NextInputOptions(options) = output {
+                if !options.is_empty() {
+                    Some(*location)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        let mut suggested_locations: Vec<Location> = self.board.all_mons_locations(self.active_color)
+            .iter()
+            .filter_map(locations_filter)
+            .collect();
+        
+        if (!self.player_can_move_mon() && !self.player_can_use_action() || suggested_locations.is_empty()) && self.player_can_move_mana() {
+            suggested_locations.append(
+                &mut self.board.all_free_regular_mana_locations(self.active_color)
+                    .iter()
+                    .filter_map(locations_filter)
+                    .collect(),
+            );
+        }
+
+        if suggested_locations.is_empty() {
+            Output::InvalidInput
+        } else {
+            Output::LocationsToStartFrom(suggested_locations)
+        }
     }
 
-    fn second_input_options(&self, start_location: Location, start_item: Item, only_one: bool, specific_next: Option<Input>) -> Vec<NextInput> {
-        todo!();
+    // TODO: fix rewrite
+    fn second_input_options(&self, start_location: Location, start_item: &Item, only_one: bool, specific_next: Option<Input>) -> Vec<NextInput> {
+        let specific_location = match specific_next {
+            Some(Input::Location(location)) => Some(location),
+            _ => None,
+        };
+    
+        let start_square = self.board.square(start_location);
+        let mut second_input_options = Vec::new();
+        match start_item {
+            Item::Mon { mon } if mon.color == self.active_color && !mon.is_fainted => {
+                if self.player_can_move_mon() {
+                    second_input_options.extend(
+                        self.next_inputs(start_location.nearby_locations(), AvailableMoveKind::MonMove, only_one, specific_location, |location| {
+                            let item = self.board.item(location);
+                            let square = self.board.square(location);
+    
+                            match item {
+                                Some(Item::Mon { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => false,
+                                Some(Item::Mana { mana }) => !(mon.kind != MonKind::Drainer && *mana != Mana::Regular(mon.color)),
+                                Some(Item::Consumable { .. }) => true,
+                                None => match square {
+                                    Square::Regular | Square::ConsumableBase | Square::ManaBase | Square::ManaPool => true,
+                                    Square::SupermanaBase => matches!(item, Some(Item::Mana { mana: Mana::Supermana }) && mon.kind == MonKind::Drainer),
+                                    Square::MonBase { kind, color } => mon.kind == *kind && mon.color == *color,
+                                },
+                            }
+                        }),
+                    );
+                }
+    
+                if !matches!(start_square, Square::MonBase { .. }) && self.player_can_use_action() {
+                    match mon.kind {
+                        MonKind::Angel | MonKind::Drainer => (),
+                        MonKind::Mystic => {
+                            second_input_options.extend(
+                                self.next_inputs(start_location.reachable_by_mystic_action(), AvailableMoveKind::Action, only_one, specific_location, |location| {
+                                    if let Some(item) = self.board.item(location) {
+                                        if self.protected_by_opponents_angel.contains(&location) {
+                                            return false;
+                                        }
+    
+                                        match item {
+                                            Item::Mon { mon: target_mon } | Item::MonWithMana { mon: target_mon, .. } | Item::MonWithConsumable { mon: target_mon, .. } => {
+                                                mon.color != target_mon.color && !target_mon.is_fainted
+                                            }
+                                            _ => false,
+                                        }
+                                    } else {
+                                        false
+                                    }
+                                }),
+                            );
+                        }
+                        MonKind::Demon => {
+                            second_input_options.extend(
+                                self.next_inputs(start_location.reachable_by_demon_action(), AvailableMoveKind::Action, only_one, specific_location, |location| {
+                                    if let Some(item) = self.board.item(location) {
+                                        if self.protected_by_opponents_angel.contains(&location) || self.board.item(start_location.location_between(location)).is_some() {
+                                            return false;
+                                        }
+    
+                                        match item {
+                                            Item::Mon { mon: target_mon } | Item::MonWithMana { mon: target_mon, .. } | Item::MonWithConsumable { mon: target_mon, .. } => {
+                                                mon.color != target_mon.color && !target_mon.is_fainted
+                                            }
+                                            _ => false,
+                                        }
+                                    } else {
+                                        false
+                                    }
+                                }),
+                            );
+                        }
+                        MonKind::Spirit => {
+                            second_input_options.extend(
+                                self.next_inputs(start_location.reachable_by_spirit_action(), AvailableMoveKind::Action, only_one, specific_location, |location| {
+                                    self.board.item(location).is_some()
+                                }),
+                            );
+                        }
+                        _ => (),
+                    }
+                }
+            }
+            Item::Mana { mana } if matches!(mana, Mana::Regular(color) if color == &self.active_color) && self.player_can_move_mana() => {
+                second_input_options.extend(
+                    self.next_inputs(start_location.nearby_locations(), AvailableMoveKind::ManaMove, only_one, specific_location, |location| {
+                        let item = self.board.item(location);
+                        let square = self.board.square(location);
+    
+                        match item {
+                            Some(Item::Mon { mon }) => mon.kind == MonKind::Drainer,
+                            Some(Item::MonWithConsumable { .. }) | Some(Item::Consumable { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::Mana { .. }) => false,
+                            None => matches!(square, Square::Regular | Square::ConsumableBase | Square::ManaBase | Square::ManaPool),
+                        }
+                    }),
+                );
+            }
+            Item::MonWithMana { mon, mana } if mon.color == self.active_color && self.player_can_move_mon() => {
+                second_input_options.extend(
+                    self.next_inputs(start_location.nearby_locations(), AvailableMoveKind::MonMove, only_one, specific_location, |location| {
+                        let item = self.board.item(location);
+                        let square = self.board.square(location);
+    
+                        match item {
+                            Some(Item::Mon { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => false,
+                            Some(Item::Consumable { .. }) | Some(Item::Mana { .. }) => true,
+                            None => match square {
+                                Square::Regular | Square::ConsumableBase | Square::ManaBase | Square::ManaPool => true,
+                                Square::SupermanaBase => *mana == Mana::Supermana || matches!(item, Some(Item::Mana { mana: Mana::Supermana })),
+                                Square::MonBase { .. } => false,
+                            },
+                        }
+                    }),
+                );
+            }
+            Item::MonWithConsumable { mon, consumable } if mon.color == self.active_color => {
+                if self.player_can_move_mon() {
+                    second_input_options.extend(
+                        self.next_inputs(start_location.nearby_locations(), AvailableMoveKind::MonMove, only_one, specific_location, |location| {
+                            let item = self.board.item(location);
+                            let square = self.board.square(location);
+    
+                            match item {
+                                Some(Item::Mon { .. }) | Some(Item::Mana { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => false,
+                                Some(Item::Consumable { .. }) => true,
+                                None => matches!(square, Square::Regular | Square::ConsumableBase | Square::ManaBase | Square::ManaPool),
+                            }
+                        }),
+                    );
+                }
+    
+                if matches!(consumable, Consumable::Bomb) {
+                    second_input_options.extend(
+                        self.next_inputs(start_location.reachable_by_bomb(), AvailableMoveKind::Action, only_one, specific_location, |location| {
+                            self.board.item(location).map_or(false, |item| {
+                                match item {
+                                    Item::Mon { mon: target_mon } | Item::MonWithMana { mon: target_mon, .. } | Item::MonWithConsumable { mon: target_mon, .. } => {
+                                        mon.color != target_mon.color && !target_mon.is_fainted
+                                    }
+                                    _ => false,
+                                }
+                            })
+                        }),
+                    );
+                }
+            }
+            _ => (),
+        }
+    
+        second_input_options
     }
+    
 
-    fn process_second_input(&self, kind: NextInputKind, start_item: Item, start_location: Location, target_location: Location, specific_next: Option<Input>) -> Option<(Vec<Event>, Vec<NextInput>)> {
-        todo!();
+    // TODO: fix rewrite
+    fn process_second_input(&mut self, kind: AvailableMoveKind, start_item: Item, start_location: Location, target_location: Location, specific_next: Option<Input>) -> Option<(Vec<Event>, Vec<NextInput>)> {
+        let specific_location = if let Some(Input::Location(location)) = specific_next {
+            Some(location)
+        } else {
+            None
+        };
+    
+        let mut third_input_options = Vec::new();
+        let mut events = Vec::new();
+        let target_square = self.board.square(target_location);
+        let target_item = self.board.item(target_location);
+    
+        match kind {
+            AvailableMoveKind::MonMove => {
+                let start_mon = start_item.mon()?;
+                events.push(Event::MonMove { item: start_item, from: start_location, to: target_location });
+    
+                if let Some(target_item) = target_item {
+                    match target_item {
+                        Item::Mon { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => return None,
+                        Item::Mana { mana } => {
+                            if let Some(start_mana) = start_item.mana() {
+                                match start_mana {
+                                    Mana::Supermana => events.push(Event::SupermanaBackToBase { from: start_location, to: self.board.supermana_base() }),
+                                    _ => events.push(Event::ManaDropped { mana: start_mana, at: start_location }),
+                                }
+                            }
+                            events.push(Event::PickupMana { mana, by: start_mon, at: target_location });
+                        },
+                        Item::Consumable { consumable } => match consumable {
+                            Consumable::Potion | Consumable::Bomb => return None,
+                            Consumable::BombOrPotion => {
+                                if start_item.consumable().is_some() || start_item.mana().is_some() {
+                                    events.push(Event::PickupPotion { by: start_item, at: target_location });
+                                } else {
+                                    third_input_options.push(NextInput { input: Input::Modifier(Modifier::SelectBomb), kind: AvailableMoveKind::SelectConsumable, actor_mon_item: Some(start_item) });
+                                    third_input_options.push(NextInput { input: Input::Modifier(Modifier::SelectPotion), kind: AvailableMoveKind::SelectConsumable, actor_mon_item: Some(start_item) });
+                                }
+                            },
+                        },
+                    }
+                }
+    
+                match target_square {
+                    Square::ManaPool { .. } => {
+                        if let Some(mana_in_hand) = start_item.mana() {
+                            events.push(Event::ManaScored { mana: mana_in_hand, at: target_location });
+                        }
+                    },
+                    _ => (),
+                }
+            },
+            AvailableMoveKind::ManaMove => {
+                let mana = start_item.mana()?;
+                events.push(Event::ManaMove { mana, from: start_location, to: target_location });
+    
+                if let Some(target_item) = target_item {
+                    match target_item {
+                        Item::Mon { mon } => {
+                            events.push(Event::PickupMana { mana, by: mon, at: target_location });
+                        },
+                        _ => return None,
+                    }
+                }
+    
+                match target_square {
+                    Square::ManaPool { .. } => events.push(Event::ManaScored { mana, at: target_location }),
+                    _ => (),
+                }
+            },
+            AvailableMoveKind::MysticAction => {
+                let start_mon = start_item.mon()?;
+                let target_mon = target_item?.mon()?;
+                events.push(Event::MysticAction { mystic: start_mon, from: start_location, to: target_location });
+                events.push(Event::MonFainted { mon: target_mon, from: target_location, to: self.board.base(mon: &target_mon) });
+            },
+            AvailableMoveKind::DemonAction => {
+                let start_mon = start_item.mon()?;
+                let target_mon = target_item?.mon()?;
+                events.push(Event::DemonAction { demon: start_mon, from: start_location, to: target_location });
+                events.push(Event::MonFainted { mon: target_mon, from: target_location, to: self.board.base(mon: &target_mon) });
+    
+                // Additional logic for demon action, including potential additional steps, is omitted for brevity
+            },
+            AvailableMoveKind::SpiritTargetCapture => {
+                if target_item.is_none() { return None; }
+                // Logic for spirit target capture, including potential movements or actions, is omitted for brevity
+            },
+            AvailableMoveKind::BombAttack => {
+                let start_mon = start_item.mon()?;
+                let target_mon = target_item?.mon()?;
+                events.push(Event::BombAttack { by: start_mon, from: start_location, to: target_location });
+                events.push(Event::MonFainted { mon: target_mon, from: target_location, to: self.board.base(mon: &target_mon) });
+    
+                // Additional logic for bomb attack, including effects on the target, is omitted for brevity
+            },
+            _ => return None,
+        }
+    
+        Some((events, third_input_options))
     }
+    
 
-    fn process_third_input(&self, third_input: NextInput, start_item: Item, start_location: Location, target_location: Location) -> Option<(Vec<Event>, Vec<NextInput>)> {
-        todo!();
+    // TODO: fix rewrite
+    fn process_third_input(&mut self, third_input: NextInput, start_item: Item, start_location: Location, target_location: Location) -> Option<(Vec<Event>, Vec<NextInput>)> {
+        let target_item = self.board.item(target_location);
+        let mut forth_input_options = Vec::new();
+        let mut events = Vec::new();
+    
+        match third_input.kind {
+            AvailableMoveKind::MonMove | AvailableMoveKind::ManaMove | AvailableMoveKind::Action | AvailableMoveKind::Potion => return None,
+            AvailableMoveKind::SpiritTargetMove => {
+                if let Input::Location(destination_location) = third_input.input {
+                    if let Some(target_item) = target_item {
+                        let destination_item = self.board.item(destination_location);
+                        let destination_square = self.board.square(destination_location);
+    
+                        events.push(Event::SpiritTargetMove { item: target_item, from: target_location, to: destination_location });
+    
+                        if let Some(destination_item) = destination_item {
+                            match target_item {
+                                Item::Mon { mon: travelling_mon } => match destination_item {
+                                    Item::Mon { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => return None,
+                                    Item::Mana { mana: destination_mana } => {
+                                        events.push(Event::PickupMana { mana: destination_mana, by: travelling_mon, at: destination_location });
+                                    },
+                                    Item::Consumable { consumable: destination_consumable } => match destination_consumable {
+                                        Consumable::Potion | Consumable::Bomb => return None,
+                                        Consumable::BombOrPotion => {
+                                            forth_input_options.push(NextInput { input: Input::Modifier(Modifier::SelectBomb), kind: AvailableMoveKind::SelectConsumable, actor_mon_item: Some(target_item) });
+                                            forth_input_options.push(NextInput { input: Input::Modifier(Modifier::SelectPotion), kind: AvailableMoveKind::SelectConsumable, actor_mon_item: Some(target_item) });
+                                        },
+                                    },
+                                },
+                                Item::Mana { mana: travelling_mana } => match destination_item {
+                                    Item::Mana { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. } | Item::Consumable { .. } => return None,
+                                    Item::Mon { mon: destination_mon } => {
+                                        events.push(Event::PickupMana { mana: travelling_mana, by: destination_mon, at: destination_location });
+                                    },
+                                },
+                                Item::MonWithMana { .. } => match destination_item {
+                                    Item::Mon { .. } | Item::Mana { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => return None,
+                                    Item::Consumable { consumable: destination_consumable } => match destination_consumable {
+                                        Consumable::Potion | Consumable::Bomb => return None,
+                                        Consumable::BombOrPotion => {
+                                            events.push(Event::PickupPotion { by: target_item, at: destination_location });
+                                        },
+                                    },
+                                },
+                                Item::MonWithConsumable { .. } => match destination_item {
+                                    Item::Mon { .. } | Item::Mana { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => return None,
+                                    Item::Consumable { consumable: destination_consumable } => match destination_consumable {
+                                        Consumable::Potion | Consumable::Bomb => return None,
+                                        Consumable::BombOrPotion => {
+                                            events.push(Event::PickupPotion { by: target_item, at: destination_location });
+                                        },
+                                    },
+                                },
+                                Item::Consumable { consumable: travelling_consumable } => match destination_item {
+                                    Item::Mana { .. } | Item::Consumable { .. } => return None,
+                                    Item::Mon { .. } => {
+                                        forth_input_options.push(NextInput { input: Input::Modifier(Modifier::SelectBomb), kind: AvailableMoveKind::SelectConsumable, actor_mon_item: Some(destination_item) });
+                                        forth_input_options.push(NextInput { input: Input::Modifier(Modifier::SelectPotion), kind: AvailableMoveKind::SelectConsumable, actor_mon_item: Some(destination_item) });
+                                    },
+                                    Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => match travelling_consumable {
+                                        Consumable::Potion | Consumable::Bomb => return None,
+                                        Consumable::BombOrPotion => {
+                                            events.push(Event::PickupPotion { by: destination_item, at: destination_location });
+                                        },
+                                    },
+                                },
+                            }
+                        }
+    
+                        if matches!(destination_square, Square::ManaPool { .. }) {
+                            if let Some(mana) = target_item.mana() {
+                                events.push(Event::ManaScored { mana, at: destination_location });
+                            }
+                        }
+                    } else {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+            },
+            AvailableMoveKind::DemonAdditionalStep => {
+                if let Input::Location(destination_location) = third_input.input {
+                    if let Some(demon) = start_item.mon() {
+                        events.push(Event::DemonAdditionalStep { demon, from: target_location, to: destination_location });
+    
+                        if let Some(item) = self.board.item(destination_location) {
+                            if let Item::Consumable { consumable } = item {
+                                match consumable {
+                                    Consumable::Potion | Consumable::Bomb => return None,
+                                    Consumable::BombOrPotion => {
+                                        forth_input_options.push(NextInput { input: Input::Modifier(Modifier::SelectBomb), kind: AvailableMoveKind::SelectConsumable, actor_mon_item: Some(start_item) });
+                                        forth_input_options.push(NextInput { input: Input::Modifier(Modifier::SelectPotion), kind: AvailableMoveKind::SelectConsumable, actor_mon_item: Some(start_item) });
+                                    },
+                                }
+                            }
+                        }
+                    } else {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+            },
+            AvailableMoveKind::SelectConsumable => {
+                if let Input::Modifier(modifier) = third_input.input {
+                    if let Some(mon) = start_item.mon() {
+                        match modifier {
+                            Modifier::SelectBomb => {
+                                events.push(Event::PickupBomb { by: mon, at: target_location });
+                            },
+                            Modifier::SelectPotion => {
+                                events.push(Event::PickupPotion { by: start_item, at: target_location });
+                            },
+                            Modifier::Cancel => return None,
+                        }
+                    } else {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+            },
+        }
+    
+        Some((events, forth_input_options))
     }
 
     // MARK: - apply events
