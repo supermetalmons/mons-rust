@@ -88,30 +88,29 @@ impl MonsGame {
             None => return Output::InvalidInput,
         };
         let specific_second_input = input.get(1).cloned();
-        let second_input_options = self.second_input_options(start_location, &start_item, one_option_enough, specific_second_input.clone());
+        let second_input_options = self.second_input_options(start_location, &start_item, one_option_enough, specific_second_input);
     
-        let second_input = match &specific_second_input {
-            None => {
-                if second_input_options.is_empty() {
-                    return Output::InvalidInput;
-                } else {
-                    return Output::NextInputOptions(second_input_options);
-                }
+        let second_input = if specific_second_input.is_none() {
+            if second_input_options.is_empty() {
+                return Output::InvalidInput;
+            } else {
+                return Output::NextInputOptions(second_input_options);
             }
-            Some(input) => input.clone(),
+        } else {
+            specific_second_input.unwrap()
         };
     
         let target_location = match second_input {
             Input::Location(location) => location,
             _ => return Output::InvalidInput,
         };
-        let second_input_kind = match second_input_options.iter().find(|option| option.input == second_input) {
+        let second_input_kind = match second_input_options.iter().find(|option| &option.input == &second_input) {
             Some(option) => option.kind,
             None => return Output::InvalidInput,
         };
     
         let specific_third_input = input.get(2).cloned();
-        let (mut events, third_input_options) = match self.process_second_input(second_input_kind, start_item.clone(), start_location, target_location, specific_third_input.clone()) {
+        let (mut events, third_input_options) = match self.process_second_input(second_input_kind, start_item.clone(), start_location, target_location, specific_third_input) {
             Some((events, options)) => (events, options),
             None => (vec![], vec![]),
         };
@@ -128,23 +127,56 @@ impl MonsGame {
     
         let specific_third_input = specific_third_input.unwrap();
     
-        let third_input = match third_input_options.iter().find(|option| option.input == specific_third_input) {
+        let third_input = match third_input_options.iter().find(|option| &option.input == &specific_third_input) {
             Some(option) => option,
             None => return Output::InvalidInput,
         };
     
+        let specific_forth_input = input.get(3).cloned();
         let (forth_events, forth_input_options) = match self.process_third_input(third_input.clone(), start_item, start_location, target_location) {
             Some((events, options)) => (events, options),
             None => (vec![], vec![]),
         };
         events.extend(forth_events);
     
-        if forth_input_options.is_empty() && !events.is_empty() {
-            return Output::Events(if do_not_apply_events { events } else { self.apply_and_add_resulting_events(events) });
-        } else {
-            return Output::InvalidInput;
+        if specific_forth_input.is_none() {
+            if !forth_input_options.is_empty() {
+                return Output::NextInputOptions(forth_input_options);
+            } else if !events.is_empty() {
+                return Output::Events(if do_not_apply_events { events } else { self.apply_and_add_resulting_events(events) });
+            } else {
+                return Output::InvalidInput;
+            }
+        }
+    
+        let specific_forth_input = specific_forth_input.unwrap();
+    
+        match specific_forth_input {
+            Input::Modifier(modifier) => {
+                let destination_location = match third_input.input {
+                    Input::Location(location) => location,
+                    _ => return Output::InvalidInput,
+                };
+                let forth_input = match forth_input_options.iter().find(|option| &option.input == &specific_forth_input) {
+                    Some(option) => option,
+                    None => return Output::InvalidInput,
+                };
+                if let Some(actor_mon_item) = forth_input.actor_mon_item.clone() {
+                    if let Some(actor_mon) = actor_mon_item.mon() {
+                        match modifier {
+                            Modifier::SelectBomb => events.push(Event::PickupBomb { by: *actor_mon, at: destination_location }),
+                            Modifier::SelectPotion => events.push(Event::PickupPotion { by: actor_mon_item, at: destination_location }),
+                            Modifier::Cancel => return Output::InvalidInput,
+                        }
+                        return Output::Events(if do_not_apply_events { events } else { self.apply_and_add_resulting_events(events) });
+                    }
+                }
+                Output::InvalidInput
+            }
+            _ => Output::InvalidInput,
         }
     }
+    
     
     // MARK: - process step by step
 
