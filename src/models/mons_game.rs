@@ -355,72 +355,57 @@ impl MonsGame {
         match kind {
             NextInputKind::MonMove => {
                 let start_mon = match start_item {
-                    Item::Mon { mon } => mon,
-                    _ => return None,
-                };
+                    Item::Mon { mon } => Some(mon),
+                    _ => None,
+                }?;
+        
                 events.push(Event::MonMove {
-                    item: start_item,
+                    item: start_item.clone(),
                     from: start_location,
                     to: target_location,
                 });
-    
-                if let Some(target_item) = target_item {
+        
+                if let Some(target_item) = self.board.item(target_location).cloned() {
                     match target_item {
                         Item::Mon { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => return None,
                         Item::Mana { mana } => {
-                            if let Item::Mana { mana: start_mana } = start_item {
-                                match start_mana {
-                                    Mana::Supermana => events.push(Event::SupermanaBackToBase {
-                                        from: start_location,
-                                        to: self.board.supermana_base(),
-                                    }),
-                                    _ => events.push(Event::ManaDropped {
-                                        mana: start_mana,
-                                        at: start_location,
-                                    }),
-                                }
+                            if let Item::Mon { mon } = &start_item {
+                                events.push(Event::PickupMana {
+                                    mana,
+                                    by: *mon,
+                                    at: target_location,
+                                });
                             }
-                            events.push(Event::PickupMana {
-                                mana,
-                                by: start_mon,
-                                at: target_location,
-                            });
                         },
                         Item::Consumable { consumable } => match consumable {
                             Consumable::Bomb | Consumable::Potion => return None,
                             Consumable::BombOrPotion => {
                                 if start_item.consumable().is_some() || start_item.mana().is_some() {
-                                    events.push(Event::PickupPotion {
-                                        by: start_item,
-                                        at: target_location,
-                                    });
+                                    if let Item::Mon { mon } = start_item {
+                                        events.push(Event::PickupPotion {
+                                            by: Item::Mon { mon },
+                                            at: target_location,
+                                        });
+                                    }
                                 } else {
-                                    third_input_options.push(NextInput {
-                                        input: Input::Modifier(Modifier::SelectBomb),
-                                        kind: NextInputKind::SelectConsumable,
-                                        actor_mon_item: Some(start_item),
-                                    });
-                                    third_input_options.push(NextInput {
-                                        input: Input::Modifier(Modifier::SelectPotion),
-                                        kind: NextInputKind::SelectConsumable,
-                                        actor_mon_item: Some(start_item),
-                                    });
+                                    third_input_options.push(NextInput::new(
+                                        Input::Modifier(Modifier::SelectBomb),
+                                        NextInputKind::SelectConsumable,
+                                        Some(start_item.clone()),
+                                    ));
+                                    third_input_options.push(NextInput::new(
+                                        Input::Modifier(Modifier::SelectPotion),
+                                        NextInputKind::SelectConsumable,
+                                        Some(start_item),
+                                    ));
                                 }
                             },
                         },
                     }
                 }
-    
+        
                 match target_square {
-                    Square::Regular | Square::ConsumableBase | Square::SupermanaBase | Square::ManaBase | Square::MonBase { .. } => (),
-                    Square::ManaPool { .. } => {
-                        if let Item::Mana { mana } = start_item {
-                            events.push(Event::ManaScored {
-                                mana,
-                                at: target_location,
-                            });
-                        }
-                    },
+                    Square::Regular | Square::ConsumableBase | Square::SupermanaBase | Square::ManaBase { .. } | Square::ManaPool { .. } | Square::MonBase { .. } => (),
                 }
             },
             NextInputKind::ManaMove => {
@@ -433,23 +418,23 @@ impl MonsGame {
                     from: start_location,
                     to: target_location,
                 });
-    
-                if let Some(target_item) = target_item {
+        
+                if let Some(target_item) = self.board.item(target_location) {
                     match target_item {
                         Item::Mon { mon } => {
                             events.push(Event::PickupMana {
                                 mana,
-                                by: mon,
+                                by: *mon,
                                 at: target_location,
                             });
                         },
                         Item::Mana { .. } | Item::Consumable { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => return None,
                     }
                 }
-    
+        
                 match target_square {
                     Square::ManaBase { .. } | Square::ConsumableBase | Square::Regular => (),
-                    Square::ManaPool { .. } => {
+                    Square::ManaPool { color } => {
                         events.push(Event::ManaScored {
                             mana,
                             at: target_location,
@@ -459,36 +444,35 @@ impl MonsGame {
                 }
             },
             NextInputKind::MysticAction => {
-                let start_mon = if let Item::Mon { mon } = start_item {
-                    mon
-                } else {
-                    return None;
+                let start_mon = match start_item {
+                    Item::Mon { mon } => mon,
+                    _ => return None,
                 };
                 events.push(Event::MysticAction {
                     mystic: start_mon,
                     from: start_location,
                     to: target_location,
                 });
-    
-                if let Some(target_item) = target_item {
+            
+                if let Some(target_item) = self.board.item(target_location) {
                     match target_item {
                         Item::Mon { mon: target_mon } | Item::MonWithMana { mon: target_mon, .. } | Item::MonWithConsumable { mon: target_mon, .. } => {
                             events.push(Event::MonFainted {
-                                mon: target_mon,
+                                mon: *target_mon,
                                 from: target_location,
-                                to: self.board.base(mon: target_mon),
+                                to: self.board.base(Mon { kind: target_mon.kind, color: target_mon.color, cooldown: target_mon.cooldown }),
                             });
-    
+            
                             if let Item::MonWithMana { mana, .. } = target_item {
                                 match mana {
-                                    Mana::Regular => events.push(Event::ManaDropped { mana, at: target_location }),
+                                    Mana::Regular(_) => events.push(Event::ManaDropped { mana: *mana, at: target_location }),
                                     Mana::Supermana => events.push(Event::SupermanaBackToBase {
                                         from: target_location,
                                         to: self.board.supermana_base(),
                                     }),
                                 }
                             }
-    
+            
                             if let Item::MonWithConsumable { consumable, .. } = target_item {
                                 match consumable {
                                     Consumable::Bomb => {
