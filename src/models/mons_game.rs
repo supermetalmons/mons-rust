@@ -333,7 +333,7 @@ impl MonsGame {
     }
     
     fn process_second_input(&mut self, kind: NextInputKind, start_item: Item, start_location: Location, target_location: Location, specific_next: Option<Input>) -> Option<(Vec<Event>, Vec<NextInput>)> {
-        let specific_location = match specific_next {
+        let _specific_location = match specific_next {
             Some(Input::Location(location)) => Some(location),
             _ => None,
         };
@@ -345,7 +345,7 @@ impl MonsGame {
     
         match kind {
             NextInputKind::MonMove => {
-                let start_mon = match start_item {
+                let _start_mon = match start_item {
                     Item::Mon { mon } => Some(mon),
                     _ => None,
                 }?;
@@ -425,7 +425,7 @@ impl MonsGame {
         
                 match target_square {
                     Square::ManaBase { .. } | Square::ConsumableBase | Square::Regular => (),
-                    Square::ManaPool { color } => {
+                    Square::ManaPool { color: _ } => {
                         events.push(Event::ManaScored {
                             mana,
                             at: target_location,
@@ -666,7 +666,7 @@ impl MonsGame {
         Some((events, third_input_options))
     }
     
-    fn process_third_input(&mut self, third_input: NextInput, start_item: Item, start_location: Location, target_location: Location) -> Option<(Vec<Event>, Vec<NextInput>)> {
+    fn process_third_input(&mut self, third_input: NextInput, start_item: Item, _start_location: Location, target_location: Location) -> Option<(Vec<Event>, Vec<NextInput>)> {
         let target_item = self.board.item(target_location);
         let mut forth_input_options = Vec::new();
         let mut events = Vec::new();
@@ -820,7 +820,7 @@ impl MonsGame {
                         }
                     }
                 }
-                Event::MysticAction { mystic, from, to } => {
+                Event::MysticAction { mystic: _, from: _, to } => {
                     if self.actions_used_count >= Config::ACTIONS_PER_TURN {
                         if self.active_color == Color::White {
                             self.white_potions_count -= 1;
