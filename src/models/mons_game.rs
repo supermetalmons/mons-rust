@@ -211,7 +211,6 @@ impl MonsGame {
             Some(Input::Location(location)) => Some(location),
             _ => None,
         };
-    
         let start_square = self.board.square(start_location);
         let mut second_input_options = Vec::new();
         match start_item {
@@ -225,21 +224,21 @@ impl MonsGame {
                             let item = self.board.item(location);
                             let square = self.board.square(location);
                     
-                            match item {
+                            let item_allows = match item {
                                 Some(Item::Mon { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => false,
-                                Some(Item::Mana { mana }) => !(mon.kind != MonKind::Drainer && *mana != Mana::Regular(mon.color)),
+                                Some(Item::Mana { mana }) => mon.kind == MonKind::Drainer,
                                 Some(Item::Consumable { .. }) => true,
-                                None => match square {
-                                    Square::Regular | Square::ConsumableBase => true,
-                                    Square::ManaBase { color } if color == mon.color => true,
-                                    Square::ManaPool { color } if color == mon.color => true,
-                                    Square::SupermanaBase => matches!(item, Some(Item::Mana { mana: Mana::Supermana })) && mon.kind == MonKind::Drainer,
-                                    Square::MonBase { kind, color } if kind == mon.kind && color == mon.color => true,
-                                    _ => false,
-                                },
+                                None => true,
+                            };
+                    
+                            item_allows && match square {
+                                Square::Regular | Square::ConsumableBase | Square::ManaBase { .. } | Square::ManaPool { .. } => true,
+                                Square::SupermanaBase => matches!(item, Some(Item::Mana { mana: Mana::Supermana })) && mon.kind == MonKind::Drainer,
+                                Square::MonBase { kind, color } => kind == mon.kind && color == mon.color,
+                                _ => false,
                             }
                         }),
-                    );
+                    );   
                 }
             
                 if !matches!(start_square, Square::MonBase { .. }) && self.player_can_use_action() {
