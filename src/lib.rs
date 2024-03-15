@@ -24,7 +24,7 @@ mod tests {
         for entry in fs::read_dir(test_data_dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.is_file() {
+            if path.is_file() && path.file_name().and_then(|f| f.to_str()).map_or(false, |s| !s.starts_with('.')) {
                 let mut file = File::open(&path)?;
                 let mut contents = String::new();
                 file.read_to_string(&mut contents)?;

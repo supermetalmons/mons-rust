@@ -532,13 +532,19 @@ impl FenRepresentable for Output {
         match self {
             Output::InvalidInput => "i".to_string(),
             Output::LocationsToStartFrom(locations) => {
-                "l".to_owned() + &locations.iter().map(|location| location.fen()).collect::<Vec<_>>().join("/")
+                let mut sorted_locations: Vec<_> = locations.iter().map(|location| location.fen()).collect();
+                sorted_locations.sort();
+                "l".to_owned() + &sorted_locations.join("/")
             },
             Output::NextInputOptions(next_inputs) => {
-                "n".to_owned() + &next_inputs.iter().map(|next_input| next_input.fen()).collect::<Vec<_>>().join("/")
+                let mut sorted_next_inputs: Vec<_> = next_inputs.iter().map(|next_input| next_input.fen()).collect();
+                sorted_next_inputs.sort();
+                "n".to_owned() + &sorted_next_inputs.join("/")
             },
             Output::Events(events) => {
-                "e".to_owned() + &events.iter().map(|event| event.fen()).collect::<Vec<_>>().join("/")
+                let mut sorted_events: Vec<_> = events.iter().map(|event| event.fen()).collect();
+                sorted_events.sort();
+                "e".to_owned() + &sorted_events.join("/")
             },
         }
     }
