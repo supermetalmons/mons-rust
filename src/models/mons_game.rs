@@ -226,7 +226,7 @@ impl MonsGame {
                     
                             let item_allows = match item {
                                 Some(Item::Mon { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => false,
-                                Some(Item::Mana { mana }) => mon.kind == MonKind::Drainer,
+                                Some(Item::Mana { .. }) => mon.kind == MonKind::Drainer,
                                 Some(Item::Consumable { .. }) => true,
                                 None => true,
                             };
@@ -235,7 +235,6 @@ impl MonsGame {
                                 Square::Regular | Square::ConsumableBase | Square::ManaBase { .. } | Square::ManaPool { .. } => true,
                                 Square::SupermanaBase => matches!(item, Some(Item::Mana { mana: Mana::Supermana })) && mon.kind == MonKind::Drainer,
                                 Square::MonBase { kind, color } => kind == mon.kind && color == mon.color,
-                                _ => false,
                             }
                         }),
                     );   
