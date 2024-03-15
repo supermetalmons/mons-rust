@@ -68,9 +68,9 @@ mod tests {
 
                 if game_before.fen() != test_case.fen_after || actual_output.fen() != test_case.output_fen {
                     println!("expected {}", test_case.output_fen);
-                    println!("received {}\n", actual_output.fen());
-                    println!("forinput {}\n", test_case.input_fen);
-                    println!("forboard {}\n\n\n\n\n", test_case.fen_before);
+                    println!("received {}", actual_output.fen());
+                    println!("forinput {}", test_case.input_fen);
+                    println!("forboard {}", test_case.fen_before);
                     println!("expected fen after {}", test_case.fen_after);
                     println!("received fen after {}\n\n\n\n\n", game_before.fen());
                     count += 1;
@@ -83,7 +83,7 @@ mod tests {
             }
         }
         println!("\n\n\n\n\n TOTAL ERRORS {}", count);
-        println!("\n\n\n\n\n TOTAL OKS {}", oks);
+        println!("TOTAL OKS {}", oks);
         Ok(())
     }
 }
