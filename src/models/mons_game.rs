@@ -376,17 +376,13 @@ impl MonsGame {
     
         match kind {
             NextInputKind::MonMove => {
-                let _start_mon = match start_item {
-                    Item::Mon { mon } => Some(mon),
-                    _ => None,
-                }?;
-        
+                if start_item.mon().is_none() { return None; }
                 events.push(Event::MonMove {
                     item: start_item.clone(),
                     from: start_location,
                     to: target_location,
                 });
-        
+                
                 if let Some(target_item) = self.board.item(target_location).cloned() {
                     match target_item {
                         Item::Mon { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => return None,
