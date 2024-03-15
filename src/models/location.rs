@@ -15,34 +15,36 @@ impl Location {
         0..Config::BOARD_SIZE
     }
 
-    pub fn nearby_locations(&self, distance: i32) -> Vec<Location> {
-        let mut locations = Vec::new();
-        for x in (self.i - distance)..=(self.i + distance) {
-            for y in (self.j - distance)..=(self.j + distance) {
-                if Self::valid_range().contains(&x) && Self::valid_range().contains(&y) && (x != self.i || y != self.j) {
-                    locations.push(Location::new(x, y));
-                }
-            }
-        }
-        locations
-    }
-
-    pub fn nearby_locations_default(&self) -> Vec<Location> {
-        self.nearby_locations(1)
+    pub fn nearby_locations(&self) -> Vec<Location> {
+        self.nearby_locations_with_distance(1)
     }
 
     pub fn reachable_by_bomb(&self) -> Vec<Location> {
-        self.nearby_locations(3)
+        self.nearby_locations_with_distance(3)
     }
 
     pub fn reachable_by_mystic_action(&self) -> Vec<Location> {
         let deltas = [(-2, -2), (2, 2), (-2, 2), (2, -2)];
-        self.reachable_by_action(deltas.iter())
+        deltas.iter().filter_map(|&(dx, dy)| {
+            let (new_i, new_j) = (self.i + dx, self.j + dy);
+            if Self::valid_range().contains(&new_i) && Self::valid_range().contains(&new_j) {
+                Some(Location::new(new_i, new_j))
+            } else {
+                None
+            }
+        }).collect()
     }
 
     pub fn reachable_by_demon_action(&self) -> Vec<Location> {
         let deltas = [(-2, 0), (2, 0), (0, 2), (0, -2)];
-        self.reachable_by_action(deltas.iter())
+        deltas.iter().filter_map(|&(dx, dy)| {
+            let (new_i, new_j) = (self.i + dx, self.j + dy);
+            if Self::valid_range().contains(&new_i) && Self::valid_range().contains(&new_j) {
+                Some(Location::new(new_i, new_j))
+            } else {
+                None
+            }
+        }).collect()
     }
 
     pub fn reachable_by_spirit_action(&self) -> Vec<Location> {
@@ -57,25 +59,23 @@ impl Location {
         locations
     }
 
-    pub fn reachable_by_action<'a, I>(&self, deltas: I) -> Vec<Location>
-    where
-        I: Iterator<Item = &'a (i32, i32)>,
-    {
-        deltas.filter_map(|&(dx, dy)| {
-            let (new_i, new_j) = (self.i + dx, self.j + dy);
-            if Self::valid_range().contains(&new_i) && Self::valid_range().contains(&new_j) {
-                Some(Location::new(new_i, new_j))
-            } else {
-                None
-            }
-        }).collect()
-    }
-
     pub fn location_between(&self, another: &Location) -> Location {
         Location::new((self.i + another.i) / 2, (self.j + another.j) / 2)
     }
 
     pub fn distance(&self, to: &Location) -> i32 {
         ((to.i - self.i).abs()).max((to.j - self.j).abs())
+    }
+
+    fn nearby_locations_with_distance(&self, distance: i32) -> Vec<Location> {
+        let mut locations = Vec::new();
+        for x in (self.i - distance)..=(self.i + distance) {
+            for y in (self.j - distance)..=(self.j + distance) {
+                if Self::valid_range().contains(&x) && Self::valid_range().contains(&y) && (x != self.i || y != self.j) {
+                    locations.push(Location::new(x, y));
+                }
+            }
+        }
+        locations
     }
 }

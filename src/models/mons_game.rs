@@ -218,7 +218,7 @@ impl MonsGame {
             Item::Mon { mon } if mon.color == self.active_color && !mon.is_fainted() => {
                 if self.player_can_move_mon() {
                     second_input_options.extend(
-                        self.next_inputs(start_location.nearby_locations_default(), NextInputKind::MonMove, only_one, specific_next.map(|input| match input {
+                        self.next_inputs(start_location.nearby_locations(), NextInputKind::MonMove, only_one, specific_next.map(|input| match input {
                             Input::Location(loc) => loc,
                             _ => start_location,
                         }), |location| {
@@ -296,7 +296,7 @@ impl MonsGame {
             
             Item::Mana { mana } if matches!(mana, Mana::Regular(color) if color == &self.active_color) && self.player_can_move_mana() => {
                 second_input_options.extend(
-                    self.next_inputs(start_location.nearby_locations_default(), NextInputKind::ManaMove, only_one, specific_location, |location| {
+                    self.next_inputs(start_location.nearby_locations(), NextInputKind::ManaMove, only_one, specific_location, |location| {
                         let item = self.board.item(location);
                         let square = self.board.square(location);
     
@@ -310,7 +310,7 @@ impl MonsGame {
             }
             Item::MonWithMana { mon, mana } if mon.color == self.active_color && self.player_can_move_mon() => {
                 second_input_options.extend(
-                    self.next_inputs(start_location.nearby_locations_default(), NextInputKind::MonMove, only_one, specific_location, |location| {
+                    self.next_inputs(start_location.nearby_locations(), NextInputKind::MonMove, only_one, specific_location, |location| {
                         let item = self.board.item(location);
                         let square = self.board.square(location);
     
@@ -329,7 +329,7 @@ impl MonsGame {
             Item::MonWithConsumable { mon, consumable } if mon.color == self.active_color => {
                 if self.player_can_move_mon() {
                     second_input_options.extend(
-                        self.next_inputs(start_location.nearby_locations_default(), NextInputKind::MonMove, only_one, specific_location, |location| {
+                        self.next_inputs(start_location.nearby_locations(), NextInputKind::MonMove, only_one, specific_location, |location| {
                             let item = self.board.item(location);
                             let square = self.board.square(location);
     
@@ -566,7 +566,7 @@ impl MonsGame {
                 }
             
                 if requires_additional_step {
-                    let nearby_locations = target_location.nearby_locations_default();
+                    let nearby_locations = target_location.nearby_locations();
                     for location in nearby_locations.iter() {
                         let item = self.board.item(*location);
                         let square = self.board.square(*location);
@@ -594,7 +594,7 @@ impl MonsGame {
                 let target_mon = target_item.as_ref().and_then(|item| item.mon());
                 let target_mana = target_item.as_ref().and_then(|item| item.mana());
             
-                let nearby_locations = target_location.nearby_locations_default();
+                let nearby_locations = target_location.nearby_locations();
                 for location in nearby_locations.iter() {
                     let destination_item = self.board.item(*location);
                     let destination_square = self.board.square(*location);
@@ -1060,7 +1060,7 @@ impl MonsGame {
 
     pub fn protected_by_opponents_angel(&self) -> std::collections::HashSet<Location> {
         if let Some(location) = self.board.find_awake_angel(self.active_color.other()) {
-            let protected: Vec<Location> = location.nearby_locations(1);
+            let protected: Vec<Location> = location.nearby_locations();
             protected.into_iter().collect()
         } else {
             std::collections::HashSet::new()
