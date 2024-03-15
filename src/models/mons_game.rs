@@ -73,22 +73,22 @@ impl MonsGame {
     // MARK: - process input
 
     pub fn process_input(&mut self, input: Vec<Input>, do_not_apply_events: bool, one_option_enough: bool) -> Output {
-        if self.winner_color.is_some() {
+        if self.winner_color().is_some() {
             return Output::InvalidInput;
         }
         if input.is_empty() {
             return self.suggested_input_to_start_with();
         }
         let start_location = match input.get(0) {
-            Some(Input::Location(location)) => location,
+            Some(Input::Location(location)) => *location,
             _ => return Output::InvalidInput,
         };
-        let start_item = match self.board.item(*start_location) {
-            Some(item) => item,
+        let start_item = match self.board.item(start_location) {
+            Some(item) => item.clone(),
             None => return Output::InvalidInput,
         };
-        let specific_second_input = input.get(1);
-        let second_input_options = self.second_input_options(*start_location, start_item, one_option_enough, specific_second_input.cloned());
+        let specific_second_input = input.get(1).cloned();
+        let second_input_options = self.second_input_options(start_location, &start_item, one_option_enough, specific_second_input);
     
         let second_input = match specific_second_input {
             None => {
@@ -105,84 +105,47 @@ impl MonsGame {
             Input::Location(location) => location,
             _ => return Output::InvalidInput,
         };
-        let second_input_kind = match second_input_options.iter().find(|option| &option.input == second_input) {
+        let second_input_kind = match second_input_options.iter().find(|option| option.input == second_input) {
             Some(option) => option.kind,
             None => return Output::InvalidInput,
         };
     
-        let specific_third_input = input.get(2);
-        let (mut events, third_input_options) = match self.process_second_input(second_input_kind, start_item, *start_location, *target_location, specific_third_input.cloned()) {
+        let specific_third_input = input.get(2).cloned();
+        let (mut events, third_input_options) = match self.process_second_input(second_input_kind, start_item.clone(), start_location, target_location, specific_third_input) {
             Some((events, options)) => (events, options),
             None => (vec![], vec![]),
         };
     
-        let specific_third_input = match specific_third_input {
-            None => {
-                if !third_input_options.is_empty() {
-                    return Output::NextInputOptions(third_input_options);
-                } else if !events.is_empty() {
-                    return Output::Events(if do_not_apply_events { events } else { self.apply_and_add_resulting_events(events) });
-                } else {
-                    return Output::InvalidInput;
-                }
+        if specific_third_input.is_none() {
+            if !third_input_options.is_empty() {
+                return Output::NextInputOptions(third_input_options);
+            } else if !events.is_empty() {
+                return Output::Events(if do_not_apply_events { events } else { self.apply_and_add_resulting_events(events) });
+            } else {
+                return Output::InvalidInput;
             }
-            Some(input) => input,
-        };
+        }
     
-        let third_input = match third_input_options.iter().find(|option| &option.input == *specific_third_input) {
+        let specific_third_input = specific_third_input.unwrap();
+    
+        let third_input = match third_input_options.iter().find(|option| option.input == specific_third_input) {
             Some(option) => option,
             None => return Output::InvalidInput,
         };
     
-        let specific_forth_input = input.get(3);
-        let (forth_events, forth_input_options) = match self.process_third_input(third_input, start_item, *start_location, *target_location) {
+        let (forth_events, forth_input_options) = match self.process_third_input(*third_input, start_item, start_location, target_location) {
             Some((events, options)) => (events, options),
             None => (vec![], vec![]),
         };
         events.extend(forth_events);
     
-        let specific_forth_input = match specific_forth_input {
-            None => {
-                if !forth_input_options.is_empty() {
-                    return Output::NextInputOptions(forth_input_options);
-                } else if !events.is_empty() {
-                    return Output::Events(if do_not_apply_events { events } else { self.apply_and_add_resulting_events(events) });
-                } else {
-                    return Output::InvalidInput;
-                }
-            }
-            Some(input) => input,
-        };
-    
-        let modifier = match specific_forth_input {
-            Input::Modifier(modifier) => modifier,
-            _ => return Output::InvalidInput,
-        };
-        let forth_input = match forth_input_options.iter().find(|option| &option.input == *specific_forth_input) {
-            Some(option) => option,
-            None => return Output::InvalidInput,
-        };
-        let destination_location = match third_input.input {
-            Input::Location(location) => location,
-            _ => return Output::InvalidInput,
-        };
-        let actor_mon_item = match forth_input.actor_mon_item {
-            Some(item) => item,
-            None => return Output::InvalidInput,
-        };
-        let actor_mon = match actor_mon_item.mon {
-            Some(mon) => mon,
-            None => return Output::InvalidInput,
-        };
-    
-        match modifier {
-            Modifier::SelectBomb => events.push(Event::PickupBomb { by: actor_mon, at: destination_location }),
-            Modifier::SelectPotion => events.push(Event::PickupPotion { by: actor_mon_item, at: destination_location }),
-            Modifier::Cancel => return Output::InvalidInput,
+        if forth_input_options.is_empty() && !events.is_empty() {
+            return Output::Events(if do_not_apply_events { events } else { self.apply_and_add_resulting_events(events) });
+        } else {
+            return Output::InvalidInput;
         }
-        Output::Events(if do_not_apply_events { events } else { self.apply_and_add_resulting_events(events) })
-    }    
-
+    }
+    
     // MARK: - process step by step
 
     fn suggested_input_to_start_with(&self) -> Output {
@@ -373,14 +336,7 @@ impl MonsGame {
         second_input_options
     }
     
-    fn process_second_input(
-        &mut self,
-        kind: NextInputKind,
-        start_item: Item,
-        start_location: Location,
-        target_location: Location,
-        specific_next: Option<Input>,
-    ) -> Option<(Vec<Event>, Vec<NextInput>)> {
+    fn process_second_input(&mut self, kind: NextInputKind, start_item: Item, start_location: Location, target_location: Location, specific_next: Option<Input>) -> Option<(Vec<Event>, Vec<NextInput>)> {
         let specific_location = match specific_next {
             Some(Input::Location(location)) => Some(location),
             _ => None,
@@ -741,9 +697,6 @@ impl MonsGame {
         Some((events, third_input_options))
     }
     
-    
-
-    // TODO: fix rewrite
     fn process_third_input(&mut self, third_input: NextInput, start_item: Item, start_location: Location, target_location: Location) -> Option<(Vec<Event>, Vec<NextInput>)> {
         let target_item = self.board.item(target_location);
         let mut forth_input_options = Vec::new();
@@ -874,6 +827,7 @@ impl MonsGame {
     }
 
     // MARK: - apply events
+
     pub fn apply_and_add_resulting_events(&mut self, events: Vec<Event>) -> Vec<Event> {
         let mut extra_events = Vec::new();
         for event in &events {
@@ -1025,10 +979,7 @@ impl MonsGame {
     }
 
     // MARK: - helpers
-    pub fn next_inputs<F>(&self, locations: Vec<Location>, kind: NextInputKind, only_one: bool, specific: Option<Location>, filter: F) -> Vec<NextInput>
-    where
-        F: Fn(Location) -> bool,
-    {
+    pub fn next_inputs<F>(&self, locations: Vec<Location>, kind: NextInputKind, only_one: bool, specific: Option<Location>, filter: F) -> Vec<NextInput> where F: Fn(Location) -> bool {
         if let Some(specific_location) = specific {
             if locations.contains(&specific_location) && filter(specific_location) {
                 return vec![NextInput { input: Input::Location(specific_location), kind, actor_mon_item: None }];
@@ -1094,7 +1045,7 @@ impl MonsGame {
         }
     }
 
-    pub fn is_first_turn(&self) -> bool { 
+    pub fn is_first_turn(&self) -> bool {
         self.turn_number == 1 
     }
 
@@ -1105,15 +1056,15 @@ impl MonsGame {
         }
     }
 
-    pub fn player_can_move_mon(&self) -> bool { 
+    pub fn player_can_move_mon(&self) -> bool {
         self.mons_moves_count < Config::MONS_MOVES_PER_TURN 
     }
 
-    pub fn player_can_move_mana(&self) -> bool { 
+    pub fn player_can_move_mana(&self) -> bool {
         !self.is_first_turn() && self.mana_moves_count < Config::MANA_MOVES_PER_TURN 
     }
 
-    pub fn player_can_use_action(&self) -> bool { 
+    pub fn player_can_use_action(&self) -> bool {
         !self.is_first_turn() && (self.player_potions_count() > 0 || self.actions_used_count < Config::ACTIONS_PER_TURN) 
     }
 
