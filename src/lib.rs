@@ -52,8 +52,8 @@ mod tests {
                 let recreated_game_after_fen = game_after.unwrap().fen();
                 assert!(recreated_game_after_fen == test_case.fen_after);
 
-                let game_before = MonsGame::from_fen(&test_case.fen_before);
-                let recreated_game_before_fen = game_before.unwrap().fen();
+                let mut game_before = MonsGame::from_fen(&test_case.fen_before).unwrap();
+                let recreated_game_before_fen = game_before.fen();
                 assert!(recreated_game_before_fen == test_case.fen_before);
 
                 let output = Output::from_fen(&test_case.output_fen);
@@ -61,6 +61,18 @@ mod tests {
                 assert!(recreated_output_fen == test_case.output_fen);
 
                 assert!(!test_case.fen_before.is_empty() && !test_case.fen_after.is_empty() && !test_case.output_fen.is_empty(), "test data must not be empty");
+
+                let actual_output = game_before.process_input(inputs, false, false);
+
+                if game_before.fen() != test_case.fen_after || actual_output.fen() != test_case.output_fen {
+                    println!("expected {}", test_case.output_fen);
+                    println!("received {}\n", actual_output.fen());
+                    println!("forinput {}\n", test_case.input_fen);
+                    println!("forboard {}\n\n\n\n\n", test_case.fen_before);
+                }
+
+                assert!(game_before.fen() == test_case.fen_after);
+                assert!(actual_output.fen() == test_case.output_fen);
             }
         }
         Ok(())
