@@ -148,32 +148,23 @@ impl MonsGame {
     
     // MARK: - process step by step
 
-    fn suggested_input_to_start_with(&self) -> Output {
-        let locations_filter = |location: Location| -> Option<Location> {
-            let output = self.process_input(vec![Input::Location(location)], true, true);
-            if let Output::NextInputOptions(options) = output {
-                if !options.is_empty() {
-                    Some(location)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        };
+    fn suggested_input_to_start_with(&mut self) -> Output {
+        let mut suggested_locations: Vec<Location> = Vec::new();
     
-        let mut suggested_locations: Vec<Location> = self.board.all_mons_locations(self.active_color)
-            .into_iter()
-            .filter_map(locations_filter)
-            .collect();
+        for location in self.board.all_mons_locations(self.active_color) {
+            let output = self.process_input(vec![Input::Location(location.clone())], true, true);
+            if matches!(output, Output::NextInputOptions(options) if !options.is_empty()) {
+                suggested_locations.push(location);
+            }
+        }
         
         if (!self.player_can_move_mon() && !self.player_can_use_action() || suggested_locations.is_empty()) && self.player_can_move_mana() {
-            suggested_locations.append(
-                &mut self.board.all_free_regular_mana_locations(self.active_color)
-                    .into_iter()
-                    .filter_map(locations_filter)
-                    .collect(),
-            );
+            for location in self.board.all_free_regular_mana_locations(self.active_color) {
+                let output = self.process_input(vec![Input::Location(location.clone())], true, true);
+                if matches!(output, Output::NextInputOptions(options) if !options.is_empty()) {
+                    suggested_locations.push(location);
+                }
+            }
         }
     
         if suggested_locations.is_empty() {
