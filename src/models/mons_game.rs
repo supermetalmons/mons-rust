@@ -852,13 +852,10 @@ impl MonsGame {
                         self.black_score += score;
                     }
                     if let Some(item) = self.board.item(*at) {
-                        match item {
-                            Item::Mon { mon } => {
-                                self.board.put(Item::Mon { mon: mon.clone() }, *at);
-                            },
-                            _ => {
-                                self.board.remove_item(*at);
-                            }
+                        if let Some(mon) = item.mon() {
+                            self.board.put(Item::Mon { mon: mon.clone() }, *at);
+                        } else {
+                            self.board.remove_item(*at);
                         }
                     }
                 }

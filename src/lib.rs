@@ -71,6 +71,8 @@ mod tests {
                     println!("received {}\n", actual_output.fen());
                     println!("forinput {}\n", test_case.input_fen);
                     println!("forboard {}\n\n\n\n\n", test_case.fen_before);
+                    println!("expected fen after {}", test_case.fen_after);
+                    println!("received fen after {}\n\n\n\n\n", game_before.fen());
                     count += 1;
                 } else {
                     oks += 1;
