@@ -624,7 +624,7 @@ impl MonsGame {
                     Item::Mon { mon } => mon,
                     _ => return None,
                 };
-                
+
                 events.push(Event::BombAttack {
                     by: start_mon,
                     from: start_location,
@@ -681,64 +681,54 @@ impl MonsGame {
         let mut events = Vec::new();
     
         match third_input.kind {
-            AvailableMoveKind::MonMove | AvailableMoveKind::ManaMove | AvailableMoveKind::Action | AvailableMoveKind::Potion => return None,
-            AvailableMoveKind::SpiritTargetMove => {
+            NextInputKind::SpiritTargetMove => {
                 if let Input::Location(destination_location) = third_input.input {
                     if let Some(target_item) = target_item {
                         let destination_item = self.board.item(destination_location);
                         let destination_square = self.board.square(destination_location);
     
-                        events.push(Event::SpiritTargetMove { item: target_item, from: target_location, to: destination_location });
+                        events.push(Event::SpiritTargetMove { item: target_item.clone(), from: target_location, to: destination_location });
     
                         if let Some(destination_item) = destination_item {
                             match target_item {
                                 Item::Mon { mon: travelling_mon } => match destination_item {
                                     Item::Mon { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => return None,
                                     Item::Mana { mana: destination_mana } => {
-                                        events.push(Event::PickupMana { mana: destination_mana, by: travelling_mon, at: destination_location });
+                                        events.push(Event::PickupMana { mana: *destination_mana, by: *travelling_mon, at: destination_location });
                                     },
                                     Item::Consumable { consumable: destination_consumable } => match destination_consumable {
                                         Consumable::Potion | Consumable::Bomb => return None,
                                         Consumable::BombOrPotion => {
-                                            forth_input_options.push(NextInput { input: Input::Modifier(Modifier::SelectBomb), kind: AvailableMoveKind::SelectConsumable, actor_mon_item: Some(target_item) });
-                                            forth_input_options.push(NextInput { input: Input::Modifier(Modifier::SelectPotion), kind: AvailableMoveKind::SelectConsumable, actor_mon_item: Some(target_item) });
+                                            forth_input_options.push(NextInput::new(Input::Modifier(Modifier::SelectBomb), NextInputKind::SelectConsumable, Some(target_item.clone())));
+                                            forth_input_options.push(NextInput::new(Input::Modifier(Modifier::SelectPotion), NextInputKind::SelectConsumable, Some(target_item.clone())));
                                         },
                                     },
                                 },
                                 Item::Mana { mana: travelling_mana } => match destination_item {
                                     Item::Mana { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. } | Item::Consumable { .. } => return None,
                                     Item::Mon { mon: destination_mon } => {
-                                        events.push(Event::PickupMana { mana: travelling_mana, by: destination_mon, at: destination_location });
+                                        events.push(Event::PickupMana { mana: *travelling_mana, by: *destination_mon, at: destination_location });
                                     },
                                 },
-                                Item::MonWithMana { .. } => match destination_item {
+                                Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => match destination_item {
                                     Item::Mon { .. } | Item::Mana { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => return None,
                                     Item::Consumable { consumable: destination_consumable } => match destination_consumable {
                                         Consumable::Potion | Consumable::Bomb => return None,
                                         Consumable::BombOrPotion => {
-                                            events.push(Event::PickupPotion { by: target_item, at: destination_location });
-                                        },
-                                    },
-                                },
-                                Item::MonWithConsumable { .. } => match destination_item {
-                                    Item::Mon { .. } | Item::Mana { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => return None,
-                                    Item::Consumable { consumable: destination_consumable } => match destination_consumable {
-                                        Consumable::Potion | Consumable::Bomb => return None,
-                                        Consumable::BombOrPotion => {
-                                            events.push(Event::PickupPotion { by: target_item, at: destination_location });
+                                            events.push(Event::PickupPotion { by: target_item.clone(), at: destination_location });
                                         },
                                     },
                                 },
                                 Item::Consumable { consumable: travelling_consumable } => match destination_item {
                                     Item::Mana { .. } | Item::Consumable { .. } => return None,
                                     Item::Mon { .. } => {
-                                        forth_input_options.push(NextInput { input: Input::Modifier(Modifier::SelectBomb), kind: AvailableMoveKind::SelectConsumable, actor_mon_item: Some(destination_item) });
-                                        forth_input_options.push(NextInput { input: Input::Modifier(Modifier::SelectPotion), kind: AvailableMoveKind::SelectConsumable, actor_mon_item: Some(destination_item) });
+                                        forth_input_options.push(NextInput::new(Input::Modifier(Modifier::SelectBomb), NextInputKind::SelectConsumable, Some(destination_item.clone())));
+                                        forth_input_options.push(NextInput::new(Input::Modifier(Modifier::SelectPotion), NextInputKind::SelectConsumable, Some(destination_item.clone())));
                                     },
                                     Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => match travelling_consumable {
                                         Consumable::Potion | Consumable::Bomb => return None,
                                         Consumable::BombOrPotion => {
-                                            events.push(Event::PickupPotion { by: destination_item, at: destination_location });
+                                            events.push(Event::PickupPotion { by: destination_item.clone(), at: destination_location });
                                         },
                                     },
                                 },
@@ -747,7 +737,7 @@ impl MonsGame {
     
                         if matches!(destination_square, Square::ManaPool { .. }) {
                             if let Some(mana) = target_item.mana() {
-                                events.push(Event::ManaScored { mana, at: destination_location });
+                                events.push(Event::ManaScored { mana: *mana, at: destination_location });
                             }
                         }
                     } else {
@@ -757,18 +747,18 @@ impl MonsGame {
                     return None;
                 }
             },
-            AvailableMoveKind::DemonAdditionalStep => {
+            NextInputKind::DemonAdditionalStep => {
                 if let Input::Location(destination_location) = third_input.input {
                     if let Some(demon) = start_item.mon() {
-                        events.push(Event::DemonAdditionalStep { demon, from: target_location, to: destination_location });
+                        events.push(Event::DemonAdditionalStep { demon: *demon, from: target_location, to: destination_location });
     
                         if let Some(item) = self.board.item(destination_location) {
                             if let Item::Consumable { consumable } = item {
                                 match consumable {
                                     Consumable::Potion | Consumable::Bomb => return None,
                                     Consumable::BombOrPotion => {
-                                        forth_input_options.push(NextInput { input: Input::Modifier(Modifier::SelectBomb), kind: AvailableMoveKind::SelectConsumable, actor_mon_item: Some(start_item) });
-                                        forth_input_options.push(NextInput { input: Input::Modifier(Modifier::SelectPotion), kind: AvailableMoveKind::SelectConsumable, actor_mon_item: Some(start_item) });
+                                        forth_input_options.push(NextInput::new(Input::Modifier(Modifier::SelectBomb), NextInputKind::SelectConsumable, Some(start_item.clone())));
+                                        forth_input_options.push(NextInput::new(Input::Modifier(Modifier::SelectPotion), NextInputKind::SelectConsumable, Some(start_item.clone())));
                                     },
                                 }
                             }
@@ -780,15 +770,15 @@ impl MonsGame {
                     return None;
                 }
             },
-            AvailableMoveKind::SelectConsumable => {
+            NextInputKind::SelectConsumable => {
                 if let Input::Modifier(modifier) = third_input.input {
                     if let Some(mon) = start_item.mon() {
                         match modifier {
                             Modifier::SelectBomb => {
-                                events.push(Event::PickupBomb { by: mon, at: target_location });
+                                events.push(Event::PickupBomb { by: *mon, at: target_location });
                             },
                             Modifier::SelectPotion => {
-                                events.push(Event::PickupPotion { by: start_item, at: target_location });
+                                events.push(Event::PickupPotion { by: start_item.clone(), at: target_location });
                             },
                             Modifier::Cancel => return None,
                         }
@@ -799,10 +789,11 @@ impl MonsGame {
                     return None;
                 }
             },
+            _ => return None,
         }
     
         Some((events, forth_input_options))
-    }
+    }    
 
     // MARK: - apply events
 
