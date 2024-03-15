@@ -95,24 +95,12 @@ impl MonsGame {
     // MARK: - apply events
     pub fn apply_and_add_resulting_events(&mut self, events: Vec<Event>) -> Vec<Event> {
         let mut extra_events = Vec::new();
-
-        let mut did_use_action = || {
-            if self.actions_used_count >= Config::ACTIONS_PER_TURN {
-                match self.active_color {
-                    Color::White => self.white_potions_count -= 1,
-                    Color::Black => self.black_potions_count -= 1,
-                }
-            } else {
-                self.actions_used_count += 1;
-            }
-        };
-
-        for event in events.iter() {
+        for event in &events {
             match event {
                 Event::MonMove { item, from, to } => {
                     self.mons_moves_count += 1;
                     self.board.remove_item(*from);
-                    self.board.put(*item, *to);
+                    self.board.put(item.clone(), *to);
                 }
                 Event::ManaMove { mana, from, to } => {
                     self.mana_moves_count += 1;
@@ -121,49 +109,84 @@ impl MonsGame {
                 }
                 Event::ManaScored { mana, at } => {
                     let score = mana.score(self.active_color);
-                    match self.active_color {
-                        Color::White => self.white_score += score,
-                        Color::Black => self.black_score += score,
-                    }
-                    if let Some(Item::Mon { mon }) = self.board.item(*at) {
-                        self.board.put(Item::Mon { mon: *mon }, *at);
+                    if self.active_color == Color::White {
+                        self.white_score += score;
                     } else {
-                        self.board.remove_item(*at);
+                        self.black_score += score;
+                    }
+                    if let Some(item) = self.board.item(*at) {
+                        match item {
+                            Item::Mon { mon } => {
+                                self.board.put(Item::Mon { mon: mon.clone() }, *at);
+                            },
+                            _ => {
+                                self.board.remove_item(*at);
+                            }
+                        }
                     }
                 }
                 Event::MysticAction { mystic, from, to } => {
-                    did_use_action();
+                    if self.actions_used_count >= Config::ACTIONS_PER_TURN {
+                        if self.active_color == Color::White {
+                            self.white_potions_count -= 1;
+                        } else {
+                            self.black_potions_count -= 1;
+                        }
+                    } else {
+                        self.actions_used_count += 1;
+                    }
                     self.board.remove_item(*to);
                 }
                 Event::DemonAction { demon, from, to } => {
-                    did_use_action();
+                    if self.actions_used_count >= Config::ACTIONS_PER_TURN {
+                        if self.active_color == Color::White {
+                            self.white_potions_count -= 1;
+                        } else {
+                            self.black_potions_count -= 1;
+                        }
+                    } else {
+                        self.actions_used_count += 1;
+                    }
                     self.board.remove_item(*from);
-                    self.board.put(Item::Mon { mon: *demon }, *to);
+                    self.board.put(Item::Mon { mon: demon.clone() }, *to);
                 }
                 Event::DemonAdditionalStep { demon, from: _, to } => {
-                    self.board.put(Item::Mon { mon: *demon }, *to);
+                    self.board.put(Item::Mon { mon: demon.clone() }, *to);
                 }
                 Event::SpiritTargetMove { item, from, to } => {
-                    did_use_action();
+                    if self.actions_used_count >= Config::ACTIONS_PER_TURN {
+                        if self.active_color == Color::White {
+                            self.white_potions_count -= 1;
+                        } else {
+                            self.black_potions_count -= 1;
+                        }
+                    } else {
+                        self.actions_used_count += 1;
+                    }
                     self.board.remove_item(*from);
-                    self.board.put(*item, *to);
+                    self.board.put(item.clone(), *to);
                 }
                 Event::PickupBomb { by, at } => {
-                    self.board.put(Item::MonWithConsumable { mon: *by, consumable: Consumable::Bomb }, *at);
+                    self.board.put(Item::MonWithConsumable { mon: by.clone(), consumable: Consumable::Bomb }, *at);
                 }
                 Event::PickupPotion { by, at } => {
-                    let mon_color = if let Item::Mon { mon } = *by { mon.color } else { continue; };
-                    match mon_color {
-                        Color::White => self.white_potions_count += 1,
-                        Color::Black => self.black_potions_count += 1,
+                    let mon_color = if let Item::Mon { mon } = by {
+                        mon.color
+                    } else {
+                        continue;
+                    };
+                    if mon_color == Color::White {
+                        self.white_potions_count += 1;
+                    } else {
+                        self.black_potions_count += 1;
                     }
-                    self.board.put(*by, *at);
+                    self.board.put(by.clone(), *at);
                 }
                 Event::PickupMana { mana, by, at } => {
-                    self.board.put(Item::MonWithMana { mon: *by, mana: *mana }, *at);
+                    self.board.put(Item::MonWithMana { mon: by.clone(), mana: *mana }, *at);
                 }
                 Event::MonFainted { mon, from: _, to } => {
-                    let mut fainted_mon = *mon;
+                    let mut fainted_mon = mon.clone();
                     fainted_mon.faint();
                     self.board.put(Item::Mon { mon: fainted_mon }, *to);
                 }
@@ -175,23 +198,23 @@ impl MonsGame {
                 }
                 Event::BombAttack { by, from, to } => {
                     self.board.remove_item(*to);
-                    self.board.put(Item::Mon { mon: *by }, *from);
+                    self.board.put(Item::Mon { mon: by.clone() }, *from);
                 }
                 Event::BombExplosion { at } => {
                     self.board.remove_item(*at);
                 }
                 Event::MonAwake { mon, at } => {
-                    self.board.put(Item::Mon { mon: *mon }, *at);
+                    self.board.put(Item::Mon { mon: mon.clone() }, *at);
                 }
-                Event::GameOver { winner } => extra_events.push(Event::GameOver { winner: *winner }),
+                Event::GameOver { winner } => extra_events.push(Event::GameOver { winner: winner.clone() }),
                 Event::NextTurn { color } => {
                     self.active_color = *color;
                     self.reset_turn_state();
                     for mon_location in self.board.fainted_mons_locations(self.active_color) {
                         if let Some(Item::Mon { mon }) = self.board.item(mon_location) {
-                            let mut awake_mon = mon;
+                            let mut awake_mon = mon.clone();
                             awake_mon.decrease_cooldown();
-                            self.board.put(Item::Mon { mon: awake_mon }, mon_location);
+                            self.board.put(Item::Mon { mon: awake_mon.clone() }, mon_location);
                             if !awake_mon.is_fainted() {
                                 extra_events.push(Event::MonAwake { mon: awake_mon, at: mon_location });
                             }
@@ -200,7 +223,7 @@ impl MonsGame {
                 }
             }
         }
-
+    
         if let Some(winner) = self.winner_color() {
             extra_events.push(Event::GameOver { winner });
         } else if self.is_first_turn() && !self.player_can_move_mon() ||
@@ -210,10 +233,10 @@ impl MonsGame {
             self.reset_turn_state();
             extra_events.push(Event::NextTurn { color: self.active_color });
         }
-
+    
         events.into_iter().chain(extra_events.into_iter()).collect()
     }
-
+    
     fn reset_turn_state(&mut self) {
         self.actions_used_count = 0;
         self.mana_moves_count = 0;
