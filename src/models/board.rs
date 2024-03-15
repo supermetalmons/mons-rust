@@ -11,7 +11,7 @@ impl Board {
     }
 
     pub fn new_with_items(items: std::collections::HashMap<Location, Item>) -> Self {
-        Self { items: items }
+        Self { items }
     }
 
     pub fn remove_item(&mut self, location: Location) {
@@ -33,9 +33,12 @@ impl Board {
     pub fn all_mons_bases(&self) -> Vec<Location> {
         Config::squares()
             .iter()
-            .filter_map(|(location, square)| match square {
-                Square::MonBase { .. }=> Some(*location),
-                _ => None,
+            .filter_map(|(location, square)| {
+                if let Square::MonBase { .. } = square {
+                    Some(*location)
+                } else {
+                    None
+                }
             })
             .collect()
     }
