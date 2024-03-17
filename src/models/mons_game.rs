@@ -606,7 +606,6 @@ impl MonsGame {
                 if target_item.is_none() { return None; }
                 let target_mon = target_item.as_ref().and_then(|item| item.mon());
                 let target_mana = target_item.as_ref().and_then(|item| item.mana());
-            
                 third_input_options.append(&mut self.next_inputs(target_location.nearby_locations(), NextInputKind::SpiritTargetMove, false, None, |location| {
                     let destination_item = self.board.item(location);
                     let destination_square = self.board.square(location);
@@ -614,7 +613,7 @@ impl MonsGame {
                     let valid_destination = match destination_item {
                         Some(Item::Mon { mon: destination_mon }) => match target_item {
                             Some(Item::Mon { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => false,
-                            Some(Item::Mana { .. }) => !(destination_mon.kind == MonKind::Drainer && !destination_mon.is_fainted()),
+                            Some(Item::Mana { .. }) => destination_mon.kind == MonKind::Drainer && !destination_mon.is_fainted(),
                             Some(Item::Consumable { consumable: target_consumable }) => *target_consumable == Consumable::BombOrPotion,
                             None => false,
                         },
