@@ -437,7 +437,12 @@ impl MonsGame {
                 }
         
                 match target_square {
-                    Square::Regular | Square::ConsumableBase | Square::SupermanaBase | Square::ManaBase { .. } | Square::ManaPool { .. } | Square::MonBase { .. } => (),
+                    Square::ManaPool { .. } => {
+                        if let Some(mana_in_hand) = start_item.mana() {
+                            events.push(Event::ManaScored { mana: *mana_in_hand, at: target_location });
+                        }
+                    }
+                    _ => (),
                 }
             },
             NextInputKind::ManaMove => {
