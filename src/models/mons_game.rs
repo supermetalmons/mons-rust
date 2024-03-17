@@ -285,7 +285,7 @@ impl MonsGame {
                         }
                         MonKind::Spirit => {
                             second_input_options.extend(
-                                self.next_inputs(start_location.reachable_by_spirit_action(), NextInputKind::SpiritTargetMove, only_one, specific_location, |_| true),
+                                self.next_inputs(start_location.reachable_by_spirit_action(), NextInputKind::SpiritTargetCapture, only_one, specific_location, |_| true),
                             );
                         },
                     }
