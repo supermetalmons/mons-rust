@@ -285,7 +285,18 @@ impl MonsGame {
                         }
                         MonKind::Spirit => {
                             second_input_options.extend(
-                                self.next_inputs(start_location.reachable_by_spirit_action(), NextInputKind::SpiritTargetCapture, only_one, specific_location, |_| true),
+                                self.next_inputs(start_location.reachable_by_spirit_action(), NextInputKind::SpiritTargetCapture, only_one, specific_location, |location| {
+                                    if let Some(item) = self.board.item(location) {
+                                        match item {
+                                            Item::Mon { mon: target_mon } | Item::MonWithMana { mon: target_mon, .. } | Item::MonWithConsumable { mon: target_mon, .. } => {
+                                                !target_mon.is_fainted()
+                                            }
+                                            _ => true,
+                                        }
+                                    } else {
+                                        false
+                                    }
+                                }),
                             );
                         },
                     }
