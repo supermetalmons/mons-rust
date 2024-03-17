@@ -603,10 +603,19 @@ impl MonsGame {
                                     third_input_options.push(NextInput {
                                         input: Input::Location(*location),
                                         kind: NextInputKind::DemonAdditionalStep,
-                                        actor_mon_item: Some(start_item.clone()),
+                                        actor_mon_item: None,
                                     });
                                 },
-                                _ => (),
+                                Square::MonBase { kind, color } => {
+                                    if start_mon.kind == kind && start_mon.color == color {
+                                        third_input_options.push(NextInput {
+                                            input: Input::Location(*location),
+                                            kind: NextInputKind::DemonAdditionalStep,
+                                            actor_mon_item: None,
+                                        });
+                                    }
+                                },
+                                Square::SupermanaBase => (),
                             }
                         }
                     }
