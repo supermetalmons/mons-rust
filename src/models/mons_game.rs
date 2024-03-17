@@ -609,16 +609,15 @@ impl MonsGame {
                 let target_mon = target_item.as_ref().and_then(|item| item.mon());
                 let target_mana = target_item.as_ref().and_then(|item| item.mana());
             
-                let nearby_locations = target_location.nearby_locations();
-                for location in nearby_locations.iter() {
-                    let destination_item = self.board.item(*location);
-                    let destination_square = self.board.square(*location);
+                third_input_options.append(&mut self.next_inputs(target_location.nearby_locations(), NextInputKind::SpiritTargetMove, false, None, |location| {
+                    let destination_item = self.board.item(location);
+                    let destination_square = self.board.square(location);
             
-                    let valid_destination = match &destination_item {
-                        Some(Item::Mon { mon: destination_mon }) => match &target_item {
+                    let valid_destination = match destination_item {
+                        Some(Item::Mon { mon: destination_mon }) => match target_item {
                             Some(Item::Mon { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => false,
-                            Some(Item::Mana { .. }) => destination_mon.kind != MonKind::Drainer || destination_mon.is_fainted(),
-                            Some(Item::Consumable { consumable: target_consumable }) => *target_consumable != Consumable::BombOrPotion,
+                            Some(Item::Mana { .. }) => !(destination_mon.kind == MonKind::Drainer && !destination_mon.is_fainted()),
+                            Some(Item::Consumable { consumable: target_consumable }) => *target_consumable == Consumable::BombOrPotion,
                             None => false,
                         },
                         Some(Item::Mana { .. }) => matches!(target_item, Some(Item::Mon { mon: target_mon }) if target_mon.kind == MonKind::Drainer && !target_mon.is_fainted()),
@@ -629,30 +628,22 @@ impl MonsGame {
             
                     if valid_destination {
                         match destination_square {
-                            Square::Regular | Square::ConsumableBase | Square::ManaBase { .. } | Square::ManaPool { .. } => (),
+                            Square::Regular | Square::ConsumableBase | Square::ManaBase { .. } | Square::ManaPool { .. } => true,
                             Square::SupermanaBase => {
-                                if target_mana == Some(&Mana::Supermana) || (matches!(target_mon.map(|mon| mon.kind), Some(MonKind::Drainer)) && matches!(destination_item, Some(Item::Mana { mana: Mana::Supermana }))) {
-                                    third_input_options.push(NextInput {
-                                        input: Input::Location(*location),
-                                        kind: NextInputKind::SpiritTargetMove,
-                                        actor_mon_item: target_item.cloned(),
-                                    });
-                                }
+                                target_mana == Some(&Mana::Supermana) || (matches!(target_mon.map(|mon| mon.kind), Some(MonKind::Drainer)) && matches!(destination_item, Some(Item::Mana { mana: Mana::Supermana })))
                             },
                             Square::MonBase { kind, color } => {
                                 if let Some(mon) = target_mon {
-                                    if mon.kind == kind && mon.color == color && target_mana.is_none() && target_item.as_ref().and_then(|item| item.consumable()).is_none() {
-                                        third_input_options.push(NextInput {
-                                            input: Input::Location(*location),
-                                            kind: NextInputKind::SpiritTargetMove,
-                                            actor_mon_item: target_item.cloned(),
-                                        });
-                                    }
+                                    mon.kind == kind && mon.color == color && target_mana.is_none() && target_item.as_ref().and_then(|item| item.consumable()).is_none()
+                                } else {
+                                    false
                                 }
                             },
                         }
+                    } else {
+                        false
                     }
-                }
+                }));
             },
             
             NextInputKind::BombAttack => {
