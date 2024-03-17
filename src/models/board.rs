@@ -54,10 +54,17 @@ impl Board {
     pub fn all_mons_locations(&self, color: Color) -> Vec<Location> {
         self.items
             .iter()
-            .filter_map(|(location, item)| match item {
-                Item::Mon { mon } if mon.color == color => Some(*location),
-                _ => None,
-            })
+            .filter_map(|(location, item)|
+                if let Some(mon) = item.mon() {
+                    if mon.color == color {
+                        Some(*location)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }    
+            )
             .collect()
     }
 
@@ -105,11 +112,16 @@ impl Board {
     }
 
     pub fn find_awake_angel(&self, color: Color) -> Option<Location> {
-        self.items
-            .iter()
-            .find_map(|(location, item)| match item {
-                Item::Mon { mon } if mon.color == color && mon.kind == MonKind::Angel && !mon.is_fainted() => Some(*location),
-                _ => None,
-            })
+        self.items.iter().find_map(|(location, item)|
+            if let Some(mon) = item.mon() {
+                if mon.color == color && mon.kind == MonKind::Angel && !mon.is_fainted() {
+                    Some(*location)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        )
     }
 }
