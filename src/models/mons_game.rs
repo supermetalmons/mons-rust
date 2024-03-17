@@ -413,12 +413,10 @@ impl MonsGame {
                             Consumable::Bomb | Consumable::Potion => return None,
                             Consumable::BombOrPotion => {
                                 if start_item.consumable().is_some() || start_item.mana().is_some() {
-                                    if let Item::Mon { mon } = start_item {
-                                        events.push(Event::PickupPotion {
-                                            by: Item::Mon { mon },
-                                            at: target_location,
-                                        });
-                                    }
+                                    events.push(Event::PickupPotion {
+                                        by: start_item,
+                                        at: target_location,
+                                    });
                                 } else {
                                     third_input_options.push(NextInput::new(
                                         Input::Modifier(Modifier::SelectBomb),
@@ -898,7 +896,7 @@ impl MonsGame {
                     self.board.put(Item::MonWithConsumable { mon: by.clone(), consumable: Consumable::Bomb }, *at);
                 }
                 Event::PickupPotion { by, at } => {
-                    let mon_color = if let Item::Mon { mon } = by {
+                    let mon_color = if let Some(mon) = by.mon() {
                         mon.color
                     } else {
                         continue;
