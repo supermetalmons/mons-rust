@@ -645,13 +645,10 @@ impl MonsGame {
             },
             
             NextInputKind::BombAttack => {
-                let start_mon = match start_item {
-                    Item::Mon { mon } => mon,
-                    _ => return None,
-                };
+                let start_mon = start_item.mon().unwrap();
 
                 events.push(Event::BombAttack {
-                    by: start_mon,
+                    by: start_mon.clone(),
                     from: start_location,
                     to: target_location,
                 });
