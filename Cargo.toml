@@ -2,7 +2,7 @@
 name = "mons-rust"
 version = "0.1.0"
 edition = "2021"
-desctiption = "super metal mons"
+desription = "super metal mons"
 license = "CC0-1.0"
 
 [dependencies]
