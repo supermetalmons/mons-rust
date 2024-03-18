@@ -1,2 +1,2 @@
 # mons-rust
-mons rust
+`cargo add mons-rust`
