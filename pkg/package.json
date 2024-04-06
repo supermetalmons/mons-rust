@@ -1,0 +1,13 @@
+{
+  "name": "mons-rust",
+  "description": "super metal mons",
+  "version": "0.1.2",
+  "license": "CC0-1.0",
+  "files": [
+    "mons_rust_bg.wasm",
+    "mons_rust.js",
+    "mons_rust.d.ts"
+  ],
+  "main": "mons_rust.js",
+  "types": "mons_rust.d.ts"
+}
