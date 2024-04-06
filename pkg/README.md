@@ -1,2 +1,2 @@
 # mons-rust
-`cargo add mons-rust`
+`npm install mons-rust`
