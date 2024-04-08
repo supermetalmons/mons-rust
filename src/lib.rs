@@ -8,6 +8,12 @@ pub fn greet(name: &str) -> String {
     format!("Hello, {}!", name)
 }
 
+#[wasm_bindgen]
+pub fn winner(fen1: &str, fen2: &str, flatMovesString1: &str, flatMovesString2: &str) -> String {
+    // TODO: implement
+    return format!("{}{}", flatMovesString1, fen2)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
