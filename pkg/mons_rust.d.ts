@@ -1,11 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
 /**
-* @param {string} name
-* @returns {string}
-*/
-export function greet(name: string): string;
-/**
 * @param {string} fen1
 * @param {string} fen2
 * @param {string} flatMovesString1

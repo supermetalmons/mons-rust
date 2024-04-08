@@ -4,14 +4,21 @@ pub use models::*;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
-pub fn greet(name: &str) -> String {
-    format!("Hello, {}!", name)
-}
-
-#[wasm_bindgen]
 pub fn winner(fen1: &str, fen2: &str, flatMovesString1: &str, flatMovesString2: &str) -> String {
-    // TODO: implement
-    return format!("{}{}", flatMovesString1, fen2)
+    let moves1: Vec<&str> = flatMovesString1.split("-").collect();
+    let moves2: Vec<&str> = flatMovesString2.split("-").collect();
+    // TODO: anti-fraud moves validation
+    if let (Some(game1), Some(game2)) = (MonsGame::from_fen(&fen1), MonsGame::from_fen(&fen2)) {
+        let winner_color_game1 = game1.winner_color();
+        let winner_color_game2 = game2.winner_color();
+        match (winner_color_game1, winner_color_game2) {
+            (Some(color1), None) => return color1.fen(),
+            (None, Some(color2)) => return color2.fen(),
+            _ => return "".to_string(),
+        }
+    } else {
+        return "".to_string();
+    }
 }
 
 #[cfg(test)]
