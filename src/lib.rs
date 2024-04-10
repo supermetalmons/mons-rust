@@ -4,16 +4,16 @@ pub use models::*;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
-pub fn winner(fen1: &str, fen2: &str, flatMovesString1: &str, flatMovesString2: &str) -> String {
-    let moves1: Vec<&str> = flatMovesString1.split("-").collect();
-    let moves2: Vec<&str> = flatMovesString2.split("-").collect();
+pub fn winner(fen_w: &str, fen_b: &str, flat_moves_string_w: &str, flat_moves_string_b: &str) -> String {
+    let moves_w: Vec<&str> = flat_moves_string_w.split("-").collect();
+    let moves_b: Vec<&str> = flat_moves_string_b.split("-").collect();
     // TODO: anti-fraud moves validation
-    if let (Some(game1), Some(game2)) = (MonsGame::from_fen(&fen1), MonsGame::from_fen(&fen2)) {
-        let winner_color_game1 = game1.winner_color();
-        let winner_color_game2 = game2.winner_color();
-        match (winner_color_game1, winner_color_game2) {
-            (Some(color1), None) => return color1.fen(),
-            (None, Some(color2)) => return color2.fen(),
+    if let (Some(game_w), Some(game_b)) = (MonsGame::from_fen(&fen_w), MonsGame::from_fen(&fen_b)) {
+        let winner_color_game_w = game_w.winner_color();
+        let winner_color_game_b = game_b.winner_color();
+        match (winner_color_game_w, winner_color_game_b) {
+            (Some(color_w), None) => return color_w.fen(),
+            (None, Some(color_b)) => return color_b.fen(),
             _ => return "".to_string(),
         }
     } else {
