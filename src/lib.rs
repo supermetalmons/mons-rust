@@ -96,6 +96,7 @@ mod tests {
                     count += 1;
                 } else {
                     oks += 1;
+                    println!("ok {}", oks);
                 }
 
                 assert!(game_before.fen() == test_case.fen_after);
