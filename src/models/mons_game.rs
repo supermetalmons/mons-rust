@@ -308,9 +308,11 @@ impl MonsGame {
                     self.next_inputs(start_location.nearby_locations(), NextInputKind::ManaMove, only_one, specific_location, |location| {
                         let item = self.board.item(location);
                         let square = self.board.square(location);
-    
                         match item {
-                            Some(Item::Mon { mon }) => mon.kind == MonKind::Drainer,
+                            Some(Item::Mon { mon }) => match square {
+                                Square::Regular | Square::ConsumableBase | Square::ManaBase { .. } | Square::ManaPool { .. } => mon.kind == MonKind::Drainer,
+                                Square::SupermanaBase | Square::MonBase { .. } => false,
+                            },
                             Some(Item::MonWithConsumable { .. }) | Some(Item::Consumable { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::Mana { .. }) => false,
                             None => matches!(square, Square::Regular | Square::ConsumableBase | Square::ManaBase { .. } | Square::ManaPool { .. }),
                         }
