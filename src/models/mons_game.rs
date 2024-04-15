@@ -638,7 +638,12 @@ impl MonsGame {
                             None => false,
                         },
                         Some(Item::Mana { .. }) => matches!(target_item, Some(Item::Mon { mon: target_mon }) if target_mon.kind == MonKind::Drainer && !target_mon.is_fainted()),
-                        Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => false,
+                        Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => match target_item {
+                            Some(Item::Mon { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => false,
+                            Some(Item::Mana { .. }) => false,
+                            Some(Item::Consumable { consumable: target_consumable }) => *target_consumable == Consumable::BombOrPotion,
+                            None => false,
+                        },
                         Some(Item::Consumable { consumable: destination_consumable }) => matches!(target_item, Some(Item::Mon { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) if *destination_consumable == Consumable::BombOrPotion),
                         None => true,
                     };
