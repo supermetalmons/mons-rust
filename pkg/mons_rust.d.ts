@@ -1,10 +1,10 @@
 /* tslint:disable */
 /* eslint-disable */
 /**
-* @param {string} fen1
-* @param {string} fen2
-* @param {string} flatMovesString1
-* @param {string} flatMovesString2
+* @param {string} fen_w
+* @param {string} fen_b
+* @param {string} flat_moves_string_w
+* @param {string} flat_moves_string_b
 * @returns {string}
 */
-export function winner(fen1: string, fen2: string, flatMovesString1: string, flatMovesString2: string): string;
+export function winner(fen_w: string, fen_b: string, flat_moves_string_w: string, flat_moves_string_b: string): string;
