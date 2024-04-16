@@ -15,20 +15,55 @@ pub fn winner(fen_w: &str, fen_b: &str, flat_moves_string_w: &str, flat_moves_st
         if game_w.is_none() && game_b.is_none() {
             return "x".to_string();
         } else if game_w.is_none() {
-            return "b".to_string();
+            return Color::Black.fen();
         } else {
-            return "w".to_string();
+            return Color::White.fen();
         }
     }
 
     let winner_color_game_w = game_w.unwrap().winner_color();
     let winner_color_game_b = game_b.unwrap().winner_color();
 
-    match (winner_color_game_w, winner_color_game_b) {
-        (Some(color_w), None) => return color_w.fen(),
-        (None, Some(color_b)) => return color_b.fen(),
-        _ => return "".to_string(),
+    if winner_color_game_w.is_none() && winner_color_game_b.is_none() {
+        return "".to_string()
+    } 
+
+    let mut game = MonsGame::new();
+
+    let mut w_index = 0;
+    let mut b_index = 0;
+
+    while w_index < moves_w.len() || b_index < moves_b.len() {
+        if game.active_color == Color::White {
+            if w_index >= moves_w.len() { return "x".to_string(); }
+            let inputs = Input::array_from_fen(moves_w[w_index]);
+            _ = game.process_input(inputs, false, false);
+            w_index += 1;
+        } else {
+            if b_index >= moves_b.len() { return "x".to_string(); }
+            let inputs = Input::array_from_fen(moves_b[b_index]);
+            _ = game.process_input(inputs, false, false);
+            b_index += 1;
+        }
+
+        if let Some(winner) = game.winner_color() {
+            if winner == Color::White {
+                if w_index == moves_w.len() && fen_w == game.fen() {
+                    return winner.fen();
+                } else {
+                    return "x".to_string();
+                }
+            } else {
+                if b_index == moves_b.len() && fen_b == game.fen() {
+                    return winner.fen();
+                } else {
+                    return "x".to_string();
+                }
+            }
+        }
     }
+
+    return "x".to_string();
 }
 
 #[cfg(test)]
