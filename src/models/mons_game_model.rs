@@ -22,24 +22,33 @@ impl MonsGameModel {
         return self.game.fen();
     }
 
-    pub fn process_input(&self, locations: Vec<Location>, modifier: Option<Modifier>) -> OutputModel {
-        // TODO: implement
-        return OutputModel {  };
+    pub fn process_input(&mut self, locations: Vec<Location>, modifier: Option<Modifier>) -> OutputModel {
+        let mut inputs: Vec<Input> = locations.into_iter().map(Input::Location).collect();
+        if let Some(modifier) = modifier {
+            inputs.push(Input::Modifier(modifier));
+        }
+        let input_fen =  Input::fen_from_array(&inputs);
+        let output = self.game.process_input(inputs, false, false);
+        return OutputModel::new(output, input_fen.as_str());
     }
 
-    pub fn process_input_fen(&self, input_fen: &str) -> OutputModel {
-        // TODO: implement
-        return OutputModel {  };
+    pub fn process_input_fen(&mut self, input_fen: &str) -> OutputModel {
+        let inputs = Input::array_from_fen(input_fen);
+        let output = self.game.process_input(inputs, false, false);
+        return OutputModel::new(output, input_fen);
     }
 
     pub fn item(&self, at: Location) -> Option<ItemModel> {
-        // TODO: implement
-        return None;
+        if let Some(item) = self.game.board.item(at) {
+            return Some(ItemModel::new(item));
+        } else {
+            return None;
+        }        
     }
 
     pub fn square(&self, at: Location) -> SquareModel {
-        // TODO: implement
-        return SquareModel { };
+        let square = self.game.board.square(at);
+        return SquareModel::new(&square);
     }
 
     pub fn is_later_than(&self, other_fen: &str) -> bool {
@@ -88,16 +97,43 @@ pub struct OutputModel {
     // TODO: return input_fen here as well to pass it to a peer
 }
 
+impl OutputModel {
+    fn new(output: Output, input_fen: &str) -> Self {
+        // TODO: implement
+        Self {
+            // TODO: fields to be initialized based on the provided item
+        }
+    }
+}
+
 #[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct SquareModel {
     // TODO: implement
 }
 
+impl SquareModel {
+    fn new(item: &Square) -> Self {
+        // TODO: implement
+        Self {
+            // TODO: fields to be initialized based on the provided item
+        }
+    }
+}
+
 #[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct ItemModel {
     // TODO: implement
+}
+
+impl ItemModel {
+    fn new(item: &Item) -> Self {
+        // TODO: implement
+        Self {
+            // TODO: fields to be initialized based on the provided item
+        }
+    }
 }
 
 #[wasm_bindgen]
