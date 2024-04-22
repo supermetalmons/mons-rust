@@ -99,3 +99,21 @@ pub struct SquareModel {
 pub struct ItemModel {
     // TODO: implement
 }
+
+#[wasm_bindgen]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct ManaModel {
+    // TODO: implement
+}
+
+#[wasm_bindgen]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct NextInputModel {
+    // TODO: implement
+}
+
+#[wasm_bindgen]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct EventModel {
+    // TODO: implement
+}
