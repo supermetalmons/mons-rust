@@ -22,6 +22,14 @@ impl MonsGameModel {
         return self.game.fen();
     }
 
+    pub fn is_later_than(&self, other_fen: &str) -> bool {
+        if let Some(other_game) = MonsGame::from_fen(other_fen) {
+            return self.game.is_later_than(&other_game);
+        } else {
+            return true;
+        }
+    }
+
     pub fn active_color(&self) -> Color {
         return self.game.active_color;
     }
