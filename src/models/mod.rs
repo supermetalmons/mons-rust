@@ -14,6 +14,7 @@ pub mod mana;
 pub mod mon;
 pub mod mons_game;
 pub mod square;
+pub mod mons_game_model;
 
 pub use input::*;
 pub use location::*;
@@ -31,4 +32,5 @@ pub use mana::*;
 pub use mon::*;
 pub use mons_game::*;
 pub use square::*;
+pub use mons_game_model::*;
 pub use wasm_bindgen::prelude::*;
