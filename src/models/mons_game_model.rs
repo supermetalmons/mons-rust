@@ -27,6 +27,11 @@ impl MonsGameModel {
         return OutputModel {  };
     }
 
+    pub fn process_input_fen(&self, input_fen: &str) -> OutputModel {
+        // TODO: implement
+        return OutputModel {  };
+    }
+
     pub fn item(&self, at: Location) -> Option<ItemModel> {
         // TODO: implement
         return None;
@@ -80,6 +85,7 @@ impl MonsGameModel {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct OutputModel {
     // TODO: implement
+    // TODO: return input_fen here as well to pass it to a peer
 }
 
 #[wasm_bindgen]
