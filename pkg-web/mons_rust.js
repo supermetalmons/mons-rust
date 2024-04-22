@@ -82,6 +82,11 @@ function getInt32Memory0() {
     }
     return cachedInt32Memory0;
 }
+
+function getArrayI32FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getInt32Memory0().subarray(ptr / 4, ptr / 4 + len);
+}
 /**
 * @param {string} fen_w
 * @param {string} fen_b
@@ -116,13 +121,7 @@ export function winner(fen_w, fen_b, flat_moves_string_w, flat_moves_string_b) {
 
 /**
 */
-export const AvailableMoveKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",Action:2,"2":"Action",Potion:3,"3":"Potion", });
-/**
-*/
 export const MonKind = Object.freeze({ Demon:0,"0":"Demon",Drainer:1,"1":"Drainer",Angel:2,"2":"Angel",Spirit:3,"3":"Spirit",Mystic:4,"4":"Mystic", });
-/**
-*/
-export const Color = Object.freeze({ White:0,"0":"White",Black:1,"1":"Black", });
 /**
 */
 export const Modifier = Object.freeze({ SelectPotion:0,"0":"SelectPotion",SelectBomb:1,"1":"SelectBomb",Cancel:2,"2":"Cancel", });
@@ -132,6 +131,12 @@ export const Consumable = Object.freeze({ Potion:0,"0":"Potion",Bomb:1,"1":"Bomb
 /**
 */
 export const NextInputKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",MysticAction:2,"2":"MysticAction",DemonAction:3,"3":"DemonAction",DemonAdditionalStep:4,"4":"DemonAdditionalStep",SpiritTargetCapture:5,"5":"SpiritTargetCapture",SpiritTargetMove:6,"6":"SpiritTargetMove",SelectConsumable:7,"7":"SelectConsumable",BombAttack:8,"8":"BombAttack", });
+/**
+*/
+export const AvailableMoveKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",Action:2,"2":"Action",Potion:3,"3":"Potion", });
+/**
+*/
+export const Color = Object.freeze({ White:0,"0":"White",Black:1,"1":"Black", });
 
 const LocationFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
@@ -335,6 +340,50 @@ export class MonsGameModel {
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
             wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+    * @returns {Color}
+    */
+    active_color() {
+        const ret = wasm.monsgamemodel_active_color(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+    * @returns {Color | undefined}
+    */
+    winner_color() {
+        const ret = wasm.monsgamemodel_winner_color(this.__wbg_ptr);
+        return ret === 2 ? undefined : ret;
+    }
+    /**
+    * @returns {number}
+    */
+    black_score() {
+        const ret = wasm.monsgamemodel_black_score(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+    * @returns {number}
+    */
+    white_score() {
+        const ret = wasm.monsgamemodel_white_score(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+    * @returns {Int32Array}
+    */
+    available_move_kinds() {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.monsgamemodel_available_move_kinds(retptr, this.__wbg_ptr);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            var v1 = getArrayI32FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_free(r0, r1 * 4, 4);
+            return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
         }
     }
 }

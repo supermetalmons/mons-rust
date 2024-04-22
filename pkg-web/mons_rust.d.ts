@@ -10,26 +10,12 @@
 export function winner(fen_w: string, fen_b: string, flat_moves_string_w: string, flat_moves_string_b: string): string;
 /**
 */
-export enum AvailableMoveKind {
-  MonMove = 0,
-  ManaMove = 1,
-  Action = 2,
-  Potion = 3,
-}
-/**
-*/
 export enum MonKind {
   Demon = 0,
   Drainer = 1,
   Angel = 2,
   Spirit = 3,
   Mystic = 4,
-}
-/**
-*/
-export enum Color {
-  White = 0,
-  Black = 1,
 }
 /**
 */
@@ -57,6 +43,20 @@ export enum NextInputKind {
   SpiritTargetMove = 6,
   SelectConsumable = 7,
   BombAttack = 8,
+}
+/**
+*/
+export enum AvailableMoveKind {
+  MonMove = 0,
+  ManaMove = 1,
+  Action = 2,
+  Potion = 3,
+}
+/**
+*/
+export enum Color {
+  White = 0,
+  Black = 1,
 }
 /**
 */
@@ -118,13 +118,32 @@ export class MonsGameModel {
 * @returns {string}
 */
   fen(): string;
+/**
+* @returns {Color}
+*/
+  active_color(): Color;
+/**
+* @returns {Color | undefined}
+*/
+  winner_color(): Color | undefined;
+/**
+* @returns {number}
+*/
+  black_score(): number;
+/**
+* @returns {number}
+*/
+  white_score(): number;
+/**
+* @returns {Int32Array}
+*/
+  available_move_kinds(): Int32Array;
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
-  readonly winner: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly __wbg_mon_free: (a: number) => void;
   readonly __wbg_get_mon_kind: (a: number) => number;
   readonly __wbg_set_mon_kind: (a: number, b: number) => void;
@@ -136,18 +155,24 @@ export interface InitOutput {
   readonly mon_is_fainted: (a: number) => number;
   readonly mon_faint: (a: number) => void;
   readonly mon_decrease_cooldown: (a: number) => void;
-  readonly __wbg_monsgamemodel_free: (a: number) => void;
-  readonly monsgamemodel_from_fen: (a: number, b: number) => number;
-  readonly monsgamemodel_fen: (a: number, b: number) => void;
   readonly __wbg_location_free: (a: number) => void;
   readonly __wbg_get_location_i: (a: number) => number;
   readonly __wbg_set_location_i: (a: number, b: number) => void;
   readonly __wbg_get_location_j: (a: number) => number;
   readonly __wbg_set_location_j: (a: number, b: number) => void;
   readonly location_new: (a: number, b: number) => number;
-  readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
+  readonly __wbg_monsgamemodel_free: (a: number) => void;
+  readonly monsgamemodel_from_fen: (a: number, b: number) => number;
+  readonly monsgamemodel_fen: (a: number, b: number) => void;
+  readonly monsgamemodel_active_color: (a: number) => number;
+  readonly monsgamemodel_winner_color: (a: number) => number;
+  readonly monsgamemodel_black_score: (a: number) => number;
+  readonly monsgamemodel_white_score: (a: number) => number;
+  readonly monsgamemodel_available_move_kinds: (a: number, b: number) => void;
+  readonly winner: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+  readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
   readonly __wbindgen_free: (a: number, b: number, c: number) => void;
 }
 
