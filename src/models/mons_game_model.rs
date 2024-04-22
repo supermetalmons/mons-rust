@@ -27,6 +27,16 @@ impl MonsGameModel {
         return OutputModel {  };
     }
 
+    pub fn item(&self, at: Location) -> Option<ItemModel> {
+        // TODO: implement
+        return None;
+    }
+
+    pub fn square(&self, at: Location) -> SquareModel {
+        // TODO: implement
+        return SquareModel { };
+    }
+
     pub fn is_later_than(&self, other_fen: &str) -> bool {
         if let Some(other_game) = MonsGame::from_fen(other_fen) {
             return self.game.is_later_than(&other_game);
@@ -67,7 +77,19 @@ impl MonsGameModel {
 }
 
 #[wasm_bindgen]
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct OutputModel {
+    // TODO: implement
+}
+
+#[wasm_bindgen]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct SquareModel {
+    // TODO: implement
+}
+
+#[wasm_bindgen]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct ItemModel {
     // TODO: implement
 }
