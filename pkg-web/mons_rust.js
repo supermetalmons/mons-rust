@@ -83,9 +83,79 @@ function getInt32Memory0() {
     return cachedInt32Memory0;
 }
 
+let cachedUint32Memory0 = null;
+
+function getUint32Memory0() {
+    if (cachedUint32Memory0 === null || cachedUint32Memory0.byteLength === 0) {
+        cachedUint32Memory0 = new Uint32Array(wasm.memory.buffer);
+    }
+    return cachedUint32Memory0;
+}
+
+const heap = new Array(128).fill(undefined);
+
+heap.push(undefined, null, true, false);
+
+let heap_next = heap.length;
+
+function addHeapObject(obj) {
+    if (heap_next === heap.length) heap.push(heap.length + 1);
+    const idx = heap_next;
+    heap_next = heap[idx];
+
+    heap[idx] = obj;
+    return idx;
+}
+
+function passArrayJsValueToWasm0(array, malloc) {
+    const ptr = malloc(array.length * 4, 4) >>> 0;
+    const mem = getUint32Memory0();
+    for (let i = 0; i < array.length; i++) {
+        mem[ptr / 4 + i] = addHeapObject(array[i]);
+    }
+    WASM_VECTOR_LEN = array.length;
+    return ptr;
+}
+
+function isLikeNone(x) {
+    return x === undefined || x === null;
+}
+
+function _assertClass(instance, klass) {
+    if (!(instance instanceof klass)) {
+        throw new Error(`expected instance of ${klass.name}`);
+    }
+    return instance.ptr;
+}
+
 function getArrayI32FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getInt32Memory0().subarray(ptr / 4, ptr / 4 + len);
+}
+
+function getObject(idx) { return heap[idx]; }
+
+function dropObject(idx) {
+    if (idx < 132) return;
+    heap[idx] = heap_next;
+    heap_next = idx;
+}
+
+function takeObject(idx) {
+    const ret = getObject(idx);
+    dropObject(idx);
+    return ret;
+}
+
+function getArrayJsValueFromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    const mem = getUint32Memory0();
+    const slice = mem.subarray(ptr / 4, ptr / 4 + len);
+    const result = [];
+    for (let i = 0; i < slice.length; i++) {
+        result.push(takeObject(slice[i]));
+    }
+    return result;
 }
 /**
 * @param {string} fen_w
@@ -121,22 +191,50 @@ export function winner(fen_w, fen_b, flat_moves_string_w, flat_moves_string_b) {
 
 /**
 */
-export const MonKind = Object.freeze({ Demon:0,"0":"Demon",Drainer:1,"1":"Drainer",Angel:2,"2":"Angel",Spirit:3,"3":"Spirit",Mystic:4,"4":"Mystic", });
+export const NextInputKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",MysticAction:2,"2":"MysticAction",DemonAction:3,"3":"DemonAction",DemonAdditionalStep:4,"4":"DemonAdditionalStep",SpiritTargetCapture:5,"5":"SpiritTargetCapture",SpiritTargetMove:6,"6":"SpiritTargetMove",SelectConsumable:7,"7":"SelectConsumable",BombAttack:8,"8":"BombAttack", });
 /**
 */
-export const Modifier = Object.freeze({ SelectPotion:0,"0":"SelectPotion",SelectBomb:1,"1":"SelectBomb",Cancel:2,"2":"Cancel", });
+export const Color = Object.freeze({ White:0,"0":"White",Black:1,"1":"Black", });
 /**
 */
 export const Consumable = Object.freeze({ Potion:0,"0":"Potion",Bomb:1,"1":"Bomb",BombOrPotion:2,"2":"BombOrPotion", });
 /**
 */
-export const NextInputKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",MysticAction:2,"2":"MysticAction",DemonAction:3,"3":"DemonAction",DemonAdditionalStep:4,"4":"DemonAdditionalStep",SpiritTargetCapture:5,"5":"SpiritTargetCapture",SpiritTargetMove:6,"6":"SpiritTargetMove",SelectConsumable:7,"7":"SelectConsumable",BombAttack:8,"8":"BombAttack", });
+export const MonKind = Object.freeze({ Demon:0,"0":"Demon",Drainer:1,"1":"Drainer",Angel:2,"2":"Angel",Spirit:3,"3":"Spirit",Mystic:4,"4":"Mystic", });
 /**
 */
 export const AvailableMoveKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",Action:2,"2":"Action",Potion:3,"3":"Potion", });
 /**
 */
-export const Color = Object.freeze({ White:0,"0":"White",Black:1,"1":"Black", });
+export const Modifier = Object.freeze({ SelectPotion:0,"0":"SelectPotion",SelectBomb:1,"1":"SelectBomb",Cancel:2,"2":"Cancel", });
+
+const ItemModelFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_itemmodel_free(ptr >>> 0));
+/**
+*/
+export class ItemModel {
+
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(ItemModel.prototype);
+        obj.__wbg_ptr = ptr;
+        ItemModelFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        ItemModelFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_itemmodel_free(ptr);
+    }
+}
 
 const LocationFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
@@ -144,6 +242,21 @@ const LocationFinalization = (typeof FinalizationRegistry === 'undefined')
 /**
 */
 export class Location {
+
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(Location.prototype);
+        obj.__wbg_ptr = ptr;
+        LocationFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+
+    static __unwrap(jsValue) {
+        if (!(jsValue instanceof Location)) {
+            return 0;
+        }
+        return jsValue.__destroy_into_raw();
+    }
 
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
@@ -343,6 +456,57 @@ export class MonsGameModel {
         }
     }
     /**
+    * @param {(Location)[]} locations
+    * @param {Modifier | undefined} [modifier]
+    * @returns {OutputModel}
+    */
+    process_input(locations, modifier) {
+        const ptr0 = passArrayJsValueToWasm0(locations, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.monsgamemodel_process_input(this.__wbg_ptr, ptr0, len0, isLikeNone(modifier) ? 3 : modifier);
+        return OutputModel.__wrap(ret);
+    }
+    /**
+    * @param {string} input_fen
+    * @returns {OutputModel}
+    */
+    process_input_fen(input_fen) {
+        const ptr0 = passStringToWasm0(input_fen, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.monsgamemodel_process_input_fen(this.__wbg_ptr, ptr0, len0);
+        return OutputModel.__wrap(ret);
+    }
+    /**
+    * @param {Location} at
+    * @returns {ItemModel | undefined}
+    */
+    item(at) {
+        _assertClass(at, Location);
+        var ptr0 = at.__destroy_into_raw();
+        const ret = wasm.monsgamemodel_item(this.__wbg_ptr, ptr0);
+        return ret === 0 ? undefined : ItemModel.__wrap(ret);
+    }
+    /**
+    * @param {Location} at
+    * @returns {SquareModel}
+    */
+    square(at) {
+        _assertClass(at, Location);
+        var ptr0 = at.__destroy_into_raw();
+        const ret = wasm.monsgamemodel_square(this.__wbg_ptr, ptr0);
+        return SquareModel.__wrap(ret);
+    }
+    /**
+    * @param {string} other_fen
+    * @returns {boolean}
+    */
+    is_later_than(other_fen) {
+        const ptr0 = passStringToWasm0(other_fen, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.monsgamemodel_is_later_than(this.__wbg_ptr, ptr0, len0);
+        return ret !== 0;
+    }
+    /**
     * @returns {Color}
     */
     active_color() {
@@ -386,6 +550,78 @@ export class MonsGameModel {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
     }
+    /**
+    * @returns {(Location)[]}
+    */
+    locations_with_content() {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.monsgamemodel_locations_with_content(retptr, this.__wbg_ptr);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            var v1 = getArrayJsValueFromWasm0(r0, r1).slice();
+            wasm.__wbindgen_free(r0, r1 * 4, 4);
+            return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+}
+
+const OutputModelFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_outputmodel_free(ptr >>> 0));
+/**
+*/
+export class OutputModel {
+
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(OutputModel.prototype);
+        obj.__wbg_ptr = ptr;
+        OutputModelFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        OutputModelFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_outputmodel_free(ptr);
+    }
+}
+
+const SquareModelFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_squaremodel_free(ptr >>> 0));
+/**
+*/
+export class SquareModel {
+
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(SquareModel.prototype);
+        obj.__wbg_ptr = ptr;
+        SquareModelFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        SquareModelFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_squaremodel_free(ptr);
+    }
 }
 
 async function __wbg_load(module, imports) {
@@ -422,6 +658,14 @@ async function __wbg_load(module, imports) {
 function __wbg_get_imports() {
     const imports = {};
     imports.wbg = {};
+    imports.wbg.__wbg_location_new = function(arg0) {
+        const ret = Location.__wrap(arg0);
+        return addHeapObject(ret);
+    };
+    imports.wbg.__wbg_location_unwrap = function(arg0) {
+        const ret = Location.__unwrap(takeObject(arg0));
+        return ret;
+    };
     imports.wbg.__wbindgen_throw = function(arg0, arg1) {
         throw new Error(getStringFromWasm0(arg0, arg1));
     };
@@ -437,6 +681,7 @@ function __wbg_finalize_init(instance, module) {
     wasm = instance.exports;
     __wbg_init.__wbindgen_wasm_module = module;
     cachedInt32Memory0 = null;
+    cachedUint32Memory0 = null;
     cachedUint8Memory0 = null;
 
 
