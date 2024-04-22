@@ -18,34 +18,6 @@ function getStringFromWasm0(ptr, len) {
     return cachedTextDecoder.decode(getUint8Memory0().subarray(ptr, ptr + len));
 }
 
-let cachedInt32Memory0 = null;
-
-function getInt32Memory0() {
-    if (cachedInt32Memory0 === null || cachedInt32Memory0.byteLength === 0) {
-        cachedInt32Memory0 = new Int32Array(wasm.memory.buffer);
-    }
-    return cachedInt32Memory0;
-}
-/**
-* @returns {string}
-*/
-export function hello() {
-    let deferred1_0;
-    let deferred1_1;
-    try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        wasm.hello(retptr);
-        var r0 = getInt32Memory0()[retptr / 4 + 0];
-        var r1 = getInt32Memory0()[retptr / 4 + 1];
-        deferred1_0 = r0;
-        deferred1_1 = r1;
-        return getStringFromWasm0(r0, r1);
-    } finally {
-        wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
-    }
-}
-
 let WASM_VECTOR_LEN = 0;
 
 const cachedTextEncoder = (typeof TextEncoder !== 'undefined' ? new TextEncoder('utf-8') : { encode: () => { throw Error('TextEncoder not available') } } );
@@ -101,6 +73,15 @@ function passStringToWasm0(arg, malloc, realloc) {
     WASM_VECTOR_LEN = offset;
     return ptr;
 }
+
+let cachedInt32Memory0 = null;
+
+function getInt32Memory0() {
+    if (cachedInt32Memory0 === null || cachedInt32Memory0.byteLength === 0) {
+        cachedInt32Memory0 = new Int32Array(wasm.memory.buffer);
+    }
+    return cachedInt32Memory0;
+}
 /**
 * @param {string} fen_w
 * @param {string} fen_b
@@ -135,10 +116,22 @@ export function winner(fen_w, fen_b, flat_moves_string_w, flat_moves_string_b) {
 
 /**
 */
-export const Modifier = Object.freeze({ SelectPotion:0,"0":"SelectPotion",SelectBomb:1,"1":"SelectBomb",Cancel:2,"2":"Cancel", });
+export const AvailableMoveKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",Action:2,"2":"Action",Potion:3,"3":"Potion", });
+/**
+*/
+export const MonKind = Object.freeze({ Demon:0,"0":"Demon",Drainer:1,"1":"Drainer",Angel:2,"2":"Angel",Spirit:3,"3":"Spirit",Mystic:4,"4":"Mystic", });
 /**
 */
 export const Color = Object.freeze({ White:0,"0":"White",Black:1,"1":"Black", });
+/**
+*/
+export const Modifier = Object.freeze({ SelectPotion:0,"0":"SelectPotion",SelectBomb:1,"1":"SelectBomb",Cancel:2,"2":"Cancel", });
+/**
+*/
+export const Consumable = Object.freeze({ Potion:0,"0":"Potion",Bomb:1,"1":"Bomb",BombOrPotion:2,"2":"BombOrPotion", });
+/**
+*/
+export const NextInputKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",MysticAction:2,"2":"MysticAction",DemonAction:3,"3":"DemonAction",DemonAdditionalStep:4,"4":"DemonAdditionalStep",SpiritTargetCapture:5,"5":"SpiritTargetCapture",SpiritTargetMove:6,"6":"SpiritTargetMove",SelectConsumable:7,"7":"SelectConsumable",BombAttack:8,"8":"BombAttack", });
 
 const LocationFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
@@ -192,6 +185,157 @@ export class Location {
         const ret = wasm.location_new(i, j);
         this.__wbg_ptr = ret >>> 0;
         return this;
+    }
+}
+
+const MonFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_mon_free(ptr >>> 0));
+/**
+*/
+export class Mon {
+
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(Mon.prototype);
+        obj.__wbg_ptr = ptr;
+        MonFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        MonFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_mon_free(ptr);
+    }
+    /**
+    * @returns {MonKind}
+    */
+    get kind() {
+        const ret = wasm.__wbg_get_mon_kind(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+    * @param {MonKind} arg0
+    */
+    set kind(arg0) {
+        wasm.__wbg_set_mon_kind(this.__wbg_ptr, arg0);
+    }
+    /**
+    * @returns {Color}
+    */
+    get color() {
+        const ret = wasm.__wbg_get_mon_color(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+    * @param {Color} arg0
+    */
+    set color(arg0) {
+        wasm.__wbg_set_mon_color(this.__wbg_ptr, arg0);
+    }
+    /**
+    * @returns {number}
+    */
+    get cooldown() {
+        const ret = wasm.__wbg_get_mon_cooldown(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+    * @param {number} arg0
+    */
+    set cooldown(arg0) {
+        wasm.__wbg_set_mon_cooldown(this.__wbg_ptr, arg0);
+    }
+    /**
+    * @param {MonKind} kind
+    * @param {Color} color
+    * @param {number} cooldown
+    * @returns {Mon}
+    */
+    static new(kind, color, cooldown) {
+        const ret = wasm.mon_new(kind, color, cooldown);
+        return Mon.__wrap(ret);
+    }
+    /**
+    * @returns {boolean}
+    */
+    is_fainted() {
+        const ret = wasm.mon_is_fainted(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+    */
+    faint() {
+        wasm.mon_faint(this.__wbg_ptr);
+    }
+    /**
+    */
+    decrease_cooldown() {
+        wasm.mon_decrease_cooldown(this.__wbg_ptr);
+    }
+}
+
+const MonsGameModelFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_monsgamemodel_free(ptr >>> 0));
+/**
+*/
+export class MonsGameModel {
+
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(MonsGameModel.prototype);
+        obj.__wbg_ptr = ptr;
+        MonsGameModelFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        MonsGameModelFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_monsgamemodel_free(ptr);
+    }
+    /**
+    * @param {string} fen
+    * @returns {MonsGameModel | undefined}
+    */
+    static from_fen(fen) {
+        const ptr0 = passStringToWasm0(fen, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.monsgamemodel_from_fen(ptr0, len0);
+        return ret === 0 ? undefined : MonsGameModel.__wrap(ret);
+    }
+    /**
+    * @returns {string}
+    */
+    fen() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.monsgamemodel_fen(retptr, this.__wbg_ptr);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            deferred1_0 = r0;
+            deferred1_1 = r1;
+            return getStringFromWasm0(r0, r1);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
     }
 }
 

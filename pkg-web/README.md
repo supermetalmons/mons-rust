@@ -1,2 +1,6 @@
-# mons-web
-`npm install mons-web`
+# mons-rust
+`cargo add mons-rust`
+
+or
+
+`npm install mons-rust`

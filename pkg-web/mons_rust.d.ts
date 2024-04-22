@@ -1,10 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
 /**
-* @returns {string}
-*/
-export function hello(): string;
-/**
 * @param {string} fen_w
 * @param {string} fen_b
 * @param {string} flat_moves_string_w
@@ -14,6 +10,29 @@ export function hello(): string;
 export function winner(fen_w: string, fen_b: string, flat_moves_string_w: string, flat_moves_string_b: string): string;
 /**
 */
+export enum AvailableMoveKind {
+  MonMove = 0,
+  ManaMove = 1,
+  Action = 2,
+  Potion = 3,
+}
+/**
+*/
+export enum MonKind {
+  Demon = 0,
+  Drainer = 1,
+  Angel = 2,
+  Spirit = 3,
+  Mystic = 4,
+}
+/**
+*/
+export enum Color {
+  White = 0,
+  Black = 1,
+}
+/**
+*/
 export enum Modifier {
   SelectPotion = 0,
   SelectBomb = 1,
@@ -21,9 +40,23 @@ export enum Modifier {
 }
 /**
 */
-export enum Color {
-  White = 0,
-  Black = 1,
+export enum Consumable {
+  Potion = 0,
+  Bomb = 1,
+  BombOrPotion = 2,
+}
+/**
+*/
+export enum NextInputKind {
+  MonMove = 0,
+  ManaMove = 1,
+  MysticAction = 2,
+  DemonAction = 3,
+  DemonAdditionalStep = 4,
+  SpiritTargetCapture = 5,
+  SpiritTargetMove = 6,
+  SelectConsumable = 7,
+  BombAttack = 8,
 }
 /**
 */
@@ -41,23 +74,81 @@ export class Location {
 */
   j: number;
 }
+/**
+*/
+export class Mon {
+  free(): void;
+/**
+* @param {MonKind} kind
+* @param {Color} color
+* @param {number} cooldown
+* @returns {Mon}
+*/
+  static new(kind: MonKind, color: Color, cooldown: number): Mon;
+/**
+* @returns {boolean}
+*/
+  is_fainted(): boolean;
+/**
+*/
+  faint(): void;
+/**
+*/
+  decrease_cooldown(): void;
+/**
+*/
+  color: Color;
+/**
+*/
+  cooldown: number;
+/**
+*/
+  kind: MonKind;
+}
+/**
+*/
+export class MonsGameModel {
+  free(): void;
+/**
+* @param {string} fen
+* @returns {MonsGameModel | undefined}
+*/
+  static from_fen(fen: string): MonsGameModel | undefined;
+/**
+* @returns {string}
+*/
+  fen(): string;
+}
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
+  readonly winner: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+  readonly __wbg_mon_free: (a: number) => void;
+  readonly __wbg_get_mon_kind: (a: number) => number;
+  readonly __wbg_set_mon_kind: (a: number, b: number) => void;
+  readonly __wbg_get_mon_color: (a: number) => number;
+  readonly __wbg_set_mon_color: (a: number, b: number) => void;
+  readonly __wbg_get_mon_cooldown: (a: number) => number;
+  readonly __wbg_set_mon_cooldown: (a: number, b: number) => void;
+  readonly mon_new: (a: number, b: number, c: number) => number;
+  readonly mon_is_fainted: (a: number) => number;
+  readonly mon_faint: (a: number) => void;
+  readonly mon_decrease_cooldown: (a: number) => void;
+  readonly __wbg_monsgamemodel_free: (a: number) => void;
+  readonly monsgamemodel_from_fen: (a: number, b: number) => number;
+  readonly monsgamemodel_fen: (a: number, b: number) => void;
   readonly __wbg_location_free: (a: number) => void;
   readonly __wbg_get_location_i: (a: number) => number;
   readonly __wbg_set_location_i: (a: number, b: number) => void;
   readonly __wbg_get_location_j: (a: number) => number;
   readonly __wbg_set_location_j: (a: number, b: number) => void;
   readonly location_new: (a: number, b: number) => number;
-  readonly hello: (a: number) => void;
-  readonly winner: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
-  readonly __wbindgen_free: (a: number, b: number, c: number) => void;
   readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+  readonly __wbindgen_free: (a: number, b: number, c: number) => void;
 }
 
 export type SyncInitInput = BufferSource | WebAssembly.Module;

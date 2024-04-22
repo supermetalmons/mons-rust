@@ -1,7 +1,7 @@
 {
   "name": "mons-web",
   "description": "super metal mons",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "license": "CC0-1.0",
   "files": [
     "mons_rust_bg.wasm",
