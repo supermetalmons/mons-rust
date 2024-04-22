@@ -50,4 +50,13 @@ impl MonsGameModel {
         let map = self.game.available_move_kinds();
         return [map[&AvailableMoveKind::MonMove], map[&AvailableMoveKind::ManaMove], map[&AvailableMoveKind::Action], map[&AvailableMoveKind::Potion]].to_vec();
     }
+
+    pub fn locations_with_content(&self) -> Vec<Location> {
+        let mut locations = self.game.board.items.keys().cloned().collect::<Vec<Location>>();
+        let mons_bases = self.game.board.all_mons_bases();
+        locations.extend(mons_bases);
+        locations.sort();
+        locations.dedup();
+        return locations;
+    }
 }
