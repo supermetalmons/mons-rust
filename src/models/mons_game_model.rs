@@ -22,6 +22,11 @@ impl MonsGameModel {
         return self.game.fen();
     }
 
+    pub fn process_input(&self, locations: Vec<Location>, modifier: Option<Modifier>) -> OutputModel {
+        // TODO: implement
+        return OutputModel {  };
+    }
+
     pub fn is_later_than(&self, other_fen: &str) -> bool {
         if let Some(other_game) = MonsGame::from_fen(other_fen) {
             return self.game.is_later_than(&other_game);
@@ -59,4 +64,10 @@ impl MonsGameModel {
         locations.dedup();
         return locations;
     }
+}
+
+#[wasm_bindgen]
+#[derive(Debug, Clone)]
+pub struct OutputModel {
+    // TODO: implement
 }
