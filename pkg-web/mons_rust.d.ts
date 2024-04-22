@@ -12,11 +12,40 @@ export function hello(): string;
 * @returns {string}
 */
 export function winner(fen_w: string, fen_b: string, flat_moves_string_w: string, flat_moves_string_b: string): string;
+/**
+*/
+export enum Modifier {
+  SelectPotion = 0,
+  SelectBomb = 1,
+  Cancel = 2,
+}
+/**
+*/
+export enum Color {
+  White = 0,
+  Black = 1,
+}
+/**
+*/
+export class Location {
+  free(): void;
+/**
+*/
+  i: number;
+/**
+*/
+  j: number;
+}
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
+  readonly __wbg_location_free: (a: number) => void;
+  readonly __wbg_get_location_i: (a: number) => number;
+  readonly __wbg_set_location_i: (a: number, b: number) => void;
+  readonly __wbg_get_location_j: (a: number) => number;
+  readonly __wbg_set_location_j: (a: number, b: number) => void;
   readonly hello: (a: number) => void;
   readonly winner: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly __wbindgen_add_to_stack_pointer: (a: number) => number;

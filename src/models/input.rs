@@ -1,4 +1,5 @@
 use crate::*;
+use wasm_bindgen::prelude::*;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Input {
@@ -6,6 +7,7 @@ pub enum Input {
     Modifier(Modifier),
 }
 
+#[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Modifier {
     SelectPotion,
