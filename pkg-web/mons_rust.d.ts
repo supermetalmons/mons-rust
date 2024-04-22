@@ -30,6 +30,11 @@ export enum Color {
 export class Location {
   free(): void;
 /**
+* @param {number} i
+* @param {number} j
+*/
+  constructor(i: number, j: number);
+/**
 */
   i: number;
 /**
@@ -46,6 +51,7 @@ export interface InitOutput {
   readonly __wbg_set_location_i: (a: number, b: number) => void;
   readonly __wbg_get_location_j: (a: number) => number;
   readonly __wbg_set_location_j: (a: number, b: number) => void;
+  readonly location_new: (a: number, b: number) => number;
   readonly hello: (a: number) => void;
   readonly winner: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly __wbindgen_add_to_stack_pointer: (a: number) => number;

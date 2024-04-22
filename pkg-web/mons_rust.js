@@ -184,6 +184,15 @@ export class Location {
     set j(arg0) {
         wasm.__wbg_set_location_j(this.__wbg_ptr, arg0);
     }
+    /**
+    * @param {number} i
+    * @param {number} j
+    */
+    constructor(i, j) {
+        const ret = wasm.location_new(i, j);
+        this.__wbg_ptr = ret >>> 0;
+        return this;
+    }
 }
 
 async function __wbg_load(module, imports) {

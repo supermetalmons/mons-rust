@@ -8,10 +8,15 @@ pub struct Location {
     pub j: i32,
 }
 
+#[wasm_bindgen]
 impl Location {
+    #[wasm_bindgen(constructor)]
     pub fn new(i: i32, j: i32) -> Self {
         Self { i, j }
     }
+}
+
+impl Location {
 
     pub fn valid_range() -> std::ops::Range<i32> {
         0..Config::BOARD_SIZE
