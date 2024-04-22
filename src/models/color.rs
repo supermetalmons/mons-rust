@@ -1,4 +1,4 @@
-use wasm_bindgen::prelude::*;
+use crate::*;
 
 #[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]

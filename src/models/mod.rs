@@ -31,3 +31,4 @@ pub use mana::*;
 pub use mon::*;
 pub use mons_game::*;
 pub use square::*;
+pub use wasm_bindgen::prelude::*;

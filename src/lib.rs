@@ -1,13 +1,6 @@
 pub mod models;
 pub use models::*;
 
-use wasm_bindgen::prelude::*;
-
-#[wasm_bindgen]
-pub fn hello() -> String {
-    return "yo".to_string()
-}
-
 #[wasm_bindgen]
 pub fn winner(fen_w: &str, fen_b: &str, flat_moves_string_w: &str, flat_moves_string_b: &str) -> String {
     let moves_w: Vec<&str> = flat_moves_string_w.split("-").collect();

@@ -1,5 +1,6 @@
 use crate::*;
 
+#[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum MonKind {
     Demon,
@@ -9,6 +10,7 @@ pub enum MonKind {
     Mystic,
 }
 
+#[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Mon {
     pub kind: MonKind,
@@ -16,6 +18,7 @@ pub struct Mon {
     pub cooldown: i32,
 }
 
+#[wasm_bindgen]
 impl Mon {
     pub fn new(kind: MonKind, color: Color, cooldown: i32) -> Self {
         Mon { kind, color, cooldown }

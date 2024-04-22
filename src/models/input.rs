@@ -1,5 +1,4 @@
 use crate::*;
-use wasm_bindgen::prelude::*;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Input {
