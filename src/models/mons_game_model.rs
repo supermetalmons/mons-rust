@@ -109,14 +109,31 @@ impl OutputModel {
 #[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct SquareModel {
-    // TODO: implement
+    kind: SquareModelKind,
+    color: Option<Color>,
+    mon_kind: Option<MonKind>,
+}
+
+#[wasm_bindgen]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum SquareModelKind {
+    Regular,
+    ConsumableBase,
+    SupermanaBase,
+    ManaBase,
+    ManaPool,
+    MonBase,
 }
 
 impl SquareModel {
     fn new(item: &Square) -> Self {
-        // TODO: implement
-        Self {
-            // TODO: fields to be initialized based on the provided item
+        match item {
+            Square::Regular => SquareModel { kind: SquareModelKind::Regular, color: None, mon_kind: None },
+            Square::ConsumableBase => SquareModel { kind: SquareModelKind::ConsumableBase, color: None, mon_kind: None },
+            Square::SupermanaBase => SquareModel { kind: SquareModelKind::SupermanaBase, color: None, mon_kind: None },
+            Square::ManaBase { color } => SquareModel { kind: SquareModelKind::ManaBase, color: Some(*color), mon_kind: None },
+            Square::ManaPool { color } => SquareModel { kind: SquareModelKind::ManaPool, color: Some(*color), mon_kind: None },
+            Square::MonBase { kind, color } => SquareModel { kind: SquareModelKind::MonBase, color: Some(*color), mon_kind: Some(*kind) },
         }
     }
 }
