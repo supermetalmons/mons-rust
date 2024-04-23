@@ -1,5 +1,25 @@
 let wasm;
 
+const heap = new Array(128).fill(undefined);
+
+heap.push(undefined, null, true, false);
+
+function getObject(idx) { return heap[idx]; }
+
+let heap_next = heap.length;
+
+function dropObject(idx) {
+    if (idx < 132) return;
+    heap[idx] = heap_next;
+    heap_next = idx;
+}
+
+function takeObject(idx) {
+    const ret = getObject(idx);
+    dropObject(idx);
+    return ret;
+}
+
 const cachedTextDecoder = (typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8', { ignoreBOM: true, fatal: true }) : { decode: () => { throw Error('TextDecoder not available') } } );
 
 if (typeof TextDecoder !== 'undefined') { cachedTextDecoder.decode(); };
@@ -92,12 +112,6 @@ function getUint32Memory0() {
     return cachedUint32Memory0;
 }
 
-const heap = new Array(128).fill(undefined);
-
-heap.push(undefined, null, true, false);
-
-let heap_next = heap.length;
-
 function addHeapObject(obj) {
     if (heap_next === heap.length) heap.push(heap.length + 1);
     const idx = heap_next;
@@ -131,20 +145,6 @@ function _assertClass(instance, klass) {
 function getArrayI32FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getInt32Memory0().subarray(ptr / 4, ptr / 4 + len);
-}
-
-function getObject(idx) { return heap[idx]; }
-
-function dropObject(idx) {
-    if (idx < 132) return;
-    heap[idx] = heap_next;
-    heap_next = idx;
-}
-
-function takeObject(idx) {
-    const ret = getObject(idx);
-    dropObject(idx);
-    return ret;
 }
 
 function getArrayJsValueFromWasm0(ptr, len) {
@@ -191,22 +191,65 @@ export function winner(fen_w, fen_b, flat_moves_string_w, flat_moves_string_b) {
 
 /**
 */
-export const NextInputKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",MysticAction:2,"2":"MysticAction",DemonAction:3,"3":"DemonAction",DemonAdditionalStep:4,"4":"DemonAdditionalStep",SpiritTargetCapture:5,"5":"SpiritTargetCapture",SpiritTargetMove:6,"6":"SpiritTargetMove",SelectConsumable:7,"7":"SelectConsumable",BombAttack:8,"8":"BombAttack", });
-/**
-*/
-export const Color = Object.freeze({ White:0,"0":"White",Black:1,"1":"Black", });
-/**
-*/
 export const Consumable = Object.freeze({ Potion:0,"0":"Potion",Bomb:1,"1":"Bomb",BombOrPotion:2,"2":"BombOrPotion", });
-/**
-*/
-export const MonKind = Object.freeze({ Demon:0,"0":"Demon",Drainer:1,"1":"Drainer",Angel:2,"2":"Angel",Spirit:3,"3":"Spirit",Mystic:4,"4":"Mystic", });
 /**
 */
 export const AvailableMoveKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",Action:2,"2":"Action",Potion:3,"3":"Potion", });
 /**
 */
+export const EventModelKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",ManaScored:2,"2":"ManaScored",MysticAction:3,"3":"MysticAction",DemonAction:4,"4":"DemonAction",DemonAdditionalStep:5,"5":"DemonAdditionalStep",SpiritTargetMove:6,"6":"SpiritTargetMove",PickupBomb:7,"7":"PickupBomb",PickupPotion:8,"8":"PickupPotion",PickupMana:9,"9":"PickupMana",MonFainted:10,"10":"MonFainted",ManaDropped:11,"11":"ManaDropped",SupermanaBackToBase:12,"12":"SupermanaBackToBase",BombAttack:13,"13":"BombAttack",MonAwake:14,"14":"MonAwake",BombExplosion:15,"15":"BombExplosion",NextTurn:16,"16":"NextTurn",GameOver:17,"17":"GameOver", });
+/**
+*/
+export const ManaKind = Object.freeze({ Regular:0,"0":"Regular",Supermana:1,"1":"Supermana", });
+/**
+*/
+export const MonKind = Object.freeze({ Demon:0,"0":"Demon",Drainer:1,"1":"Drainer",Angel:2,"2":"Angel",Spirit:3,"3":"Spirit",Mystic:4,"4":"Mystic", });
+/**
+*/
 export const Modifier = Object.freeze({ SelectPotion:0,"0":"SelectPotion",SelectBomb:1,"1":"SelectBomb",Cancel:2,"2":"Cancel", });
+/**
+*/
+export const OutputModelKind = Object.freeze({ InvalidInput:0,"0":"InvalidInput",LocationsToStartFrom:1,"1":"LocationsToStartFrom",NextInputOptions:2,"2":"NextInputOptions",Events:3,"3":"Events", });
+/**
+*/
+export const ItemModelKind = Object.freeze({ Mon:0,"0":"Mon",Mana:1,"1":"Mana",MonWithMana:2,"2":"MonWithMana",MonWithConsumable:3,"3":"MonWithConsumable",Consumable:4,"4":"Consumable", });
+/**
+*/
+export const SquareModelKind = Object.freeze({ Regular:0,"0":"Regular",ConsumableBase:1,"1":"ConsumableBase",SupermanaBase:2,"2":"SupermanaBase",ManaBase:3,"3":"ManaBase",ManaPool:4,"4":"ManaPool",MonBase:5,"5":"MonBase", });
+/**
+*/
+export const Color = Object.freeze({ White:0,"0":"White",Black:1,"1":"Black", });
+/**
+*/
+export const NextInputKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",MysticAction:2,"2":"MysticAction",DemonAction:3,"3":"DemonAction",DemonAdditionalStep:4,"4":"DemonAdditionalStep",SpiritTargetCapture:5,"5":"SpiritTargetCapture",SpiritTargetMove:6,"6":"SpiritTargetMove",SelectConsumable:7,"7":"SelectConsumable",BombAttack:8,"8":"BombAttack", });
+
+const EventModelFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_eventmodel_free(ptr >>> 0));
+/**
+*/
+export class EventModel {
+
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(EventModel.prototype);
+        obj.__wbg_ptr = ptr;
+        EventModelFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        EventModelFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_eventmodel_free(ptr);
+    }
+}
 
 const ItemModelFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
@@ -303,6 +346,52 @@ export class Location {
         const ret = wasm.location_new(i, j);
         this.__wbg_ptr = ret >>> 0;
         return this;
+    }
+}
+
+const ManaModelFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_manamodel_free(ptr >>> 0));
+/**
+*/
+export class ManaModel {
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        ManaModelFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_manamodel_free(ptr);
+    }
+    /**
+    * @returns {ManaKind}
+    */
+    get kind() {
+        const ret = wasm.__wbg_get_manamodel_kind(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+    * @param {ManaKind} arg0
+    */
+    set kind(arg0) {
+        wasm.__wbg_set_manamodel_kind(this.__wbg_ptr, arg0);
+    }
+    /**
+    * @returns {Color}
+    */
+    get color() {
+        const ret = wasm.__wbg_get_manamodel_color(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+    * @param {Color} arg0
+    */
+    set color(arg0) {
+        wasm.__wbg_set_manamodel_color(this.__wbg_ptr, arg0);
     }
 }
 
@@ -568,6 +657,96 @@ export class MonsGameModel {
     }
 }
 
+const NextInputModelFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_nextinputmodel_free(ptr >>> 0));
+/**
+*/
+export class NextInputModel {
+
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(NextInputModel.prototype);
+        obj.__wbg_ptr = ptr;
+        NextInputModelFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        NextInputModelFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_nextinputmodel_free(ptr);
+    }
+    /**
+    * @returns {Location | undefined}
+    */
+    get location() {
+        const ret = wasm.__wbg_get_nextinputmodel_location(this.__wbg_ptr);
+        return ret === 0 ? undefined : Location.__wrap(ret);
+    }
+    /**
+    * @param {Location | undefined} [arg0]
+    */
+    set location(arg0) {
+        let ptr0 = 0;
+        if (!isLikeNone(arg0)) {
+            _assertClass(arg0, Location);
+            ptr0 = arg0.__destroy_into_raw();
+        }
+        wasm.__wbg_set_nextinputmodel_location(this.__wbg_ptr, ptr0);
+    }
+    /**
+    * @returns {Modifier | undefined}
+    */
+    get modifier() {
+        const ret = wasm.__wbg_get_nextinputmodel_modifier(this.__wbg_ptr);
+        return ret === 3 ? undefined : ret;
+    }
+    /**
+    * @param {Modifier | undefined} [arg0]
+    */
+    set modifier(arg0) {
+        wasm.__wbg_set_nextinputmodel_modifier(this.__wbg_ptr, isLikeNone(arg0) ? 3 : arg0);
+    }
+    /**
+    * @returns {NextInputKind}
+    */
+    get kind() {
+        const ret = wasm.__wbg_get_nextinputmodel_kind(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+    * @param {NextInputKind} arg0
+    */
+    set kind(arg0) {
+        wasm.__wbg_set_nextinputmodel_kind(this.__wbg_ptr, arg0);
+    }
+    /**
+    * @returns {ItemModel | undefined}
+    */
+    get actor_mon_item() {
+        const ret = wasm.__wbg_get_nextinputmodel_actor_mon_item(this.__wbg_ptr);
+        return ret === 0 ? undefined : ItemModel.__wrap(ret);
+    }
+    /**
+    * @param {ItemModel | undefined} [arg0]
+    */
+    set actor_mon_item(arg0) {
+        let ptr0 = 0;
+        if (!isLikeNone(arg0)) {
+            _assertClass(arg0, ItemModel);
+            ptr0 = arg0.__destroy_into_raw();
+        }
+        wasm.__wbg_set_nextinputmodel_actor_mon_item(this.__wbg_ptr, ptr0);
+    }
+}
+
 const OutputModelFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_outputmodel_free(ptr >>> 0));
@@ -593,6 +772,59 @@ export class OutputModel {
     free() {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_outputmodel_free(ptr);
+    }
+    /**
+    * @returns {OutputModelKind}
+    */
+    get kind() {
+        const ret = wasm.__wbg_get_outputmodel_kind(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+    * @param {OutputModelKind} arg0
+    */
+    set kind(arg0) {
+        wasm.__wbg_set_outputmodel_kind(this.__wbg_ptr, arg0);
+    }
+    /**
+    * @returns {Array<any>}
+    */
+    locations() {
+        const ret = wasm.outputmodel_locations(this.__wbg_ptr);
+        return takeObject(ret);
+    }
+    /**
+    * @returns {Array<any>}
+    */
+    next_inputs() {
+        const ret = wasm.outputmodel_next_inputs(this.__wbg_ptr);
+        return takeObject(ret);
+    }
+    /**
+    * @returns {Array<any>}
+    */
+    events() {
+        const ret = wasm.outputmodel_events(this.__wbg_ptr);
+        return takeObject(ret);
+    }
+    /**
+    * @returns {string}
+    */
+    input_fen() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.outputmodel_input_fen(retptr, this.__wbg_ptr);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            deferred1_0 = r0;
+            deferred1_1 = r1;
+            return getStringFromWasm0(r0, r1);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
     }
 }
 
@@ -662,8 +894,27 @@ function __wbg_get_imports() {
         const ret = Location.__wrap(arg0);
         return addHeapObject(ret);
     };
+    imports.wbg.__wbg_eventmodel_new = function(arg0) {
+        const ret = EventModel.__wrap(arg0);
+        return addHeapObject(ret);
+    };
+    imports.wbg.__wbg_nextinputmodel_new = function(arg0) {
+        const ret = NextInputModel.__wrap(arg0);
+        return addHeapObject(ret);
+    };
+    imports.wbg.__wbindgen_object_drop_ref = function(arg0) {
+        takeObject(arg0);
+    };
     imports.wbg.__wbg_location_unwrap = function(arg0) {
         const ret = Location.__unwrap(takeObject(arg0));
+        return ret;
+    };
+    imports.wbg.__wbg_new_16b304a2cfa7ff4a = function() {
+        const ret = new Array();
+        return addHeapObject(ret);
+    };
+    imports.wbg.__wbg_push_a5b05aedc7234f9f = function(arg0, arg1) {
+        const ret = getObject(arg0).push(getObject(arg1));
         return ret;
     };
     imports.wbg.__wbindgen_throw = function(arg0, arg1) {
