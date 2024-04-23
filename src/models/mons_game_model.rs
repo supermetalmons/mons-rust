@@ -140,16 +140,33 @@ impl SquareModel {
 
 #[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum ItemModelKind {
+    Mon,
+    Mana,
+    MonWithMana,
+    MonWithConsumable,
+    Consumable,
+}
+
+#[wasm_bindgen]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct ItemModel {
-    // TODO: implement
+    kind: ItemModelKind,
+    mon: Option<Mon>,
+    mana: Option<Mana>,
+    consumable: Option<Consumable>,
 }
 
 impl ItemModel {
     fn new(item: &Item) -> Self {
-        // TODO: implement
-        Self {
-            // TODO: fields to be initialized based on the provided item
-        }
+        let (kind, mon, mana, consumable) = match item {
+            Item::Mon { mon } => (ItemModelKind::Mon, Some(*mon), None, None),
+            Item::Mana { mana } => (ItemModelKind::Mana, None, Some(*mana), None),
+            Item::MonWithMana { mon, mana } => (ItemModelKind::MonWithMana, Some(*mon), Some(*mana), None),
+            Item::MonWithConsumable { mon, consumable } => (ItemModelKind::MonWithConsumable, Some(*mon), None, Some(*consumable)),
+            Item::Consumable { consumable } => (ItemModelKind::Consumable, None, None, Some(*consumable)),
+        };
+        Self { kind, mon, mana, consumable }
     }
 }
 
