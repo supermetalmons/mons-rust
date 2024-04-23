@@ -8,6 +8,13 @@ pub struct MonsGameModel {
 
 #[wasm_bindgen]
 impl MonsGameModel {
+
+    pub fn new() -> MonsGameModel {
+        Self {
+            game: MonsGame::new()
+        }
+    }
+    
     pub fn from_fen(fen: &str) -> Option<MonsGameModel> {
         if let Some(game) = MonsGame::from_fen(fen) {
             Some(Self {
