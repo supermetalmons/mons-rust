@@ -191,37 +191,37 @@ export function winner(fen_w, fen_b, flat_moves_string_w, flat_moves_string_b) {
 
 /**
 */
-export const EventModelKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",ManaScored:2,"2":"ManaScored",MysticAction:3,"3":"MysticAction",DemonAction:4,"4":"DemonAction",DemonAdditionalStep:5,"5":"DemonAdditionalStep",SpiritTargetMove:6,"6":"SpiritTargetMove",PickupBomb:7,"7":"PickupBomb",PickupPotion:8,"8":"PickupPotion",PickupMana:9,"9":"PickupMana",MonFainted:10,"10":"MonFainted",ManaDropped:11,"11":"ManaDropped",SupermanaBackToBase:12,"12":"SupermanaBackToBase",BombAttack:13,"13":"BombAttack",MonAwake:14,"14":"MonAwake",BombExplosion:15,"15":"BombExplosion",NextTurn:16,"16":"NextTurn",GameOver:17,"17":"GameOver", });
-/**
-*/
-export const MonKind = Object.freeze({ Demon:0,"0":"Demon",Drainer:1,"1":"Drainer",Angel:2,"2":"Angel",Spirit:3,"3":"Spirit",Mystic:4,"4":"Mystic", });
-/**
-*/
 export const Modifier = Object.freeze({ SelectPotion:0,"0":"SelectPotion",SelectBomb:1,"1":"SelectBomb",Cancel:2,"2":"Cancel", });
 /**
 */
 export const NextInputKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",MysticAction:2,"2":"MysticAction",DemonAction:3,"3":"DemonAction",DemonAdditionalStep:4,"4":"DemonAdditionalStep",SpiritTargetCapture:5,"5":"SpiritTargetCapture",SpiritTargetMove:6,"6":"SpiritTargetMove",SelectConsumable:7,"7":"SelectConsumable",BombAttack:8,"8":"BombAttack", });
 /**
 */
-export const Consumable = Object.freeze({ Potion:0,"0":"Potion",Bomb:1,"1":"Bomb",BombOrPotion:2,"2":"BombOrPotion", });
-/**
-*/
-export const OutputModelKind = Object.freeze({ InvalidInput:0,"0":"InvalidInput",LocationsToStartFrom:1,"1":"LocationsToStartFrom",NextInputOptions:2,"2":"NextInputOptions",Events:3,"3":"Events", });
+export const EventModelKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",ManaScored:2,"2":"ManaScored",MysticAction:3,"3":"MysticAction",DemonAction:4,"4":"DemonAction",DemonAdditionalStep:5,"5":"DemonAdditionalStep",SpiritTargetMove:6,"6":"SpiritTargetMove",PickupBomb:7,"7":"PickupBomb",PickupPotion:8,"8":"PickupPotion",PickupMana:9,"9":"PickupMana",MonFainted:10,"10":"MonFainted",ManaDropped:11,"11":"ManaDropped",SupermanaBackToBase:12,"12":"SupermanaBackToBase",BombAttack:13,"13":"BombAttack",MonAwake:14,"14":"MonAwake",BombExplosion:15,"15":"BombExplosion",NextTurn:16,"16":"NextTurn",GameOver:17,"17":"GameOver", });
 /**
 */
 export const Color = Object.freeze({ White:0,"0":"White",Black:1,"1":"Black", });
 /**
 */
-export const SquareModelKind = Object.freeze({ Regular:0,"0":"Regular",ConsumableBase:1,"1":"ConsumableBase",SupermanaBase:2,"2":"SupermanaBase",ManaBase:3,"3":"ManaBase",ManaPool:4,"4":"ManaPool",MonBase:5,"5":"MonBase", });
+export const ItemModelKind = Object.freeze({ Mon:0,"0":"Mon",Mana:1,"1":"Mana",MonWithMana:2,"2":"MonWithMana",MonWithConsumable:3,"3":"MonWithConsumable",Consumable:4,"4":"Consumable", });
 /**
 */
-export const ItemModelKind = Object.freeze({ Mon:0,"0":"Mon",Mana:1,"1":"Mana",MonWithMana:2,"2":"MonWithMana",MonWithConsumable:3,"3":"MonWithConsumable",Consumable:4,"4":"Consumable", });
+export const OutputModelKind = Object.freeze({ InvalidInput:0,"0":"InvalidInput",LocationsToStartFrom:1,"1":"LocationsToStartFrom",NextInputOptions:2,"2":"NextInputOptions",Events:3,"3":"Events", });
+/**
+*/
+export const Consumable = Object.freeze({ Potion:0,"0":"Potion",Bomb:1,"1":"Bomb",BombOrPotion:2,"2":"BombOrPotion", });
+/**
+*/
+export const AvailableMoveKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",Action:2,"2":"Action",Potion:3,"3":"Potion", });
 /**
 */
 export const ManaKind = Object.freeze({ Regular:0,"0":"Regular",Supermana:1,"1":"Supermana", });
 /**
 */
-export const AvailableMoveKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",Action:2,"2":"Action",Potion:3,"3":"Potion", });
+export const SquareModelKind = Object.freeze({ Regular:0,"0":"Regular",ConsumableBase:1,"1":"ConsumableBase",SupermanaBase:2,"2":"SupermanaBase",ManaBase:3,"3":"ManaBase",ManaPool:4,"4":"ManaPool",MonBase:5,"5":"MonBase", });
+/**
+*/
+export const MonKind = Object.freeze({ Demon:0,"0":"Demon",Drainer:1,"1":"Drainer",Angel:2,"2":"Angel",Spirit:3,"3":"Spirit",Mystic:4,"4":"Mystic", });
 
 const EventModelFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
@@ -248,6 +248,122 @@ export class EventModel {
     free() {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_eventmodel_free(ptr);
+    }
+    /**
+    * @returns {EventModelKind}
+    */
+    get kind() {
+        const ret = wasm.__wbg_get_eventmodel_kind(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+    * @param {EventModelKind} arg0
+    */
+    set kind(arg0) {
+        wasm.__wbg_set_eventmodel_kind(this.__wbg_ptr, arg0);
+    }
+    /**
+    * @returns {ItemModel | undefined}
+    */
+    get item() {
+        const ret = wasm.__wbg_get_eventmodel_item(this.__wbg_ptr);
+        return ret === 0 ? undefined : ItemModel.__wrap(ret);
+    }
+    /**
+    * @param {ItemModel | undefined} [arg0]
+    */
+    set item(arg0) {
+        let ptr0 = 0;
+        if (!isLikeNone(arg0)) {
+            _assertClass(arg0, ItemModel);
+            ptr0 = arg0.__destroy_into_raw();
+        }
+        wasm.__wbg_set_eventmodel_item(this.__wbg_ptr, ptr0);
+    }
+    /**
+    * @returns {Mon | undefined}
+    */
+    get mon() {
+        const ret = wasm.__wbg_get_eventmodel_mon(this.__wbg_ptr);
+        return ret === 0 ? undefined : Mon.__wrap(ret);
+    }
+    /**
+    * @param {Mon | undefined} [arg0]
+    */
+    set mon(arg0) {
+        let ptr0 = 0;
+        if (!isLikeNone(arg0)) {
+            _assertClass(arg0, Mon);
+            ptr0 = arg0.__destroy_into_raw();
+        }
+        wasm.__wbg_set_eventmodel_mon(this.__wbg_ptr, ptr0);
+    }
+    /**
+    * @returns {ManaModel | undefined}
+    */
+    get mana() {
+        const ret = wasm.__wbg_get_eventmodel_mana(this.__wbg_ptr);
+        return ret === 0 ? undefined : ManaModel.__wrap(ret);
+    }
+    /**
+    * @param {ManaModel | undefined} [arg0]
+    */
+    set mana(arg0) {
+        let ptr0 = 0;
+        if (!isLikeNone(arg0)) {
+            _assertClass(arg0, ManaModel);
+            ptr0 = arg0.__destroy_into_raw();
+        }
+        wasm.__wbg_set_eventmodel_mana(this.__wbg_ptr, ptr0);
+    }
+    /**
+    * @returns {Location | undefined}
+    */
+    get loc1() {
+        const ret = wasm.__wbg_get_eventmodel_loc1(this.__wbg_ptr);
+        return ret === 0 ? undefined : Location.__wrap(ret);
+    }
+    /**
+    * @param {Location | undefined} [arg0]
+    */
+    set loc1(arg0) {
+        let ptr0 = 0;
+        if (!isLikeNone(arg0)) {
+            _assertClass(arg0, Location);
+            ptr0 = arg0.__destroy_into_raw();
+        }
+        wasm.__wbg_set_eventmodel_loc1(this.__wbg_ptr, ptr0);
+    }
+    /**
+    * @returns {Location | undefined}
+    */
+    get loc2() {
+        const ret = wasm.__wbg_get_eventmodel_loc2(this.__wbg_ptr);
+        return ret === 0 ? undefined : Location.__wrap(ret);
+    }
+    /**
+    * @param {Location | undefined} [arg0]
+    */
+    set loc2(arg0) {
+        let ptr0 = 0;
+        if (!isLikeNone(arg0)) {
+            _assertClass(arg0, Location);
+            ptr0 = arg0.__destroy_into_raw();
+        }
+        wasm.__wbg_set_eventmodel_loc2(this.__wbg_ptr, ptr0);
+    }
+    /**
+    * @returns {Color | undefined}
+    */
+    get color() {
+        const ret = wasm.__wbg_get_eventmodel_color(this.__wbg_ptr);
+        return ret === 2 ? undefined : ret;
+    }
+    /**
+    * @param {Color | undefined} [arg0]
+    */
+    set color(arg0) {
+        wasm.__wbg_set_eventmodel_color(this.__wbg_ptr, isLikeNone(arg0) ? 2 : arg0);
     }
 }
 
@@ -276,6 +392,68 @@ export class ItemModel {
     free() {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_itemmodel_free(ptr);
+    }
+    /**
+    * @returns {ItemModelKind}
+    */
+    get kind() {
+        const ret = wasm.__wbg_get_itemmodel_kind(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+    * @param {ItemModelKind} arg0
+    */
+    set kind(arg0) {
+        wasm.__wbg_set_itemmodel_kind(this.__wbg_ptr, arg0);
+    }
+    /**
+    * @returns {Mon | undefined}
+    */
+    get mon() {
+        const ret = wasm.__wbg_get_itemmodel_mon(this.__wbg_ptr);
+        return ret === 0 ? undefined : Mon.__wrap(ret);
+    }
+    /**
+    * @param {Mon | undefined} [arg0]
+    */
+    set mon(arg0) {
+        let ptr0 = 0;
+        if (!isLikeNone(arg0)) {
+            _assertClass(arg0, Mon);
+            ptr0 = arg0.__destroy_into_raw();
+        }
+        wasm.__wbg_set_itemmodel_mon(this.__wbg_ptr, ptr0);
+    }
+    /**
+    * @returns {ManaModel | undefined}
+    */
+    get mana() {
+        const ret = wasm.__wbg_get_itemmodel_mana(this.__wbg_ptr);
+        return ret === 0 ? undefined : ManaModel.__wrap(ret);
+    }
+    /**
+    * @param {ManaModel | undefined} [arg0]
+    */
+    set mana(arg0) {
+        let ptr0 = 0;
+        if (!isLikeNone(arg0)) {
+            _assertClass(arg0, ManaModel);
+            ptr0 = arg0.__destroy_into_raw();
+        }
+        wasm.__wbg_set_itemmodel_mana(this.__wbg_ptr, ptr0);
+    }
+    /**
+    * @returns {Consumable | undefined}
+    */
+    get consumable() {
+        const ret = wasm.__wbg_get_itemmodel_consumable(this.__wbg_ptr);
+        return ret === 3 ? undefined : ret;
+    }
+    /**
+    * @param {Consumable | undefined} [arg0]
+    */
+    set consumable(arg0) {
+        wasm.__wbg_set_itemmodel_consumable(this.__wbg_ptr, isLikeNone(arg0) ? 3 : arg0);
     }
 }
 
@@ -355,6 +533,14 @@ const ManaModelFinalization = (typeof FinalizationRegistry === 'undefined')
 /**
 */
 export class ManaModel {
+
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(ManaModel.prototype);
+        obj.__wbg_ptr = ptr;
+        ManaModelFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
 
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
@@ -694,7 +880,7 @@ export class NextInputModel {
     * @returns {Location | undefined}
     */
     get location() {
-        const ret = wasm.__wbg_get_nextinputmodel_location(this.__wbg_ptr);
+        const ret = wasm.__wbg_get_eventmodel_loc1(this.__wbg_ptr);
         return ret === 0 ? undefined : Location.__wrap(ret);
     }
     /**
@@ -706,7 +892,7 @@ export class NextInputModel {
             _assertClass(arg0, Location);
             ptr0 = arg0.__destroy_into_raw();
         }
-        wasm.__wbg_set_nextinputmodel_location(this.__wbg_ptr, ptr0);
+        wasm.__wbg_set_eventmodel_loc1(this.__wbg_ptr, ptr0);
     }
     /**
     * @returns {Modifier | undefined}
@@ -887,6 +1073,45 @@ export class SquareModel {
     free() {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_squaremodel_free(ptr);
+    }
+    /**
+    * @returns {SquareModelKind}
+    */
+    get kind() {
+        const ret = wasm.__wbg_get_squaremodel_kind(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+    * @param {SquareModelKind} arg0
+    */
+    set kind(arg0) {
+        wasm.__wbg_set_squaremodel_kind(this.__wbg_ptr, arg0);
+    }
+    /**
+    * @returns {Color | undefined}
+    */
+    get color() {
+        const ret = wasm.__wbg_get_squaremodel_color(this.__wbg_ptr);
+        return ret === 2 ? undefined : ret;
+    }
+    /**
+    * @param {Color | undefined} [arg0]
+    */
+    set color(arg0) {
+        wasm.__wbg_set_squaremodel_color(this.__wbg_ptr, isLikeNone(arg0) ? 2 : arg0);
+    }
+    /**
+    * @returns {MonKind | undefined}
+    */
+    get mon_kind() {
+        const ret = wasm.__wbg_get_squaremodel_mon_kind(this.__wbg_ptr);
+        return ret === 5 ? undefined : ret;
+    }
+    /**
+    * @param {MonKind | undefined} [arg0]
+    */
+    set mon_kind(arg0) {
+        wasm.__wbg_set_squaremodel_mon_kind(this.__wbg_ptr, isLikeNone(arg0) ? 5 : arg0);
     }
 }
 
