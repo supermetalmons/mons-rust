@@ -1,5 +1,4 @@
 use crate::*;
-use js_sys::Array;
 
 #[wasm_bindgen]
 #[derive(Debug, Clone)]
@@ -113,16 +112,16 @@ pub struct OutputModel {
 #[wasm_bindgen]
 impl OutputModel {
 
-    pub fn locations(&self) -> Array {
-        self.locations.clone().into_iter().map(JsValue::from).collect()
+    pub fn locations(&self) -> Vec<Location> {
+        self.locations.clone()
     }
 
-    pub fn next_inputs(&self) -> Array {
-        self.next_inputs.clone().into_iter().map(JsValue::from).collect()
+    pub fn next_inputs(&self) -> Vec<NextInputModel> {
+        self.next_inputs.clone()
     }
 
-    pub fn events(&self) -> Array {
-        self.events.clone().into_iter().map(JsValue::from).collect()
+    pub fn events(&self) -> Vec<EventModel> {
+        self.events.clone()
     }
 
     pub fn input_fen(&self) -> String {
