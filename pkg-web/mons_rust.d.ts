@@ -10,18 +10,23 @@
 export function winner(fen_w: string, fen_b: string, flat_moves_string_w: string, flat_moves_string_b: string): string;
 /**
 */
-export enum Consumable {
-  Potion = 0,
-  Bomb = 1,
-  BombOrPotion = 2,
+export enum Modifier {
+  SelectPotion = 0,
+  SelectBomb = 1,
+  Cancel = 2,
 }
 /**
 */
-export enum AvailableMoveKind {
+export enum NextInputKind {
   MonMove = 0,
   ManaMove = 1,
-  Action = 2,
-  Potion = 3,
+  MysticAction = 2,
+  DemonAction = 3,
+  DemonAdditionalStep = 4,
+  SpiritTargetCapture = 5,
+  SpiritTargetMove = 6,
+  SelectConsumable = 7,
+  BombAttack = 8,
 }
 /**
 */
@@ -53,27 +58,13 @@ export enum ManaKind {
 }
 /**
 */
-export enum MonKind {
-  Demon = 0,
-  Drainer = 1,
-  Angel = 2,
-  Spirit = 3,
-  Mystic = 4,
-}
-/**
-*/
-export enum Modifier {
-  SelectPotion = 0,
-  SelectBomb = 1,
-  Cancel = 2,
-}
-/**
-*/
-export enum OutputModelKind {
-  InvalidInput = 0,
-  LocationsToStartFrom = 1,
-  NextInputOptions = 2,
-  Events = 3,
+export enum SquareModelKind {
+  Regular = 0,
+  ConsumableBase = 1,
+  SupermanaBase = 2,
+  ManaBase = 3,
+  ManaPool = 4,
+  MonBase = 5,
 }
 /**
 */
@@ -86,32 +77,41 @@ export enum ItemModelKind {
 }
 /**
 */
-export enum SquareModelKind {
-  Regular = 0,
-  ConsumableBase = 1,
-  SupermanaBase = 2,
-  ManaBase = 3,
-  ManaPool = 4,
-  MonBase = 5,
-}
-/**
-*/
 export enum Color {
   White = 0,
   Black = 1,
 }
 /**
 */
-export enum NextInputKind {
+export enum Consumable {
+  Potion = 0,
+  Bomb = 1,
+  BombOrPotion = 2,
+}
+/**
+*/
+export enum AvailableMoveKind {
   MonMove = 0,
   ManaMove = 1,
-  MysticAction = 2,
-  DemonAction = 3,
-  DemonAdditionalStep = 4,
-  SpiritTargetCapture = 5,
-  SpiritTargetMove = 6,
-  SelectConsumable = 7,
-  BombAttack = 8,
+  Action = 2,
+  Potion = 3,
+}
+/**
+*/
+export enum OutputModelKind {
+  InvalidInput = 0,
+  LocationsToStartFrom = 1,
+  NextInputOptions = 2,
+  Events = 3,
+}
+/**
+*/
+export enum MonKind {
+  Demon = 0,
+  Drainer = 1,
+  Angel = 2,
+  Spirit = 3,
+  Mystic = 4,
 }
 /**
 */
@@ -267,17 +267,17 @@ export class NextInputModel {
 export class OutputModel {
   free(): void;
 /**
-* @returns {Array<any>}
+* @returns {(Location)[]}
 */
-  locations(): Array<any>;
+  locations(): (Location)[];
 /**
-* @returns {Array<any>}
+* @returns {(NextInputModel)[]}
 */
-  next_inputs(): Array<any>;
+  next_inputs(): (NextInputModel)[];
 /**
-* @returns {Array<any>}
+* @returns {(EventModel)[]}
 */
-  events(): Array<any>;
+  events(): (EventModel)[];
 /**
 * @returns {string}
 */
@@ -313,9 +313,9 @@ export interface InitOutput {
   readonly __wbg_outputmodel_free: (a: number) => void;
   readonly __wbg_get_outputmodel_kind: (a: number) => number;
   readonly __wbg_set_outputmodel_kind: (a: number, b: number) => void;
-  readonly outputmodel_locations: (a: number) => number;
-  readonly outputmodel_next_inputs: (a: number) => number;
-  readonly outputmodel_events: (a: number) => number;
+  readonly outputmodel_locations: (a: number, b: number) => void;
+  readonly outputmodel_next_inputs: (a: number, b: number) => void;
+  readonly outputmodel_events: (a: number, b: number) => void;
   readonly outputmodel_input_fen: (a: number, b: number) => void;
   readonly __wbg_itemmodel_free: (a: number) => void;
   readonly __wbg_manamodel_free: (a: number) => void;

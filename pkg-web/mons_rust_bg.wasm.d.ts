@@ -18,9 +18,9 @@ export function monsgamemodel_locations_with_content(a: number, b: number): void
 export function __wbg_outputmodel_free(a: number): void;
 export function __wbg_get_outputmodel_kind(a: number): number;
 export function __wbg_set_outputmodel_kind(a: number, b: number): void;
-export function outputmodel_locations(a: number): number;
-export function outputmodel_next_inputs(a: number): number;
-export function outputmodel_events(a: number): number;
+export function outputmodel_locations(a: number, b: number): void;
+export function outputmodel_next_inputs(a: number, b: number): void;
+export function outputmodel_events(a: number, b: number): void;
 export function outputmodel_input_fen(a: number, b: number): void;
 export function __wbg_itemmodel_free(a: number): void;
 export function __wbg_manamodel_free(a: number): void;

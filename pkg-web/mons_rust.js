@@ -1,25 +1,5 @@
 let wasm;
 
-const heap = new Array(128).fill(undefined);
-
-heap.push(undefined, null, true, false);
-
-function getObject(idx) { return heap[idx]; }
-
-let heap_next = heap.length;
-
-function dropObject(idx) {
-    if (idx < 132) return;
-    heap[idx] = heap_next;
-    heap_next = idx;
-}
-
-function takeObject(idx) {
-    const ret = getObject(idx);
-    dropObject(idx);
-    return ret;
-}
-
 const cachedTextDecoder = (typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8', { ignoreBOM: true, fatal: true }) : { decode: () => { throw Error('TextDecoder not available') } } );
 
 if (typeof TextDecoder !== 'undefined') { cachedTextDecoder.decode(); };
@@ -112,6 +92,12 @@ function getUint32Memory0() {
     return cachedUint32Memory0;
 }
 
+const heap = new Array(128).fill(undefined);
+
+heap.push(undefined, null, true, false);
+
+let heap_next = heap.length;
+
 function addHeapObject(obj) {
     if (heap_next === heap.length) heap.push(heap.length + 1);
     const idx = heap_next;
@@ -145,6 +131,20 @@ function _assertClass(instance, klass) {
 function getArrayI32FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getInt32Memory0().subarray(ptr / 4, ptr / 4 + len);
+}
+
+function getObject(idx) { return heap[idx]; }
+
+function dropObject(idx) {
+    if (idx < 132) return;
+    heap[idx] = heap_next;
+    heap_next = idx;
+}
+
+function takeObject(idx) {
+    const ret = getObject(idx);
+    dropObject(idx);
+    return ret;
 }
 
 function getArrayJsValueFromWasm0(ptr, len) {
@@ -191,10 +191,10 @@ export function winner(fen_w, fen_b, flat_moves_string_w, flat_moves_string_b) {
 
 /**
 */
-export const Consumable = Object.freeze({ Potion:0,"0":"Potion",Bomb:1,"1":"Bomb",BombOrPotion:2,"2":"BombOrPotion", });
+export const Modifier = Object.freeze({ SelectPotion:0,"0":"SelectPotion",SelectBomb:1,"1":"SelectBomb",Cancel:2,"2":"Cancel", });
 /**
 */
-export const AvailableMoveKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",Action:2,"2":"Action",Potion:3,"3":"Potion", });
+export const NextInputKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",MysticAction:2,"2":"MysticAction",DemonAction:3,"3":"DemonAction",DemonAdditionalStep:4,"4":"DemonAdditionalStep",SpiritTargetCapture:5,"5":"SpiritTargetCapture",SpiritTargetMove:6,"6":"SpiritTargetMove",SelectConsumable:7,"7":"SelectConsumable",BombAttack:8,"8":"BombAttack", });
 /**
 */
 export const EventModelKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",ManaScored:2,"2":"ManaScored",MysticAction:3,"3":"MysticAction",DemonAction:4,"4":"DemonAction",DemonAdditionalStep:5,"5":"DemonAdditionalStep",SpiritTargetMove:6,"6":"SpiritTargetMove",PickupBomb:7,"7":"PickupBomb",PickupPotion:8,"8":"PickupPotion",PickupMana:9,"9":"PickupMana",MonFainted:10,"10":"MonFainted",ManaDropped:11,"11":"ManaDropped",SupermanaBackToBase:12,"12":"SupermanaBackToBase",BombAttack:13,"13":"BombAttack",MonAwake:14,"14":"MonAwake",BombExplosion:15,"15":"BombExplosion",NextTurn:16,"16":"NextTurn",GameOver:17,"17":"GameOver", });
@@ -203,25 +203,25 @@ export const EventModelKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1
 export const ManaKind = Object.freeze({ Regular:0,"0":"Regular",Supermana:1,"1":"Supermana", });
 /**
 */
-export const MonKind = Object.freeze({ Demon:0,"0":"Demon",Drainer:1,"1":"Drainer",Angel:2,"2":"Angel",Spirit:3,"3":"Spirit",Mystic:4,"4":"Mystic", });
-/**
-*/
-export const Modifier = Object.freeze({ SelectPotion:0,"0":"SelectPotion",SelectBomb:1,"1":"SelectBomb",Cancel:2,"2":"Cancel", });
-/**
-*/
-export const OutputModelKind = Object.freeze({ InvalidInput:0,"0":"InvalidInput",LocationsToStartFrom:1,"1":"LocationsToStartFrom",NextInputOptions:2,"2":"NextInputOptions",Events:3,"3":"Events", });
+export const SquareModelKind = Object.freeze({ Regular:0,"0":"Regular",ConsumableBase:1,"1":"ConsumableBase",SupermanaBase:2,"2":"SupermanaBase",ManaBase:3,"3":"ManaBase",ManaPool:4,"4":"ManaPool",MonBase:5,"5":"MonBase", });
 /**
 */
 export const ItemModelKind = Object.freeze({ Mon:0,"0":"Mon",Mana:1,"1":"Mana",MonWithMana:2,"2":"MonWithMana",MonWithConsumable:3,"3":"MonWithConsumable",Consumable:4,"4":"Consumable", });
 /**
 */
-export const SquareModelKind = Object.freeze({ Regular:0,"0":"Regular",ConsumableBase:1,"1":"ConsumableBase",SupermanaBase:2,"2":"SupermanaBase",ManaBase:3,"3":"ManaBase",ManaPool:4,"4":"ManaPool",MonBase:5,"5":"MonBase", });
-/**
-*/
 export const Color = Object.freeze({ White:0,"0":"White",Black:1,"1":"Black", });
 /**
 */
-export const NextInputKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",MysticAction:2,"2":"MysticAction",DemonAction:3,"3":"DemonAction",DemonAdditionalStep:4,"4":"DemonAdditionalStep",SpiritTargetCapture:5,"5":"SpiritTargetCapture",SpiritTargetMove:6,"6":"SpiritTargetMove",SelectConsumable:7,"7":"SelectConsumable",BombAttack:8,"8":"BombAttack", });
+export const Consumable = Object.freeze({ Potion:0,"0":"Potion",Bomb:1,"1":"Bomb",BombOrPotion:2,"2":"BombOrPotion", });
+/**
+*/
+export const AvailableMoveKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",Action:2,"2":"Action",Potion:3,"3":"Potion", });
+/**
+*/
+export const OutputModelKind = Object.freeze({ InvalidInput:0,"0":"InvalidInput",LocationsToStartFrom:1,"1":"LocationsToStartFrom",NextInputOptions:2,"2":"NextInputOptions",Events:3,"3":"Events", });
+/**
+*/
+export const MonKind = Object.freeze({ Demon:0,"0":"Demon",Drainer:1,"1":"Drainer",Angel:2,"2":"Angel",Spirit:3,"3":"Spirit",Mystic:4,"4":"Mystic", });
 
 const EventModelFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
@@ -787,25 +787,52 @@ export class OutputModel {
         wasm.__wbg_set_outputmodel_kind(this.__wbg_ptr, arg0);
     }
     /**
-    * @returns {Array<any>}
+    * @returns {(Location)[]}
     */
     locations() {
-        const ret = wasm.outputmodel_locations(this.__wbg_ptr);
-        return takeObject(ret);
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.outputmodel_locations(retptr, this.__wbg_ptr);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            var v1 = getArrayJsValueFromWasm0(r0, r1).slice();
+            wasm.__wbindgen_free(r0, r1 * 4, 4);
+            return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
     }
     /**
-    * @returns {Array<any>}
+    * @returns {(NextInputModel)[]}
     */
     next_inputs() {
-        const ret = wasm.outputmodel_next_inputs(this.__wbg_ptr);
-        return takeObject(ret);
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.outputmodel_next_inputs(retptr, this.__wbg_ptr);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            var v1 = getArrayJsValueFromWasm0(r0, r1).slice();
+            wasm.__wbindgen_free(r0, r1 * 4, 4);
+            return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
     }
     /**
-    * @returns {Array<any>}
+    * @returns {(EventModel)[]}
     */
     events() {
-        const ret = wasm.outputmodel_events(this.__wbg_ptr);
-        return takeObject(ret);
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.outputmodel_events(retptr, this.__wbg_ptr);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            var v1 = getArrayJsValueFromWasm0(r0, r1).slice();
+            wasm.__wbindgen_free(r0, r1 * 4, 4);
+            return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
     }
     /**
     * @returns {string}
@@ -890,10 +917,6 @@ async function __wbg_load(module, imports) {
 function __wbg_get_imports() {
     const imports = {};
     imports.wbg = {};
-    imports.wbg.__wbg_location_new = function(arg0) {
-        const ret = Location.__wrap(arg0);
-        return addHeapObject(ret);
-    };
     imports.wbg.__wbg_eventmodel_new = function(arg0) {
         const ret = EventModel.__wrap(arg0);
         return addHeapObject(ret);
@@ -902,19 +925,12 @@ function __wbg_get_imports() {
         const ret = NextInputModel.__wrap(arg0);
         return addHeapObject(ret);
     };
-    imports.wbg.__wbindgen_object_drop_ref = function(arg0) {
-        takeObject(arg0);
+    imports.wbg.__wbg_location_new = function(arg0) {
+        const ret = Location.__wrap(arg0);
+        return addHeapObject(ret);
     };
     imports.wbg.__wbg_location_unwrap = function(arg0) {
         const ret = Location.__unwrap(takeObject(arg0));
-        return ret;
-    };
-    imports.wbg.__wbg_new_16b304a2cfa7ff4a = function() {
-        const ret = new Array();
-        return addHeapObject(ret);
-    };
-    imports.wbg.__wbg_push_a5b05aedc7234f9f = function(arg0, arg1) {
-        const ret = getObject(arg0).push(getObject(arg1));
         return ret;
     };
     imports.wbg.__wbindgen_throw = function(arg0, arg1) {
