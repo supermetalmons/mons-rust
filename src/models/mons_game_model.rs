@@ -196,7 +196,31 @@ pub enum ManaKind {
 #[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct NextInputModel {
-    // TODO: implement
+    pub location: Option<Location>,
+    pub modifier: Option<Modifier>,
+    pub kind: NextInputKind,
+    pub actor_mon_item: Option<ItemModel>
+}
+
+impl NextInputModel {
+    fn new(input: &NextInput) -> Self {
+        Self {
+            location: match input.input {
+                Input::Location(loc) => Some(loc),
+                _ => None,
+            },
+            modifier: match input.input {
+                Input::Modifier(modifier) => Some(modifier),
+                _ => None,
+            },
+            kind: input.kind,
+            actor_mon_item: if input.actor_mon_item.is_some() {
+                Some(ItemModel::new(&input.actor_mon_item.unwrap()))
+            } else {
+                None
+            },
+        }
+    }
 }
 
 #[wasm_bindgen]
