@@ -1,4 +1,5 @@
 use crate::*;
+use js_sys::Array;
 
 #[wasm_bindgen]
 #[derive(Debug, Clone)]
@@ -92,16 +93,75 @@ impl MonsGameModel {
 
 #[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum OutputModelKind {
+    InvalidInput,
+    LocationsToStartFrom,
+    NextInputOptions,
+    Events,
+}
+
+#[wasm_bindgen]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct OutputModel {
-    // TODO: implement
-    // TODO: return input_fen here as well to pass it to a peer
+    pub kind: OutputModelKind,
+    locations: Vec<Location>,
+    next_inputs: Vec<NextInputModel>,
+    events: Vec<EventModel>,
+    input_fen: String,
+}
+
+#[wasm_bindgen]
+impl OutputModel {
+
+    pub fn locations(&self) -> Array {
+        self.locations.clone().into_iter().map(JsValue::from).collect()
+    }
+
+    pub fn next_inputs(&self) -> Array {
+        self.next_inputs.clone().into_iter().map(JsValue::from).collect()
+    }
+
+    pub fn events(&self) -> Array {
+        self.events.clone().into_iter().map(JsValue::from).collect()
+    }
+
+    pub fn input_fen(&self) -> String {
+        self.input_fen.clone()
+    }
+
 }
 
 impl OutputModel {
     fn new(output: Output, input_fen: &str) -> Self {
-        // TODO: implement
-        Self {
-            // TODO: fields to be initialized based on the provided item
+        match output {
+            Output::InvalidInput => Self {
+                kind: OutputModelKind::InvalidInput,
+                locations: vec![],
+                next_inputs: vec![],
+                events: vec![],
+                input_fen: input_fen.to_string(),
+            },
+            Output::LocationsToStartFrom(locations) => Self {
+                kind: OutputModelKind::LocationsToStartFrom,
+                locations,
+                next_inputs: vec![],
+                events: vec![],
+                input_fen: input_fen.to_string(),
+            },
+            Output::NextInputOptions(next_inputs) => Self {
+                kind: OutputModelKind::NextInputOptions,
+                locations: vec![],
+                next_inputs: next_inputs.into_iter().map(|input| NextInputModel::new(&input)).collect(),
+                events: vec![],
+                input_fen: input_fen.to_string(),
+            },
+            Output::Events(events) => Self {
+                kind: OutputModelKind::Events,
+                locations: vec![],
+                next_inputs: vec![],
+                events: events.into_iter().map(|event| EventModel::new(&event)).collect(),
+                input_fen: input_fen.to_string(),
+            },
         }
     }
 }
