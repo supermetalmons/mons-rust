@@ -194,37 +194,37 @@ module.exports.winner = function(fen_w, fen_b, flat_moves_string_w, flat_moves_s
 
 /**
 */
-module.exports.Color = Object.freeze({ White:0,"0":"White",Black:1,"1":"Black", });
-/**
-*/
-module.exports.MonKind = Object.freeze({ Demon:0,"0":"Demon",Drainer:1,"1":"Drainer",Angel:2,"2":"Angel",Spirit:3,"3":"Spirit",Mystic:4,"4":"Mystic", });
+module.exports.AvailableMoveKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",Action:2,"2":"Action",Potion:3,"3":"Potion", });
 /**
 */
 module.exports.SquareModelKind = Object.freeze({ Regular:0,"0":"Regular",ConsumableBase:1,"1":"ConsumableBase",SupermanaBase:2,"2":"SupermanaBase",ManaBase:3,"3":"ManaBase",ManaPool:4,"4":"ManaPool",MonBase:5,"5":"MonBase", });
 /**
 */
-module.exports.ManaKind = Object.freeze({ Regular:0,"0":"Regular",Supermana:1,"1":"Supermana", });
+module.exports.OutputModelKind = Object.freeze({ InvalidInput:0,"0":"InvalidInput",LocationsToStartFrom:1,"1":"LocationsToStartFrom",NextInputOptions:2,"2":"NextInputOptions",Events:3,"3":"Events", });
 /**
 */
 module.exports.Modifier = Object.freeze({ SelectPotion:0,"0":"SelectPotion",SelectBomb:1,"1":"SelectBomb",Cancel:2,"2":"Cancel", });
 /**
 */
-module.exports.AvailableMoveKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",Action:2,"2":"Action",Potion:3,"3":"Potion", });
-/**
-*/
-module.exports.NextInputKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",MysticAction:2,"2":"MysticAction",DemonAction:3,"3":"DemonAction",DemonAdditionalStep:4,"4":"DemonAdditionalStep",SpiritTargetCapture:5,"5":"SpiritTargetCapture",SpiritTargetMove:6,"6":"SpiritTargetMove",SelectConsumable:7,"7":"SelectConsumable",BombAttack:8,"8":"BombAttack", });
-/**
-*/
 module.exports.EventModelKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",ManaScored:2,"2":"ManaScored",MysticAction:3,"3":"MysticAction",DemonAction:4,"4":"DemonAction",DemonAdditionalStep:5,"5":"DemonAdditionalStep",SpiritTargetMove:6,"6":"SpiritTargetMove",PickupBomb:7,"7":"PickupBomb",PickupPotion:8,"8":"PickupPotion",PickupMana:9,"9":"PickupMana",MonFainted:10,"10":"MonFainted",ManaDropped:11,"11":"ManaDropped",SupermanaBackToBase:12,"12":"SupermanaBackToBase",BombAttack:13,"13":"BombAttack",MonAwake:14,"14":"MonAwake",BombExplosion:15,"15":"BombExplosion",NextTurn:16,"16":"NextTurn",GameOver:17,"17":"GameOver", });
 /**
 */
-module.exports.Consumable = Object.freeze({ Potion:0,"0":"Potion",Bomb:1,"1":"Bomb",BombOrPotion:2,"2":"BombOrPotion", });
+module.exports.Color = Object.freeze({ White:0,"0":"White",Black:1,"1":"Black", });
 /**
 */
 module.exports.ItemModelKind = Object.freeze({ Mon:0,"0":"Mon",Mana:1,"1":"Mana",MonWithMana:2,"2":"MonWithMana",MonWithConsumable:3,"3":"MonWithConsumable",Consumable:4,"4":"Consumable", });
 /**
 */
-module.exports.OutputModelKind = Object.freeze({ InvalidInput:0,"0":"InvalidInput",LocationsToStartFrom:1,"1":"LocationsToStartFrom",NextInputOptions:2,"2":"NextInputOptions",Events:3,"3":"Events", });
+module.exports.MonKind = Object.freeze({ Demon:0,"0":"Demon",Drainer:1,"1":"Drainer",Angel:2,"2":"Angel",Spirit:3,"3":"Spirit",Mystic:4,"4":"Mystic", });
+/**
+*/
+module.exports.NextInputKind = Object.freeze({ MonMove:0,"0":"MonMove",ManaMove:1,"1":"ManaMove",MysticAction:2,"2":"MysticAction",DemonAction:3,"3":"DemonAction",DemonAdditionalStep:4,"4":"DemonAdditionalStep",SpiritTargetCapture:5,"5":"SpiritTargetCapture",SpiritTargetMove:6,"6":"SpiritTargetMove",SelectConsumable:7,"7":"SelectConsumable",BombAttack:8,"8":"BombAttack", });
+/**
+*/
+module.exports.Consumable = Object.freeze({ Potion:0,"0":"Potion",Bomb:1,"1":"Bomb",BombOrPotion:2,"2":"BombOrPotion", });
+/**
+*/
+module.exports.ManaKind = Object.freeze({ Regular:0,"0":"Regular",Supermana:1,"1":"Supermana", });
 
 const EventModelFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
@@ -522,6 +522,13 @@ class MonsGameModel {
     free() {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_monsgamemodel_free(ptr);
+    }
+    /**
+    * @returns {MonsGameModel}
+    */
+    static new() {
+        const ret = wasm.monsgamemodel_new();
+        return MonsGameModel.__wrap(ret);
     }
     /**
     * @param {string} fen
@@ -895,8 +902,8 @@ class SquareModel {
 }
 module.exports.SquareModel = SquareModel;
 
-module.exports.__wbg_location_new = function(arg0) {
-    const ret = Location.__wrap(arg0);
+module.exports.__wbg_nextinputmodel_new = function(arg0) {
+    const ret = NextInputModel.__wrap(arg0);
     return addHeapObject(ret);
 };
 
@@ -905,8 +912,8 @@ module.exports.__wbg_eventmodel_new = function(arg0) {
     return addHeapObject(ret);
 };
 
-module.exports.__wbg_nextinputmodel_new = function(arg0) {
-    const ret = NextInputModel.__wrap(arg0);
+module.exports.__wbg_location_new = function(arg0) {
+    const ret = Location.__wrap(arg0);
     return addHeapObject(ret);
 };
 

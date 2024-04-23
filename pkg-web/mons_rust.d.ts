@@ -10,26 +10,6 @@
 export function winner(fen_w: string, fen_b: string, flat_moves_string_w: string, flat_moves_string_b: string): string;
 /**
 */
-export enum Modifier {
-  SelectPotion = 0,
-  SelectBomb = 1,
-  Cancel = 2,
-}
-/**
-*/
-export enum NextInputKind {
-  MonMove = 0,
-  ManaMove = 1,
-  MysticAction = 2,
-  DemonAction = 3,
-  DemonAdditionalStep = 4,
-  SpiritTargetCapture = 5,
-  SpiritTargetMove = 6,
-  SelectConsumable = 7,
-  BombAttack = 8,
-}
-/**
-*/
 export enum EventModelKind {
   MonMove = 0,
   ManaMove = 1,
@@ -52,9 +32,53 @@ export enum EventModelKind {
 }
 /**
 */
-export enum ManaKind {
-  Regular = 0,
-  Supermana = 1,
+export enum MonKind {
+  Demon = 0,
+  Drainer = 1,
+  Angel = 2,
+  Spirit = 3,
+  Mystic = 4,
+}
+/**
+*/
+export enum Modifier {
+  SelectPotion = 0,
+  SelectBomb = 1,
+  Cancel = 2,
+}
+/**
+*/
+export enum NextInputKind {
+  MonMove = 0,
+  ManaMove = 1,
+  MysticAction = 2,
+  DemonAction = 3,
+  DemonAdditionalStep = 4,
+  SpiritTargetCapture = 5,
+  SpiritTargetMove = 6,
+  SelectConsumable = 7,
+  BombAttack = 8,
+}
+/**
+*/
+export enum Consumable {
+  Potion = 0,
+  Bomb = 1,
+  BombOrPotion = 2,
+}
+/**
+*/
+export enum OutputModelKind {
+  InvalidInput = 0,
+  LocationsToStartFrom = 1,
+  NextInputOptions = 2,
+  Events = 3,
+}
+/**
+*/
+export enum Color {
+  White = 0,
+  Black = 1,
 }
 /**
 */
@@ -77,16 +101,9 @@ export enum ItemModelKind {
 }
 /**
 */
-export enum Color {
-  White = 0,
-  Black = 1,
-}
-/**
-*/
-export enum Consumable {
-  Potion = 0,
-  Bomb = 1,
-  BombOrPotion = 2,
+export enum ManaKind {
+  Regular = 0,
+  Supermana = 1,
 }
 /**
 */
@@ -95,23 +112,6 @@ export enum AvailableMoveKind {
   ManaMove = 1,
   Action = 2,
   Potion = 3,
-}
-/**
-*/
-export enum OutputModelKind {
-  InvalidInput = 0,
-  LocationsToStartFrom = 1,
-  NextInputOptions = 2,
-  Events = 3,
-}
-/**
-*/
-export enum MonKind {
-  Demon = 0,
-  Drainer = 1,
-  Angel = 2,
-  Spirit = 3,
-  Mystic = 4,
 }
 /**
 */
@@ -185,6 +185,10 @@ export class Mon {
 */
 export class MonsGameModel {
   free(): void;
+/**
+* @returns {MonsGameModel}
+*/
+  static new(): MonsGameModel;
 /**
 * @param {string} fen
 * @returns {MonsGameModel | undefined}
@@ -297,6 +301,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
   readonly __wbg_monsgamemodel_free: (a: number) => void;
+  readonly monsgamemodel_new: () => number;
   readonly monsgamemodel_from_fen: (a: number, b: number) => number;
   readonly monsgamemodel_fen: (a: number, b: number) => void;
   readonly monsgamemodel_process_input: (a: number, b: number, c: number, d: number) => number;

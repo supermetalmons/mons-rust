@@ -10,18 +10,11 @@
 export function winner(fen_w: string, fen_b: string, flat_moves_string_w: string, flat_moves_string_b: string): string;
 /**
 */
-export enum Color {
-  White = 0,
-  Black = 1,
-}
-/**
-*/
-export enum MonKind {
-  Demon = 0,
-  Drainer = 1,
-  Angel = 2,
-  Spirit = 3,
-  Mystic = 4,
+export enum AvailableMoveKind {
+  MonMove = 0,
+  ManaMove = 1,
+  Action = 2,
+  Potion = 3,
 }
 /**
 */
@@ -35,9 +28,11 @@ export enum SquareModelKind {
 }
 /**
 */
-export enum ManaKind {
-  Regular = 0,
-  Supermana = 1,
+export enum OutputModelKind {
+  InvalidInput = 0,
+  LocationsToStartFrom = 1,
+  NextInputOptions = 2,
+  Events = 3,
 }
 /**
 */
@@ -45,27 +40,6 @@ export enum Modifier {
   SelectPotion = 0,
   SelectBomb = 1,
   Cancel = 2,
-}
-/**
-*/
-export enum AvailableMoveKind {
-  MonMove = 0,
-  ManaMove = 1,
-  Action = 2,
-  Potion = 3,
-}
-/**
-*/
-export enum NextInputKind {
-  MonMove = 0,
-  ManaMove = 1,
-  MysticAction = 2,
-  DemonAction = 3,
-  DemonAdditionalStep = 4,
-  SpiritTargetCapture = 5,
-  SpiritTargetMove = 6,
-  SelectConsumable = 7,
-  BombAttack = 8,
 }
 /**
 */
@@ -91,10 +65,9 @@ export enum EventModelKind {
 }
 /**
 */
-export enum Consumable {
-  Potion = 0,
-  Bomb = 1,
-  BombOrPotion = 2,
+export enum Color {
+  White = 0,
+  Black = 1,
 }
 /**
 */
@@ -107,11 +80,38 @@ export enum ItemModelKind {
 }
 /**
 */
-export enum OutputModelKind {
-  InvalidInput = 0,
-  LocationsToStartFrom = 1,
-  NextInputOptions = 2,
-  Events = 3,
+export enum MonKind {
+  Demon = 0,
+  Drainer = 1,
+  Angel = 2,
+  Spirit = 3,
+  Mystic = 4,
+}
+/**
+*/
+export enum NextInputKind {
+  MonMove = 0,
+  ManaMove = 1,
+  MysticAction = 2,
+  DemonAction = 3,
+  DemonAdditionalStep = 4,
+  SpiritTargetCapture = 5,
+  SpiritTargetMove = 6,
+  SelectConsumable = 7,
+  BombAttack = 8,
+}
+/**
+*/
+export enum Consumable {
+  Potion = 0,
+  Bomb = 1,
+  BombOrPotion = 2,
+}
+/**
+*/
+export enum ManaKind {
+  Regular = 0,
+  Supermana = 1,
 }
 /**
 */
@@ -185,6 +185,10 @@ export class Mon {
 */
 export class MonsGameModel {
   free(): void;
+/**
+* @returns {MonsGameModel}
+*/
+  static new(): MonsGameModel;
 /**
 * @param {string} fen
 * @returns {MonsGameModel | undefined}

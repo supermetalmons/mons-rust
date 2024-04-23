@@ -2,6 +2,7 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export function __wbg_monsgamemodel_free(a: number): void;
+export function monsgamemodel_new(): number;
 export function monsgamemodel_from_fen(a: number, b: number): number;
 export function monsgamemodel_fen(a: number, b: number): void;
 export function monsgamemodel_process_input(a: number, b: number, c: number, d: number): number;
