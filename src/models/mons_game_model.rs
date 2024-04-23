@@ -177,6 +177,15 @@ pub struct ManaModel {
     pub color: Color,
 }
 
+impl ManaModel {
+    fn new(item: &Mana) -> Self {
+        match item {
+            Mana::Regular(color) => ManaModel { kind: ManaKind::Regular, color: *color },
+            Mana::Supermana => ManaModel { kind: ManaKind::Supermana, color: Color::White },
+        }
+    }
+}
+
 #[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ManaKind {
@@ -192,6 +201,204 @@ pub struct NextInputModel {
 
 #[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum EventModelKind {
+    MonMove,
+    ManaMove,
+    ManaScored,
+    MysticAction,
+    DemonAction,
+    DemonAdditionalStep,
+    SpiritTargetMove,
+    PickupBomb,
+    PickupPotion,
+    PickupMana,
+    MonFainted,
+    ManaDropped,
+    SupermanaBackToBase,
+    BombAttack,
+    MonAwake,
+    BombExplosion,
+    NextTurn,
+    GameOver,
+}
+
+#[wasm_bindgen]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct EventModel {
-    // TODO: implement
+    kind: EventModelKind,
+    item_model: Option<ItemModel>,
+    mon_model: Option<Mon>,
+    mana: Option<ManaModel>,
+    loc1: Option<Location>,
+    loc2: Option<Location>,
+    color: Option<Color>,
+}
+
+impl EventModel {
+    fn new(event: &Event) -> Self {
+        match event {
+            Event::MonMove { item, from, to } => EventModel {
+                kind: EventModelKind::MonMove,
+                item_model: Some(ItemModel::new(item)),
+                mon_model: None,
+                mana: None,
+                loc1: Some(*from),
+                loc2: Some(*to),
+                color: None,
+            },
+            Event::ManaMove { mana, from, to } => EventModel {
+                kind: EventModelKind::ManaMove,
+                item_model: None,
+                mon_model: None,
+                mana: Some(ManaModel::new(mana)),
+                loc1: Some(*from),
+                loc2: Some(*to),
+                color: None,
+            },
+            Event::ManaScored { mana, at } => EventModel {
+                kind: EventModelKind::ManaScored,
+                item_model: None,
+                mon_model: None,
+                mana: Some(ManaModel::new(mana)),
+                loc1: Some(*at),
+                loc2: None,
+                color: None,
+            },
+            Event::MysticAction { mystic, from, to } => EventModel {
+                kind: EventModelKind::MysticAction,
+                item_model: None,
+                mon_model: Some(mystic.clone()),
+                mana: None,
+                loc1: Some(*from),
+                loc2: Some(*to),
+                color: None,
+            },
+            Event::DemonAction { demon, from, to } => EventModel {
+                kind: EventModelKind::DemonAction,
+                item_model: None,
+                mon_model: Some(demon.clone()),
+                mana: None,
+                loc1: Some(*from),
+                loc2: Some(*to),
+                color: None,
+            },
+            Event::DemonAdditionalStep { demon, from, to } => EventModel {
+                kind: EventModelKind::DemonAdditionalStep,
+                item_model: None,
+                mon_model: Some(demon.clone()),
+                mana: None,
+                loc1: Some(*from),
+                loc2: Some(*to),
+                color: None,
+            },
+            Event::SpiritTargetMove { item, from, to } => EventModel {
+                kind: EventModelKind::SpiritTargetMove,
+                item_model: Some(ItemModel::new(item)),
+                mon_model: None,
+                mana: None,
+                loc1: Some(*from),
+                loc2: Some(*to),
+                color: None,
+            },
+            Event::PickupBomb { by, at } => EventModel {
+                kind: EventModelKind::PickupBomb,
+                item_model: None,
+                mon_model: Some(by.clone()),
+                mana: None,
+                loc1: Some(*at),
+                loc2: None,
+                color: None,
+            },
+            Event::PickupPotion { by, at } => EventModel {
+                kind: EventModelKind::PickupPotion,
+                item_model: Some(ItemModel::new(by)),
+                mon_model: None,
+                mana: None,
+                loc1: Some(*at),
+                loc2: None,
+                color: None,
+            },
+            Event::PickupMana { mana, by, at } => EventModel {
+                kind: EventModelKind::PickupMana,
+                item_model: None,
+                mon_model: Some(by.clone()),
+                mana: Some(ManaModel::new(mana)),
+                loc1: Some(*at),
+                loc2: None,
+                color: None,
+            },
+            Event::MonFainted { mon, from, to } => EventModel {
+                kind: EventModelKind::MonFainted,
+                item_model: None,
+                mon_model: Some(mon.clone()),
+                mana: None,
+                loc1: Some(*from),
+                loc2: Some(*to),
+                color: None,
+            },
+            Event::ManaDropped { mana, at } => EventModel {
+                kind: EventModelKind::ManaDropped,
+                item_model: None,
+                mon_model: None,
+                mana: Some(ManaModel::new(mana)),
+                loc1: Some(*at),
+                loc2: None,
+                color: None,
+            },
+            Event::SupermanaBackToBase { from, to } => EventModel {
+                kind: EventModelKind::SupermanaBackToBase,
+                item_model: None,
+                mon_model: None,
+                mana: None,
+                loc1: Some(*from),
+                loc2: Some(*to),
+                color: None,
+            },
+            Event::BombAttack { by, from, to } => EventModel {
+                kind: EventModelKind::BombAttack,
+                item_model: None,
+                mon_model: Some(by.clone()),
+                mana: None,
+                loc1: Some(*from),
+                loc2: Some(*to),
+                color: None,
+            },
+            Event::MonAwake { mon, at } => EventModel {
+                kind: EventModelKind::MonAwake,
+                item_model: None,
+                mon_model: Some(mon.clone()),
+                mana: None,
+                loc1: Some(*at),
+                loc2: None,
+                color: None,
+            },
+            Event::BombExplosion { at } => EventModel {
+                kind: EventModelKind::BombExplosion,
+                item_model: None,
+                mon_model: None,
+                mana: None,
+                loc1: Some(*at),
+                loc2: None,
+                color: None,
+            },
+            Event::NextTurn { color } => EventModel {
+                kind: EventModelKind::NextTurn,
+                item_model: None,
+                mon_model: None,
+                mana: None,
+                loc1: None,
+                loc2: None,
+                color: Some(*color),
+            },
+            Event::GameOver { winner } => EventModel {
+                kind: EventModelKind::GameOver,
+                item_model: None,
+                mon_model: None,
+                mana: None,
+                loc1: None,
+                loc2: None,
+                color: Some(*winner),
+            },
+        }
+    }
 }
