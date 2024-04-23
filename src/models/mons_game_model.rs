@@ -139,7 +139,15 @@ impl ItemModel {
 #[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct ManaModel {
-    // TODO: implement
+    pub kind: ManaKind,
+    pub color: Color,
+}
+
+#[wasm_bindgen]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum ManaKind {
+    Regular,
+    Supermana,
 }
 
 #[wasm_bindgen]
