@@ -175,9 +175,9 @@ impl OutputModel {
 #[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct SquareModel {
-    kind: SquareModelKind,
-    color: Option<Color>,
-    mon_kind: Option<MonKind>,
+    pub kind: SquareModelKind,
+    pub color: Option<Color>,
+    pub mon_kind: Option<MonKind>,
 }
 
 #[wasm_bindgen]
@@ -217,18 +217,18 @@ pub enum ItemModelKind {
 #[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct ItemModel {
-    kind: ItemModelKind,
-    mon: Option<Mon>,
-    mana: Option<Mana>,
-    consumable: Option<Consumable>,
+    pub kind: ItemModelKind,
+    pub mon: Option<Mon>,
+    pub mana: Option<ManaModel>,
+    pub consumable: Option<Consumable>,
 }
 
 impl ItemModel {
     fn new(item: &Item) -> Self {
         let (kind, mon, mana, consumable) = match item {
             Item::Mon { mon } => (ItemModelKind::Mon, Some(*mon), None, None),
-            Item::Mana { mana } => (ItemModelKind::Mana, None, Some(*mana), None),
-            Item::MonWithMana { mon, mana } => (ItemModelKind::MonWithMana, Some(*mon), Some(*mana), None),
+            Item::Mana { mana } => (ItemModelKind::Mana, None, Some(ManaModel::new(mana)), None),
+            Item::MonWithMana { mon, mana } => (ItemModelKind::MonWithMana, Some(*mon), Some(ManaModel::new(mana)), None),
             Item::MonWithConsumable { mon, consumable } => (ItemModelKind::MonWithConsumable, Some(*mon), None, Some(*consumable)),
             Item::Consumable { consumable } => (ItemModelKind::Consumable, None, None, Some(*consumable)),
         };
@@ -315,13 +315,13 @@ pub enum EventModelKind {
 #[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct EventModel {
-    kind: EventModelKind,
-    item: Option<ItemModel>,
-    mon: Option<Mon>,
-    mana: Option<ManaModel>,
-    loc1: Option<Location>,
-    loc2: Option<Location>,
-    color: Option<Color>,
+    pub kind: EventModelKind,
+    pub item: Option<ItemModel>,
+    pub mon: Option<Mon>,
+    pub mana: Option<ManaModel>,
+    pub loc1: Option<Location>,
+    pub loc2: Option<Location>,
+    pub color: Option<Color>,
 }
 
 impl EventModel {
