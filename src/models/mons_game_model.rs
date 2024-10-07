@@ -58,6 +58,7 @@ impl MonsGameModel {
         return SquareModel::new(&square);
     }
 
+    // TODO: make sure it's fine with undo events
     pub fn is_later_than(&self, other_fen: &str) -> bool {
         if let Some(other_game) = MonsGame::from_fen(other_fen) {
             return self.game.is_later_than(&other_game);
@@ -161,6 +162,7 @@ impl OutputModel {
                 events: vec![],
                 input_fen: input_fen.to_string(),
             },
+            // TODO: add undo event
             Output::Events(events) => Self {
                 kind: OutputModelKind::Events,
                 locations: vec![],
@@ -289,6 +291,7 @@ impl NextInputModel {
     }
 }
 
+// TODO: add undo event
 #[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum EventModelKind {
@@ -312,6 +315,7 @@ pub enum EventModelKind {
     GameOver,
 }
 
+// TODO: add undo event
 #[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct EventModel {
