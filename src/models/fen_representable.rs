@@ -263,7 +263,6 @@ impl FenRepresentable for Event {
             Event::BombExplosion { at } => format!("be {}", at.fen()),
             Event::NextTurn { color } => format!("nt {}", color.fen()),
             Event::GameOver { winner } => format!("go {}", winner.fen()),
-            // TODO: undo event
         }
     }
 }
@@ -271,7 +270,6 @@ impl FenRepresentable for Event {
 impl Event {
     fn from_fen(fen: &str) -> Option<Self> {
         let parts: Vec<&str> = fen.split(' ').collect();
-        // TODO: undo event
         match parts.as_slice() {
             ["mm", item_fen, from_fen, to_fen] => {
                 Some(Event::MonMove {
@@ -492,6 +490,8 @@ impl Modifier {
         }
     }
 }
+
+// TODO: undo action as an input that is handled before the game logic
 
 impl FenRepresentable for Input {
     fn fen(&self) -> String {

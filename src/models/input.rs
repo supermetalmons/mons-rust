@@ -12,5 +12,4 @@ pub enum Modifier {
     SelectPotion,
     SelectBomb,
     Cancel,
-    // TODO: undo as an input
 }

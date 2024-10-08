@@ -72,7 +72,6 @@ impl MonsGame {
 
     // MARK: - process input
 
-    // TODO: handle undo input and output undo events
     pub fn process_input(&mut self, input: Vec<Input>, do_not_apply_events: bool, one_option_enough: bool) -> Output {
         if self.winner_color().is_some() {
             return Output::InvalidInput;

@@ -20,5 +20,4 @@ pub enum Event {
     BombExplosion { at: Location },
     NextTurn { color: Color },
     GameOver { winner: Color },
-    // TODO: undo event
 }
