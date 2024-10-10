@@ -1,6 +1,7 @@
 pub mod models;
 pub use models::*;
 
+// TODO: "x" stands for corrupted game data. see if there was cheating.
 #[wasm_bindgen]
 pub fn winner(fen_w: &str, fen_b: &str, flat_moves_string_w: &str, flat_moves_string_b: &str) -> String {
     let moves_w: Vec<&str> = flat_moves_string_w.split("-").collect();
