@@ -399,20 +399,10 @@ impl MonsGame {
                         Item::Mon { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => return None,
                         Item::Mana { mana } => {
                             if let Some(start_mana) = start_item.mana() {
-                                match start_mana {
-                                    Mana::Supermana => {
-                                        events.push(Event::SupermanaBackToBase {
-                                            from: start_location,
-                                            to: self.board.supermana_base(),
-                                        });
-                                    }
-                                    _ => {
-                                        events.push(Event::ManaDropped {
-                                            mana: start_mana.clone(),
-                                            at: start_location,
-                                        });
-                                    }
-                                }
+                                events.push(Event::ManaDropped {
+                                    mana: start_mana.clone(),
+                                    at: start_location,
+                                });
                             }
                             if let Some(mon) = start_item.mon() {
                                 events.push(Event::PickupMana {
