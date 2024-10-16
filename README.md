@@ -7,6 +7,4 @@ or
 
 ## publishing to npm
 
-`npm run build`
-
-`npm publish`
+`./publish.sh`
