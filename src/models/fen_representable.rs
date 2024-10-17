@@ -502,6 +502,8 @@ impl FenRepresentable for Input {
     }
 }
 
+// TODO: learn to handle undo somehow
+
 impl Input {
     pub fn fen_from_array(inputs: &[Input]) -> String {
         inputs.iter()
