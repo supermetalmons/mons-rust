@@ -39,6 +39,10 @@ impl MonsGameModel {
         return OutputModel::new(output, input_fen.as_str());
     }
 
+    pub fn can_takeback(&self) -> bool {
+        return self.game.can_takeback();
+    }
+
     pub fn takeback(&mut self) -> OutputModel {
         let inputs: Vec<Input> = vec![Input::Takeback];
         let input_fen =  Input::fen_from_array(&inputs);

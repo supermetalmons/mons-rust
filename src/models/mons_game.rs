@@ -13,6 +13,7 @@ pub struct MonsGame {
     pub white_potions_count: i32,
     pub black_potions_count: i32,
     pub turn_number: i32,
+    pub takeback_fens: Vec<String>,
 }
 
 impl MonsGame {
@@ -28,6 +29,7 @@ impl MonsGame {
             white_potions_count: 0,
             black_potions_count: 0,
             turn_number: 1,
+            takeback_fens: vec![],
         }
     }
 
@@ -42,6 +44,7 @@ impl MonsGame {
         white_potions_count: i32,
         black_potions_count: i32,
         turn_number: i32,
+        takeback_fens: Vec<String>,
     ) -> Self {
         Self {
             board,
@@ -54,6 +57,7 @@ impl MonsGame {
             white_potions_count,
             black_potions_count,
             turn_number,
+            takeback_fens,
         }
     }
 
@@ -72,6 +76,10 @@ impl MonsGame {
 
     // MARK: - process input
 
+    pub fn can_takeback(&self) -> bool {
+        self.takeback_fens.len() > 1
+    }
+
     pub fn process_input(&mut self, input: Vec<Input>, do_not_apply_events: bool, one_option_enough: bool) -> Output {
         if self.winner_color().is_some() {
             return Output::InvalidInput;
@@ -80,11 +88,23 @@ impl MonsGame {
             return self.suggested_input_to_start_with();
         }
 
-
         if input.len() == 1 {
             if input[0] == Input::Takeback {
-                // TODO: perform takeback
-                return Output::Events(vec![Event::Takeback]);
+                if self.can_takeback() {
+                    self.takeback_fens.pop();
+                    let fen = self.takeback_fens.last().cloned();
+                    if let Some(fen) = fen {
+                        let fen_game = MonsGame::from_fen(fen.as_str());
+                        if let Some(fen_game) = fen_game {
+                            self.update_with(&fen_game);
+                        }
+                    } else {
+                        return Output::InvalidInput;
+                    }
+                    return Output::Events(vec![Event::Takeback]);
+                } else {
+                    return Output::InvalidInput;
+                }
             }
         }
 
@@ -845,6 +865,10 @@ impl MonsGame {
     // MARK: - apply events
 
     pub fn apply_and_add_resulting_events(&mut self, events: Vec<Event>) -> Vec<Event> {
+        if self.takeback_fens.len() == 0 {
+            self.takeback_fens.push(self.fen());
+        }
+
         let mut extra_events = Vec::new();
         for event in &events {
             match event {
@@ -957,6 +981,7 @@ impl MonsGame {
     
         if let Some(winner) = self.winner_color() {
             extra_events.push(Event::GameOver { winner });
+            self.takeback_fens.clear();
         } else if self.is_first_turn() && !self.player_can_move_mon() ||
                   !self.is_first_turn() && !self.player_can_move_mana() ||
                   !self.is_first_turn() && !self.player_can_move_mon() && self.board.find_mana(self.active_color).is_none() {
@@ -976,8 +1001,11 @@ impl MonsGame {
                     }                    
                 }
             }
+            self.takeback_fens = vec![self.fen()];
+        } else {
+            self.takeback_fens.push(self.fen());
         }
-        
+
         events.into_iter().chain(extra_events.into_iter()).collect()
     }
     
