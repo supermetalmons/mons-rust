@@ -39,8 +39,8 @@ impl MonsGameModel {
         return OutputModel::new(output, input_fen.as_str());
     }
 
-    pub fn can_takeback(&self) -> bool {
-        return self.game.can_takeback();
+    pub fn can_takeback(&self, color: Color) -> bool {
+        return self.game.can_takeback(color);
     }
 
     pub fn takeback(&mut self) -> OutputModel {

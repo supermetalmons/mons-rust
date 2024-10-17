@@ -76,8 +76,8 @@ impl MonsGame {
 
     // MARK: - process input
 
-    pub fn can_takeback(&self) -> bool {
-        self.takeback_fens.len() > 1
+    pub fn can_takeback(&self, color: Color) -> bool {
+        self.takeback_fens.len() > 1 && self.active_color == color
     }
 
     pub fn process_input(&mut self, input: Vec<Input>, do_not_apply_events: bool, one_option_enough: bool) -> Output {
@@ -90,7 +90,7 @@ impl MonsGame {
 
         if input.len() == 1 {
             if input[0] == Input::Takeback {
-                if self.can_takeback() {
+                if self.can_takeback(self.active_color) {
                     self.takeback_fens.pop();
                     let fen = self.takeback_fens.last().cloned();
                     if let Some(fen) = fen {
