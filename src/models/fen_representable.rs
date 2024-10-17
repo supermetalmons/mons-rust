@@ -263,6 +263,7 @@ impl FenRepresentable for Event {
             Event::BombExplosion { at } => format!("be {}", at.fen()),
             Event::NextTurn { color } => format!("nt {}", color.fen()),
             Event::GameOver { winner } => format!("go {}", winner.fen()),
+            Event::Takeback => "z".to_string(),
         }
     }
 }
@@ -491,18 +492,15 @@ impl Modifier {
     }
 }
 
-// TODO: undo action as an input that is handled before the game logic
-
 impl FenRepresentable for Input {
     fn fen(&self) -> String {
         match self {
             Input::Location(location) => format!("l{}", location.fen()),
             Input::Modifier(modifier) => format!("m{}", modifier.fen()),
+            Input::Takeback => "z".to_string(),
         }
     }
 }
-
-// TODO: learn to handle undo somehow
 
 impl Input {
     pub fn fen_from_array(inputs: &[Input]) -> String {
@@ -516,6 +514,7 @@ impl Input {
         fen.chars().next().and_then(|prefix| match prefix {
             'l' => Location::from_fen(&fen[1..]).map(Input::Location),
             'm' => Modifier::from_fen(&fen[1..]).map(Input::Modifier),
+            'z' => Some(Input::Takeback),
             _ => None,
         })
     }

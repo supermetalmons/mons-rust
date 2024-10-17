@@ -79,6 +79,15 @@ impl MonsGame {
         if input.is_empty() {
             return self.suggested_input_to_start_with();
         }
+
+
+        if input.len() == 1 {
+            if input[0] == Input::Takeback {
+                // TODO: perform takeback
+                return Output::Events(vec![Event::Takeback]);
+            }
+        }
+
         let start_location = match input.get(0) {
             Some(Input::Location(location)) => *location,
             _ => return Output::InvalidInput,
@@ -942,7 +951,7 @@ impl MonsGame {
                 Event::BombExplosion { at } => {
                     self.board.remove_item(*at);
                 }
-                Event::MonAwake { .. } | Event::GameOver { .. } | Event::NextTurn { .. } => {}
+                Event::MonAwake { .. } | Event::GameOver { .. } | Event::NextTurn { .. } => {} | Event::Takeback => {}
             }
         }
     

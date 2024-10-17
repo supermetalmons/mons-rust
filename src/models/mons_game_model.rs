@@ -39,6 +39,13 @@ impl MonsGameModel {
         return OutputModel::new(output, input_fen.as_str());
     }
 
+    pub fn takeback(&mut self) -> OutputModel {
+        let inputs: Vec<Input> = vec![Input::Takeback];
+        let input_fen =  Input::fen_from_array(&inputs);
+        let output = self.game.process_input(inputs, false, false);
+        return OutputModel::new(output, input_fen.as_str());
+    }
+
     pub fn process_input_fen(&mut self, input_fen: &str) -> OutputModel {
         let inputs = Input::array_from_fen(input_fen);
         let output = self.game.process_input(inputs, false, false);
@@ -310,6 +317,7 @@ pub enum EventModelKind {
     BombExplosion,
     NextTurn,
     GameOver,
+    Takeback,
 }
 
 #[wasm_bindgen]
@@ -488,6 +496,15 @@ impl EventModel {
                 loc1: None,
                 loc2: None,
                 color: Some(*winner),
+            },
+            Event::Takeback => EventModel {
+                kind: EventModelKind::Takeback,
+                item: None,
+                mon: None,
+                mana: None,
+                loc1: None,
+                loc2: None,
+                color: None,
             },
         }
     }
