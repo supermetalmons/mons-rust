@@ -33,35 +33,7 @@ impl MonsGame {
         }
     }
 
-    pub fn with_params(
-        board: Board,
-        white_score: i32,
-        black_score: i32,
-        active_color: Color,
-        actions_used_count: i32,
-        mana_moves_count: i32,
-        mons_moves_count: i32,
-        white_potions_count: i32,
-        black_potions_count: i32,
-        turn_number: i32,
-        takeback_fens: Vec<String>,
-    ) -> Self {
-        Self {
-            board,
-            white_score,
-            black_score,
-            active_color,
-            actions_used_count,
-            mana_moves_count,
-            mons_moves_count,
-            white_potions_count,
-            black_potions_count,
-            turn_number,
-            takeback_fens,
-        }
-    }
-
-    pub fn update_with(&mut self, other_game: &MonsGame) {
+    fn update_with(&mut self, other_game: &MonsGame) {
         self.board = Board::new_with_items(other_game.board.items.clone());
         self.white_score = other_game.white_score;
         self.black_score = other_game.black_score;
