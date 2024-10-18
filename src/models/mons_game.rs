@@ -14,6 +14,7 @@ pub struct MonsGame {
     pub black_potions_count: i32,
     pub turn_number: i32,
     pub takeback_fens: Vec<String>,
+    pub is_moves_verified: bool,
 }
 
 impl MonsGame {
@@ -30,6 +31,7 @@ impl MonsGame {
             black_potions_count: 0,
             turn_number: 1,
             takeback_fens: vec![],
+            is_moves_verified: true,
         }
     }
 

@@ -40,6 +40,7 @@ impl MonsGame {
             black_potions_count: fields[7].parse().ok()?,
             turn_number: fields[8].parse().ok()?,
             takeback_fens: vec![],
+            is_moves_verified: false,
         })
     }
 }

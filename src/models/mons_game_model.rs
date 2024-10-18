@@ -77,6 +77,21 @@ impl MonsGameModel {
         }
     }
 
+    pub fn is_moves_verified(&self) -> bool {
+        return self.game.is_moves_verified;
+    }
+
+    pub fn verify_moves(&mut self, flat_moves_string_w: &str, flat_moves_string_b: &str) -> bool {
+        let moves_w: Vec<&str> = flat_moves_string_w.split("-").collect();
+        let moves_b: Vec<&str> = flat_moves_string_b.split("-").collect();
+
+        // TODO: implement verification
+        const verification_result: bool = true;
+        
+        self.game.is_moves_verified = verification_result;
+        return verification_result;
+    }
+
     pub fn active_color(&self) -> Color {
         return self.game.active_color;
     }
