@@ -85,11 +85,32 @@ impl MonsGameModel {
         let moves_w: Vec<&str> = flat_moves_string_w.split("-").collect();
         let moves_b: Vec<&str> = flat_moves_string_b.split("-").collect();
 
-        // TODO: implement verification
-        const verification_result: bool = true;
-        
-        self.game.is_moves_verified = verification_result;
-        return verification_result;
+        let mut freshVerificationGame = MonsGame::new();
+
+        let mut w_index = 0;
+        let mut b_index = 0;
+    
+        while w_index < moves_w.len() || b_index < moves_b.len() {
+            if freshVerificationGame.active_color == Color::White {
+                if w_index >= moves_w.len() { return false; }
+                let inputs = Input::array_from_fen(moves_w[w_index]);
+                _ = freshVerificationGame.process_input(inputs, false, false);
+                w_index += 1;
+            } else {
+                if b_index >= moves_b.len() { return false; }
+                let inputs = Input::array_from_fen(moves_b[b_index]);
+                _ = freshVerificationGame.process_input(inputs, false, false);
+                b_index += 1;
+            }
+        }
+
+        if freshVerificationGame.fen() == self.game.fen() {
+            self.game.takeback_fens = freshVerificationGame.takeback_fens;
+            self.game.is_moves_verified = true;
+            return true;
+        } else {
+            return false;
+        }
     }
 
     pub fn active_color(&self) -> Color {
