@@ -82,8 +82,16 @@ impl MonsGameModel {
     }
 
     pub fn verify_moves(&mut self, flat_moves_string_w: &str, flat_moves_string_b: &str) -> bool {
-        let moves_w: Vec<&str> = flat_moves_string_w.split("-").collect();
-        let moves_b: Vec<&str> = flat_moves_string_b.split("-").collect();
+        let moves_w: Vec<&str> = if flat_moves_string_w.is_empty() {
+            Vec::new()
+        } else {
+            flat_moves_string_w.split("-").collect()
+        };
+        let moves_b: Vec<&str> = if flat_moves_string_b.is_empty() {
+            Vec::new()
+        } else {
+            flat_moves_string_b.split("-").collect()
+        };
 
         let mut fresh_verification_game = MonsGame::new();
 
