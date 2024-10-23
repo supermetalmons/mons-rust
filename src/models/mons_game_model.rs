@@ -137,6 +137,10 @@ impl MonsGameModel {
         return self.game.white_score;
     }
 
+    pub fn turn_number(&self) -> i32 {
+        return self.game.turn_number;
+    }
+
     pub fn available_move_kinds(&self) -> Vec<i32> {
         let map = self.game.available_move_kinds();
         return [map[&AvailableMoveKind::MonMove], map[&AvailableMoveKind::ManaMove], map[&AvailableMoveKind::Action], map[&AvailableMoveKind::Potion]].to_vec();
