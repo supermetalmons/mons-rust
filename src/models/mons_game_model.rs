@@ -141,6 +141,14 @@ impl MonsGameModel {
         return self.game.turn_number;
     }
 
+    pub fn inactive_player_items_counters(&self) -> Vec<i32> {
+        let player_potions_count = match self.game.active_color.other() {
+            Color::White => self.game.white_potions_count,
+            Color::Black => self.game.black_potions_count,
+        };
+        return [0, 0, 0, player_potions_count].to_vec();
+    }
+
     pub fn available_move_kinds(&self) -> Vec<i32> {
         let map = self.game.available_move_kinds();
         return [map[&AvailableMoveKind::MonMove], map[&AvailableMoveKind::ManaMove], map[&AvailableMoveKind::Action], map[&AvailableMoveKind::Potion]].to_vec();
