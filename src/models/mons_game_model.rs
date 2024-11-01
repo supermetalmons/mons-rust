@@ -8,18 +8,15 @@ pub struct MonsGameModel {
 
 #[wasm_bindgen]
 impl MonsGameModel {
-
     pub fn new() -> MonsGameModel {
         Self {
-            game: MonsGame::new()
+            game: MonsGame::new(),
         }
     }
-    
+
     pub fn from_fen(fen: &str) -> Option<MonsGameModel> {
         if let Some(game) = MonsGame::from_fen(fen) {
-            Some(Self {
-                game: game,
-            })
+            Some(Self { game: game })
         } else {
             return None;
         }
@@ -29,12 +26,51 @@ impl MonsGameModel {
         return self.game.fen();
     }
 
-    pub fn process_input(&mut self, locations: Vec<Location>, modifier: Option<Modifier>) -> OutputModel {
+    pub fn automove(&mut self) -> OutputModel {
+        let mut output = self.game.process_input(vec![], false, false);
+        let mut inputs = Vec::new();
+
+        loop {
+            match output {
+                Output::InvalidInput => {
+                    return OutputModel::new(Output::InvalidInput, "");
+                }
+                Output::LocationsToStartFrom(locations) => {
+                    if locations.is_empty() {
+                        return OutputModel::new(Output::InvalidInput, "");
+                    }
+                    let random_index = self.random_index(locations.len());
+                    let location = locations[random_index];
+                    inputs.push(Input::Location(location));
+                    output = self.game.process_input(inputs.clone(), false, false);
+                }
+                Output::NextInputOptions(options) => {
+                    if options.is_empty() {
+                        return OutputModel::new(Output::InvalidInput, "");
+                    }
+                    let random_index = self.random_index(options.len());
+                    let next_input = options[random_index].input.clone();
+                    inputs.push(next_input);
+                    output = self.game.process_input(inputs.clone(), false, false);
+                }
+                Output::Events(events) => {
+                    let input_fen = Input::fen_from_array(&inputs);
+                    return OutputModel::new(Output::Events(events), input_fen.as_str());
+                }
+            }
+        }
+    }
+
+    pub fn process_input(
+        &mut self,
+        locations: Vec<Location>,
+        modifier: Option<Modifier>,
+    ) -> OutputModel {
         let mut inputs: Vec<Input> = locations.into_iter().map(Input::Location).collect();
         if let Some(modifier) = modifier {
             inputs.push(Input::Modifier(modifier));
         }
-        let input_fen =  Input::fen_from_array(&inputs);
+        let input_fen = Input::fen_from_array(&inputs);
         let output = self.game.process_input(inputs, false, false);
         return OutputModel::new(output, input_fen.as_str());
     }
@@ -45,7 +81,7 @@ impl MonsGameModel {
 
     pub fn takeback(&mut self) -> OutputModel {
         let inputs: Vec<Input> = vec![Input::Takeback];
-        let input_fen =  Input::fen_from_array(&inputs);
+        let input_fen = Input::fen_from_array(&inputs);
         let output = self.game.process_input(inputs, false, false);
         return OutputModel::new(output, input_fen.as_str());
     }
@@ -61,7 +97,7 @@ impl MonsGameModel {
             return Some(ItemModel::new(item));
         } else {
             return None;
-        }        
+        }
     }
 
     pub fn square(&self, at: Location) -> SquareModel {
@@ -97,15 +133,19 @@ impl MonsGameModel {
 
         let mut w_index = 0;
         let mut b_index = 0;
-    
+
         while w_index < moves_w.len() || b_index < moves_b.len() {
             if fresh_verification_game.active_color == Color::White {
-                if w_index >= moves_w.len() { return false; }
+                if w_index >= moves_w.len() {
+                    return false;
+                }
                 let inputs = Input::array_from_fen(moves_w[w_index]);
                 _ = fresh_verification_game.process_input(inputs, false, false);
                 w_index += 1;
             } else {
-                if b_index >= moves_b.len() { return false; }
+                if b_index >= moves_b.len() {
+                    return false;
+                }
                 let inputs = Input::array_from_fen(moves_b[b_index]);
                 _ = fresh_verification_game.process_input(inputs, false, false);
                 b_index += 1;
@@ -151,16 +191,36 @@ impl MonsGameModel {
 
     pub fn available_move_kinds(&self) -> Vec<i32> {
         let map = self.game.available_move_kinds();
-        return [map[&AvailableMoveKind::MonMove], map[&AvailableMoveKind::ManaMove], map[&AvailableMoveKind::Action], map[&AvailableMoveKind::Potion]].to_vec();
+        return [
+            map[&AvailableMoveKind::MonMove],
+            map[&AvailableMoveKind::ManaMove],
+            map[&AvailableMoveKind::Action],
+            map[&AvailableMoveKind::Potion],
+        ]
+        .to_vec();
     }
 
     pub fn locations_with_content(&self) -> Vec<Location> {
-        let mut locations = self.game.board.items.keys().cloned().collect::<Vec<Location>>();
+        let mut locations = self
+            .game
+            .board
+            .items
+            .keys()
+            .cloned()
+            .collect::<Vec<Location>>();
         let mons_bases = self.game.board.all_mons_bases();
         locations.extend(mons_bases);
         locations.sort();
         locations.dedup();
         return locations;
+    }
+
+    fn random_index(&self, len: usize) -> usize {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        (timestamp % len as u128) as usize
     }
 }
 
@@ -185,7 +245,6 @@ pub struct OutputModel {
 
 #[wasm_bindgen]
 impl OutputModel {
-
     pub fn locations(&self) -> Vec<Location> {
         self.locations.clone()
     }
@@ -201,7 +260,6 @@ impl OutputModel {
     pub fn input_fen(&self) -> String {
         self.input_fen.clone()
     }
-
 }
 
 impl OutputModel {
@@ -224,7 +282,10 @@ impl OutputModel {
             Output::NextInputOptions(next_inputs) => Self {
                 kind: OutputModelKind::NextInputOptions,
                 locations: vec![],
-                next_inputs: next_inputs.into_iter().map(|input| NextInputModel::new(&input)).collect(),
+                next_inputs: next_inputs
+                    .into_iter()
+                    .map(|input| NextInputModel::new(&input))
+                    .collect(),
                 events: vec![],
                 input_fen: input_fen.to_string(),
             },
@@ -232,7 +293,10 @@ impl OutputModel {
                 kind: OutputModelKind::Events,
                 locations: vec![],
                 next_inputs: vec![],
-                events: events.into_iter().map(|event| EventModel::new(&event)).collect(),
+                events: events
+                    .into_iter()
+                    .map(|event| EventModel::new(&event))
+                    .collect(),
                 input_fen: input_fen.to_string(),
             },
         }
@@ -261,12 +325,36 @@ pub enum SquareModelKind {
 impl SquareModel {
     fn new(item: &Square) -> Self {
         match item {
-            Square::Regular => SquareModel { kind: SquareModelKind::Regular, color: None, mon_kind: None },
-            Square::ConsumableBase => SquareModel { kind: SquareModelKind::ConsumableBase, color: None, mon_kind: None },
-            Square::SupermanaBase => SquareModel { kind: SquareModelKind::SupermanaBase, color: None, mon_kind: None },
-            Square::ManaBase { color } => SquareModel { kind: SquareModelKind::ManaBase, color: Some(*color), mon_kind: None },
-            Square::ManaPool { color } => SquareModel { kind: SquareModelKind::ManaPool, color: Some(*color), mon_kind: None },
-            Square::MonBase { kind, color } => SquareModel { kind: SquareModelKind::MonBase, color: Some(*color), mon_kind: Some(*kind) },
+            Square::Regular => SquareModel {
+                kind: SquareModelKind::Regular,
+                color: None,
+                mon_kind: None,
+            },
+            Square::ConsumableBase => SquareModel {
+                kind: SquareModelKind::ConsumableBase,
+                color: None,
+                mon_kind: None,
+            },
+            Square::SupermanaBase => SquareModel {
+                kind: SquareModelKind::SupermanaBase,
+                color: None,
+                mon_kind: None,
+            },
+            Square::ManaBase { color } => SquareModel {
+                kind: SquareModelKind::ManaBase,
+                color: Some(*color),
+                mon_kind: None,
+            },
+            Square::ManaPool { color } => SquareModel {
+                kind: SquareModelKind::ManaPool,
+                color: Some(*color),
+                mon_kind: None,
+            },
+            Square::MonBase { kind, color } => SquareModel {
+                kind: SquareModelKind::MonBase,
+                color: Some(*color),
+                mon_kind: Some(*kind),
+            },
         }
     }
 }
@@ -295,11 +383,28 @@ impl ItemModel {
         let (kind, mon, mana, consumable) = match item {
             Item::Mon { mon } => (ItemModelKind::Mon, Some(*mon), None, None),
             Item::Mana { mana } => (ItemModelKind::Mana, None, Some(ManaModel::new(mana)), None),
-            Item::MonWithMana { mon, mana } => (ItemModelKind::MonWithMana, Some(*mon), Some(ManaModel::new(mana)), None),
-            Item::MonWithConsumable { mon, consumable } => (ItemModelKind::MonWithConsumable, Some(*mon), None, Some(*consumable)),
-            Item::Consumable { consumable } => (ItemModelKind::Consumable, None, None, Some(*consumable)),
+            Item::MonWithMana { mon, mana } => (
+                ItemModelKind::MonWithMana,
+                Some(*mon),
+                Some(ManaModel::new(mana)),
+                None,
+            ),
+            Item::MonWithConsumable { mon, consumable } => (
+                ItemModelKind::MonWithConsumable,
+                Some(*mon),
+                None,
+                Some(*consumable),
+            ),
+            Item::Consumable { consumable } => {
+                (ItemModelKind::Consumable, None, None, Some(*consumable))
+            }
         };
-        Self { kind, mon, mana, consumable }
+        Self {
+            kind,
+            mon,
+            mana,
+            consumable,
+        }
     }
 }
 
@@ -313,8 +418,14 @@ pub struct ManaModel {
 impl ManaModel {
     fn new(item: &Mana) -> Self {
         match item {
-            Mana::Regular(color) => ManaModel { kind: ManaKind::Regular, color: *color },
-            Mana::Supermana => ManaModel { kind: ManaKind::Supermana, color: Color::White },
+            Mana::Regular(color) => ManaModel {
+                kind: ManaKind::Regular,
+                color: *color,
+            },
+            Mana::Supermana => ManaModel {
+                kind: ManaKind::Supermana,
+                color: Color::White,
+            },
         }
     }
 }
@@ -332,7 +443,7 @@ pub struct NextInputModel {
     pub location: Option<Location>,
     pub modifier: Option<Modifier>,
     pub kind: NextInputKind,
-    pub actor_mon_item: Option<ItemModel>
+    pub actor_mon_item: Option<ItemModel>,
 }
 
 impl NextInputModel {
