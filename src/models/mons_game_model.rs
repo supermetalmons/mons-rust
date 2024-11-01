@@ -27,8 +27,9 @@ impl MonsGameModel {
     }
 
     pub fn automove(&mut self) -> OutputModel {
-        let mut output = self.game.process_input(vec![], false, false);
         let mut inputs = Vec::new();
+        let mut game = self.game.clone();
+        let mut output = game.process_input(vec![], false, false);
 
         loop {
             match output {
@@ -42,7 +43,7 @@ impl MonsGameModel {
                     let random_index = self.random_index(locations.len());
                     let location = locations[random_index];
                     inputs.push(Input::Location(location));
-                    output = self.game.process_input(inputs.clone(), false, false);
+                    output = game.process_input(inputs.clone(), false, false);
                 }
                 Output::NextInputOptions(options) => {
                     if options.is_empty() {
@@ -51,14 +52,21 @@ impl MonsGameModel {
                     let random_index = self.random_index(options.len());
                     let next_input = options[random_index].input.clone();
                     inputs.push(next_input);
-                    output = self.game.process_input(inputs.clone(), false, false);
+                    output = game.process_input(inputs.clone(), false, false);
                 }
                 Output::Events(events) => {
                     let input_fen = Input::fen_from_array(&inputs);
+                    self.game = game;
                     return OutputModel::new(Output::Events(events), input_fen.as_str());
                 }
             }
         }
+    }
+
+    fn random_index(&self, len: usize) -> usize {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        rng.gen_range(0..len)
     }
 
     pub fn process_input(
@@ -213,14 +221,6 @@ impl MonsGameModel {
         locations.sort();
         locations.dedup();
         return locations;
-    }
-
-    fn random_index(&self, len: usize) -> usize {
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        (timestamp % len as u128) as usize
     }
 }
 
