@@ -270,7 +270,7 @@ impl MonsGame {
                             second_input_options.extend(
                                 self.next_inputs(start_location.reachable_by_demon_action(), NextInputKind::DemonAction, only_one, specific_location, |location| {
                                     if let Some(item) = self.board.item(location) {
-                                        if self.protected_by_opponents_angel().contains(&location) || self.board.item(start_location.location_between(&location)).is_some() {
+                                        if self.protected_by_opponents_angel().contains(&location) || self.board.item(start_location.location_between(&location)).is_some() || self.board.square(start_location.location_between(&location)) == Square::SupermanaBase {
                                             return false;
                                         }
             
