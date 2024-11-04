@@ -72,7 +72,19 @@ mod tests {
     use std::io::{self};
 
     #[test]
-    fn test_from_test_data() -> io::Result<()> {
+    fn automove() -> io::Result<()> {
+        let mut game = MonsGameModel::new();
+        let output = game.automove();
+        println!("{:?}", game.fen());
+        match output.kind {
+            OutputModelKind::Events => (),
+            _ => panic!("Expected Events")
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn check_initial_fen() -> io::Result<()> {
         let game = MonsGame::new();
         let fen = game.fen();
         assert!(fen == "0 0 w 0 0 0 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n03E0xA0xD0xS0xY0xn03");
