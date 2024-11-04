@@ -72,6 +72,20 @@ mod tests {
     use std::io::{self};
 
     #[test]
+    fn explore_memory_footprint() -> io::Result<()> {
+        let mut game = MonsGameModel::new();
+        loop {
+            _ = game.automove();
+            if let Some(winner) = game.winner_color() {
+                log_message(&format!("{:?}", winner))?;
+                break;
+                // game = MonsGameModel::new();
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn automove_till_end() -> io::Result<()> {
         let mut game = MonsGameModel::new();
         loop {
@@ -103,4 +117,14 @@ mod tests {
         assert!(fen == "0 0 w 0 0 0 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n03E0xA0xD0xS0xY0xn03");
         Ok(())
     }
+
+    fn log_message(msg: &str) -> io::Result<()> {
+        use std::io::Write;
+        let stdout = std::io::stdout();
+        let mut handle = stdout.lock();
+        writeln!(handle, "{}", msg)?;
+        handle.flush()?;
+        Ok(())
+    }
+
 }
