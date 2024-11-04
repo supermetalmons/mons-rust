@@ -15,7 +15,7 @@ pub mod mon;
 pub mod mons_game;
 pub mod square;
 pub mod mons_game_model;
-
+pub mod scoring;
 pub use input::*;
 pub use location::*;
 pub use output::*;

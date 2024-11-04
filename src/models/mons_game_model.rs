@@ -1,3 +1,4 @@
+use crate::models::scoring::evaluate_preferability;
 use crate::*;
 
 #[wasm_bindgen]
@@ -31,12 +32,12 @@ impl MonsGameModel {
 
         let mut best_game = self.game.clone();
         let mut best_game_output = Self::automove_game(&mut best_game);
-        let mut best_game_preferability = Self::evaluate_preferability(&best_game, start_color);
+        let mut best_game_preferability = evaluate_preferability(&best_game, start_color);
 
         for _ in 0..30 {
             let mut candidate_game = self.game.clone();
             let candidate_output = Self::automove_game(&mut candidate_game);
-            let candidate_preferability = Self::evaluate_preferability(&candidate_game, start_color);
+            let candidate_preferability = evaluate_preferability(&candidate_game, start_color);
 
             if candidate_preferability > best_game_preferability {
                 best_game = candidate_game;
@@ -47,15 +48,6 @@ impl MonsGameModel {
 
         self.game = best_game;
         return best_game_output;
-    }
-
-    fn evaluate_preferability(game: &MonsGame, color: Color) -> i32 {
-        // TODO: better scoring function
-        if color == Color::White {
-            game.white_score
-        } else {
-            game.black_score
-        }
     }
 
     pub fn automove(&mut self) -> OutputModel {
