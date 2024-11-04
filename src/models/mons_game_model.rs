@@ -26,6 +26,11 @@ impl MonsGameModel {
         return self.game.fen();
     }
 
+    pub fn smart_automove(&mut self) -> OutputModel {
+        // TODO: implement
+        return self.automove();
+    }
+
     pub fn automove(&mut self) -> OutputModel {
         let mut inputs = Vec::new();
         let mut output = self.game.process_input(vec![], false, false);
