@@ -73,14 +73,6 @@ mod tests {
 
     #[test]
     fn explore_memory_footprint() -> io::Result<()> {
-        // let mut game = MonsGameModel::new();
-        // loop {
-        //     _ = game.smart_automove();
-        //     if let Some(winner) = game.winner_color() {
-        //         log_message(&format!("{:?}", winner))?;
-        //         game = MonsGameModel::new();
-        //     }
-        // }
         log_message("ok")?;
         Ok(())
     }
