@@ -27,13 +27,24 @@ impl MonsGameModel {
     }
 
     pub fn smart_automove(&mut self) -> OutputModel {
-        // TODO: implement
-        return self.automove();
+        // let start_color: Color = self.game.active_color;
+
+        let mut test_game = self.game.clone();
+        let test_game_output = Self::automove_game(&mut test_game);
+        self.game = test_game;
+
+        // TODO: try different automove options and pick the best one
+
+        return test_game_output;
     }
 
     pub fn automove(&mut self) -> OutputModel {
+        return Self::automove_game(&mut self.game);
+    }
+
+    fn automove_game(game: &mut MonsGame) -> OutputModel {
         let mut inputs = Vec::new();
-        let mut output = self.game.process_input(vec![], false, false);
+        let mut output = game.process_input(vec![], false, false);
 
         loop {
             match output {
@@ -44,19 +55,19 @@ impl MonsGameModel {
                     if locations.is_empty() {
                         return OutputModel::new(Output::InvalidInput, "");
                     }
-                    let random_index = self.random_index(locations.len());
+                    let random_index = random_index(locations.len());
                     let location = locations[random_index];
                     inputs.push(Input::Location(location));
-                    output = self.game.process_input(inputs.clone(), false, false);
+                    output = game.process_input(inputs.clone(), false, false);
                 }
                 Output::NextInputOptions(options) => {
                     if options.is_empty() {
                         return OutputModel::new(Output::InvalidInput, "");
                     }
-                    let random_index = self.random_index(options.len());
+                    let random_index = random_index(options.len());
                     let next_input = options[random_index].input.clone();
                     inputs.push(next_input);
-                    output = self.game.process_input(inputs.clone(), false, false);
+                    output = game.process_input(inputs.clone(), false, false);
                 }
                 Output::Events(events) => {
                     let input_fen = Input::fen_from_array(&inputs);
@@ -64,12 +75,6 @@ impl MonsGameModel {
                 }
             }
         }
-    }
-
-    fn random_index(&self, len: usize) -> usize {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        rng.gen_range(0..len)
     }
 
     pub fn process_input(
@@ -225,6 +230,12 @@ impl MonsGameModel {
         locations.dedup();
         return locations;
     }
+}
+
+fn random_index(len: usize) -> usize {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    rng.gen_range(0..len)
 }
 
 #[wasm_bindgen]
