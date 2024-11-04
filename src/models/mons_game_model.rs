@@ -27,15 +27,35 @@ impl MonsGameModel {
     }
 
     pub fn smart_automove(&mut self) -> OutputModel {
-        // let start_color: Color = self.game.active_color;
+        let start_color: Color = self.game.active_color;
 
-        let mut test_game = self.game.clone();
-        let test_game_output = Self::automove_game(&mut test_game);
-        self.game = test_game;
+        let mut best_game = self.game.clone();
+        let mut best_game_output = Self::automove_game(&mut best_game);
+        let mut best_game_preferability = Self::evaluate_preferability(&best_game, start_color);
 
-        // TODO: try different automove options and pick the best one
+        for _ in 0..30 {
+            let mut candidate_game = self.game.clone();
+            let candidate_output = Self::automove_game(&mut candidate_game);
+            let candidate_preferability = Self::evaluate_preferability(&candidate_game, start_color);
 
-        return test_game_output;
+            if candidate_preferability > best_game_preferability {
+                best_game = candidate_game;
+                best_game_output = candidate_output;
+                best_game_preferability = candidate_preferability;
+            }
+        }
+
+        self.game = best_game;
+        return best_game_output;
+    }
+
+    fn evaluate_preferability(game: &MonsGame, color: Color) -> i32 {
+        // TODO: better scoring function
+        if color == Color::White {
+            game.white_score
+        } else {
+            game.black_score
+        }
     }
 
     pub fn automove(&mut self) -> OutputModel {
