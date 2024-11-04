@@ -1,9 +1,16 @@
 #!/bin/bash
 
+# Run tests first
+echo "Running tests..."
+if ! cargo test; then
+    echo "Tests failed. Aborting publish."
+    exit 1
+fi
+
 # Build for web
 wasm-pack build --target web --out-dir pkg/web --out-name mons-web
 
-# Build for nodejs
+# Build for nodejs 
 wasm-pack build --target nodejs --out-dir pkg/node --out-name mons-rust
 
 # Publish web package
