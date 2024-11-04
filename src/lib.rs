@@ -72,6 +72,19 @@ mod tests {
     use std::io::{self};
 
     #[test]
+    fn automove_till_end() -> io::Result<()> {
+        let mut game = MonsGameModel::new();
+        loop {
+            _ = game.automove();
+            if let Some(winner) = game.winner_color() {
+                println!("Winner: {:?}", winner);
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn automove() -> io::Result<()> {
         let mut game = MonsGameModel::new();
         let output = game.automove();
