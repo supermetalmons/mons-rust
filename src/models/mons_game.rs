@@ -236,7 +236,7 @@ impl MonsGame {
                     
                             item_allows && match square {
                                 Square::Regular | Square::ConsumableBase | Square::ManaBase { .. } | Square::ManaPool { .. } => true,
-                                Square::SupermanaBase => matches!(item, Some(Item::Mana { mana: Mana::Supermana })) && mon.kind == MonKind::Drainer,
+                                Square::SupermanaBase => matches!(item, Some(Item::Mana { mana: Mana::Supermana }) | None) && mon.kind == MonKind::Drainer,
                                 Square::MonBase { kind, color } => kind == mon.kind && color == mon.color,
                             }
                         }),
@@ -647,7 +647,7 @@ impl MonsGame {
                         match destination_square {
                             Square::Regular | Square::ConsumableBase | Square::ManaBase { .. } | Square::ManaPool { .. } => true,
                             Square::SupermanaBase => {
-                                target_mana == Some(&Mana::Supermana) || (matches!(target_mon.map(|mon| mon.kind), Some(MonKind::Drainer)) && matches!(destination_item, Some(Item::Mana { mana: Mana::Supermana })))
+                                target_mana == Some(&Mana::Supermana) || (matches!(target_mon.map(|mon| mon.kind), Some(MonKind::Drainer)) && (destination_item.is_none() || matches!(destination_item, Some(Item::Mana { mana: Mana::Supermana }))))
                             },
                             Square::MonBase { kind, color } => {
                                 if let Some(mon) = target_mon {
@@ -940,7 +940,11 @@ impl MonsGame {
                     self.board.put(Item::Mana { mana: *mana }, *at);
                 }
                 Event::SupermanaBackToBase { from: _, to } => {
-                    self.board.put(Item::Mana { mana: Mana::Supermana }, *to);
+                    if let Some(Item::Mon { mon }) = self.board.item(*to) {
+                        self.board.put(Item::MonWithMana { mon: mon.clone(), mana: Mana::Supermana }, *to);
+                    } else {
+                        self.board.put(Item::Mana { mana: Mana::Supermana }, *to);
+                    }
                 }
                 Event::BombAttack { by, from, to } => {
                     self.board.remove_item(*to);
