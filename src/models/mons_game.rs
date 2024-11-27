@@ -894,7 +894,11 @@ impl MonsGame {
                         self.actions_used_count += 1;
                     }
                     self.board.remove_item(*from);
-                    self.board.put(Item::Mon { mon: demon.clone() }, *to);
+                    if !events.iter().any(|e| matches!(e, Event::DemonAdditionalStep { .. })) {
+                        self.board.put(Item::Mon { mon: demon.clone() }, *to);
+                    } else {
+                        self.board.remove_item(*to);
+                    }
                 }
                 Event::DemonAdditionalStep { demon, from: _, to } => {
                     self.board.put(Item::Mon { mon: demon.clone() }, *to);
