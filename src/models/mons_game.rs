@@ -632,7 +632,7 @@ impl MonsGame {
                             Some(Item::Consumable { consumable: target_consumable }) => *target_consumable == Consumable::BombOrPotion,
                             None => false,
                         },
-                        Some(Item::Mana { .. }) => matches!(target_item, Some(Item::Mon { mon: target_mon }) if target_mon.kind == MonKind::Drainer && !target_mon.is_fainted()),
+                        Some(Item::Mana { .. }) => matches!(target_mon, Some(mon) if mon.kind == MonKind::Drainer && !mon.is_fainted()),
                         Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => match target_item {
                             Some(Item::Mon { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => false,
                             Some(Item::Mana { .. }) => false,
@@ -647,7 +647,9 @@ impl MonsGame {
                         match destination_square {
                             Square::Regular | Square::ConsumableBase | Square::ManaBase { .. } | Square::ManaPool { .. } => true,
                             Square::SupermanaBase => {
-                                target_mana == Some(&Mana::Supermana) || (target_mana.is_none() && matches!(target_mon.map(|mon| mon.kind), Some(MonKind::Drainer)) && (destination_item.is_none() || matches!(destination_item, Some(Item::Mana { mana: Mana::Supermana }))))
+                                target_mana == Some(&Mana::Supermana) || 
+                                (target_mana.is_none() && matches!(target_mon.map(|mon| mon.kind), Some(MonKind::Drainer)) && (destination_item.is_none() || matches!(destination_item, Some(Item::Mana { mana: Mana::Supermana })))) ||
+                                (matches!(target_mon.map(|mon| mon.kind), Some(MonKind::Drainer)) && (matches!(destination_item, Some(Item::Mana { mana: Mana::Supermana }))))
                             },
                             Square::MonBase { kind, color } => {
                                 if let Some(mon) = target_mon {
@@ -751,7 +753,20 @@ impl MonsGame {
                                         events.push(Event::PickupMana { mana: *travelling_mana, by: *destination_mon, at: destination_location });
                                     },
                                 },
-                                Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => match destination_item {
+                                Item::MonWithMana { mon, mana } => match destination_item {
+                                    Item::Mon { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => return None,
+                                    Item::Mana { mana: destination_mana } => {
+                                        events.push(Event::ManaDropped { mana: *mana, at: target_location });
+                                        events.push(Event::PickupMana { mana: *destination_mana, by: *mon, at: destination_location });
+                                    },
+                                    Item::Consumable { consumable: destination_consumable } => match destination_consumable {
+                                        Consumable::Potion | Consumable::Bomb => return None,
+                                        Consumable::BombOrPotion => {
+                                            events.push(Event::PickupPotion { by: target_item.clone(), at: destination_location });
+                                        },
+                                    },
+                                },
+                                Item::MonWithConsumable { .. } => match destination_item {
                                     Item::Mon { .. } | Item::Mana { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => return None,
                                     Item::Consumable { consumable: destination_consumable } => match destination_consumable {
                                         Consumable::Potion | Consumable::Bomb => return None,
