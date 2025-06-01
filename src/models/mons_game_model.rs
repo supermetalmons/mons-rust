@@ -704,12 +704,12 @@ impl EventModel {
                 loc2: None,
                 color: None,
             },
-            Event::UsePotion => EventModel {
+            Event::UsePotion { at } => EventModel {
                 kind: EventModelKind::UsePotion,
                 item: None,
                 mon: None,
                 mana: None,
-                loc1: None,
+                loc1: Some(*at),
                 loc2: None,
                 color: None,
             },

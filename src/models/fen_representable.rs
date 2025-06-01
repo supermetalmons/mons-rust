@@ -266,7 +266,7 @@ impl FenRepresentable for Event {
             Event::NextTurn { color } => format!("nt {}", color.fen()),
             Event::GameOver { winner } => format!("go {}", winner.fen()),
             Event::Takeback => "z".to_string(),
-            Event::UsePotion => "up".to_string(),
+            Event::UsePotion { at } => format!("up {}", at.fen()),
         }
     }
 }
