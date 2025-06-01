@@ -515,6 +515,7 @@ pub enum EventModelKind {
     NextTurn,
     GameOver,
     Takeback,
+    UsePotion,
 }
 
 #[wasm_bindgen]
@@ -696,6 +697,15 @@ impl EventModel {
             },
             Event::Takeback => EventModel {
                 kind: EventModelKind::Takeback,
+                item: None,
+                mon: None,
+                mana: None,
+                loc1: None,
+                loc2: None,
+                color: None,
+            },
+            Event::UsePotion => EventModel {
+                kind: EventModelKind::UsePotion,
                 item: None,
                 mon: None,
                 mana: None,

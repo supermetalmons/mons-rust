@@ -893,6 +893,7 @@ impl MonsGame {
                         } else {
                             self.black_potions_count -= 1;
                         }
+                        extra_events.push(Event::UsePotion);
                     } else {
                         self.actions_used_count += 1;
                     }
@@ -905,6 +906,7 @@ impl MonsGame {
                         } else {
                             self.black_potions_count -= 1;
                         }
+                        extra_events.push(Event::UsePotion);
                     } else {
                         self.actions_used_count += 1;
                     }
@@ -925,6 +927,7 @@ impl MonsGame {
                         } else {
                             self.black_potions_count -= 1;
                         }
+                        extra_events.push(Event::UsePotion);
                     } else {
                         self.actions_used_count += 1;
                     }
@@ -972,7 +975,7 @@ impl MonsGame {
                 Event::BombExplosion { at } => {
                     self.board.remove_item(*at);
                 }
-                Event::MonAwake { .. } | Event::GameOver { .. } | Event::NextTurn { .. } => {} | Event::Takeback => {}
+                Event::MonAwake { .. } | Event::GameOver { .. } | Event::NextTurn { .. } => {} | Event::Takeback => {} | Event::UsePotion => {}
             }
         }
     

@@ -11,6 +11,7 @@ pub enum Event {
     SpiritTargetMove { item: Item, from: Location, to: Location },
     PickupBomb { by: Mon, at: Location },
     PickupPotion { by: Item, at: Location },
+    UsePotion,
     PickupMana { mana: Mana, by: Mon, at: Location },
     MonFainted { mon: Mon, from: Location, to: Location },
     ManaDropped { mana: Mana, at: Location },
