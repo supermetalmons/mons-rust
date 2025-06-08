@@ -120,6 +120,10 @@ impl MonsGameModel {
         return OutputModel::new(output, input_fen);
     }
 
+    pub fn remove_item(&mut self, location: Location) {
+        self.game.board.remove_item(location);
+    }
+
     pub fn item(&self, at: Location) -> Option<ItemModel> {
         if let Some(item) = self.game.board.item(at) {
             return Some(ItemModel::new(item));
