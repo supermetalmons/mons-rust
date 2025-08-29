@@ -42,6 +42,7 @@ impl MonsGame {
             takeback_fens: vec![],
             is_moves_verified: false,
             with_verbose_tracking,
+            verbose_tracking_entities: vec![],
         })
     }
 }

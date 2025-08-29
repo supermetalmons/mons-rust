@@ -2,6 +2,13 @@ use crate::*;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
+pub struct VerboseTrackingEntity {
+    pub fen: String,
+    pub input_fen: Option<String>,
+    pub event: Option<Event>,
+}
+
+#[derive(Debug, Clone)]
 pub struct MonsGame {
     pub board: Board,
     pub white_score: i32,
@@ -16,6 +23,7 @@ pub struct MonsGame {
     pub takeback_fens: Vec<String>,
     pub is_moves_verified: bool,
     pub with_verbose_tracking: bool,
+    pub verbose_tracking_entities: Vec<VerboseTrackingEntity>,
 }
 
 impl MonsGame {
@@ -34,6 +42,7 @@ impl MonsGame {
             takeback_fens: vec![],
             is_moves_verified: true,
             with_verbose_tracking,
+            verbose_tracking_entities: vec![],
         }
     }
 
