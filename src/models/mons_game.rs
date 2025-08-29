@@ -71,7 +71,6 @@ impl MonsGame {
                     // TODO: if tracking moves history, pop latest entry here as well
                     let fen = self.takeback_fens.last().cloned();
                     if let Some(fen) = fen {
-                        // TODO: pass correct with_verbose_tracking argument in there
                         let fen_game = MonsGame::from_fen(fen.as_str(), false);
                         if let Some(fen_game) = fen_game {
                             self.update_with(&fen_game);
