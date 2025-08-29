@@ -10,7 +10,9 @@ pub struct MonsGameModel {
 #[wasm_bindgen]
 impl MonsGameModel {
     pub fn new() -> MonsGameModel {
-        Self { game: MonsGame::new(true) }
+        Self {
+            game: MonsGame::new(true),
+        }
     }
 
     pub fn from_fen(fen: &str) -> Option<MonsGameModel> {
@@ -184,7 +186,7 @@ impl MonsGameModel {
 
         if fresh_verification_game.fen() == self.game.fen() {
             self.game.takeback_fens = fresh_verification_game.takeback_fens;
-            // TODO: copy verbose moves tracking data as well
+            self.game.verbose_tracking_entities = fresh_verification_game.verbose_tracking_entities;
             self.game.is_moves_verified = true;
             return true;
         } else {
