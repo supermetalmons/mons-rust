@@ -23,7 +23,7 @@ impl FenRepresentable for MonsGame {
 }
 
 impl MonsGame {
-    pub fn from_fen(fen: &str) -> Option<Self> {
+    pub fn from_fen(fen: &str, with_verbose_tracking: bool) -> Option<Self> {
         let fields: Vec<&str> = fen.split_whitespace().collect();
         if fields.len() != 10 {
             return None;
@@ -41,6 +41,7 @@ impl MonsGame {
             turn_number: fields[8].parse().ok()?,
             takeback_fens: vec![],
             is_moves_verified: false,
+            with_verbose_tracking,
         })
     }
 }

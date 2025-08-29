@@ -10,13 +10,13 @@ pub struct MonsGameModel {
 #[wasm_bindgen]
 impl MonsGameModel {
     pub fn new() -> MonsGameModel {
-        Self {
-            game: MonsGame::new(),
-        }
+        // TODO: pass correct with_verbose_tracking argument in there
+        Self { game: MonsGame::new(false) }
     }
 
     pub fn from_fen(fen: &str) -> Option<MonsGameModel> {
-        if let Some(game) = MonsGame::from_fen(fen) {
+        // TODO: pass correct with_verbose_tracking argument in there
+        if let Some(game) = MonsGame::from_fen(fen, false) {
             Some(Self { game: game })
         } else {
             return None;
@@ -138,7 +138,8 @@ impl MonsGameModel {
     }
 
     pub fn is_later_than(&self, other_fen: &str) -> bool {
-        if let Some(other_game) = MonsGame::from_fen(other_fen) {
+        // TODO: pass correct with_verbose_tracking argument in there
+        if let Some(other_game) = MonsGame::from_fen(other_fen, false) {
             return self.game.is_later_than(&other_game);
         } else {
             return true;
@@ -161,7 +162,8 @@ impl MonsGameModel {
             flat_moves_string_b.split("-").collect()
         };
 
-        let mut fresh_verification_game = MonsGame::new();
+        // TODO: pass correct with_verbose_tracking argument in there
+        let mut fresh_verification_game = MonsGame::new(false);
 
         let mut w_index = 0;
         let mut b_index = 0;

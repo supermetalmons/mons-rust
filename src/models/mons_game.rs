@@ -15,10 +15,11 @@ pub struct MonsGame {
     pub turn_number: i32,
     pub takeback_fens: Vec<String>,
     pub is_moves_verified: bool,
+    pub with_verbose_tracking: bool,
 }
 
 impl MonsGame {
-    pub fn new() -> Self {
+    pub fn new(with_verbose_tracking: bool) -> Self {
         Self {
             board: Board::new(),
             white_score: 0,
@@ -32,6 +33,7 @@ impl MonsGame {
             turn_number: 1,
             takeback_fens: vec![],
             is_moves_verified: true,
+            with_verbose_tracking,
         }
     }
 
@@ -69,7 +71,8 @@ impl MonsGame {
                     // TODO: if tracking moves history, pop latest entry here as well
                     let fen = self.takeback_fens.last().cloned();
                     if let Some(fen) = fen {
-                        let fen_game = MonsGame::from_fen(fen.as_str());
+                        // TODO: pass correct with_verbose_tracking argument in there
+                        let fen_game = MonsGame::from_fen(fen.as_str(), false);
                         if let Some(fen_game) = fen_game {
                             self.update_with(&fen_game);
                         }
