@@ -66,6 +66,7 @@ impl MonsGame {
             if input[0] == Input::Takeback {
                 if self.can_takeback(self.active_color) {
                     self.takeback_fens.pop();
+                    // TODO: if tracking moves history, pop latest entry here as well
                     let fen = self.takeback_fens.last().cloned();
                     if let Some(fen) = fen {
                         let fen_game = MonsGame::from_fen(fen.as_str());
@@ -856,7 +857,10 @@ impl MonsGame {
     pub fn apply_and_add_resulting_events(&mut self, events: Vec<Event>) -> Vec<Event> {
         if self.takeback_fens.len() == 0 {
             self.takeback_fens.push(self.fen());
+            // TODO: update moves tracking as well here?
         }
+
+        // TODO: verbose moves, events, and fens tracking — when needed for moves history navigation
 
         let mut extra_events = Vec::new();
         for event in &events {
@@ -1002,8 +1006,10 @@ impl MonsGame {
                 }
             }
             self.takeback_fens = vec![self.fen()];
+            // TODO: update moves tracking as well here?
         } else {
             self.takeback_fens.push(self.fen());
+            // TODO: update moves tracking as well here?
         }
 
         events.into_iter().chain(extra_events.into_iter()).collect()
