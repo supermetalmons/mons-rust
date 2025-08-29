@@ -186,6 +186,7 @@ impl MonsGameModel {
 
         if fresh_verification_game.fen() == self.game.fen() {
             self.game.takeback_fens = fresh_verification_game.takeback_fens;
+            // TODO: copy verbose moves tracking data as well
             self.game.is_moves_verified = true;
             return true;
         } else {
