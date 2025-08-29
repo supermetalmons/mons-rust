@@ -247,6 +247,14 @@ impl MonsGameModel {
         locations.dedup();
         return locations;
     }
+
+    pub fn verbose_tracking_entities(&self) -> Vec<VerboseTrackingEntityModel> {
+        self.game
+            .verbose_tracking_entities
+            .iter()
+            .map(|e| VerboseTrackingEntityModel::new(e))
+            .collect()
+    }
 }
 
 fn random_index(len: usize) -> usize {
@@ -719,5 +727,36 @@ impl EventModel {
                 color: None,
             },
         }
+    }
+}
+
+#[wasm_bindgen]
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct VerboseTrackingEntityModel {
+    fen: String,
+    input_fen: String,
+    events: Vec<Event>,
+}
+
+impl VerboseTrackingEntityModel {
+    fn new(entity: &VerboseTrackingEntity) -> Self {
+        Self {
+            fen: entity.fen.clone(),
+            input_fen: entity.input_fen.clone(),
+            events: entity.events.clone(),
+        }
+    }
+}
+
+#[wasm_bindgen]
+impl VerboseTrackingEntityModel {
+    pub fn fen(&self) -> String {
+        self.fen.clone()
+    }
+    pub fn input_fen(&self) -> String {
+        self.input_fen.clone()
+    }
+    pub fn events(&self) -> Vec<EventModel> {
+        self.events.iter().map(|e| EventModel::new(e)).collect()
     }
 }

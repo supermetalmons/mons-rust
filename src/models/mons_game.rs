@@ -4,8 +4,8 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct VerboseTrackingEntity {
     pub fen: String,
-    pub input_fen: Option<String>,
-    pub event: Option<Event>,
+    pub input_fen: String,
+    pub events: Vec<Event>,
 }
 
 #[derive(Debug, Clone)]
