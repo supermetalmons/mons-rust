@@ -783,4 +783,7 @@ impl VerboseTrackingEntityModel {
     pub fn events(&self) -> Vec<EventModel> {
         self.events.iter().map(|e| EventModel::new(e)).collect()
     }
+    pub fn events_fen(&self) -> String {
+        self.events.iter().map(|e| e.fen()).collect::<Vec<_>>().join(" ")
+    }
 }
