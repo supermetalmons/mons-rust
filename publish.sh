@@ -7,6 +7,15 @@ if ! cargo test; then
     exit 1
 fi
 
+# Bump patch version in Cargo.toml
+echo "Bumping patch version..."
+CURRENT_VERSION=$(grep '^version = "' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+PATCH=$((PATCH + 1))
+NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+sed -i '' "s/^version = \".*\"/version = \"${NEW_VERSION}\"/" Cargo.toml
+echo "Version bumped: ${CURRENT_VERSION} -> ${NEW_VERSION}"
+
 # Build for web
 wasm-pack build --target web --out-dir pkg/web --out-name mons-web
 
