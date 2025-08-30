@@ -4,7 +4,6 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct VerboseTrackingEntity {
     pub fen: String,
-    pub input_fen: String,
     pub events: Vec<Event>,
 }
 
@@ -867,11 +866,15 @@ impl MonsGame {
 
     pub fn apply_and_add_resulting_events(&mut self, events: Vec<Event>) -> Vec<Event> {
         if self.takeback_fens.len() == 0 {
-            self.takeback_fens.push(self.fen());
-            // TODO: update moves tracking as well here?
+            let initial_fen = self.fen();
+            self.takeback_fens.push(initial_fen.clone());
+            if self.with_verbose_tracking && self.verbose_tracking_entities.is_empty() {
+                self.verbose_tracking_entities.push(VerboseTrackingEntity {
+                    fen: initial_fen,
+                    events: vec![],
+                });
+            }
         }
-
-        // TODO: verbose moves, events, and fens tracking — when needed for moves history navigation
 
         let mut extra_events = Vec::new();
         for event in &events {

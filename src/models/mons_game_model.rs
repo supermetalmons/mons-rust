@@ -734,7 +734,6 @@ impl EventModel {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct VerboseTrackingEntityModel {
     fen: String,
-    input_fen: String,
     events: Vec<Event>,
 }
 
@@ -742,7 +741,6 @@ impl VerboseTrackingEntityModel {
     fn new(entity: &VerboseTrackingEntity) -> Self {
         Self {
             fen: entity.fen.clone(),
-            input_fen: entity.input_fen.clone(),
             events: entity.events.clone(),
         }
     }
@@ -752,9 +750,6 @@ impl VerboseTrackingEntityModel {
 impl VerboseTrackingEntityModel {
     pub fn fen(&self) -> String {
         self.fen.clone()
-    }
-    pub fn input_fen(&self) -> String {
-        self.input_fen.clone()
     }
     pub fn events(&self) -> Vec<EventModel> {
         self.events.iter().map(|e| EventModel::new(e)).collect()
