@@ -77,7 +77,7 @@ impl MonsGame {
             if input[0] == Input::Takeback {
                 if self.can_takeback(self.active_color) {
                     self.takeback_fens.pop();
-                    // TODO: if tracking moves history, pop latest entry here as well
+                    self.verbose_tracking_entities.pop();
                     let fen = self.takeback_fens.last().cloned();
                     if let Some(fen) = fen {
                         let fen_game = MonsGame::from_fen(fen.as_str(), false);
