@@ -1020,13 +1020,21 @@ impl MonsGame {
                 }
             }
             self.takeback_fens = vec![self.fen()];
-            // TODO: update moves tracking as well here?
         } else {
             self.takeback_fens.push(self.fen());
-            // TODO: update moves tracking as well here?
+            
         }
 
-        events.into_iter().chain(extra_events.into_iter()).collect()
+        let updated_events: Vec<Event> = events.into_iter().chain(extra_events.into_iter()).collect();
+        if self.with_verbose_tracking {
+            let fen_now = self.fen();
+            self.verbose_tracking_entities.push(VerboseTrackingEntity {
+                fen: fen_now,
+                events: updated_events.clone(),
+            });
+        }
+
+        return updated_events;
     }
     
     fn reset_turn_state(&mut self) {
