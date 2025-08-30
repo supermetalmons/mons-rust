@@ -23,6 +23,35 @@ impl MonsGameModel {
         }
     }
 
+    pub fn without_last_turn(&self) -> Option<MonsGameModel> {
+        let mut takeback_fens = self.game.takeback_fens.clone();
+        let mut verbose_tracking_entities = self.game.verbose_tracking_entities.clone();
+
+        if verbose_tracking_entities.len() <= 1 {
+            return None;
+        }
+
+        if !takeback_fens.is_empty() {
+            takeback_fens.pop();
+        }
+        verbose_tracking_entities.pop();
+
+        let fen = verbose_tracking_entities
+            .last()
+            .map(|e| e.fen.clone())
+            .unwrap_or_else(|| self.game.fen());
+
+        if let Some(mut new_game) = MonsGame::from_fen(fen.as_str(), true) {
+            new_game.takeback_fens = takeback_fens;
+            new_game.verbose_tracking_entities = verbose_tracking_entities;
+            new_game.with_verbose_tracking = self.game.with_verbose_tracking;
+            new_game.is_moves_verified = self.game.is_moves_verified;
+            return Some(Self { game: new_game });
+        }
+
+        None
+    }
+
     pub fn fen(&self) -> String {
         return self.game.fen();
     }
