@@ -741,7 +741,7 @@ impl MonsGame {
                         let destination_item = self.board.item(destination_location);
                         let destination_square = self.board.square(destination_location);
     
-                        events.push(Event::SpiritTargetMove { item: target_item.clone(), from: target_location, to: destination_location });
+                        events.push(Event::SpiritTargetMove { item: target_item.clone(), from: target_location, to: destination_location, by: _start_location });
     
                         if let Some(destination_item) = destination_item {
                             match target_item {
@@ -904,14 +904,14 @@ impl MonsGame {
                         }
                     }
                 }
-                Event::MysticAction { mystic: _, from: _, to } => {
+                Event::MysticAction { mystic: _, from, to } => {
                     if self.actions_used_count >= Config::ACTIONS_PER_TURN {
                         if self.active_color == Color::White {
                             self.white_potions_count -= 1;
                         } else {
                             self.black_potions_count -= 1;
                         }
-                        extra_events.push(Event::UsePotion { at: *to });
+                        extra_events.push(Event::UsePotion { from: *from, to: *to });
                     } else {
                         self.actions_used_count += 1;
                     }
@@ -924,7 +924,8 @@ impl MonsGame {
                         } else {
                             self.black_potions_count -= 1;
                         }
-                        extra_events.push(Event::UsePotion { at: *to });
+                        extra_events.push(Event::UsePotion { from: *from, to: *to });
+                        // TODO: different location for demon additional step
                     } else {
                         self.actions_used_count += 1;
                     }
@@ -938,14 +939,14 @@ impl MonsGame {
                 Event::DemonAdditionalStep { demon, from: _, to } => {
                     self.board.put(Item::Mon { mon: demon.clone() }, *to);
                 }
-                Event::SpiritTargetMove { item, from, to } => {
+                Event::SpiritTargetMove { item, from, to, by } => {
                     if self.actions_used_count >= Config::ACTIONS_PER_TURN {
                         if self.active_color == Color::White {
                             self.white_potions_count -= 1;
                         } else {
                             self.black_potions_count -= 1;
                         }
-                        extra_events.push(Event::UsePotion { at: *to });
+                        extra_events.push(Event::UsePotion { from: *by, to: *to });
                     } else {
                         self.actions_used_count += 1;
                     }

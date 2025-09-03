@@ -53,7 +53,9 @@ impl FenRepresentable for Item {
             Item::Mon { mon } => format!("{}x", mon.fen()),
             Item::Mana { mana } => format!("xx{}", mana.fen()),
             Item::MonWithMana { mon, mana } => format!("{}{}", mon.fen(), mana.fen()),
-            Item::MonWithConsumable { mon, consumable } => format!("{}{}", mon.fen(), consumable.fen()),
+            Item::MonWithConsumable { mon, consumable } => {
+                format!("{}{}", mon.fen(), consumable.fen())
+            }
             Item::Consumable { consumable } => format!("xx{}", consumable.fen()),
         }
     }
@@ -71,7 +73,9 @@ impl Item {
         match mon_fen {
             "xx" => match Mana::from_fen(item_fen) {
                 Some(mana) => Some(Item::Mana { mana }),
-                None => Consumable::from_fen(item_fen).map(|consumable| Item::Consumable { consumable }),
+                None => {
+                    Consumable::from_fen(item_fen).map(|consumable| Item::Consumable { consumable })
+                }
             },
             _ => {
                 let mon = Mon::from_fen(mon_fen)?;
@@ -135,11 +139,17 @@ impl Board {
                         if let Ok(num) = num_chars.parse::<usize>() {
                             j += num;
                         }
-                    },
+                    }
                     _ => {
                         let item_fen: String = chars.by_ref().take(3).collect();
                         if let Some(item) = Item::from_fen(&item_fen) {
-                            items.insert(Location { i: i as i32, j: j as i32 }, item);
+                            items.insert(
+                                Location {
+                                    i: i as i32,
+                                    j: j as i32,
+                                },
+                                item,
+                            );
                         }
                         j += 1;
                     }
@@ -150,7 +160,6 @@ impl Board {
     }
 }
 
-
 impl FenRepresentable for Mon {
     fn fen(&self) -> String {
         let kind_char = match self.kind {
@@ -160,7 +169,11 @@ impl FenRepresentable for Mon {
             MonKind::Spirit => 's',
             MonKind::Mystic => 'y',
         };
-        let kind_char = if self.color == Color::White { kind_char.to_uppercase().to_string() } else { kind_char.to_string() };
+        let kind_char = if self.color == Color::White {
+            kind_char.to_uppercase().to_string()
+        } else {
+            kind_char.to_string()
+        };
         format!("{}{}", kind_char, self.cooldown % 10)
     }
 }
@@ -179,9 +192,17 @@ impl Mon {
             'y' => MonKind::Mystic,
             _ => return None,
         };
-        let color = if chars[0].is_uppercase() { Color::White } else { Color::Black };
+        let color = if chars[0].is_uppercase() {
+            Color::White
+        } else {
+            Color::Black
+        };
         let cooldown = chars[1].to_digit(10)?;
-        Some(Mon { kind, color, cooldown: cooldown as i32 })
+        Some(Mon {
+            kind,
+            color,
+            cooldown: cooldown as i32,
+        })
     }
 }
 
@@ -249,26 +270,48 @@ impl Consumable {
 impl FenRepresentable for Event {
     fn fen(&self) -> String {
         match self {
-            Event::MonMove { item, from, to } => format!("mm {} {} {}", item.fen(), from.fen(), to.fen()),
-            Event::ManaMove { mana, from, to } => format!("mma {} {} {}", mana.fen(), from.fen(), to.fen()),
+            Event::MonMove { item, from, to } => {
+                format!("mm {} {} {}", item.fen(), from.fen(), to.fen())
+            }
+            Event::ManaMove { mana, from, to } => {
+                format!("mma {} {} {}", mana.fen(), from.fen(), to.fen())
+            }
             Event::ManaScored { mana, at } => format!("ms {} {}", mana.fen(), at.fen()),
-            Event::MysticAction { mystic, from, to } => format!("ma {} {} {}", mystic.fen(), from.fen(), to.fen()),
-            Event::DemonAction { demon, from, to } => format!("da {} {} {}", demon.fen(), from.fen(), to.fen()),
-            Event::DemonAdditionalStep { demon, from, to } => format!("das {} {} {}", demon.fen(), from.fen(), to.fen()),
-            Event::SpiritTargetMove { item, from, to } => format!("stm {} {} {}", item.fen(), from.fen(), to.fen()),
+            Event::MysticAction { mystic, from, to } => {
+                format!("ma {} {} {}", mystic.fen(), from.fen(), to.fen())
+            }
+            Event::DemonAction { demon, from, to } => {
+                format!("da {} {} {}", demon.fen(), from.fen(), to.fen())
+            }
+            Event::DemonAdditionalStep { demon, from, to } => {
+                format!("das {} {} {}", demon.fen(), from.fen(), to.fen())
+            }
+            Event::SpiritTargetMove { item, from, to, by } => format!(
+                "stm {} {} {} {}",
+                item.fen(),
+                from.fen(),
+                to.fen(),
+                by.fen()
+            ),
             Event::PickupBomb { by, at } => format!("pb {} {}", by.fen(), at.fen()),
             Event::PickupPotion { by, at } => format!("pp {} {}", by.fen(), at.fen()),
-            Event::PickupMana { mana, by, at } => format!("pm {} {} {}", mana.fen(), by.fen(), at.fen()),
-            Event::MonFainted { mon, from, to } => format!("mf {} {} {}", mon.fen(), from.fen(), to.fen()),
+            Event::PickupMana { mana, by, at } => {
+                format!("pm {} {} {}", mana.fen(), by.fen(), at.fen())
+            }
+            Event::MonFainted { mon, from, to } => {
+                format!("mf {} {} {}", mon.fen(), from.fen(), to.fen())
+            }
             Event::ManaDropped { mana, at } => format!("md {} {}", mana.fen(), at.fen()),
             Event::SupermanaBackToBase { from, to } => format!("sb {} {}", from.fen(), to.fen()),
-            Event::BombAttack { by, from, to } => format!("ba {} {} {}", by.fen(), from.fen(), to.fen()),
+            Event::BombAttack { by, from, to } => {
+                format!("ba {} {} {}", by.fen(), from.fen(), to.fen())
+            }
             Event::MonAwake { mon, at } => format!("maw {} {}", mon.fen(), at.fen()),
             Event::BombExplosion { at } => format!("be {}", at.fen()),
             Event::NextTurn { color } => format!("nt {}", color.fen()),
             Event::GameOver { winner } => format!("go {}", winner.fen()),
             Event::Takeback => "z".to_string(),
-            Event::UsePotion { at } => format!("up {}", at.fen()),
+            Event::UsePotion { from, to } => format!("up {} {}", from.fen(), to.fen()),
         }
     }
 }
@@ -277,120 +320,90 @@ impl Event {
     fn from_fen(fen: &str) -> Option<Self> {
         let parts: Vec<&str> = fen.split(' ').collect();
         match parts.as_slice() {
-            ["mm", item_fen, from_fen, to_fen] => {
-                Some(Event::MonMove {
-                    item: Item::from_fen(item_fen)?,
-                    from: Location::from_fen(from_fen)?,
-                    to: Location::from_fen(to_fen)?,
-                })
-            }
-            ["mma", mana_fen, from_fen, to_fen] => {
-                Some(Event::ManaMove {
-                    mana: Mana::from_fen(mana_fen)?,
-                    from: Location::from_fen(from_fen)?,
-                    to: Location::from_fen(to_fen)?,
-                })
-            }
-            ["ms", mana_fen, at_fen] => {
-                Some(Event::ManaScored {
-                    mana: Mana::from_fen(mana_fen)?,
-                    at: Location::from_fen(at_fen)?,
-                })
-            }
-            ["ma", mystic_fen, from_fen, to_fen] => {
-                Some(Event::MysticAction {
-                    mystic: Mon::from_fen(mystic_fen)?,
-                    from: Location::from_fen(from_fen)?,
-                    to: Location::from_fen(to_fen)?,
-                })
-            }
-            ["da", demon_fen, from_fen, to_fen] => {
-                Some(Event::DemonAction {
-                    demon: Mon::from_fen(demon_fen)?,
-                    from: Location::from_fen(from_fen)?,
-                    to: Location::from_fen(to_fen)?,
-                })
-            }
-            ["das", demon_fen, from_fen, to_fen] => {
-                Some(Event::DemonAdditionalStep {
-                    demon: Mon::from_fen(demon_fen)?,
-                    from: Location::from_fen(from_fen)?,
-                    to: Location::from_fen(to_fen)?,
-                })
-            }
-            ["stm", item_fen, from_fen, to_fen] => {
-                Some(Event::SpiritTargetMove {
-                    item: Item::from_fen(item_fen)?,
-                    from: Location::from_fen(from_fen)?,
-                    to: Location::from_fen(to_fen)?,
-                })
-            }
-            ["pb", by_fen, at_fen] => {
-                Some(Event::PickupBomb {
-                    by: Mon::from_fen(by_fen)?,
-                    at: Location::from_fen(at_fen)?,
-                })
-            }
-            ["pp", by_fen, at_fen] => {
-                Some(Event::PickupPotion {
-                    by: Item::from_fen(by_fen)?,
-                    at: Location::from_fen(at_fen)?,
-                })
-            }
-            ["pm", mana_fen, by_fen, at_fen] => {
-                Some(Event::PickupMana {
-                    mana: Mana::from_fen(mana_fen)?,
-                    by: Mon::from_fen(by_fen)?,
-                    at: Location::from_fen(at_fen)?,
-                })
-            }
-            ["mf", mon_fen, from_fen, to_fen] => {
-                Some(Event::MonFainted {
-                    mon: Mon::from_fen(mon_fen)?,
-                    from: Location::from_fen(from_fen)?,
-                    to: Location::from_fen(to_fen)?,
-                })
-            }
-            ["md", mana_fen, at_fen] => {
-                Some(Event::ManaDropped {
-                    mana: Mana::from_fen(mana_fen)?,
-                    at: Location::from_fen(at_fen)?,
-                })
-            }
-            ["sb", from_fen, to_fen] => {
-                Some(Event::SupermanaBackToBase {
-                    from: Location::from_fen(from_fen)?,
-                    to: Location::from_fen(to_fen)?,
-                })
-            }
-            ["ba", by_fen, from_fen, to_fen] => {
-                Some(Event::BombAttack {
-                    by: Mon::from_fen(by_fen)?,
-                    from: Location::from_fen(from_fen)?,
-                    to: Location::from_fen(to_fen)?,
-                })
-            }
-            ["maw", mon_fen, at_fen] => {
-                Some(Event::MonAwake {
-                    mon: Mon::from_fen(mon_fen)?,
-                    at: Location::from_fen(at_fen)?,
-                })
-            }
-            ["be", at_fen] => {
-                Some(Event::BombExplosion {
-                    at: Location::from_fen(at_fen)?,
-                })
-            }
-            ["nt", color_fen] => {
-                Some(Event::NextTurn {
-                    color: Color::from_fen(color_fen)?,
-                })
-            }
-            ["go", winner_fen] => {
-                Some(Event::GameOver {
-                    winner: Color::from_fen(winner_fen)?,
-                })
-            }
+            ["mm", item_fen, from_fen, to_fen] => Some(Event::MonMove {
+                item: Item::from_fen(item_fen)?,
+                from: Location::from_fen(from_fen)?,
+                to: Location::from_fen(to_fen)?,
+            }),
+            ["mma", mana_fen, from_fen, to_fen] => Some(Event::ManaMove {
+                mana: Mana::from_fen(mana_fen)?,
+                from: Location::from_fen(from_fen)?,
+                to: Location::from_fen(to_fen)?,
+            }),
+            ["ms", mana_fen, at_fen] => Some(Event::ManaScored {
+                mana: Mana::from_fen(mana_fen)?,
+                at: Location::from_fen(at_fen)?,
+            }),
+            ["ma", mystic_fen, from_fen, to_fen] => Some(Event::MysticAction {
+                mystic: Mon::from_fen(mystic_fen)?,
+                from: Location::from_fen(from_fen)?,
+                to: Location::from_fen(to_fen)?,
+            }),
+            ["da", demon_fen, from_fen, to_fen] => Some(Event::DemonAction {
+                demon: Mon::from_fen(demon_fen)?,
+                from: Location::from_fen(from_fen)?,
+                to: Location::from_fen(to_fen)?,
+            }),
+            ["das", demon_fen, from_fen, to_fen] => Some(Event::DemonAdditionalStep {
+                demon: Mon::from_fen(demon_fen)?,
+                from: Location::from_fen(from_fen)?,
+                to: Location::from_fen(to_fen)?,
+            }),
+            ["stm", item_fen, from_fen, to_fen, by_fen] => Some(Event::SpiritTargetMove {
+                item: Item::from_fen(item_fen)?,
+                from: Location::from_fen(from_fen)?,
+                to: Location::from_fen(to_fen)?,
+                by: Location::from_fen(by_fen)?,
+            }),
+            ["pb", by_fen, at_fen] => Some(Event::PickupBomb {
+                by: Mon::from_fen(by_fen)?,
+                at: Location::from_fen(at_fen)?,
+            }),
+            ["pp", by_fen, at_fen] => Some(Event::PickupPotion {
+                by: Item::from_fen(by_fen)?,
+                at: Location::from_fen(at_fen)?,
+            }),
+            ["pm", mana_fen, by_fen, at_fen] => Some(Event::PickupMana {
+                mana: Mana::from_fen(mana_fen)?,
+                by: Mon::from_fen(by_fen)?,
+                at: Location::from_fen(at_fen)?,
+            }),
+            ["mf", mon_fen, from_fen, to_fen] => Some(Event::MonFainted {
+                mon: Mon::from_fen(mon_fen)?,
+                from: Location::from_fen(from_fen)?,
+                to: Location::from_fen(to_fen)?,
+            }),
+            ["md", mana_fen, at_fen] => Some(Event::ManaDropped {
+                mana: Mana::from_fen(mana_fen)?,
+                at: Location::from_fen(at_fen)?,
+            }),
+            ["sb", from_fen, to_fen] => Some(Event::SupermanaBackToBase {
+                from: Location::from_fen(from_fen)?,
+                to: Location::from_fen(to_fen)?,
+            }),
+            ["ba", by_fen, from_fen, to_fen] => Some(Event::BombAttack {
+                by: Mon::from_fen(by_fen)?,
+                from: Location::from_fen(from_fen)?,
+                to: Location::from_fen(to_fen)?,
+            }),
+            ["maw", mon_fen, at_fen] => Some(Event::MonAwake {
+                mon: Mon::from_fen(mon_fen)?,
+                at: Location::from_fen(at_fen)?,
+            }),
+            ["be", at_fen] => Some(Event::BombExplosion {
+                at: Location::from_fen(at_fen)?,
+            }),
+            ["nt", color_fen] => Some(Event::NextTurn {
+                color: Color::from_fen(color_fen)?,
+            }),
+            ["go", winner_fen] => Some(Event::GameOver {
+                winner: Color::from_fen(winner_fen)?,
+            }),
+            ["z"] => Some(Event::Takeback),
+            ["up", from_fen, to_fen] => Some(Event::UsePotion {
+                from: Location::from_fen(from_fen)?,
+                to: Location::from_fen(to_fen)?,
+            }),
             _ => None,
         }
     }
@@ -402,7 +415,9 @@ impl FenRepresentable for NextInput {
             "{} {} {}",
             self.input.fen(),
             self.kind.fen(),
-            self.actor_mon_item.as_ref().map_or("o".to_string(), |item| item.fen())
+            self.actor_mon_item
+                .as_ref()
+                .map_or("o".to_string(), |item| item.fen())
         )
     }
 }
@@ -482,7 +497,8 @@ impl FenRepresentable for Modifier {
             Modifier::SelectPotion => "p",
             Modifier::SelectBomb => "b",
             Modifier::Cancel => "c",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 
@@ -509,7 +525,8 @@ impl FenRepresentable for Input {
 
 impl Input {
     pub fn fen_from_array(inputs: &[Input]) -> String {
-        inputs.iter()
+        inputs
+            .iter()
             .map(|input| input.fen())
             .collect::<Vec<_>>()
             .join(";")
@@ -528,9 +545,7 @@ impl Input {
         if fen.is_empty() {
             vec![]
         } else {
-            fen.split(';')
-               .filter_map(|f| Input::from_fen(f))
-               .collect()
+            fen.split(';').filter_map(|f| Input::from_fen(f)).collect()
         }
     }
 }
@@ -540,20 +555,24 @@ impl FenRepresentable for Output {
         match self {
             Output::InvalidInput => "i".to_string(),
             Output::LocationsToStartFrom(locations) => {
-                let mut sorted_locations: Vec<_> = locations.iter().map(|location| location.fen()).collect();
+                let mut sorted_locations: Vec<_> =
+                    locations.iter().map(|location| location.fen()).collect();
                 sorted_locations.sort();
                 "l".to_owned() + &sorted_locations.join("/")
-            },
+            }
             Output::NextInputOptions(next_inputs) => {
-                let mut sorted_next_inputs: Vec<_> = next_inputs.iter().map(|next_input| next_input.fen()).collect();
+                let mut sorted_next_inputs: Vec<_> = next_inputs
+                    .iter()
+                    .map(|next_input| next_input.fen())
+                    .collect();
                 sorted_next_inputs.sort();
                 "n".to_owned() + &sorted_next_inputs.join("/")
-            },
+            }
             Output::Events(events) => {
                 let mut sorted_events: Vec<_> = events.iter().map(|event| event.fen()).collect();
                 sorted_events.sort();
                 "e".to_owned() + &sorted_events.join("/")
-            },
+            }
         }
     }
 }
@@ -564,29 +583,38 @@ impl Output {
         match prefix {
             "i" => Some(Output::InvalidInput),
             "l" => {
-                let locations = data.split('/').filter_map(|f| Location::from_fen(f)).collect::<Vec<_>>();
+                let locations = data
+                    .split('/')
+                    .filter_map(|f| Location::from_fen(f))
+                    .collect::<Vec<_>>();
                 if locations.len() > 0 {
                     Some(Output::LocationsToStartFrom(locations))
                 } else {
                     None
                 }
-            },
+            }
             "n" => {
-                let next_inputs = data.split('/').filter_map(|f| NextInput::from_fen(f)).collect::<Vec<_>>();
+                let next_inputs = data
+                    .split('/')
+                    .filter_map(|f| NextInput::from_fen(f))
+                    .collect::<Vec<_>>();
                 if next_inputs.len() > 0 {
                     Some(Output::NextInputOptions(next_inputs))
                 } else {
                     None
                 }
-            },
+            }
             "e" => {
-                let events = data.split('/').filter_map(|f| Event::from_fen(f)).collect::<Vec<_>>();
+                let events = data
+                    .split('/')
+                    .filter_map(|f| Event::from_fen(f))
+                    .collect::<Vec<_>>();
                 if events.len() > 0 {
                     Some(Output::Events(events))
                 } else {
                     None
                 }
-            },
+            }
             _ => None,
         }
     }

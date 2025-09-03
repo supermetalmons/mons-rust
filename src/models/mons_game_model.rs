@@ -629,7 +629,7 @@ impl EventModel {
                 loc2: Some(*to),
                 color: None,
             },
-            Event::SpiritTargetMove { item, from, to } => EventModel {
+            Event::SpiritTargetMove { item, from, to, by: _ } => EventModel {
                 kind: EventModelKind::SpiritTargetMove,
                 item: Some(ItemModel::new(item)),
                 mon: None,
@@ -746,13 +746,13 @@ impl EventModel {
                 loc2: None,
                 color: None,
             },
-            Event::UsePotion { at } => EventModel {
+            Event::UsePotion { from, to } => EventModel {
                 kind: EventModelKind::UsePotion,
                 item: None,
                 mon: None,
                 mana: None,
-                loc1: Some(*at),
-                loc2: None,
+                loc1: Some(*from),
+                loc2: Some(*to),
                 color: None,
             },
         }
@@ -784,6 +784,10 @@ impl VerboseTrackingEntityModel {
         self.events.iter().map(|e| EventModel::new(e)).collect()
     }
     pub fn events_fen(&self) -> String {
-        self.events.iter().map(|e| e.fen()).collect::<Vec<_>>().join(" ")
+        self.events
+            .iter()
+            .map(|e| e.fen())
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 }
