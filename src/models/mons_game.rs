@@ -918,22 +918,27 @@ impl MonsGame {
                     self.board.remove_item(*to);
                 }
                 Event::DemonAction { demon, from, to } => {
+                    self.board.remove_item(*from);
+                    let demon_additional_to = events.iter().find_map(|e| match e {
+                        Event::DemonAdditionalStep { to, .. } => Some(*to),
+                        _ => None,
+                    });
+                    if demon_additional_to.is_none() {
+                        self.board.put(Item::Mon { mon: demon.clone() }, *to);
+                    } else {
+                        self.board.remove_item(*to);
+                    }
+
                     if self.actions_used_count >= Config::ACTIONS_PER_TURN {
                         if self.active_color == Color::White {
                             self.white_potions_count -= 1;
                         } else {
                             self.black_potions_count -= 1;
                         }
-                        extra_events.push(Event::UsePotion { from: *from, to: *to });
-                        // TODO: different location for demon additional step
+                        let use_potion_to = demon_additional_to.unwrap_or(*to);
+                        extra_events.push(Event::UsePotion { from: use_potion_to, to: use_potion_to });
                     } else {
                         self.actions_used_count += 1;
-                    }
-                    self.board.remove_item(*from);
-                    if !events.iter().any(|e| matches!(e, Event::DemonAdditionalStep { .. })) {
-                        self.board.put(Item::Mon { mon: demon.clone() }, *to);
-                    } else {
-                        self.board.remove_item(*to);
                     }
                 }
                 Event::DemonAdditionalStep { demon, from: _, to } => {
