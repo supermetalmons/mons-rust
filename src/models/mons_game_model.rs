@@ -23,17 +23,13 @@ impl MonsGameModel {
         }
     }
 
-    pub fn without_last_turn(&self) -> Option<MonsGameModel> {
-        let mut takeback_fens = self.game.takeback_fens.clone();
+    pub fn without_last_turn(&self, takeback_fens: Vec<String>) -> Option<MonsGameModel> {
         let mut verbose_tracking_entities = self.game.verbose_tracking_entities.clone();
 
         if verbose_tracking_entities.len() <= 1 {
             return None;
         }
 
-        if !takeback_fens.is_empty() {
-            takeback_fens.pop();
-        }
         verbose_tracking_entities.pop();
 
         let fen = verbose_tracking_entities
