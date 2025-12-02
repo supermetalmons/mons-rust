@@ -251,6 +251,10 @@ impl MonsGameModel {
         return [0, 0, 0, player_potions_count].to_vec();
     }
 
+    pub fn takeback_fens(&self) -> Vec<String> {
+        self.game.takeback_fens.clone()
+    }
+
     pub fn available_move_kinds(&self) -> Vec<i32> {
         let map = self.game.available_move_kinds();
         return [
