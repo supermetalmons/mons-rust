@@ -4,6 +4,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct VerboseTrackingEntity {
     pub fen: String,
+    pub color: Color,
     pub events: Vec<Event>,
 }
 
@@ -873,6 +874,7 @@ impl MonsGame {
             if self.with_verbose_tracking && self.verbose_tracking_entities.is_empty() {
                 self.verbose_tracking_entities.push(VerboseTrackingEntity {
                     fen: initial_fen,
+                    color: self.active_color,
                     events: vec![],
                 });
             }
@@ -1038,6 +1040,7 @@ impl MonsGame {
             let fen_now = self.fen();
             self.verbose_tracking_entities.push(VerboseTrackingEntity {
                 fen: fen_now,
+                color: self.active_color,
                 events: updated_events.clone(),
             });
         }
