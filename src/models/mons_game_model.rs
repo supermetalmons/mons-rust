@@ -629,10 +629,10 @@ impl EventModel {
                 loc2: Some(*to),
                 color: None,
             },
-            Event::SpiritTargetMove { item, from, to, by: _ } => EventModel {
+            Event::SpiritTargetMove { item, from, to, by } => EventModel {
                 kind: EventModelKind::SpiritTargetMove,
                 item: Some(ItemModel::new(item)),
-                mon: None,
+                mon: Some(by.clone()),
                 mana: None,
                 loc1: Some(*from),
                 loc2: Some(*to),
