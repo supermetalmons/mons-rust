@@ -18,6 +18,8 @@ pub fn evaluate_preferability(game: &MonsGame, color: Color) -> i32 {
         const ACTIVE_MON: i32 = 50;
     }
 
+    let mons_bases = Config::mons_bases_ref();
+
     let mut score = match color {
         Color::White => {
             (game.white_score - game.black_score) * Multiplier::CONFIRMED_SCORE
@@ -56,10 +58,7 @@ pub fn evaluate_preferability(game: &MonsGame, color: Color) -> i32 {
                         / distance(location, Destination::Center);
                 }
 
-                if !Config::squares_ref()
-                    .get(&location)
-                    .map_or(false, |s| matches!(s, Square::MonBase { .. }))
-                {
+                if !mons_bases.contains(&location) {
                     score += my_mon_multiplier * Multiplier::ACTIVE_MON;
                 }
             }

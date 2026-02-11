@@ -238,4 +238,8 @@ impl Config {
     pub fn mons_bases() -> HashSet<Location> {
         MONS_BASES.clone()
     }
+
+    pub fn mons_bases_ref() -> &'static HashSet<Location> {
+        &MONS_BASES
+    }
 }

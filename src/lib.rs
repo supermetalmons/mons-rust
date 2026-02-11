@@ -218,6 +218,53 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn smart_automove_with_budget_replays_to_same_state() -> io::Result<()> {
+        let mut game = MonsGameModel::new_for_simulation();
+        let budgets: Vec<(i32, i32)> = vec![(1, 32), (2, 320), (4, 2000), (-5, -1)];
+
+        for (depth, max_nodes) in budgets {
+            if game.winner_color().is_some() {
+                break;
+            }
+
+            let baseline = game.clone();
+            let output = game.smart_automove_with_budget(depth, max_nodes);
+            assert_eq!(output.kind, OutputModelKind::Events);
+
+            let mut replay = baseline.clone();
+            let replay_output = replay.process_input_fen(output.input_fen().as_str());
+            assert_eq!(replay_output.kind, OutputModelKind::Events);
+            assert_eq!(replay.fen(), game.fen());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn smart_automove_matches_default_budget_variant() -> io::Result<()> {
+        let mut default_model = MonsGameModel::new_for_simulation();
+        let mut budget_model = default_model.clone();
+
+        for _ in 0..64 {
+            if default_model.winner_color().is_some() {
+                break;
+            }
+
+            let out_default = default_model.smart_automove();
+            let out_budget = budget_model.smart_automove_with_budget(2, 320);
+
+            assert_eq!(out_default.kind, OutputModelKind::Events);
+            assert_eq!(out_budget.kind, OutputModelKind::Events);
+            assert_eq!(default_model.fen(), budget_model.fen());
+            assert_eq!(default_model.active_color(), budget_model.active_color());
+            assert_eq!(default_model.turn_number(), budget_model.turn_number());
+            assert_eq!(default_model.winner_color(), budget_model.winner_color());
+        }
+
+        Ok(())
+    }
+
     fn log_message(msg: &str) -> io::Result<()> {
         use std::io::Write;
         let stdout = std::io::stdout();
