@@ -15,6 +15,7 @@ const MIN_SMART_MAX_VISITED_NODES: usize = 32;
 const MAX_SMART_MAX_VISITED_NODES: usize = 20_000;
 const SMART_TERMINAL_SCORE: i32 = i32::MAX / 8;
 const SMART_MAX_INPUT_CHAIN: usize = 8;
+const SMART_EXPLORATION_SCORE_GAP: i32 = 60_000;
 
 #[derive(Clone, Copy)]
 struct SmartSearchConfig {
@@ -55,6 +56,11 @@ struct ScoredRootMove {
     inputs: Vec<Input>,
     game: MonsGame,
     heuristic: i32,
+}
+
+struct RootEvaluation {
+    score: i32,
+    inputs: Vec<Input>,
 }
 
 #[wasm_bindgen]
@@ -377,8 +383,7 @@ impl MonsGameModel {
             return None;
         }
 
-        let mut best_score = i32::MIN;
-        let mut best_inputs: Option<Vec<Input>> = None;
+        let mut scored_roots: Vec<RootEvaluation> = Vec::new();
 
         for candidate in root_moves {
             if visited_nodes >= config.max_visited_nodes {
@@ -400,17 +405,25 @@ impl MonsGameModel {
                 candidate.heuristic
             };
 
-            if best_inputs.is_none() || candidate_score > best_score {
-                best_score = candidate_score;
-                best_inputs = Some(candidate.inputs);
-            }
+            scored_roots.push(RootEvaluation {
+                score: candidate_score,
+                inputs: candidate.inputs,
+            });
 
             if candidate_score > alpha {
                 alpha = candidate_score;
             }
         }
 
-        best_inputs
+        if scored_roots.is_empty() {
+            return None;
+        }
+
+        scored_roots.sort_by(|a, b| b.score.cmp(&a.score));
+        Some(Self::pick_root_move_with_exploration(
+            game.turn_number,
+            &scored_roots,
+        ))
     }
 
     fn ranked_root_moves(
@@ -630,6 +643,57 @@ impl MonsGameModel {
                 -SMART_TERMINAL_SCORE + ply_count
             }
         })
+    }
+
+    fn pick_root_move_with_exploration(
+        turn_number: i32,
+        scored_roots: &[RootEvaluation],
+    ) -> Vec<Input> {
+        if scored_roots.len() <= 1 {
+            return scored_roots[0].inputs.clone();
+        }
+
+        let (exploration_percent, exploration_top_k) = if turn_number <= 2 {
+            (45u32, 8usize)
+        } else if turn_number <= 5 {
+            (30u32, 6usize)
+        } else {
+            (15u32, 4usize)
+        };
+
+        let best_score = scored_roots[0].score;
+        let mut candidate_indices: Vec<usize> = scored_roots
+            .iter()
+            .enumerate()
+            .take(exploration_top_k.min(scored_roots.len()))
+            .filter_map(|(index, candidate)| {
+                if best_score.saturating_sub(candidate.score) <= SMART_EXPLORATION_SCORE_GAP {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if candidate_indices.len() <= 1 {
+            return scored_roots[0].inputs.clone();
+        }
+
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let roll: u32 = rng.gen_range(0..100);
+
+        if roll >= exploration_percent {
+            return scored_roots[0].inputs.clone();
+        }
+
+        candidate_indices.retain(|index| *index != 0);
+        if candidate_indices.is_empty() {
+            return scored_roots[0].inputs.clone();
+        }
+
+        let chosen = candidate_indices[rng.gen_range(0..candidate_indices.len())];
+        scored_roots[chosen].inputs.clone()
     }
 }
 
