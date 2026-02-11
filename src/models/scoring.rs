@@ -13,9 +13,12 @@ const CARRIER_AT_RISK: i32 = -260_000;
 const FREE_MANA_ROUTE: i32 = 180_000;
 const SUPERMANA_ROUTE_BONUS: i32 = 80_000;
 const HAS_CONSUMABLE: i32 = 30_000;
-const SPIRIT_MANA_PRESSURE: i32 = 160_000;
-const SPIRIT_IMMEDIATE_SCORE_PRESSURE: i32 = 320_000;
-const SPIRIT_POTION_CHAIN_PRESSURE: i32 = 210_000;
+const REGULAR_MANA_TO_OWN_POOL: i32 = 260_000;
+const REGULAR_MANA_TO_OPPONENT_POOL: i32 = 180_000;
+const REGULAR_MANA_CONTEST: i32 = 90_000;
+const SPIRIT_MANA_PRESSURE: i32 = 110_000;
+const SPIRIT_IMMEDIATE_SCORE_PRESSURE: i32 = 230_000;
+const SPIRIT_POTION_CHAIN_PRESSURE: i32 = 140_000;
 
 pub fn evaluate_preferability(game: &MonsGame, color: Color) -> i32 {
     let mut score = match color {
@@ -58,6 +61,7 @@ pub fn evaluate_preferability(game: &MonsGame, color: Color) -> i32 {
 
 enum Destination {
     AnyClosestPool,
+    ClosestPool(Color),
 }
 
 struct DrainerLocations {
@@ -182,23 +186,40 @@ fn evaluate_free_mana(
     perspective: Color,
     drainer_locations: &DrainerLocations,
 ) -> i32 {
-    let my_color = perspective;
-    let opponent_color = perspective.other();
+    match mana {
+        Mana::Regular(mana_color) => {
+            let owner_multiplier = mon_multiplier(perspective, mana_color);
+            let own_pool_route = distance(location, Destination::ClosestPool(mana_color)).max(1);
+            let opponent_pool_route =
+                distance(location, Destination::ClosestPool(mana_color.other())).max(1);
 
-    let route_to_pool = distance(location, Destination::AnyClosestPool);
-    let my_route = drainer_locations.min_distance_to(my_color, location) + route_to_pool;
-    let opponent_route =
-        drainer_locations.min_distance_to(opponent_color, location) + route_to_pool;
+            let owner_drainer_route =
+                drainer_locations.min_distance_to(mana_color, location) + own_pool_route;
+            let opponent_drainer_route = drainer_locations
+                .min_distance_to(mana_color.other(), location)
+                + opponent_pool_route;
 
-    let mut score = FREE_MANA_ROUTE * mana.score(my_color) / my_route.max(1)
-        - FREE_MANA_ROUTE * mana.score(opponent_color) / opponent_route.max(1);
+            owner_multiplier * REGULAR_MANA_TO_OWN_POOL / own_pool_route
+                - owner_multiplier * REGULAR_MANA_TO_OPPONENT_POOL / opponent_pool_route
+                + owner_multiplier * REGULAR_MANA_CONTEST / owner_drainer_route.max(1)
+                - owner_multiplier * (REGULAR_MANA_CONTEST * 2) / opponent_drainer_route.max(1)
+        }
+        Mana::Supermana => {
+            let my_color = perspective;
+            let opponent_color = perspective.other();
 
-    if mana == Mana::Supermana {
-        score += SUPERMANA_ROUTE_BONUS / my_route.max(1);
-        score -= SUPERMANA_ROUTE_BONUS / opponent_route.max(1);
+            let route_to_pool = distance(location, Destination::AnyClosestPool);
+            let my_route = drainer_locations.min_distance_to(my_color, location) + route_to_pool;
+            let opponent_route =
+                drainer_locations.min_distance_to(opponent_color, location) + route_to_pool;
+
+            let mut score =
+                FREE_MANA_ROUTE * 2 / my_route.max(1) - FREE_MANA_ROUTE * 2 / opponent_route.max(1);
+            score += SUPERMANA_ROUTE_BONUS / my_route.max(1);
+            score -= SUPERMANA_ROUTE_BONUS / opponent_route.max(1);
+            score
+        }
     }
-
-    score
 }
 
 fn evaluate_spirit_scoring_pressure(game: &MonsGame, perspective: Color) -> i32 {
@@ -236,6 +257,9 @@ fn evaluate_spirit_scoring_pressure(game: &MonsGame, perspective: Color) -> i32 
             let pool_distance = distance(target_location, Destination::AnyClosestPool).max(1);
             let spirit_setup_distance =
                 (spirit_location.distance(&target_location) - 2).abs() + base_setup_penalty;
+            if spirit_setup_distance > move_budget + 1 {
+                continue;
+            }
             let score_value = mana.score(color).max(1);
             let base_denominator = (pool_distance + spirit_setup_distance + 1).max(1);
             let can_setup_this_turn = move_budget >= spirit_setup_distance;
@@ -260,7 +284,7 @@ fn evaluate_spirit_scoring_pressure(game: &MonsGame, perspective: Color) -> i32 
             }
 
             if !can_setup_this_turn {
-                pressure /= 2;
+                pressure /= 4;
             }
 
             total += side_multiplier * pressure;
@@ -393,6 +417,19 @@ fn distance(location: Location, destination: Destination) -> i32 {
                 i32::min(j, (max_index - j).abs()),
             )
         }
+        Destination::ClosestPool(color) => {
+            let pool_row = if color == Color::White {
+                Config::MAX_LOCATION_INDEX as i32
+            } else {
+                0
+            };
+            let i = location.i as i32;
+            let j = location.j as i32;
+            i32::max(
+                (pool_row - i).abs(),
+                i32::min(j, (Config::MAX_LOCATION_INDEX as i32 - j).abs()),
+            )
+        }
     };
     distance + 1
 }
@@ -494,6 +531,30 @@ mod tests {
         assert!(
             evaluate_preferability(&close_game, Color::White)
                 > evaluate_preferability(&far_game, Color::White)
+        );
+    }
+
+    #[test]
+    fn regular_mana_closer_to_owners_pool_is_preferred() {
+        let mut closer_to_owner_pool = empty_game();
+        closer_to_owner_pool.board.put(
+            Item::Mana {
+                mana: Mana::Regular(Color::White),
+            },
+            Location::new(9, 0),
+        );
+
+        let mut closer_to_opponent_pool = empty_game();
+        closer_to_opponent_pool.board.put(
+            Item::Mana {
+                mana: Mana::Regular(Color::White),
+            },
+            Location::new(1, 0),
+        );
+
+        assert!(
+            evaluate_preferability(&closer_to_owner_pool, Color::White)
+                > evaluate_preferability(&closer_to_opponent_pool, Color::White)
         );
     }
 

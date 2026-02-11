@@ -40,6 +40,16 @@ const SMART_LMR_MIN_DEPTH: usize = 4;
 const SMART_LMR_START_MOVE_INDEX: usize = 3;
 #[cfg(target_arch = "wasm32")]
 const SMART_IMMEDIATE_REVERSE_MOVE_PENALTY: i32 = 1_200_000;
+#[cfg(target_arch = "wasm32")]
+const SMART_MANA_BACKTRACK_PENALTY: i32 = 280_000;
+#[cfg(target_arch = "wasm32")]
+const SMART_SPIRIT_NO_PROGRESS_PENALTY: i32 = 120_000;
+#[cfg(target_arch = "wasm32")]
+const SMART_DRAINER_SAFETY_DELTA_PENALTY: i32 = 190_000;
+#[cfg(target_arch = "wasm32")]
+const SMART_DRAINER_MANA_DELTA_PENALTY: i32 = 110_000;
+#[cfg(target_arch = "wasm32")]
+const SMART_CARRIER_ROUTE_DELTA_PENALTY: i32 = 220_000;
 
 #[cfg(target_arch = "wasm32")]
 #[derive(Clone, Copy)]
@@ -554,7 +564,14 @@ impl MonsGameModel {
 
         for inputs in Self::enumerate_legal_inputs(game, config.root_enum_limit) {
             if let Some((simulated_game, events)) = Self::apply_inputs_for_search(game, &inputs) {
-                let penalty = Self::reverse_reposition_penalty(last_reposition, &events);
+                let penalty = Self::reverse_reposition_penalty(last_reposition, &events)
+                    .saturating_add(Self::mana_backtrack_penalty(perspective, &events))
+                    .saturating_add(Self::spirit_sanity_penalty(
+                        perspective,
+                        game,
+                        &simulated_game,
+                        &events,
+                    ));
                 let heuristic = Self::score_state(
                     &simulated_game,
                     perspective,
@@ -896,6 +913,208 @@ impl MonsGameModel {
         reposition
     }
 
+    fn mana_backtrack_penalty(perspective: Color, events: &[Event]) -> i32 {
+        if events
+            .iter()
+            .any(|event| matches!(event, Event::ManaScored { .. }))
+        {
+            return 0;
+        }
+
+        let mut total_penalty: i32 = 0;
+        for event in events {
+            match event {
+                Event::ManaMove {
+                    mana: Mana::Regular(mana_color),
+                    from,
+                    to,
+                } => {
+                    if *mana_color != perspective {
+                        continue;
+                    }
+
+                    let before = Self::closest_pool_distance(*from, *mana_color);
+                    let after = Self::closest_pool_distance(*to, *mana_color);
+                    if after > before {
+                        total_penalty = total_penalty
+                            .saturating_sub(SMART_MANA_BACKTRACK_PENALTY * (after - before));
+                    }
+                }
+                Event::SpiritTargetMove { item, from, to, .. } => {
+                    if let Some(mana) = item.mana() {
+                        match mana {
+                            Mana::Regular(mana_color) => {
+                                let before = Self::closest_pool_distance(*from, *mana_color);
+                                let after = Self::closest_pool_distance(*to, *mana_color);
+
+                                if *mana_color == perspective {
+                                    if after > before {
+                                        total_penalty = total_penalty.saturating_sub(
+                                            SMART_MANA_BACKTRACK_PENALTY * (after - before),
+                                        );
+                                    }
+                                } else if after < before {
+                                    total_penalty = total_penalty.saturating_sub(
+                                        (SMART_MANA_BACKTRACK_PENALTY / 2) * (before - after),
+                                    );
+                                }
+                            }
+                            Mana::Supermana => {
+                                let before = Self::any_pool_distance(*from);
+                                let after = Self::any_pool_distance(*to);
+                                if after > before {
+                                    total_penalty = total_penalty.saturating_sub(
+                                        (SMART_MANA_BACKTRACK_PENALTY / 2) * (after - before),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        total_penalty
+    }
+
+    fn spirit_sanity_penalty(
+        perspective: Color,
+        before: &MonsGame,
+        after: &MonsGame,
+        events: &[Event],
+    ) -> i32 {
+        let has_direct_progress = events.iter().any(|event| match event {
+            Event::ManaScored { .. } => true,
+            Event::PickupMana { by, .. } => by.color == perspective,
+            Event::PickupPotion { by, .. } => by.mon().map(|mon| mon.color) == Some(perspective),
+            Event::MonFainted { mon, .. } => mon.color != perspective,
+            _ => false,
+        });
+
+        let mut total_penalty: i32 = 0;
+
+        for event in events {
+            let Event::SpiritTargetMove { item, from, to, .. } = event else {
+                continue;
+            };
+
+            if !has_direct_progress && item.mana().is_none() {
+                total_penalty = total_penalty.saturating_sub(SMART_SPIRIT_NO_PROGRESS_PENALTY);
+            }
+
+            if let Some(mon) = item.mon() {
+                if mon.kind == MonKind::Drainer && !mon.is_fainted() {
+                    let before_danger =
+                        Self::drainer_threat_distance(&before.board, mon.color, *from);
+                    let after_danger = Self::drainer_threat_distance(&after.board, mon.color, *to);
+                    let before_mana = Self::nearest_free_mana_distance(&before.board, *from);
+                    let after_mana = Self::nearest_free_mana_distance(&after.board, *to);
+
+                    if mon.color == perspective {
+                        if after_danger > before_danger {
+                            total_penalty = total_penalty.saturating_sub(
+                                SMART_DRAINER_SAFETY_DELTA_PENALTY * (after_danger - before_danger),
+                            );
+                        }
+                        if after_mana > before_mana {
+                            total_penalty = total_penalty.saturating_sub(
+                                SMART_DRAINER_MANA_DELTA_PENALTY * (after_mana - before_mana),
+                            );
+                        }
+                    } else {
+                        if after_danger < before_danger {
+                            total_penalty = total_penalty.saturating_sub(
+                                SMART_DRAINER_SAFETY_DELTA_PENALTY * (before_danger - after_danger),
+                            );
+                        }
+                        if after_mana < before_mana {
+                            total_penalty = total_penalty.saturating_sub(
+                                SMART_DRAINER_MANA_DELTA_PENALTY * (before_mana - after_mana),
+                            );
+                        }
+                    }
+                }
+            }
+
+            if item.mana().is_some() {
+                let before_route = Self::any_pool_distance(*from);
+                let after_route = Self::any_pool_distance(*to);
+                let moved_for_perspective = item
+                    .mon()
+                    .map(|mon| mon.color == perspective)
+                    .unwrap_or(true);
+
+                if moved_for_perspective && after_route > before_route {
+                    total_penalty = total_penalty.saturating_sub(
+                        SMART_CARRIER_ROUTE_DELTA_PENALTY * (after_route - before_route),
+                    );
+                } else if !moved_for_perspective && after_route < before_route {
+                    total_penalty = total_penalty.saturating_sub(
+                        SMART_CARRIER_ROUTE_DELTA_PENALTY * (before_route - after_route),
+                    );
+                }
+            }
+        }
+
+        total_penalty
+    }
+
+    fn drainer_threat_distance(board: &Board, color: Color, location: Location) -> i32 {
+        let mut min_danger = Config::BOARD_SIZE as i32;
+
+        for (&item_location, item) in &board.items {
+            match item {
+                Item::Mon { mon } | Item::MonWithConsumable { mon, .. } => {
+                    if mon.color != color
+                        && !mon.is_fainted()
+                        && (mon.kind == MonKind::Mystic
+                            || mon.kind == MonKind::Demon
+                            || mon.kind == MonKind::Spirit
+                            || matches!(item, Item::MonWithConsumable { .. }))
+                    {
+                        min_danger = min_danger.min(item_location.distance(&location) as i32);
+                    }
+                }
+                Item::Consumable { .. } => {
+                    min_danger = min_danger.min(item_location.distance(&location) as i32);
+                }
+                Item::Mana { .. } | Item::MonWithMana { .. } => {}
+            }
+        }
+
+        min_danger.max(1)
+    }
+
+    fn nearest_free_mana_distance(board: &Board, location: Location) -> i32 {
+        let mut min_mana = Config::BOARD_SIZE as i32;
+        for (&item_location, item) in &board.items {
+            if matches!(item, Item::Mana { .. }) {
+                min_mana = min_mana.min(item_location.distance(&location) as i32);
+            }
+        }
+        min_mana.max(1)
+    }
+
+    fn closest_pool_distance(location: Location, color: Color) -> i32 {
+        let pool_row = if color == Color::White {
+            Config::MAX_LOCATION_INDEX
+        } else {
+            0
+        };
+        i32::max(
+            (pool_row - location.i).abs(),
+            i32::min(location.j, (Config::MAX_LOCATION_INDEX - location.j).abs()),
+        ) + 1
+    }
+
+    fn any_pool_distance(location: Location) -> i32 {
+        i32::max(
+            i32::min(location.i, (Config::MAX_LOCATION_INDEX - location.i).abs()),
+            i32::min(location.j, (Config::MAX_LOCATION_INDEX - location.j).abs()),
+        ) + 1
+    }
+
     fn last_reposition_from_history(game: &MonsGame) -> Option<MonReposition> {
         if game.takeback_fens.len() < 2 {
             return None;
@@ -1077,32 +1296,19 @@ impl MonsGameModel {
             return scored_roots[0].inputs.clone();
         }
 
-        let (mut exploration_percent, mut exploration_top_k) = if turn_number <= 2 {
-            (45u32, 8usize)
+        if config.depth >= 3 || config.max_visited_nodes >= 1_200 {
+            return scored_roots[0].inputs.clone();
+        }
+
+        let (exploration_percent, exploration_top_k) = if turn_number <= 2 {
+            (8u32, 4usize)
         } else if turn_number <= 5 {
-            (30u32, 6usize)
+            (4u32, 3usize)
         } else {
-            (15u32, 4usize)
+            (2u32, 2usize)
         };
 
-        if config.depth >= 5 || config.max_visited_nodes >= 4_000 {
-            exploration_percent = exploration_percent.min(12);
-            exploration_top_k = exploration_top_k.min(4);
-        }
-        if config.depth >= 6 || config.max_visited_nodes >= 9_000 {
-            exploration_percent = exploration_percent.min(6);
-            exploration_top_k = exploration_top_k.min(3);
-        }
-        if config.max_visited_nodes >= 14_000 {
-            exploration_percent = exploration_percent.min(3);
-            exploration_top_k = exploration_top_k.min(2);
-        }
-
-        let score_gap_limit = if config.depth >= 5 || config.max_visited_nodes >= 4_000 {
-            SMART_EXPLORATION_SCORE_GAP / 3
-        } else {
-            SMART_EXPLORATION_SCORE_GAP
-        };
+        let score_gap_limit = SMART_EXPLORATION_SCORE_GAP / 2;
 
         let best_score = scored_roots[0].score;
         if scored_roots.len() > 1
