@@ -163,7 +163,7 @@ mod tests {
     #[test]
     fn simulation_model_avoids_verbose_tracking_growth() -> io::Result<()> {
         let mut game = MonsGameModel::new_for_simulation();
-        let output = game.smart_automove();
+        let output = game.automove();
         assert_eq!(output.kind, OutputModelKind::Events);
         assert!(game.verbose_tracking_entities().is_empty());
         Ok(())
@@ -192,87 +192,6 @@ mod tests {
         }
 
         assert_eq!(tracked.winner_color(), simulation.winner_color());
-        Ok(())
-    }
-
-    #[test]
-    fn smart_automove_output_replays_to_same_state() -> io::Result<()> {
-        let mut game = MonsGameModel::new_for_simulation();
-
-        for _ in 0..256 {
-            if game.winner_color().is_some() {
-                break;
-            }
-
-            let baseline = game.clone();
-            let output = game.smart_automove();
-            assert_eq!(output.kind, OutputModelKind::Events);
-
-            let mut replay = baseline.clone();
-            let replay_output = replay.process_input_fen(output.input_fen().as_str());
-            assert_eq!(replay_output.kind, OutputModelKind::Events);
-            assert_eq!(replay.fen(), game.fen());
-            assert_eq!(replay.winner_color(), game.winner_color());
-        }
-
-        Ok(())
-    }
-
-    #[test]
-    fn smart_automove_with_budget_replays_to_same_state() -> io::Result<()> {
-        let mut game = MonsGameModel::new_for_simulation();
-        let budgets: Vec<(i32, i32)> = vec![(1, 32), (2, 320), (4, 2000), (-5, -1)];
-
-        for (depth, max_nodes) in budgets {
-            if game.winner_color().is_some() {
-                break;
-            }
-
-            let baseline = game.clone();
-            let output = game.smart_automove_with_budget(depth, max_nodes);
-            assert_eq!(output.kind, OutputModelKind::Events);
-
-            let mut replay = baseline.clone();
-            let replay_output = replay.process_input_fen(output.input_fen().as_str());
-            assert_eq!(replay_output.kind, OutputModelKind::Events);
-            assert_eq!(replay.fen(), game.fen());
-        }
-
-        Ok(())
-    }
-
-    #[test]
-    fn smart_automove_and_budget_variant_produce_valid_transitions() -> io::Result<()> {
-        let mut default_model = MonsGameModel::new_for_simulation();
-        let mut budget_model = default_model.clone();
-
-        for _ in 0..64 {
-            let baseline_default = default_model.clone();
-            let out_default = default_model.smart_automove();
-            assert_eq!(out_default.kind, OutputModelKind::Events);
-            let mut replay_default = baseline_default.clone();
-            let replay_default_out =
-                replay_default.process_input_fen(out_default.input_fen().as_str());
-            assert_eq!(replay_default_out.kind, OutputModelKind::Events);
-            assert_eq!(replay_default.fen(), default_model.fen());
-
-            if budget_model.winner_color().is_some() {
-                break;
-            }
-            let baseline_budget = budget_model.clone();
-            let out_budget = budget_model.smart_automove_with_budget(2, 320);
-            assert_eq!(out_budget.kind, OutputModelKind::Events);
-            let mut replay_budget = baseline_budget.clone();
-            let replay_budget_out =
-                replay_budget.process_input_fen(out_budget.input_fen().as_str());
-            assert_eq!(replay_budget_out.kind, OutputModelKind::Events);
-            assert_eq!(replay_budget.fen(), budget_model.fen());
-
-            if default_model.winner_color().is_some() {
-                break;
-            }
-        }
-
         Ok(())
     }
 

@@ -1,22 +1,41 @@
+#[cfg(target_arch = "wasm32")]
 use crate::models::scoring::evaluate_preferability;
 use crate::*;
 
 #[wasm_bindgen]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct MonsGameModel {
     game: MonsGame,
+    #[cfg(target_arch = "wasm32")]
+    smart_search_in_progress: std::rc::Rc<std::cell::Cell<bool>>,
 }
 
+impl Clone for MonsGameModel {
+    fn clone(&self) -> Self {
+        Self::with_game(self.game.clone())
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
 const DEFAULT_SMART_SEARCH_DEPTH: usize = 2;
+#[cfg(target_arch = "wasm32")]
 const DEFAULT_SMART_MAX_VISITED_NODES: usize = 320;
+#[cfg(target_arch = "wasm32")]
 const MIN_SMART_SEARCH_DEPTH: usize = 1;
+#[cfg(target_arch = "wasm32")]
 const MAX_SMART_SEARCH_DEPTH: usize = 4;
+#[cfg(target_arch = "wasm32")]
 const MIN_SMART_MAX_VISITED_NODES: usize = 32;
+#[cfg(target_arch = "wasm32")]
 const MAX_SMART_MAX_VISITED_NODES: usize = 20_000;
+#[cfg(target_arch = "wasm32")]
 const SMART_TERMINAL_SCORE: i32 = i32::MAX / 8;
+#[cfg(target_arch = "wasm32")]
 const SMART_MAX_INPUT_CHAIN: usize = 8;
+#[cfg(target_arch = "wasm32")]
 const SMART_EXPLORATION_SCORE_GAP: i32 = 60_000;
 
+#[cfg(target_arch = "wasm32")]
 #[derive(Clone, Copy)]
 struct SmartSearchConfig {
     depth: usize,
@@ -27,6 +46,7 @@ struct SmartSearchConfig {
     node_branch_limit: usize,
 }
 
+#[cfg(target_arch = "wasm32")]
 impl SmartSearchConfig {
     fn from_budget(depth: i32, max_visited_nodes: i32) -> Self {
         let depth =
@@ -52,35 +72,54 @@ impl SmartSearchConfig {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 struct ScoredRootMove {
     inputs: Vec<Input>,
     game: MonsGame,
     heuristic: i32,
 }
 
+#[cfg(target_arch = "wasm32")]
 struct RootEvaluation {
     score: i32,
     inputs: Vec<Input>,
 }
 
+#[cfg(target_arch = "wasm32")]
+struct AsyncSmartSearchState {
+    game: MonsGame,
+    turn_number: i32,
+    perspective: Color,
+    config: SmartSearchConfig,
+    root_moves: Vec<ScoredRootMove>,
+    next_index: usize,
+    visited_nodes: usize,
+    alpha: i32,
+    scored_roots: Vec<RootEvaluation>,
+}
+
 #[wasm_bindgen]
 impl MonsGameModel {
-    pub fn new() -> MonsGameModel {
+    fn with_game(game: MonsGame) -> Self {
         Self {
-            game: MonsGame::new(true),
+            game,
+            #[cfg(target_arch = "wasm32")]
+            smart_search_in_progress: std::rc::Rc::new(std::cell::Cell::new(false)),
         }
+    }
+
+    pub fn new() -> MonsGameModel {
+        Self::with_game(MonsGame::new(true))
     }
 
     #[wasm_bindgen(js_name = newForSimulation)]
     pub fn new_for_simulation() -> MonsGameModel {
-        Self {
-            game: MonsGame::new(false),
-        }
+        Self::with_game(MonsGame::new(false))
     }
 
     pub fn from_fen(fen: &str) -> Option<MonsGameModel> {
         if let Some(game) = MonsGame::from_fen(fen, true) {
-            Some(Self { game: game })
+            Some(Self::with_game(game))
         } else {
             return None;
         }
@@ -88,7 +127,7 @@ impl MonsGameModel {
 
     #[wasm_bindgen(js_name = fromFenForSimulation)]
     pub fn from_fen_for_simulation(fen: &str) -> Option<MonsGameModel> {
-        MonsGame::from_fen(fen, false).map(|game| Self { game })
+        MonsGame::from_fen(fen, false).map(Self::with_game)
     }
 
     pub fn without_last_turn(&self, takeback_fens: Vec<String>) -> Option<MonsGameModel> {
@@ -110,7 +149,7 @@ impl MonsGameModel {
             new_game.verbose_tracking_entities = verbose_tracking_entities;
             new_game.with_verbose_tracking = self.game.with_verbose_tracking;
             new_game.is_moves_verified = self.game.is_moves_verified;
-            return Some(Self { game: new_game });
+            return Some(Self::with_game(new_game));
         }
 
         None
@@ -120,27 +159,127 @@ impl MonsGameModel {
         return self.game.fen();
     }
 
-    pub fn smart_automove(&mut self) -> OutputModel {
-        self.smart_automove_with_budget(
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen(js_name = smartAutomoveAsync)]
+    pub fn smart_automove_async(&self) -> js_sys::Promise {
+        self.smart_automove_with_budget_async(
             DEFAULT_SMART_SEARCH_DEPTH as i32,
             DEFAULT_SMART_MAX_VISITED_NODES as i32,
         )
     }
 
-    #[wasm_bindgen(js_name = smartAutomoveWithBudget)]
-    pub fn smart_automove_with_budget(
-        &mut self,
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen(js_name = smartAutomoveWithBudgetAsync)]
+    pub fn smart_automove_with_budget_async(
+        &self,
         depth: i32,
         max_visited_nodes: i32,
-    ) -> OutputModel {
-        let config = SmartSearchConfig::from_budget(depth, max_visited_nodes);
-        if let Some(best_inputs) = Self::best_smart_inputs(&self.game, config) {
-            let input_fen = Input::fen_from_array(&best_inputs);
-            let output = self.game.process_input(best_inputs, false, false);
-            OutputModel::new(output, input_fen.as_str())
-        } else {
-            Self::automove_game(&mut self.game)
+    ) -> js_sys::Promise {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        use wasm_bindgen::closure::Closure;
+        use wasm_bindgen::JsCast;
+
+        if self.smart_search_in_progress.get() {
+            return js_sys::Promise::reject(&JsValue::from_str(
+                "smart automove already in progress",
+            ));
         }
+        self.smart_search_in_progress.set(true);
+        let in_progress = self.smart_search_in_progress.clone();
+
+        let config = SmartSearchConfig::from_budget(depth, max_visited_nodes);
+        let perspective = self.game.active_color;
+        let turn_number = self.game.turn_number;
+        let game = self.game.clone_for_simulation();
+        let root_moves = Self::ranked_root_moves(&game, perspective, config);
+
+        let state = Rc::new(RefCell::new(AsyncSmartSearchState {
+            game,
+            turn_number,
+            perspective,
+            config,
+            root_moves,
+            next_index: 0,
+            visited_nodes: 0,
+            alpha: i32::MIN,
+            scored_roots: Vec::new(),
+        }));
+
+        js_sys::Promise::new(&mut move |resolve, reject| {
+            let global = js_sys::global();
+            let set_timeout = match js_sys::Reflect::get(&global, &JsValue::from_str("setTimeout"))
+                .ok()
+                .and_then(|value| value.dyn_into::<js_sys::Function>().ok())
+            {
+                Some(function) => function,
+                None => {
+                    in_progress.set(false);
+                    let _ = reject.call1(
+                        &JsValue::NULL,
+                        &JsValue::from_str("setTimeout is not available"),
+                    );
+                    return;
+                }
+            };
+
+            let tick: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));
+            let tick_for_closure = tick.clone();
+            let state_inner = state.clone();
+            let resolve_inner = resolve.clone();
+            let reject_inner = reject.clone();
+            let set_timeout_inner = set_timeout.clone();
+            let in_progress_inner = in_progress.clone();
+
+            *tick.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+                let done = {
+                    let mut borrowed = state_inner.borrow_mut();
+                    Self::advance_async_search(&mut borrowed)
+                };
+
+                if done {
+                    let output = {
+                        let mut borrowed = state_inner.borrow_mut();
+                        Self::finalize_async_search(&mut borrowed)
+                    };
+                    in_progress_inner.set(false);
+                    let _ = resolve_inner.call1(&JsValue::NULL, &JsValue::from(output));
+                    tick_for_closure.borrow_mut().take();
+                    return;
+                }
+
+                let callback = {
+                    let borrowed = tick_for_closure.borrow();
+                    borrowed.as_ref().map(|cb| cb.as_ref().clone())
+                };
+
+                if let Some(cb) = callback {
+                    if let Err(err) = set_timeout_inner.call2(
+                        &JsValue::NULL,
+                        cb.unchecked_ref(),
+                        &JsValue::from_f64(0.0),
+                    ) {
+                        in_progress_inner.set(false);
+                        let _ = reject_inner.call1(&JsValue::NULL, &err);
+                        tick_for_closure.borrow_mut().take();
+                    }
+                }
+            }) as Box<dyn FnMut()>));
+
+            let initial_callback = {
+                let borrowed = tick.borrow();
+                borrowed.as_ref().map(|cb| cb.as_ref().clone())
+            };
+            if let Some(cb) = initial_callback {
+                let schedule_result =
+                    set_timeout.call2(&JsValue::NULL, cb.unchecked_ref(), &JsValue::from_f64(0.0));
+                if let Err(err) = schedule_result {
+                    in_progress.set(false);
+                    let _ = reject.call1(&JsValue::NULL, &err);
+                    tick.borrow_mut().take();
+                }
+            }
+        })
     }
 
     pub fn automove(&mut self) -> OutputModel {
@@ -371,61 +510,8 @@ impl MonsGameModel {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 impl MonsGameModel {
-    fn best_smart_inputs(game: &MonsGame, config: SmartSearchConfig) -> Option<Vec<Input>> {
-        let perspective = game.active_color;
-        let mut visited_nodes = 0usize;
-        let mut alpha = i32::MIN;
-        let beta = i32::MAX;
-
-        let root_moves = Self::ranked_root_moves(game, perspective, config);
-        if root_moves.is_empty() {
-            return None;
-        }
-
-        let mut scored_roots: Vec<RootEvaluation> = Vec::new();
-
-        for candidate in root_moves {
-            if visited_nodes >= config.max_visited_nodes {
-                break;
-            }
-
-            visited_nodes += 1;
-            let candidate_score = if config.depth > 1 {
-                Self::search_score(
-                    &candidate.game,
-                    perspective,
-                    config.depth - 1,
-                    alpha,
-                    beta,
-                    &mut visited_nodes,
-                    config,
-                )
-            } else {
-                candidate.heuristic
-            };
-
-            scored_roots.push(RootEvaluation {
-                score: candidate_score,
-                inputs: candidate.inputs,
-            });
-
-            if candidate_score > alpha {
-                alpha = candidate_score;
-            }
-        }
-
-        if scored_roots.is_empty() {
-            return None;
-        }
-
-        scored_roots.sort_by(|a, b| b.score.cmp(&a.score));
-        Some(Self::pick_root_move_with_exploration(
-            game.turn_number,
-            &scored_roots,
-        ))
-    }
-
     fn ranked_root_moves(
         game: &MonsGame,
         perspective: Color,
@@ -643,6 +729,58 @@ impl MonsGameModel {
                 -SMART_TERMINAL_SCORE + ply_count
             }
         })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn advance_async_search(state: &mut AsyncSmartSearchState) -> bool {
+        if state.next_index >= state.root_moves.len()
+            || state.visited_nodes >= state.config.max_visited_nodes
+        {
+            return true;
+        }
+
+        let candidate = &state.root_moves[state.next_index];
+        state.visited_nodes += 1;
+        let candidate_score = if state.config.depth > 1 {
+            Self::search_score(
+                &candidate.game,
+                state.perspective,
+                state.config.depth - 1,
+                state.alpha,
+                i32::MAX,
+                &mut state.visited_nodes,
+                state.config,
+            )
+        } else {
+            candidate.heuristic
+        };
+
+        state.scored_roots.push(RootEvaluation {
+            score: candidate_score,
+            inputs: candidate.inputs.clone(),
+        });
+
+        if candidate_score > state.alpha {
+            state.alpha = candidate_score;
+        }
+
+        state.next_index += 1;
+        state.next_index >= state.root_moves.len()
+            || state.visited_nodes >= state.config.max_visited_nodes
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn finalize_async_search(state: &mut AsyncSmartSearchState) -> OutputModel {
+        if state.scored_roots.is_empty() {
+            return Self::automove_game(&mut state.game);
+        }
+
+        state.scored_roots.sort_by(|a, b| b.score.cmp(&a.score));
+        let best_inputs =
+            Self::pick_root_move_with_exploration(state.turn_number, &state.scored_roots);
+        let input_fen = Input::fen_from_array(&best_inputs);
+        let output = state.game.process_input(best_inputs, false, false);
+        OutputModel::new(output, input_fen.as_str())
     }
 
     fn pick_root_move_with_exploration(
