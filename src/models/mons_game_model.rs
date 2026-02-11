@@ -38,6 +38,8 @@ const SMART_EXPLORATION_SCORE_GAP: i32 = 160_000;
 const SMART_LMR_MIN_DEPTH: usize = 4;
 #[cfg(target_arch = "wasm32")]
 const SMART_LMR_START_MOVE_INDEX: usize = 3;
+#[cfg(target_arch = "wasm32")]
+const SMART_IMMEDIATE_REVERSE_MOVE_PENALTY: i32 = 1_200_000;
 
 #[cfg(target_arch = "wasm32")]
 #[derive(Clone, Copy)]
@@ -97,6 +99,7 @@ struct ScoredRootMove {
     inputs: Vec<Input>,
     game: MonsGame,
     heuristic: i32,
+    penalty: i32,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -116,6 +119,14 @@ struct AsyncSmartSearchState {
     visited_nodes: usize,
     alpha: i32,
     scored_roots: Vec<RootEvaluation>,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct MonReposition {
+    from: Location,
+    to: Location,
+    item: Item,
 }
 
 #[wasm_bindgen]
@@ -211,8 +222,9 @@ impl MonsGameModel {
         let config = SmartSearchConfig::from_budget(depth, max_visited_nodes);
         let perspective = self.game.active_color;
         let turn_number = self.game.turn_number;
+        let last_reposition = Self::last_reposition_from_history(&self.game);
         let game = self.game.clone_for_simulation();
-        let root_moves = Self::ranked_root_moves(&game, perspective, config);
+        let root_moves = Self::ranked_root_moves(&game, perspective, config, last_reposition);
 
         let state = Rc::new(RefCell::new(AsyncSmartSearchState {
             game,
@@ -536,21 +548,25 @@ impl MonsGameModel {
         game: &MonsGame,
         perspective: Color,
         config: SmartSearchConfig,
+        last_reposition: Option<MonReposition>,
     ) -> Vec<ScoredRootMove> {
         let mut candidates = Vec::new();
 
         for inputs in Self::enumerate_legal_inputs(game, config.root_enum_limit) {
-            if let Some(simulated_game) = Self::apply_inputs_for_search(game, &inputs) {
+            if let Some((simulated_game, events)) = Self::apply_inputs_for_search(game, &inputs) {
+                let penalty = Self::reverse_reposition_penalty(last_reposition, &events);
                 let heuristic = Self::score_state(
                     &simulated_game,
                     perspective,
                     config.depth.saturating_sub(1),
                     config.depth,
-                );
+                )
+                .saturating_add(penalty);
                 candidates.push(ScoredRootMove {
                     inputs,
                     game: simulated_game,
                     heuristic,
+                    penalty,
                 });
             }
         }
@@ -602,16 +618,39 @@ impl MonsGameModel {
                 let full_depth = depth - 1;
                 let reduced_depth =
                     Self::reduced_depth_for_late_move(depth, full_depth, index, maximizing);
+                let pv_move = index == 0;
+                let probe_beta = if pv_move {
+                    beta
+                } else {
+                    alpha.saturating_add(1).min(beta)
+                };
 
                 let mut score = Self::search_score(
                     child,
                     perspective,
                     reduced_depth,
                     alpha,
-                    beta,
+                    probe_beta,
                     visited_nodes,
                     config,
                 );
+
+                if !pv_move
+                    && score > alpha
+                    && score < beta
+                    && *visited_nodes < config.max_visited_nodes
+                {
+                    *visited_nodes += 1;
+                    score = Self::search_score(
+                        child,
+                        perspective,
+                        reduced_depth,
+                        alpha,
+                        beta,
+                        visited_nodes,
+                        config,
+                    );
+                }
 
                 if reduced_depth != full_depth
                     && score > alpha
@@ -653,16 +692,39 @@ impl MonsGameModel {
                 let full_depth = depth - 1;
                 let reduced_depth =
                     Self::reduced_depth_for_late_move(depth, full_depth, index, maximizing);
+                let pv_move = index == 0;
+                let probe_alpha = if pv_move {
+                    alpha
+                } else {
+                    beta.saturating_sub(1).max(alpha)
+                };
 
                 let mut score = Self::search_score(
                     child,
                     perspective,
                     reduced_depth,
-                    alpha,
+                    probe_alpha,
                     beta,
                     visited_nodes,
                     config,
                 );
+
+                if !pv_move
+                    && score < beta
+                    && score > alpha
+                    && *visited_nodes < config.max_visited_nodes
+                {
+                    *visited_nodes += 1;
+                    score = Self::search_score(
+                        child,
+                        perspective,
+                        reduced_depth,
+                        alpha,
+                        beta,
+                        visited_nodes,
+                        config,
+                    );
+                }
 
                 if reduced_depth != full_depth
                     && score < beta
@@ -712,7 +774,7 @@ impl MonsGameModel {
 
         let mut scored_states: Vec<(i32, MonsGame)> = Vec::new();
         for inputs in Self::enumerate_legal_inputs(game, enum_limit) {
-            if let Some(simulated_game) = Self::apply_inputs_for_search(game, &inputs) {
+            if let Some((simulated_game, _)) = Self::apply_inputs_for_search(game, &inputs) {
                 let heuristic = Self::score_state(&simulated_game, perspective, 0, config.depth);
                 scored_states.push((heuristic, simulated_game));
             }
@@ -780,12 +842,128 @@ impl MonsGameModel {
         }
     }
 
-    fn apply_inputs_for_search(game: &MonsGame, inputs: &[Input]) -> Option<MonsGame> {
+    fn apply_inputs_for_search(
+        game: &MonsGame,
+        inputs: &[Input],
+    ) -> Option<(MonsGame, Vec<Event>)> {
         let mut simulated_game = game.clone_for_simulation();
         match simulated_game.process_input(inputs.to_vec(), false, false) {
-            Output::Events(_) => Some(simulated_game),
+            Output::Events(events) => Some((simulated_game, events)),
             _ => None,
         }
+    }
+
+    fn reverse_reposition_penalty(last_reposition: Option<MonReposition>, events: &[Event]) -> i32 {
+        let Some(last_reposition) = last_reposition else {
+            return 0;
+        };
+        let Some(current_reposition) = Self::reposition_from_events(events) else {
+            return 0;
+        };
+
+        if current_reposition.from == last_reposition.to
+            && current_reposition.to == last_reposition.from
+            && current_reposition.item == last_reposition.item
+        {
+            -SMART_IMMEDIATE_REVERSE_MOVE_PENALTY
+        } else {
+            0
+        }
+    }
+
+    fn reposition_from_events(events: &[Event]) -> Option<MonReposition> {
+        let mut reposition = None;
+        for event in events {
+            match event {
+                Event::MonMove { item, from, to } => {
+                    if reposition.is_some() {
+                        return None;
+                    }
+                    if item.mon().is_none() {
+                        return None;
+                    }
+                    reposition = Some(MonReposition {
+                        from: *from,
+                        to: *to,
+                        item: *item,
+                    });
+                }
+                Event::NextTurn { .. } | Event::MonAwake { .. } => {}
+                _ => return None,
+            }
+        }
+
+        reposition
+    }
+
+    fn last_reposition_from_history(game: &MonsGame) -> Option<MonReposition> {
+        if game.takeback_fens.len() < 2 {
+            return None;
+        }
+
+        let previous_fen = game.takeback_fens.get(game.takeback_fens.len() - 2)?;
+        let previous_game = MonsGame::from_fen(previous_fen.as_str(), false)?;
+
+        if previous_game.turn_number != game.turn_number
+            || previous_game.active_color != game.active_color
+            || previous_game.white_score != game.white_score
+            || previous_game.black_score != game.black_score
+            || previous_game.white_potions_count != game.white_potions_count
+            || previous_game.black_potions_count != game.black_potions_count
+            || previous_game.actions_used_count != game.actions_used_count
+            || previous_game.mana_moves_count != game.mana_moves_count
+            || previous_game.mons_moves_count + 1 != game.mons_moves_count
+        {
+            return None;
+        }
+
+        let mut removed = None;
+        let mut added = None;
+        let mut differences = 0;
+
+        for i in 0..Config::BOARD_SIZE {
+            for j in 0..Config::BOARD_SIZE {
+                let location = Location::new(i, j);
+                let previous_item = previous_game.board.item(location).copied();
+                let current_item = game.board.item(location).copied();
+                if previous_item == current_item {
+                    continue;
+                }
+
+                differences += 1;
+                match (previous_item, current_item) {
+                    (Some(item), None) => {
+                        if removed.is_some() {
+                            return None;
+                        }
+                        removed = Some((location, item));
+                    }
+                    (None, Some(item)) => {
+                        if added.is_some() {
+                            return None;
+                        }
+                        added = Some((location, item));
+                    }
+                    _ => return None,
+                }
+            }
+        }
+
+        if differences != 2 {
+            return None;
+        }
+
+        let (from, from_item) = removed?;
+        let (to, to_item) = added?;
+        if from_item != to_item || from_item.mon().is_none() {
+            return None;
+        }
+
+        Some(MonReposition {
+            from,
+            to,
+            item: from_item,
+        })
     }
 
     fn score_state(game: &MonsGame, perspective: Color, depth: usize, search_depth: usize) -> i32 {
@@ -854,6 +1032,7 @@ impl MonsGameModel {
                 &mut state.visited_nodes,
                 state.config,
             )
+            .saturating_add(candidate.penalty)
         } else {
             candidate.heuristic
         };
@@ -879,8 +1058,11 @@ impl MonsGameModel {
         }
 
         state.scored_roots.sort_by(|a, b| b.score.cmp(&a.score));
-        let best_inputs =
-            Self::pick_root_move_with_exploration(state.turn_number, &state.scored_roots);
+        let best_inputs = Self::pick_root_move_with_exploration(
+            state.turn_number,
+            &state.scored_roots,
+            state.config,
+        );
         let input_fen = Input::fen_from_array(&best_inputs);
         let output = state.game.process_input(best_inputs, false, false);
         OutputModel::new(output, input_fen.as_str())
@@ -889,12 +1071,13 @@ impl MonsGameModel {
     fn pick_root_move_with_exploration(
         turn_number: i32,
         scored_roots: &[RootEvaluation],
+        config: SmartSearchConfig,
     ) -> Vec<Input> {
         if scored_roots.len() <= 1 {
             return scored_roots[0].inputs.clone();
         }
 
-        let (exploration_percent, exploration_top_k) = if turn_number <= 2 {
+        let (mut exploration_percent, mut exploration_top_k) = if turn_number <= 2 {
             (45u32, 8usize)
         } else if turn_number <= 5 {
             (30u32, 6usize)
@@ -902,13 +1085,37 @@ impl MonsGameModel {
             (15u32, 4usize)
         };
 
+        if config.depth >= 5 || config.max_visited_nodes >= 4_000 {
+            exploration_percent = exploration_percent.min(12);
+            exploration_top_k = exploration_top_k.min(4);
+        }
+        if config.depth >= 6 || config.max_visited_nodes >= 9_000 {
+            exploration_percent = exploration_percent.min(6);
+            exploration_top_k = exploration_top_k.min(3);
+        }
+        if config.max_visited_nodes >= 14_000 {
+            exploration_percent = exploration_percent.min(3);
+            exploration_top_k = exploration_top_k.min(2);
+        }
+
+        let score_gap_limit = if config.depth >= 5 || config.max_visited_nodes >= 4_000 {
+            SMART_EXPLORATION_SCORE_GAP / 3
+        } else {
+            SMART_EXPLORATION_SCORE_GAP
+        };
+
         let best_score = scored_roots[0].score;
+        if scored_roots.len() > 1
+            && best_score.saturating_sub(scored_roots[1].score) > score_gap_limit
+        {
+            return scored_roots[0].inputs.clone();
+        }
         let mut candidate_indices: Vec<usize> = scored_roots
             .iter()
             .enumerate()
             .take(exploration_top_k.min(scored_roots.len()))
             .filter_map(|(index, candidate)| {
-                if best_score.saturating_sub(candidate.score) <= SMART_EXPLORATION_SCORE_GAP {
+                if best_score.saturating_sub(candidate.score) <= score_gap_limit {
                     Some(index)
                 } else {
                     None
