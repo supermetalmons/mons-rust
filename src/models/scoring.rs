@@ -56,7 +56,7 @@ pub fn evaluate_preferability(game: &MonsGame, color: Color) -> i32 {
                         / distance(location, Destination::Center);
                 }
 
-                if !Config::squares()
+                if !Config::squares_ref()
                     .get(&location)
                     .map_or(false, |s| matches!(s, Square::MonBase { .. }))
                 {

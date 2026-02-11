@@ -16,7 +16,6 @@ impl Location {
 }
 
 impl Location {
-
     pub fn valid_range() -> std::ops::Range<i32> {
         0..Config::BOARD_SIZE
     }
@@ -31,33 +30,42 @@ impl Location {
 
     pub fn reachable_by_mystic_action(&self) -> Vec<Location> {
         let deltas = [(-2, -2), (2, 2), (-2, 2), (2, -2)];
-        deltas.iter().filter_map(|&(dx, dy)| {
-            let (new_i, new_j) = (self.i + dx, self.j + dy);
-            if Self::valid_range().contains(&new_i) && Self::valid_range().contains(&new_j) {
-                Some(Location::new(new_i, new_j))
-            } else {
-                None
-            }
-        }).collect()
+        deltas
+            .iter()
+            .filter_map(|&(dx, dy)| {
+                let (new_i, new_j) = (self.i + dx, self.j + dy);
+                if Self::valid_range().contains(&new_i) && Self::valid_range().contains(&new_j) {
+                    Some(Location::new(new_i, new_j))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     pub fn reachable_by_demon_action(&self) -> Vec<Location> {
         let deltas = [(-2, 0), (2, 0), (0, 2), (0, -2)];
-        deltas.iter().filter_map(|&(dx, dy)| {
-            let (new_i, new_j) = (self.i + dx, self.j + dy);
-            if Self::valid_range().contains(&new_i) && Self::valid_range().contains(&new_j) {
-                Some(Location::new(new_i, new_j))
-            } else {
-                None
-            }
-        }).collect()
+        deltas
+            .iter()
+            .filter_map(|&(dx, dy)| {
+                let (new_i, new_j) = (self.i + dx, self.j + dy);
+                if Self::valid_range().contains(&new_i) && Self::valid_range().contains(&new_j) {
+                    Some(Location::new(new_i, new_j))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     pub fn reachable_by_spirit_action(&self) -> Vec<Location> {
         let mut locations = Vec::new();
         for x in -2i32..=2 {
             for y in -2i32..=2 {
-                if x.abs().max(y.abs()) == 2 && Self::valid_range().contains(&(self.i + x)) && Self::valid_range().contains(&(self.j + y)) {
+                if x.abs().max(y.abs()) == 2
+                    && Self::valid_range().contains(&(self.i + x))
+                    && Self::valid_range().contains(&(self.j + y))
+                {
                     locations.push(Location::new(self.i + x, self.j + y));
                 }
             }
@@ -77,7 +85,10 @@ impl Location {
         let mut locations = Vec::new();
         for x in (self.i - distance)..=(self.i + distance) {
             for y in (self.j - distance)..=(self.j + distance) {
-                if Self::valid_range().contains(&x) && Self::valid_range().contains(&y) && (x != self.i || y != self.j) {
+                if Self::valid_range().contains(&x)
+                    && Self::valid_range().contains(&y)
+                    && (x != self.i || y != self.j)
+                {
                     locations.push(Location::new(x, y));
                 }
             }

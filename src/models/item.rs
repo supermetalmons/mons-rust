@@ -28,7 +28,9 @@ impl Item {
 
     pub fn consumable(&self) -> Option<&Consumable> {
         match self {
-            Item::MonWithConsumable { consumable, .. } | Item::Consumable { consumable } => Some(consumable),
+            Item::MonWithConsumable { consumable, .. } | Item::Consumable { consumable } => {
+                Some(consumable)
+            }
             _ => None,
         }
     }

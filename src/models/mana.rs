@@ -9,7 +9,13 @@ pub enum Mana {
 impl Mana {
     pub fn score(&self, player: Color) -> i32 {
         match self {
-            Mana::Regular(color) => if *color == player { 1 } else { 2 },
+            Mana::Regular(color) => {
+                if *color == player {
+                    1
+                } else {
+                    2
+                }
+            }
             Mana::Supermana => 2,
         }
     }

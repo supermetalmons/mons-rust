@@ -15,12 +15,24 @@ impl MonsGameModel {
         }
     }
 
+    #[wasm_bindgen(js_name = newForSimulation)]
+    pub fn new_for_simulation() -> MonsGameModel {
+        Self {
+            game: MonsGame::new(false),
+        }
+    }
+
     pub fn from_fen(fen: &str) -> Option<MonsGameModel> {
         if let Some(game) = MonsGame::from_fen(fen, true) {
             Some(Self { game: game })
         } else {
             return None;
         }
+    }
+
+    #[wasm_bindgen(js_name = fromFenForSimulation)]
+    pub fn from_fen_for_simulation(fen: &str) -> Option<MonsGameModel> {
+        MonsGame::from_fen(fen, false).map(|game| Self { game })
     }
 
     pub fn without_last_turn(&self, takeback_fens: Vec<String>) -> Option<MonsGameModel> {
@@ -55,24 +67,28 @@ impl MonsGameModel {
     pub fn smart_automove(&mut self) -> OutputModel {
         let start_color: Color = self.game.active_color;
 
-        let mut best_game = self.game.clone();
-        let mut best_game_output = Self::automove_game(&mut best_game);
-        let mut best_game_preferability = evaluate_preferability(&best_game, start_color);
+        let mut best_input_fen: Option<String> = None;
+        let mut best_preferability = i32::MIN;
 
-        for _ in 0..30 {
-            let mut candidate_game = self.game.clone();
+        for _ in 0..31 {
+            let mut candidate_game = self.game.clone_for_simulation();
             let candidate_output = Self::automove_game(&mut candidate_game);
+            if candidate_output.kind != OutputModelKind::Events {
+                continue;
+            }
             let candidate_preferability = evaluate_preferability(&candidate_game, start_color);
 
-            if candidate_preferability > best_game_preferability {
-                best_game = candidate_game;
-                best_game_output = candidate_output;
-                best_game_preferability = candidate_preferability;
+            if best_input_fen.is_none() || candidate_preferability > best_preferability {
+                best_input_fen = Some(candidate_output.input_fen);
+                best_preferability = candidate_preferability;
             }
         }
 
-        self.game = best_game;
-        return best_game_output;
+        if let Some(input_fen) = best_input_fen {
+            self.process_input_fen(input_fen.as_str())
+        } else {
+            OutputModel::new(Output::InvalidInput, "")
+        }
     }
 
     pub fn automove(&mut self) -> OutputModel {
@@ -132,6 +148,16 @@ impl MonsGameModel {
         return self.game.can_takeback(color);
     }
 
+    #[wasm_bindgen(js_name = setVerboseTracking)]
+    pub fn set_verbose_tracking(&mut self, enabled: bool) {
+        self.game.set_verbose_tracking(enabled);
+    }
+
+    #[wasm_bindgen(js_name = clearTracking)]
+    pub fn clear_tracking(&mut self) {
+        self.game.clear_tracking();
+    }
+
     pub fn takeback(&mut self) -> OutputModel {
         let inputs: Vec<Input> = vec![Input::Takeback];
         let input_fen = Input::fen_from_array(&inputs);
@@ -186,7 +212,8 @@ impl MonsGameModel {
             flat_moves_string_b.split("-").collect()
         };
 
-        let mut fresh_verification_game = MonsGame::new(true);
+        let with_verbose_tracking = self.game.with_verbose_tracking;
+        let mut fresh_verification_game = MonsGame::new(with_verbose_tracking);
 
         let mut w_index = 0;
         let mut b_index = 0;
@@ -211,7 +238,13 @@ impl MonsGameModel {
 
         if fresh_verification_game.fen() == self.game.fen() {
             self.game.takeback_fens = fresh_verification_game.takeback_fens;
-            self.game.verbose_tracking_entities = fresh_verification_game.verbose_tracking_entities;
+            if with_verbose_tracking {
+                self.game.verbose_tracking_entities =
+                    fresh_verification_game.verbose_tracking_entities;
+            } else {
+                self.game.verbose_tracking_entities.clear();
+                self.game.verbose_tracking_entities.shrink_to_fit();
+            }
             self.game.is_moves_verified = true;
             return true;
         } else {
@@ -629,7 +662,12 @@ impl EventModel {
                 loc2: Some(*to),
                 color: None,
             },
-            Event::SpiritTargetMove { item, from, to, by: _ } => EventModel {
+            Event::SpiritTargetMove {
+                item,
+                from,
+                to,
+                by: _,
+            } => EventModel {
                 kind: EventModelKind::SpiritTargetMove,
                 item: Some(ItemModel::new(item)),
                 mon: None,

@@ -7,7 +7,9 @@ pub struct Board {
 
 impl Board {
     pub fn new() -> Self {
-        Self { items: Config::initial_items() }
+        Self {
+            items: Config::initial_items(),
+        }
     }
 
     pub fn new_with_items(items: std::collections::HashMap<Location, Item>) -> Self {
@@ -27,11 +29,13 @@ impl Board {
     }
 
     pub fn square(&self, location: Location) -> Square {
-        *Config::squares().get(&location).unwrap_or(&Square::Regular)
+        *Config::squares_ref()
+            .get(&location)
+            .unwrap_or(&Square::Regular)
     }
 
     pub fn all_mons_bases(&self) -> Vec<Location> {
-        Config::squares()
+        Config::squares_ref()
             .iter()
             .filter_map(|(location, square)| {
                 if let Square::MonBase { .. } = square {
@@ -44,7 +48,7 @@ impl Board {
     }
 
     pub fn supermana_base(&self) -> Location {
-        *Config::squares()
+        *Config::squares_ref()
             .iter()
             .find(|(_, square)| matches!(square, Square::SupermanaBase))
             .expect("Expected at least one supermana base")
@@ -54,7 +58,7 @@ impl Board {
     pub fn all_mons_locations(&self, color: Color) -> Vec<Location> {
         self.items
             .iter()
-            .filter_map(|(location, item)|
+            .filter_map(|(location, item)| {
                 if let Some(mon) = item.mon() {
                     if mon.color == color {
                         Some(*location)
@@ -63,8 +67,8 @@ impl Board {
                     }
                 } else {
                     None
-                }    
-            )
+                }
+            })
             .collect()
     }
 
@@ -82,7 +86,7 @@ impl Board {
     }
 
     pub fn base(&self, mon: Mon) -> Location {
-        *Config::squares()
+        *Config::squares_ref()
             .iter()
             .find(|(_, square)| matches!(square, Square::MonBase { kind, color } if kind == &mon.kind && color == &mon.color))
             .expect("Expected at least one base for the given mon")
@@ -100,19 +104,17 @@ impl Board {
     }
 
     pub fn find_mana(&self, color: Color) -> Option<Location> {
-        self.items
-            .iter()
-            .find_map(|(location, item)| match item {
-                Item::Mana { mana } => match mana {
-                    Mana::Regular(mana_color) if *mana_color == color => Some(*location),
-                    _ => None,
-                },
+        self.items.iter().find_map(|(location, item)| match item {
+            Item::Mana { mana } => match mana {
+                Mana::Regular(mana_color) if *mana_color == color => Some(*location),
                 _ => None,
-            })
+            },
+            _ => None,
+        })
     }
 
     pub fn find_awake_angel(&self, color: Color) -> Option<Location> {
-        self.items.iter().find_map(|(location, item)|
+        self.items.iter().find_map(|(location, item)| {
             if let Some(mon) = item.mon() {
                 if mon.color == color && mon.kind == MonKind::Angel && !mon.is_fainted() {
                     Some(*location)
@@ -122,6 +124,6 @@ impl Board {
             } else {
                 None
             }
-        )
+        })
     }
 }

@@ -2,7 +2,12 @@ pub mod models;
 pub use models::*;
 
 #[wasm_bindgen]
-pub fn winner(fen_w: &str, fen_b: &str, flat_moves_string_w: &str, flat_moves_string_b: &str) -> String {
+pub fn winner(
+    fen_w: &str,
+    fen_b: &str,
+    flat_moves_string_w: &str,
+    flat_moves_string_b: &str,
+) -> String {
     let moves_w: Vec<&str> = flat_moves_string_w.split("-").collect();
     let moves_b: Vec<&str> = flat_moves_string_b.split("-").collect();
 
@@ -23,8 +28,8 @@ pub fn winner(fen_w: &str, fen_b: &str, flat_moves_string_w: &str, flat_moves_st
     let winner_color_game_b = game_b.unwrap().winner_color();
 
     if winner_color_game_w.is_none() && winner_color_game_b.is_none() {
-        return "".to_string()
-    } 
+        return "".to_string();
+    }
 
     let mut game = MonsGame::new(false);
 
@@ -33,12 +38,16 @@ pub fn winner(fen_w: &str, fen_b: &str, flat_moves_string_w: &str, flat_moves_st
 
     while w_index < moves_w.len() || b_index < moves_b.len() {
         if game.active_color == Color::White {
-            if w_index >= moves_w.len() { return "x".to_string(); }
+            if w_index >= moves_w.len() {
+                return "x".to_string();
+            }
             let inputs = Input::array_from_fen(moves_w[w_index]);
             _ = game.process_input(inputs, false, false);
             w_index += 1;
         } else {
-            if b_index >= moves_b.len() { return "x".to_string(); }
+            if b_index >= moves_b.len() {
+                return "x".to_string();
+            }
             let inputs = Input::array_from_fen(moves_b[b_index]);
             _ = game.process_input(inputs, false, false);
             b_index += 1;
@@ -97,7 +106,7 @@ mod tests {
         println!("{:?}", game.fen());
         match output.kind {
             OutputModelKind::Events => (),
-            _ => panic!("Expected Events")
+            _ => panic!("Expected Events"),
         }
         Ok(())
     }
@@ -110,6 +119,105 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn simulation_clone_discards_tracking_buffers() -> io::Result<()> {
+        let mut game = MonsGame::new(true);
+        game.takeback_fens = vec!["f0".to_string(), "f1".to_string()];
+        game.verbose_tracking_entities = vec![VerboseTrackingEntity {
+            fen: game.fen(),
+            color: Color::White,
+            events: vec![Event::Takeback],
+        }];
+
+        let simulation_game = game.clone_for_simulation();
+        assert!(simulation_game.takeback_fens.is_empty());
+        assert!(simulation_game.verbose_tracking_entities.is_empty());
+        assert!(!simulation_game.with_verbose_tracking);
+        Ok(())
+    }
+
+    #[test]
+    fn clear_tracking_releases_history_buffers() -> io::Result<()> {
+        let mut game = MonsGame::new(true);
+        for i in 0..128 {
+            let fen = format!("fen-{i}");
+            game.takeback_fens.push(fen.clone());
+            game.verbose_tracking_entities.push(VerboseTrackingEntity {
+                fen,
+                color: Color::White,
+                events: vec![Event::Takeback],
+            });
+        }
+
+        let takeback_capacity_before = game.takeback_fens.capacity();
+        let verbose_capacity_before = game.verbose_tracking_entities.capacity();
+        game.clear_tracking();
+
+        assert!(game.takeback_fens.is_empty());
+        assert!(game.verbose_tracking_entities.is_empty());
+        assert!(game.takeback_fens.capacity() <= takeback_capacity_before);
+        assert!(game.verbose_tracking_entities.capacity() <= verbose_capacity_before);
+        Ok(())
+    }
+
+    #[test]
+    fn simulation_model_avoids_verbose_tracking_growth() -> io::Result<()> {
+        let mut game = MonsGameModel::new_for_simulation();
+        let output = game.smart_automove();
+        assert_eq!(output.kind, OutputModelKind::Events);
+        assert!(game.verbose_tracking_entities().is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn tracked_and_simulation_modes_stay_in_sync_when_replaying_inputs() -> io::Result<()> {
+        let mut tracked = MonsGameModel::new();
+        let mut simulation = MonsGameModel::new_for_simulation();
+
+        for _ in 0..512 {
+            let tracked_output = tracked.automove();
+            assert_eq!(tracked_output.kind, OutputModelKind::Events);
+
+            let input_fen = tracked_output.input_fen();
+            let simulation_output = simulation.process_input_fen(input_fen.as_str());
+            assert_eq!(simulation_output.kind, OutputModelKind::Events);
+
+            assert_eq!(tracked.fen(), simulation.fen());
+            assert_eq!(tracked.active_color(), simulation.active_color());
+            assert_eq!(tracked.turn_number(), simulation.turn_number());
+
+            if tracked.winner_color().is_some() {
+                break;
+            }
+        }
+
+        assert_eq!(tracked.winner_color(), simulation.winner_color());
+        Ok(())
+    }
+
+    #[test]
+    fn smart_automove_output_replays_to_same_state() -> io::Result<()> {
+        let mut game = MonsGameModel::new_for_simulation();
+
+        for _ in 0..256 {
+            if game.winner_color().is_some() {
+                break;
+            }
+
+            let baseline = game.clone();
+            let output = game.smart_automove();
+            assert_eq!(output.kind, OutputModelKind::Events);
+
+            let mut replay = baseline.clone();
+            let replay_output = replay.process_input_fen(output.input_fen().as_str());
+            assert_eq!(replay_output.kind, OutputModelKind::Events);
+            assert_eq!(replay.fen(), game.fen());
+            assert_eq!(replay.winner_color(), game.winner_color());
+        }
+
+        Ok(())
+    }
+
     fn log_message(msg: &str) -> io::Result<()> {
         use std::io::Write;
         let stdout = std::io::stdout();
@@ -118,5 +226,4 @@ mod tests {
         handle.flush()?;
         Ok(())
     }
-
 }

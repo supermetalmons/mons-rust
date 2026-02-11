@@ -21,7 +21,11 @@ pub struct Mon {
 #[wasm_bindgen]
 impl Mon {
     pub fn new(kind: MonKind, color: Color, cooldown: i32) -> Self {
-        Mon { kind, color, cooldown }
+        Mon {
+            kind,
+            color,
+            cooldown,
+        }
     }
 
     pub fn is_fainted(&self) -> bool {
