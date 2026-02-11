@@ -23,7 +23,7 @@ const DEFAULT_SMART_MAX_VISITED_NODES: usize = 320;
 #[cfg(target_arch = "wasm32")]
 const MIN_SMART_SEARCH_DEPTH: usize = 1;
 #[cfg(target_arch = "wasm32")]
-const MAX_SMART_SEARCH_DEPTH: usize = 4;
+const MAX_SMART_SEARCH_DEPTH: usize = 6;
 #[cfg(target_arch = "wasm32")]
 const MIN_SMART_MAX_VISITED_NODES: usize = 32;
 #[cfg(target_arch = "wasm32")]
@@ -33,7 +33,11 @@ const SMART_TERMINAL_SCORE: i32 = i32::MAX / 8;
 #[cfg(target_arch = "wasm32")]
 const SMART_MAX_INPUT_CHAIN: usize = 8;
 #[cfg(target_arch = "wasm32")]
-const SMART_EXPLORATION_SCORE_GAP: i32 = 60_000;
+const SMART_EXPLORATION_SCORE_GAP: i32 = 160_000;
+#[cfg(target_arch = "wasm32")]
+const SMART_LMR_MIN_DEPTH: usize = 4;
+#[cfg(target_arch = "wasm32")]
+const SMART_LMR_START_MOVE_INDEX: usize = 3;
 
 #[cfg(target_arch = "wasm32")]
 #[derive(Clone, Copy)]
@@ -56,10 +60,26 @@ impl SmartSearchConfig {
             MAX_SMART_MAX_VISITED_NODES as i32,
         ) as usize;
 
-        let root_branch_limit = (max_visited_nodes / 24).clamp(4, 28);
-        let node_branch_limit = (max_visited_nodes / 40).clamp(4, 18);
-        let root_enum_limit = (root_branch_limit * 5).clamp(root_branch_limit, 180);
-        let node_enum_limit = (node_branch_limit * 3).clamp(node_branch_limit, 96);
+        let depth_pressure = depth.saturating_sub(2);
+        let root_branch_cap = match depth {
+            1..=3 => 30,
+            4 => 24,
+            5 => 18,
+            _ => 14,
+        };
+        let node_branch_cap = match depth {
+            1..=3 => 18,
+            4 => 14,
+            5 => 10,
+            _ => 8,
+        };
+
+        let root_branch_limit =
+            (max_visited_nodes / (16 + depth_pressure * 10)).clamp(4, root_branch_cap);
+        let node_branch_limit =
+            (max_visited_nodes / (24 + depth_pressure * 14)).clamp(3, node_branch_cap);
+        let root_enum_limit = (root_branch_limit * 8).clamp(root_branch_limit, 220);
+        let node_enum_limit = (node_branch_limit * 6).clamp(node_branch_limit, 120);
 
         Self {
             depth,
@@ -559,63 +579,114 @@ impl MonsGameModel {
         }
 
         let maximizing = game.active_color == perspective;
-        let mut children = Self::ranked_child_states(game, perspective, maximizing, config);
+        let remaining_nodes = config.max_visited_nodes.saturating_sub(*visited_nodes);
+        if remaining_nodes == 0 {
+            return evaluate_preferability(game, perspective);
+        }
+        let children =
+            Self::ranked_child_states(game, perspective, maximizing, config, remaining_nodes);
         if children.is_empty() {
             return evaluate_preferability(game, perspective);
         }
 
         if maximizing {
             let mut value = i32::MIN;
-            for child in children.drain(..) {
+            let mut explored_any = false;
+            for (index, child) in children.iter().enumerate() {
                 if *visited_nodes >= config.max_visited_nodes {
                     break;
                 }
 
+                explored_any = true;
                 *visited_nodes += 1;
-                let score = Self::search_score(
-                    &child,
+                let full_depth = depth - 1;
+                let reduced_depth =
+                    Self::reduced_depth_for_late_move(depth, full_depth, index, maximizing);
+
+                let mut score = Self::search_score(
+                    child,
                     perspective,
-                    depth - 1,
+                    reduced_depth,
                     alpha,
                     beta,
                     visited_nodes,
                     config,
                 );
+
+                if reduced_depth != full_depth
+                    && score > alpha
+                    && *visited_nodes < config.max_visited_nodes
+                {
+                    *visited_nodes += 1;
+                    score = Self::search_score(
+                        child,
+                        perspective,
+                        full_depth,
+                        alpha,
+                        beta,
+                        visited_nodes,
+                        config,
+                    );
+                }
+
                 value = value.max(score);
                 alpha = alpha.max(value);
                 if alpha >= beta {
                     break;
                 }
             }
-            if value == i32::MIN {
+            if !explored_any {
                 evaluate_preferability(game, perspective)
             } else {
                 value
             }
         } else {
             let mut value = i32::MAX;
-            for child in children.drain(..) {
+            let mut explored_any = false;
+            for (index, child) in children.iter().enumerate() {
                 if *visited_nodes >= config.max_visited_nodes {
                     break;
                 }
 
+                explored_any = true;
                 *visited_nodes += 1;
-                let score = Self::search_score(
-                    &child,
+                let full_depth = depth - 1;
+                let reduced_depth =
+                    Self::reduced_depth_for_late_move(depth, full_depth, index, maximizing);
+
+                let mut score = Self::search_score(
+                    child,
                     perspective,
-                    depth - 1,
+                    reduced_depth,
                     alpha,
                     beta,
                     visited_nodes,
                     config,
                 );
+
+                if reduced_depth != full_depth
+                    && score < beta
+                    && *visited_nodes < config.max_visited_nodes
+                {
+                    *visited_nodes += 1;
+                    score = Self::search_score(
+                        child,
+                        perspective,
+                        full_depth,
+                        alpha,
+                        beta,
+                        visited_nodes,
+                        config,
+                    );
+                }
+
                 value = value.min(score);
                 beta = beta.min(value);
                 if beta <= alpha {
                     break;
                 }
             }
-            if value == i32::MAX {
+            if !explored_any {
                 evaluate_preferability(game, perspective)
             } else {
                 value
@@ -628,9 +699,19 @@ impl MonsGameModel {
         perspective: Color,
         maximizing: bool,
         config: SmartSearchConfig,
+        remaining_nodes: usize,
     ) -> Vec<MonsGame> {
+        if remaining_nodes == 0 {
+            return Vec::new();
+        }
+        let branch_limit = config.node_branch_limit.min(remaining_nodes.max(1));
+        let enum_limit = config
+            .node_enum_limit
+            .min(branch_limit.saturating_mul(4))
+            .max(branch_limit);
+
         let mut scored_states: Vec<(i32, MonsGame)> = Vec::new();
-        for inputs in Self::enumerate_legal_inputs(game, config.node_enum_limit) {
+        for inputs in Self::enumerate_legal_inputs(game, enum_limit) {
             if let Some(simulated_game) = Self::apply_inputs_for_search(game, &inputs) {
                 let heuristic = Self::score_state(&simulated_game, perspective, 0, config.depth);
                 scored_states.push((heuristic, simulated_game));
@@ -643,8 +724,8 @@ impl MonsGameModel {
             scored_states.sort_by(|a, b| a.0.cmp(&b.0));
         }
 
-        if scored_states.len() > config.node_branch_limit {
-            scored_states.truncate(config.node_branch_limit);
+        if scored_states.len() > branch_limit {
+            scored_states.truncate(branch_limit);
         }
 
         scored_states.into_iter().map(|(_, game)| game).collect()
@@ -712,6 +793,28 @@ impl MonsGameModel {
             terminal_score
         } else {
             evaluate_preferability(game, perspective)
+        }
+    }
+
+    fn reduced_depth_for_late_move(
+        depth: usize,
+        full_depth: usize,
+        move_index: usize,
+        maximizing: bool,
+    ) -> usize {
+        if full_depth == 0 {
+            return 0;
+        }
+
+        if depth >= SMART_LMR_MIN_DEPTH && move_index >= SMART_LMR_START_MOVE_INDEX {
+            let reduction = if maximizing && depth >= SMART_LMR_MIN_DEPTH + 1 {
+                2
+            } else {
+                1
+            };
+            full_depth.saturating_sub(reduction)
+        } else {
+            full_depth
         }
     }
 
