@@ -19,15 +19,6 @@ const REGULAR_MANA_CONTEST: i32 = 90_000;
 const SPIRIT_MANA_PRESSURE: i32 = 110_000;
 const SPIRIT_IMMEDIATE_SCORE_PRESSURE: i32 = 230_000;
 const SPIRIT_POTION_CHAIN_PRESSURE: i32 = 140_000;
-const ACTIVE_MON_OFF_BASE: i32 = 24_000;
-const ANGEL_GUARD_DRAINER: i32 = 85_000;
-const HUNTER_PRESSURE: i32 = 100_000;
-const SPIRIT_TARGET_PRESSURE: i32 = 70_000;
-const CONSUMABLE_CONTROL: i32 = 70_000;
-const TEMPO_ACTIVE_TURN: i32 = 40_000;
-const TEMPO_MON_MOVE: i32 = 9_000;
-const TEMPO_ACTION: i32 = 14_000;
-const TEMPO_MANA_MOVE: i32 = 16_000;
 
 pub fn evaluate_preferability(game: &MonsGame, color: Color) -> i32 {
     let mut score = match color {
@@ -63,8 +54,6 @@ pub fn evaluate_preferability(game: &MonsGame, color: Color) -> i32 {
         }
     }
 
-    score += evaluate_turn_tempo(game, color);
-    score += evaluate_consumable_control(&game.board, color);
     score += evaluate_spirit_scoring_pressure(game, color);
 
     score
@@ -139,13 +128,9 @@ fn evaluate_mon_state(
             };
     }
 
-    let mut score = 0;
-    if !is_on_own_base(board, mon, location) {
-        score += my_mon_multiplier * ACTIVE_MON_OFF_BASE;
-    }
-
     if mon.kind == MonKind::Drainer {
         let (danger, min_mana, angel_nearby) = drainer_distances(board, mon.color, location);
+        let mut score = 0;
         score += my_mon_multiplier * DRAINER_NEAR_MANA / min_mana.max(1);
         if angel_nearby {
             score += my_mon_multiplier * DRAINER_PROTECTED_BY_ANGEL;
@@ -164,135 +149,7 @@ fn evaluate_mon_state(
         return score + my_mon_multiplier * drainer_route_bias;
     }
 
-    let role_pressure = evaluate_non_drainer_role_pressure(board, mon, location);
-    score + my_mon_multiplier * role_pressure
-}
-
-fn is_on_own_base(board: &Board, mon: &Mon, location: Location) -> bool {
-    matches!(
-        board.square(location),
-        Square::MonBase { kind, color } if kind == mon.kind && color == mon.color
-    )
-}
-
-fn evaluate_non_drainer_role_pressure(board: &Board, mon: &Mon, location: Location) -> i32 {
-    match mon.kind {
-        MonKind::Angel => {
-            let ally_drainer = nearest_friendly_drainer_distance(board, mon.color, location);
-            ANGEL_GUARD_DRAINER / ally_drainer.max(1)
-        }
-        MonKind::Mystic | MonKind::Demon => {
-            let target_distance =
-                nearest_enemy_priority_target_distance(board, mon.color, location);
-            HUNTER_PRESSURE / target_distance.max(1)
-        }
-        MonKind::Spirit => {
-            let target_distance = nearest_spirit_target_distance(board, location);
-            SPIRIT_TARGET_PRESSURE / target_distance.max(1)
-        }
-        MonKind::Drainer => 0,
-    }
-}
-
-fn nearest_friendly_drainer_distance(board: &Board, color: Color, location: Location) -> i32 {
-    let mut min_distance = Config::BOARD_SIZE;
-
-    for (&item_location, item) in &board.items {
-        if let Some(mon) = item.mon() {
-            if mon.color == color && mon.kind == MonKind::Drainer && !mon.is_fainted() {
-                min_distance = min_distance.min(item_location.distance(&location) + 1);
-            }
-        }
-    }
-
-    min_distance
-}
-
-fn nearest_enemy_priority_target_distance(board: &Board, color: Color, location: Location) -> i32 {
-    let mut min_distance = Config::BOARD_SIZE;
-
-    for (&item_location, item) in &board.items {
-        if let Some(mon) = item.mon() {
-            if mon.color == color.other()
-                && !mon.is_fainted()
-                && (mon.kind == MonKind::Drainer || matches!(item, Item::MonWithMana { .. }))
-            {
-                min_distance = min_distance.min(item_location.distance(&location) + 1);
-            }
-        }
-    }
-
-    min_distance
-}
-
-fn nearest_spirit_target_distance(board: &Board, location: Location) -> i32 {
-    let mut min_distance = Config::BOARD_SIZE;
-
-    for (&item_location, item) in &board.items {
-        if matches!(item, Item::Mana { .. } | Item::MonWithMana { .. }) {
-            min_distance = min_distance.min(item_location.distance(&location) + 1);
-        }
-    }
-
-    min_distance
-}
-
-fn evaluate_turn_tempo(game: &MonsGame, perspective: Color) -> i32 {
-    let side_multiplier = mon_multiplier(perspective, game.active_color);
-    let remaining_mon_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
-    let remaining_mana_moves = if game.is_first_turn() {
-        0
-    } else {
-        (Config::MANA_MOVES_PER_TURN - game.mana_moves_count).max(0)
-    };
-    let remaining_actions = if game.is_first_turn() {
-        0
-    } else {
-        (Config::ACTIONS_PER_TURN - game.actions_used_count).max(0)
-            + color_potions_count(game, game.active_color).clamp(0, 2)
-    };
-
-    side_multiplier
-        * (TEMPO_ACTIVE_TURN
-            + remaining_mon_moves * TEMPO_MON_MOVE
-            + remaining_actions * TEMPO_ACTION
-            + remaining_mana_moves * TEMPO_MANA_MOVE)
-}
-
-fn evaluate_consumable_control(board: &Board, perspective: Color) -> i32 {
-    let mut total = 0;
-
-    for (&location, item) in &board.items {
-        if !matches!(
-            item,
-            Item::Consumable {
-                consumable: Consumable::BombOrPotion
-            }
-        ) {
-            continue;
-        }
-
-        let my_distance = nearest_awake_mon_distance(board, perspective, location);
-        let opponent_distance = nearest_awake_mon_distance(board, perspective.other(), location);
-        let distance_swing = (opponent_distance - my_distance).clamp(-6, 6);
-        total += CONSUMABLE_CONTROL * distance_swing / 6;
-    }
-
-    total
-}
-
-fn nearest_awake_mon_distance(board: &Board, color: Color, location: Location) -> i32 {
-    let mut min_distance = Config::BOARD_SIZE;
-
-    for (&item_location, item) in &board.items {
-        if let Some(mon) = item.mon() {
-            if mon.color == color && !mon.is_fainted() {
-                min_distance = min_distance.min(item_location.distance(&location) + 1);
-            }
-        }
-    }
-
-    min_distance
+    0
 }
 
 fn evaluate_carrier_state(
@@ -842,61 +699,6 @@ mod tests {
         assert!(
             evaluate_preferability(&can_move, Color::White)
                 > evaluate_preferability(&no_moves_left, Color::White)
-        );
-    }
-
-    #[test]
-    fn active_mon_off_base_is_preferred_to_waiting_on_base() {
-        let mut off_base = empty_game();
-        off_base.board.put(
-            Item::Mon {
-                mon: Mon::new(MonKind::Demon, Color::White, 0),
-            },
-            Location::new(9, 4),
-        );
-
-        let mut on_base = empty_game();
-        on_base.board.put(
-            Item::Mon {
-                mon: Mon::new(MonKind::Demon, Color::White, 0),
-            },
-            Location::new(10, 3),
-        );
-
-        assert!(
-            evaluate_preferability(&off_base, Color::White)
-                > evaluate_preferability(&on_base, Color::White)
-        );
-    }
-
-    #[test]
-    fn angel_guarding_drainer_is_preferred() {
-        let mut guarded = empty_game();
-        guarded.board.put(
-            Item::Mon {
-                mon: Mon::new(MonKind::Drainer, Color::White, 0),
-            },
-            Location::new(7, 5),
-        );
-        guarded.board.put(
-            Item::Mon {
-                mon: Mon::new(MonKind::Angel, Color::White, 0),
-            },
-            Location::new(7, 6),
-        );
-
-        let mut far_guard = guarded.clone();
-        far_guard.board.remove_item(Location::new(7, 6));
-        far_guard.board.put(
-            Item::Mon {
-                mon: Mon::new(MonKind::Angel, Color::White, 0),
-            },
-            Location::new(10, 4),
-        );
-
-        assert!(
-            evaluate_preferability(&guarded, Color::White)
-                > evaluate_preferability(&far_guard, Color::White)
         );
     }
 }
