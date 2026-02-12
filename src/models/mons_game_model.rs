@@ -17,9 +17,9 @@ impl Clone for MonsGameModel {
 }
 
 #[cfg(target_arch = "wasm32")]
-const DEFAULT_SMART_SEARCH_DEPTH: usize = 2;
+const DEFAULT_SMART_SEARCH_DEPTH: usize = 3;
 #[cfg(target_arch = "wasm32")]
-const DEFAULT_SMART_MAX_VISITED_NODES: usize = 320;
+const DEFAULT_SMART_MAX_VISITED_NODES: usize = 640;
 #[cfg(target_arch = "wasm32")]
 const MIN_SMART_SEARCH_DEPTH: usize = 1;
 #[cfg(target_arch = "wasm32")]
@@ -30,60 +30,12 @@ const MIN_SMART_MAX_VISITED_NODES: usize = 32;
 const MAX_SMART_MAX_VISITED_NODES: usize = 20_000;
 #[cfg(target_arch = "wasm32")]
 const SMART_TERMINAL_SCORE: i32 = i32::MAX / 8;
-#[cfg(target_arch = "wasm32")]
-const SMART_MAX_INPUT_CHAIN: usize = 8;
-#[cfg(target_arch = "wasm32")]
-const SMART_LMR_MIN_DEPTH: usize = 4;
-#[cfg(target_arch = "wasm32")]
-const SMART_LMR_START_MOVE_INDEX: usize = 3;
-#[cfg(target_arch = "wasm32")]
-const SMART_IMMEDIATE_REVERSE_MOVE_PENALTY: i32 = 1_200_000;
-#[cfg(target_arch = "wasm32")]
-const SMART_MANA_BACKTRACK_PENALTY: i32 = 220_000;
-#[cfg(target_arch = "wasm32")]
-const SMART_TACTICAL_EXTENSION_BUDGET: usize = 1;
-#[cfg(target_arch = "wasm32")]
-const SMART_ORDERING_MANA_SCORED: i32 = 650_000;
-#[cfg(target_arch = "wasm32")]
-const SMART_ORDERING_PICKUP_MANA: i32 = 130_000;
-#[cfg(target_arch = "wasm32")]
-const SMART_ORDERING_PICKUP_CONSUMABLE: i32 = 8_000;
-#[cfg(target_arch = "wasm32")]
-const SMART_ORDERING_USE_POTION_COST: i32 = 40_000;
-#[cfg(target_arch = "wasm32")]
-const SMART_ORDERING_MANA_PROGRESS: i32 = 160_000;
-#[cfg(target_arch = "wasm32")]
-const SMART_ORDERING_FAINTED_DRAINER: i32 = 520_000;
-#[cfg(target_arch = "wasm32")]
-const SMART_ORDERING_FAINTED_SPIRIT: i32 = 340_000;
-#[cfg(target_arch = "wasm32")]
-const SMART_ORDERING_FAINTED_OTHER: i32 = 250_000;
-#[cfg(target_arch = "wasm32")]
-const SMART_ROOT_IMMEDIATE_WIN_BIAS: i32 = 2_600_000;
-#[cfg(target_arch = "wasm32")]
-const SMART_ROOT_IMMEDIATE_LOSS_BIAS: i32 = -3_000_000;
-#[cfg(target_arch = "wasm32")]
-const SMART_ROOT_DRAINER_EXPOSED_BIAS: i32 = -2_200_000;
-#[cfg(target_arch = "wasm32")]
-const SMART_ROOT_DRAINER_TARGET_BIAS: i32 = 900_000;
-#[cfg(target_arch = "wasm32")]
-const SMART_MIDGAME_NODE_BUDGET: usize = 420;
-#[cfg(target_arch = "wasm32")]
-const SMART_LATEGAME_NODE_BUDGET: usize = 560;
-#[cfg(target_arch = "wasm32")]
-const SMART_ENDGAME_NODE_BUDGET: usize = 760;
-#[cfg(target_arch = "wasm32")]
-const SMART_ENDGAME_PIECE_THRESHOLD: usize = 16;
 
 #[cfg(target_arch = "wasm32")]
 #[derive(Clone, Copy)]
 struct SmartSearchConfig {
     depth: usize,
     max_visited_nodes: usize,
-    root_enum_limit: usize,
-    root_branch_limit: usize,
-    node_enum_limit: usize,
-    node_branch_limit: usize,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -96,34 +48,9 @@ impl SmartSearchConfig {
             MAX_SMART_MAX_VISITED_NODES as i32,
         ) as usize;
 
-        let depth_pressure = depth.saturating_sub(2);
-        let root_branch_cap = match depth {
-            1..=3 => 30,
-            4 => 24,
-            5 => 18,
-            _ => 14,
-        };
-        let node_branch_cap = match depth {
-            1..=3 => 18,
-            4 => 14,
-            5 => 10,
-            _ => 8,
-        };
-
-        let root_branch_limit =
-            (max_visited_nodes / (16 + depth_pressure * 10)).clamp(4, root_branch_cap);
-        let node_branch_limit =
-            (max_visited_nodes / (24 + depth_pressure * 14)).clamp(3, node_branch_cap);
-        let root_enum_limit = (root_branch_limit * 8).clamp(root_branch_limit, 220);
-        let node_enum_limit = (node_branch_limit * 6).clamp(node_branch_limit, 120);
-
         Self {
             depth,
             max_visited_nodes,
-            root_enum_limit,
-            root_branch_limit,
-            node_enum_limit,
-            node_branch_limit,
         }
     }
 }
@@ -132,8 +59,6 @@ impl SmartSearchConfig {
 struct ScoredRootMove {
     inputs: Vec<Input>,
     game: MonsGame,
-    heuristic: i32,
-    root_bias: i32,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -141,12 +66,6 @@ struct RootEvaluation {
     score: i32,
     inputs: Vec<Input>,
     input_fen: String,
-}
-
-#[cfg(target_arch = "wasm32")]
-struct RankedChildState {
-    game: MonsGame,
-    is_tactical: bool,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -159,14 +78,6 @@ struct AsyncSmartSearchState {
     visited_nodes: usize,
     alpha: i32,
     scored_roots: Vec<RootEvaluation>,
-}
-
-#[cfg(target_arch = "wasm32")]
-#[derive(Clone, Copy, PartialEq, Eq)]
-struct MonReposition {
-    from: Location,
-    to: Location,
-    item: Item,
 }
 
 #[wasm_bindgen]
@@ -259,9 +170,8 @@ impl MonsGameModel {
 
         let config = SmartSearchConfig::from_budget(depth, max_visited_nodes);
         let perspective = self.game.active_color;
-        let last_reposition = Self::last_reposition_from_history(&self.game);
         let game = self.game.clone_for_simulation();
-        let root_moves = Self::ranked_root_moves(&game, perspective, config, last_reposition);
+        let root_moves = Self::root_moves(&game, config.max_visited_nodes);
 
         let state = Rc::new(RefCell::new(AsyncSmartSearchState {
             game,
@@ -581,65 +491,21 @@ impl MonsGameModel {
 #[cfg(target_arch = "wasm32")]
 impl MonsGameModel {
     fn default_smart_budget_for_game(game: &MonsGame) -> (usize, usize) {
-        let mut depth = DEFAULT_SMART_SEARCH_DEPTH;
-        let mut max_visited_nodes = DEFAULT_SMART_MAX_VISITED_NODES;
-
-        if game.turn_number >= 4 {
-            max_visited_nodes = SMART_MIDGAME_NODE_BUDGET;
-        }
-        if game.turn_number >= 8 {
-            max_visited_nodes = SMART_LATEGAME_NODE_BUDGET;
-        }
-        if game.turn_number >= 10 && game.board.items.len() <= SMART_ENDGAME_PIECE_THRESHOLD {
-            depth = (DEFAULT_SMART_SEARCH_DEPTH + 1).min(MAX_SMART_SEARCH_DEPTH);
-            max_visited_nodes = SMART_ENDGAME_NODE_BUDGET;
-        }
-
-        (depth, max_visited_nodes)
+        let _ = game;
+        (DEFAULT_SMART_SEARCH_DEPTH, DEFAULT_SMART_MAX_VISITED_NODES)
     }
 
-    fn ranked_root_moves(
-        game: &MonsGame,
-        perspective: Color,
-        config: SmartSearchConfig,
-        last_reposition: Option<MonReposition>,
-    ) -> Vec<ScoredRootMove> {
-        let mut candidates = Vec::new();
-
-        for inputs in Self::enumerate_legal_inputs(game, config.root_enum_limit) {
-            if let Some((simulated_game, events)) = Self::apply_inputs_for_search(game, &inputs) {
-                let structural_bias = Self::reverse_reposition_penalty(last_reposition, &events)
-                    .saturating_add(Self::mana_backtrack_penalty(perspective, &events));
-                let ordering_bias =
-                    Self::event_ordering_bias(game.active_color, perspective, &events);
-                let reply_probe_bias = Self::reply_probe_bias(
-                    &simulated_game,
-                    perspective,
-                    config.node_branch_limit.clamp(6, 16),
-                );
-                let root_bias = structural_bias.saturating_add(reply_probe_bias);
-                let heuristic = Self::score_state(
-                    &simulated_game,
-                    perspective,
-                    config.depth.saturating_sub(1),
-                    config.depth,
-                )
-                .saturating_add(root_bias)
-                .saturating_add(ordering_bias);
-                candidates.push(ScoredRootMove {
+    fn root_moves(game: &MonsGame, max_moves: usize) -> Vec<ScoredRootMove> {
+        let mut moves = Vec::new();
+        for inputs in Self::enumerate_legal_inputs(game, max_moves.max(1)) {
+            if let Some((simulated_game, _)) = Self::apply_inputs_for_search(game, &inputs) {
+                moves.push(ScoredRootMove {
                     inputs,
                     game: simulated_game,
-                    heuristic,
-                    root_bias,
                 });
             }
         }
-
-        candidates.sort_by(|a, b| b.heuristic.cmp(&a.heuristic));
-        if candidates.len() > config.root_branch_limit {
-            candidates.truncate(config.root_branch_limit);
-        }
-        candidates
+        moves
     }
 
     fn search_score(
@@ -648,7 +514,6 @@ impl MonsGameModel {
         depth: usize,
         mut alpha: i32,
         mut beta: i32,
-        extensions_left: usize,
         visited_nodes: &mut usize,
         config: SmartSearchConfig,
     ) -> i32 {
@@ -656,241 +521,60 @@ impl MonsGameModel {
             return terminal_score;
         }
         if depth == 0 || *visited_nodes >= config.max_visited_nodes {
-            return evaluate_preferability(game, perspective);
+            return Self::score_state(game, perspective, depth, config.depth);
         }
 
+        // Inputs are single move resolutions; active_color stays on the same side until NextTurn.
+        // This keeps future-state scoring aligned with turn switches (maximize us, minimize opponent).
         let maximizing = game.active_color == perspective;
+        let mut value = if maximizing { i32::MIN } else { i32::MAX };
+        let mut explored_any = false;
         let remaining_nodes = config.max_visited_nodes.saturating_sub(*visited_nodes);
+
         if remaining_nodes == 0 {
-            return evaluate_preferability(game, perspective);
-        }
-        let children =
-            Self::ranked_child_states(game, perspective, maximizing, config, remaining_nodes);
-        if children.is_empty() {
-            return evaluate_preferability(game, perspective);
+            return Self::score_state(game, perspective, depth, config.depth);
         }
 
-        if maximizing {
-            let mut value = i32::MIN;
-            let mut explored_any = false;
-            for (index, child) in children.iter().enumerate() {
-                if *visited_nodes >= config.max_visited_nodes {
-                    break;
-                }
+        for inputs in Self::enumerate_legal_inputs(game, remaining_nodes.max(1)) {
+            if *visited_nodes >= config.max_visited_nodes {
+                break;
+            }
+            let Some((simulated_game, _)) = Self::apply_inputs_for_search(game, &inputs) else {
+                continue;
+            };
 
-                explored_any = true;
-                *visited_nodes += 1;
-                let mut full_depth = depth - 1;
-                let mut child_extensions_left = extensions_left;
-                if full_depth == 0 && child.is_tactical && child_extensions_left > 0 {
-                    full_depth = 1;
-                    child_extensions_left -= 1;
-                }
-                let reduced_depth = Self::reduced_depth_for_late_move(
-                    depth,
-                    full_depth,
-                    index,
-                    maximizing,
-                    child.is_tactical,
-                );
-                let pv_move = index == 0;
-                let probe_beta = if pv_move {
-                    beta
-                } else {
-                    alpha.saturating_add(1).min(beta)
-                };
+            explored_any = true;
+            *visited_nodes += 1;
+            let score = Self::search_score(
+                &simulated_game,
+                perspective,
+                depth.saturating_sub(1),
+                alpha,
+                beta,
+                visited_nodes,
+                config,
+            );
 
-                let mut score = Self::search_score(
-                    &child.game,
-                    perspective,
-                    reduced_depth,
-                    alpha,
-                    probe_beta,
-                    child_extensions_left,
-                    visited_nodes,
-                    config,
-                );
-
-                if !pv_move
-                    && score > alpha
-                    && score < beta
-                    && *visited_nodes < config.max_visited_nodes
-                {
-                    *visited_nodes += 1;
-                    score = Self::search_score(
-                        &child.game,
-                        perspective,
-                        reduced_depth,
-                        alpha,
-                        beta,
-                        child_extensions_left,
-                        visited_nodes,
-                        config,
-                    );
-                }
-
-                if reduced_depth != full_depth
-                    && score > alpha
-                    && *visited_nodes < config.max_visited_nodes
-                {
-                    *visited_nodes += 1;
-                    score = Self::search_score(
-                        &child.game,
-                        perspective,
-                        full_depth,
-                        alpha,
-                        beta,
-                        child_extensions_left,
-                        visited_nodes,
-                        config,
-                    );
-                }
-
+            if maximizing {
                 value = value.max(score);
                 alpha = alpha.max(value);
                 if alpha >= beta {
                     break;
                 }
-            }
-            if !explored_any {
-                evaluate_preferability(game, perspective)
             } else {
-                value
-            }
-        } else {
-            let mut value = i32::MAX;
-            let mut explored_any = false;
-            for (index, child) in children.iter().enumerate() {
-                if *visited_nodes >= config.max_visited_nodes {
-                    break;
-                }
-
-                explored_any = true;
-                *visited_nodes += 1;
-                let mut full_depth = depth - 1;
-                let mut child_extensions_left = extensions_left;
-                if full_depth == 0 && child.is_tactical && child_extensions_left > 0 {
-                    full_depth = 1;
-                    child_extensions_left -= 1;
-                }
-                let reduced_depth = Self::reduced_depth_for_late_move(
-                    depth,
-                    full_depth,
-                    index,
-                    maximizing,
-                    child.is_tactical,
-                );
-                let pv_move = index == 0;
-                let probe_alpha = if pv_move {
-                    alpha
-                } else {
-                    beta.saturating_sub(1).max(alpha)
-                };
-
-                let mut score = Self::search_score(
-                    &child.game,
-                    perspective,
-                    reduced_depth,
-                    probe_alpha,
-                    beta,
-                    child_extensions_left,
-                    visited_nodes,
-                    config,
-                );
-
-                if !pv_move
-                    && score < beta
-                    && score > alpha
-                    && *visited_nodes < config.max_visited_nodes
-                {
-                    *visited_nodes += 1;
-                    score = Self::search_score(
-                        &child.game,
-                        perspective,
-                        reduced_depth,
-                        alpha,
-                        beta,
-                        child_extensions_left,
-                        visited_nodes,
-                        config,
-                    );
-                }
-
-                if reduced_depth != full_depth
-                    && score < beta
-                    && *visited_nodes < config.max_visited_nodes
-                {
-                    *visited_nodes += 1;
-                    score = Self::search_score(
-                        &child.game,
-                        perspective,
-                        full_depth,
-                        alpha,
-                        beta,
-                        child_extensions_left,
-                        visited_nodes,
-                        config,
-                    );
-                }
-
                 value = value.min(score);
                 beta = beta.min(value);
                 if beta <= alpha {
                     break;
                 }
             }
-            if !explored_any {
-                evaluate_preferability(game, perspective)
-            } else {
-                value
-            }
-        }
-    }
-
-    fn ranked_child_states(
-        game: &MonsGame,
-        perspective: Color,
-        maximizing: bool,
-        config: SmartSearchConfig,
-        remaining_nodes: usize,
-    ) -> Vec<RankedChildState> {
-        if remaining_nodes == 0 {
-            return Vec::new();
-        }
-        let branch_limit = config.node_branch_limit.min(remaining_nodes.max(1));
-        let enum_limit = config
-            .node_enum_limit
-            .min(branch_limit.saturating_mul(4))
-            .max(branch_limit);
-
-        let mut scored_states: Vec<(i32, RankedChildState)> = Vec::new();
-        for inputs in Self::enumerate_legal_inputs(game, enum_limit) {
-            if let Some((simulated_game, events)) = Self::apply_inputs_for_search(game, &inputs) {
-                let heuristic = Self::score_state(&simulated_game, perspective, 0, config.depth);
-                let ordering_bias =
-                    Self::event_ordering_bias(game.active_color, perspective, &events);
-                let is_tactical = Self::is_tactical_events(&events);
-                scored_states.push((
-                    heuristic.saturating_add(ordering_bias),
-                    RankedChildState {
-                        game: simulated_game,
-                        is_tactical,
-                    },
-                ));
-            }
         }
 
-        if maximizing {
-            scored_states.sort_by(|a, b| b.0.cmp(&a.0));
+        if explored_any {
+            value
         } else {
-            scored_states.sort_by(|a, b| a.0.cmp(&b.0));
+            Self::score_state(game, perspective, depth, config.depth)
         }
-
-        if scored_states.len() > branch_limit {
-            scored_states.truncate(branch_limit);
-        }
-
-        scored_states.into_iter().map(|(_, child)| child).collect()
     }
 
     fn enumerate_legal_inputs(game: &MonsGame, max_moves: usize) -> Vec<Vec<Input>> {
@@ -912,7 +596,7 @@ impl MonsGameModel {
         all_inputs: &mut Vec<Vec<Input>>,
         max_moves: usize,
     ) {
-        if all_inputs.len() >= max_moves || partial_inputs.len() > SMART_MAX_INPUT_CHAIN {
+        if all_inputs.len() >= max_moves {
             return;
         }
 
@@ -953,455 +637,11 @@ impl MonsGameModel {
         }
     }
 
-    fn reverse_reposition_penalty(last_reposition: Option<MonReposition>, events: &[Event]) -> i32 {
-        let Some(last_reposition) = last_reposition else {
-            return 0;
-        };
-        let Some(current_reposition) = Self::reposition_from_events(events) else {
-            return 0;
-        };
-
-        if current_reposition.from == last_reposition.to
-            && current_reposition.to == last_reposition.from
-            && current_reposition.item == last_reposition.item
-        {
-            -SMART_IMMEDIATE_REVERSE_MOVE_PENALTY
-        } else {
-            0
-        }
-    }
-
-    fn reposition_from_events(events: &[Event]) -> Option<MonReposition> {
-        let mut reposition = None;
-        for event in events {
-            match event {
-                Event::MonMove { item, from, to } => {
-                    if reposition.is_some() {
-                        return None;
-                    }
-                    if item.mon().is_none() {
-                        return None;
-                    }
-                    reposition = Some(MonReposition {
-                        from: *from,
-                        to: *to,
-                        item: *item,
-                    });
-                }
-                Event::NextTurn { .. } | Event::MonAwake { .. } => {}
-                _ => return None,
-            }
-        }
-
-        reposition
-    }
-
-    fn mana_backtrack_penalty(perspective: Color, events: &[Event]) -> i32 {
-        if events
-            .iter()
-            .any(|event| matches!(event, Event::ManaScored { .. }))
-        {
-            return 0;
-        }
-
-        let mut total_penalty: i32 = 0;
-        for event in events {
-            match event {
-                Event::ManaMove {
-                    mana: Mana::Regular(mana_color),
-                    from,
-                    to,
-                } => {
-                    if *mana_color != perspective {
-                        continue;
-                    }
-
-                    let before = Self::closest_pool_distance(*from, *mana_color);
-                    let after = Self::closest_pool_distance(*to, *mana_color);
-                    if after > before {
-                        total_penalty = total_penalty
-                            .saturating_sub(SMART_MANA_BACKTRACK_PENALTY * (after - before));
-                    }
-                }
-                Event::SpiritTargetMove { item, from, to, .. } => {
-                    if let Some(mana) = item.mana() {
-                        match mana {
-                            Mana::Regular(mana_color) => {
-                                let before = Self::closest_pool_distance(*from, *mana_color);
-                                let after = Self::closest_pool_distance(*to, *mana_color);
-
-                                if *mana_color == perspective {
-                                    if after > before {
-                                        total_penalty = total_penalty.saturating_sub(
-                                            SMART_MANA_BACKTRACK_PENALTY * (after - before),
-                                        );
-                                    }
-                                } else if after < before {
-                                    total_penalty = total_penalty.saturating_sub(
-                                        (SMART_MANA_BACKTRACK_PENALTY / 2) * (before - after),
-                                    );
-                                }
-                            }
-                            Mana::Supermana => {
-                                let before = Self::any_pool_distance(*from);
-                                let after = Self::any_pool_distance(*to);
-                                if after > before {
-                                    total_penalty = total_penalty.saturating_sub(
-                                        (SMART_MANA_BACKTRACK_PENALTY / 2) * (after - before),
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        total_penalty
-    }
-
-    fn closest_pool_distance(location: Location, color: Color) -> i32 {
-        let pool_row = if color == Color::White {
-            Config::MAX_LOCATION_INDEX
-        } else {
-            0
-        };
-        i32::max(
-            (pool_row - location.i).abs(),
-            i32::min(location.j, (Config::MAX_LOCATION_INDEX - location.j).abs()),
-        ) + 1
-    }
-
-    fn any_pool_distance(location: Location) -> i32 {
-        i32::max(
-            i32::min(location.i, (Config::MAX_LOCATION_INDEX - location.i).abs()),
-            i32::min(location.j, (Config::MAX_LOCATION_INDEX - location.j).abs()),
-        ) + 1
-    }
-
-    fn last_reposition_from_history(game: &MonsGame) -> Option<MonReposition> {
-        if game.takeback_fens.len() < 2 {
-            return None;
-        }
-
-        let previous_fen = game.takeback_fens.get(game.takeback_fens.len() - 2)?;
-        let previous_game = MonsGame::from_fen(previous_fen.as_str(), false)?;
-
-        if previous_game.turn_number != game.turn_number
-            || previous_game.active_color != game.active_color
-            || previous_game.white_score != game.white_score
-            || previous_game.black_score != game.black_score
-            || previous_game.white_potions_count != game.white_potions_count
-            || previous_game.black_potions_count != game.black_potions_count
-            || previous_game.actions_used_count != game.actions_used_count
-            || previous_game.mana_moves_count != game.mana_moves_count
-            || previous_game.mons_moves_count + 1 != game.mons_moves_count
-        {
-            return None;
-        }
-
-        let mut removed = None;
-        let mut added = None;
-        let mut differences = 0;
-
-        for i in 0..Config::BOARD_SIZE {
-            for j in 0..Config::BOARD_SIZE {
-                let location = Location::new(i, j);
-                let previous_item = previous_game.board.item(location).copied();
-                let current_item = game.board.item(location).copied();
-                if previous_item == current_item {
-                    continue;
-                }
-
-                differences += 1;
-                match (previous_item, current_item) {
-                    (Some(item), None) => {
-                        if removed.is_some() {
-                            return None;
-                        }
-                        removed = Some((location, item));
-                    }
-                    (None, Some(item)) => {
-                        if added.is_some() {
-                            return None;
-                        }
-                        added = Some((location, item));
-                    }
-                    _ => return None,
-                }
-            }
-        }
-
-        if differences != 2 {
-            return None;
-        }
-
-        let (from, from_item) = removed?;
-        let (to, to_item) = added?;
-        if from_item != to_item || from_item.mon().is_none() {
-            return None;
-        }
-
-        Some(MonReposition {
-            from,
-            to,
-            item: from_item,
-        })
-    }
-
     fn score_state(game: &MonsGame, perspective: Color, depth: usize, search_depth: usize) -> i32 {
         if let Some(terminal_score) = Self::terminal_score(game, perspective, depth, search_depth) {
             terminal_score
         } else {
             evaluate_preferability(game, perspective)
-        }
-    }
-
-    fn side_multiplier(perspective: Color, color: Color) -> i32 {
-        if perspective == color {
-            1
-        } else {
-            -1
-        }
-    }
-
-    fn fainted_mon_priority(mon: &Mon) -> i32 {
-        match mon.kind {
-            MonKind::Drainer => SMART_ORDERING_FAINTED_DRAINER,
-            MonKind::Spirit => SMART_ORDERING_FAINTED_SPIRIT,
-            MonKind::Angel | MonKind::Demon | MonKind::Mystic => SMART_ORDERING_FAINTED_OTHER,
-        }
-    }
-
-    fn mana_progress_bias(
-        mana: Mana,
-        from: Location,
-        to: Location,
-        actor: Color,
-        perspective: Color,
-    ) -> i32 {
-        match mana {
-            Mana::Regular(mana_color) => {
-                let before = Self::closest_pool_distance(from, mana_color);
-                let after = Self::closest_pool_distance(to, mana_color);
-                let delta = before - after;
-                Self::side_multiplier(perspective, mana_color)
-                    * delta
-                    * SMART_ORDERING_MANA_PROGRESS
-            }
-            Mana::Supermana => {
-                let before = Self::any_pool_distance(from);
-                let after = Self::any_pool_distance(to);
-                let delta = before - after;
-                Self::side_multiplier(perspective, actor)
-                    * delta
-                    * (SMART_ORDERING_MANA_PROGRESS / 2)
-            }
-        }
-    }
-
-    fn event_ordering_bias(actor: Color, perspective: Color, events: &[Event]) -> i32 {
-        let actor_multiplier = Self::side_multiplier(perspective, actor);
-        let mut total: i32 = 0;
-
-        for event in events {
-            match event {
-                Event::ManaScored { mana, .. } => {
-                    let score_value = mana.score(actor).max(1);
-                    total = total.saturating_add(
-                        actor_multiplier * SMART_ORDERING_MANA_SCORED * score_value,
-                    );
-                }
-                Event::PickupMana { mana, by, .. } => {
-                    let side_multiplier = Self::side_multiplier(perspective, by.color);
-                    let score_value = mana.score(by.color).max(1);
-                    total = total
-                        .saturating_add(side_multiplier * SMART_ORDERING_PICKUP_MANA * score_value);
-                }
-                Event::PickupPotion { by, .. } => {
-                    if let Some(mon) = by.mon() {
-                        let side_multiplier = Self::side_multiplier(perspective, mon.color);
-                        total = total
-                            .saturating_add(side_multiplier * SMART_ORDERING_PICKUP_CONSUMABLE);
-                    }
-                }
-                Event::PickupBomb { by, .. } => {
-                    let side_multiplier = Self::side_multiplier(perspective, by.color);
-                    total =
-                        total.saturating_add(side_multiplier * SMART_ORDERING_PICKUP_CONSUMABLE);
-                }
-                Event::UsePotion { .. } => {
-                    total = total.saturating_sub(actor_multiplier * SMART_ORDERING_USE_POTION_COST);
-                }
-                Event::MonFainted { mon, .. } => {
-                    let victim_multiplier = Self::side_multiplier(perspective, mon.color) * -1;
-                    total =
-                        total.saturating_add(victim_multiplier * Self::fainted_mon_priority(mon));
-                }
-                Event::ManaMove { mana, from, to } => {
-                    total = total.saturating_add(Self::mana_progress_bias(
-                        *mana,
-                        *from,
-                        *to,
-                        actor,
-                        perspective,
-                    ));
-                }
-                Event::SpiritTargetMove { item, from, to, .. } => {
-                    if let Some(mana) = item.mana() {
-                        total = total.saturating_add(Self::mana_progress_bias(
-                            *mana,
-                            *from,
-                            *to,
-                            actor,
-                            perspective,
-                        ));
-                    }
-                }
-                Event::MonMove { item, from, to } => {
-                    if let Some(mana) = item.mana() {
-                        total = total.saturating_add(Self::mana_progress_bias(
-                            *mana,
-                            *from,
-                            *to,
-                            actor,
-                            perspective,
-                        ));
-                    }
-                }
-                Event::NextTurn { .. }
-                | Event::MonAwake { .. }
-                | Event::GameOver { .. }
-                | Event::Takeback
-                | Event::MysticAction { .. }
-                | Event::DemonAction { .. }
-                | Event::DemonAdditionalStep { .. }
-                | Event::BombAttack { .. }
-                | Event::BombExplosion { .. }
-                | Event::ManaDropped { .. }
-                | Event::SupermanaBackToBase { .. } => {}
-            }
-        }
-
-        total
-    }
-
-    fn is_tactical_events(events: &[Event]) -> bool {
-        events.iter().any(|event| {
-            matches!(
-                event,
-                Event::ManaScored { .. }
-                    | Event::MonFainted { .. }
-                    | Event::BombAttack { .. }
-                    | Event::BombExplosion { .. }
-                    | Event::MysticAction { .. }
-                    | Event::DemonAction { .. }
-                    | Event::DemonAdditionalStep { .. }
-                    | Event::PickupMana { .. }
-            ) || matches!(event, Event::SpiritTargetMove { item, .. } if item.mana().is_some())
-        })
-    }
-
-    fn reply_probe_bias(game: &MonsGame, perspective: Color, probe_limit: usize) -> i32 {
-        if let Some(winner) = game.winner_color() {
-            return if winner == perspective {
-                SMART_ROOT_IMMEDIATE_WIN_BIAS
-            } else {
-                SMART_ROOT_IMMEDIATE_LOSS_BIAS
-            };
-        }
-
-        let actor = game.active_color;
-        let mut perspective_immediate_win = false;
-        let mut opponent_immediate_win = false;
-        let mut perspective_can_faint_drainer = false;
-        let mut opponent_can_faint_drainer = false;
-
-        for inputs in Self::enumerate_legal_inputs(game, probe_limit.max(1)) {
-            let Some((simulated_game, events)) = Self::apply_inputs_for_search(game, &inputs)
-            else {
-                continue;
-            };
-            let Some(winner) = simulated_game.winner_color() else {
-                for event in events {
-                    if let Event::MonFainted { mon, .. } = event {
-                        if mon.kind != MonKind::Drainer {
-                            continue;
-                        }
-                        if mon.color == perspective {
-                            opponent_can_faint_drainer = true;
-                        } else {
-                            perspective_can_faint_drainer = true;
-                        }
-                    }
-                }
-                if actor == perspective {
-                    if perspective_can_faint_drainer {
-                        break;
-                    }
-                } else if opponent_can_faint_drainer {
-                    break;
-                }
-                continue;
-            };
-
-            if winner == perspective {
-                perspective_immediate_win = true;
-            } else {
-                opponent_immediate_win = true;
-            }
-
-            if (actor == perspective && perspective_immediate_win)
-                || (actor != perspective && opponent_immediate_win)
-            {
-                break;
-            }
-        }
-
-        let mut bias: i32 = 0;
-        if actor == perspective {
-            if perspective_immediate_win {
-                bias = bias.saturating_add(SMART_ROOT_IMMEDIATE_WIN_BIAS);
-            }
-            if perspective_can_faint_drainer {
-                bias = bias.saturating_add(SMART_ROOT_DRAINER_TARGET_BIAS);
-            }
-        } else {
-            if opponent_immediate_win {
-                bias = bias.saturating_add(SMART_ROOT_IMMEDIATE_LOSS_BIAS);
-            }
-            if opponent_can_faint_drainer {
-                bias = bias.saturating_add(SMART_ROOT_DRAINER_EXPOSED_BIAS);
-            }
-        }
-        bias
-    }
-
-    fn reduced_depth_for_late_move(
-        depth: usize,
-        full_depth: usize,
-        move_index: usize,
-        maximizing: bool,
-        is_tactical: bool,
-    ) -> usize {
-        if full_depth == 0 {
-            return 0;
-        }
-
-        if is_tactical {
-            return full_depth;
-        }
-
-        if depth >= SMART_LMR_MIN_DEPTH && move_index >= SMART_LMR_START_MOVE_INDEX {
-            let reduction = if maximizing && depth >= SMART_LMR_MIN_DEPTH + 1 {
-                2
-            } else {
-                1
-            };
-            full_depth.saturating_sub(reduction)
-        } else {
-            full_depth
         }
     }
 
@@ -1437,11 +677,9 @@ impl MonsGameModel {
             state.config.depth.saturating_sub(1),
             state.alpha,
             i32::MAX,
-            SMART_TACTICAL_EXTENSION_BUDGET,
             &mut state.visited_nodes,
             state.config,
-        )
-        .saturating_add(candidate.root_bias);
+        );
 
         let input_fen = Input::fen_from_array(&candidate.inputs);
 
