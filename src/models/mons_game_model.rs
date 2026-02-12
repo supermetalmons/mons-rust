@@ -17,25 +17,31 @@ impl Clone for MonsGameModel {
 }
 
 #[cfg(target_arch = "wasm32")]
-const DEFAULT_SMART_SEARCH_DEPTH: usize = 3;
+const DEFAULT_SMART_SEARCH_DEPTH: usize = 2;
 #[cfg(target_arch = "wasm32")]
-const DEFAULT_SMART_MAX_VISITED_NODES: usize = 640;
+const DEFAULT_SMART_MAX_VISITED_NODES: usize = 320;
 #[cfg(target_arch = "wasm32")]
 const MIN_SMART_SEARCH_DEPTH: usize = 1;
 #[cfg(target_arch = "wasm32")]
-const MAX_SMART_SEARCH_DEPTH: usize = 6;
+const MAX_SMART_SEARCH_DEPTH: usize = 4;
 #[cfg(target_arch = "wasm32")]
 const MIN_SMART_MAX_VISITED_NODES: usize = 32;
 #[cfg(target_arch = "wasm32")]
 const MAX_SMART_MAX_VISITED_NODES: usize = 20_000;
 #[cfg(target_arch = "wasm32")]
 const SMART_TERMINAL_SCORE: i32 = i32::MAX / 8;
+#[cfg(target_arch = "wasm32")]
+const SMART_MAX_INPUT_CHAIN: usize = 8;
 
 #[cfg(target_arch = "wasm32")]
 #[derive(Clone, Copy)]
 struct SmartSearchConfig {
     depth: usize,
     max_visited_nodes: usize,
+    root_enum_limit: usize,
+    root_branch_limit: usize,
+    node_enum_limit: usize,
+    node_branch_limit: usize,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -48,9 +54,18 @@ impl SmartSearchConfig {
             MAX_SMART_MAX_VISITED_NODES as i32,
         ) as usize;
 
+        let root_branch_limit = (max_visited_nodes / 24).clamp(4, 28);
+        let node_branch_limit = (max_visited_nodes / 40).clamp(4, 18);
+        let root_enum_limit = (root_branch_limit * 5).clamp(root_branch_limit, 180);
+        let node_enum_limit = (node_branch_limit * 3).clamp(node_branch_limit, 96);
+
         Self {
             depth,
             max_visited_nodes,
+            root_enum_limit,
+            root_branch_limit,
+            node_enum_limit,
+            node_branch_limit,
         }
     }
 }
@@ -59,6 +74,7 @@ impl SmartSearchConfig {
 struct ScoredRootMove {
     inputs: Vec<Input>,
     game: MonsGame,
+    heuristic: i32,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -171,7 +187,7 @@ impl MonsGameModel {
         let config = SmartSearchConfig::from_budget(depth, max_visited_nodes);
         let perspective = self.game.active_color;
         let game = self.game.clone_for_simulation();
-        let root_moves = Self::root_moves(&game, config.max_visited_nodes);
+        let root_moves = Self::ranked_root_moves(&game, perspective, config);
 
         let state = Rc::new(RefCell::new(AsyncSmartSearchState {
             game,
@@ -495,17 +511,34 @@ impl MonsGameModel {
         (DEFAULT_SMART_SEARCH_DEPTH, DEFAULT_SMART_MAX_VISITED_NODES)
     }
 
-    fn root_moves(game: &MonsGame, max_moves: usize) -> Vec<ScoredRootMove> {
-        let mut moves = Vec::new();
-        for inputs in Self::enumerate_legal_inputs(game, max_moves.max(1)) {
-            if let Some((simulated_game, _)) = Self::apply_inputs_for_search(game, &inputs) {
-                moves.push(ScoredRootMove {
+    fn ranked_root_moves(
+        game: &MonsGame,
+        perspective: Color,
+        config: SmartSearchConfig,
+    ) -> Vec<ScoredRootMove> {
+        let mut candidates = Vec::new();
+
+        for inputs in Self::enumerate_legal_inputs(game, config.root_enum_limit) {
+            if let Some(simulated_game) = Self::apply_inputs_for_search(game, &inputs) {
+                let heuristic = Self::score_state(
+                    &simulated_game,
+                    perspective,
+                    config.depth.saturating_sub(1),
+                    config.depth,
+                );
+                candidates.push(ScoredRootMove {
                     inputs,
                     game: simulated_game,
+                    heuristic,
                 });
             }
         }
-        moves
+
+        candidates.sort_by(|a, b| b.heuristic.cmp(&a.heuristic));
+        if candidates.len() > config.root_branch_limit {
+            candidates.truncate(config.root_branch_limit);
+        }
+        candidates
     }
 
     fn search_score(
@@ -521,60 +554,101 @@ impl MonsGameModel {
             return terminal_score;
         }
         if depth == 0 || *visited_nodes >= config.max_visited_nodes {
-            return Self::score_state(game, perspective, depth, config.depth);
+            return evaluate_preferability(game, perspective);
         }
 
-        // Inputs are single move resolutions; active_color stays on the same side until NextTurn.
-        // This keeps future-state scoring aligned with turn switches (maximize us, minimize opponent).
         let maximizing = game.active_color == perspective;
-        let mut value = if maximizing { i32::MIN } else { i32::MAX };
-        let mut explored_any = false;
-        let remaining_nodes = config.max_visited_nodes.saturating_sub(*visited_nodes);
-
-        if remaining_nodes == 0 {
-            return Self::score_state(game, perspective, depth, config.depth);
+        let mut children = Self::ranked_child_states(game, perspective, maximizing, config);
+        if children.is_empty() {
+            return evaluate_preferability(game, perspective);
         }
 
-        for inputs in Self::enumerate_legal_inputs(game, remaining_nodes.max(1)) {
-            if *visited_nodes >= config.max_visited_nodes {
-                break;
-            }
-            let Some((simulated_game, _)) = Self::apply_inputs_for_search(game, &inputs) else {
-                continue;
-            };
+        if maximizing {
+            let mut value = i32::MIN;
+            for child in children.drain(..) {
+                if *visited_nodes >= config.max_visited_nodes {
+                    break;
+                }
 
-            explored_any = true;
-            *visited_nodes += 1;
-            let score = Self::search_score(
-                &simulated_game,
-                perspective,
-                depth.saturating_sub(1),
-                alpha,
-                beta,
-                visited_nodes,
-                config,
-            );
-
-            if maximizing {
+                *visited_nodes += 1;
+                let score = Self::search_score(
+                    &child,
+                    perspective,
+                    depth - 1,
+                    alpha,
+                    beta,
+                    visited_nodes,
+                    config,
+                );
                 value = value.max(score);
                 alpha = alpha.max(value);
                 if alpha >= beta {
                     break;
                 }
+            }
+
+            if value == i32::MIN {
+                evaluate_preferability(game, perspective)
             } else {
+                value
+            }
+        } else {
+            let mut value = i32::MAX;
+            for child in children.drain(..) {
+                if *visited_nodes >= config.max_visited_nodes {
+                    break;
+                }
+
+                *visited_nodes += 1;
+                let score = Self::search_score(
+                    &child,
+                    perspective,
+                    depth - 1,
+                    alpha,
+                    beta,
+                    visited_nodes,
+                    config,
+                );
                 value = value.min(score);
                 beta = beta.min(value);
                 if beta <= alpha {
                     break;
                 }
             }
+
+            if value == i32::MAX {
+                evaluate_preferability(game, perspective)
+            } else {
+                value
+            }
+        }
+    }
+
+    fn ranked_child_states(
+        game: &MonsGame,
+        perspective: Color,
+        maximizing: bool,
+        config: SmartSearchConfig,
+    ) -> Vec<MonsGame> {
+        let mut scored_states: Vec<(i32, MonsGame)> = Vec::new();
+        for inputs in Self::enumerate_legal_inputs(game, config.node_enum_limit) {
+            if let Some(simulated_game) = Self::apply_inputs_for_search(game, &inputs) {
+                let heuristic = Self::score_state(&simulated_game, perspective, 0, config.depth);
+                scored_states.push((heuristic, simulated_game));
+            }
         }
 
-        if explored_any {
-            value
+        if maximizing {
+            scored_states.sort_by(|a, b| b.0.cmp(&a.0));
         } else {
-            Self::score_state(game, perspective, depth, config.depth)
+            scored_states.sort_by(|a, b| a.0.cmp(&b.0));
         }
+
+        if scored_states.len() > config.node_branch_limit {
+            scored_states.truncate(config.node_branch_limit);
+        }
+
+        scored_states.into_iter().map(|(_, game)| game).collect()
     }
 
     fn enumerate_legal_inputs(game: &MonsGame, max_moves: usize) -> Vec<Vec<Input>> {
@@ -596,7 +670,7 @@ impl MonsGameModel {
         all_inputs: &mut Vec<Vec<Input>>,
         max_moves: usize,
     ) {
-        if all_inputs.len() >= max_moves {
+        if all_inputs.len() >= max_moves || partial_inputs.len() > SMART_MAX_INPUT_CHAIN {
             return;
         }
 
@@ -626,13 +700,10 @@ impl MonsGameModel {
         }
     }
 
-    fn apply_inputs_for_search(
-        game: &MonsGame,
-        inputs: &[Input],
-    ) -> Option<(MonsGame, Vec<Event>)> {
+    fn apply_inputs_for_search(game: &MonsGame, inputs: &[Input]) -> Option<MonsGame> {
         let mut simulated_game = game.clone_for_simulation();
         match simulated_game.process_input(inputs.to_vec(), false, false) {
-            Output::Events(events) => Some((simulated_game, events)),
+            Output::Events(_) => Some(simulated_game),
             _ => None,
         }
     }
@@ -671,15 +742,19 @@ impl MonsGameModel {
 
         let candidate = &state.root_moves[state.next_index];
         state.visited_nodes += 1;
-        let candidate_score = Self::search_score(
-            &candidate.game,
-            state.perspective,
-            state.config.depth.saturating_sub(1),
-            state.alpha,
-            i32::MAX,
-            &mut state.visited_nodes,
-            state.config,
-        );
+        let candidate_score = if state.config.depth > 1 {
+            Self::search_score(
+                &candidate.game,
+                state.perspective,
+                state.config.depth - 1,
+                state.alpha,
+                i32::MAX,
+                &mut state.visited_nodes,
+                state.config,
+            )
+        } else {
+            candidate.heuristic
+        };
 
         let input_fen = Input::fen_from_array(&candidate.inputs);
 
@@ -704,11 +779,6 @@ impl MonsGameModel {
             return Self::automove_game(&mut state.game);
         }
 
-        state.scored_roots.sort_by(|a, b| {
-            b.score
-                .cmp(&a.score)
-                .then_with(|| a.input_fen.cmp(&b.input_fen))
-        });
         let best_inputs = Self::pick_root_move_with_exploration(&state.scored_roots);
         let input_fen = Input::fen_from_array(&best_inputs);
         let output = state.game.process_input(best_inputs, false, false);
@@ -716,7 +786,15 @@ impl MonsGameModel {
     }
 
     fn pick_root_move_with_exploration(scored_roots: &[RootEvaluation]) -> Vec<Input> {
-        scored_roots[0].inputs.clone()
+        let mut best_index = 0usize;
+        let mut best_score = i32::MIN;
+        for (index, evaluation) in scored_roots.iter().enumerate() {
+            if evaluation.score > best_score {
+                best_score = evaluation.score;
+                best_index = index;
+            }
+        }
+        scored_roots[best_index].inputs.clone()
     }
 }
 
