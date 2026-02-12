@@ -81,7 +81,6 @@ struct ScoredRootMove {
 struct RootEvaluation {
     score: i32,
     inputs: Vec<Input>,
-    input_fen: String,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -756,12 +755,9 @@ impl MonsGameModel {
             candidate.heuristic
         };
 
-        let input_fen = Input::fen_from_array(&candidate.inputs);
-
         state.scored_roots.push(RootEvaluation {
             score: candidate_score,
             inputs: candidate.inputs.clone(),
-            input_fen,
         });
 
         if candidate_score > state.alpha {
