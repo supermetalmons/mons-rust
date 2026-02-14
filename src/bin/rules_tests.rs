@@ -223,9 +223,20 @@ fn collect_fixture_paths(dir: &Path) -> Result<Vec<PathBuf>, String> {
     for entry in entries {
         let entry = entry.map_err(|err| format!("failed to read fixture entry: {err}"))?;
         let path = entry.path();
-        if path.is_file() {
-            paths.push(path);
+        if !path.is_file() {
+            continue;
         }
+
+        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+
+        // Ignore filesystem metadata files like `.DS_Store`.
+        if name.starts_with('.') {
+            continue;
+        }
+
+        paths.push(path);
     }
 
     paths.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
