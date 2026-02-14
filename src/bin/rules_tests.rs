@@ -233,7 +233,6 @@ fn collect_fixture_paths(dir: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 fn run_case(path: &Path) -> CaseResult {
-    let fixture_path = path.display().to_string();
     let id = path
         .file_name()
         .and_then(|value| value.to_str())
@@ -245,8 +244,8 @@ fn run_case(path: &Path) -> CaseResult {
         Err(err) => {
             return CaseResult::fail(
                 id,
-                format!("failed to read fixture: {err}"),
-                vec![format!("📄 fixture: {fixture_path}")],
+                format!("failed to read fixture `{}`: {err}", path.display()),
+                vec![],
             )
         }
     };
@@ -257,10 +256,7 @@ fn run_case(path: &Path) -> CaseResult {
             return CaseResult::fail(
                 id,
                 format!("invalid fixture JSON: {err}"),
-                vec![
-                    format!("📄 fixture: {fixture_path}"),
-                    format!("raw fixture: {raw}"),
-                ],
+                vec![format!("raw fixture: {raw}")],
             )
         }
     };
@@ -273,8 +269,6 @@ fn run_case(path: &Path) -> CaseResult {
                 id,
                 "invalid fenBefore".to_string(),
                 vec![
-                    format!("📄 fixture: {fixture_path}"),
-                    format!("fenBefore: {}", case.fen_before),
                     format!("snapshot: {snapshot}"),
                     format!("inputFen: {}", case.input_fen),
                 ],
@@ -286,20 +280,19 @@ fn run_case(path: &Path) -> CaseResult {
     let actual_output_fen = output.fen();
     let actual_fen_after = game.fen();
     if actual_output_fen != case.output_fen {
-        return CaseResult::fail(
-            id,
-            "outputFen mismatch".to_string(),
-            vec![
-                format!("📄 fixture: {fixture_path}"),
-                format!("fenBefore: {}", case.fen_before),
-                format!("snapshot: {snapshot}"),
-                format!("inputFen: {}", case.input_fen),
-                format!("expected outputFen: {}", case.output_fen),
-                format!("actual outputFen:   {}", actual_output_fen),
-                format!("expected fenAfter:  {}", case.fen_after),
-                format!("actual fenAfter:    {}", actual_fen_after),
-            ],
-        );
+        let mut details = vec![
+            format!("snapshot: {snapshot}"),
+            format!("inputFen: {}", case.input_fen),
+            format!("expected outputFen: {}", case.output_fen),
+            format!("actual outputFen:   {}", actual_output_fen),
+        ];
+
+        if actual_fen_after != case.fen_after {
+            details.push(format!("expected fenAfter:  {}", case.fen_after));
+            details.push(format!("actual fenAfter:    {}", actual_fen_after));
+        }
+
+        return CaseResult::fail(id, "outputFen mismatch".to_string(), details);
     }
 
     if actual_fen_after != case.fen_after {
@@ -307,8 +300,6 @@ fn run_case(path: &Path) -> CaseResult {
             id,
             "fenAfter mismatch".to_string(),
             vec![
-                format!("📄 fixture: {fixture_path}"),
-                format!("fenBefore: {}", case.fen_before),
                 format!("snapshot: {snapshot}"),
                 format!("inputFen: {}", case.input_fen),
                 format!("expected outputFen: {}", case.output_fen),
@@ -433,8 +424,10 @@ fn hex_digit(nibble: u8) -> char {
 
 fn log_failure(logger: &mut Logger, case_result: &CaseResult) -> io::Result<()> {
     logger.line(FAIL_SEPARATOR.to_string())?;
-    logger.line(format!("❌ [FAIL] {}", case_result.id))?;
-    logger.line(format!("Reason: {}", case_result.summary))?;
+    logger.line(format!(
+        "❌ [FAIL] {}: {}",
+        case_result.id, case_result.summary
+    ))?;
     for detail in &case_result.details {
         logger.line(detail.clone())?;
     }
