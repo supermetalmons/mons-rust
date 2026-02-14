@@ -16,12 +16,20 @@ struct CliOptions {
     target_new_cases: Option<usize>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct TestCase {
     fen_before: String,
     fen_after: String,
     input_fen: String,
     output_fen: String,
+}
+
+#[derive(Debug, Clone)]
+struct SaveCandidate {
+    test_case: TestCase,
+    turn_number: i32,
+    white_score: i32,
+    black_score: i32,
 }
 
 impl TestCase {
@@ -114,31 +122,67 @@ fn run() -> Result<(), String> {
         let mut game = MonsGame::new(false);
         let mut pending_inputs: Vec<Input> = vec![];
         let mut transitions = 0usize;
+        let mut saved_first_options_for_turn = false;
+        let mut last_board_modified_case_for_turn: Option<SaveCandidate> = None;
 
         while game.winner_color().is_none() && transitions < MAX_TRANSITIONS_PER_GAME {
+            let turn_before = game.turn_number;
             let fen_before = game.fen();
             let output = game.process_input(pending_inputs.clone(), false, false);
             let fen_after = game.fen();
 
-            let test_case = TestCase {
-                fen_before,
-                fen_after,
-                input_fen: Input::fen_from_array(&pending_inputs),
-                output_fen: output.fen(),
+            let candidate = SaveCandidate {
+                test_case: TestCase {
+                    fen_before,
+                    fen_after,
+                    input_fen: Input::fen_from_array(&pending_inputs),
+                    output_fen: output.fen(),
+                },
+                turn_number: turn_before,
+                white_score: game.white_score,
+                black_score: game.black_score,
             };
 
-            if let Some(id) = saver.write_if_unique(&test_case)? {
-                new_cases_written += 1;
-                println!(
-                    "✅ {} score {}:{} turn {}",
-                    id, game.white_score, game.black_score, game.turn_number
-                );
+            if !saved_first_options_for_turn
+                && matches!(
+                    output,
+                    Output::LocationsToStartFrom(_) | Output::NextInputOptions(_)
+                )
+            {
+                if persist_candidate(
+                    &mut saver,
+                    &candidate,
+                    &mut new_cases_written,
+                    options.target_new_cases,
+                )? {
+                    return Ok(());
+                }
+                saved_first_options_for_turn = true;
+            }
 
-                if let Some(limit) = options.target_new_cases {
-                    if new_cases_written >= limit {
+            if board_fen(candidate.test_case.fen_before.as_str())
+                != board_fen(candidate.test_case.fen_after.as_str())
+            {
+                last_board_modified_case_for_turn = Some(candidate.clone());
+            }
+
+            let turn_advanced = game.turn_number != turn_before;
+            let game_over = game.winner_color().is_some();
+            if turn_advanced || game_over {
+                if let Some(board_modified_candidate) = last_board_modified_case_for_turn.take() {
+                    if persist_candidate(
+                        &mut saver,
+                        &board_modified_candidate,
+                        &mut new_cases_written,
+                        options.target_new_cases,
+                    )? {
                         return Ok(());
                     }
                 }
+            }
+
+            if turn_advanced {
+                saved_first_options_for_turn = false;
             }
 
             transitions += 1;
@@ -166,6 +210,33 @@ fn run() -> Result<(), String> {
             }
         }
     }
+}
+
+fn persist_candidate(
+    saver: &mut CaseSaver,
+    candidate: &SaveCandidate,
+    new_cases_written: &mut usize,
+    target_new_cases: Option<usize>,
+) -> Result<bool, String> {
+    if let Some(id) = saver.write_if_unique(&candidate.test_case)? {
+        *new_cases_written += 1;
+        println!(
+            "✅ {} score {}:{} turn {}",
+            id, candidate.white_score, candidate.black_score, candidate.turn_number
+        );
+
+        if let Some(limit) = target_new_cases {
+            if *new_cases_written >= limit {
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
+}
+
+fn board_fen(game_fen: &str) -> &str {
+    game_fen.split_whitespace().nth(9).unwrap_or("")
 }
 
 fn parse_cli() -> Result<Option<CliOptions>, String> {
