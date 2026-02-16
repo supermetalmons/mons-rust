@@ -35,7 +35,7 @@ impl Board {
     }
 
     pub fn all_mons_bases(&self) -> Vec<Location> {
-        Config::squares_ref()
+        let mut locations = Config::squares_ref()
             .iter()
             .filter_map(|(location, square)| {
                 if let Square::MonBase { .. } = square {
@@ -44,7 +44,9 @@ impl Board {
                     None
                 }
             })
-            .collect()
+            .collect::<Vec<_>>();
+        locations.sort();
+        locations
     }
 
     pub fn supermana_base(&self) -> Location {
@@ -56,7 +58,8 @@ impl Board {
     }
 
     pub fn all_mons_locations(&self, color: Color) -> Vec<Location> {
-        self.items
+        let mut locations = self
+            .items
             .iter()
             .filter_map(|(location, item)| {
                 if let Some(mon) = item.mon() {
@@ -69,11 +72,14 @@ impl Board {
                     None
                 }
             })
-            .collect()
+            .collect::<Vec<_>>();
+        locations.sort();
+        locations
     }
 
     pub fn all_free_regular_mana_locations(&self, color: Color) -> Vec<Location> {
-        self.items
+        let mut locations = self
+            .items
             .iter()
             .filter_map(|(location, item)| match item {
                 Item::Mana { mana } => match mana {
@@ -82,7 +88,9 @@ impl Board {
                 },
                 _ => None,
             })
-            .collect()
+            .collect::<Vec<_>>();
+        locations.sort();
+        locations
     }
 
     pub fn base(&self, mon: Mon) -> Location {
@@ -94,13 +102,16 @@ impl Board {
     }
 
     pub fn fainted_mons_locations(&self, color: Color) -> Vec<Location> {
-        self.items
+        let mut locations = self
+            .items
             .iter()
             .filter_map(|(location, item)| match item {
                 Item::Mon { mon } if mon.color == color && mon.is_fainted() => Some(*location),
                 _ => None,
             })
-            .collect()
+            .collect::<Vec<_>>();
+        locations.sort();
+        locations
     }
 
     pub fn find_mana(&self, color: Color) -> Option<Location> {

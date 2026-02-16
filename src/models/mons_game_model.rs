@@ -1,5 +1,8 @@
-#[cfg(target_arch = "wasm32")]
-use crate::models::scoring::evaluate_preferability;
+#[cfg(any(target_arch = "wasm32", test))]
+use crate::models::scoring::{
+    evaluate_preferability_with_weights, ScoringWeights, BALANCED_DISTANCE_SCORING_WEIGHTS,
+    DEFAULT_SCORING_WEIGHTS, MANA_RACE_LITE_TACTICAL_SCORING_WEIGHTS,
+};
 use crate::*;
 
 #[wasm_bindgen]
@@ -20,20 +23,20 @@ impl Clone for MonsGameModel {
 const DEFAULT_SMART_SEARCH_DEPTH: usize = 2;
 #[cfg(target_arch = "wasm32")]
 const DEFAULT_SMART_MAX_VISITED_NODES: usize = 320;
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 const MIN_SMART_SEARCH_DEPTH: usize = 1;
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 const MAX_SMART_SEARCH_DEPTH: usize = 4;
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 const MIN_SMART_MAX_VISITED_NODES: usize = 32;
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 const MAX_SMART_MAX_VISITED_NODES: usize = 20_000;
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 const SMART_TERMINAL_SCORE: i32 = i32::MAX / 8;
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 const SMART_MAX_INPUT_CHAIN: usize = 8;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Clone, Copy)]
 struct SmartSearchConfig {
     depth: usize,
@@ -42,9 +45,10 @@ struct SmartSearchConfig {
     root_branch_limit: usize,
     node_enum_limit: usize,
     node_branch_limit: usize,
+    scoring_weights: &'static ScoringWeights,
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 impl SmartSearchConfig {
     fn from_budget(depth: i32, max_visited_nodes: i32) -> Self {
         let depth =
@@ -66,18 +70,38 @@ impl SmartSearchConfig {
             root_branch_limit,
             node_enum_limit,
             node_branch_limit,
+            scoring_weights: &DEFAULT_SCORING_WEIGHTS,
         }
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn for_runtime(self) -> Self {
+        let mut tuned = self;
+
+        if tuned.depth >= 3 {
+            tuned.root_branch_limit = (tuned.root_branch_limit + 10).clamp(6, 36);
+            tuned.node_branch_limit = tuned.node_branch_limit.saturating_sub(11).clamp(6, 18);
+            tuned.root_enum_limit =
+                (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 220);
+            tuned.node_enum_limit =
+                (tuned.node_branch_limit * 4).clamp(tuned.node_branch_limit, 108);
+            tuned.scoring_weights = &BALANCED_DISTANCE_SCORING_WEIGHTS;
+        } else {
+            tuned.scoring_weights = &MANA_RACE_LITE_TACTICAL_SCORING_WEIGHTS;
+        }
+
+        tuned
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 struct ScoredRootMove {
     inputs: Vec<Input>,
     game: MonsGame,
     heuristic: i32,
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 struct RootEvaluation {
     score: i32,
     inputs: Vec<Input>,
@@ -183,7 +207,7 @@ impl MonsGameModel {
         self.smart_search_in_progress.set(true);
         let in_progress = self.smart_search_in_progress.clone();
 
-        let config = SmartSearchConfig::from_budget(depth, max_visited_nodes);
+        let config = SmartSearchConfig::from_budget(depth, max_visited_nodes).for_runtime();
         let perspective = self.game.active_color;
         let game = self.game.clone_for_simulation();
         let root_moves = Self::ranked_root_moves(&game, perspective, config);
@@ -503,8 +527,9 @@ impl MonsGameModel {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 impl MonsGameModel {
+    #[cfg(target_arch = "wasm32")]
     fn default_smart_budget_for_game(game: &MonsGame) -> (usize, usize) {
         let _ = game;
         (DEFAULT_SMART_SEARCH_DEPTH, DEFAULT_SMART_MAX_VISITED_NODES)
@@ -524,6 +549,7 @@ impl MonsGameModel {
                     perspective,
                     config.depth.saturating_sub(1),
                     config.depth,
+                    config.scoring_weights,
                 );
                 candidates.push(ScoredRootMove {
                     inputs,
@@ -540,6 +566,55 @@ impl MonsGameModel {
         candidates
     }
 
+    #[cfg(test)]
+    fn smart_search_best_inputs(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+        let perspective = game.active_color;
+        let root_moves = Self::ranked_root_moves(game, perspective, config);
+        if root_moves.is_empty() {
+            return Vec::new();
+        }
+
+        let mut visited_nodes = 0usize;
+        let mut alpha = i32::MIN;
+        let mut scored_roots = Vec::with_capacity(root_moves.len());
+
+        for candidate in root_moves {
+            if visited_nodes >= config.max_visited_nodes {
+                break;
+            }
+
+            visited_nodes += 1;
+            let candidate_score = if config.depth > 1 {
+                Self::search_score(
+                    &candidate.game,
+                    perspective,
+                    config.depth - 1,
+                    alpha,
+                    i32::MAX,
+                    &mut visited_nodes,
+                    config,
+                )
+            } else {
+                candidate.heuristic
+            };
+
+            scored_roots.push(RootEvaluation {
+                score: candidate_score,
+                inputs: candidate.inputs,
+            });
+
+            if candidate_score > alpha {
+                alpha = candidate_score;
+            }
+        }
+
+        if scored_roots.is_empty() {
+            Vec::new()
+        } else {
+            Self::pick_root_move_with_exploration(&scored_roots)
+        }
+    }
+
     fn search_score(
         game: &MonsGame,
         perspective: Color,
@@ -553,13 +628,13 @@ impl MonsGameModel {
             return terminal_score;
         }
         if depth == 0 || *visited_nodes >= config.max_visited_nodes {
-            return evaluate_preferability(game, perspective);
+            return evaluate_preferability_with_weights(game, perspective, config.scoring_weights);
         }
 
         let maximizing = game.active_color == perspective;
         let mut children = Self::ranked_child_states(game, perspective, maximizing, config);
         if children.is_empty() {
-            return evaluate_preferability(game, perspective);
+            return evaluate_preferability_with_weights(game, perspective, config.scoring_weights);
         }
 
         if maximizing {
@@ -587,7 +662,7 @@ impl MonsGameModel {
             }
 
             if value == i32::MIN {
-                evaluate_preferability(game, perspective)
+                evaluate_preferability_with_weights(game, perspective, config.scoring_weights)
             } else {
                 value
             }
@@ -616,7 +691,7 @@ impl MonsGameModel {
             }
 
             if value == i32::MAX {
-                evaluate_preferability(game, perspective)
+                evaluate_preferability_with_weights(game, perspective, config.scoring_weights)
             } else {
                 value
             }
@@ -632,7 +707,13 @@ impl MonsGameModel {
         let mut scored_states: Vec<(i32, MonsGame)> = Vec::new();
         for inputs in Self::enumerate_legal_inputs(game, config.node_enum_limit) {
             if let Some(simulated_game) = Self::apply_inputs_for_search(game, &inputs) {
-                let heuristic = Self::score_state(&simulated_game, perspective, 0, config.depth);
+                let heuristic = Self::score_state(
+                    &simulated_game,
+                    perspective,
+                    0,
+                    config.depth,
+                    config.scoring_weights,
+                );
                 scored_states.push((heuristic, simulated_game));
             }
         }
@@ -660,6 +741,7 @@ impl MonsGameModel {
             &mut all_inputs,
             max_moves,
         );
+        all_inputs.sort_by(|a, b| Input::fen_from_array(a).cmp(&Input::fen_from_array(b)));
         all_inputs
     }
 
@@ -707,11 +789,17 @@ impl MonsGameModel {
         }
     }
 
-    fn score_state(game: &MonsGame, perspective: Color, depth: usize, search_depth: usize) -> i32 {
+    fn score_state(
+        game: &MonsGame,
+        perspective: Color,
+        depth: usize,
+        search_depth: usize,
+        scoring_weights: &'static ScoringWeights,
+    ) -> i32 {
         if let Some(terminal_score) = Self::terminal_score(game, perspective, depth, search_depth) {
             terminal_score
         } else {
-            evaluate_preferability(game, perspective)
+            evaluate_preferability_with_weights(game, perspective, scoring_weights)
         }
     }
 
@@ -793,6 +881,10 @@ impl MonsGameModel {
         scored_roots[best_index].inputs.clone()
     }
 }
+
+#[cfg(test)]
+#[path = "mons_game_model_automove_experiments.rs"]
+mod smart_automove_pool_tests;
 
 fn random_index(len: usize) -> usize {
     use rand::Rng;
