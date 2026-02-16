@@ -1,172 +1,237 @@
 # Smart Automove Experimentation Guide
 
-This repo keeps automove experimentation isolated from release code.
+This document is the entry point for iterating on automove strength safely and quickly.
 
-## Release Safety
+## What Is Shipped Right Now
 
-- Production automove logic stays in `/Users/ivan/Developer/mons/rust/src/models/mons_game_model.rs`.
-- Experiment harness lives in `/Users/ivan/Developer/mons/rust/src/models/mons_game_model_automove_experiments.rs`.
-- The harness is included only under `#[cfg(test)]` via:
-  - `#[path = "mons_game_model_automove_experiments.rs"]`
-  - `mod smart_automove_pool_tests;`
-- Scoring presets live in `/Users/ivan/Developer/mons/rust/src/models/scoring.rs`; some are shared by both runtime and experiments.
-
-Result: no experiment tournament code is compiled into release builds.
-
-## Public Automove API
-
-Client-facing smart automove now takes one argument:
+Public API:
 
 - `smartAutomoveAsync("fast")`
 - `smartAutomoveAsync("normal")`
 
-Internally (current mapping):
+Current runtime behavior:
 
-- `fast` -> approximately old `depth=2`, `max_nodes=420`
-- `normal` -> approximately old `depth=3`, `max_nodes=2300`
-- `fast` currently uses drainer-context scoring tuned for short-horizon pickup/score pressure and immediate drainer threat checks.
-- `normal` keeps the runtime tactical-balanced scoring path.
-- On White turn 1, `smartAutomoveAsync(...)` tries a random hardcoded 5-move opening route (one-move-per-call). If current position no longer matches any route, it falls back to regular smart search.
+- `fast` is CPU-shaped around old `depth=2/max_nodes=420` and uses drainer-context scoring.
+- `normal` is CPU-shaped around old `depth=3/max_nodes=2300` and uses tactical-balanced scoring.
+- On White turn 1, automove follows one random hardcoded opening route (one move per call). If the current position no longer matches any route, it falls back to normal smart search.
 
-This keeps client API stable around CPU preference while allowing internal search implementation changes.
+## Newcomer Map
 
-## Client Modes Used in Tournaments
+Read these files in this order:
 
-Production-mode tournament runs in this harness are executed across both client modes:
+1. `src/models/mons_game.rs`
+2. `src/models/scoring.rs`
+3. `src/models/mons_game_model.rs`
+4. `src/models/mons_game_model_automove_experiments.rs`
 
-- `fast`
-- `normal`
+What each file is for:
 
-Note: experiment harness profiles call internal selectors (`smart_search_best_inputs`) directly, so the production opening-route policy above is not applied unless explicitly modeled. Set `SMART_USE_WHITE_OPENING_BOOK=true` to model those openings in experiments; keep it `false` for pure algorithm-promotion runs.
+- `mons_game.rs`: legal moves, event application, turn transitions, win conditions.
+- `scoring.rs`: board preferability evaluation and weight presets.
+- `mons_game_model.rs`: production automove API and runtime selector logic.
+- `mons_game_model_automove_experiments.rs`: test-only tournament harness and candidate profiles.
 
-## Core Tests
+## Release Safety
 
-From `/Users/ivan/Developer/mons/rust`:
+- Production automove logic is in `src/models/mons_game_model.rs`.
+- Experiment harness is in `src/models/mons_game_model_automove_experiments.rs`.
+- Harness is included only under `#[cfg(test)]` in `src/models/mons_game_model.rs`:
+  - `#[path = "mons_game_model_automove_experiments.rs"]`
+  - `mod smart_automove_pool_tests;`
 
-- Fast sanity:
-  - `cargo test --lib smart_automove_pool_smoke_runs`
-- Verify pool size:
-  - `cargo test --lib smart_automove_pool_keeps_ten_models`
-- Full candidate-vs-pool promotion tournament:
-  - `SMART_POOL_GAMES=100 cargo test --lib smart_automove_pool_candidate_promotion_with_client_budgets -- --ignored --nocapture`
+Result: tournament harness code does not ship in release builds.
 
-Useful knobs:
+## First 10 Minutes
 
-- `SMART_POOL_GAMES` (default `100` in promotion test)
-- `SMART_POOL_OPPONENTS` (defaults to 10; clamps to 1..10)
-- `SMART_POOL_MAX_PLIES` (default `320`)
-- `SMART_CANDIDATE_PROFILE` (selects candidate implementation)
-- `SMART_USE_WHITE_OPENING_BOOK` (`true/false`, default `false`; applies production white-turn opening routes in simulated games)
-- Opening generation is cached per `(seed, game_count)` inside one test process, so profile sweeps and fast pipelines avoid rebuilding identical opening sets.
+Run from workspace root:
 
-## Candidate Profiles
+1. `cargo test --lib smart_automove_pool_smoke_runs`
+2. `cargo test --lib smart_automove_pool_keeps_ten_models`
+3. `cargo test --lib opening_book`
+4. `cargo check --release --target wasm32-unknown-unknown`
 
-Choose candidate logic with `SMART_CANDIDATE_PROFILE` (default: `base`).
-`base` is aligned to the currently shipped runtime behavior (same mode mapping and runtime scoring policy).
-Examples:
+If these pass, your local setup is sane for experiments.
 
-- `base`
-- `runtime_current` (explicit alias of currently shipped runtime behavior)
-- `runtime_pre_drainer_context` (runtime snapshot before fast drainer-context scoring promotion)
-- `runtime_legacy_phase_adaptive` (pre-wideroot runtime reference for regression checks)
-- `runtime_d2_tuned` (legacy fixed-weight runtime reference)
-- `runtime_fast_wideroot_normal_current` (fast-mode wideroot candidate with normal-mode runtime baseline)
-- `runtime_drainer_context` (fast-mode drainer-context scoring candidate; normal-mode runtime baseline)
-- `weights_balanced`
-- `focus_light_tactical_d2_only`
-- `phase_adaptive_d2`
-- `phase_adaptive_scoring_v2`
-- `hybrid_deeper_fast`
+## Experiment Controls
 
-Run example:
+Core knobs:
 
-- `SMART_CANDIDATE_PROFILE=focus_light_tactical_d2_only SMART_POOL_GAMES=100 cargo test --lib smart_automove_pool_candidate_promotion_with_client_budgets -- --ignored --nocapture`
+- `SMART_CANDIDATE_PROFILE`
+- `SMART_POOL_GAMES`
+- `SMART_POOL_OPPONENTS`
+- `SMART_POOL_MAX_PLIES`
+- `SMART_USE_WHITE_OPENING_BOOK` (`true/false`, default `false`)
 
-## Profile Sweep and Speed Probe
+Why `SMART_USE_WHITE_OPENING_BOOK` defaults to `false`:
 
-- Compare multiple profiles on same setup:
-  - `SMART_POOL_GAMES=4 SMART_SWEEP_PROFILES=base,focus_light_tactical_d2_only cargo test --lib smart_automove_pool_profile_sweep -- --ignored --nocapture`
-- Speed-only probe on fixed openings:
-  - `SMART_CANDIDATE_PROFILE=focus_light_tactical_d2_only SMART_SPEED_POSITIONS=20 cargo test --lib smart_automove_pool_profile_speed_probe -- --ignored --nocapture`
-- Runtime/ply diagnostics:
-  - `SMART_DIAG_GAMES=4 SMART_DIAG_MODE=normal cargo test --lib smart_automove_pool_runtime_diagnostics -- --ignored --nocapture`
+- Production applies opening routes.
+- Promotion experiments usually should compare search/eval quality directly, not opening-book luck.
+- Enable it only when explicitly validating production-like opening behavior.
 
-## Fast Iteration Pipeline
+## Fast Iteration Loop
 
-Use one command to filter by speed first, then rank strength among surviving profiles:
+Use this loop for most work:
 
-- `SMART_FAST_PROFILES=base,runtime_d2_tuned,runtime_d2_tuned_d3_phase_adaptive SMART_FAST_GAMES=4 SMART_FAST_OPPONENTS=3 SMART_FAST_MAX_PLIES=96 SMART_FAST_SPEED_POSITIONS=8 SMART_FAST_USE_CLIENT_MODES=true cargo test --lib smart_automove_pool_fast_pipeline -- --ignored --nocapture`
-
-Fast-pipeline knobs:
-
-- `SMART_FAST_PROFILES` (comma-separated profile names)
-- `SMART_FAST_BASELINE` (speed baseline profile; default `base`)
-- `SMART_FAST_GAMES` (default `2`)
-- `SMART_FAST_OPPONENTS` (default `2`)
-- `SMART_FAST_MAX_PLIES` (default `80`; temporarily mapped to `SMART_POOL_MAX_PLIES` during the run)
-- `SMART_FAST_SPEED_POSITIONS` (default `6`)
-- `SMART_FAST_SPEED_RATIO_MAX` (default `1.25`; max allowed average ratio vs baseline)
-- `SMART_FAST_SPEED_RATIO_MODE_MAX` (default follows `SMART_FAST_SPEED_RATIO_MAX`; max allowed per-mode ratio)
-- `SMART_FAST_USE_CLIENT_MODES` (`true/false`; default `true`; accepts legacy `SMART_FAST_USE_CLIENT_BUDGETS` too)
-
-## Direct Duel (Profile vs Profile)
-
-Run a direct head-to-head between two profiles on the same opening set:
-
-- `SMART_DUEL_A=phase_adaptive_scoring_v2 SMART_DUEL_B=runtime_d2_tuned SMART_DUEL_GAMES=4 SMART_DUEL_MAX_PLIES=96 cargo test --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
-
-Duel knobs:
-
-- `SMART_DUEL_A` (profile name; default `base`)
-- `SMART_DUEL_B` (profile name; default `runtime_d2_tuned`)
-- `SMART_DUEL_GAMES` (games per mode; default `4`)
-- `SMART_DUEL_REPEATS` (repeat count with different deterministic seeds; default `1`)
-- `SMART_DUEL_MAX_PLIES` (default `96`)
-- `SMART_DUEL_USE_CLIENT_MODES` (`true/false`; default `true`)
-- `SMART_DUEL_MODE` (`fast` or `normal`; when set, duel runs only that mode)
-
-## Recommended Iteration Flow
-
-1. CPU/strength screen vs current runtime:
-   - `SMART_FAST_PROFILES=base,<candidate_profile> SMART_FAST_USE_CLIENT_MODES=true cargo test --lib smart_automove_pool_fast_pipeline -- --ignored --nocapture`
-2. Direct duel vs shipped runtime (`runtime_current`) with repeats:
-   - `SMART_DUEL_A=<candidate_profile> SMART_DUEL_B=runtime_current SMART_DUEL_REPEATS=2 cargo test --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
-3. For release-to-release checks, compare shipped runtime vs legacy snapshot:
-   - `SMART_DUEL_A=runtime_current SMART_DUEL_B=runtime_pre_drainer_context SMART_DUEL_REPEATS=3 cargo test --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
-4. Only then run heavier pool tournament:
+1. Speed + quick strength screen:
+   - `SMART_FAST_PROFILES=runtime_current,<candidate_profile> SMART_FAST_BASELINE=runtime_current SMART_FAST_USE_CLIENT_MODES=true cargo test --lib smart_automove_pool_fast_pipeline -- --ignored --nocapture`
+2. Direct duel vs shipped runtime:
+   - `SMART_DUEL_A=<candidate_profile> SMART_DUEL_B=runtime_current SMART_DUEL_REPEATS=3 cargo test --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
+3. If still positive, run larger duel:
+   - `SMART_DUEL_A=<candidate_profile> SMART_DUEL_B=runtime_current SMART_DUEL_GAMES=4 SMART_DUEL_REPEATS=5 SMART_DUEL_MAX_PLIES=80 cargo test --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
+4. Only then run full pool promotion:
    - `SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_POOL_GAMES=100 cargo test --lib smart_automove_pool_candidate_promotion_with_client_budgets -- --ignored --nocapture`
 
-This keeps iterations focused on meaningful non-regression checks: same client modes, same runtime baseline, and explicit CPU gating per mode.
+## Useful Test Commands
 
-## Promotion Rule (Current)
+Profile sweep:
 
-A candidate is marked promoted when all are true:
+- `SMART_POOL_GAMES=4 SMART_SWEEP_PROFILES=runtime_current,weights_balanced cargo test --lib smart_automove_pool_profile_sweep -- --ignored --nocapture`
 
-- Beats at least `MIN_OPPONENTS_BEAT_TO_PROMOTE` opponents (currently `7`).
-- Per-opponent confidence for beaten matchups is at least `MIN_CONFIDENCE_TO_PROMOTE` (currently `0.75`).
-- Per-mode aggregate confidence (for both client modes) is at least `0.75`.
-- Combined aggregate confidence is at least `0.75`.
+Speed probe:
 
-The report prints:
+- `SMART_CANDIDATE_PROFILE=runtime_current SMART_SPEED_POSITIONS=20 cargo test --lib smart_automove_pool_profile_speed_probe -- --ignored --nocapture`
 
-- Whether promoted
-- Aggregate win rate/confidence
-- Per-mode and per-opponent breakdown
-- Which pool model would be removed
+Runtime diagnostics:
 
-## Implementation Workflow
+- `SMART_DIAG_GAMES=4 SMART_DIAG_MODE=normal cargo test --lib smart_automove_pool_runtime_diagnostics -- --ignored --nocapture`
 
-1. Add or modify a candidate implementation function in:
-   - `/Users/ivan/Developer/mons/rust/src/models/mons_game_model_automove_experiments.rs`
-2. Register it in `candidate_model()` and optionally in `smart_automove_pool_profile_sweep` variants.
-3. Run smoke test and fast iteration pipeline first.
-4. Run direct duel with repeats against `runtime_current`.
-5. Run full promotion tournament only after passing speed + duel checks.
-6. If promoted with acceptable speed, promote logic into runtime path in:
-   - `/Users/ivan/Developer/mons/rust/src/models/mons_game_model.rs`
-7. Optionally replace one of `pool_model_01..pool_model_10` with the newly promoted behavior to keep a diverse baseline pool.
+## Promotion Criteria
+
+Candidate is considered promotable only when all are true:
+
+- Beats at least `MIN_OPPONENTS_BEAT_TO_PROMOTE` opponents (`7` currently).
+- Per-opponent confidence for beaten matchups >= `MIN_CONFIDENCE_TO_PROMOTE` (`0.75` currently).
+- Per-mode aggregate confidence >= `0.75`.
+- Combined aggregate confidence >= `0.75`.
+- CPU is within acceptable ratio in fast pipeline gates.
+
+## Candidate Profiles To Know
+
+- `runtime_current`: currently shipped behavior.
+- `runtime_pre_drainer_context`: snapshot before current fast drainer-context promotion.
+- `runtime_legacy_phase_adaptive`: older legacy reference.
+- `runtime_drainer_context`: fast-only drainer-context candidate path.
+- `runtime_d2_tuned`: older fixed-weight reference.
+
+## Failed Experiments Log
+
+Use this section as an anti-pattern memory so future iterations skip known dead ends faster.
+
+### 1) `runtime_drainer_priority` (weights-only drainer emphasis)
+
+Idea:
+
+- Increase drainer-centric weights globally to force mana-race pressure.
+
+What happened:
+
+- CPU stayed near baseline (`~0.99x` in quick fast pipeline).
+- Strength did not beat baseline reliably (`0.500` quick win rate in fast pipeline checks).
+
+Takeaway:
+
+- Pure weight inflation without better tactical context was too blunt.
+
+### 2) `runtime_drainer_priority_aggr` (more aggressive weights-only variant)
+
+Idea:
+
+- Push drainer and carrier urgency even harder than `runtime_drainer_priority`.
+
+What happened:
+
+- No robust strength lift vs `runtime_current`.
+- Similar CPU, but no promotion-quality confidence.
+
+Takeaway:
+
+- More aggressive static weights amplified noise, not decision quality.
+
+### 3) `runtime_drainer_tiebreak` (root-level drainer heuristic tie-break)
+
+Idea:
+
+- Keep search mostly unchanged, but re-rank near-top roots by a custom drainer delta metric.
+
+What happened:
+
+- Quick pipeline showed underperformance (`0.000` win rate in one screening run).
+- No consistent improvement in repeated checks.
+
+Takeaway:
+
+- Late tie-break after search was weaker than integrating signals inside evaluation itself.
+
+### 4) Full two-mode `runtime_drainer_context` (same idea applied to `fast` and `normal`)
+
+Idea:
+
+- Apply drainer-context scoring to both client modes.
+
+What happened:
+
+- Fast mode improved strongly.
+- Normal mode regressed in larger samples.
+- Combined large duel result: `22W-18L`, win rate `0.550`, confidence `0.682` (below confidence bar).
+
+Takeaway:
+
+- Fast and normal need separate strategies; one-size-fits-both-mode tuning was unstable.
+
+### 5) `runtime_drainer_context` + wider-root in fast branch
+
+Idea:
+
+- Combine drainer-context scoring with wider-root search shape in fast mode.
+
+What happened:
+
+- Fast duel degraded vs non-wideroot variant:
+  - Wideroot: `12W-8L`, confidence `0.748`
+  - No wideroot: `13W-7L`, confidence `0.868`
+
+Takeaway:
+
+- For this scorer, widening fast root hurt move quality per node budget.
+
+## What Worked Best So Far
+
+Current promoted direction:
+
+- Keep `normal` conservative (`TACTICAL_BALANCED_SCORING_WEIGHTS` path).
+- Improve `fast` with drainer-context board signals.
+- Keep opening-route policy in production, but disabled by default in promotion experiments.
+
+Observed proof against pre-promotion snapshot (fast mode):
+
+- `runtime_current` vs `runtime_pre_drainer_context`:
+  - `13W-7L`
+  - win rate `0.650`
+  - confidence `0.868`
+
+## How To Add A New Candidate
+
+1. Add a candidate function in `src/models/mons_game_model_automove_experiments.rs`.
+2. Register it in `candidate_model()` and `all_profile_variants()`.
+3. Run fast loop and duel loop.
+4. Promote only with strength + confidence + CPU evidence.
+5. Move runtime changes into `src/models/mons_game_model.rs`.
+6. Keep harness-only logic in experiment file.
+
+## Final Validation Before Release
+
+Run:
+
+1. `cargo test --lib`
+2. `cargo check --release`
+3. `cargo check --release --target wasm32-unknown-unknown`
+
+Then verify:
+
+- No legacy API exposure (`smartAutomoveWithBudgetAsync` should not exist).
+- Experiment harness remains test-only.
 
 ## Important
 
-- Do not run/scan `rules-tests/` during automove iteration unless explicitly requested.
-- Keep runtime validation focused on automove-targeted tests and `cargo check`.
+- Do not run/scan `rules-tests/` unless explicitly requested.
+- Keep release checks focused on automove tests plus release `cargo check`.
