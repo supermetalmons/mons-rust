@@ -7,8 +7,9 @@ use crate::models::scoring::{
     FINISHER_MANA_RACE_LITE_SOFT_SCORING_WEIGHTS,
     MANA_RACE_LITE_D2_TUNED_AGGRESSIVE_SCORING_WEIGHTS, MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
     MANA_RACE_LITE_SCORING_WEIGHTS, MANA_RACE_NEUTRAL_SCORING_WEIGHTS, MANA_RACE_SCORING_WEIGHTS,
-    TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS, TACTICAL_BALANCED_SCORING_WEIGHTS,
-    TACTICAL_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS, TACTICAL_MANA_RACE_LITE_SCORING_WEIGHTS,
+    RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS, TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS,
+    TACTICAL_BALANCED_SCORING_WEIGHTS, TACTICAL_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS,
+    TACTICAL_MANA_RACE_LITE_SCORING_WEIGHTS,
 };
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -26,26 +27,41 @@ const MIN_OPPONENTS_BEAT_TO_PROMOTE: usize = 7;
 
 #[derive(Debug, Clone, Copy)]
 struct SearchBudget {
+    label: &'static str,
     depth: i32,
     max_nodes: i32,
 }
 
 impl SearchBudget {
-    fn key(self) -> String {
-        format!("d{}n{}", self.depth, self.max_nodes)
+    fn from_preference(preference: SmartAutomovePreference) -> Self {
+        let (depth, max_nodes) = preference.depth_and_max_nodes();
+        Self {
+            label: preference.as_api_value(),
+            depth,
+            max_nodes,
+        }
+    }
+
+    fn key(self) -> &'static str {
+        self.label
+    }
+
+    fn runtime_config_for_game(self, game: &MonsGame) -> SmartSearchConfig {
+        let config = if let Some(preference) = SmartAutomovePreference::from_api_value(self.label) {
+            SmartSearchConfig::from_preference(preference)
+        } else {
+            SmartSearchConfig::from_budget(self.depth, self.max_nodes).for_runtime()
+        };
+        MonsGameModel::with_runtime_scoring_weights(game, config)
     }
 }
 
-const CLIENT_BUDGETS: [SearchBudget; 2] = [
-    SearchBudget {
-        depth: 2,
-        max_nodes: 420,
-    },
-    SearchBudget {
-        depth: 3,
-        max_nodes: 2300,
-    },
-];
+fn client_budgets() -> [SearchBudget; 2] {
+    [
+        SearchBudget::from_preference(SmartAutomovePreference::Fast),
+        SearchBudget::from_preference(SmartAutomovePreference::Normal),
+    ]
+}
 
 const CANDIDATE_SCORING_WEIGHTS_GUARDED: ScoringWeights = ScoringWeights {
     drainer_at_risk: -520,
@@ -68,6 +84,48 @@ const CANDIDATE_SCORING_WEIGHTS_RUSH: ScoringWeights = ScoringWeights {
     angel_guarding_drainer: 200,
     angel_close_to_friendly_drainer: 120,
     ..BALANCED_DISTANCE_SCORING_WEIGHTS
+};
+
+const DRAINER_PRIORITY_FAST_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    drainer_at_risk: -520,
+    drainer_close_to_mana: 370,
+    drainer_holding_mana: 470,
+    drainer_close_to_own_pool: 350,
+    regular_mana_drainer_control: 24,
+    mana_carrier_at_risk: -240,
+    mana_carrier_guarded: 120,
+    mana_carrier_one_step_from_pool: 310,
+    supermana_carrier_one_step_from_pool_extra: 190,
+    immediate_winning_carrier: 460,
+    angel_guarding_drainer: 340,
+    ..MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS
+};
+
+const DRAINER_PRIORITY_NORMAL_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    drainer_at_risk: -560,
+    drainer_close_to_mana: 390,
+    drainer_holding_mana: 500,
+    drainer_close_to_own_pool: 380,
+    regular_mana_drainer_control: 24,
+    mana_carrier_at_risk: -280,
+    mana_carrier_guarded: 150,
+    mana_carrier_one_step_from_pool: 330,
+    supermana_carrier_one_step_from_pool_extra: 220,
+    immediate_winning_carrier: 640,
+    angel_guarding_drainer: 360,
+    ..TACTICAL_BALANCED_SCORING_WEIGHTS
+};
+
+const DRAINER_PRIORITY_NORMAL_AGGR_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    drainer_at_risk: -620,
+    mana_carrier_at_risk: -320,
+    mana_carrier_guarded: 165,
+    mana_carrier_one_step_from_pool: 360,
+    supermana_carrier_one_step_from_pool_extra: 240,
+    immediate_winning_carrier: 820,
+    spirit_close_to_enemy: 270,
+    angel_guarding_drainer: 370,
+    ..DRAINER_PRIORITY_NORMAL_SCORING_WEIGHTS
 };
 
 #[derive(Clone, Copy)]
@@ -243,7 +301,74 @@ impl CandidateEvaluation {
 }
 
 fn model_current_best(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    MonsGameModel::smart_search_best_inputs(game, config)
+    MonsGameModel::smart_search_best_inputs(
+        game,
+        MonsGameModel::with_runtime_scoring_weights(game, config),
+    )
+}
+
+fn model_runtime_legacy_phase_adaptive(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut legacy =
+        SmartSearchConfig::from_budget(config.depth as i32, config.max_visited_nodes as i32)
+            .for_runtime();
+    if legacy.depth < 3 {
+        legacy = tuned_candidate_config_wideroot(legacy);
+    }
+    legacy.scoring_weights = legacy_runtime_phase_adaptive_scoring_weights(game, legacy.depth);
+    MonsGameModel::smart_search_best_inputs(game, legacy)
+}
+
+fn model_runtime_pre_drainer_context(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime =
+        SmartSearchConfig::from_budget(config.depth as i32, config.max_visited_nodes as i32)
+            .for_runtime();
+    if runtime.depth < 3 {
+        runtime = runtime.with_fast_wideroot_shape();
+        runtime.scoring_weights = phase_adaptive_scoring_v2_weights(game, false);
+    } else {
+        runtime.scoring_weights = &TACTICAL_BALANCED_SCORING_WEIGHTS;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn legacy_runtime_phase_adaptive_scoring_weights(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if depth >= 3 {
+        if my_distance_to_win <= 1 {
+            &FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS
+        } else if opponent_distance_to_win <= 1 {
+            &TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS
+        } else if my_distance_to_win <= 2 {
+            &FINISHER_BALANCED_SOFT_SCORING_WEIGHTS
+        } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+            &TACTICAL_BALANCED_SCORING_WEIGHTS
+        } else {
+            &BALANCED_DISTANCE_SCORING_WEIGHTS
+        }
+    } else if my_distance_to_win <= 1 {
+        &FINISHER_MANA_RACE_LITE_SOFT_AGGRESSIVE_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 1 {
+        &TACTICAL_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS
+    } else if my_distance_to_win <= 2 {
+        &FINISHER_MANA_RACE_LITE_SOFT_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &TACTICAL_MANA_RACE_LITE_SCORING_WEIGHTS
+    } else if score_gap >= 2 {
+        &MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS
+    } else {
+        &MANA_RACE_LITE_SCORING_WEIGHTS
+    }
 }
 
 fn pool_model_01(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
@@ -287,7 +412,7 @@ fn pool_model_10(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
 }
 
 fn candidate_model_base(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    MonsGameModel::smart_search_best_inputs(game, config)
+    model_current_best(game, config)
 }
 
 fn candidate_model_focus(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
@@ -560,6 +685,277 @@ fn candidate_model_runtime_d2_tuned_d3_adaptive_neutral(
     MonsGameModel::smart_search_best_inputs(game, tuned)
 }
 
+fn candidate_model_runtime_d2_tuned_d3_phase_adaptive(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let tuned = if config.depth >= 3 {
+        with_scoring_weights(config, d3_phase_adaptive_weights(game))
+    } else {
+        with_scoring_weights(config, &MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS)
+    };
+    MonsGameModel::smart_search_best_inputs(game, tuned)
+}
+
+fn candidate_model_runtime_fast_phase_normal_tactical(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let tuned = if config.depth >= 3 {
+        with_scoring_weights(config, normal_tactical_phase_weights(game))
+    } else {
+        with_scoring_weights(config, phase_adaptive_scoring_v2_weights(game, false))
+    };
+    MonsGameModel::smart_search_best_inputs(game, tuned)
+}
+
+#[derive(Debug, Clone)]
+struct GuardedRootEvaluation {
+    score: i32,
+    inputs: Vec<Input>,
+    game: MonsGame,
+}
+
+fn candidate_model_runtime_root_safety_tiebreak(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let perspective = game.active_color;
+    let mut scored_roots = search_scored_roots_with_states(game, config, perspective);
+    if scored_roots.is_empty() {
+        return Vec::new();
+    }
+
+    scored_roots.sort_by(|a, b| b.score.cmp(&a.score));
+    let best_score = scored_roots[0].score;
+    let score_margin = if config.depth >= 3 { 700 } else { 500 };
+    let shortlist_limit = if config.depth >= 3 { 3 } else { 2 };
+
+    let mut shortlist: Vec<GuardedRootEvaluation> = scored_roots
+        .into_iter()
+        .take_while(|root| root.score + score_margin >= best_score)
+        .take(shortlist_limit)
+        .collect();
+
+    if shortlist.len() <= 1 {
+        return shortlist.remove(0).inputs;
+    }
+
+    let reply_limit = if config.depth >= 3 {
+        config.node_enum_limit.clamp(4, 8)
+    } else {
+        config.node_enum_limit.clamp(4, 6)
+    };
+
+    let mut best_index = 0usize;
+    let mut best_floor = i32::MIN;
+    let mut best_root_score = i32::MIN;
+    for (index, root) in shortlist.iter().enumerate() {
+        let reply_floor =
+            root_reply_floor(&root.game, perspective, config.scoring_weights, reply_limit);
+        if reply_floor > best_floor || (reply_floor == best_floor && root.score > best_root_score) {
+            best_floor = reply_floor;
+            best_root_score = root.score;
+            best_index = index;
+        }
+    }
+
+    shortlist[best_index].inputs.clone()
+}
+
+fn search_scored_roots_with_states(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+    perspective: Color,
+) -> Vec<GuardedRootEvaluation> {
+    let root_moves = MonsGameModel::ranked_root_moves(game, perspective, config);
+    if root_moves.is_empty() {
+        return Vec::new();
+    }
+
+    let mut visited_nodes = 0usize;
+    let mut alpha = i32::MIN;
+    let mut scored_roots = Vec::with_capacity(root_moves.len());
+
+    for candidate in root_moves {
+        if visited_nodes >= config.max_visited_nodes {
+            break;
+        }
+
+        visited_nodes += 1;
+        let candidate_score = if config.depth > 1 {
+            MonsGameModel::search_score(
+                &candidate.game,
+                perspective,
+                config.depth - 1,
+                alpha,
+                i32::MAX,
+                &mut visited_nodes,
+                config,
+            )
+        } else {
+            candidate.heuristic
+        };
+
+        if candidate_score > alpha {
+            alpha = candidate_score;
+        }
+
+        scored_roots.push(GuardedRootEvaluation {
+            score: candidate_score,
+            inputs: candidate.inputs,
+            game: candidate.game,
+        });
+    }
+
+    scored_roots
+}
+
+fn root_reply_floor(
+    state_after_move: &MonsGame,
+    perspective: Color,
+    scoring_weights: &'static ScoringWeights,
+    reply_limit: usize,
+) -> i32 {
+    if let Some(winner) = state_after_move.winner_color() {
+        return if winner == perspective {
+            SMART_TERMINAL_SCORE / 2
+        } else {
+            -SMART_TERMINAL_SCORE / 2
+        };
+    }
+
+    if state_after_move.active_color == perspective {
+        return evaluate_preferability_with_weights(state_after_move, perspective, scoring_weights);
+    }
+
+    let replies = MonsGameModel::enumerate_legal_inputs(state_after_move, reply_limit.max(1));
+    if replies.is_empty() {
+        return SMART_TERMINAL_SCORE / 4;
+    }
+
+    let mut worst_reply_score = i32::MAX;
+    for reply in replies {
+        let Some(after_reply) = MonsGameModel::apply_inputs_for_search(state_after_move, &reply)
+        else {
+            continue;
+        };
+
+        let score = match after_reply.winner_color() {
+            Some(winner) if winner == perspective => SMART_TERMINAL_SCORE / 2,
+            Some(_) => -SMART_TERMINAL_SCORE / 2,
+            None => evaluate_preferability_with_weights(&after_reply, perspective, scoring_weights),
+        };
+        worst_reply_score = worst_reply_score.min(score);
+    }
+
+    if worst_reply_score == i32::MAX {
+        evaluate_preferability_with_weights(state_after_move, perspective, scoring_weights)
+    } else {
+        worst_reply_score
+    }
+}
+
+fn candidate_model_runtime_d2_tuned_normal_reply_guard(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if config.depth < 3 {
+        return candidate_model_runtime_d2_tuned(game, config);
+    }
+
+    let perspective = game.active_color;
+    let scoring_weights = &BALANCED_DISTANCE_SCORING_WEIGHTS;
+    let mut root_candidates = Vec::new();
+    push_unique_candidate(
+        &mut root_candidates,
+        candidate_model_runtime_d2_tuned(game, config),
+    );
+    push_unique_candidate(
+        &mut root_candidates,
+        candidate_model_runtime_d2_tuned_d3_tactical(game, config),
+    );
+    push_unique_candidate(
+        &mut root_candidates,
+        candidate_model_runtime_d2_tuned_d3_finisher_soft_aggr(game, config),
+    );
+
+    if root_candidates.is_empty() {
+        return Vec::new();
+    }
+
+    let mut best_inputs = root_candidates[0].clone();
+    let mut best_score = i32::MIN;
+
+    for inputs in root_candidates {
+        let Some(after_move) = MonsGameModel::apply_inputs_for_search(game, &inputs) else {
+            continue;
+        };
+
+        let optimistic =
+            evaluate_preferability_with_weights(&after_move, perspective, scoring_weights);
+        let reply_floor = reply_guard_lite_floor(&after_move, perspective, config, scoring_weights);
+        let combined_score = reply_floor.saturating_mul(3).saturating_add(optimistic);
+
+        if combined_score > best_score {
+            best_score = combined_score;
+            best_inputs = inputs;
+        }
+    }
+
+    if best_score == i32::MIN {
+        candidate_model_runtime_d2_tuned(game, config)
+    } else {
+        best_inputs
+    }
+}
+
+fn reply_guard_lite_floor(
+    state_after_move: &MonsGame,
+    perspective: Color,
+    config: SmartSearchConfig,
+    scoring_weights: &'static ScoringWeights,
+) -> i32 {
+    if let Some(winner) = state_after_move.winner_color() {
+        return if winner == perspective {
+            SMART_TERMINAL_SCORE / 2
+        } else {
+            -SMART_TERMINAL_SCORE / 2
+        };
+    }
+
+    if state_after_move.active_color == perspective {
+        return evaluate_preferability_with_weights(state_after_move, perspective, scoring_weights);
+    }
+
+    let reply_limit = config.node_enum_limit.clamp(6, 14);
+    let replies = MonsGameModel::enumerate_legal_inputs(state_after_move, reply_limit);
+    if replies.is_empty() {
+        return SMART_TERMINAL_SCORE / 4;
+    }
+
+    let mut worst_reply_score = i32::MAX;
+    for reply in replies {
+        let Some(after_reply) = MonsGameModel::apply_inputs_for_search(state_after_move, &reply)
+        else {
+            continue;
+        };
+
+        let score = match after_reply.winner_color() {
+            Some(winner) if winner == perspective => SMART_TERMINAL_SCORE / 2,
+            Some(_) => -SMART_TERMINAL_SCORE / 2,
+            None => evaluate_preferability_with_weights(&after_reply, perspective, scoring_weights),
+        };
+        worst_reply_score = worst_reply_score.min(score);
+    }
+
+    if worst_reply_score == i32::MAX {
+        evaluate_preferability_with_weights(state_after_move, perspective, scoring_weights)
+    } else {
+        worst_reply_score
+    }
+}
+
 fn d3_adaptive_neutral_weights(game: &MonsGame) -> &'static ScoringWeights {
     let (my_score, opponent_score) = if game.active_color == Color::White {
         (game.white_score, game.black_score)
@@ -573,6 +969,47 @@ fn d3_adaptive_neutral_weights(game: &MonsGame) -> &'static ScoringWeights {
         &MANA_RACE_NEUTRAL_SCORING_WEIGHTS
     } else {
         &BALANCED_DISTANCE_SCORING_WEIGHTS
+    }
+}
+
+fn d3_phase_adaptive_weights(game: &MonsGame) -> &'static ScoringWeights {
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 1 {
+        &TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS
+    } else if my_distance_to_win <= 2 {
+        &FINISHER_BALANCED_SOFT_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &TACTICAL_BALANCED_SCORING_WEIGHTS
+    } else {
+        &BALANCED_DISTANCE_SCORING_WEIGHTS
+    }
+}
+
+fn normal_tactical_phase_weights(game: &MonsGame) -> &'static ScoringWeights {
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 1 {
+        &TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS
+    } else {
+        &TACTICAL_BALANCED_SCORING_WEIGHTS
     }
 }
 
@@ -615,10 +1052,7 @@ fn candidate_model_phase_adaptive_scoring_v2(
     MonsGameModel::smart_search_best_inputs(game, with_scoring_weights(config, scoring_weights))
 }
 
-fn phase_adaptive_scoring_v2_weights(
-    game: &MonsGame,
-    deep_mode: bool,
-) -> &'static ScoringWeights {
+fn phase_adaptive_scoring_v2_weights(game: &MonsGame, deep_mode: bool) -> &'static ScoringWeights {
     let (my_score, opponent_score) = if game.active_color == Color::White {
         (game.white_score, game.black_score)
     } else {
@@ -657,6 +1091,229 @@ fn phase_adaptive_scoring_v2_weights(
 
 fn candidate_model_wideroot(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     MonsGameModel::smart_search_best_inputs(game, tuned_candidate_config_wideroot(config))
+}
+
+fn candidate_model_runtime_fast_wideroot_normal_current(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if config.depth >= 3 {
+        candidate_model_base(game, config)
+    } else {
+        MonsGameModel::smart_search_best_inputs(game, tuned_candidate_config_wideroot(config))
+    }
+}
+
+fn candidate_model_runtime_fast_wideroot_lite_normal_current(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if config.depth >= 3 {
+        candidate_model_base(game, config)
+    } else {
+        MonsGameModel::smart_search_best_inputs(game, tuned_candidate_config_wideroot_lite(config))
+    }
+}
+
+fn candidate_model_runtime_drainer_priority(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let tuned = if config.depth >= 3 {
+        with_scoring_weights(config, &DRAINER_PRIORITY_NORMAL_SCORING_WEIGHTS)
+    } else {
+        with_scoring_weights(config, &DRAINER_PRIORITY_FAST_SCORING_WEIGHTS)
+    };
+    MonsGameModel::smart_search_best_inputs(game, tuned)
+}
+
+fn candidate_model_runtime_drainer_priority_aggr(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let tuned = if config.depth >= 3 {
+        with_scoring_weights(config, &DRAINER_PRIORITY_NORMAL_AGGR_SCORING_WEIGHTS)
+    } else {
+        with_scoring_weights(config, &DRAINER_PRIORITY_FAST_SCORING_WEIGHTS)
+    };
+    MonsGameModel::smart_search_best_inputs(game, tuned)
+}
+
+fn candidate_model_runtime_drainer_tiebreak(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let perspective = game.active_color;
+    let mut scored_roots = search_scored_roots_with_states(game, config, perspective);
+    if scored_roots.is_empty() {
+        return Vec::new();
+    }
+
+    scored_roots.sort_by(|a, b| b.score.cmp(&a.score));
+    let best_root_score = scored_roots[0].score;
+    let shortlist_limit = if config.depth >= 3 { 6 } else { 5 };
+    let score_margin = if config.depth >= 3 { 120_000 } else { 90_000 };
+
+    let mut best_inputs = scored_roots[0].inputs.clone();
+    let mut best_drainer_score = i32::MIN;
+    let mut best_root_tiebreak = i32::MIN;
+
+    for root in scored_roots.iter().take(shortlist_limit) {
+        if root.score + score_margin < best_root_score {
+            break;
+        }
+
+        let drainer_score = drainer_priority_delta(&root.game, perspective);
+        if drainer_score > best_drainer_score
+            || (drainer_score == best_drainer_score && root.score > best_root_tiebreak)
+        {
+            best_drainer_score = drainer_score;
+            best_root_tiebreak = root.score;
+            best_inputs = root.inputs.clone();
+        }
+    }
+
+    best_inputs
+}
+
+fn candidate_model_runtime_drainer_context(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let tuned = if config.depth >= 3 {
+        MonsGameModel::with_runtime_scoring_weights(game, config)
+    } else {
+        with_scoring_weights(config, &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS)
+    };
+    MonsGameModel::smart_search_best_inputs(game, tuned)
+}
+
+fn candidate_model_runtime_fast_wideroot_normal_tactical(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if config.depth >= 3 {
+        candidate_model_runtime_d2_tuned_d3_tactical(game, config)
+    } else {
+        MonsGameModel::smart_search_best_inputs(game, tuned_candidate_config_wideroot(config))
+    }
+}
+
+fn drainer_priority_delta(game: &MonsGame, perspective: Color) -> i32 {
+    let mut delta = 0i32;
+    for (&location, item) in &game.board.items {
+        let (mon, carried_mana) = match item {
+            Item::Mon { mon } => (mon, None),
+            Item::MonWithMana { mon, mana } => (mon, Some(*mana)),
+            Item::MonWithConsumable { mon, .. } => (mon, None),
+            Item::Mana { .. } | Item::Consumable { .. } => continue,
+        };
+
+        if mon.kind != MonKind::Drainer {
+            continue;
+        }
+
+        let ownership = if mon.color == perspective { 1 } else { -1 };
+        if mon.is_fainted() {
+            delta += ownership * (-520 - 70 * mon.cooldown);
+            continue;
+        }
+
+        let nearest_mana = nearest_mana_distance_for_eval(game, location).max(1);
+        let nearest_pool = distance_to_any_pool_for_eval(location).max(1);
+        let nearest_threat =
+            nearest_drainer_threat_distance_for_eval(game, mon.color, location).max(1);
+        let angel_guarded = friendly_angel_adjacent_for_eval(game, mon.color, location);
+
+        delta += ownership * 220;
+        delta += ownership * (220 / nearest_mana);
+        delta += ownership * (280 / nearest_pool);
+        delta += ownership * nearest_threat.min(6) * 22;
+        if angel_guarded {
+            delta += ownership * 120;
+        }
+
+        if let Some(mana) = carried_mana {
+            delta += ownership * 260;
+            delta += ownership * (360 / nearest_pool);
+            if nearest_pool <= 2 {
+                delta += ownership * 320;
+            }
+
+            let current_score = if mon.color == Color::White {
+                game.white_score
+            } else {
+                game.black_score
+            };
+            if current_score + mana.score(mon.color) >= Config::TARGET_SCORE {
+                delta += ownership * 800;
+            }
+        }
+    }
+    delta
+}
+
+fn nearest_mana_distance_for_eval(game: &MonsGame, location: Location) -> i32 {
+    let mut best = Config::BOARD_SIZE as i32;
+    for (&item_location, item) in &game.board.items {
+        if matches!(item, Item::Mana { .. }) {
+            best = best.min(item_location.distance(&location) as i32 + 1);
+        }
+    }
+    best.max(1)
+}
+
+fn nearest_drainer_threat_distance_for_eval(
+    game: &MonsGame,
+    drainer_color: Color,
+    location: Location,
+) -> i32 {
+    let mut best = Config::BOARD_SIZE as i32;
+    for (&item_location, item) in &game.board.items {
+        let Some(mon) = item.mon() else {
+            continue;
+        };
+        if mon.color == drainer_color || mon.is_fainted() {
+            continue;
+        }
+        if mon.kind == MonKind::Mystic
+            || mon.kind == MonKind::Demon
+            || matches!(item, Item::MonWithConsumable { .. })
+        {
+            best = best.min(item_location.distance(&location) as i32 + 1);
+        }
+    }
+    best.max(1)
+}
+
+fn friendly_angel_adjacent_for_eval(
+    game: &MonsGame,
+    drainer_color: Color,
+    location: Location,
+) -> bool {
+    for (&item_location, item) in &game.board.items {
+        let Some(mon) = item.mon() else {
+            continue;
+        };
+        if mon.color == drainer_color
+            && mon.kind == MonKind::Angel
+            && !mon.is_fainted()
+            && item_location.distance(&location) == 1
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn distance_to_any_pool_for_eval(location: Location) -> i32 {
+    let max_index = Config::MAX_LOCATION_INDEX as i32;
+    let i = location.i as i32;
+    let j = location.j as i32;
+    i32::max(
+        i32::min(i, (max_index - i).abs()),
+        i32::min(j, (max_index - j).abs()),
+    ) + 1
 }
 
 fn candidate_model_narrow(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
@@ -705,7 +1362,10 @@ fn candidate_model_turn_reply_guard(game: &MonsGame, config: SmartSearchConfig) 
     );
     push_unique_candidate(&mut root_candidates, candidate_model_base(game, config));
     if config.depth >= 3 {
-        push_unique_candidate(&mut root_candidates, candidate_model_weights_balanced(game, config));
+        push_unique_candidate(
+            &mut root_candidates,
+            candidate_model_weights_balanced(game, config),
+        );
     } else {
         push_unique_candidate(
             &mut root_candidates,
@@ -725,9 +1385,9 @@ fn candidate_model_turn_reply_guard(game: &MonsGame, config: SmartSearchConfig) 
             continue;
         };
 
-        let optimistic = evaluate_preferability_with_weights(&after_move, perspective, scoring_weights);
-        let reply_floor =
-            turn_reply_guard_floor(&after_move, perspective, config, scoring_weights);
+        let optimistic =
+            evaluate_preferability_with_weights(&after_move, perspective, scoring_weights);
+        let reply_floor = turn_reply_guard_floor(&after_move, perspective, config, scoring_weights);
         let combined_score = reply_floor.saturating_mul(4).saturating_add(optimistic);
 
         if combined_score > best_score {
@@ -788,7 +1448,10 @@ fn turn_reply_guard_floor(
             break;
         }
 
-        if !matches!(probe.process_input(rollout_inputs, false, false), Output::Events(_)) {
+        if !matches!(
+            probe.process_input(rollout_inputs, false, false),
+            Output::Events(_)
+        ) {
             break;
         }
 
@@ -859,6 +1522,9 @@ fn turn_reply_guard_rollout_config(
 fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     match candidate_profile().as_str() {
         "base" => candidate_model_base(game, config),
+        "runtime_current" => candidate_model_base(game, config),
+        "runtime_legacy_phase_adaptive" => model_runtime_legacy_phase_adaptive(game, config),
+        "runtime_pre_drainer_context" => model_runtime_pre_drainer_context(game, config),
         "focus" => candidate_model_focus(game, config),
         "focus_deep_only" => candidate_model_focus_deep_only(game, config),
         "focus_mana_d2" => candidate_model_focus_with_mana_race_d2(game, config),
@@ -885,7 +1551,9 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         }
         "runtime_d2_tuned" => candidate_model_runtime_d2_tuned(game, config),
         "runtime_d2_tuned_aggr" => candidate_model_runtime_d2_tuned_aggressive(game, config),
-        "runtime_d2_tuned_d3_tactical" => candidate_model_runtime_d2_tuned_d3_tactical(game, config),
+        "runtime_d2_tuned_d3_tactical" => {
+            candidate_model_runtime_d2_tuned_d3_tactical(game, config)
+        }
         "runtime_d2_tuned_d3_tactical_aggr" => {
             candidate_model_runtime_d2_tuned_d3_tactical_aggr(game, config)
         }
@@ -897,6 +1565,33 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         }
         "runtime_d2_tuned_d3_adaptive_neutral" => {
             candidate_model_runtime_d2_tuned_d3_adaptive_neutral(game, config)
+        }
+        "runtime_d2_tuned_d3_phase_adaptive" => {
+            candidate_model_runtime_d2_tuned_d3_phase_adaptive(game, config)
+        }
+        "runtime_fast_phase_normal_tactical" => {
+            candidate_model_runtime_fast_phase_normal_tactical(game, config)
+        }
+        "runtime_fast_wideroot_normal_current" => {
+            candidate_model_runtime_fast_wideroot_normal_current(game, config)
+        }
+        "runtime_fast_wideroot_lite_normal_current" => {
+            candidate_model_runtime_fast_wideroot_lite_normal_current(game, config)
+        }
+        "runtime_drainer_priority" => candidate_model_runtime_drainer_priority(game, config),
+        "runtime_drainer_priority_aggr" => {
+            candidate_model_runtime_drainer_priority_aggr(game, config)
+        }
+        "runtime_drainer_tiebreak" => candidate_model_runtime_drainer_tiebreak(game, config),
+        "runtime_drainer_context" => candidate_model_runtime_drainer_context(game, config),
+        "runtime_fast_wideroot_normal_tactical" => {
+            candidate_model_runtime_fast_wideroot_normal_tactical(game, config)
+        }
+        "runtime_root_safety_tiebreak" => {
+            candidate_model_runtime_root_safety_tiebreak(game, config)
+        }
+        "runtime_d2_tuned_normal_reply_guard" => {
+            candidate_model_runtime_d2_tuned_normal_reply_guard(game, config)
         }
         "phase_adaptive_d2" => candidate_model_phase_adaptive_d2(game, config),
         "phase_adaptive_scoring_v2" => candidate_model_phase_adaptive_scoring_v2(game, config),
@@ -931,6 +1626,15 @@ fn candidate_profile() -> &'static String {
 fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig) -> Vec<Input>)> {
     vec![
         ("base", candidate_model_base),
+        ("runtime_current", candidate_model_base),
+        (
+            "runtime_legacy_phase_adaptive",
+            model_runtime_legacy_phase_adaptive,
+        ),
+        (
+            "runtime_pre_drainer_context",
+            model_runtime_pre_drainer_context,
+        ),
         ("focus", candidate_model_focus),
         ("focus_deep_only", candidate_model_focus_deep_only),
         ("focus_mana_d2", candidate_model_focus_with_mana_race_d2),
@@ -995,6 +1699,50 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
             "runtime_d2_tuned_d3_adaptive_neutral",
             candidate_model_runtime_d2_tuned_d3_adaptive_neutral,
         ),
+        (
+            "runtime_d2_tuned_d3_phase_adaptive",
+            candidate_model_runtime_d2_tuned_d3_phase_adaptive,
+        ),
+        (
+            "runtime_fast_phase_normal_tactical",
+            candidate_model_runtime_fast_phase_normal_tactical,
+        ),
+        (
+            "runtime_fast_wideroot_normal_current",
+            candidate_model_runtime_fast_wideroot_normal_current,
+        ),
+        (
+            "runtime_fast_wideroot_lite_normal_current",
+            candidate_model_runtime_fast_wideroot_lite_normal_current,
+        ),
+        (
+            "runtime_drainer_priority",
+            candidate_model_runtime_drainer_priority,
+        ),
+        (
+            "runtime_drainer_priority_aggr",
+            candidate_model_runtime_drainer_priority_aggr,
+        ),
+        (
+            "runtime_drainer_tiebreak",
+            candidate_model_runtime_drainer_tiebreak,
+        ),
+        (
+            "runtime_drainer_context",
+            candidate_model_runtime_drainer_context,
+        ),
+        (
+            "runtime_fast_wideroot_normal_tactical",
+            candidate_model_runtime_fast_wideroot_normal_tactical,
+        ),
+        (
+            "runtime_root_safety_tiebreak",
+            candidate_model_runtime_root_safety_tiebreak,
+        ),
+        (
+            "runtime_d2_tuned_normal_reply_guard",
+            candidate_model_runtime_d2_tuned_normal_reply_guard,
+        ),
         ("phase_adaptive_d2", candidate_model_phase_adaptive_d2),
         (
             "phase_adaptive_scoring_v2",
@@ -1020,6 +1768,15 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         ("hybrid_deeper_fast", candidate_model_hybrid_deeper_fast),
         ("deeper", candidate_model_deeper),
     ]
+}
+
+fn profile_selector_from_name(
+    profile_name: &str,
+) -> Option<fn(&MonsGame, SmartSearchConfig) -> Vec<Input>> {
+    all_profile_variants()
+        .into_iter()
+        .find(|(name, _)| *name == profile_name)
+        .map(|(_, selector)| selector)
 }
 
 fn tuned_candidate_config_focus(config: SmartSearchConfig) -> SmartSearchConfig {
@@ -1065,6 +1822,15 @@ fn tuned_candidate_config_wideroot(config: SmartSearchConfig) -> SmartSearchConf
     tuned.root_branch_limit = (config.root_branch_limit + 8).clamp(8, 40);
     tuned.node_branch_limit = config.node_branch_limit.saturating_sub(2).clamp(6, 18);
     tuned.root_enum_limit = (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 240);
+    tuned.node_enum_limit = (tuned.node_branch_limit * 4).clamp(tuned.node_branch_limit, 108);
+    tuned
+}
+
+fn tuned_candidate_config_wideroot_lite(config: SmartSearchConfig) -> SmartSearchConfig {
+    let mut tuned = config;
+    tuned.root_branch_limit = (config.root_branch_limit + 5).clamp(8, 36);
+    tuned.node_branch_limit = config.node_branch_limit.saturating_sub(1).clamp(6, 18);
+    tuned.root_enum_limit = (tuned.root_branch_limit * 5).clamp(tuned.root_branch_limit, 210);
     tuned.node_enum_limit = (tuned.node_branch_limit * 4).clamp(tuned.node_branch_limit, 108);
     tuned
 }
@@ -1347,6 +2113,7 @@ fn play_one_game_with_diagnostics(
     max_plies: usize,
 ) -> (MatchResult, usize, GameTermination) {
     let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
+    let use_white_opening_book = env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false);
 
     for ply in 0..max_plies {
         if let Some(winner_color) = game.winner_color() {
@@ -1368,8 +2135,13 @@ fn play_one_game_with_diagnostics(
             opponent
         };
 
-        let config = SmartSearchConfig::from_budget(budget.depth, budget.max_nodes).for_runtime();
-        let inputs = (actor_model.select_inputs)(&game, config);
+        let config = budget.runtime_config_for_game(&game);
+        let inputs = if use_white_opening_book {
+            MonsGameModel::white_first_turn_opening_next_inputs(&game)
+                .unwrap_or_else(|| (actor_model.select_inputs)(&game, config))
+        } else {
+            (actor_model.select_inputs)(&game, config)
+        };
         if inputs.is_empty() {
             let result = if candidate_to_move {
                 MatchResult::OpponentWin
@@ -1473,7 +2245,8 @@ fn generate_opening_fens(seed: u64, count: usize) -> Vec<String> {
     fens
 }
 
-fn opening_fens_cache() -> &'static Mutex<std::collections::HashMap<(u64, usize), Arc<Vec<String>>>> {
+fn opening_fens_cache() -> &'static Mutex<std::collections::HashMap<(u64, usize), Arc<Vec<String>>>>
+{
     static CACHE: OnceLock<Mutex<std::collections::HashMap<(u64, usize), Arc<Vec<String>>>>> =
         OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
@@ -1556,9 +2329,25 @@ fn seed_for_pairing(candidate_id: &str, opponent_id: &str) -> u64 {
 
 fn seed_for_pairing_and_budget(candidate_id: &str, opponent_id: &str, budget: SearchBudget) -> u64 {
     let mut hash = seed_for_pairing(candidate_id, opponent_id);
+    for byte in budget.key().bytes() {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(1099511628211);
+    }
     hash ^= (budget.depth as u64).wrapping_mul(0x9e3779b97f4a7c15);
     hash = hash.wrapping_mul(1099511628211);
     hash ^= (budget.max_nodes as u64).wrapping_mul(0x517cc1b727220a95);
+    hash = hash.wrapping_mul(1099511628211);
+    hash
+}
+
+fn seed_for_pairing_budget_and_repeat(
+    candidate_id: &str,
+    opponent_id: &str,
+    budget: SearchBudget,
+    repeat_index: usize,
+) -> u64 {
+    let mut hash = seed_for_pairing_and_budget(candidate_id, opponent_id, budget);
+    hash ^= (repeat_index as u64).wrapping_mul(0x94d049bb133111eb);
     hash = hash.wrapping_mul(1099511628211);
     hash
 }
@@ -1567,6 +2356,23 @@ fn env_usize(name: &str) -> Option<usize> {
     env::var(name)
         .ok()
         .and_then(|value| value.trim().parse::<usize>().ok())
+}
+
+fn env_bool(name: &str) -> Option<bool> {
+    env::var(name).ok().and_then(|value| {
+        let normalized = value.trim().to_ascii_lowercase();
+        match normalized.as_str() {
+            "1" | "true" | "yes" => Some(true),
+            "0" | "false" | "no" => Some(false),
+            _ => None,
+        }
+    })
+}
+
+fn env_automove_preference(name: &str) -> Option<SmartAutomovePreference> {
+    env::var(name)
+        .ok()
+        .and_then(|value| SmartAutomovePreference::from_api_value(value.as_str()))
 }
 
 fn selected_pool_models() -> Vec<AutomoveModel> {
@@ -1583,6 +2389,7 @@ fn smart_automove_pool_keeps_ten_models() {
 #[test]
 fn smart_automove_pool_smoke_runs() {
     let quick_budgets = [SearchBudget {
+        label: "smoke_d1n96",
         depth: 1,
         max_nodes: 96,
     }];
@@ -1594,20 +2401,21 @@ fn smart_automove_pool_smoke_runs() {
 }
 
 #[test]
-#[ignore = "long-running tournament using production client budgets"]
+#[ignore = "long-running tournament using production client modes"]
 fn smart_automove_pool_candidate_promotion_with_client_budgets() {
     let games_per_matchup = env_usize("SMART_POOL_GAMES").unwrap_or(GAMES_PER_MATCHUP);
     let pool = selected_pool_models();
+    let client_budgets = client_budgets();
     let evaluation =
-        evaluate_candidate_against_pool(CANDIDATE_MODEL, &pool, games_per_matchup, &CLIENT_BUDGETS);
+        evaluate_candidate_against_pool(CANDIDATE_MODEL, &pool, games_per_matchup, &client_budgets);
     println!(
-        "settings: profile={} games_per_matchup={} opponents={} budgets={:?}",
+        "settings: profile={} games_per_matchup={} opponents={} modes={:?}",
         candidate_profile(),
         games_per_matchup,
         pool.len(),
-        CLIENT_BUDGETS
+        client_budgets
             .iter()
-            .map(|budget| format!("d{}n{}", budget.depth, budget.max_nodes))
+            .map(|budget| budget.key().to_string())
             .collect::<Vec<_>>()
     );
     println!("{}", evaluation.render_report(CANDIDATE_MODEL.id));
@@ -1625,6 +2433,7 @@ fn smart_automove_pool_candidate_promotion_with_client_budgets() {
 fn smart_automove_pool_profile_sweep() {
     let games_per_matchup = env_usize("SMART_POOL_GAMES").unwrap_or(2);
     let pool = selected_pool_models();
+    let client_budgets = client_budgets();
     let requested_profiles = env::var("SMART_SWEEP_PROFILES")
         .ok()
         .map(|value| {
@@ -1648,7 +2457,7 @@ fn smart_automove_pool_profile_sweep() {
             select_inputs: selector,
         };
         let evaluation =
-            evaluate_candidate_against_pool(candidate, &pool, games_per_matchup, &CLIENT_BUDGETS);
+            evaluate_candidate_against_pool(candidate, &pool, games_per_matchup, &client_budgets);
         println!(
             "profile sweep: name={} games_per_matchup={} opponents={} max_plies={}",
             name,
@@ -1660,50 +2469,96 @@ fn smart_automove_pool_profile_sweep() {
     }
 }
 
-fn profile_speed_average_ms(
+#[derive(Clone, Copy)]
+struct ModeSpeedStat {
+    budget: SearchBudget,
+    avg_ms: f64,
+}
+
+fn profile_speed_by_mode_ms(
     selector: fn(&MonsGame, SmartSearchConfig) -> Vec<Input>,
     openings: &[String],
     budgets: &[SearchBudget],
-) -> f64 {
+) -> Vec<ModeSpeedStat> {
     if openings.is_empty() || budgets.is_empty() {
-        return 0.0;
+        return Vec::new();
     }
 
-    let mut total_avg_ms = 0.0;
-    for budget in budgets {
+    let mut mode_stats = Vec::with_capacity(budgets.len());
+    for budget in budgets.iter().copied() {
         let start = Instant::now();
         for opening in openings {
             let game = MonsGame::from_fen(opening, false).expect("valid opening fen");
-            let config = SmartSearchConfig::from_budget(budget.depth, budget.max_nodes).for_runtime();
+            let config = budget.runtime_config_for_game(&game);
             let _inputs = selector(&game, config);
         }
 
         let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-        total_avg_ms += elapsed_ms / openings.len() as f64;
+        mode_stats.push(ModeSpeedStat {
+            budget,
+            avg_ms: elapsed_ms / openings.len() as f64,
+        });
     }
 
-    total_avg_ms / budgets.len() as f64
+    mode_stats
+}
+
+fn average_mode_speed_ms(stats: &[ModeSpeedStat]) -> f64 {
+    if stats.is_empty() {
+        0.0
+    } else {
+        stats.iter().map(|stat| stat.avg_ms).sum::<f64>() / stats.len() as f64
+    }
+}
+
+fn warmup_profile_speed_measurement(
+    selectors: &[fn(&MonsGame, SmartSearchConfig) -> Vec<Input>],
+    openings: &[String],
+    budgets: &[SearchBudget],
+) {
+    if selectors.is_empty() || openings.is_empty() || budgets.is_empty() {
+        return;
+    }
+
+    let warmup_positions = openings.len().min(2);
+    for selector in selectors {
+        for opening in openings.iter().take(warmup_positions) {
+            let game = MonsGame::from_fen(opening, false).expect("valid opening fen");
+            for budget in budgets.iter().copied() {
+                let config = budget.runtime_config_for_game(&game);
+                let _inputs = selector(&game, config);
+            }
+        }
+    }
 }
 
 #[test]
 #[ignore = "fast iterative profile pipeline with speed gating and quick strength ranking"]
 fn smart_automove_pool_fast_pipeline() {
-    let games_per_matchup = env_usize("SMART_FAST_GAMES").unwrap_or(4).max(1);
-    let opponents = env_usize("SMART_FAST_OPPONENTS").unwrap_or(3).clamp(1, POOL_SIZE);
-    let max_plies = env_usize("SMART_FAST_MAX_PLIES").unwrap_or(96).max(32);
-    let speed_positions = env_usize("SMART_FAST_SPEED_POSITIONS").unwrap_or(8).max(1);
+    let games_per_matchup = env_usize("SMART_FAST_GAMES").unwrap_or(2).max(1);
+    let opponents = env_usize("SMART_FAST_OPPONENTS")
+        .unwrap_or(2)
+        .clamp(1, POOL_SIZE);
+    let max_plies = env_usize("SMART_FAST_MAX_PLIES").unwrap_or(80).max(32);
+    let speed_positions = env_usize("SMART_FAST_SPEED_POSITIONS").unwrap_or(6).max(1);
     let speed_ratio_limit = env::var("SMART_FAST_SPEED_RATIO_MAX")
         .ok()
         .and_then(|value| value.trim().parse::<f64>().ok())
         .unwrap_or(1.25)
         .max(1.0);
-    let use_client_budgets = env::var("SMART_FAST_USE_CLIENT_BUDGETS")
+    let speed_ratio_mode_limit = env::var("SMART_FAST_SPEED_RATIO_MODE_MAX")
         .ok()
-        .map(|value| {
-            let normalized = value.trim().to_ascii_lowercase();
-            matches!(normalized.as_str(), "1" | "true" | "yes")
-        })
-        .unwrap_or(false);
+        .and_then(|value| value.trim().parse::<f64>().ok())
+        .unwrap_or(speed_ratio_limit)
+        .max(1.0);
+    let use_client_modes = env_bool("SMART_FAST_USE_CLIENT_MODES")
+        .or_else(|| env_bool("SMART_FAST_USE_CLIENT_BUDGETS"))
+        .unwrap_or(true);
+    let baseline_profile = env::var("SMART_FAST_BASELINE")
+        .ok()
+        .map(|value| value.trim().to_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "base".to_string());
 
     let requested_profiles = env::var("SMART_FAST_PROFILES")
         .ok()
@@ -1718,7 +2573,7 @@ fn smart_automove_pool_fast_pipeline() {
             vec![
                 "base".to_string(),
                 "runtime_d2_tuned".to_string(),
-                "phase_adaptive_d2".to_string(),
+                "runtime_d2_tuned_d3_phase_adaptive".to_string(),
             ]
         });
 
@@ -1732,7 +2587,10 @@ fn smart_automove_pool_fast_pipeline() {
         {
             profiles.push((name.to_string(), selector));
         } else {
-            println!("fast pipeline: unknown profile '{}', skipping", profile_name);
+            println!(
+                "fast pipeline: unknown profile '{}', skipping",
+                profile_name
+            );
         }
     }
     assert!(
@@ -1740,10 +2598,10 @@ fn smart_automove_pool_fast_pipeline() {
         "no valid profiles selected for fast pipeline"
     );
 
-    let budgets: Vec<SearchBudget> = if use_client_budgets {
-        CLIENT_BUDGETS.to_vec()
+    let budgets: Vec<SearchBudget> = if use_client_modes {
+        client_budgets().to_vec()
     } else {
-        vec![CLIENT_BUDGETS[0]]
+        vec![SearchBudget::from_preference(SmartAutomovePreference::Fast)]
     };
 
     let original_max_plies = env::var("SMART_POOL_MAX_PLIES").ok();
@@ -1753,13 +2611,43 @@ fn smart_automove_pool_fast_pipeline() {
     let speed_openings = generate_opening_fens_cached(speed_seed, speed_positions);
     let baseline_selector = profiles
         .iter()
-        .find(|(name, _)| name == "base")
+        .find(|(name, _)| name == &baseline_profile)
         .map(|(_, selector)| *selector)
+        .or_else(|| profile_selector_from_name(baseline_profile.as_str()))
         .unwrap_or(candidate_model_base);
-    let baseline_speed_ms = profile_speed_average_ms(
+    let mut warmup_selectors = profiles
+        .iter()
+        .map(|(_, selector)| *selector)
+        .collect::<Vec<_>>();
+    if !warmup_selectors
+        .iter()
+        .any(|selector| std::ptr::fn_addr_eq(*selector, baseline_selector))
+    {
+        warmup_selectors.push(baseline_selector);
+    }
+    warmup_profile_speed_measurement(
+        warmup_selectors.as_slice(),
+        speed_openings.as_ref().as_slice(),
+        budgets.as_slice(),
+    );
+    let baseline_speed_stats = profile_speed_by_mode_ms(
         baseline_selector,
         speed_openings.as_ref().as_slice(),
         budgets.as_slice(),
+    );
+    let baseline_speed_ms = average_mode_speed_ms(baseline_speed_stats.as_slice());
+    let baseline_speed_by_mode: std::collections::HashMap<&'static str, f64> = baseline_speed_stats
+        .iter()
+        .map(|stat| (stat.budget.key(), stat.avg_ms))
+        .collect();
+    println!(
+        "fast pipeline baseline: profile={} avg_ms={:.2} mode_ms={:?}",
+        baseline_profile,
+        baseline_speed_ms,
+        baseline_speed_stats
+            .iter()
+            .map(|stat| format!("{}:{:.2}", stat.budget.key(), stat.avg_ms))
+            .collect::<Vec<_>>()
     );
 
     let pool = selected_pool_models()
@@ -1767,24 +2655,50 @@ fn smart_automove_pool_fast_pipeline() {
         .take(opponents)
         .collect::<Vec<_>>();
 
-    let mut ranked: Vec<(String, f64, f64, CandidateEvaluation)> = Vec::new();
+    let mut ranked: Vec<(String, f64, f64, f64, String, CandidateEvaluation)> = Vec::new();
     for (profile_name, selector) in profiles {
-        let avg_speed_ms =
-            profile_speed_average_ms(selector, speed_openings.as_ref().as_slice(), budgets.as_slice());
+        let speed_stats = if profile_name == baseline_profile {
+            baseline_speed_stats.clone()
+        } else {
+            profile_speed_by_mode_ms(
+                selector,
+                speed_openings.as_ref().as_slice(),
+                budgets.as_slice(),
+            )
+        };
+        let avg_speed_ms = average_mode_speed_ms(speed_stats.as_slice());
         let speed_ratio = if baseline_speed_ms > 0.0 {
             avg_speed_ms / baseline_speed_ms
         } else {
             1.0
         };
+        let mut max_mode_speed_ratio: f64 = 1.0;
+        let mode_ratio_summary = speed_stats
+            .iter()
+            .map(|stat| {
+                let baseline_mode_ms = baseline_speed_by_mode
+                    .get(stat.budget.key())
+                    .copied()
+                    .unwrap_or(baseline_speed_ms.max(0.001));
+                let mode_ratio = if baseline_mode_ms > 0.0 {
+                    stat.avg_ms / baseline_mode_ms
+                } else {
+                    1.0
+                };
+                max_mode_speed_ratio = max_mode_speed_ratio.max(mode_ratio);
+                format!("{}:{:.2}", stat.budget.key(), mode_ratio)
+            })
+            .collect::<Vec<_>>()
+            .join(",");
         println!(
-            "fast pipeline speed: profile={} avg_ms={:.2} ratio_vs_base={:.2}",
-            profile_name, avg_speed_ms, speed_ratio
+            "fast pipeline speed: profile={} avg_ms={:.2} ratio_vs_base={:.2} mode_ratios=[{}]",
+            profile_name, avg_speed_ms, speed_ratio, mode_ratio_summary
         );
 
-        if speed_ratio > speed_ratio_limit {
+        if speed_ratio > speed_ratio_limit || max_mode_speed_ratio > speed_ratio_mode_limit {
             println!(
-                "fast pipeline dropped: profile={} reason=speed ratio {:.2} > {:.2}",
-                profile_name, speed_ratio, speed_ratio_limit
+                "fast pipeline dropped: profile={} reason=avg_ratio {:.2} > {:.2} or mode_ratio {:.2} > {:.2}",
+                profile_name, speed_ratio, speed_ratio_limit, max_mode_speed_ratio, speed_ratio_mode_limit
             );
             continue;
         }
@@ -1809,7 +2723,14 @@ fn smart_automove_pool_fast_pipeline() {
             evaluation.promoted
         );
 
-        ranked.push((profile_name, avg_speed_ms, speed_ratio, evaluation));
+        ranked.push((
+            profile_name,
+            avg_speed_ms,
+            speed_ratio,
+            max_mode_speed_ratio,
+            mode_ratio_summary,
+            evaluation,
+        ));
     }
 
     if let Some(previous) = original_max_plies {
@@ -1824,28 +2745,41 @@ fn smart_automove_pool_fast_pipeline() {
     );
 
     ranked.sort_by(|a, b| {
-        b.3.aggregate_stats
+        b.5.aggregate_stats
             .win_rate_points()
-            .partial_cmp(&a.3.aggregate_stats.win_rate_points())
+            .partial_cmp(&a.5.aggregate_stats.win_rate_points())
             .unwrap_or(Ordering::Equal)
             .then_with(|| {
-                b.3.aggregate_confidence
-                    .partial_cmp(&a.3.aggregate_confidence)
+                b.5.aggregate_confidence
+                    .partial_cmp(&a.5.aggregate_confidence)
                     .unwrap_or(Ordering::Equal)
             })
             .then_with(|| a.2.partial_cmp(&b.2).unwrap_or(Ordering::Equal))
+            .then_with(|| a.3.partial_cmp(&b.3).unwrap_or(Ordering::Equal))
     });
 
     println!(
-        "fast pipeline summary: games_per_matchup={} opponents={} max_plies={} budgets={:?}",
+        "fast pipeline summary: baseline={} games_per_matchup={} opponents={} max_plies={} budgets={:?}",
+        baseline_profile,
         games_per_matchup,
         pool.len(),
         max_plies,
         budgets.iter().map(|budget| budget.key()).collect::<Vec<_>>()
     );
-    for (rank, (profile_name, avg_speed_ms, speed_ratio, evaluation)) in ranked.iter().enumerate() {
+    for (
+        rank,
+        (
+            profile_name,
+            avg_speed_ms,
+            speed_ratio,
+            max_mode_speed_ratio,
+            mode_ratio_summary,
+            evaluation,
+        ),
+    ) in ranked.iter().enumerate()
+    {
         println!(
-            "  rank={} profile={} win_rate={:.3} confidence={:.3} beaten={}/{} speed_ms={:.2} speed_ratio={:.2}",
+            "  rank={} profile={} win_rate={:.3} confidence={:.3} beaten={}/{} speed_ms={:.2} speed_ratio={:.2} max_mode_ratio={:.2} mode_ratios=[{}]",
             rank + 1,
             profile_name,
             evaluation.aggregate_stats.win_rate_points(),
@@ -1853,7 +2787,9 @@ fn smart_automove_pool_fast_pipeline() {
             evaluation.beaten_opponents,
             evaluation.opponents.len(),
             avg_speed_ms,
-            speed_ratio
+            speed_ratio,
+            max_mode_speed_ratio,
+            mode_ratio_summary
         );
     }
 }
@@ -1862,13 +2798,18 @@ fn smart_automove_pool_fast_pipeline() {
 #[ignore = "diagnostic run for understanding tournament runtime/game lengths"]
 fn smart_automove_pool_runtime_diagnostics() {
     let games = env_usize("SMART_DIAG_GAMES").unwrap_or(4).max(1);
-    let budget = SearchBudget {
-        depth: env_usize("SMART_DIAG_DEPTH")
-            .map(|value| value as i32)
-            .unwrap_or(3),
-        max_nodes: env_usize("SMART_DIAG_NODES")
-            .map(|value| value as i32)
-            .unwrap_or(2300),
+    let budget = if let Some(preference) = env_automove_preference("SMART_DIAG_MODE") {
+        SearchBudget::from_preference(preference)
+    } else {
+        SearchBudget {
+            label: "custom",
+            depth: env_usize("SMART_DIAG_DEPTH")
+                .map(|value| value as i32)
+                .unwrap_or(3),
+            max_nodes: env_usize("SMART_DIAG_NODES")
+                .map(|value| value as i32)
+                .unwrap_or(2300),
+        }
     };
 
     let openings = generate_opening_fens(seed_for_pairing("diag", "diag"), games);
@@ -1895,9 +2836,10 @@ fn smart_automove_pool_runtime_diagnostics() {
     }
 
     println!(
-        "diag summary: games={} avg_plies={:.2} budget=d{}n{}",
+        "diag summary: games={} avg_plies={:.2} mode={} depth={} max_nodes={}",
         games,
         ply_sum as f64 / games as f64,
+        budget.key(),
         budget.depth,
         budget.max_nodes
     );
@@ -1910,25 +2852,25 @@ fn smart_automove_pool_profile_speed_probe() {
     let openings = generate_opening_fens(seed_for_pairing("speed", "probe"), positions);
     let profile = candidate_profile().as_str().to_string();
     let selector = CANDIDATE_MODEL.select_inputs;
+    let client_budgets = client_budgets();
 
     println!(
-        "speed probe: profile={} positions={} budgets={:?}",
+        "speed probe: profile={} positions={} modes={:?}",
         profile,
         positions,
-        CLIENT_BUDGETS
+        client_budgets
             .iter()
-            .map(|budget| format!("d{}n{}", budget.depth, budget.max_nodes))
+            .map(|budget| budget.key().to_string())
             .collect::<Vec<_>>()
     );
 
-    for budget in CLIENT_BUDGETS {
+    for budget in client_budgets.iter().copied() {
         let start = Instant::now();
         let mut total_moves = 0usize;
 
         for opening in &openings {
             let game = MonsGame::from_fen(opening, false).expect("valid opening fen");
-            let config =
-                SmartSearchConfig::from_budget(budget.depth, budget.max_nodes).for_runtime();
+            let config = budget.runtime_config_for_game(&game);
             let inputs = selector(&game, config);
             total_moves += inputs.len();
         }
@@ -1943,4 +2885,102 @@ fn smart_automove_pool_profile_speed_probe() {
                 total_moves as f64 / positions as f64
             );
     }
+}
+
+#[test]
+#[ignore = "head-to-head duel between two profile selectors across modes"]
+fn smart_automove_pool_profile_duel() {
+    let profile_a = env::var("SMART_DUEL_A")
+        .ok()
+        .map(|value| value.trim().to_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "base".to_string());
+    let profile_b = env::var("SMART_DUEL_B")
+        .ok()
+        .map(|value| value.trim().to_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "runtime_d2_tuned".to_string());
+    let games_per_mode = env_usize("SMART_DUEL_GAMES").unwrap_or(4).max(1);
+    let repeats = env_usize("SMART_DUEL_REPEATS").unwrap_or(1).max(1);
+    let max_plies = env_usize("SMART_DUEL_MAX_PLIES")
+        .or_else(|| env_usize("SMART_POOL_MAX_PLIES"))
+        .unwrap_or(96)
+        .max(32);
+    let use_client_modes = env_bool("SMART_DUEL_USE_CLIENT_MODES").unwrap_or(true);
+    let explicit_mode = env_automove_preference("SMART_DUEL_MODE");
+
+    let Some(selector_a) = profile_selector_from_name(profile_a.as_str()) else {
+        panic!("unknown profile for SMART_DUEL_A: {}", profile_a);
+    };
+    let Some(selector_b) = profile_selector_from_name(profile_b.as_str()) else {
+        panic!("unknown profile for SMART_DUEL_B: {}", profile_b);
+    };
+
+    let model_a = AutomoveModel {
+        id: "duel_a",
+        select_inputs: selector_a,
+    };
+    let model_b = AutomoveModel {
+        id: "duel_b",
+        select_inputs: selector_b,
+    };
+
+    let budgets = if let Some(mode) = explicit_mode {
+        vec![SearchBudget::from_preference(mode)]
+    } else if use_client_modes {
+        client_budgets().to_vec()
+    } else {
+        vec![SearchBudget::from_preference(SmartAutomovePreference::Fast)]
+    };
+
+    let original_max_plies = env::var("SMART_POOL_MAX_PLIES").ok();
+    env::set_var("SMART_POOL_MAX_PLIES", max_plies.to_string());
+
+    let mut aggregate = MatchupStats::default();
+    for budget in budgets.iter().copied() {
+        let mut mode_stats = MatchupStats::default();
+        for repeat_index in 0..repeats {
+            let stats = run_matchup_series(
+                model_a,
+                model_b,
+                games_per_mode,
+                budget,
+                seed_for_pairing_budget_and_repeat(model_a.id, model_b.id, budget, repeat_index),
+            );
+            mode_stats.merge(stats);
+        }
+        aggregate.merge(mode_stats);
+        println!(
+            "duel mode {}: a={} b={} wins={} losses={} draws={} win_rate={:.3} confidence={:.3}",
+            budget.key(),
+            profile_a,
+            profile_b,
+            mode_stats.wins,
+            mode_stats.losses,
+            mode_stats.draws,
+            mode_stats.win_rate_points(),
+            mode_stats.confidence_better_than_even(),
+        );
+    }
+
+    if let Some(previous) = original_max_plies {
+        env::set_var("SMART_POOL_MAX_PLIES", previous);
+    } else {
+        env::remove_var("SMART_POOL_MAX_PLIES");
+    }
+
+    println!(
+        "duel summary: modes={:?} repeats={} games_per_mode={} max_plies={} a={} b={} wins={} losses={} draws={} win_rate={:.3} confidence={:.3}",
+        budgets.iter().map(|budget| budget.key()).collect::<Vec<_>>(),
+        repeats,
+        games_per_mode,
+        max_plies,
+        profile_a,
+        profile_b,
+        aggregate.wins,
+        aggregate.losses,
+        aggregate.draws,
+        aggregate.win_rate_points(),
+        aggregate.confidence_better_than_even(),
+    );
 }

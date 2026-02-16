@@ -2,6 +2,7 @@
 use crate::models::scoring::{
     evaluate_preferability_with_weights, ScoringWeights, BALANCED_DISTANCE_SCORING_WEIGHTS,
     DEFAULT_SCORING_WEIGHTS, MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
+    RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS, TACTICAL_BALANCED_SCORING_WEIGHTS,
 };
 use crate::*;
 
@@ -19,10 +20,6 @@ impl Clone for MonsGameModel {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
-const DEFAULT_SMART_SEARCH_DEPTH: usize = 2;
-#[cfg(target_arch = "wasm32")]
-const DEFAULT_SMART_MAX_VISITED_NODES: usize = 320;
 #[cfg(any(target_arch = "wasm32", test))]
 const MIN_SMART_SEARCH_DEPTH: usize = 1;
 #[cfg(any(target_arch = "wasm32", test))]
@@ -35,6 +32,120 @@ const MAX_SMART_MAX_VISITED_NODES: usize = 20_000;
 const SMART_TERMINAL_SCORE: i32 = i32::MAX / 8;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_MAX_INPUT_CHAIN: usize = 8;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_AUTOMOVE_FAST_DEPTH: i32 = 2;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_AUTOMOVE_FAST_MAX_VISITED_NODES: i32 = 420;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_AUTOMOVE_NORMAL_DEPTH: i32 = 3;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_AUTOMOVE_NORMAL_MAX_VISITED_NODES: i32 = 2300;
+const WHITE_OPENING_BOOK: [[&str; 5]; 9] = [
+    [
+        "l10,3;l9,2",
+        "l9,2;l8,1",
+        "l8,1;l7,0",
+        "l7,0;l6,0",
+        "l6,0;l5,0;mp",
+    ],
+    [
+        "l10,7;l9,8",
+        "l9,8;l8,9",
+        "l8,9;l7,10",
+        "l7,10;l6,10",
+        "l6,10;l5,10;mp",
+    ],
+    [
+        "l10,4;l9,4",
+        "l9,4;l8,4",
+        "l8,4;l7,3",
+        "l7,3;l6,4",
+        "l6,4;l5,4",
+    ],
+    [
+        "l10,5;l9,5",
+        "l9,5;l8,5",
+        "l10,6;l9,6",
+        "l9,6;l8,6",
+        "l8,6;l7,5",
+    ],
+    [
+        "l10,5;l9,5",
+        "l9,5;l8,5",
+        "l10,6;l9,6",
+        "l9,6;l8,6",
+        "l10,4;l9,5",
+    ],
+    [
+        "l10,5;l9,5",
+        "l9,5;l8,5",
+        "l8,5;l7,5",
+        "l10,4;l9,5",
+        "l9,5;l8,5",
+    ],
+    [
+        "l10,6;l9,7",
+        "l9,7;l8,6",
+        "l8,6;l7,5",
+        "l10,4;l9,4",
+        "l9,4;l8,5",
+    ],
+    [
+        "l10,5;l9,5",
+        "l9,5;l8,5",
+        "l10,3;l9,2",
+        "l10,6;l9,6",
+        "l9,6;l8,7",
+    ],
+    [
+        "l10,3;l9,3",
+        "l10,4;l9,4",
+        "l10,5;l9,5",
+        "l10,6;l9,6",
+        "l10,7;l9,7",
+    ],
+];
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SmartAutomovePreference {
+    Fast,
+    Normal,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+impl SmartAutomovePreference {
+    fn from_api_value(value: &str) -> Option<Self> {
+        let normalized = value.trim();
+        if normalized.eq_ignore_ascii_case("fast") {
+            Some(Self::Fast)
+        } else if normalized.eq_ignore_ascii_case("normal") {
+            Some(Self::Normal)
+        } else {
+            None
+        }
+    }
+
+    fn as_api_value(self) -> &'static str {
+        match self {
+            Self::Fast => "fast",
+            Self::Normal => "normal",
+        }
+    }
+
+    fn depth_and_max_nodes(self) -> (i32, i32) {
+        match self {
+            Self::Fast => (
+                SMART_AUTOMOVE_FAST_DEPTH,
+                SMART_AUTOMOVE_FAST_MAX_VISITED_NODES,
+            ),
+            Self::Normal => (
+                SMART_AUTOMOVE_NORMAL_DEPTH,
+                SMART_AUTOMOVE_NORMAL_MAX_VISITED_NODES,
+            ),
+        }
+    }
+}
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Clone, Copy)]
@@ -50,6 +161,15 @@ struct SmartSearchConfig {
 
 #[cfg(any(target_arch = "wasm32", test))]
 impl SmartSearchConfig {
+    fn from_preference(preference: SmartAutomovePreference) -> Self {
+        let (depth, max_visited_nodes) = preference.depth_and_max_nodes();
+        let config = Self::from_budget(depth, max_visited_nodes).for_runtime();
+        match preference {
+            SmartAutomovePreference::Fast => Self::with_fast_wideroot_shape(config),
+            SmartAutomovePreference::Normal => config,
+        }
+    }
+
     fn from_budget(depth: i32, max_visited_nodes: i32) -> Self {
         let depth =
             depth.clamp(MIN_SMART_SEARCH_DEPTH as i32, MAX_SMART_SEARCH_DEPTH as i32) as usize;
@@ -90,6 +210,15 @@ impl SmartSearchConfig {
             tuned.scoring_weights = &MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS;
         }
 
+        tuned
+    }
+
+    fn with_fast_wideroot_shape(self) -> Self {
+        let mut tuned = self;
+        tuned.root_branch_limit = (self.root_branch_limit + 8).clamp(8, 40);
+        tuned.node_branch_limit = self.node_branch_limit.saturating_sub(2).clamp(6, 18);
+        tuned.root_enum_limit = (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 240);
+        tuned.node_enum_limit = (tuned.node_branch_limit * 4).clamp(tuned.node_branch_limit, 108);
         tuned
     }
 }
@@ -182,32 +311,46 @@ impl MonsGameModel {
 
     #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen(js_name = smartAutomoveAsync)]
-    pub fn smart_automove_async(&self) -> js_sys::Promise {
-        let (depth, max_visited_nodes) = Self::default_smart_budget_for_game(&self.game);
-        self.smart_automove_with_budget_async(depth as i32, max_visited_nodes as i32)
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    #[wasm_bindgen(js_name = smartAutomoveWithBudgetAsync)]
-    pub fn smart_automove_with_budget_async(
-        &self,
-        depth: i32,
-        max_visited_nodes: i32,
-    ) -> js_sys::Promise {
+    pub fn smart_automove_async(&self, preference: &str) -> js_sys::Promise {
         use std::cell::RefCell;
         use std::rc::Rc;
         use wasm_bindgen::closure::Closure;
         use wasm_bindgen::JsCast;
+
+        let Some(preference) = SmartAutomovePreference::from_api_value(preference) else {
+            let message = format!(
+                "invalid smart automove mode; expected '{}' or '{}'",
+                SmartAutomovePreference::Fast.as_api_value(),
+                SmartAutomovePreference::Normal.as_api_value()
+            );
+            return js_sys::Promise::reject(&JsValue::from_str(message.as_str()));
+        };
 
         if self.smart_search_in_progress.get() {
             return js_sys::Promise::reject(&JsValue::from_str(
                 "smart automove already in progress",
             ));
         }
+
+        if let Some(opening_inputs) = Self::white_first_turn_opening_next_inputs(&self.game) {
+            let mut game = self.game.clone_for_simulation();
+            let input_fen = Input::fen_from_array(&opening_inputs);
+            let output = game.process_input(opening_inputs, false, false);
+            if matches!(output, Output::Events(_)) {
+                return js_sys::Promise::resolve(&JsValue::from(OutputModel::new(
+                    output,
+                    input_fen.as_str(),
+                )));
+            }
+        }
+
         self.smart_search_in_progress.set(true);
         let in_progress = self.smart_search_in_progress.clone();
 
-        let config = SmartSearchConfig::from_budget(depth, max_visited_nodes).for_runtime();
+        let config = Self::with_runtime_scoring_weights(
+            &self.game,
+            SmartSearchConfig::from_preference(preference),
+        );
         let perspective = self.game.active_color;
         let game = self.game.clone_for_simulation();
         let root_moves = Self::ranked_root_moves(&game, perspective, config);
@@ -304,6 +447,14 @@ impl MonsGameModel {
     }
 
     fn automove_game(game: &mut MonsGame) -> OutputModel {
+        if let Some(opening_inputs) = Self::white_first_turn_opening_next_inputs(game) {
+            let input_fen = Input::fen_from_array(&opening_inputs);
+            let output = game.process_input(opening_inputs, false, false);
+            if matches!(output, Output::Events(_)) {
+                return OutputModel::new(output, input_fen.as_str());
+            }
+        }
+
         let mut inputs = Vec::new();
         let mut output = game.process_input(vec![], false, false);
 
@@ -527,12 +678,80 @@ impl MonsGameModel {
     }
 }
 
+impl MonsGameModel {
+    fn white_first_turn_opening_next_inputs(game: &MonsGame) -> Option<Vec<Input>> {
+        if game.active_color != Color::White || !game.is_first_turn() {
+            return None;
+        }
+
+        let opening_step = game.mons_moves_count.max(0) as usize;
+        if opening_step >= WHITE_OPENING_BOOK[0].len() {
+            return None;
+        }
+
+        let current_fen = game.fen();
+        let mut viable_sequences = Vec::new();
+
+        for (sequence_index, sequence) in WHITE_OPENING_BOOK.iter().enumerate() {
+            let mut simulated = MonsGame::new(false);
+            let mut prefix_is_valid = true;
+            for step_fen in sequence.iter().take(opening_step) {
+                let step_inputs = Input::array_from_fen(step_fen);
+                if !matches!(
+                    simulated.process_input(step_inputs, false, false),
+                    Output::Events(_)
+                ) {
+                    prefix_is_valid = false;
+                    break;
+                }
+            }
+
+            if !prefix_is_valid || simulated.fen() != current_fen {
+                continue;
+            }
+
+            let next_inputs = Input::array_from_fen(sequence[opening_step]);
+            let mut probe = game.clone_for_simulation();
+            if matches!(
+                probe.process_input(next_inputs.clone(), true, false),
+                Output::Events(_)
+            ) {
+                viable_sequences.push(sequence_index);
+            }
+        }
+
+        if viable_sequences.is_empty() {
+            return None;
+        }
+
+        let chosen = viable_sequences[random_index(viable_sequences.len())];
+        Some(Input::array_from_fen(
+            WHITE_OPENING_BOOK[chosen][opening_step],
+        ))
+    }
+}
+
 #[cfg(any(target_arch = "wasm32", test))]
 impl MonsGameModel {
-    #[cfg(target_arch = "wasm32")]
-    fn default_smart_budget_for_game(game: &MonsGame) -> (usize, usize) {
-        let _ = game;
-        (DEFAULT_SMART_SEARCH_DEPTH, DEFAULT_SMART_MAX_VISITED_NODES)
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn with_runtime_scoring_weights(
+        game: &MonsGame,
+        mut config: SmartSearchConfig,
+    ) -> SmartSearchConfig {
+        config.scoring_weights = Self::runtime_phase_adaptive_scoring_weights(game, config.depth);
+        config
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn runtime_phase_adaptive_scoring_weights(
+        _game: &MonsGame,
+        depth: usize,
+    ) -> &'static ScoringWeights {
+        if depth >= 3 {
+            &TACTICAL_BALANCED_SCORING_WEIGHTS
+        } else {
+            &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+        }
     }
 
     fn ranked_root_moves(
@@ -885,6 +1104,53 @@ impl MonsGameModel {
 #[cfg(test)]
 #[path = "mons_game_model_automove_experiments.rs"]
 mod smart_automove_pool_tests;
+
+#[cfg(test)]
+mod opening_book_tests {
+    use super::*;
+
+    #[test]
+    fn white_opening_book_selects_a_valid_first_move() {
+        let game = MonsGame::new(false);
+        let opening_inputs = MonsGameModel::white_first_turn_opening_next_inputs(&game)
+            .expect("expected opening-book move on initial white turn");
+        let opening_fen = Input::fen_from_array(&opening_inputs);
+        let allowed = [
+            "l10,3;l9,2",
+            "l10,7;l9,8",
+            "l10,4;l9,4",
+            "l10,5;l9,5",
+            "l10,6;l9,7",
+            "l10,3;l9,3",
+        ];
+        assert!(allowed.contains(&opening_fen.as_str()));
+    }
+
+    #[test]
+    fn white_opening_book_continues_unique_prefix() {
+        let mut game = MonsGame::new(false);
+        let first_inputs = Input::array_from_fen("l10,3;l9,2");
+        assert!(matches!(
+            game.process_input(first_inputs, false, false),
+            Output::Events(_)
+        ));
+
+        let next_inputs = MonsGameModel::white_first_turn_opening_next_inputs(&game)
+            .expect("expected follow-up opening move");
+        assert_eq!(Input::fen_from_array(&next_inputs), "l9,2;l8,1");
+    }
+
+    #[test]
+    fn white_opening_book_falls_back_when_position_diverged() {
+        let mut game = MonsGame::new(false);
+        let custom_inputs = Input::array_from_fen("l10,3;l9,4");
+        assert!(matches!(
+            game.process_input(custom_inputs, false, false),
+            Output::Events(_)
+        ));
+        assert!(MonsGameModel::white_first_turn_opening_next_inputs(&game).is_none());
+    }
+}
 
 fn random_index(len: usize) -> usize {
     use rand::Rng;

@@ -29,6 +29,10 @@ pub struct ScoringWeights {
     pub mana_carrier_one_step_from_pool: i32,
     pub supermana_carrier_one_step_from_pool_extra: i32,
     pub immediate_winning_carrier: i32,
+    pub drainer_best_mana_path: i32,
+    pub drainer_pickup_score_this_turn: i32,
+    pub mana_carrier_score_this_turn: i32,
+    pub drainer_immediate_threat: i32,
 }
 
 pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
@@ -59,6 +63,10 @@ pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     mana_carrier_one_step_from_pool: 0,
     supermana_carrier_one_step_from_pool_extra: 0,
     immediate_winning_carrier: 0,
+    drainer_best_mana_path: 0,
+    drainer_pickup_score_this_turn: 0,
+    mana_carrier_score_this_turn: 0,
+    drainer_immediate_threat: 0,
 };
 
 pub const BALANCED_DISTANCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
@@ -89,6 +97,10 @@ pub const BALANCED_DISTANCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     mana_carrier_one_step_from_pool: 160,
     supermana_carrier_one_step_from_pool_extra: 80,
     immediate_winning_carrier: 0,
+    drainer_best_mana_path: 0,
+    drainer_pickup_score_this_turn: 0,
+    mana_carrier_score_this_turn: 0,
+    drainer_immediate_threat: 0,
 };
 
 #[cfg(test)]
@@ -162,7 +174,6 @@ pub const FINISHER_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS: ScoringWeights = S
     ..MANA_RACE_LITE_SCORING_WEIGHTS
 };
 
-#[cfg(test)]
 pub const FINISHER_BALANCED_SOFT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     mana_carrier_one_step_from_pool: 220,
     supermana_carrier_one_step_from_pool_extra: 110,
@@ -170,7 +181,6 @@ pub const FINISHER_BALANCED_SOFT_SCORING_WEIGHTS: ScoringWeights = ScoringWeight
     ..BALANCED_DISTANCE_SCORING_WEIGHTS
 };
 
-#[cfg(test)]
 pub const FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     mana_carrier_one_step_from_pool: 250,
     supermana_carrier_one_step_from_pool_extra: 130,
@@ -178,7 +188,6 @@ pub const FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS: ScoringWeights = Sc
     ..BALANCED_DISTANCE_SCORING_WEIGHTS
 };
 
-#[cfg(test)]
 pub const FINISHER_MANA_RACE_LITE_SOFT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     mana_carrier_one_step_from_pool: 250,
     supermana_carrier_one_step_from_pool_extra: 140,
@@ -186,7 +195,6 @@ pub const FINISHER_MANA_RACE_LITE_SOFT_SCORING_WEIGHTS: ScoringWeights = Scoring
     ..MANA_RACE_LITE_SCORING_WEIGHTS
 };
 
-#[cfg(test)]
 pub const FINISHER_MANA_RACE_LITE_SOFT_AGGRESSIVE_SCORING_WEIGHTS: ScoringWeights =
     ScoringWeights {
         mana_carrier_one_step_from_pool: 280,
@@ -238,7 +246,6 @@ pub const MANA_RACE_NEUTRAL_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     ..BALANCED_DISTANCE_SCORING_WEIGHTS
 };
 
-#[cfg(test)]
 pub const TACTICAL_BALANCED_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     fainted_cooldown_step: -120,
     spirit_close_to_enemy: 230,
@@ -250,11 +257,9 @@ pub const TACTICAL_BALANCED_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     ..BALANCED_DISTANCE_SCORING_WEIGHTS
 };
 
-#[cfg(test)]
 pub const TACTICAL_MANA_RACE_LITE_SCORING_WEIGHTS: ScoringWeights =
     MANA_RACE_LITE_TACTICAL_SCORING_WEIGHTS;
 
-#[cfg(test)]
 pub const TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     fainted_cooldown_step: -160,
     mana_carrier_at_risk: -260,
@@ -266,7 +271,6 @@ pub const TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS: ScoringWeights = Scoring
     ..TACTICAL_BALANCED_SCORING_WEIGHTS
 };
 
-#[cfg(test)]
 pub const TACTICAL_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     fainted_cooldown_step: -150,
     mana_carrier_at_risk: -290,
@@ -279,6 +283,21 @@ pub const TACTICAL_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS: ScoringWeights = S
     ..TACTICAL_MANA_RACE_LITE_SCORING_WEIGHTS
 };
 
+pub const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    drainer_best_mana_path: 220,
+    drainer_pickup_score_this_turn: 180,
+    mana_carrier_score_this_turn: 260,
+    drainer_immediate_threat: -190,
+    drainer_close_to_mana: 360,
+    drainer_holding_mana: 430,
+    mana_carrier_at_risk: -250,
+    mana_carrier_guarded: 130,
+    mana_carrier_one_step_from_pool: 300,
+    supermana_carrier_one_step_from_pool_extra: 190,
+    immediate_winning_carrier: 520,
+    ..MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS
+};
+
 pub fn evaluate_preferability(game: &MonsGame, color: Color) -> i32 {
     evaluate_preferability_with_weights(game, color, &DEFAULT_SCORING_WEIGHTS)
 }
@@ -289,6 +308,8 @@ pub fn evaluate_preferability_with_weights(
     weights: &ScoringWeights,
 ) -> i32 {
     let supermana_base = game.board.supermana_base();
+    let remaining_mon_moves_for_active =
+        (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
 
     let mons_bases = Config::mons_bases_ref();
 
@@ -332,6 +353,33 @@ pub fn evaluate_preferability_with_weights(
                     } else {
                         score += my_mon_multiplier * weights.angel_guarding_drainer;
                     }
+
+                    if let Some((path_steps, mana_value)) =
+                        best_drainer_pickup_path(&game.board, mon.color, location)
+                    {
+                        score += my_mon_multiplier * weights.drainer_best_mana_path * mana_value
+                            / (path_steps + 1);
+                        if mon.color == game.active_color
+                            && path_steps <= remaining_mon_moves_for_active
+                        {
+                            score += my_mon_multiplier
+                                * weights.drainer_pickup_score_this_turn
+                                * mana_value;
+                        }
+                    }
+
+                    let (action_threats, bomb_threats) =
+                        drainer_immediate_threats(&game.board, mon.color, location);
+                    let immediate_threats = if angel_nearby {
+                        bomb_threats
+                    } else {
+                        action_threats + bomb_threats
+                    };
+                    if immediate_threats > 0 {
+                        score += my_mon_multiplier
+                            * weights.drainer_immediate_threat
+                            * immediate_threats;
+                    }
                 } else if mon.kind == MonKind::Spirit {
                     let enemy_distance =
                         nearest_enemy_mon_distance(&game.board, mon.color, location);
@@ -367,6 +415,19 @@ pub fn evaluate_preferability_with_weights(
                         score += my_mon_multiplier * weights.drainer_at_risk / danger;
                     } else {
                         score += my_mon_multiplier * weights.angel_guarding_drainer;
+                    }
+
+                    let (action_threats, bomb_threats) =
+                        drainer_immediate_threats(&game.board, mon.color, location);
+                    let immediate_threats = if angel_nearby {
+                        bomb_threats
+                    } else {
+                        action_threats + bomb_threats
+                    };
+                    if immediate_threats > 0 {
+                        score += my_mon_multiplier
+                            * weights.drainer_immediate_threat
+                            * immediate_threats;
                     }
                 } else if mon.kind == MonKind::Spirit {
                     let enemy_distance =
@@ -460,9 +521,29 @@ pub fn evaluate_preferability_with_weights(
                     score += my_mon_multiplier * weights.mana_carrier_guarded;
                 }
 
+                if mon.color == game.active_color {
+                    let pool_steps = nearest_pool_distance - 1;
+                    if pool_steps <= remaining_mon_moves_for_active {
+                        score += my_mon_multiplier * weights.mana_carrier_score_this_turn;
+                    }
+                }
+
                 if mon.kind == MonKind::Drainer {
                     score += my_mon_multiplier * weights.drainer_close_to_own_pool
                         / distance(location, Destination::ClosestPool(mon.color));
+
+                    let (action_threats, bomb_threats) =
+                        drainer_immediate_threats(&game.board, mon.color, location);
+                    let immediate_threats = if angel_nearby {
+                        bomb_threats
+                    } else {
+                        action_threats + bomb_threats
+                    };
+                    if immediate_threats > 0 {
+                        score += my_mon_multiplier
+                            * weights.drainer_immediate_threat
+                            * immediate_threats;
+                    }
                 }
             }
             Item::Consumable { .. } => {}
@@ -521,6 +602,80 @@ fn drainer_distances(board: &Board, color: Color, location: Location) -> (i32, i
     }
 
     (min_danger, min_mana, angel_nearby)
+}
+
+fn best_drainer_pickup_path(board: &Board, color: Color, from: Location) -> Option<(i32, i32)> {
+    let mut best: Option<(i32, i32)> = None;
+    for (&mana_location, item) in &board.items {
+        let Item::Mana { mana } = item else {
+            continue;
+        };
+
+        let pickup_steps = from.distance(&mana_location) as i32;
+        let score_steps = distance(mana_location, Destination::AnyClosestPool) - 1;
+        let total_steps = pickup_steps + score_steps;
+        let mana_value = mana.score(color);
+
+        let replace = match best {
+            None => true,
+            Some((best_steps, best_mana_value)) => {
+                let total_metric = total_steps * 3 - mana_value;
+                let best_metric = best_steps * 3 - best_mana_value;
+                total_metric < best_metric
+                    || (total_metric == best_metric && mana_value > best_mana_value)
+            }
+        };
+        if replace {
+            best = Some((total_steps, mana_value));
+        }
+    }
+    best
+}
+
+fn drainer_immediate_threats(board: &Board, color: Color, location: Location) -> (i32, i32) {
+    let mut action_threats = 0;
+    let mut bomb_threats = 0;
+
+    for (&threat_location, item) in &board.items {
+        match item {
+            Item::Mon { mon } => {
+                if mon.color == color || mon.is_fainted() {
+                    continue;
+                }
+                if mon.kind == MonKind::Mystic
+                    && (threat_location.i - location.i).abs() == 2
+                    && (threat_location.j - location.j).abs() == 2
+                {
+                    action_threats += 1;
+                } else if mon.kind == MonKind::Demon {
+                    let di = (threat_location.i - location.i).abs();
+                    let dj = (threat_location.j - location.j).abs();
+                    if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
+                        let middle = threat_location.location_between(&location);
+                        if board.item(middle).is_none()
+                            && !matches!(
+                                board.square(middle),
+                                Square::SupermanaBase | Square::MonBase { .. }
+                            )
+                        {
+                            action_threats += 1;
+                        }
+                    }
+                }
+            }
+            Item::MonWithConsumable { mon, consumable } => {
+                if mon.color == color || mon.is_fainted() {
+                    continue;
+                }
+                if *consumable == Consumable::Bomb && threat_location.distance(&location) <= 3 {
+                    bomb_threats += 1;
+                }
+            }
+            Item::Mana { .. } | Item::MonWithMana { .. } | Item::Consumable { .. } => {}
+        }
+    }
+
+    (action_threats, bomb_threats)
 }
 
 fn nearest_enemy_mon_distance(board: &Board, color: Color, location: Location) -> i32 {
