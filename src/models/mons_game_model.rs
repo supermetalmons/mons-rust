@@ -1,7 +1,7 @@
 #[cfg(any(target_arch = "wasm32", test))]
 use crate::models::scoring::{
     evaluate_preferability_with_weights, ScoringWeights, BALANCED_DISTANCE_SCORING_WEIGHTS,
-    DEFAULT_SCORING_WEIGHTS, MANA_RACE_LITE_TACTICAL_SCORING_WEIGHTS,
+    DEFAULT_SCORING_WEIGHTS, MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
 };
 use crate::*;
 
@@ -87,7 +87,7 @@ impl SmartSearchConfig {
                 (tuned.node_branch_limit * 4).clamp(tuned.node_branch_limit, 108);
             tuned.scoring_weights = &BALANCED_DISTANCE_SCORING_WEIGHTS;
         } else {
-            tuned.scoring_weights = &MANA_RACE_LITE_TACTICAL_SCORING_WEIGHTS;
+            tuned.scoring_weights = &MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS;
         }
 
         tuned

@@ -37,6 +37,7 @@ Useful knobs:
 - `SMART_POOL_OPPONENTS` (defaults to 10; clamps to 1..10)
 - `SMART_POOL_MAX_PLIES` (default `320`)
 - `SMART_CANDIDATE_PROFILE` (selects candidate implementation)
+- Opening generation is cached per `(seed, game_count)` inside one test process, so profile sweeps and fast pipelines avoid rebuilding identical opening sets.
 
 ## Candidate Profiles
 
@@ -47,6 +48,7 @@ Examples:
 - `weights_balanced`
 - `focus_light_tactical_d2_only`
 - `runtime_d2_tuned`
+- `phase_adaptive_d2`
 - `hybrid_deeper_fast`
 
 Run example:
@@ -61,6 +63,22 @@ Run example:
   - `SMART_CANDIDATE_PROFILE=focus_light_tactical_d2_only SMART_SPEED_POSITIONS=20 cargo test --lib smart_automove_pool_profile_speed_probe -- --ignored --nocapture`
 - Runtime/ply diagnostics:
   - `SMART_DIAG_GAMES=4 SMART_DIAG_DEPTH=3 SMART_DIAG_NODES=2300 cargo test --lib smart_automove_pool_runtime_diagnostics -- --ignored --nocapture`
+
+## Fast Iteration Pipeline
+
+Use one command to filter by speed first, then rank strength among surviving profiles:
+
+- `SMART_FAST_PROFILES=base,runtime_d2_tuned,phase_adaptive_d2 SMART_FAST_GAMES=4 SMART_FAST_OPPONENTS=3 SMART_FAST_MAX_PLIES=96 SMART_FAST_SPEED_POSITIONS=8 cargo test --lib smart_automove_pool_fast_pipeline -- --ignored --nocapture`
+
+Fast-pipeline knobs:
+
+- `SMART_FAST_PROFILES` (comma-separated profile names)
+- `SMART_FAST_GAMES` (default `4`)
+- `SMART_FAST_OPPONENTS` (default `3`)
+- `SMART_FAST_MAX_PLIES` (default `96`; temporarily mapped to `SMART_POOL_MAX_PLIES` during the run)
+- `SMART_FAST_SPEED_POSITIONS` (default `8`)
+- `SMART_FAST_SPEED_RATIO_MAX` (default `1.25`; profiles slower than this ratio vs `base` are dropped before strength eval)
+- `SMART_FAST_USE_CLIENT_BUDGETS` (`true/false`; default `false` so fast mode uses only `d2n420`)
 
 ## Promotion Rule (Current)
 

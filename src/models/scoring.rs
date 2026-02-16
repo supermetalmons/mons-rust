@@ -195,7 +195,6 @@ pub const FINISHER_MANA_RACE_LITE_SOFT_AGGRESSIVE_SCORING_WEIGHTS: ScoringWeight
         ..MANA_RACE_LITE_SCORING_WEIGHTS
     };
 
-#[cfg(test)]
 pub const MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     regular_mana_to_owner_pool: 170,
     regular_mana_drainer_control: 18,
