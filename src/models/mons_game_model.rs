@@ -1,9 +1,10 @@
 #[cfg(any(target_arch = "wasm32", test))]
 use crate::models::scoring::{
     evaluate_preferability_with_weights, ScoringWeights, BALANCED_DISTANCE_SCORING_WEIGHTS,
-    DEFAULT_SCORING_WEIGHTS, MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
-    RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
-    RUNTIME_RUSH_SCORING_WEIGHTS,
+    DEFAULT_SCORING_WEIGHTS, FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS,
+    FINISHER_BALANCED_SOFT_SCORING_WEIGHTS, MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
+    RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS, TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS,
+    TACTICAL_BALANCED_SCORING_WEIGHTS,
 };
 use crate::*;
 
@@ -57,6 +58,26 @@ const SMART_ROOT_REPLY_LIMIT_MIN: usize = 3;
 const SMART_ROOT_REPLY_LIMIT_MAX: usize = 6;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_ROOT_BACKTRACK_PENALTY: i32 = 140;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_NORMAL_ROOT_SAFETY_SHORTLIST_MAX: usize = 4;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_NORMAL_ROOT_SAFETY_SCORE_MARGIN: i32 = 3_000;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_NORMAL_ROOT_SAFETY_REPLY_LIMIT_MIN: usize = 12;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_NORMAL_ROOT_SAFETY_REPLY_LIMIT_MAX: usize = 36;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_NORMAL_ROOT_SAFETY_SCORE_RACE_TRIGGER: i32 = 3;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_NORMAL_ROOT_SAFETY_DEEP_FLOOR_SCORE_RACE_TRIGGER: i32 = 3;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_NORMAL_ROOT_SAFETY_DEEP_FLOOR_SCORE_MARGIN: i32 = 2_400;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_NORMAL_ROOT_SAFETY_DEEP_FLOOR_MAX_CANDIDATES: usize = 3;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_NORMAL_ROOT_SAFETY_DEEP_FLOOR_REPLY_LIMIT_MIN: usize = 8;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_NORMAL_ROOT_SAFETY_DEEP_FLOOR_REPLY_LIMIT_MAX: usize = 16;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_AUTOMOVE_FAST_DEPTH: i32 = 2;
 #[cfg(any(target_arch = "wasm32", test))]
@@ -132,6 +153,37 @@ const WHITE_OPENING_BOOK: [[&str; 5]; 9] = [
 ];
 
 #[cfg(any(target_arch = "wasm32", test))]
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        spirit_on_own_base_penalty: 260,
+        ..BALANCED_DISTANCE_SCORING_WEIGHTS
+    };
+#[cfg(any(target_arch = "wasm32", test))]
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        spirit_on_own_base_penalty: 260,
+        ..TACTICAL_BALANCED_SCORING_WEIGHTS
+    };
+#[cfg(any(target_arch = "wasm32", test))]
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        spirit_on_own_base_penalty: 260,
+        ..TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS
+    };
+#[cfg(any(target_arch = "wasm32", test))]
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        spirit_on_own_base_penalty: 260,
+        ..FINISHER_BALANCED_SOFT_SCORING_WEIGHTS
+    };
+#[cfg(any(target_arch = "wasm32", test))]
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        spirit_on_own_base_penalty: 260,
+        ..FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS
+    };
+
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SmartAutomovePreference {
     Fast,
@@ -186,6 +238,8 @@ struct SmartSearchConfig {
     enable_root_reply_floor: bool,
     enable_event_ordering_bonus: bool,
     enable_backtrack_penalty: bool,
+    enable_normal_root_safety_rerank: bool,
+    enable_normal_root_safety_deep_floor: bool,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -200,14 +254,26 @@ impl SmartSearchConfig {
                 tuned.enable_root_reply_floor = true;
                 tuned.enable_event_ordering_bonus = true;
                 tuned.enable_backtrack_penalty = true;
+                tuned.enable_normal_root_safety_rerank = false;
+                tuned.enable_normal_root_safety_deep_floor = false;
                 tuned
             }
             SmartAutomovePreference::Normal => {
                 let mut tuned = Self::with_normal_deeper_shape(config);
+                tuned.max_visited_nodes = (tuned.max_visited_nodes * 3 / 2)
+                    .clamp(tuned.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
+                tuned.root_branch_limit = tuned.root_branch_limit.saturating_sub(4).clamp(8, 36);
+                tuned.node_branch_limit = (tuned.node_branch_limit + 2).clamp(8, 18);
+                tuned.root_enum_limit =
+                    (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 220);
+                tuned.node_enum_limit =
+                    (tuned.node_branch_limit * 5).clamp(tuned.node_branch_limit, 120);
                 tuned.enable_root_efficiency = false;
                 tuned.enable_root_reply_floor = false;
                 tuned.enable_event_ordering_bonus = false;
                 tuned.enable_backtrack_penalty = false;
+                tuned.enable_normal_root_safety_rerank = true;
+                tuned.enable_normal_root_safety_deep_floor = true;
                 tuned
             }
         }
@@ -238,6 +304,8 @@ impl SmartSearchConfig {
             enable_root_reply_floor: false,
             enable_event_ordering_bonus: false,
             enable_backtrack_penalty: false,
+            enable_normal_root_safety_rerank: false,
+            enable_normal_root_safety_deep_floor: false,
         }
     }
 
@@ -304,6 +372,16 @@ struct MoveEfficiencySnapshot {
     opponent_best_drainer_to_mana_steps: i32,
     my_carrier_count: i32,
     opponent_carrier_count: i32,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone, Copy)]
+struct NormalRootSafetySnapshot {
+    allows_immediate_opponent_win: bool,
+    opponent_reaches_match_point: bool,
+    opponent_max_score_gain: i32,
+    my_score_gain: i32,
+    worst_reply_score: i32,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -832,13 +910,32 @@ impl MonsGameModel {
 
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     fn runtime_phase_adaptive_scoring_weights(
-        _game: &MonsGame,
+        game: &MonsGame,
         depth: usize,
     ) -> &'static ScoringWeights {
         if depth < 3 {
-            &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+            return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS;
+        }
+
+        let (my_score, opponent_score) = if game.active_color == Color::White {
+            (game.white_score, game.black_score)
         } else {
-            &RUNTIME_RUSH_SCORING_WEIGHTS
+            (game.black_score, game.white_score)
+        };
+        let my_distance_to_win = Config::TARGET_SCORE - my_score;
+        let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+        let score_gap = my_score - opponent_score;
+
+        if my_distance_to_win <= 1 {
+            &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if opponent_distance_to_win <= 1 {
+            &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if my_distance_to_win <= 2 {
+            &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+            &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+        } else {
+            &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
         }
     }
 
@@ -850,7 +947,9 @@ impl MonsGameModel {
         let mut candidates = Vec::new();
 
         for inputs in Self::enumerate_legal_inputs(game, config.root_enum_limit) {
-            if let Some((simulated_game, events)) = Self::apply_inputs_for_search_with_events(game, &inputs) {
+            if let Some((simulated_game, events)) =
+                Self::apply_inputs_for_search_with_events(game, &inputs)
+            {
                 let efficiency = if config.enable_root_efficiency {
                     Self::move_efficiency_delta(
                         game,
@@ -958,11 +1057,7 @@ impl MonsGameModel {
         if scored_roots.is_empty() {
             Vec::new()
         } else {
-            Self::pick_root_move_with_exploration(
-                &scored_roots,
-                perspective,
-                config,
-            )
+            Self::pick_root_move_with_exploration(game, &scored_roots, perspective, config)
         }
     }
 
@@ -980,7 +1075,10 @@ impl MonsGameModel {
         if let Some(terminal_score) = Self::terminal_score(game, perspective, depth, config.depth) {
             return terminal_score;
         }
-        if depth == 0 || *visited_nodes >= config.max_visited_nodes {
+        if *visited_nodes >= config.max_visited_nodes {
+            return evaluate_preferability_with_weights(game, perspective, config.scoring_weights);
+        }
+        if depth == 0 {
             return evaluate_preferability_with_weights(game, perspective, config.scoring_weights);
         }
 
@@ -1212,7 +1310,8 @@ impl MonsGameModel {
     }
 
     fn apply_inputs_for_search(game: &MonsGame, inputs: &[Input]) -> Option<MonsGame> {
-        Self::apply_inputs_for_search_with_events(game, inputs).map(|(simulated_game, _)| simulated_game)
+        Self::apply_inputs_for_search_with_events(game, inputs)
+            .map(|(simulated_game, _)| simulated_game)
     }
 
     fn apply_inputs_for_search_with_events(
@@ -1266,10 +1365,18 @@ impl MonsGameModel {
         for event in events {
             match event {
                 Event::ManaScored { .. } => {
-                    bonus += if actor_color == perspective { 780 } else { -780 };
+                    bonus += if actor_color == perspective {
+                        780
+                    } else {
+                        -780
+                    };
                 }
                 Event::PickupMana { .. } => {
-                    bonus += if actor_color == perspective { 230 } else { -230 };
+                    bonus += if actor_color == perspective {
+                        230
+                    } else {
+                        -230
+                    };
                 }
                 Event::MonFainted { mon, .. } => {
                     bonus += if mon.color == perspective { -360 } else { 360 };
@@ -1417,8 +1524,8 @@ impl MonsGameModel {
                     if mon.is_fainted() {
                         continue;
                     }
-                    let pool_steps = Self::distance_to_any_pool_steps_for_efficiency(location)
-                        .saturating_sub(1);
+                    let pool_steps =
+                        Self::distance_to_any_pool_steps_for_efficiency(location).saturating_sub(1);
                     if mon.color == perspective {
                         snapshot.my_carrier_count += 1;
                         snapshot.my_best_carrier_steps =
@@ -1535,7 +1642,9 @@ impl MonsGameModel {
             let score = match after_reply.winner_color() {
                 Some(winner) if winner == perspective => SMART_TERMINAL_SCORE / 2,
                 Some(_) => -SMART_TERMINAL_SCORE / 2,
-                None => evaluate_preferability_with_weights(&after_reply, perspective, scoring_weights),
+                None => {
+                    evaluate_preferability_with_weights(&after_reply, perspective, scoring_weights)
+                }
             };
             worst_reply_score = worst_reply_score.min(score);
         }
@@ -1586,10 +1695,11 @@ impl MonsGameModel {
             location.hash(&mut item_hasher);
             item.hash(&mut item_hasher);
             let entry_hash = item_hasher.finish();
-            let rotate = ((location.i as u32).wrapping_mul(13)
-                ^ (location.j as u32).wrapping_mul(29))
-                & 63;
-            items_mix ^= entry_hash.rotate_left(rotate).wrapping_mul(0x9e3779b185ebca87);
+            let rotate =
+                ((location.i as u32).wrapping_mul(13) ^ (location.j as u32).wrapping_mul(29)) & 63;
+            items_mix ^= entry_hash
+                .rotate_left(rotate)
+                .wrapping_mul(0x9e3779b185ebca87);
         }
 
         let mut state_hasher = std::collections::hash_map::DefaultHasher::new();
@@ -1655,6 +1765,7 @@ impl MonsGameModel {
         }
 
         let best_inputs = Self::pick_root_move_with_exploration(
+            &state.game,
             &state.scored_roots,
             state.perspective,
             state.config,
@@ -1665,11 +1776,22 @@ impl MonsGameModel {
     }
 
     fn pick_root_move_with_exploration(
+        game: &MonsGame,
         scored_roots: &[RootEvaluation],
         perspective: Color,
         config: SmartSearchConfig,
     ) -> Vec<Input> {
         if !config.enable_root_efficiency {
+            if config.enable_normal_root_safety_rerank
+                && Self::should_apply_normal_root_safety(game, perspective)
+            {
+                return Self::pick_root_move_with_normal_safety(
+                    game,
+                    scored_roots,
+                    perspective,
+                    config,
+                );
+            }
             let mut best_index = 0usize;
             let mut best_score = i32::MIN;
             for (index, evaluation) in scored_roots.iter().enumerate() {
@@ -1734,6 +1856,416 @@ impl MonsGameModel {
         }
 
         scored_roots[best_index].inputs.clone()
+    }
+
+    fn should_apply_normal_root_safety(game: &MonsGame, perspective: Color) -> bool {
+        let (my_score, opponent_score) = if perspective == Color::White {
+            (game.white_score, game.black_score)
+        } else {
+            (game.black_score, game.white_score)
+        };
+        let my_distance_to_win = Config::TARGET_SCORE - my_score;
+        let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+        my_distance_to_win <= SMART_NORMAL_ROOT_SAFETY_SCORE_RACE_TRIGGER
+            || opponent_distance_to_win <= SMART_NORMAL_ROOT_SAFETY_SCORE_RACE_TRIGGER
+    }
+
+    fn pick_root_move_with_normal_safety(
+        game: &MonsGame,
+        scored_roots: &[RootEvaluation],
+        perspective: Color,
+        config: SmartSearchConfig,
+    ) -> Vec<Input> {
+        if scored_roots.is_empty() {
+            return Vec::new();
+        }
+
+        let best_score = scored_roots
+            .iter()
+            .map(|evaluation| evaluation.score)
+            .max()
+            .unwrap_or(i32::MIN);
+        let score_margin = SMART_NORMAL_ROOT_SAFETY_SCORE_MARGIN.max(0);
+        let reply_limit = config.node_enum_limit.clamp(
+            SMART_NORMAL_ROOT_SAFETY_REPLY_LIMIT_MIN,
+            SMART_NORMAL_ROOT_SAFETY_REPLY_LIMIT_MAX,
+        );
+        let my_score_before = if perspective == Color::White {
+            game.white_score
+        } else {
+            game.black_score
+        };
+        let shortlist_limit = SMART_NORMAL_ROOT_SAFETY_SHORTLIST_MAX.max(1);
+
+        let mut shortlist = scored_roots
+            .iter()
+            .enumerate()
+            .filter(|(_, evaluation)| evaluation.score + score_margin >= best_score)
+            .collect::<Vec<_>>();
+        shortlist.sort_by(|(_, a), (_, b)| b.score.cmp(&a.score));
+        if shortlist.len() > shortlist_limit {
+            shortlist.truncate(shortlist_limit);
+        }
+
+        if shortlist.is_empty() {
+            let mut best_index = 0usize;
+            let mut best_score = i32::MIN;
+            for (index, evaluation) in scored_roots.iter().enumerate() {
+                if evaluation.score > best_score {
+                    best_score = evaluation.score;
+                    best_index = index;
+                }
+            }
+            return scored_roots[best_index].inputs.clone();
+        }
+
+        let best_scored_index = shortlist[0].0;
+        if shortlist.len() < 2 {
+            return scored_roots[best_scored_index].inputs.clone();
+        }
+
+        let shortlist_indices = shortlist
+            .iter()
+            .map(|(index, _)| *index)
+            .collect::<Vec<_>>();
+
+        let mut best_index = best_scored_index;
+        let mut best_snapshot = Self::normal_root_safety_snapshot(
+            &scored_roots[best_scored_index].game,
+            perspective,
+            my_score_before,
+            config.scoring_weights,
+            reply_limit,
+        );
+
+        for index in shortlist_indices.iter().copied().skip(1) {
+            let evaluation = &scored_roots[index];
+            let snapshot = Self::normal_root_safety_snapshot(
+                &evaluation.game,
+                perspective,
+                my_score_before,
+                config.scoring_weights,
+                reply_limit,
+            );
+            if Self::is_better_normal_root_safety_candidate(
+                snapshot,
+                evaluation.score,
+                best_snapshot,
+                scored_roots[best_index].score,
+            ) {
+                best_index = index;
+                best_snapshot = snapshot;
+            }
+        }
+
+        let selected_index = if config.enable_normal_root_safety_deep_floor
+            && Self::should_apply_normal_root_safety_deep_floor(game, perspective)
+        {
+            Self::pick_normal_root_with_deep_floor(
+                scored_roots,
+                shortlist_indices.as_slice(),
+                best_index,
+                perspective,
+                config,
+            )
+        } else {
+            best_index
+        };
+
+        scored_roots[selected_index].inputs.clone()
+    }
+
+    fn normal_root_safety_snapshot(
+        state_after_move: &MonsGame,
+        perspective: Color,
+        my_score_before: i32,
+        scoring_weights: &'static ScoringWeights,
+        reply_limit: usize,
+    ) -> NormalRootSafetySnapshot {
+        let my_score_after_move = if perspective == Color::White {
+            state_after_move.white_score
+        } else {
+            state_after_move.black_score
+        };
+        let my_score_gain = (my_score_after_move - my_score_before).max(0);
+
+        if let Some(winner) = state_after_move.winner_color() {
+            return if winner == perspective {
+                NormalRootSafetySnapshot {
+                    allows_immediate_opponent_win: false,
+                    opponent_reaches_match_point: false,
+                    opponent_max_score_gain: 0,
+                    my_score_gain,
+                    worst_reply_score: SMART_TERMINAL_SCORE / 2,
+                }
+            } else {
+                NormalRootSafetySnapshot {
+                    allows_immediate_opponent_win: true,
+                    opponent_reaches_match_point: true,
+                    opponent_max_score_gain: Config::TARGET_SCORE,
+                    my_score_gain,
+                    worst_reply_score: -SMART_TERMINAL_SCORE / 2,
+                }
+            };
+        }
+
+        if state_after_move.active_color == perspective {
+            return NormalRootSafetySnapshot {
+                allows_immediate_opponent_win: false,
+                opponent_reaches_match_point: false,
+                opponent_max_score_gain: 0,
+                my_score_gain,
+                worst_reply_score: evaluate_preferability_with_weights(
+                    state_after_move,
+                    perspective,
+                    scoring_weights,
+                ),
+            };
+        }
+
+        let opponent_score_before = if perspective == Color::White {
+            state_after_move.black_score
+        } else {
+            state_after_move.white_score
+        };
+        let replies = Self::enumerate_legal_inputs(state_after_move, reply_limit.max(1));
+        if replies.is_empty() {
+            return NormalRootSafetySnapshot {
+                allows_immediate_opponent_win: false,
+                opponent_reaches_match_point: false,
+                opponent_max_score_gain: 0,
+                my_score_gain,
+                worst_reply_score: SMART_TERMINAL_SCORE / 4,
+            };
+        }
+
+        let mut allows_immediate_opponent_win = false;
+        let mut opponent_reaches_match_point = false;
+        let mut opponent_max_score_gain = 0i32;
+        let mut worst_reply_score = i32::MAX;
+        let mut evaluated_reply = false;
+
+        for reply in replies {
+            let Some(after_reply) = Self::apply_inputs_for_search(state_after_move, &reply) else {
+                continue;
+            };
+            evaluated_reply = true;
+
+            let opponent_score_after = if perspective == Color::White {
+                after_reply.black_score
+            } else {
+                after_reply.white_score
+            };
+            let score_gain = (opponent_score_after - opponent_score_before).max(0);
+            opponent_max_score_gain = opponent_max_score_gain.max(score_gain);
+            if Config::TARGET_SCORE - opponent_score_after <= 1 {
+                opponent_reaches_match_point = true;
+            }
+
+            let reply_score = match after_reply.winner_color() {
+                Some(winner) if winner == perspective => SMART_TERMINAL_SCORE / 2,
+                Some(_) => {
+                    allows_immediate_opponent_win = true;
+                    opponent_reaches_match_point = true;
+                    -SMART_TERMINAL_SCORE / 2
+                }
+                None => {
+                    evaluate_preferability_with_weights(&after_reply, perspective, scoring_weights)
+                }
+            };
+            worst_reply_score = worst_reply_score.min(reply_score);
+
+            if allows_immediate_opponent_win {
+                break;
+            }
+        }
+
+        if !evaluated_reply || worst_reply_score == i32::MAX {
+            worst_reply_score =
+                evaluate_preferability_with_weights(state_after_move, perspective, scoring_weights);
+        }
+
+        NormalRootSafetySnapshot {
+            allows_immediate_opponent_win,
+            opponent_reaches_match_point,
+            opponent_max_score_gain,
+            my_score_gain,
+            worst_reply_score,
+        }
+    }
+
+    fn should_apply_normal_root_safety_deep_floor(game: &MonsGame, perspective: Color) -> bool {
+        let (my_score, opponent_score) = if perspective == Color::White {
+            (game.white_score, game.black_score)
+        } else {
+            (game.black_score, game.white_score)
+        };
+        let my_distance_to_win = Config::TARGET_SCORE - my_score;
+        let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+        my_distance_to_win <= SMART_NORMAL_ROOT_SAFETY_DEEP_FLOOR_SCORE_RACE_TRIGGER
+            || opponent_distance_to_win <= SMART_NORMAL_ROOT_SAFETY_DEEP_FLOOR_SCORE_RACE_TRIGGER
+    }
+
+    fn pick_normal_root_with_deep_floor(
+        scored_roots: &[RootEvaluation],
+        shortlist_indices: &[usize],
+        selected_index: usize,
+        perspective: Color,
+        config: SmartSearchConfig,
+    ) -> usize {
+        if shortlist_indices.len() < 2 {
+            return selected_index;
+        }
+
+        let shortlist_best_score = shortlist_indices
+            .iter()
+            .map(|index| scored_roots[*index].score)
+            .max()
+            .unwrap_or(i32::MIN);
+        let margin = SMART_NORMAL_ROOT_SAFETY_DEEP_FLOOR_SCORE_MARGIN.max(0);
+        let max_candidates = SMART_NORMAL_ROOT_SAFETY_DEEP_FLOOR_MAX_CANDIDATES.max(1);
+        let reply_limit = config.node_enum_limit.clamp(
+            SMART_NORMAL_ROOT_SAFETY_DEEP_FLOOR_REPLY_LIMIT_MIN,
+            SMART_NORMAL_ROOT_SAFETY_DEEP_FLOOR_REPLY_LIMIT_MAX,
+        );
+
+        let mut candidate_indices = shortlist_indices
+            .iter()
+            .copied()
+            .filter(|index| scored_roots[*index].score + margin >= shortlist_best_score)
+            .collect::<Vec<_>>();
+        if candidate_indices.len() > max_candidates {
+            candidate_indices.truncate(max_candidates);
+        }
+        if !candidate_indices.contains(&selected_index) {
+            candidate_indices.push(selected_index);
+        }
+        if candidate_indices.len() < 2 {
+            return selected_index;
+        }
+
+        let mut best_index = selected_index;
+        let mut best_floor_score = i32::MIN;
+        for index in candidate_indices {
+            let floor_score = Self::normal_root_safety_deep_floor_score(
+                &scored_roots[index].game,
+                perspective,
+                config,
+                reply_limit,
+            );
+            if floor_score > best_floor_score
+                || (floor_score == best_floor_score
+                    && scored_roots[index].score > scored_roots[best_index].score)
+            {
+                best_floor_score = floor_score;
+                best_index = index;
+            }
+        }
+
+        best_index
+    }
+
+    fn normal_root_safety_deep_floor_score(
+        state_after_move: &MonsGame,
+        perspective: Color,
+        config: SmartSearchConfig,
+        reply_limit: usize,
+    ) -> i32 {
+        if let Some(winner) = state_after_move.winner_color() {
+            return if winner == perspective {
+                SMART_TERMINAL_SCORE / 2
+            } else {
+                -SMART_TERMINAL_SCORE / 2
+            };
+        }
+        if state_after_move.active_color == perspective {
+            return evaluate_preferability_with_weights(
+                state_after_move,
+                perspective,
+                config.scoring_weights,
+            );
+        }
+
+        let mut probe = config;
+        probe.depth = 1;
+        probe.max_visited_nodes = (config.max_visited_nodes / 18).clamp(110, 360);
+        probe.root_branch_limit = config.node_branch_limit.clamp(5, 12);
+        probe.node_branch_limit = config.node_branch_limit.saturating_sub(4).clamp(4, 10);
+        probe.root_enum_limit = (probe.root_branch_limit * 3).clamp(probe.root_branch_limit, 48);
+        probe.node_enum_limit = (probe.node_branch_limit * 3).clamp(probe.node_branch_limit, 36);
+
+        let replies = Self::enumerate_legal_inputs(state_after_move, reply_limit.max(1));
+        if replies.is_empty() {
+            return SMART_TERMINAL_SCORE / 4;
+        }
+
+        let mut worst = i32::MAX;
+        for reply in replies {
+            let Some(after_reply) = Self::apply_inputs_for_search(state_after_move, &reply) else {
+                continue;
+            };
+            let score = match after_reply.winner_color() {
+                Some(winner) if winner == perspective => SMART_TERMINAL_SCORE / 2,
+                Some(_) => -SMART_TERMINAL_SCORE / 2,
+                None => {
+                    let mut visited_nodes = 0usize;
+                    let mut transposition_table =
+                        std::collections::HashMap::<u64, TranspositionEntry>::new();
+                    Self::search_score(
+                        &after_reply,
+                        perspective,
+                        1,
+                        i32::MIN,
+                        i32::MAX,
+                        &mut visited_nodes,
+                        probe,
+                        &mut transposition_table,
+                        true,
+                    )
+                }
+            };
+            worst = worst.min(score);
+        }
+
+        if worst == i32::MAX {
+            evaluate_preferability_with_weights(
+                state_after_move,
+                perspective,
+                config.scoring_weights,
+            )
+        } else {
+            worst
+        }
+    }
+
+    fn is_better_normal_root_safety_candidate(
+        candidate_snapshot: NormalRootSafetySnapshot,
+        candidate_score: i32,
+        incumbent_snapshot: NormalRootSafetySnapshot,
+        incumbent_score: i32,
+    ) -> bool {
+        if candidate_snapshot.allows_immediate_opponent_win
+            != incumbent_snapshot.allows_immediate_opponent_win
+        {
+            return !candidate_snapshot.allows_immediate_opponent_win;
+        }
+        if candidate_snapshot.opponent_reaches_match_point
+            != incumbent_snapshot.opponent_reaches_match_point
+        {
+            return !candidate_snapshot.opponent_reaches_match_point;
+        }
+        if candidate_snapshot.opponent_max_score_gain != incumbent_snapshot.opponent_max_score_gain
+        {
+            return candidate_snapshot.opponent_max_score_gain
+                < incumbent_snapshot.opponent_max_score_gain;
+        }
+        if candidate_snapshot.my_score_gain != incumbent_snapshot.my_score_gain {
+            return candidate_snapshot.my_score_gain > incumbent_snapshot.my_score_gain;
+        }
+        if candidate_snapshot.worst_reply_score != incumbent_snapshot.worst_reply_score {
+            return candidate_snapshot.worst_reply_score > incumbent_snapshot.worst_reply_score;
+        }
+        candidate_score > incumbent_score
     }
 }
 

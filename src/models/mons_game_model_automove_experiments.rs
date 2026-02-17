@@ -7,9 +7,8 @@ use crate::models::scoring::{
     FINISHER_MANA_RACE_LITE_SOFT_SCORING_WEIGHTS,
     MANA_RACE_LITE_D2_TUNED_AGGRESSIVE_SCORING_WEIGHTS, MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
     MANA_RACE_LITE_SCORING_WEIGHTS, MANA_RACE_NEUTRAL_SCORING_WEIGHTS, MANA_RACE_SCORING_WEIGHTS,
-    RUNTIME_RUSH_SCORING_WEIGHTS,
-    RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
-    RUNTIME_FAST_DRAINER_PRIORITY_SCORING_WEIGHTS, RUNTIME_NORMAL_WINLOSS_SCORING_WEIGHTS,
+    RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS, RUNTIME_FAST_DRAINER_PRIORITY_SCORING_WEIGHTS,
+    RUNTIME_NORMAL_WINLOSS_SCORING_WEIGHTS, RUNTIME_RUSH_SCORING_WEIGHTS,
     TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS, TACTICAL_BALANCED_SCORING_WEIGHTS,
     TACTICAL_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS, TACTICAL_MANA_RACE_LITE_SCORING_WEIGHTS,
 };
@@ -132,6 +131,59 @@ const DRAINER_PRIORITY_NORMAL_AGGR_SCORING_WEIGHTS: ScoringWeights = ScoringWeig
     angel_guarding_drainer: 370,
     ..DRAINER_PRIORITY_NORMAL_SCORING_WEIGHTS
 };
+
+const BALANCED_DISTANCE_SPIRIT_BASE_STRICT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    spirit_on_own_base_penalty: 260,
+    ..BALANCED_DISTANCE_SCORING_WEIGHTS
+};
+
+const TACTICAL_BALANCED_SPIRIT_BASE_STRICT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    spirit_on_own_base_penalty: 260,
+    ..TACTICAL_BALANCED_SCORING_WEIGHTS
+};
+
+const TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_STRICT_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        spirit_on_own_base_penalty: 260,
+        ..TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS
+    };
+
+const FINISHER_BALANCED_SOFT_SPIRIT_BASE_STRICT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    spirit_on_own_base_penalty: 260,
+    ..FINISHER_BALANCED_SOFT_SCORING_WEIGHTS
+};
+
+const FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_STRICT_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        spirit_on_own_base_penalty: 260,
+        ..FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS
+    };
+
+const BALANCED_DISTANCE_CONFIRMED_850_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    confirmed_score: 850,
+    ..BALANCED_DISTANCE_SCORING_WEIGHTS
+};
+
+const TACTICAL_BALANCED_CONFIRMED_850_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    confirmed_score: 850,
+    ..TACTICAL_BALANCED_SCORING_WEIGHTS
+};
+
+const TACTICAL_BALANCED_AGGRESSIVE_CONFIRMED_850_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    confirmed_score: 850,
+    ..TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS
+};
+
+const FINISHER_BALANCED_SOFT_CONFIRMED_850_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    confirmed_score: 850,
+    ..FINISHER_BALANCED_SOFT_SCORING_WEIGHTS
+};
+
+const FINISHER_BALANCED_SOFT_AGGRESSIVE_CONFIRMED_850_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        confirmed_score: 850,
+        ..FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS
+    };
 
 #[derive(Clone, Copy)]
 struct AutomoveModel {
@@ -336,11 +388,112 @@ fn model_runtime_pre_backtrack_penalty(game: &MonsGame, config: SmartSearchConfi
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+fn model_runtime_pre_normal_root_safety(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_normal_root_safety_rerank = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_normal_root_safety_deep_floor(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_normal_root_safety_deep_floor = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_normal_spirit_base_penalty(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.scoring_weights = runtime_normal_phase_adaptive_weights(game);
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_normal_phase_deeper_lite(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if config.depth < 3 {
+        return model_current_best(game, config);
+    }
+
+    let mut runtime = SmartSearchConfig::from_budget(
+        SMART_AUTOMOVE_NORMAL_DEPTH,
+        SMART_AUTOMOVE_NORMAL_MAX_VISITED_NODES,
+    )
+    .for_runtime()
+    .with_normal_deeper_shape();
+    runtime.scoring_weights = &RUNTIME_RUSH_SCORING_WEIGHTS;
+    runtime.enable_root_efficiency = false;
+    runtime.enable_root_reply_floor = false;
+    runtime.enable_event_ordering_bonus = false;
+    runtime.enable_backtrack_penalty = false;
+    runtime.enable_normal_root_safety_rerank = true;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn candidate_model_runtime_normal_efficiency_reply_floor(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_root_efficiency = true;
+        runtime.enable_root_reply_floor = true;
+        runtime.enable_backtrack_penalty = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn model_runtime_pre_root_upgrade_bundle(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.enable_root_reply_floor = false;
     runtime.enable_event_ordering_bonus = false;
     runtime.enable_backtrack_penalty = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn candidate_model_runtime_normal_spirit_base_strict(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if config.depth < 3 {
+        return candidate_model_base(game, config);
+    }
+
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights = runtime_normal_phase_weights_spirit_base_strict(game);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn candidate_model_runtime_normal_reinvest_search(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.max_visited_nodes = (runtime.max_visited_nodes * 11 / 10)
+            .clamp(runtime.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
+        runtime.enable_normal_root_safety_deep_floor = false;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn candidate_model_runtime_normal_confirmed_850(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if config.depth < 3 {
+        return candidate_model_base(game, config);
+    }
+
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights = runtime_normal_phase_weights_confirmed_850(game);
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
@@ -402,7 +555,8 @@ fn model_runtime_pre_drainer_context(game: &MonsGame, config: SmartSearchConfig)
 fn model_runtime_pre_tactical_runtime(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = config;
     if runtime.depth >= 3 {
-        runtime.scoring_weights = legacy_runtime_phase_adaptive_scoring_weights(game, runtime.depth);
+        runtime.scoring_weights =
+            legacy_runtime_phase_adaptive_scoring_weights(game, runtime.depth);
     } else {
         runtime.scoring_weights = &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS;
     }
@@ -1451,7 +1605,8 @@ fn candidate_model_runtime_normal_d4_selective(
         SmartSearchConfig::from_budget(config.depth as i32, config.max_visited_nodes as i32)
             .for_runtime();
     tuned.depth = 4;
-    tuned.max_visited_nodes = (tuned.max_visited_nodes * 11 / 10).clamp(2600, MAX_SMART_MAX_VISITED_NODES);
+    tuned.max_visited_nodes =
+        (tuned.max_visited_nodes * 11 / 10).clamp(2600, MAX_SMART_MAX_VISITED_NODES);
     tuned.root_branch_limit = tuned.root_branch_limit.saturating_sub(11).clamp(8, 24);
     tuned.node_branch_limit = tuned.node_branch_limit.saturating_sub(6).clamp(5, 10);
     tuned.root_enum_limit = (tuned.root_branch_limit * 5).clamp(tuned.root_branch_limit, 150);
@@ -1509,9 +1664,7 @@ fn candidate_model_runtime_normal_x15_guarded_root(
         let reply_floor =
             root_reply_floor(&root.game, perspective, tuned.scoring_weights, reply_limit);
         let drainer_bonus = drainer_priority_delta(&root.game, perspective) / 5;
-        let combined_score = root.score as i64
-            + (reply_floor as i64) * 2
-            + drainer_bonus as i64;
+        let combined_score = root.score as i64 + (reply_floor as i64) * 2 + drainer_bonus as i64;
 
         if combined_score > best_combined_score {
             best_combined_score = combined_score;
@@ -1567,8 +1720,8 @@ fn tuned_candidate_config_runtime_normal_x15_phase_deeper(
     config: SmartSearchConfig,
 ) -> SmartSearchConfig {
     let mut tuned = config;
-    tuned.max_visited_nodes =
-        (config.max_visited_nodes * 3 / 2).clamp(config.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
+    tuned.max_visited_nodes = (config.max_visited_nodes * 3 / 2)
+        .clamp(config.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
     tuned.root_branch_limit = config.root_branch_limit.clamp(8, 36);
     tuned.node_branch_limit = (config.node_branch_limit + 3).clamp(9, 18);
     tuned.root_enum_limit = (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 220);
@@ -1582,8 +1735,8 @@ fn tuned_candidate_config_runtime_normal_x15_phase_deeper_lite(
     config: SmartSearchConfig,
 ) -> SmartSearchConfig {
     let mut tuned = config;
-    tuned.max_visited_nodes =
-        (config.max_visited_nodes * 3 / 2).clamp(config.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
+    tuned.max_visited_nodes = (config.max_visited_nodes * 3 / 2)
+        .clamp(config.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
     tuned.root_branch_limit = config.root_branch_limit.saturating_sub(4).clamp(8, 36);
     tuned.node_branch_limit = (config.node_branch_limit + 2).clamp(8, 18);
     tuned.root_enum_limit = (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 220);
@@ -1624,6 +1777,52 @@ fn runtime_normal_phase_adaptive_weights(game: &MonsGame) -> &'static ScoringWei
         &TACTICAL_BALANCED_SCORING_WEIGHTS
     } else {
         &BALANCED_DISTANCE_SCORING_WEIGHTS
+    }
+}
+
+fn runtime_normal_phase_weights_spirit_base_strict(game: &MonsGame) -> &'static ScoringWeights {
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_STRICT_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 1 {
+        &TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_STRICT_SCORING_WEIGHTS
+    } else if my_distance_to_win <= 2 {
+        &FINISHER_BALANCED_SOFT_SPIRIT_BASE_STRICT_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &TACTICAL_BALANCED_SPIRIT_BASE_STRICT_SCORING_WEIGHTS
+    } else {
+        &BALANCED_DISTANCE_SPIRIT_BASE_STRICT_SCORING_WEIGHTS
+    }
+}
+
+fn runtime_normal_phase_weights_confirmed_850(game: &MonsGame) -> &'static ScoringWeights {
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &FINISHER_BALANCED_SOFT_AGGRESSIVE_CONFIRMED_850_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 1 {
+        &TACTICAL_BALANCED_AGGRESSIVE_CONFIRMED_850_SCORING_WEIGHTS
+    } else if my_distance_to_win <= 2 {
+        &FINISHER_BALANCED_SOFT_CONFIRMED_850_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &TACTICAL_BALANCED_CONFIRMED_850_SCORING_WEIGHTS
+    } else {
+        &BALANCED_DISTANCE_CONFIRMED_850_SCORING_WEIGHTS
     }
 }
 
@@ -1955,9 +2154,33 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_pre_root_reply_floor" => model_runtime_pre_root_reply_floor(game, config),
         "runtime_pre_event_ordering" => model_runtime_pre_event_ordering(game, config),
         "runtime_pre_backtrack_penalty" => model_runtime_pre_backtrack_penalty(game, config),
+        "runtime_pre_normal_phase_deeper_lite" => {
+            model_runtime_pre_normal_phase_deeper_lite(game, config)
+        }
+        "runtime_pre_normal_spirit_base_penalty" => {
+            model_runtime_pre_normal_spirit_base_penalty(game, config)
+        }
+        "runtime_normal_spirit_base_strict" => {
+            candidate_model_runtime_normal_spirit_base_strict(game, config)
+        }
+        "runtime_normal_confirmed_850" => {
+            candidate_model_runtime_normal_confirmed_850(game, config)
+        }
+        "runtime_normal_reinvest_search" => {
+            candidate_model_runtime_normal_reinvest_search(game, config)
+        }
+        "runtime_normal_efficiency_reply_floor" => {
+            candidate_model_runtime_normal_efficiency_reply_floor(game, config)
+        }
+        "runtime_pre_normal_root_safety_deep_floor" => {
+            model_runtime_pre_normal_root_safety_deep_floor(game, config)
+        }
+        "runtime_pre_normal_root_safety" => model_runtime_pre_normal_root_safety(game, config),
         "runtime_pre_root_upgrade_bundle" => model_runtime_pre_root_upgrade_bundle(game, config),
         "runtime_pre_move_efficiency" => model_runtime_pre_move_efficiency(game, config),
-        "runtime_pre_fast_drainer_priority" => model_runtime_pre_fast_drainer_priority(game, config),
+        "runtime_pre_fast_drainer_priority" => {
+            model_runtime_pre_fast_drainer_priority(game, config)
+        }
         "runtime_pre_tactical_runtime" => model_runtime_pre_tactical_runtime(game, config),
         "runtime_pre_winloss_weights" => model_runtime_pre_winloss_weights(game, config),
         "runtime_pre_transposition" => model_current_best_legacy_no_transposition(game, config),
@@ -1993,9 +2216,7 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_d2_tuned_d3_tactical" => {
             candidate_model_runtime_d2_tuned_d3_tactical(game, config)
         }
-        "runtime_d2_tuned_d3_winloss" => {
-            candidate_model_runtime_d2_tuned_d3_winloss(game, config)
-        }
+        "runtime_d2_tuned_d3_winloss" => candidate_model_runtime_d2_tuned_d3_winloss(game, config),
         "runtime_d2_tuned_d3_tactical_phase" => {
             candidate_model_runtime_d2_tuned_d3_tactical_phase(game, config)
         }
@@ -2114,6 +2335,38 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_pre_backtrack_penalty",
             model_runtime_pre_backtrack_penalty,
+        ),
+        (
+            "runtime_pre_normal_phase_deeper_lite",
+            model_runtime_pre_normal_phase_deeper_lite,
+        ),
+        (
+            "runtime_pre_normal_spirit_base_penalty",
+            model_runtime_pre_normal_spirit_base_penalty,
+        ),
+        (
+            "runtime_normal_spirit_base_strict",
+            candidate_model_runtime_normal_spirit_base_strict,
+        ),
+        (
+            "runtime_normal_confirmed_850",
+            candidate_model_runtime_normal_confirmed_850,
+        ),
+        (
+            "runtime_normal_reinvest_search",
+            candidate_model_runtime_normal_reinvest_search,
+        ),
+        (
+            "runtime_normal_efficiency_reply_floor",
+            candidate_model_runtime_normal_efficiency_reply_floor,
+        ),
+        (
+            "runtime_pre_normal_root_safety_deep_floor",
+            model_runtime_pre_normal_root_safety_deep_floor,
+        ),
+        (
+            "runtime_pre_normal_root_safety",
+            model_runtime_pre_normal_root_safety,
         ),
         (
             "runtime_pre_root_upgrade_bundle",
@@ -3003,7 +3256,11 @@ fn seed_for_pairing_budget_and_repeat(
     hash
 }
 
-fn seed_for_budget_repeat_and_tag(budget: SearchBudget, repeat_index: usize, seed_tag: &str) -> u64 {
+fn seed_for_budget_repeat_and_tag(
+    budget: SearchBudget,
+    repeat_index: usize,
+    seed_tag: &str,
+) -> u64 {
     let mut hash = 1469598103934665603_u64;
     for byte in seed_tag.bytes() {
         hash ^= byte as u64;
@@ -3663,13 +3920,7 @@ fn smart_automove_pool_profile_duel() {
             } else {
                 seed_for_pairing_budget_and_repeat(model_a.id, model_b.id, budget, repeat_index)
             };
-            let stats = run_matchup_series(
-                model_a,
-                model_b,
-                games_per_mode,
-                budget,
-                seed,
-            );
+            let stats = run_matchup_series(model_a, model_b, games_per_mode, budget, seed);
             mode_stats.merge(stats);
         }
         aggregate.merge(mode_stats);
@@ -3721,8 +3972,8 @@ fn smart_automove_pool_budget_duel() {
         .map(|value| value.trim().to_lowercase())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| profile_a.clone());
-    let mode_a =
-        env_automove_preference("SMART_BUDGET_DUEL_A_MODE").unwrap_or(SmartAutomovePreference::Fast);
+    let mode_a = env_automove_preference("SMART_BUDGET_DUEL_A_MODE")
+        .unwrap_or(SmartAutomovePreference::Fast);
     let mode_b = env_automove_preference("SMART_BUDGET_DUEL_B_MODE")
         .unwrap_or(SmartAutomovePreference::Normal);
     let games_per_repeat = env_usize("SMART_BUDGET_DUEL_GAMES").unwrap_or(4).max(1);

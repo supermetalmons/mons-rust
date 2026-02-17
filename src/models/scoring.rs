@@ -17,6 +17,7 @@ pub struct ScoringWeights {
     pub drainer_close_to_supermana: i32,
     pub mon_close_to_center: i32,
     pub spirit_close_to_enemy: i32,
+    pub spirit_on_own_base_penalty: i32,
     pub angel_guarding_drainer: i32,
     pub angel_close_to_friendly_drainer: i32,
     pub has_consumable: i32,
@@ -51,6 +52,7 @@ pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     drainer_close_to_supermana: 120,
     mon_close_to_center: 210,
     spirit_close_to_enemy: 160,
+    spirit_on_own_base_penalty: 180,
     angel_guarding_drainer: 180,
     angel_close_to_friendly_drainer: 120,
     has_consumable: 110,
@@ -85,6 +87,7 @@ pub const BALANCED_DISTANCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     drainer_close_to_supermana: 180,
     mon_close_to_center: 180,
     spirit_close_to_enemy: 220,
+    spirit_on_own_base_penalty: 180,
     angel_guarding_drainer: 280,
     angel_close_to_friendly_drainer: 180,
     has_consumable: 105,
@@ -366,8 +369,6 @@ pub const RUNTIME_FAST_DRAINER_PRIORITY_SCORING_WEIGHTS: ScoringWeights = Scorin
     ..MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS
 };
 
-const SPIRIT_ON_OWN_BASE_PENALTY: i32 = 180;
-
 pub fn evaluate_preferability(game: &MonsGame, color: Color) -> i32 {
     evaluate_preferability_with_weights(game, color, &DEFAULT_SCORING_WEIGHTS)
 }
@@ -455,7 +456,12 @@ pub fn evaluate_preferability_with_weights(
                         nearest_enemy_mon_distance(&game.board, mon.color, location);
                     score += my_mon_multiplier * weights.spirit_close_to_enemy / enemy_distance;
                     score -= my_mon_multiplier
-                        * spirit_on_own_base_penalty(&game.board, *mon, location);
+                        * spirit_on_own_base_penalty(
+                            &game.board,
+                            *mon,
+                            location,
+                            weights.spirit_on_own_base_penalty,
+                        );
                 } else if mon.kind == MonKind::Angel {
                     let friendly_drainer_distance =
                         nearest_friendly_drainer_distance(&game.board, mon.color, location);
@@ -506,7 +512,12 @@ pub fn evaluate_preferability_with_weights(
                         nearest_enemy_mon_distance(&game.board, mon.color, location);
                     score += my_mon_multiplier * weights.spirit_close_to_enemy / enemy_distance;
                     score -= my_mon_multiplier
-                        * spirit_on_own_base_penalty(&game.board, *mon, location);
+                        * spirit_on_own_base_penalty(
+                            &game.board,
+                            *mon,
+                            location,
+                            weights.spirit_on_own_base_penalty,
+                        );
                 } else if mon.kind == MonKind::Angel {
                     let friendly_drainer_distance =
                         nearest_friendly_drainer_distance(&game.board, mon.color, location);
@@ -620,7 +631,12 @@ pub fn evaluate_preferability_with_weights(
                     }
                 } else if mon.kind == MonKind::Spirit {
                     score -= my_mon_multiplier
-                        * spirit_on_own_base_penalty(&game.board, *mon, location);
+                        * spirit_on_own_base_penalty(
+                            &game.board,
+                            *mon,
+                            location,
+                            weights.spirit_on_own_base_penalty,
+                        );
                 }
             }
             Item::Consumable { .. } => {}
@@ -630,9 +646,9 @@ pub fn evaluate_preferability_with_weights(
     score
 }
 
-fn spirit_on_own_base_penalty(board: &Board, mon: Mon, location: Location) -> i32 {
+fn spirit_on_own_base_penalty(board: &Board, mon: Mon, location: Location, penalty: i32) -> i32 {
     if mon.kind == MonKind::Spirit && !mon.is_fainted() && location == board.base(mon) {
-        SPIRIT_ON_OWN_BASE_PENALTY
+        penalty
     } else {
         0
     }
@@ -727,8 +743,13 @@ mod tests {
         let board = Board::new();
         let base = board.base(spirit);
         assert_eq!(
-            spirit_on_own_base_penalty(&board, spirit, base),
-            SPIRIT_ON_OWN_BASE_PENALTY
+            spirit_on_own_base_penalty(
+                &board,
+                spirit,
+                base,
+                DEFAULT_SCORING_WEIGHTS.spirit_on_own_base_penalty
+            ),
+            DEFAULT_SCORING_WEIGHTS.spirit_on_own_base_penalty
         );
     }
 
@@ -743,12 +764,25 @@ mod tests {
         } else {
             Location::new(awake_base.i - 1, awake_base.j)
         };
-        assert_eq!(spirit_on_own_base_penalty(&board, awake_spirit, off_base), 0);
+        assert_eq!(
+            spirit_on_own_base_penalty(
+                &board,
+                awake_spirit,
+                off_base,
+                DEFAULT_SCORING_WEIGHTS.spirit_on_own_base_penalty
+            ),
+            0
+        );
 
         let fainted_spirit = Mon::new(MonKind::Spirit, Color::White, 1);
         let fainted_base = board.base(fainted_spirit);
         assert_eq!(
-            spirit_on_own_base_penalty(&board, fainted_spirit, fainted_base),
+            spirit_on_own_base_penalty(
+                &board,
+                fainted_spirit,
+                fainted_base,
+                DEFAULT_SCORING_WEIGHTS.spirit_on_own_base_penalty
+            ),
             0
         );
     }
