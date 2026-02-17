@@ -283,7 +283,6 @@ pub const TACTICAL_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS: ScoringWeights = S
     ..TACTICAL_MANA_RACE_LITE_SCORING_WEIGHTS
 };
 
-#[cfg(test)]
 pub const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     drainer_best_mana_path: 220,
     drainer_pickup_score_this_turn: 180,
@@ -366,6 +365,8 @@ pub const RUNTIME_FAST_DRAINER_PRIORITY_SCORING_WEIGHTS: ScoringWeights = Scorin
     angel_guarding_drainer: 340,
     ..MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS
 };
+
+const SPIRIT_ON_OWN_BASE_PENALTY: i32 = 180;
 
 pub fn evaluate_preferability(game: &MonsGame, color: Color) -> i32 {
     evaluate_preferability_with_weights(game, color, &DEFAULT_SCORING_WEIGHTS)
@@ -453,6 +454,8 @@ pub fn evaluate_preferability_with_weights(
                     let enemy_distance =
                         nearest_enemy_mon_distance(&game.board, mon.color, location);
                     score += my_mon_multiplier * weights.spirit_close_to_enemy / enemy_distance;
+                    score -= my_mon_multiplier
+                        * spirit_on_own_base_penalty(&game.board, *mon, location);
                 } else if mon.kind == MonKind::Angel {
                     let friendly_drainer_distance =
                         nearest_friendly_drainer_distance(&game.board, mon.color, location);
@@ -502,6 +505,8 @@ pub fn evaluate_preferability_with_weights(
                     let enemy_distance =
                         nearest_enemy_mon_distance(&game.board, mon.color, location);
                     score += my_mon_multiplier * weights.spirit_close_to_enemy / enemy_distance;
+                    score -= my_mon_multiplier
+                        * spirit_on_own_base_penalty(&game.board, *mon, location);
                 } else if mon.kind == MonKind::Angel {
                     let friendly_drainer_distance =
                         nearest_friendly_drainer_distance(&game.board, mon.color, location);
@@ -613,6 +618,9 @@ pub fn evaluate_preferability_with_weights(
                             * weights.drainer_immediate_threat
                             * immediate_threats;
                     }
+                } else if mon.kind == MonKind::Spirit {
+                    score -= my_mon_multiplier
+                        * spirit_on_own_base_penalty(&game.board, *mon, location);
                 }
             }
             Item::Consumable { .. } => {}
@@ -620,6 +628,14 @@ pub fn evaluate_preferability_with_weights(
     }
 
     score
+}
+
+fn spirit_on_own_base_penalty(board: &Board, mon: Mon, location: Location) -> i32 {
+    if mon.kind == MonKind::Spirit && !mon.is_fainted() && location == board.base(mon) {
+        SPIRIT_ON_OWN_BASE_PENALTY
+    } else {
+        0
+    }
 }
 
 enum Destination {
@@ -699,6 +715,43 @@ fn best_drainer_pickup_path(board: &Board, color: Color, from: Location) -> Opti
         }
     }
     best
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spirit_on_own_base_penalty_applies_for_awake_spirit_on_base() {
+        let spirit = Mon::new(MonKind::Spirit, Color::White, 0);
+        let board = Board::new();
+        let base = board.base(spirit);
+        assert_eq!(
+            spirit_on_own_base_penalty(&board, spirit, base),
+            SPIRIT_ON_OWN_BASE_PENALTY
+        );
+    }
+
+    #[test]
+    fn spirit_on_own_base_penalty_is_zero_off_base_or_fainted() {
+        let board = Board::new();
+
+        let awake_spirit = Mon::new(MonKind::Spirit, Color::White, 0);
+        let awake_base = board.base(awake_spirit);
+        let off_base = if awake_base.i == 0 {
+            Location::new(awake_base.i + 1, awake_base.j)
+        } else {
+            Location::new(awake_base.i - 1, awake_base.j)
+        };
+        assert_eq!(spirit_on_own_base_penalty(&board, awake_spirit, off_base), 0);
+
+        let fainted_spirit = Mon::new(MonKind::Spirit, Color::White, 1);
+        let fainted_base = board.base(fainted_spirit);
+        assert_eq!(
+            spirit_on_own_base_penalty(&board, fainted_spirit, fainted_base),
+            0
+        );
+    }
 }
 
 fn drainer_immediate_threats(board: &Board, color: Color, location: Location) -> (i32, i32) {

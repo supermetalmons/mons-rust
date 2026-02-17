@@ -2,6 +2,7 @@
 use crate::models::scoring::{
     evaluate_preferability_with_weights, ScoringWeights, BALANCED_DISTANCE_SCORING_WEIGHTS,
     DEFAULT_SCORING_WEIGHTS, MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
+    RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
     RUNTIME_RUSH_SCORING_WEIGHTS,
 };
 use crate::*;
@@ -44,6 +45,18 @@ const SMART_LOW_IMPACT_ROOT_PENALTY: i32 = 40;
 const SMART_LOW_IMPACT_CHILD_PENALTY: i32 = 0;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_ROOT_EFFICIENCY_SCORE_MARGIN: i32 = 2_500;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_ROOT_REPLY_SHORTLIST_MAX: usize = 3;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_ROOT_REPLY_SCORE_MARGIN: i32 = 4_000;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_ROOT_REPLY_WEIGHT: i32 = 1;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_ROOT_REPLY_LIMIT_MIN: usize = 3;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_ROOT_REPLY_LIMIT_MAX: usize = 6;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_ROOT_BACKTRACK_PENALTY: i32 = 140;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_AUTOMOVE_FAST_DEPTH: i32 = 2;
 #[cfg(any(target_arch = "wasm32", test))]
@@ -170,6 +183,9 @@ struct SmartSearchConfig {
     node_branch_limit: usize,
     scoring_weights: &'static ScoringWeights,
     enable_root_efficiency: bool,
+    enable_root_reply_floor: bool,
+    enable_event_ordering_bonus: bool,
+    enable_backtrack_penalty: bool,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -181,11 +197,17 @@ impl SmartSearchConfig {
             SmartAutomovePreference::Fast => {
                 let mut tuned = Self::with_fast_wideroot_shape(config);
                 tuned.enable_root_efficiency = true;
+                tuned.enable_root_reply_floor = true;
+                tuned.enable_event_ordering_bonus = true;
+                tuned.enable_backtrack_penalty = true;
                 tuned
             }
             SmartAutomovePreference::Normal => {
                 let mut tuned = Self::with_normal_deeper_shape(config);
                 tuned.enable_root_efficiency = false;
+                tuned.enable_root_reply_floor = false;
+                tuned.enable_event_ordering_bonus = false;
+                tuned.enable_backtrack_penalty = false;
                 tuned
             }
         }
@@ -213,6 +235,9 @@ impl SmartSearchConfig {
             node_branch_limit,
             scoring_weights: &DEFAULT_SCORING_WEIGHTS,
             enable_root_efficiency: true,
+            enable_root_reply_floor: false,
+            enable_event_ordering_bonus: false,
+            enable_backtrack_penalty: false,
         }
     }
 
@@ -267,6 +292,7 @@ struct RootEvaluation {
     score: i32,
     efficiency: i32,
     inputs: Vec<Input>,
+    game: MonsGame,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -807,9 +833,13 @@ impl MonsGameModel {
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     fn runtime_phase_adaptive_scoring_weights(
         _game: &MonsGame,
-        _depth: usize,
+        depth: usize,
     ) -> &'static ScoringWeights {
-        &RUNTIME_RUSH_SCORING_WEIGHTS
+        if depth < 3 {
+            &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+        } else {
+            &RUNTIME_RUSH_SCORING_WEIGHTS
+        }
     }
 
     fn ranked_root_moves(
@@ -822,7 +852,14 @@ impl MonsGameModel {
         for inputs in Self::enumerate_legal_inputs(game, config.root_enum_limit) {
             if let Some((simulated_game, events)) = Self::apply_inputs_for_search_with_events(game, &inputs) {
                 let efficiency = if config.enable_root_efficiency {
-                    Self::move_efficiency_delta(game, &simulated_game, perspective, &events, true)
+                    Self::move_efficiency_delta(
+                        game,
+                        &simulated_game,
+                        perspective,
+                        &events,
+                        true,
+                        config.enable_backtrack_penalty,
+                    )
                 } else {
                     0
                 };
@@ -833,10 +870,15 @@ impl MonsGameModel {
                     config.depth,
                     config.scoring_weights,
                 );
+                let ordering_bonus = if config.enable_event_ordering_bonus {
+                    Self::ordering_event_bonus(game.active_color, perspective, &events)
+                } else {
+                    0
+                };
                 candidates.push(ScoredRootMove {
                     inputs,
                     game: simulated_game,
-                    heuristic,
+                    heuristic: heuristic.saturating_add(ordering_bonus),
                     efficiency,
                 });
             }
@@ -905,6 +947,7 @@ impl MonsGameModel {
                 score: candidate_score,
                 efficiency: candidate.efficiency,
                 inputs: candidate.inputs,
+                game: candidate.game,
             });
 
             if candidate_score > alpha {
@@ -915,7 +958,11 @@ impl MonsGameModel {
         if scored_roots.is_empty() {
             Vec::new()
         } else {
-            Self::pick_root_move_with_exploration(&scored_roots, config.enable_root_efficiency)
+            Self::pick_root_move_with_exploration(
+                &scored_roots,
+                perspective,
+                config,
+            )
         }
     }
 
@@ -1070,7 +1117,13 @@ impl MonsGameModel {
     ) -> Vec<MonsGame> {
         let mut scored_states: Vec<(i32, MonsGame)> = Vec::new();
         for inputs in Self::enumerate_legal_inputs(game, config.node_enum_limit) {
-            if let Some(simulated_game) = Self::apply_inputs_for_search(game, &inputs) {
+            let maybe_state = if config.enable_event_ordering_bonus {
+                Self::apply_inputs_for_search_with_events(game, &inputs)
+            } else {
+                Self::apply_inputs_for_search(game, &inputs).map(|state| (state, Vec::new()))
+            };
+
+            if let Some((simulated_game, events)) = maybe_state {
                 let mut heuristic = Self::score_state(
                     &simulated_game,
                     perspective,
@@ -1083,6 +1136,13 @@ impl MonsGameModel {
                     && Self::is_no_effect_state_transition(game, &simulated_game)
                 {
                     heuristic -= SMART_NO_EFFECT_CHILD_PENALTY;
+                }
+                if config.enable_event_ordering_bonus {
+                    heuristic = heuristic.saturating_add(Self::ordering_event_bonus(
+                        game.active_color,
+                        perspective,
+                        &events,
+                    ));
                 }
                 scored_states.push((heuristic, simulated_game));
             }
@@ -1201,12 +1261,70 @@ impl MonsGameModel {
         })
     }
 
+    fn ordering_event_bonus(actor_color: Color, perspective: Color, events: &[Event]) -> i32 {
+        let mut bonus = 0i32;
+        for event in events {
+            match event {
+                Event::ManaScored { .. } => {
+                    bonus += if actor_color == perspective { 780 } else { -780 };
+                }
+                Event::PickupMana { .. } => {
+                    bonus += if actor_color == perspective { 230 } else { -230 };
+                }
+                Event::MonFainted { mon, .. } => {
+                    bonus += if mon.color == perspective { -360 } else { 360 };
+                }
+                Event::UsePotion { .. } => {
+                    bonus += if actor_color == perspective { -80 } else { 80 };
+                }
+                Event::PickupBomb { .. } | Event::PickupPotion { .. } => {
+                    bonus += if actor_color == perspective { 45 } else { -45 };
+                }
+                Event::MonMove { .. }
+                | Event::ManaMove { .. }
+                | Event::MysticAction { .. }
+                | Event::DemonAction { .. }
+                | Event::DemonAdditionalStep { .. }
+                | Event::SpiritTargetMove { .. }
+                | Event::ManaDropped { .. }
+                | Event::SupermanaBackToBase { .. }
+                | Event::BombAttack { .. }
+                | Event::MonAwake { .. }
+                | Event::BombExplosion { .. }
+                | Event::NextTurn { .. }
+                | Event::GameOver { .. }
+                | Event::Takeback => {}
+            }
+        }
+        bonus
+    }
+
+    fn has_roundtrip_mon_move(events: &[Event]) -> bool {
+        let mut seen_moves: std::collections::HashSet<(Location, Location, Color, MonKind)> =
+            std::collections::HashSet::new();
+        for event in events {
+            let Event::MonMove { item, from, to } = event else {
+                continue;
+            };
+            let Some(mon) = item.mon() else {
+                continue;
+            };
+            let reverse = (*to, *from, mon.color, mon.kind);
+            if seen_moves.contains(&reverse) {
+                return true;
+            }
+            seen_moves.insert((*from, *to, mon.color, mon.kind));
+        }
+        false
+    }
+
     fn move_efficiency_delta(
         game: &MonsGame,
         simulated_game: &MonsGame,
         perspective: Color,
         events: &[Event],
         is_root: bool,
+        apply_backtrack_penalty: bool,
     ) -> i32 {
         let before = Self::move_efficiency_snapshot(game, perspective);
         let after = Self::move_efficiency_snapshot(simulated_game, perspective);
@@ -1254,6 +1372,9 @@ impl MonsGameModel {
                 && delta <= 0
             {
                 delta -= SMART_LOW_IMPACT_ROOT_PENALTY;
+            }
+            if apply_backtrack_penalty && Self::has_roundtrip_mon_move(events) {
+                delta -= SMART_ROOT_BACKTRACK_PENALTY;
             }
         } else if SMART_NO_EFFECT_CHILD_PENALTY != 0
             && Self::is_no_effect_state_transition(game, simulated_game)
@@ -1378,6 +1499,54 @@ impl MonsGameModel {
         }
     }
 
+    fn root_reply_floor(
+        state_after_move: &MonsGame,
+        perspective: Color,
+        scoring_weights: &'static ScoringWeights,
+        reply_limit: usize,
+    ) -> i32 {
+        if let Some(winner) = state_after_move.winner_color() {
+            return if winner == perspective {
+                SMART_TERMINAL_SCORE / 2
+            } else {
+                -SMART_TERMINAL_SCORE / 2
+            };
+        }
+
+        if state_after_move.active_color == perspective {
+            return evaluate_preferability_with_weights(
+                state_after_move,
+                perspective,
+                scoring_weights,
+            );
+        }
+
+        let replies = Self::enumerate_legal_inputs(state_after_move, reply_limit.max(1));
+        if replies.is_empty() {
+            return SMART_TERMINAL_SCORE / 4;
+        }
+
+        let mut worst_reply_score = i32::MAX;
+        for reply in replies {
+            let Some(after_reply) = Self::apply_inputs_for_search(state_after_move, &reply) else {
+                continue;
+            };
+
+            let score = match after_reply.winner_color() {
+                Some(winner) if winner == perspective => SMART_TERMINAL_SCORE / 2,
+                Some(_) => -SMART_TERMINAL_SCORE / 2,
+                None => evaluate_preferability_with_weights(&after_reply, perspective, scoring_weights),
+            };
+            worst_reply_score = worst_reply_score.min(score);
+        }
+
+        if worst_reply_score == i32::MAX {
+            evaluate_preferability_with_weights(state_after_move, perspective, scoring_weights)
+        } else {
+            worst_reply_score
+        }
+    }
+
     fn score_state(
         game: &MonsGame,
         perspective: Color,
@@ -1467,6 +1636,7 @@ impl MonsGameModel {
             score: candidate_score,
             efficiency: candidate.efficiency,
             inputs: candidate.inputs.clone(),
+            game: candidate.game.clone(),
         });
 
         if candidate_score > state.alpha {
@@ -1484,8 +1654,11 @@ impl MonsGameModel {
             return Self::automove_game(&mut state.game);
         }
 
-        let best_inputs =
-            Self::pick_root_move_with_exploration(&state.scored_roots, state.config.enable_root_efficiency);
+        let best_inputs = Self::pick_root_move_with_exploration(
+            &state.scored_roots,
+            state.perspective,
+            state.config,
+        );
         let input_fen = Input::fen_from_array(&best_inputs);
         let output = state.game.process_input(best_inputs, false, false);
         OutputModel::new(output, input_fen.as_str())
@@ -1493,9 +1666,10 @@ impl MonsGameModel {
 
     fn pick_root_move_with_exploration(
         scored_roots: &[RootEvaluation],
-        enable_root_efficiency: bool,
+        perspective: Color,
+        config: SmartSearchConfig,
     ) -> Vec<Input> {
-        if !enable_root_efficiency {
+        if !config.enable_root_efficiency {
             let mut best_index = 0usize;
             let mut best_score = i32::MIN;
             for (index, evaluation) in scored_roots.iter().enumerate() {
@@ -1517,15 +1691,42 @@ impl MonsGameModel {
         let mut best_index = 0usize;
         let mut best_efficiency = i32::MIN;
         let mut best_shortlisted_score = i32::MIN;
+        let use_reply_floor = config.enable_root_reply_floor;
+        let reply_limit = config
+            .node_enum_limit
+            .clamp(SMART_ROOT_REPLY_LIMIT_MIN, SMART_ROOT_REPLY_LIMIT_MAX);
+        let shortlist_limit = SMART_ROOT_REPLY_SHORTLIST_MAX.max(1);
+        let reply_margin = SMART_ROOT_REPLY_SCORE_MARGIN.max(0);
+        let mut shortlisted = 0usize;
+        let mut best_combined_score = i64::MIN;
 
         for (index, evaluation) in scored_roots.iter().enumerate() {
             if evaluation.score + score_margin < best_score {
                 continue;
             }
-            if evaluation.efficiency > best_efficiency
-                || (evaluation.efficiency == best_efficiency
-                    && evaluation.score > best_shortlisted_score)
+            if shortlisted >= shortlist_limit {
+                break;
+            }
+            shortlisted += 1;
+
+            let mut combined_score = evaluation.score as i64 + evaluation.efficiency as i64;
+            if use_reply_floor && evaluation.score + reply_margin >= best_score {
+                let reply_floor = Self::root_reply_floor(
+                    &evaluation.game,
+                    perspective,
+                    config.scoring_weights,
+                    reply_limit,
+                );
+                combined_score += (reply_floor as i64) * SMART_ROOT_REPLY_WEIGHT as i64;
+            }
+
+            if combined_score > best_combined_score
+                || (combined_score == best_combined_score
+                    && (evaluation.efficiency > best_efficiency
+                        || (evaluation.efficiency == best_efficiency
+                            && evaluation.score > best_shortlisted_score)))
             {
+                best_combined_score = combined_score;
                 best_index = index;
                 best_efficiency = evaluation.efficiency;
                 best_shortlisted_score = evaluation.score;

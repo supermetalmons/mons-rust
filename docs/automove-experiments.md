@@ -13,7 +13,8 @@ Current runtime behavior:
 
 - `fast` is CPU-shaped around `depth=2/max_nodes=480`.
 - `normal` is CPU-shaped around `depth=3/max_nodes=3800`.
-- Both modes use `RUNTIME_RUSH_SCORING_WEIGHTS` (single runtime board-preferability profile promoted from experiments).
+- `fast` uses `RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS`.
+- `normal` uses `RUNTIME_RUSH_SCORING_WEIGHTS`.
 - `fast` uses a light root efficiency tie-break (progress-aware, with soft no-effect/low-impact penalties) to reduce wasted move loops.
 - `normal` keeps the pre-efficiency root-selection path (`enable_root_efficiency=false`) for stability at deeper search.
 - Search uses alpha-beta plus a bounded transposition table (TT). TT writes are skipped for budget-cut partial nodes to avoid polluted cache reuse.
@@ -104,6 +105,10 @@ Runtime diagnostics:
 
 - `SMART_DIAG_GAMES=4 SMART_DIAG_MODE=normal cargo test --lib smart_automove_pool_runtime_diagnostics -- --ignored --nocapture`
 
+Fast-vs-normal head-to-head (same profile, different budgets):
+
+- `SMART_BUDGET_DUEL_A=runtime_current SMART_BUDGET_DUEL_B=runtime_current SMART_BUDGET_DUEL_A_MODE=fast SMART_BUDGET_DUEL_B_MODE=normal SMART_BUDGET_DUEL_GAMES=3 SMART_BUDGET_DUEL_REPEATS=4 SMART_BUDGET_DUEL_MAX_PLIES=56 SMART_BUDGET_DUEL_SEED_TAG=fast_normal_v1 cargo test --lib smart_automove_pool_budget_duel -- --ignored --nocapture`
+
 ## Promotion Criteria
 
 Candidate is considered promotable only when all are true:
@@ -118,7 +123,12 @@ Candidate is considered promotable only when all are true:
 
 - `runtime_current`: currently shipped behavior.
 - `runtime_pre_efficiency_logic`: same runtime budgets/scoring as `runtime_current`, but with root efficiency tie-break disabled (A/B baseline for this iteration).
+- `runtime_pre_root_reply_floor`: baseline with root reply-floor re-rank disabled.
+- `runtime_pre_event_ordering`: baseline with event-aware root/child ordering bonus disabled.
+- `runtime_pre_backtrack_penalty`: baseline with fast root roundtrip/backtrack penalty disabled.
+- `runtime_pre_root_upgrade_bundle`: baseline with all three root upgrades above disabled.
 - `runtime_pre_move_efficiency`: snapshot before current node-budget/runtime-shape increase (`fast=420`, `normal=3450`).
+- `runtime_pre_fast_drainer_priority`: snapshot before current fast drainer-context promotion (uses fast `RUNTIME_RUSH` baseline).
 - `runtime_pre_winloss_weights`: snapshot before current rush-scoring promotion.
 - `runtime_pre_tactical_runtime`: snapshot before current tactical-runtime scorer promotion.
 - `runtime_pre_transposition`: snapshot before TT-enabled search path.

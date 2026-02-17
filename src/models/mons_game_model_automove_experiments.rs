@@ -318,6 +318,32 @@ fn model_runtime_pre_efficiency_logic(game: &MonsGame, config: SmartSearchConfig
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+fn model_runtime_pre_root_reply_floor(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_root_reply_floor = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_event_ordering(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_event_ordering_bonus = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_backtrack_penalty(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_backtrack_penalty = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_root_upgrade_bundle(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_root_reply_floor = false;
+    runtime.enable_event_ordering_bonus = false;
+    runtime.enable_backtrack_penalty = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn model_runtime_pre_move_efficiency(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = if config.depth >= 3 {
         SmartSearchConfig::from_budget(
@@ -400,7 +426,7 @@ fn model_runtime_pre_fast_drainer_priority(
     let tuned = if config.depth >= 3 {
         MonsGameModel::with_runtime_scoring_weights(game, config)
     } else {
-        with_scoring_weights(config, &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS)
+        with_scoring_weights(config, &RUNTIME_RUSH_SCORING_WEIGHTS)
     };
     MonsGameModel::smart_search_best_inputs(game, tuned)
 }
@@ -1926,6 +1952,10 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "base" => candidate_model_base(game, config),
         "runtime_current" => candidate_model_base(game, config),
         "runtime_pre_efficiency_logic" => model_runtime_pre_efficiency_logic(game, config),
+        "runtime_pre_root_reply_floor" => model_runtime_pre_root_reply_floor(game, config),
+        "runtime_pre_event_ordering" => model_runtime_pre_event_ordering(game, config),
+        "runtime_pre_backtrack_penalty" => model_runtime_pre_backtrack_penalty(game, config),
+        "runtime_pre_root_upgrade_bundle" => model_runtime_pre_root_upgrade_bundle(game, config),
         "runtime_pre_move_efficiency" => model_runtime_pre_move_efficiency(game, config),
         "runtime_pre_fast_drainer_priority" => model_runtime_pre_fast_drainer_priority(game, config),
         "runtime_pre_tactical_runtime" => model_runtime_pre_tactical_runtime(game, config),
@@ -2072,6 +2102,22 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_pre_efficiency_logic",
             model_runtime_pre_efficiency_logic,
+        ),
+        (
+            "runtime_pre_root_reply_floor",
+            model_runtime_pre_root_reply_floor,
+        ),
+        (
+            "runtime_pre_event_ordering",
+            model_runtime_pre_event_ordering,
+        ),
+        (
+            "runtime_pre_backtrack_penalty",
+            model_runtime_pre_backtrack_penalty,
+        ),
+        (
+            "runtime_pre_root_upgrade_bundle",
+            model_runtime_pre_root_upgrade_bundle,
         ),
         (
             "runtime_pre_move_efficiency",
@@ -2705,6 +2751,92 @@ fn play_one_game_with_diagnostics(
     )
 }
 
+fn run_budget_duel_series(
+    model_a: AutomoveModel,
+    budget_a: SearchBudget,
+    model_b: AutomoveModel,
+    budget_b: SearchBudget,
+    games: usize,
+    seed: u64,
+    max_plies: usize,
+) -> MatchupStats {
+    let opening_fens = generate_opening_fens_cached(seed, games);
+    let mut stats = MatchupStats::default();
+    for game_index in 0..games {
+        let a_is_white = game_index % 2 == 0;
+        let result = play_one_game_budget_duel(
+            model_a,
+            budget_a,
+            model_b,
+            budget_b,
+            a_is_white,
+            opening_fens[game_index].as_str(),
+            max_plies,
+        );
+        stats.record(result);
+    }
+    stats
+}
+
+fn play_one_game_budget_duel(
+    model_a: AutomoveModel,
+    budget_a: SearchBudget,
+    model_b: AutomoveModel,
+    budget_b: SearchBudget,
+    a_is_white: bool,
+    opening_fen: &str,
+    max_plies: usize,
+) -> MatchResult {
+    let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
+    let use_white_opening_book = env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false);
+
+    for _ply in 0..max_plies {
+        if let Some(winner_color) = game.winner_color() {
+            return match_result_from_winner(winner_color, a_is_white);
+        }
+
+        let a_to_move = if a_is_white {
+            game.active_color == Color::White
+        } else {
+            game.active_color == Color::Black
+        };
+        let (actor_model, actor_budget) = if a_to_move {
+            (model_a, budget_a)
+        } else {
+            (model_b, budget_b)
+        };
+
+        let config = actor_budget.runtime_config_for_game(&game);
+        let inputs = if use_white_opening_book {
+            MonsGameModel::white_first_turn_opening_next_inputs(&game)
+                .unwrap_or_else(|| (actor_model.select_inputs)(&game, config))
+        } else {
+            (actor_model.select_inputs)(&game, config)
+        };
+        if inputs.is_empty() {
+            return if a_to_move {
+                MatchResult::OpponentWin
+            } else {
+                MatchResult::CandidateWin
+            };
+        }
+
+        if !matches!(game.process_input(inputs, false, false), Output::Events(_)) {
+            return if a_to_move {
+                MatchResult::OpponentWin
+            } else {
+                MatchResult::CandidateWin
+            };
+        }
+    }
+
+    let adjudicated_winner = adjudicate_non_terminal_game(&game);
+    match adjudicated_winner {
+        Some(winner_color) => match_result_from_winner(winner_color, a_is_white),
+        None => MatchResult::Draw,
+    }
+}
+
 fn match_result_from_winner(winner_color: Color, candidate_is_white: bool) -> MatchResult {
     if (candidate_is_white && winner_color == Color::White)
         || (!candidate_is_white && winner_color == Color::Black)
@@ -2888,6 +3020,48 @@ fn seed_for_budget_repeat_and_tag(budget: SearchBudget, repeat_index: usize, see
     hash ^= (budget.max_nodes as u64).wrapping_mul(0x517cc1b727220a95);
     hash = hash.wrapping_mul(1099511628211);
     hash ^= (repeat_index as u64).wrapping_mul(0x94d049bb133111eb);
+    hash = hash.wrapping_mul(1099511628211);
+    hash
+}
+
+fn seed_for_budget_duel_repeat_and_tag(
+    budget_a: SearchBudget,
+    budget_b: SearchBudget,
+    repeat_index: usize,
+    seed_tag: &str,
+) -> u64 {
+    let mut hash = seed_for_budget_repeat_and_tag(budget_a, repeat_index, seed_tag);
+    hash ^= b'|' as u64;
+    hash = hash.wrapping_mul(1099511628211);
+    for byte in budget_b.key().bytes() {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(1099511628211);
+    }
+    hash ^= (budget_b.depth as u64).wrapping_mul(0x9e3779b97f4a7c15);
+    hash = hash.wrapping_mul(1099511628211);
+    hash ^= (budget_b.max_nodes as u64).wrapping_mul(0x517cc1b727220a95);
+    hash = hash.wrapping_mul(1099511628211);
+    hash
+}
+
+fn seed_for_budget_duel_pairing_and_repeat(
+    candidate_id: &str,
+    opponent_id: &str,
+    budget_a: SearchBudget,
+    budget_b: SearchBudget,
+    repeat_index: usize,
+) -> u64 {
+    let mut hash =
+        seed_for_pairing_budget_and_repeat(candidate_id, opponent_id, budget_a, repeat_index);
+    hash ^= b'|' as u64;
+    hash = hash.wrapping_mul(1099511628211);
+    for byte in budget_b.key().bytes() {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(1099511628211);
+    }
+    hash ^= (budget_b.depth as u64).wrapping_mul(0x9e3779b97f4a7c15);
+    hash = hash.wrapping_mul(1099511628211);
+    hash ^= (budget_b.max_nodes as u64).wrapping_mul(0x517cc1b727220a95);
     hash = hash.wrapping_mul(1099511628211);
     hash
 }
@@ -3526,6 +3700,98 @@ fn smart_automove_pool_profile_duel() {
         max_plies,
         profile_a,
         profile_b,
+        aggregate.wins,
+        aggregate.losses,
+        aggregate.draws,
+        aggregate.win_rate_points(),
+        aggregate.confidence_better_than_even(),
+    );
+}
+
+#[test]
+#[ignore = "head-to-head duel between fast and normal budgets"]
+fn smart_automove_pool_budget_duel() {
+    let profile_a = env::var("SMART_BUDGET_DUEL_A")
+        .ok()
+        .map(|value| value.trim().to_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "runtime_current".to_string());
+    let profile_b = env::var("SMART_BUDGET_DUEL_B")
+        .ok()
+        .map(|value| value.trim().to_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| profile_a.clone());
+    let mode_a =
+        env_automove_preference("SMART_BUDGET_DUEL_A_MODE").unwrap_or(SmartAutomovePreference::Fast);
+    let mode_b = env_automove_preference("SMART_BUDGET_DUEL_B_MODE")
+        .unwrap_or(SmartAutomovePreference::Normal);
+    let games_per_repeat = env_usize("SMART_BUDGET_DUEL_GAMES").unwrap_or(4).max(1);
+    let repeats = env_usize("SMART_BUDGET_DUEL_REPEATS").unwrap_or(1).max(1);
+    let max_plies = env_usize("SMART_BUDGET_DUEL_MAX_PLIES")
+        .or_else(|| env_usize("SMART_POOL_MAX_PLIES"))
+        .unwrap_or(96)
+        .max(32);
+    let duel_seed_tag = env::var("SMART_BUDGET_DUEL_SEED_TAG")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    let Some(selector_a) = profile_selector_from_name(profile_a.as_str()) else {
+        panic!("unknown profile for SMART_BUDGET_DUEL_A: {}", profile_a);
+    };
+    let Some(selector_b) = profile_selector_from_name(profile_b.as_str()) else {
+        panic!("unknown profile for SMART_BUDGET_DUEL_B: {}", profile_b);
+    };
+
+    let model_a = AutomoveModel {
+        id: "budget_duel_a",
+        select_inputs: selector_a,
+    };
+    let model_b = AutomoveModel {
+        id: "budget_duel_b",
+        select_inputs: selector_b,
+    };
+    let budget_a = SearchBudget::from_preference(mode_a);
+    let budget_b = SearchBudget::from_preference(mode_b);
+
+    let mut aggregate = MatchupStats::default();
+    for repeat_index in 0..repeats {
+        let seed = if let Some(seed_tag) = duel_seed_tag.as_deref() {
+            seed_for_budget_duel_repeat_and_tag(budget_a, budget_b, repeat_index, seed_tag)
+        } else {
+            seed_for_budget_duel_pairing_and_repeat(
+                model_a.id,
+                model_b.id,
+                budget_a,
+                budget_b,
+                repeat_index,
+            )
+        };
+        let stats = run_budget_duel_series(
+            model_a,
+            budget_a,
+            model_b,
+            budget_b,
+            games_per_repeat,
+            seed,
+            max_plies,
+        );
+        aggregate.merge(stats);
+    }
+
+    println!(
+        "budget duel summary: a={}({}:{}/{}) b={}({}:{}/{}) repeats={} games_per_repeat={} max_plies={} wins={} losses={} draws={} win_rate={:.3} confidence={:.3}",
+        profile_a,
+        mode_a.as_api_value(),
+        budget_a.depth,
+        budget_a.max_nodes,
+        profile_b,
+        mode_b.as_api_value(),
+        budget_b.depth,
+        budget_b.max_nodes,
+        repeats,
+        games_per_repeat,
+        max_plies,
         aggregate.wins,
         aggregate.losses,
         aggregate.draws,
