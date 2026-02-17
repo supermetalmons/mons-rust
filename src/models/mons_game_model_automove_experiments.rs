@@ -7,6 +7,7 @@ use crate::models::scoring::{
     FINISHER_MANA_RACE_LITE_SOFT_SCORING_WEIGHTS,
     MANA_RACE_LITE_D2_TUNED_AGGRESSIVE_SCORING_WEIGHTS, MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
     MANA_RACE_LITE_SCORING_WEIGHTS, MANA_RACE_NEUTRAL_SCORING_WEIGHTS, MANA_RACE_SCORING_WEIGHTS,
+    RUNTIME_RUSH_SCORING_WEIGHTS,
     RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
     RUNTIME_FAST_DRAINER_PRIORITY_SCORING_WEIGHTS, RUNTIME_NORMAL_WINLOSS_SCORING_WEIGHTS,
     TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS, TACTICAL_BALANCED_SCORING_WEIGHTS,
@@ -26,6 +27,8 @@ const OPENING_RANDOM_PLIES_MAX: usize = 6;
 const MIN_CONFIDENCE_TO_PROMOTE: f64 = 0.75;
 const MIN_OPPONENTS_BEAT_TO_PROMOTE: usize = 7;
 const LEGACY_NORMAL_MAX_VISITED_NODES: i32 = 2300;
+const LEGACY_RUNTIME_FAST_MAX_VISITED_NODES: i32 = 420;
+const LEGACY_RUNTIME_NORMAL_MAX_VISITED_NODES: i32 = 3450;
 
 #[derive(Debug, Clone, Copy)]
 struct SearchBudget {
@@ -307,6 +310,33 @@ fn model_current_best(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> 
         game,
         MonsGameModel::with_runtime_scoring_weights(game, config),
     )
+}
+
+fn model_runtime_pre_efficiency_logic(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_root_efficiency = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_move_efficiency(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = if config.depth >= 3 {
+        SmartSearchConfig::from_budget(
+            SMART_AUTOMOVE_NORMAL_DEPTH,
+            LEGACY_RUNTIME_NORMAL_MAX_VISITED_NODES,
+        )
+        .for_runtime()
+        .with_normal_deeper_shape()
+    } else {
+        SmartSearchConfig::from_budget(
+            SMART_AUTOMOVE_FAST_DEPTH,
+            LEGACY_RUNTIME_FAST_MAX_VISITED_NODES,
+        )
+        .for_runtime()
+        .with_fast_wideroot_shape()
+    };
+    runtime.scoring_weights = &RUNTIME_RUSH_SCORING_WEIGHTS;
+    runtime.enable_root_efficiency = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
 fn model_current_best_legacy_no_transposition(
@@ -1895,6 +1925,8 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     match candidate_profile().as_str() {
         "base" => candidate_model_base(game, config),
         "runtime_current" => candidate_model_base(game, config),
+        "runtime_pre_efficiency_logic" => model_runtime_pre_efficiency_logic(game, config),
+        "runtime_pre_move_efficiency" => model_runtime_pre_move_efficiency(game, config),
         "runtime_pre_fast_drainer_priority" => model_runtime_pre_fast_drainer_priority(game, config),
         "runtime_pre_tactical_runtime" => model_runtime_pre_tactical_runtime(game, config),
         "runtime_pre_winloss_weights" => model_runtime_pre_winloss_weights(game, config),
@@ -2037,6 +2069,14 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
     vec![
         ("base", candidate_model_base),
         ("runtime_current", candidate_model_base),
+        (
+            "runtime_pre_efficiency_logic",
+            model_runtime_pre_efficiency_logic,
+        ),
+        (
+            "runtime_pre_move_efficiency",
+            model_runtime_pre_move_efficiency,
+        ),
         (
             "runtime_pre_fast_drainer_priority",
             model_runtime_pre_fast_drainer_priority,

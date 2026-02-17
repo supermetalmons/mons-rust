@@ -35,13 +35,23 @@ const SMART_MAX_INPUT_CHAIN: usize = 8;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_TRANSPOSITION_TABLE_MAX_ENTRIES: usize = 12_000;
 #[cfg(any(target_arch = "wasm32", test))]
+const SMART_NO_EFFECT_ROOT_PENALTY: i32 = 120;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_NO_EFFECT_CHILD_PENALTY: i32 = 0;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_LOW_IMPACT_ROOT_PENALTY: i32 = 40;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_LOW_IMPACT_CHILD_PENALTY: i32 = 0;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_ROOT_EFFICIENCY_SCORE_MARGIN: i32 = 2_500;
+#[cfg(any(target_arch = "wasm32", test))]
 const SMART_AUTOMOVE_FAST_DEPTH: i32 = 2;
 #[cfg(any(target_arch = "wasm32", test))]
-const SMART_AUTOMOVE_FAST_MAX_VISITED_NODES: i32 = 420;
+const SMART_AUTOMOVE_FAST_MAX_VISITED_NODES: i32 = 480;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_AUTOMOVE_NORMAL_DEPTH: i32 = 3;
 #[cfg(any(target_arch = "wasm32", test))]
-const SMART_AUTOMOVE_NORMAL_MAX_VISITED_NODES: i32 = 3450;
+const SMART_AUTOMOVE_NORMAL_MAX_VISITED_NODES: i32 = 3800;
 const WHITE_OPENING_BOOK: [[&str; 5]; 9] = [
     [
         "l10,3;l9,2",
@@ -159,6 +169,7 @@ struct SmartSearchConfig {
     node_enum_limit: usize,
     node_branch_limit: usize,
     scoring_weights: &'static ScoringWeights,
+    enable_root_efficiency: bool,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -167,8 +178,16 @@ impl SmartSearchConfig {
         let (depth, max_visited_nodes) = preference.depth_and_max_nodes();
         let config = Self::from_budget(depth, max_visited_nodes).for_runtime();
         match preference {
-            SmartAutomovePreference::Fast => Self::with_fast_wideroot_shape(config),
-            SmartAutomovePreference::Normal => Self::with_normal_deeper_shape(config),
+            SmartAutomovePreference::Fast => {
+                let mut tuned = Self::with_fast_wideroot_shape(config);
+                tuned.enable_root_efficiency = true;
+                tuned
+            }
+            SmartAutomovePreference::Normal => {
+                let mut tuned = Self::with_normal_deeper_shape(config);
+                tuned.enable_root_efficiency = false;
+                tuned
+            }
         }
     }
 
@@ -193,6 +212,7 @@ impl SmartSearchConfig {
             node_enum_limit,
             node_branch_limit,
             scoring_weights: &DEFAULT_SCORING_WEIGHTS,
+            enable_root_efficiency: true,
         }
     }
 
@@ -239,12 +259,25 @@ struct ScoredRootMove {
     inputs: Vec<Input>,
     game: MonsGame,
     heuristic: i32,
+    efficiency: i32,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
 struct RootEvaluation {
     score: i32,
+    efficiency: i32,
     inputs: Vec<Input>,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone, Copy)]
+struct MoveEfficiencySnapshot {
+    my_best_carrier_steps: i32,
+    opponent_best_carrier_steps: i32,
+    my_best_drainer_to_mana_steps: i32,
+    opponent_best_drainer_to_mana_steps: i32,
+    my_carrier_count: i32,
+    opponent_carrier_count: i32,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -787,7 +820,12 @@ impl MonsGameModel {
         let mut candidates = Vec::new();
 
         for inputs in Self::enumerate_legal_inputs(game, config.root_enum_limit) {
-            if let Some(simulated_game) = Self::apply_inputs_for_search(game, &inputs) {
+            if let Some((simulated_game, events)) = Self::apply_inputs_for_search_with_events(game, &inputs) {
+                let efficiency = if config.enable_root_efficiency {
+                    Self::move_efficiency_delta(game, &simulated_game, perspective, &events, true)
+                } else {
+                    0
+                };
                 let heuristic = Self::score_state(
                     &simulated_game,
                     perspective,
@@ -799,6 +837,7 @@ impl MonsGameModel {
                     inputs,
                     game: simulated_game,
                     heuristic,
+                    efficiency,
                 });
             }
         }
@@ -864,6 +903,7 @@ impl MonsGameModel {
 
             scored_roots.push(RootEvaluation {
                 score: candidate_score,
+                efficiency: candidate.efficiency,
                 inputs: candidate.inputs,
             });
 
@@ -875,7 +915,7 @@ impl MonsGameModel {
         if scored_roots.is_empty() {
             Vec::new()
         } else {
-            Self::pick_root_move_with_exploration(&scored_roots)
+            Self::pick_root_move_with_exploration(&scored_roots, config.enable_root_efficiency)
         }
     }
 
@@ -1031,13 +1071,19 @@ impl MonsGameModel {
         let mut scored_states: Vec<(i32, MonsGame)> = Vec::new();
         for inputs in Self::enumerate_legal_inputs(game, config.node_enum_limit) {
             if let Some(simulated_game) = Self::apply_inputs_for_search(game, &inputs) {
-                let heuristic = Self::score_state(
+                let mut heuristic = Self::score_state(
                     &simulated_game,
                     perspective,
                     0,
                     config.depth,
                     config.scoring_weights,
                 );
+                if config.enable_root_efficiency
+                    && SMART_NO_EFFECT_CHILD_PENALTY != 0
+                    && Self::is_no_effect_state_transition(game, &simulated_game)
+                {
+                    heuristic -= SMART_NO_EFFECT_CHILD_PENALTY;
+                }
                 scored_states.push((heuristic, simulated_game));
             }
         }
@@ -1106,10 +1152,229 @@ impl MonsGameModel {
     }
 
     fn apply_inputs_for_search(game: &MonsGame, inputs: &[Input]) -> Option<MonsGame> {
+        Self::apply_inputs_for_search_with_events(game, inputs).map(|(simulated_game, _)| simulated_game)
+    }
+
+    fn apply_inputs_for_search_with_events(
+        game: &MonsGame,
+        inputs: &[Input],
+    ) -> Option<(MonsGame, Vec<Event>)> {
         let mut simulated_game = game.clone_for_simulation();
         match simulated_game.process_input(inputs.to_vec(), false, false) {
-            Output::Events(_) => Some(simulated_game),
+            Output::Events(events) => Some((simulated_game, events)),
             _ => None,
+        }
+    }
+
+    fn is_no_effect_turn_transition(
+        game: &MonsGame,
+        simulated_game: &MonsGame,
+        events: &[Event],
+    ) -> bool {
+        if !Self::is_no_effect_state_transition(game, simulated_game) {
+            return false;
+        }
+        !Self::has_material_event(events)
+    }
+
+    fn is_no_effect_state_transition(game: &MonsGame, simulated_game: &MonsGame) -> bool {
+        game.board == simulated_game.board
+            && game.white_score == simulated_game.white_score
+            && game.black_score == simulated_game.black_score
+            && game.white_potions_count == simulated_game.white_potions_count
+            && game.black_potions_count == simulated_game.black_potions_count
+    }
+
+    fn has_material_event(events: &[Event]) -> bool {
+        events.iter().any(|event| {
+            matches!(
+                event,
+                Event::ManaScored { .. }
+                    | Event::PickupMana { .. }
+                    | Event::MonFainted { .. }
+                    | Event::UsePotion { .. }
+                    | Event::PickupBomb { .. }
+                    | Event::PickupPotion { .. }
+                    | Event::BombAttack { .. }
+                    | Event::BombExplosion { .. }
+            )
+        })
+    }
+
+    fn move_efficiency_delta(
+        game: &MonsGame,
+        simulated_game: &MonsGame,
+        perspective: Color,
+        events: &[Event],
+        is_root: bool,
+    ) -> i32 {
+        let before = Self::move_efficiency_snapshot(game, perspective);
+        let after = Self::move_efficiency_snapshot(simulated_game, perspective);
+        let unknown_steps = Config::BOARD_SIZE + 4;
+
+        let mut delta = 0i32;
+        delta += Self::step_progress_delta(
+            before.my_best_carrier_steps,
+            after.my_best_carrier_steps,
+            90,
+            130,
+            unknown_steps,
+        );
+        delta -= Self::step_progress_delta(
+            before.opponent_best_carrier_steps,
+            after.opponent_best_carrier_steps,
+            80,
+            120,
+            unknown_steps,
+        );
+        delta += Self::step_progress_delta(
+            before.my_best_drainer_to_mana_steps,
+            after.my_best_drainer_to_mana_steps,
+            34,
+            50,
+            unknown_steps,
+        );
+        delta -= Self::step_progress_delta(
+            before.opponent_best_drainer_to_mana_steps,
+            after.opponent_best_drainer_to_mana_steps,
+            30,
+            44,
+            unknown_steps,
+        );
+        delta += (after.my_carrier_count - before.my_carrier_count) * 55;
+        delta -= (after.opponent_carrier_count - before.opponent_carrier_count) * 48;
+
+        if is_root {
+            if SMART_NO_EFFECT_ROOT_PENALTY != 0
+                && Self::is_no_effect_turn_transition(game, simulated_game, events)
+            {
+                delta -= SMART_NO_EFFECT_ROOT_PENALTY;
+            } else if SMART_LOW_IMPACT_ROOT_PENALTY != 0
+                && !Self::has_material_event(events)
+                && delta <= 0
+            {
+                delta -= SMART_LOW_IMPACT_ROOT_PENALTY;
+            }
+        } else if SMART_NO_EFFECT_CHILD_PENALTY != 0
+            && Self::is_no_effect_state_transition(game, simulated_game)
+        {
+            delta -= SMART_NO_EFFECT_CHILD_PENALTY;
+        } else if SMART_LOW_IMPACT_CHILD_PENALTY != 0
+            && !Self::has_material_event(events)
+            && delta < 0
+        {
+            delta -= SMART_LOW_IMPACT_CHILD_PENALTY;
+        }
+
+        delta
+    }
+
+    fn move_efficiency_snapshot(game: &MonsGame, perspective: Color) -> MoveEfficiencySnapshot {
+        let unknown_steps = Config::BOARD_SIZE + 4;
+        let mana_locations = game
+            .board
+            .items
+            .iter()
+            .filter_map(|(location, item)| match item {
+                Item::Mana { .. } => Some(*location),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        let mut snapshot = MoveEfficiencySnapshot {
+            my_best_carrier_steps: unknown_steps,
+            opponent_best_carrier_steps: unknown_steps,
+            my_best_drainer_to_mana_steps: unknown_steps,
+            opponent_best_drainer_to_mana_steps: unknown_steps,
+            my_carrier_count: 0,
+            opponent_carrier_count: 0,
+        };
+
+        for (&location, item) in &game.board.items {
+            match item {
+                Item::MonWithMana { mon, .. } => {
+                    if mon.is_fainted() {
+                        continue;
+                    }
+                    let pool_steps = Self::distance_to_any_pool_steps_for_efficiency(location)
+                        .saturating_sub(1);
+                    if mon.color == perspective {
+                        snapshot.my_carrier_count += 1;
+                        snapshot.my_best_carrier_steps =
+                            snapshot.my_best_carrier_steps.min(pool_steps);
+                    } else {
+                        snapshot.opponent_carrier_count += 1;
+                        snapshot.opponent_best_carrier_steps =
+                            snapshot.opponent_best_carrier_steps.min(pool_steps);
+                    }
+                }
+                Item::Mon { mon } | Item::MonWithConsumable { mon, .. } => {
+                    if mon.is_fainted() || mon.kind != MonKind::Drainer {
+                        continue;
+                    }
+                    let Some(nearest_mana_steps) =
+                        Self::nearest_mana_steps_for_efficiency(location, &mana_locations)
+                    else {
+                        continue;
+                    };
+
+                    if mon.color == perspective {
+                        snapshot.my_best_drainer_to_mana_steps = snapshot
+                            .my_best_drainer_to_mana_steps
+                            .min(nearest_mana_steps);
+                    } else {
+                        snapshot.opponent_best_drainer_to_mana_steps = snapshot
+                            .opponent_best_drainer_to_mana_steps
+                            .min(nearest_mana_steps);
+                    }
+                }
+                Item::Mana { .. } | Item::Consumable { .. } => {}
+            }
+        }
+
+        snapshot
+    }
+
+    fn nearest_mana_steps_for_efficiency(
+        from: Location,
+        mana_locations: &[Location],
+    ) -> Option<i32> {
+        mana_locations
+            .iter()
+            .map(|location| from.distance(location) as i32)
+            .min()
+    }
+
+    fn distance_to_any_pool_steps_for_efficiency(location: Location) -> i32 {
+        let max_index = Config::MAX_LOCATION_INDEX;
+        let i = location.i;
+        let j = location.j;
+        i32::max(i32::min(i, max_index - i), i32::min(j, max_index - j)) + 1
+    }
+
+    fn step_progress_delta(
+        before_steps: i32,
+        after_steps: i32,
+        forward_weight: i32,
+        backward_weight: i32,
+        unknown_steps: i32,
+    ) -> i32 {
+        let before_known = before_steps < unknown_steps;
+        let after_known = after_steps < unknown_steps;
+        match (before_known, after_known) {
+            (true, true) => {
+                let delta_steps = before_steps - after_steps;
+                if delta_steps > 0 {
+                    delta_steps * forward_weight
+                } else if delta_steps < 0 {
+                    delta_steps * backward_weight
+                } else {
+                    0
+                }
+            }
+            (false, true) => forward_weight,
+            (true, false) => -backward_weight,
+            (false, false) => 0,
         }
     }
 
@@ -1200,6 +1465,7 @@ impl MonsGameModel {
 
         state.scored_roots.push(RootEvaluation {
             score: candidate_score,
+            efficiency: candidate.efficiency,
             inputs: candidate.inputs.clone(),
         });
 
@@ -1218,21 +1484,54 @@ impl MonsGameModel {
             return Self::automove_game(&mut state.game);
         }
 
-        let best_inputs = Self::pick_root_move_with_exploration(&state.scored_roots);
+        let best_inputs =
+            Self::pick_root_move_with_exploration(&state.scored_roots, state.config.enable_root_efficiency);
         let input_fen = Input::fen_from_array(&best_inputs);
         let output = state.game.process_input(best_inputs, false, false);
         OutputModel::new(output, input_fen.as_str())
     }
 
-    fn pick_root_move_with_exploration(scored_roots: &[RootEvaluation]) -> Vec<Input> {
+    fn pick_root_move_with_exploration(
+        scored_roots: &[RootEvaluation],
+        enable_root_efficiency: bool,
+    ) -> Vec<Input> {
+        if !enable_root_efficiency {
+            let mut best_index = 0usize;
+            let mut best_score = i32::MIN;
+            for (index, evaluation) in scored_roots.iter().enumerate() {
+                if evaluation.score > best_score {
+                    best_score = evaluation.score;
+                    best_index = index;
+                }
+            }
+            return scored_roots[best_index].inputs.clone();
+        }
+
+        let best_score = scored_roots
+            .iter()
+            .map(|evaluation| evaluation.score)
+            .max()
+            .unwrap_or(i32::MIN);
+        let score_margin = SMART_ROOT_EFFICIENCY_SCORE_MARGIN.max(0);
+
         let mut best_index = 0usize;
-        let mut best_score = i32::MIN;
+        let mut best_efficiency = i32::MIN;
+        let mut best_shortlisted_score = i32::MIN;
+
         for (index, evaluation) in scored_roots.iter().enumerate() {
-            if evaluation.score > best_score {
-                best_score = evaluation.score;
+            if evaluation.score + score_margin < best_score {
+                continue;
+            }
+            if evaluation.efficiency > best_efficiency
+                || (evaluation.efficiency == best_efficiency
+                    && evaluation.score > best_shortlisted_score)
+            {
                 best_index = index;
+                best_efficiency = evaluation.efficiency;
+                best_shortlisted_score = evaluation.score;
             }
         }
+
         scored_roots[best_index].inputs.clone()
     }
 }

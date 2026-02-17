@@ -11,9 +11,11 @@ Public API:
 
 Current runtime behavior:
 
-- `fast` is CPU-shaped around old `depth=2/max_nodes=420`.
-- `normal` is CPU-shaped around old `depth=3/max_nodes=3450` (about 1.5x historical `normal`).
+- `fast` is CPU-shaped around `depth=2/max_nodes=480`.
+- `normal` is CPU-shaped around `depth=3/max_nodes=3800`.
 - Both modes use `RUNTIME_RUSH_SCORING_WEIGHTS` (single runtime board-preferability profile promoted from experiments).
+- `fast` uses a light root efficiency tie-break (progress-aware, with soft no-effect/low-impact penalties) to reduce wasted move loops.
+- `normal` keeps the pre-efficiency root-selection path (`enable_root_efficiency=false`) for stability at deeper search.
 - Search uses alpha-beta plus a bounded transposition table (TT). TT writes are skipped for budget-cut partial nodes to avoid polluted cache reuse.
 - On White turn 1, automove follows one random hardcoded opening route (one move per call). If the current position no longer matches any route, it falls back to normal smart search.
 
@@ -115,6 +117,8 @@ Candidate is considered promotable only when all are true:
 ## Candidate Profiles To Know
 
 - `runtime_current`: currently shipped behavior.
+- `runtime_pre_efficiency_logic`: same runtime budgets/scoring as `runtime_current`, but with root efficiency tie-break disabled (A/B baseline for this iteration).
+- `runtime_pre_move_efficiency`: snapshot before current node-budget/runtime-shape increase (`fast=420`, `normal=3450`).
 - `runtime_pre_winloss_weights`: snapshot before current rush-scoring promotion.
 - `runtime_pre_tactical_runtime`: snapshot before current tactical-runtime scorer promotion.
 - `runtime_pre_transposition`: snapshot before TT-enabled search path.
@@ -252,26 +256,83 @@ Takeaway:
 
 - Fast mode at current depth/node budget is sensitive to over-aggressive tactical weighting.
 
+### 9) Aggressive `RUNTIME_RUSH` mana-pressure overlays
+
+Idea:
+
+- Add stronger immediate carrier and drainer-path urgency on top of `RUNTIME_RUSH_SCORING_WEIGHTS` to force quicker scoring.
+
+What happened:
+
+- In repeated duels this regressed versus baseline runtime behavior.
+- It overcommitted in tactical spots and did not improve aggregate strength.
+
+Takeaway:
+
+- Keep rush profile stable; large urgency overlays were too brittle.
+
+### 10) Hard no-effect pruning / heavy no-effect penalties
+
+Idea:
+
+- Detect no-effect turn transitions and aggressively remove or heavily penalize them.
+
+What happened:
+
+- Full pruning and high penalties reduced stability and hurt aggregate duel results.
+- Soft/no-op handling performed better than aggressive filtering.
+
+Takeaway:
+
+- Do not hard-prune no-effect transitions; if used, keep this signal very light.
+
+### 11) Fast root efficiency tie-break (light, fast-only)
+
+Idea:
+
+- Keep the main search/scoring path intact.
+- Add a small fast-mode root tie-break that prefers clearer progress (carrier/drainer path improvements) and softly penalizes no-effect/low-impact transitions.
+- Keep normal mode on the pre-efficiency selector path for stability.
+
+What happened:
+
+- Versus `runtime_pre_efficiency_logic` in fast-only duels, results were positive in aggregate but noisy per seed.
+- Fast short-seed set (`5` tags, `6` games/tag): `19W-11L`.
+- Fast longer-seed set (`3` tags, `15` games/tag): `23W-22L`.
+- Combined fast aggregate across those runs: `42W-33L` (win rate `0.560`).
+- Additional larger-seed pair (`2` tags, `25` games/tag): `27W-23L` (win rate `0.540`).
+- Normal-mode spot checks were near neutral/slightly positive (for example `2W-1L` in one `3`-game seed).
+
+CPU impact:
+
+- `SMART_SPEED_POSITIONS=20` showed near-parity runtime:
+  - `runtime_current`: fast `~54.55ms`, normal `~364.50ms`.
+  - `runtime_pre_efficiency_logic`: fast `~54.51ms`, normal `~368.65ms`.
+
+Takeaway:
+
+- Light root efficiency signals can improve practical fast-mode move quality without material CPU cost.
+- Keep this as a small, conservative layer; avoid aggressive penalties or child-search rewrites.
+
 ## What Worked Best So Far
 
 Current promoted direction:
 
-- Keep `normal` on ~1.5x budget vs historical baseline and compare with neutral duel seed tags to avoid profile-name seed coupling.
+- Keep modestly larger runtime node budgets (`fast=480`, `normal=3800`) versus prior runtime (`420`/`3450`).
 - Use a single runtime preferability profile for both modes: `RUNTIME_RUSH_SCORING_WEIGHTS`.
+- Apply a light fast-only root efficiency tie-break; keep normal on the pre-efficiency root path.
 - Keep TT enabled in runtime search, but validate with de-biased two-way duels.
 - Keep opening-route policy in production, but disabled by default in promotion experiments.
 
-Observed rush-scoring benchmark vs `runtime_pre_winloss_weights`:
+Observed runtime-shape benchmark vs `runtime_pre_move_efficiency`:
 
-- De-biased two-way duel, seed `rush_1`: `10W-6L` for candidate `weights_rush`.
-- De-biased two-way duel, seed `rush_2`: `13W-3L` for candidate `weights_rush`.
-- De-biased two-way duel, seed `rush_3`: `11W-5L` for candidate `weights_rush`.
-- Combined across these seed tags: `34W-14L` (win rate `0.708`).
-- Post-promotion runtime check (seed `rush_4`, de-biased two-way):
-  - `runtime_current` vs `runtime_pre_winloss_weights`: `13W-3L`.
-- Speed probe (`SMART_SPEED_POSITIONS=30`) stayed effectively flat:
-  - `runtime_current`: fast `~52.9ms`, normal `~364.7ms`.
-  - `runtime_pre_winloss_weights`: fast `~52.8ms`, normal `~363.1ms`.
+- De-biased two-way duel, seed `nodes3800_verify`: `9W-7L` for `runtime_current`.
+- De-biased two-way duel, seed `nodes3800_verify2`: `9W-7L` for `runtime_current`.
+- De-biased two-way duel, seed `nodes3800_verify3`: `10W-6L` for `runtime_current`.
+- Combined across these seed tags: `28W-20L` (win rate `0.583`).
+- Speed probe (`SMART_SPEED_POSITIONS=30`) remained close:
+  - `runtime_current`: fast `~53.8ms`, normal `~366.4ms`.
+  - `runtime_pre_move_efficiency`: fast `~52.6ms`, normal `~367.5ms`.
 
 Observed proof against pre-promotion snapshot (fast mode):
 
@@ -292,6 +353,26 @@ Observed TT benchmark vs `runtime_pre_transposition`:
 - Speed probe (`SMART_SPEED_POSITIONS=30`):
   - `runtime_current`: fast `~52.1ms`, normal `~360.0ms`.
   - `runtime_pre_transposition`: fast `~52.9ms`, normal `~512.5ms`.
+
+Observed fast-efficiency benchmark vs `runtime_pre_efficiency_logic`:
+
+- Fast-only short seeds (`SMART_DUEL_GAMES=3`, `SMART_DUEL_REPEATS=2`, `SMART_DUEL_MAX_PLIES=56`):
+  - `eff_logic_fast_final_s1`: `4W-2L`
+  - `eff_logic_fast_final_s2`: `4W-2L`
+  - `eff_logic_fast_final_s3`: `2W-4L`
+  - `eff_logic_fast_final_s4`: `5W-1L`
+  - `eff_logic_fast_final_s5`: `4W-2L`
+  - Combined short-seed aggregate: `19W-11L` (win rate `0.633`)
+- Fast-only longer seeds (`SMART_DUEL_REPEATS=5`):
+  - `eff_logic_fast_long`: `7W-8L`
+  - `eff_logic_fast_long2`: `9W-6L`
+  - `eff_logic_fast_long3`: `7W-8L`
+  - Combined long-seed aggregate: `23W-22L` (win rate `0.511`)
+- Combined fast aggregate across all above: `42W-33L` (win rate `0.560`)
+- Fast-only larger-game seeds (`SMART_DUEL_GAMES=5`, `SMART_DUEL_REPEATS=5`):
+  - `eff_logic_fast_bulk1`: `14W-11L`
+  - `eff_logic_fast_bulk2`: `13W-12L`
+  - Combined bulk aggregate: `27W-23L` (win rate `0.540`)
 
 ## How To Add A New Candidate
 
