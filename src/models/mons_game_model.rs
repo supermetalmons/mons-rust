@@ -2,7 +2,7 @@
 use crate::models::scoring::{
     evaluate_preferability_with_weights, ScoringWeights, BALANCED_DISTANCE_SCORING_WEIGHTS,
     DEFAULT_SCORING_WEIGHTS, MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
-    RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS, TACTICAL_BALANCED_SCORING_WEIGHTS,
+    RUNTIME_RUSH_SCORING_WEIGHTS,
 };
 use crate::*;
 
@@ -33,13 +33,15 @@ const SMART_TERMINAL_SCORE: i32 = i32::MAX / 8;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_MAX_INPUT_CHAIN: usize = 8;
 #[cfg(any(target_arch = "wasm32", test))]
+const SMART_TRANSPOSITION_TABLE_MAX_ENTRIES: usize = 12_000;
+#[cfg(any(target_arch = "wasm32", test))]
 const SMART_AUTOMOVE_FAST_DEPTH: i32 = 2;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_AUTOMOVE_FAST_MAX_VISITED_NODES: i32 = 420;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_AUTOMOVE_NORMAL_DEPTH: i32 = 3;
 #[cfg(any(target_arch = "wasm32", test))]
-const SMART_AUTOMOVE_NORMAL_MAX_VISITED_NODES: i32 = 2300;
+const SMART_AUTOMOVE_NORMAL_MAX_VISITED_NODES: i32 = 3450;
 const WHITE_OPENING_BOOK: [[&str; 5]; 9] = [
     [
         "l10,3;l9,2",
@@ -166,7 +168,7 @@ impl SmartSearchConfig {
         let config = Self::from_budget(depth, max_visited_nodes).for_runtime();
         match preference {
             SmartAutomovePreference::Fast => Self::with_fast_wideroot_shape(config),
-            SmartAutomovePreference::Normal => config,
+            SmartAutomovePreference::Normal => Self::with_normal_deeper_shape(config),
         }
     }
 
@@ -221,6 +223,15 @@ impl SmartSearchConfig {
         tuned.node_enum_limit = (tuned.node_branch_limit * 4).clamp(tuned.node_branch_limit, 108);
         tuned
     }
+
+    fn with_normal_deeper_shape(self) -> Self {
+        let mut tuned = self;
+        tuned.root_branch_limit = self.root_branch_limit.clamp(8, 36);
+        tuned.node_branch_limit = (self.node_branch_limit + 3).clamp(9, 18);
+        tuned.root_enum_limit = (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 220);
+        tuned.node_enum_limit = (tuned.node_branch_limit * 6).clamp(tuned.node_branch_limit, 132);
+        tuned
+    }
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -236,6 +247,22 @@ struct RootEvaluation {
     inputs: Vec<Input>,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone, Copy)]
+enum TranspositionBound {
+    Exact,
+    LowerBound,
+    UpperBound,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone, Copy)]
+struct TranspositionEntry {
+    depth: usize,
+    score: i32,
+    bound: TranspositionBound,
+}
+
 #[cfg(target_arch = "wasm32")]
 struct AsyncSmartSearchState {
     game: MonsGame,
@@ -246,6 +273,7 @@ struct AsyncSmartSearchState {
     visited_nodes: usize,
     alpha: i32,
     scored_roots: Vec<RootEvaluation>,
+    transposition_table: std::collections::HashMap<u64, TranspositionEntry>,
 }
 
 #[wasm_bindgen]
@@ -364,6 +392,7 @@ impl MonsGameModel {
             visited_nodes: 0,
             alpha: i32::MIN,
             scored_roots: Vec::new(),
+            transposition_table: std::collections::HashMap::new(),
         }));
 
         js_sys::Promise::new(&mut move |resolve, reject| {
@@ -745,13 +774,9 @@ impl MonsGameModel {
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     fn runtime_phase_adaptive_scoring_weights(
         _game: &MonsGame,
-        depth: usize,
+        _depth: usize,
     ) -> &'static ScoringWeights {
-        if depth >= 3 {
-            &TACTICAL_BALANCED_SCORING_WEIGHTS
-        } else {
-            &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
-        }
+        &RUNTIME_RUSH_SCORING_WEIGHTS
     }
 
     fn ranked_root_moves(
@@ -787,6 +812,23 @@ impl MonsGameModel {
 
     #[cfg(test)]
     fn smart_search_best_inputs(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+        Self::smart_search_best_inputs_internal(game, config, true)
+    }
+
+    #[cfg(test)]
+    fn smart_search_best_inputs_legacy_no_transposition(
+        game: &MonsGame,
+        config: SmartSearchConfig,
+    ) -> Vec<Input> {
+        Self::smart_search_best_inputs_internal(game, config, false)
+    }
+
+    #[cfg(test)]
+    fn smart_search_best_inputs_internal(
+        game: &MonsGame,
+        config: SmartSearchConfig,
+        use_transposition_table: bool,
+    ) -> Vec<Input> {
         let perspective = game.active_color;
         let root_moves = Self::ranked_root_moves(game, perspective, config);
         if root_moves.is_empty() {
@@ -796,6 +838,7 @@ impl MonsGameModel {
         let mut visited_nodes = 0usize;
         let mut alpha = i32::MIN;
         let mut scored_roots = Vec::with_capacity(root_moves.len());
+        let mut transposition_table = std::collections::HashMap::new();
 
         for candidate in root_moves {
             if visited_nodes >= config.max_visited_nodes {
@@ -812,6 +855,8 @@ impl MonsGameModel {
                     i32::MAX,
                     &mut visited_nodes,
                     config,
+                    &mut transposition_table,
+                    use_transposition_table,
                 )
             } else {
                 candidate.heuristic
@@ -838,10 +883,12 @@ impl MonsGameModel {
         game: &MonsGame,
         perspective: Color,
         depth: usize,
-        mut alpha: i32,
-        mut beta: i32,
+        alpha: i32,
+        beta: i32,
         visited_nodes: &mut usize,
         config: SmartSearchConfig,
+        transposition_table: &mut std::collections::HashMap<u64, TranspositionEntry>,
+        use_transposition_table: bool,
     ) -> i32 {
         if let Some(terminal_score) = Self::terminal_score(game, perspective, depth, config.depth) {
             return terminal_score;
@@ -850,16 +897,43 @@ impl MonsGameModel {
             return evaluate_preferability_with_weights(game, perspective, config.scoring_weights);
         }
 
+        let mut alpha = alpha;
+        let mut beta = beta;
+        let alpha_before = alpha;
+        let beta_before = beta;
+        let state_key = Self::search_state_hash(game);
+
+        if use_transposition_table {
+            if let Some(entry) = transposition_table.get(&state_key).copied() {
+                if entry.depth >= depth {
+                    match entry.bound {
+                        TranspositionBound::Exact => return entry.score,
+                        TranspositionBound::LowerBound => {
+                            alpha = alpha.max(entry.score);
+                        }
+                        TranspositionBound::UpperBound => {
+                            beta = beta.min(entry.score);
+                        }
+                    }
+                    if alpha >= beta {
+                        return entry.score;
+                    }
+                }
+            }
+        }
+
         let maximizing = game.active_color == perspective;
         let mut children = Self::ranked_child_states(game, perspective, maximizing, config);
         if children.is_empty() {
             return evaluate_preferability_with_weights(game, perspective, config.scoring_weights);
         }
 
-        if maximizing {
+        let mut stopped_by_budget = false;
+        let value = if maximizing {
             let mut value = i32::MIN;
             for child in children.drain(..) {
                 if *visited_nodes >= config.max_visited_nodes {
+                    stopped_by_budget = true;
                     break;
                 }
 
@@ -872,6 +946,8 @@ impl MonsGameModel {
                     beta,
                     visited_nodes,
                     config,
+                    transposition_table,
+                    use_transposition_table,
                 );
                 value = value.max(score);
                 alpha = alpha.max(value);
@@ -889,6 +965,7 @@ impl MonsGameModel {
             let mut value = i32::MAX;
             for child in children.drain(..) {
                 if *visited_nodes >= config.max_visited_nodes {
+                    stopped_by_budget = true;
                     break;
                 }
 
@@ -901,6 +978,8 @@ impl MonsGameModel {
                     beta,
                     visited_nodes,
                     config,
+                    transposition_table,
+                    use_transposition_table,
                 );
                 value = value.min(score);
                 beta = beta.min(value);
@@ -914,7 +993,33 @@ impl MonsGameModel {
             } else {
                 value
             }
+        };
+
+        if use_transposition_table && !stopped_by_budget {
+            let bound = if value <= alpha_before {
+                TranspositionBound::UpperBound
+            } else if value >= beta_before {
+                TranspositionBound::LowerBound
+            } else {
+                TranspositionBound::Exact
+            };
+
+            if transposition_table.len() >= SMART_TRANSPOSITION_TABLE_MAX_ENTRIES
+                && !transposition_table.contains_key(&state_key)
+            {
+                transposition_table.clear();
+            }
+            transposition_table.insert(
+                state_key,
+                TranspositionEntry {
+                    depth,
+                    score: value,
+                    bound,
+                },
+            );
         }
+
+        value
     }
 
     fn ranked_child_states(
@@ -1038,6 +1143,35 @@ impl MonsGameModel {
         })
     }
 
+    fn search_state_hash(game: &MonsGame) -> u64 {
+        use std::hash::{Hash, Hasher};
+
+        let mut items_mix = 0u64;
+        for (location, item) in &game.board.items {
+            let mut item_hasher = std::collections::hash_map::DefaultHasher::new();
+            location.hash(&mut item_hasher);
+            item.hash(&mut item_hasher);
+            let entry_hash = item_hasher.finish();
+            let rotate = ((location.i as u32).wrapping_mul(13)
+                ^ (location.j as u32).wrapping_mul(29))
+                & 63;
+            items_mix ^= entry_hash.rotate_left(rotate).wrapping_mul(0x9e3779b185ebca87);
+        }
+
+        let mut state_hasher = std::collections::hash_map::DefaultHasher::new();
+        items_mix.hash(&mut state_hasher);
+        game.white_score.hash(&mut state_hasher);
+        game.black_score.hash(&mut state_hasher);
+        game.active_color.hash(&mut state_hasher);
+        game.actions_used_count.hash(&mut state_hasher);
+        game.mana_moves_count.hash(&mut state_hasher);
+        game.mons_moves_count.hash(&mut state_hasher);
+        game.white_potions_count.hash(&mut state_hasher);
+        game.black_potions_count.hash(&mut state_hasher);
+        game.turn_number.hash(&mut state_hasher);
+        state_hasher.finish()
+    }
+
     #[cfg(target_arch = "wasm32")]
     fn advance_async_search(state: &mut AsyncSmartSearchState) -> bool {
         if state.next_index >= state.root_moves.len()
@@ -1057,6 +1191,8 @@ impl MonsGameModel {
                 i32::MAX,
                 &mut state.visited_nodes,
                 state.config,
+                &mut state.transposition_table,
+                true,
             )
         } else {
             candidate.heuristic

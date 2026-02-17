@@ -283,6 +283,7 @@ pub const TACTICAL_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS: ScoringWeights = S
     ..TACTICAL_MANA_RACE_LITE_SCORING_WEIGHTS
 };
 
+#[cfg(test)]
 pub const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     drainer_best_mana_path: 220,
     drainer_pickup_score_this_turn: 180,
@@ -295,6 +296,74 @@ pub const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS: ScoringWeights = Scoring
     mana_carrier_one_step_from_pool: 300,
     supermana_carrier_one_step_from_pool_extra: 190,
     immediate_winning_carrier: 520,
+    ..MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS
+};
+
+pub const RUNTIME_RUSH_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    drainer_at_risk: -300,
+    mana_close_to_same_pool: 600,
+    drainer_close_to_mana: 420,
+    drainer_close_to_own_pool: 360,
+    drainer_close_to_supermana: 220,
+    mon_close_to_center: 140,
+    spirit_close_to_enemy: 180,
+    angel_guarding_drainer: 200,
+    angel_close_to_friendly_drainer: 120,
+    ..BALANCED_DISTANCE_SCORING_WEIGHTS
+};
+
+#[cfg(test)]
+pub const RUNTIME_FAST_WINLOSS_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    regular_mana_to_owner_pool: 176,
+    regular_mana_drainer_control: 19,
+    supermana_drainer_control: 28,
+    drainer_close_to_own_pool: 325,
+    mana_carrier_at_risk: -225,
+    mana_carrier_guarded: 105,
+    mana_carrier_one_step_from_pool: 285,
+    supermana_carrier_one_step_from_pool_extra: 170,
+    immediate_winning_carrier: 380,
+    drainer_best_mana_path: 90,
+    drainer_pickup_score_this_turn: 70,
+    mana_carrier_score_this_turn: 140,
+    drainer_immediate_threat: -95,
+    ..MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS
+};
+
+#[cfg(test)]
+pub const RUNTIME_NORMAL_WINLOSS_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    confirmed_score: 900,
+    fainted_cooldown_step: -130,
+    spirit_close_to_enemy: 235,
+    angel_guarding_drainer: 310,
+    regular_mana_to_owner_pool: 70,
+    regular_mana_drainer_control: 8,
+    supermana_drainer_control: 16,
+    mana_carrier_at_risk: -230,
+    mana_carrier_guarded: 125,
+    mana_carrier_one_step_from_pool: 300,
+    supermana_carrier_one_step_from_pool_extra: 185,
+    immediate_winning_carrier: 520,
+    drainer_best_mana_path: 70,
+    drainer_pickup_score_this_turn: 55,
+    mana_carrier_score_this_turn: 150,
+    drainer_immediate_threat: -100,
+    ..TACTICAL_BALANCED_SCORING_WEIGHTS
+};
+
+#[cfg(test)]
+pub const RUNTIME_FAST_DRAINER_PRIORITY_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    drainer_at_risk: -520,
+    drainer_close_to_mana: 370,
+    drainer_holding_mana: 470,
+    drainer_close_to_own_pool: 350,
+    regular_mana_drainer_control: 24,
+    mana_carrier_at_risk: -240,
+    mana_carrier_guarded: 120,
+    mana_carrier_one_step_from_pool: 310,
+    supermana_carrier_one_step_from_pool_extra: 190,
+    immediate_winning_carrier: 460,
+    angel_guarding_drainer: 340,
     ..MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS
 };
 
