@@ -371,9 +371,8 @@ fn model_runtime_pre_efficiency_logic(game: &MonsGame, config: SmartSearchConfig
 }
 
 fn model_runtime_pre_root_reply_floor(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
-    runtime.enable_root_reply_floor = false;
-    MonsGameModel::smart_search_best_inputs(game, runtime)
+    // Root reply-floor re-rank was removed from runtime search cleanup.
+    model_current_best(game, config)
 }
 
 fn model_runtime_pre_event_ordering(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
@@ -385,6 +384,28 @@ fn model_runtime_pre_event_ordering(game: &MonsGame, config: SmartSearchConfig) 
 fn model_runtime_pre_backtrack_penalty(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.enable_backtrack_penalty = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_fast_efficiency_cleanup(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        runtime.enable_root_efficiency = true;
+        runtime.enable_backtrack_penalty = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_drainer_tactical_requirements(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_forced_drainer_attack = false;
+    runtime.enable_root_drainer_safety_prefilter = false;
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
@@ -430,7 +451,6 @@ fn model_runtime_pre_normal_phase_deeper_lite(
     .with_normal_deeper_shape();
     runtime.scoring_weights = &RUNTIME_RUSH_SCORING_WEIGHTS;
     runtime.enable_root_efficiency = false;
-    runtime.enable_root_reply_floor = false;
     runtime.enable_event_ordering_bonus = false;
     runtime.enable_backtrack_penalty = false;
     runtime.enable_normal_root_safety_rerank = true;
@@ -444,7 +464,6 @@ fn candidate_model_runtime_normal_efficiency_reply_floor(
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
         runtime.enable_root_efficiency = true;
-        runtime.enable_root_reply_floor = true;
         runtime.enable_backtrack_penalty = true;
     }
     MonsGameModel::smart_search_best_inputs(game, runtime)
@@ -452,7 +471,6 @@ fn candidate_model_runtime_normal_efficiency_reply_floor(
 
 fn model_runtime_pre_root_upgrade_bundle(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
-    runtime.enable_root_reply_floor = false;
     runtime.enable_event_ordering_bonus = false;
     runtime.enable_backtrack_penalty = false;
     MonsGameModel::smart_search_best_inputs(game, runtime)
@@ -2154,6 +2172,12 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_pre_root_reply_floor" => model_runtime_pre_root_reply_floor(game, config),
         "runtime_pre_event_ordering" => model_runtime_pre_event_ordering(game, config),
         "runtime_pre_backtrack_penalty" => model_runtime_pre_backtrack_penalty(game, config),
+        "runtime_pre_fast_efficiency_cleanup" => {
+            model_runtime_pre_fast_efficiency_cleanup(game, config)
+        }
+        "runtime_pre_drainer_tactical_requirements" => {
+            model_runtime_pre_drainer_tactical_requirements(game, config)
+        }
         "runtime_pre_normal_phase_deeper_lite" => {
             model_runtime_pre_normal_phase_deeper_lite(game, config)
         }
@@ -2335,6 +2359,14 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_pre_backtrack_penalty",
             model_runtime_pre_backtrack_penalty,
+        ),
+        (
+            "runtime_pre_fast_efficiency_cleanup",
+            model_runtime_pre_fast_efficiency_cleanup,
+        ),
+        (
+            "runtime_pre_drainer_tactical_requirements",
+            model_runtime_pre_drainer_tactical_requirements,
         ),
         (
             "runtime_pre_normal_phase_deeper_lite",

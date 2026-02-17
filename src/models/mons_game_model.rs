@@ -47,17 +47,9 @@ const SMART_LOW_IMPACT_CHILD_PENALTY: i32 = 0;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_ROOT_EFFICIENCY_SCORE_MARGIN: i32 = 2_500;
 #[cfg(any(target_arch = "wasm32", test))]
-const SMART_ROOT_REPLY_SHORTLIST_MAX: usize = 3;
-#[cfg(any(target_arch = "wasm32", test))]
-const SMART_ROOT_REPLY_SCORE_MARGIN: i32 = 4_000;
-#[cfg(any(target_arch = "wasm32", test))]
-const SMART_ROOT_REPLY_WEIGHT: i32 = 1;
-#[cfg(any(target_arch = "wasm32", test))]
-const SMART_ROOT_REPLY_LIMIT_MIN: usize = 3;
-#[cfg(any(target_arch = "wasm32", test))]
-const SMART_ROOT_REPLY_LIMIT_MAX: usize = 6;
-#[cfg(any(target_arch = "wasm32", test))]
 const SMART_ROOT_BACKTRACK_PENALTY: i32 = 140;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_ROOT_DRAINER_SAFETY_SCORE_MARGIN: i32 = 2_200;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_NORMAL_ROOT_SAFETY_SHORTLIST_MAX: usize = 4;
 #[cfg(any(target_arch = "wasm32", test))]
@@ -235,9 +227,10 @@ struct SmartSearchConfig {
     node_branch_limit: usize,
     scoring_weights: &'static ScoringWeights,
     enable_root_efficiency: bool,
-    enable_root_reply_floor: bool,
     enable_event_ordering_bonus: bool,
     enable_backtrack_penalty: bool,
+    enable_forced_drainer_attack: bool,
+    enable_root_drainer_safety_prefilter: bool,
     enable_normal_root_safety_rerank: bool,
     enable_normal_root_safety_deep_floor: bool,
 }
@@ -251,9 +244,10 @@ impl SmartSearchConfig {
             SmartAutomovePreference::Fast => {
                 let mut tuned = Self::with_fast_wideroot_shape(config);
                 tuned.enable_root_efficiency = true;
-                tuned.enable_root_reply_floor = true;
                 tuned.enable_event_ordering_bonus = true;
                 tuned.enable_backtrack_penalty = true;
+                tuned.enable_forced_drainer_attack = true;
+                tuned.enable_root_drainer_safety_prefilter = true;
                 tuned.enable_normal_root_safety_rerank = false;
                 tuned.enable_normal_root_safety_deep_floor = false;
                 tuned
@@ -269,9 +263,10 @@ impl SmartSearchConfig {
                 tuned.node_enum_limit =
                     (tuned.node_branch_limit * 5).clamp(tuned.node_branch_limit, 120);
                 tuned.enable_root_efficiency = false;
-                tuned.enable_root_reply_floor = false;
                 tuned.enable_event_ordering_bonus = false;
                 tuned.enable_backtrack_penalty = false;
+                tuned.enable_forced_drainer_attack = true;
+                tuned.enable_root_drainer_safety_prefilter = true;
                 tuned.enable_normal_root_safety_rerank = true;
                 tuned.enable_normal_root_safety_deep_floor = true;
                 tuned
@@ -300,10 +295,11 @@ impl SmartSearchConfig {
             node_enum_limit,
             node_branch_limit,
             scoring_weights: &DEFAULT_SCORING_WEIGHTS,
-            enable_root_efficiency: true,
-            enable_root_reply_floor: false,
+            enable_root_efficiency: false,
             enable_event_ordering_bonus: false,
             enable_backtrack_penalty: false,
+            enable_forced_drainer_attack: true,
+            enable_root_drainer_safety_prefilter: true,
             enable_normal_root_safety_rerank: false,
             enable_normal_root_safety_deep_floor: false,
         }
@@ -353,6 +349,8 @@ struct ScoredRootMove {
     game: MonsGame,
     heuristic: i32,
     efficiency: i32,
+    attacks_opponent_drainer: bool,
+    own_drainer_vulnerable: bool,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -361,6 +359,8 @@ struct RootEvaluation {
     efficiency: i32,
     inputs: Vec<Input>,
     game: MonsGame,
+    attacks_opponent_drainer: bool,
+    own_drainer_vulnerable: bool,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -974,16 +974,32 @@ impl MonsGameModel {
                 } else {
                     0
                 };
+                let attacks_opponent_drainer =
+                    Self::events_include_opponent_drainer_fainted(&events, perspective);
+                let own_drainer_vulnerable = if config.enable_root_drainer_safety_prefilter {
+                    Self::is_own_drainer_immediately_vulnerable(&simulated_game, perspective)
+                } else {
+                    false
+                };
                 candidates.push(ScoredRootMove {
                     inputs,
                     game: simulated_game,
                     heuristic: heuristic.saturating_add(ordering_bonus),
                     efficiency,
+                    attacks_opponent_drainer,
+                    own_drainer_vulnerable,
                 });
             }
         }
 
         candidates.sort_by(|a, b| b.heuristic.cmp(&a.heuristic));
+        if config.enable_forced_drainer_attack
+            && candidates
+                .iter()
+                .any(|candidate| candidate.attacks_opponent_drainer)
+        {
+            candidates.retain(|candidate| candidate.attacks_opponent_drainer);
+        }
         if candidates.len() > config.root_branch_limit {
             candidates.truncate(config.root_branch_limit);
         }
@@ -1047,6 +1063,8 @@ impl MonsGameModel {
                 efficiency: candidate.efficiency,
                 inputs: candidate.inputs,
                 game: candidate.game,
+                attacks_opponent_drainer: candidate.attacks_opponent_drainer,
+                own_drainer_vulnerable: candidate.own_drainer_vulnerable,
             });
 
             if candidate_score > alpha {
@@ -1606,56 +1624,6 @@ impl MonsGameModel {
         }
     }
 
-    fn root_reply_floor(
-        state_after_move: &MonsGame,
-        perspective: Color,
-        scoring_weights: &'static ScoringWeights,
-        reply_limit: usize,
-    ) -> i32 {
-        if let Some(winner) = state_after_move.winner_color() {
-            return if winner == perspective {
-                SMART_TERMINAL_SCORE / 2
-            } else {
-                -SMART_TERMINAL_SCORE / 2
-            };
-        }
-
-        if state_after_move.active_color == perspective {
-            return evaluate_preferability_with_weights(
-                state_after_move,
-                perspective,
-                scoring_weights,
-            );
-        }
-
-        let replies = Self::enumerate_legal_inputs(state_after_move, reply_limit.max(1));
-        if replies.is_empty() {
-            return SMART_TERMINAL_SCORE / 4;
-        }
-
-        let mut worst_reply_score = i32::MAX;
-        for reply in replies {
-            let Some(after_reply) = Self::apply_inputs_for_search(state_after_move, &reply) else {
-                continue;
-            };
-
-            let score = match after_reply.winner_color() {
-                Some(winner) if winner == perspective => SMART_TERMINAL_SCORE / 2,
-                Some(_) => -SMART_TERMINAL_SCORE / 2,
-                None => {
-                    evaluate_preferability_with_weights(&after_reply, perspective, scoring_weights)
-                }
-            };
-            worst_reply_score = worst_reply_score.min(score);
-        }
-
-        if worst_reply_score == i32::MAX {
-            evaluate_preferability_with_weights(state_after_move, perspective, scoring_weights)
-        } else {
-            worst_reply_score
-        }
-    }
-
     fn score_state(
         game: &MonsGame,
         perspective: Color,
@@ -1747,6 +1715,8 @@ impl MonsGameModel {
             efficiency: candidate.efficiency,
             inputs: candidate.inputs.clone(),
             game: candidate.game.clone(),
+            attacks_opponent_drainer: candidate.attacks_opponent_drainer,
+            own_drainer_vulnerable: candidate.own_drainer_vulnerable,
         });
 
         if candidate_score > state.alpha {
@@ -1775,12 +1745,177 @@ impl MonsGameModel {
         OutputModel::new(output, input_fen.as_str())
     }
 
+    fn events_include_opponent_drainer_fainted(events: &[Event], perspective: Color) -> bool {
+        events.iter().any(|event| {
+            matches!(
+                event,
+                Event::MonFainted { mon, .. }
+                    if mon.kind == MonKind::Drainer && mon.color == perspective.other()
+            )
+        })
+    }
+
+    fn is_location_guarded_by_angel(board: &Board, color: Color, location: Location) -> bool {
+        board
+            .find_awake_angel(color)
+            .map_or(false, |angel_location| {
+                angel_location.distance(&location) == 1
+            })
+    }
+
+    fn is_own_drainer_immediately_vulnerable(game: &MonsGame, perspective: Color) -> bool {
+        let mut own_drainer_location = None;
+        for (&location, item) in &game.board.items {
+            let Some(mon) = item.mon() else {
+                continue;
+            };
+            if mon.color != perspective || mon.kind != MonKind::Drainer {
+                continue;
+            }
+            if mon.is_fainted() {
+                return true;
+            }
+            own_drainer_location = Some(location);
+            break;
+        }
+
+        let Some(drainer_location) = own_drainer_location else {
+            return false;
+        };
+
+        let opponent = perspective.other();
+        if game.active_color != opponent {
+            return false;
+        }
+
+        let drainer_action_protected =
+            Self::is_location_guarded_by_angel(&game.board, perspective, drainer_location);
+        let opponent_can_use_action = game.player_can_use_action();
+
+        for (&threat_location, item) in &game.board.items {
+            match item {
+                Item::Mon { mon } if mon.color == opponent && !mon.is_fainted() => {
+                    if opponent_can_use_action
+                        && !drainer_action_protected
+                        && !matches!(game.board.square(threat_location), Square::MonBase { .. })
+                    {
+                        if mon.kind == MonKind::Mystic
+                            && (threat_location.i - drainer_location.i).abs() == 2
+                            && (threat_location.j - drainer_location.j).abs() == 2
+                        {
+                            return true;
+                        }
+
+                        if mon.kind == MonKind::Demon {
+                            let di = (threat_location.i - drainer_location.i).abs();
+                            let dj = (threat_location.j - drainer_location.j).abs();
+                            if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
+                                let middle = threat_location.location_between(&drainer_location);
+                                if game.board.item(middle).is_none()
+                                    && !matches!(
+                                        game.board.square(middle),
+                                        Square::SupermanaBase | Square::MonBase { .. }
+                                    )
+                                {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+                Item::MonWithConsumable { mon, consumable }
+                    if mon.color == opponent
+                        && !mon.is_fainted()
+                        && *consumable == Consumable::Bomb
+                        && threat_location.distance(&drainer_location) <= 3 =>
+                {
+                    return true;
+                }
+                Item::MonWithConsumable { .. }
+                | Item::MonWithMana { .. }
+                | Item::Mana { .. }
+                | Item::Consumable { .. } => {}
+                Item::Mon { .. } => {}
+            }
+        }
+
+        false
+    }
+
+    fn filtered_root_candidate_indices(
+        scored_roots: &[RootEvaluation],
+        config: SmartSearchConfig,
+    ) -> Vec<usize> {
+        if scored_roots.is_empty() {
+            return Vec::new();
+        }
+
+        let mut candidate_indices = (0..scored_roots.len()).collect::<Vec<_>>();
+        let mut forced_attack_applied = false;
+
+        if config.enable_forced_drainer_attack
+            && candidate_indices
+                .iter()
+                .any(|index| scored_roots[*index].attacks_opponent_drainer)
+        {
+            candidate_indices.retain(|index| scored_roots[*index].attacks_opponent_drainer);
+            forced_attack_applied = true;
+        }
+
+        if config.enable_root_drainer_safety_prefilter && !forced_attack_applied {
+            let best_score = candidate_indices
+                .iter()
+                .map(|index| scored_roots[*index].score)
+                .max()
+                .unwrap_or(i32::MIN);
+            let margin = SMART_ROOT_DRAINER_SAFETY_SCORE_MARGIN.max(0);
+            let safer_indices = candidate_indices
+                .iter()
+                .copied()
+                .filter(|index| {
+                    let root = &scored_roots[*index];
+                    !root.own_drainer_vulnerable && root.score + margin >= best_score
+                })
+                .collect::<Vec<_>>();
+            if !safer_indices.is_empty() {
+                candidate_indices = safer_indices;
+            }
+        }
+
+        candidate_indices
+    }
+
+    fn best_scored_root_index(
+        scored_roots: &[RootEvaluation],
+        candidate_indices: &[usize],
+    ) -> usize {
+        let mut best_index = candidate_indices.first().copied().unwrap_or(0);
+        let mut best_score = i32::MIN;
+        for index in candidate_indices.iter().copied() {
+            let score = scored_roots[index].score;
+            if score > best_score {
+                best_score = score;
+                best_index = index;
+            }
+        }
+        best_index
+    }
+
     fn pick_root_move_with_exploration(
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
         perspective: Color,
         config: SmartSearchConfig,
     ) -> Vec<Input> {
+        if scored_roots.is_empty() {
+            return Vec::new();
+        }
+
+        let mut candidate_indices = Self::filtered_root_candidate_indices(scored_roots, config);
+        if candidate_indices.is_empty() {
+            candidate_indices = (0..scored_roots.len()).collect();
+        }
+
         if !config.enable_root_efficiency {
             if config.enable_normal_root_safety_rerank
                 && Self::should_apply_normal_root_safety(game, perspective)
@@ -1788,67 +1923,37 @@ impl MonsGameModel {
                 return Self::pick_root_move_with_normal_safety(
                     game,
                     scored_roots,
+                    candidate_indices.as_slice(),
                     perspective,
                     config,
                 );
             }
-            let mut best_index = 0usize;
-            let mut best_score = i32::MIN;
-            for (index, evaluation) in scored_roots.iter().enumerate() {
-                if evaluation.score > best_score {
-                    best_score = evaluation.score;
-                    best_index = index;
-                }
-            }
+            let best_index =
+                Self::best_scored_root_index(scored_roots, candidate_indices.as_slice());
             return scored_roots[best_index].inputs.clone();
         }
 
-        let best_score = scored_roots
+        let best_score = candidate_indices
             .iter()
-            .map(|evaluation| evaluation.score)
+            .map(|index| scored_roots[*index].score)
             .max()
             .unwrap_or(i32::MIN);
         let score_margin = SMART_ROOT_EFFICIENCY_SCORE_MARGIN.max(0);
 
-        let mut best_index = 0usize;
+        let mut best_index =
+            Self::best_scored_root_index(scored_roots, candidate_indices.as_slice());
         let mut best_efficiency = i32::MIN;
         let mut best_shortlisted_score = i32::MIN;
-        let use_reply_floor = config.enable_root_reply_floor;
-        let reply_limit = config
-            .node_enum_limit
-            .clamp(SMART_ROOT_REPLY_LIMIT_MIN, SMART_ROOT_REPLY_LIMIT_MAX);
-        let shortlist_limit = SMART_ROOT_REPLY_SHORTLIST_MAX.max(1);
-        let reply_margin = SMART_ROOT_REPLY_SCORE_MARGIN.max(0);
-        let mut shortlisted = 0usize;
-        let mut best_combined_score = i64::MIN;
 
-        for (index, evaluation) in scored_roots.iter().enumerate() {
+        for index in candidate_indices {
+            let evaluation = &scored_roots[index];
             if evaluation.score + score_margin < best_score {
                 continue;
             }
-            if shortlisted >= shortlist_limit {
-                break;
-            }
-            shortlisted += 1;
-
-            let mut combined_score = evaluation.score as i64 + evaluation.efficiency as i64;
-            if use_reply_floor && evaluation.score + reply_margin >= best_score {
-                let reply_floor = Self::root_reply_floor(
-                    &evaluation.game,
-                    perspective,
-                    config.scoring_weights,
-                    reply_limit,
-                );
-                combined_score += (reply_floor as i64) * SMART_ROOT_REPLY_WEIGHT as i64;
-            }
-
-            if combined_score > best_combined_score
-                || (combined_score == best_combined_score
-                    && (evaluation.efficiency > best_efficiency
-                        || (evaluation.efficiency == best_efficiency
-                            && evaluation.score > best_shortlisted_score)))
+            if evaluation.efficiency > best_efficiency
+                || (evaluation.efficiency == best_efficiency
+                    && evaluation.score > best_shortlisted_score)
             {
-                best_combined_score = combined_score;
                 best_index = index;
                 best_efficiency = evaluation.efficiency;
                 best_shortlisted_score = evaluation.score;
@@ -1873,6 +1978,7 @@ impl MonsGameModel {
     fn pick_root_move_with_normal_safety(
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
+        candidate_indices: &[usize],
         perspective: Color,
         config: SmartSearchConfig,
     ) -> Vec<Input> {
@@ -1880,9 +1986,14 @@ impl MonsGameModel {
             return Vec::new();
         }
 
-        let best_score = scored_roots
+        let eligible_indices = if candidate_indices.is_empty() {
+            (0..scored_roots.len()).collect::<Vec<_>>()
+        } else {
+            candidate_indices.to_vec()
+        };
+        let best_score = eligible_indices
             .iter()
-            .map(|evaluation| evaluation.score)
+            .map(|index| scored_roots[*index].score)
             .max()
             .unwrap_or(i32::MIN);
         let score_margin = SMART_NORMAL_ROOT_SAFETY_SCORE_MARGIN.max(0);
@@ -1897,37 +2008,28 @@ impl MonsGameModel {
         };
         let shortlist_limit = SMART_NORMAL_ROOT_SAFETY_SHORTLIST_MAX.max(1);
 
-        let mut shortlist = scored_roots
+        let mut shortlist = eligible_indices
             .iter()
-            .enumerate()
-            .filter(|(_, evaluation)| evaluation.score + score_margin >= best_score)
+            .copied()
+            .filter(|index| scored_roots[*index].score + score_margin >= best_score)
             .collect::<Vec<_>>();
-        shortlist.sort_by(|(_, a), (_, b)| b.score.cmp(&a.score));
+        shortlist.sort_by(|a, b| scored_roots[*b].score.cmp(&scored_roots[*a].score));
         if shortlist.len() > shortlist_limit {
             shortlist.truncate(shortlist_limit);
         }
 
         if shortlist.is_empty() {
-            let mut best_index = 0usize;
-            let mut best_score = i32::MIN;
-            for (index, evaluation) in scored_roots.iter().enumerate() {
-                if evaluation.score > best_score {
-                    best_score = evaluation.score;
-                    best_index = index;
-                }
-            }
+            let best_index =
+                Self::best_scored_root_index(scored_roots, eligible_indices.as_slice());
             return scored_roots[best_index].inputs.clone();
         }
 
-        let best_scored_index = shortlist[0].0;
+        let best_scored_index = shortlist[0];
         if shortlist.len() < 2 {
             return scored_roots[best_scored_index].inputs.clone();
         }
 
-        let shortlist_indices = shortlist
-            .iter()
-            .map(|(index, _)| *index)
-            .collect::<Vec<_>>();
+        let shortlist_indices = shortlist;
 
         let mut best_index = best_scored_index;
         let mut best_snapshot = Self::normal_root_safety_snapshot(
@@ -2276,6 +2378,26 @@ mod smart_automove_pool_tests;
 #[cfg(test)]
 mod opening_book_tests {
     use super::*;
+    use std::collections::HashMap;
+
+    fn game_with_items(
+        items: Vec<(Location, Item)>,
+        active_color: Color,
+        turn_number: i32,
+    ) -> MonsGame {
+        let mut game = MonsGame::new(false);
+        game.board = Board::new_with_items(items.into_iter().collect::<HashMap<_, _>>());
+        game.active_color = active_color;
+        game.turn_number = turn_number;
+        game.actions_used_count = 0;
+        game.mana_moves_count = 0;
+        game.mons_moves_count = 0;
+        game.white_score = 0;
+        game.black_score = 0;
+        game.white_potions_count = 0;
+        game.black_potions_count = 0;
+        game
+    }
 
     #[test]
     fn white_opening_book_selects_a_valid_first_move() {
@@ -2317,6 +2439,67 @@ mod opening_book_tests {
             Output::Events(_)
         ));
         assert!(MonsGameModel::white_first_turn_opening_next_inputs(&game).is_none());
+    }
+
+    #[test]
+    fn forced_drainer_attack_selects_a_drainer_fainting_turn_when_available() {
+        let white_mystic = Mon::new(MonKind::Mystic, Color::White, 0);
+        let white_drainer = Mon::new(MonKind::Drainer, Color::White, 0);
+        let black_drainer = Mon::new(MonKind::Drainer, Color::Black, 0);
+        let game = game_with_items(
+            vec![
+                (Location::new(5, 5), Item::Mon { mon: white_mystic }),
+                (Location::new(10, 5), Item::Mon { mon: white_drainer }),
+                (Location::new(7, 7), Item::Mon { mon: black_drainer }),
+            ],
+            Color::White,
+            2,
+        );
+
+        let inputs = MonsGameModel::smart_search_best_inputs(
+            &game,
+            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+        );
+        let (_, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("expected selected inputs to be legal");
+        assert!(MonsGameModel::events_include_opponent_drainer_fainted(
+            &events,
+            Color::White
+        ));
+    }
+
+    #[test]
+    fn drainer_vulnerability_detection_respects_friendly_angel_guard() {
+        let white_drainer = Mon::new(MonKind::Drainer, Color::White, 0);
+        let white_angel = Mon::new(MonKind::Angel, Color::White, 0);
+        let black_mystic = Mon::new(MonKind::Mystic, Color::Black, 0);
+
+        let unguarded = game_with_items(
+            vec![
+                (Location::new(5, 5), Item::Mon { mon: white_drainer }),
+                (Location::new(3, 3), Item::Mon { mon: black_mystic }),
+            ],
+            Color::Black,
+            2,
+        );
+        assert!(MonsGameModel::is_own_drainer_immediately_vulnerable(
+            &unguarded,
+            Color::White
+        ));
+
+        let guarded = game_with_items(
+            vec![
+                (Location::new(5, 5), Item::Mon { mon: white_drainer }),
+                (Location::new(5, 4), Item::Mon { mon: white_angel }),
+                (Location::new(3, 3), Item::Mon { mon: black_mystic }),
+            ],
+            Color::Black,
+            2,
+        );
+        assert!(!MonsGameModel::is_own_drainer_immediately_vulnerable(
+            &guarded,
+            Color::White
+        ));
     }
 }
 
