@@ -83,6 +83,26 @@ const SMART_NORMAL_ROOT_SAFETY_DEEP_FLOOR_REPLY_LIMIT_MIN: usize = 8;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_NORMAL_ROOT_SAFETY_DEEP_FLOOR_REPLY_LIMIT_MAX: usize = 16;
 #[cfg(any(target_arch = "wasm32", test))]
+const SMART_ROOT_REPLY_RISK_SCORE_MARGIN: i32 = 140;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_ROOT_REPLY_RISK_SHORTLIST_FAST: usize = 3;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_ROOT_REPLY_RISK_SHORTLIST_NORMAL: usize = 5;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_ROOT_REPLY_RISK_REPLY_LIMIT_FAST: usize = 8;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_ROOT_REPLY_RISK_REPLY_LIMIT_NORMAL: usize = 12;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_ROOT_REPLY_RISK_NODE_SHARE_BP_FAST: i32 = 600;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_ROOT_REPLY_RISK_NODE_SHARE_BP_NORMAL: i32 = 1_200;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_TWO_PASS_ROOT_NARROW_SPREAD_FALLBACK: i32 = 700;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_MOVE_CLASS_ROOT_SCORE_MARGIN: i32 = 120;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_MOVE_CLASS_CHILD_SCORE_MARGIN: i32 = 110;
+#[cfg(any(target_arch = "wasm32", test))]
 const SMART_AUTOMOVE_FAST_DEPTH: i32 = 2;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_AUTOMOVE_FAST_MAX_VISITED_NODES: i32 = 480;
@@ -160,30 +180,55 @@ const WHITE_OPENING_BOOK: [[&str; 5]; 9] = [
 const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
     ScoringWeights {
         spirit_on_own_base_penalty: 260,
+        score_race_path_progress: 72,
+        opponent_score_race_path_progress: 132,
+        immediate_score_window: 70,
+        opponent_immediate_score_window: 170,
+        spirit_action_utility: 58,
         ..BALANCED_DISTANCE_SCORING_WEIGHTS
     };
 #[cfg(any(target_arch = "wasm32", test))]
 const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
     ScoringWeights {
         spirit_on_own_base_penalty: 260,
+        score_race_path_progress: 82,
+        opponent_score_race_path_progress: 155,
+        immediate_score_window: 82,
+        opponent_immediate_score_window: 215,
+        spirit_action_utility: 64,
         ..TACTICAL_BALANCED_SCORING_WEIGHTS
     };
 #[cfg(any(target_arch = "wasm32", test))]
 const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
     ScoringWeights {
         spirit_on_own_base_penalty: 260,
+        score_race_path_progress: 92,
+        opponent_score_race_path_progress: 180,
+        immediate_score_window: 95,
+        opponent_immediate_score_window: 250,
+        spirit_action_utility: 70,
         ..TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS
     };
 #[cfg(any(target_arch = "wasm32", test))]
 const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
     ScoringWeights {
         spirit_on_own_base_penalty: 260,
+        score_race_path_progress: 140,
+        opponent_score_race_path_progress: 130,
+        immediate_score_window: 210,
+        opponent_immediate_score_window: 175,
+        spirit_action_utility: 58,
         ..FINISHER_BALANCED_SOFT_SCORING_WEIGHTS
     };
 #[cfg(any(target_arch = "wasm32", test))]
 const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
     ScoringWeights {
         spirit_on_own_base_penalty: 260,
+        score_race_path_progress: 160,
+        opponent_score_race_path_progress: 145,
+        immediate_score_window: 260,
+        opponent_immediate_score_window: 195,
+        spirit_action_utility: 62,
         ..FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS
     };
 
@@ -252,6 +297,12 @@ struct SmartSearchConfig {
     enable_root_mana_handoff_guard: bool,
     enable_forced_drainer_attack: bool,
     enable_root_drainer_safety_prefilter: bool,
+    enable_root_reply_risk_guard: bool,
+    root_reply_risk_score_margin: i32,
+    root_reply_risk_shortlist_max: usize,
+    root_reply_risk_reply_limit: usize,
+    root_reply_risk_node_share_bp: i32,
+    enable_move_class_coverage: bool,
     enable_normal_root_safety_rerank: bool,
     enable_normal_root_safety_deep_floor: bool,
 }
@@ -278,6 +329,12 @@ impl SmartSearchConfig {
                 tuned.enable_root_mana_handoff_guard = false;
                 tuned.enable_forced_drainer_attack = true;
                 tuned.enable_root_drainer_safety_prefilter = true;
+                tuned.enable_root_reply_risk_guard = true;
+                tuned.root_reply_risk_score_margin = SMART_ROOT_REPLY_RISK_SCORE_MARGIN;
+                tuned.root_reply_risk_shortlist_max = SMART_ROOT_REPLY_RISK_SHORTLIST_FAST;
+                tuned.root_reply_risk_reply_limit = SMART_ROOT_REPLY_RISK_REPLY_LIMIT_FAST;
+                tuned.root_reply_risk_node_share_bp = SMART_ROOT_REPLY_RISK_NODE_SHARE_BP_FAST;
+                tuned.enable_move_class_coverage = false;
                 tuned.enable_normal_root_safety_rerank = false;
                 tuned.enable_normal_root_safety_deep_floor = false;
                 tuned
@@ -297,15 +354,21 @@ impl SmartSearchConfig {
                 tuned.enable_backtrack_penalty = true;
                 tuned.enable_tt_best_child_ordering = true;
                 tuned.enable_root_aspiration = false;
-                tuned.enable_two_pass_root_allocation = false;
+                tuned.enable_two_pass_root_allocation = true;
                 tuned.root_focus_k = 3;
                 tuned.root_focus_budget_share_bp = 7_000;
-                tuned.enable_selective_extensions = false;
+                tuned.enable_selective_extensions = true;
                 tuned.enable_quiet_reductions = true;
                 tuned.max_extensions_per_path = 1;
                 tuned.enable_root_mana_handoff_guard = false;
                 tuned.enable_forced_drainer_attack = true;
                 tuned.enable_root_drainer_safety_prefilter = true;
+                tuned.enable_root_reply_risk_guard = true;
+                tuned.root_reply_risk_score_margin = SMART_ROOT_REPLY_RISK_SCORE_MARGIN;
+                tuned.root_reply_risk_shortlist_max = SMART_ROOT_REPLY_RISK_SHORTLIST_NORMAL;
+                tuned.root_reply_risk_reply_limit = SMART_ROOT_REPLY_RISK_REPLY_LIMIT_NORMAL;
+                tuned.root_reply_risk_node_share_bp = SMART_ROOT_REPLY_RISK_NODE_SHARE_BP_NORMAL;
+                tuned.enable_move_class_coverage = true;
                 tuned.enable_normal_root_safety_rerank = true;
                 tuned.enable_normal_root_safety_deep_floor = true;
                 tuned
@@ -348,6 +411,12 @@ impl SmartSearchConfig {
             enable_root_mana_handoff_guard: false,
             enable_forced_drainer_attack: true,
             enable_root_drainer_safety_prefilter: true,
+            enable_root_reply_risk_guard: false,
+            root_reply_risk_score_margin: SMART_ROOT_REPLY_RISK_SCORE_MARGIN,
+            root_reply_risk_shortlist_max: SMART_ROOT_REPLY_RISK_SHORTLIST_FAST,
+            root_reply_risk_reply_limit: SMART_ROOT_REPLY_RISK_REPLY_LIMIT_FAST,
+            root_reply_risk_node_share_bp: SMART_ROOT_REPLY_RISK_NODE_SHARE_BP_FAST,
+            enable_move_class_coverage: false,
             enable_normal_root_safety_rerank: false,
             enable_normal_root_safety_deep_floor: false,
         }
@@ -401,6 +470,7 @@ struct ScoredRootMove {
     wins_immediately: bool,
     attacks_opponent_drainer: bool,
     own_drainer_vulnerable: bool,
+    classes: MoveClassFlags,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -412,6 +482,7 @@ struct RootEvaluation {
     wins_immediately: bool,
     attacks_opponent_drainer: bool,
     own_drainer_vulnerable: bool,
+    classes: MoveClassFlags,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -432,6 +503,54 @@ struct NormalRootSafetySnapshot {
     opponent_reaches_match_point: bool,
     opponent_max_score_gain: i32,
     my_score_gain: i32,
+    worst_reply_score: i32,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MoveClass {
+    ImmediateScore,
+    DrainerAttack,
+    DrainerSafetyRecover,
+    CarrierProgress,
+    Material,
+    Quiet,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone, Copy, Debug, Default)]
+struct MoveClassFlags {
+    immediate_score: bool,
+    drainer_attack: bool,
+    drainer_safety_recover: bool,
+    carrier_progress: bool,
+    material: bool,
+    quiet: bool,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+impl MoveClassFlags {
+    fn has(self, class: MoveClass) -> bool {
+        match class {
+            MoveClass::ImmediateScore => self.immediate_score,
+            MoveClass::DrainerAttack => self.drainer_attack,
+            MoveClass::DrainerSafetyRecover => self.drainer_safety_recover,
+            MoveClass::CarrierProgress => self.carrier_progress,
+            MoveClass::Material => self.material,
+            MoveClass::Quiet => self.quiet,
+        }
+    }
+
+    fn is_tactical_priority(self) -> bool {
+        self.immediate_score || self.drainer_attack || self.drainer_safety_recover
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone, Copy)]
+struct RootReplyRiskSnapshot {
+    allows_immediate_opponent_win: bool,
+    opponent_reaches_match_point: bool,
     worst_reply_score: i32,
 }
 
@@ -459,6 +578,7 @@ struct RankedChildState {
     hash: u64,
     tactical_extension_trigger: bool,
     quiet_reduction_candidate: bool,
+    classes: MoveClassFlags,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1008,6 +1128,11 @@ impl MonsGameModel {
         config: SmartSearchConfig,
     ) -> Vec<ScoredRootMove> {
         let mut candidates = Vec::new();
+        let own_drainer_vulnerable_before = if config.enable_move_class_coverage {
+            Self::is_own_drainer_vulnerable_next_turn(game, perspective)
+        } else {
+            false
+        };
 
         for inputs in Self::enumerate_legal_inputs(game, config.root_enum_limit) {
             if let Some((simulated_game, events)) =
@@ -1042,9 +1167,21 @@ impl MonsGameModel {
                     Self::events_include_opponent_drainer_fainted(&events, perspective);
                 let wins_immediately = simulated_game.winner_color() == Some(perspective);
                 let own_drainer_vulnerable = if config.enable_root_drainer_safety_prefilter {
-                    Self::is_own_drainer_immediately_vulnerable(&simulated_game, perspective)
+                    Self::is_own_drainer_vulnerable_next_turn(&simulated_game, perspective)
                 } else {
                     false
+                };
+                let classes = if config.enable_move_class_coverage {
+                    Self::classify_move_classes(
+                        game,
+                        &simulated_game,
+                        perspective,
+                        &events,
+                        own_drainer_vulnerable_before,
+                        own_drainer_vulnerable,
+                    )
+                } else {
+                    MoveClassFlags::default()
                 };
                 candidates.push(ScoredRootMove {
                     inputs,
@@ -1054,6 +1191,7 @@ impl MonsGameModel {
                     wins_immediately,
                     attacks_opponent_drainer,
                     own_drainer_vulnerable,
+                    classes,
                 });
             }
         }
@@ -1067,9 +1205,147 @@ impl MonsGameModel {
             candidates.retain(|candidate| candidate.attacks_opponent_drainer);
         }
         if candidates.len() > config.root_branch_limit {
-            candidates.truncate(config.root_branch_limit);
+            if config.enable_move_class_coverage {
+                candidates = Self::truncate_root_candidates_with_class_coverage(
+                    candidates,
+                    config.root_branch_limit,
+                );
+            } else {
+                candidates.truncate(config.root_branch_limit);
+            }
         }
         candidates
+    }
+
+    fn truncate_root_candidates_with_class_coverage(
+        candidates: Vec<ScoredRootMove>,
+        limit: usize,
+    ) -> Vec<ScoredRootMove> {
+        if candidates.len() <= limit {
+            return candidates;
+        }
+
+        let best_heuristic = candidates[0].heuristic;
+        let min_critical_heuristic =
+            best_heuristic.saturating_sub(SMART_MOVE_CLASS_ROOT_SCORE_MARGIN.max(0));
+        let mut selected_indices = std::collections::HashSet::<usize>::new();
+        for class in [
+            MoveClass::ImmediateScore,
+            MoveClass::DrainerAttack,
+            MoveClass::DrainerSafetyRecover,
+        ] {
+            if let Some((index, _)) = candidates.iter().enumerate().find(|(_, candidate)| {
+                candidate.classes.has(class) && candidate.heuristic >= min_critical_heuristic
+            }) {
+                selected_indices.insert(index);
+            }
+        }
+
+        let mut shortlisted = Vec::with_capacity(limit);
+        for (index, candidate) in candidates.iter().enumerate() {
+            if shortlisted.len() >= limit {
+                break;
+            }
+            if selected_indices.contains(&index) {
+                shortlisted.push(candidate.clone());
+            }
+        }
+        for (index, candidate) in candidates.iter().enumerate() {
+            if shortlisted.len() >= limit {
+                break;
+            }
+            if selected_indices.contains(&index) {
+                continue;
+            }
+            shortlisted.push(candidate.clone());
+        }
+        shortlisted
+    }
+
+    fn classify_move_classes(
+        before: &MonsGame,
+        after: &MonsGame,
+        actor_color: Color,
+        events: &[Event],
+        own_drainer_vulnerable_before: bool,
+        own_drainer_vulnerable_after: bool,
+    ) -> MoveClassFlags {
+        let immediate_score = events
+            .iter()
+            .any(|event| matches!(event, Event::ManaScored { .. }));
+        let drainer_attack = Self::events_include_opponent_drainer_fainted(events, actor_color);
+        let drainer_safety_recover = own_drainer_vulnerable_before && !own_drainer_vulnerable_after;
+        let material = Self::has_material_event(events);
+        let carrier_progress = Self::has_actor_carrier_progress(before, after, actor_color);
+        let quiet = !immediate_score
+            && !drainer_attack
+            && !drainer_safety_recover
+            && !carrier_progress
+            && !material;
+        MoveClassFlags {
+            immediate_score,
+            drainer_attack,
+            drainer_safety_recover,
+            carrier_progress,
+            material,
+            quiet,
+        }
+    }
+
+    fn has_actor_carrier_progress(before: &MonsGame, after: &MonsGame, actor_color: Color) -> bool {
+        let before_snapshot = Self::move_efficiency_snapshot(before, actor_color);
+        let after_snapshot = Self::move_efficiency_snapshot(after, actor_color);
+        if after_snapshot.my_carrier_count > before_snapshot.my_carrier_count {
+            return true;
+        }
+        let unknown_steps = Config::BOARD_SIZE + 4;
+        after_snapshot.my_best_carrier_steps < before_snapshot.my_best_carrier_steps
+            && after_snapshot.my_best_carrier_steps < unknown_steps
+    }
+
+    fn enforce_tactical_child_top2(
+        scored_states: &mut [(i32, RankedChildState)],
+        maximizing: bool,
+    ) {
+        if scored_states.len() < 3 {
+            return;
+        }
+        let tactical_margin = SMART_MOVE_CLASS_CHILD_SCORE_MARGIN.max(0);
+        let top_has_tactical = scored_states
+            .iter()
+            .take(2)
+            .any(|(_, state)| state.classes.is_tactical_priority());
+        if top_has_tactical {
+            return;
+        }
+
+        let second_score = scored_states[1].0;
+        let replacement_index =
+            scored_states
+                .iter()
+                .enumerate()
+                .skip(2)
+                .find_map(|(index, (score, state))| {
+                    if !state.classes.is_tactical_priority() {
+                        return None;
+                    }
+                    let close_enough = if maximizing {
+                        score.saturating_add(tactical_margin) >= second_score
+                    } else {
+                        *score <= second_score.saturating_add(tactical_margin)
+                    };
+                    if close_enough {
+                        Some(index)
+                    } else {
+                        None
+                    }
+                });
+        let Some(replacement_index) = replacement_index else {
+            return;
+        };
+
+        let swap_index = 1;
+        scored_states.swap(swap_index, replacement_index);
     }
 
     #[cfg(test)]
@@ -1137,6 +1413,7 @@ impl MonsGameModel {
                 wins_immediately: candidate.wins_immediately,
                 attacks_opponent_drainer: candidate.attacks_opponent_drainer,
                 own_drainer_vulnerable: candidate.own_drainer_vulnerable,
+                classes: candidate.classes,
             });
 
             if candidate_score > alpha {
@@ -1294,6 +1571,14 @@ impl MonsGameModel {
             })
             .collect::<Vec<_>>();
         ranked_indices.sort_by(|a, b| b.1.cmp(&a.1));
+
+        if ranked_indices.len() >= focus_k {
+            let best_score = ranked_indices[0].1;
+            let kth_score = ranked_indices[focus_k - 1].1;
+            if best_score.saturating_sub(kth_score) <= SMART_TWO_PASS_ROOT_NARROW_SPREAD_FALLBACK {
+                return (root_moves, 0);
+            }
+        }
 
         let mut selected_indices = std::collections::HashSet::new();
         for (index, _) in ranked_indices.iter().take(focus_k) {
@@ -1541,8 +1826,17 @@ impl MonsGameModel {
         config: SmartSearchConfig,
     ) -> Vec<RankedChildState> {
         let mut scored_states: Vec<(i32, RankedChildState)> = Vec::new();
+        let actor_color = game.active_color;
+        let own_drainer_vulnerable_before = if config.enable_move_class_coverage {
+            Self::is_own_drainer_vulnerable_next_turn(game, actor_color)
+        } else {
+            false
+        };
         for inputs in Self::enumerate_legal_inputs(game, config.node_enum_limit) {
-            let maybe_state = if config.enable_event_ordering_bonus {
+            let needs_events = config.enable_event_ordering_bonus
+                || config.enable_move_class_coverage
+                || config.enable_selective_extensions;
+            let maybe_state = if needs_events {
                 Self::apply_inputs_for_search_with_events(game, &inputs)
             } else {
                 Self::apply_inputs_for_search(game, &inputs).map(|state| (state, Vec::new()))
@@ -1591,19 +1885,32 @@ impl MonsGameModel {
                     heuristic = heuristic.saturating_add(SMART_TT_BEST_CHILD_BONUS);
                 }
 
-                let actor_color = game.active_color;
+                let own_drainer_vulnerable_after = if config.enable_move_class_coverage {
+                    Self::is_own_drainer_vulnerable_next_turn(&simulated_game, actor_color)
+                } else {
+                    false
+                };
                 let tactical_extension_trigger =
                     Self::events_include_opponent_drainer_fainted(&events, actor_color)
-                        || Self::is_own_drainer_immediately_vulnerable(
-                            &simulated_game,
-                            actor_color,
-                        )
+                        || own_drainer_vulnerable_after
                         || events
                             .iter()
                             .any(|event| matches!(event, Event::ManaScored { .. }));
                 let quiet_reduction_candidate = !Self::has_material_event(&events)
                     && efficiency_delta <= 0
                     && !tactical_extension_trigger;
+                let classes = if config.enable_move_class_coverage {
+                    Self::classify_move_classes(
+                        game,
+                        &simulated_game,
+                        actor_color,
+                        &events,
+                        own_drainer_vulnerable_before,
+                        own_drainer_vulnerable_after,
+                    )
+                } else {
+                    MoveClassFlags::default()
+                };
 
                 scored_states.push((
                     heuristic,
@@ -1612,6 +1919,7 @@ impl MonsGameModel {
                         hash: child_hash,
                         tactical_extension_trigger,
                         quiet_reduction_candidate,
+                        classes,
                     },
                 ));
             }
@@ -1621,6 +1929,10 @@ impl MonsGameModel {
             scored_states.sort_by(|a, b| b.0.cmp(&a.0));
         } else {
             scored_states.sort_by(|a, b| a.0.cmp(&b.0));
+        }
+
+        if config.enable_move_class_coverage && scored_states.len() >= 3 {
+            Self::enforce_tactical_child_top2(&mut scored_states, maximizing);
         }
 
         if scored_states.len() > config.node_branch_limit {
@@ -2109,6 +2421,7 @@ impl MonsGameModel {
             wins_immediately: candidate.wins_immediately,
             attacks_opponent_drainer: candidate.attacks_opponent_drainer,
             own_drainer_vulnerable: candidate.own_drainer_vulnerable,
+            classes: candidate.classes,
         });
 
         if candidate_score > state.alpha {
@@ -2234,6 +2547,16 @@ impl MonsGameModel {
         false
     }
 
+    fn is_own_drainer_vulnerable_next_turn(game: &MonsGame, perspective: Color) -> bool {
+        let opponent = perspective.other();
+        let mut probe = game.clone_for_simulation();
+        probe.active_color = opponent;
+        probe.actions_used_count = 0;
+        probe.mana_moves_count = 0;
+        probe.mons_moves_count = 0;
+        Self::is_own_drainer_immediately_vulnerable(&probe, perspective)
+    }
+
     fn filtered_root_candidate_indices(
         scored_roots: &[RootEvaluation],
         config: SmartSearchConfig,
@@ -2316,6 +2639,18 @@ impl MonsGameModel {
             candidate_indices = (0..scored_roots.len()).collect();
         }
 
+        if config.enable_root_reply_risk_guard {
+            if let Some(reply_guarded_index) = Self::pick_root_move_with_reply_risk_guard(
+                game,
+                scored_roots,
+                candidate_indices.as_slice(),
+                perspective,
+                config,
+            ) {
+                return scored_roots[reply_guarded_index].inputs.clone();
+            }
+        }
+
         if !config.enable_root_efficiency {
             if config.enable_normal_root_safety_rerank
                 && Self::should_apply_normal_root_safety(game, perspective)
@@ -2361,6 +2696,221 @@ impl MonsGameModel {
         }
 
         scored_roots[best_index].inputs.clone()
+    }
+
+    fn pick_root_move_with_reply_risk_guard(
+        _game: &MonsGame,
+        scored_roots: &[RootEvaluation],
+        candidate_indices: &[usize],
+        perspective: Color,
+        config: SmartSearchConfig,
+    ) -> Option<usize> {
+        if candidate_indices.is_empty() {
+            return None;
+        }
+
+        let best_score = candidate_indices
+            .iter()
+            .map(|index| scored_roots[*index].score)
+            .max()
+            .unwrap_or(i32::MIN);
+        let score_margin = config.root_reply_risk_score_margin.max(0);
+        let mut shortlist = candidate_indices
+            .iter()
+            .copied()
+            .filter(|index| scored_roots[*index].score + score_margin >= best_score)
+            .collect::<Vec<_>>();
+        shortlist.sort_by(|a, b| scored_roots[*b].score.cmp(&scored_roots[*a].score));
+        if shortlist.is_empty() {
+            return None;
+        }
+        if shortlist.len() > config.root_reply_risk_shortlist_max.max(1) {
+            shortlist.truncate(config.root_reply_risk_shortlist_max.max(1));
+        }
+
+        let root_node_budget = ((config.max_visited_nodes
+            * config.root_reply_risk_node_share_bp.max(0) as usize)
+            / 10_000)
+            .max(shortlist.len())
+            .max(1);
+        let per_root_reply_limit = (root_node_budget / shortlist.len().max(1))
+            .max(1)
+            .min(config.root_reply_risk_reply_limit.max(1));
+
+        let mut best_index = shortlist[0];
+        let mut best_snapshot = Self::root_reply_risk_snapshot(
+            &scored_roots[best_index].game,
+            perspective,
+            config,
+            per_root_reply_limit,
+        );
+        for index in shortlist.iter().copied().skip(1) {
+            let snapshot = Self::root_reply_risk_snapshot(
+                &scored_roots[index].game,
+                perspective,
+                config,
+                per_root_reply_limit,
+            );
+            if Self::is_better_reply_risk_candidate(
+                index,
+                snapshot,
+                best_index,
+                best_snapshot,
+                scored_roots,
+            ) {
+                best_index = index;
+                best_snapshot = snapshot;
+            }
+        }
+        Some(best_index)
+    }
+
+    fn root_reply_risk_snapshot(
+        state_after_move: &MonsGame,
+        perspective: Color,
+        config: SmartSearchConfig,
+        reply_limit: usize,
+    ) -> RootReplyRiskSnapshot {
+        if let Some(winner) = state_after_move.winner_color() {
+            return if winner == perspective {
+                RootReplyRiskSnapshot {
+                    allows_immediate_opponent_win: false,
+                    opponent_reaches_match_point: false,
+                    worst_reply_score: SMART_TERMINAL_SCORE / 2,
+                }
+            } else {
+                RootReplyRiskSnapshot {
+                    allows_immediate_opponent_win: true,
+                    opponent_reaches_match_point: true,
+                    worst_reply_score: -SMART_TERMINAL_SCORE / 2,
+                }
+            };
+        }
+
+        if state_after_move.active_color == perspective {
+            return RootReplyRiskSnapshot {
+                allows_immediate_opponent_win: false,
+                opponent_reaches_match_point: false,
+                worst_reply_score: evaluate_preferability_with_weights(
+                    state_after_move,
+                    perspective,
+                    config.scoring_weights,
+                ),
+            };
+        }
+
+        let replies = Self::enumerate_legal_inputs(state_after_move, reply_limit.max(1));
+        if replies.is_empty() {
+            return RootReplyRiskSnapshot {
+                allows_immediate_opponent_win: false,
+                opponent_reaches_match_point: false,
+                worst_reply_score: SMART_TERMINAL_SCORE / 4,
+            };
+        }
+
+        let mut allows_immediate_opponent_win = false;
+        let mut opponent_reaches_match_point = false;
+        let mut worst_reply_score = i32::MAX;
+        let mut evaluated_reply = false;
+
+        for reply in replies {
+            let Some(after_reply) = Self::apply_inputs_for_search(state_after_move, &reply) else {
+                continue;
+            };
+            evaluated_reply = true;
+
+            let opponent_score_after = if perspective == Color::White {
+                after_reply.black_score
+            } else {
+                after_reply.white_score
+            };
+            if Config::TARGET_SCORE - opponent_score_after <= 1 {
+                opponent_reaches_match_point = true;
+            }
+
+            let reply_score = match after_reply.winner_color() {
+                Some(winner) if winner == perspective => SMART_TERMINAL_SCORE / 2,
+                Some(_) => {
+                    allows_immediate_opponent_win = true;
+                    opponent_reaches_match_point = true;
+                    -SMART_TERMINAL_SCORE / 2
+                }
+                None => evaluate_preferability_with_weights(
+                    &after_reply,
+                    perspective,
+                    config.scoring_weights,
+                ),
+            };
+            worst_reply_score = worst_reply_score.min(reply_score);
+
+            if allows_immediate_opponent_win {
+                break;
+            }
+        }
+
+        if !evaluated_reply || worst_reply_score == i32::MAX {
+            worst_reply_score = evaluate_preferability_with_weights(
+                state_after_move,
+                perspective,
+                config.scoring_weights,
+            );
+        }
+
+        RootReplyRiskSnapshot {
+            allows_immediate_opponent_win,
+            opponent_reaches_match_point,
+            worst_reply_score,
+        }
+    }
+
+    fn is_better_reply_risk_candidate(
+        candidate_index: usize,
+        candidate_snapshot: RootReplyRiskSnapshot,
+        incumbent_index: usize,
+        incumbent_snapshot: RootReplyRiskSnapshot,
+        scored_roots: &[RootEvaluation],
+    ) -> bool {
+        let candidate = &scored_roots[candidate_index];
+        let incumbent = &scored_roots[incumbent_index];
+
+        if candidate.wins_immediately != incumbent.wins_immediately {
+            return candidate.wins_immediately;
+        }
+        if candidate_snapshot.allows_immediate_opponent_win
+            != incumbent_snapshot.allows_immediate_opponent_win
+        {
+            return !candidate_snapshot.allows_immediate_opponent_win;
+        }
+        if candidate_snapshot.opponent_reaches_match_point
+            != incumbent_snapshot.opponent_reaches_match_point
+        {
+            return !candidate_snapshot.opponent_reaches_match_point;
+        }
+        if candidate.attacks_opponent_drainer != incumbent.attacks_opponent_drainer {
+            return candidate.attacks_opponent_drainer;
+        }
+        if candidate_snapshot.worst_reply_score != incumbent_snapshot.worst_reply_score {
+            return candidate_snapshot.worst_reply_score > incumbent_snapshot.worst_reply_score;
+        }
+        if candidate.score != incumbent.score {
+            return candidate.score > incumbent.score;
+        }
+        if candidate.efficiency != incumbent.efficiency {
+            return candidate.efficiency > incumbent.efficiency;
+        }
+        for class in [
+            MoveClass::CarrierProgress,
+            MoveClass::Material,
+            MoveClass::Quiet,
+        ] {
+            let candidate_has = candidate.classes.has(class);
+            let incumbent_has = incumbent.classes.has(class);
+            if candidate_has != incumbent_has {
+                return candidate_has;
+            }
+        }
+
+        false
     }
 
     fn should_apply_normal_root_safety(game: &MonsGame, perspective: Color) -> bool {

@@ -34,6 +34,11 @@ pub struct ScoringWeights {
     pub drainer_pickup_score_this_turn: i32,
     pub mana_carrier_score_this_turn: i32,
     pub drainer_immediate_threat: i32,
+    pub score_race_path_progress: i32,
+    pub opponent_score_race_path_progress: i32,
+    pub immediate_score_window: i32,
+    pub opponent_immediate_score_window: i32,
+    pub spirit_action_utility: i32,
 }
 
 pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
@@ -69,6 +74,11 @@ pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     drainer_pickup_score_this_turn: 0,
     mana_carrier_score_this_turn: 0,
     drainer_immediate_threat: 0,
+    score_race_path_progress: 0,
+    opponent_score_race_path_progress: 0,
+    immediate_score_window: 0,
+    opponent_immediate_score_window: 0,
+    spirit_action_utility: 0,
 };
 
 pub const BALANCED_DISTANCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
@@ -104,6 +114,11 @@ pub const BALANCED_DISTANCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     drainer_pickup_score_this_turn: 0,
     mana_carrier_score_this_turn: 0,
     drainer_immediate_threat: 0,
+    score_race_path_progress: 0,
+    opponent_score_race_path_progress: 0,
+    immediate_score_window: 0,
+    opponent_immediate_score_window: 0,
+    spirit_action_utility: 0,
 };
 
 #[cfg(test)]
@@ -291,6 +306,11 @@ pub const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS: ScoringWeights = Scoring
     drainer_pickup_score_this_turn: 180,
     mana_carrier_score_this_turn: 260,
     drainer_immediate_threat: -190,
+    score_race_path_progress: 140,
+    opponent_score_race_path_progress: 120,
+    immediate_score_window: 210,
+    opponent_immediate_score_window: 170,
+    spirit_action_utility: 44,
     drainer_close_to_mana: 360,
     drainer_holding_mana: 430,
     mana_carrier_at_risk: -250,
@@ -311,6 +331,11 @@ pub const RUNTIME_RUSH_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     spirit_close_to_enemy: 180,
     angel_guarding_drainer: 200,
     angel_close_to_friendly_drainer: 120,
+    score_race_path_progress: 85,
+    opponent_score_race_path_progress: 130,
+    immediate_score_window: 95,
+    opponent_immediate_score_window: 190,
+    spirit_action_utility: 55,
     ..BALANCED_DISTANCE_SCORING_WEIGHTS
 };
 
@@ -462,6 +487,8 @@ pub fn evaluate_preferability_with_weights(
                             location,
                             weights.spirit_on_own_base_penalty,
                         );
+                    let spirit_utility = spirit_action_utility(&game.board, location).min(4);
+                    score += my_mon_multiplier * weights.spirit_action_utility * spirit_utility;
                 } else if mon.kind == MonKind::Angel {
                     let friendly_drainer_distance =
                         nearest_friendly_drainer_distance(&game.board, mon.color, location);
@@ -518,6 +545,8 @@ pub fn evaluate_preferability_with_weights(
                             location,
                             weights.spirit_on_own_base_penalty,
                         );
+                    let spirit_utility = spirit_action_utility(&game.board, location).min(4);
+                    score += my_mon_multiplier * weights.spirit_action_utility * spirit_utility;
                 } else if mon.kind == MonKind::Angel {
                     let friendly_drainer_distance =
                         nearest_friendly_drainer_distance(&game.board, mon.color, location);
@@ -637,10 +666,31 @@ pub fn evaluate_preferability_with_weights(
                             location,
                             weights.spirit_on_own_base_penalty,
                         );
+                    let spirit_utility = spirit_action_utility(&game.board, location).min(4);
+                    score += my_mon_multiplier * weights.spirit_action_utility * spirit_utility;
                 }
             }
             Item::Consumable { .. } => {}
         }
+    }
+
+    let my_best_carrier_steps = best_carrier_steps_to_any_pool(&game.board, color);
+    let opponent_best_carrier_steps = best_carrier_steps_to_any_pool(&game.board, color.other());
+    if let Some(steps) = my_best_carrier_steps {
+        score += weights.score_race_path_progress / steps.max(1);
+    }
+    if let Some(steps) = opponent_best_carrier_steps {
+        score -= weights.opponent_score_race_path_progress / steps.max(1);
+    }
+
+    if game.active_color == color {
+        let immediate_score =
+            best_immediate_score_window(&game.board, color, remaining_mon_moves_for_active);
+        score += weights.immediate_score_window * immediate_score;
+    } else {
+        let opponent_immediate_score =
+            best_immediate_score_window(&game.board, color.other(), remaining_mon_moves_for_active);
+        score -= weights.opponent_immediate_score_window * opponent_immediate_score;
     }
 
     score
@@ -652,6 +702,66 @@ fn spirit_on_own_base_penalty(board: &Board, mon: Mon, location: Location, penal
     } else {
         0
     }
+}
+
+fn spirit_action_utility(board: &Board, location: Location) -> i32 {
+    location
+        .reachable_by_spirit_action()
+        .into_iter()
+        .filter(|target| {
+            let Some(item) = board.item(*target) else {
+                return false;
+            };
+            match item {
+                Item::Mon { mon }
+                | Item::MonWithMana { mon, .. }
+                | Item::MonWithConsumable { mon, .. } => !mon.is_fainted(),
+                Item::Mana { .. } | Item::Consumable { .. } => true,
+            }
+        })
+        .count() as i32
+}
+
+fn best_carrier_steps_to_any_pool(board: &Board, color: Color) -> Option<i32> {
+    board.items.iter().fold(None, |best, (location, item)| {
+        let Item::MonWithMana { mon, .. } = item else {
+            return best;
+        };
+        if mon.color != color || mon.is_fainted() {
+            return best;
+        }
+        let steps = distance(*location, Destination::AnyClosestPool);
+        match best {
+            Some(current_best) => Some(current_best.min(steps)),
+            None => Some(steps),
+        }
+    })
+}
+
+fn best_immediate_score_window(board: &Board, color: Color, remaining_mon_moves: i32) -> i32 {
+    if remaining_mon_moves <= 0 {
+        return 0;
+    }
+
+    board
+        .items
+        .iter()
+        .filter_map(|(location, item)| {
+            let Item::MonWithMana { mon, mana } = item else {
+                return None;
+            };
+            if mon.color != color || mon.is_fainted() {
+                return None;
+            }
+            let pool_steps = distance(*location, Destination::AnyClosestPool) - 1;
+            if pool_steps <= remaining_mon_moves {
+                Some(mana.score(color))
+            } else {
+                None
+            }
+        })
+        .max()
+        .unwrap_or(0)
 }
 
 enum Destination {
