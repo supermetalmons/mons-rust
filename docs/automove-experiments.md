@@ -16,7 +16,7 @@ Current runtime behavior:
 - `fast` uses `RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS`.
 - `normal` uses `RUNTIME_RUSH_SCORING_WEIGHTS`.
 - `fast` uses a light root efficiency tie-break (progress-aware, with soft no-effect/low-impact penalties) to reduce wasted move loops.
-- `normal` keeps the pre-efficiency root-selection path (`enable_root_efficiency=false`) for stability at deeper search.
+- `normal` now also applies root efficiency tie-break plus backtrack penalty (`enable_root_efficiency=true`, `enable_backtrack_penalty=true`) while keeping normal root-safety rerank/deep-floor.
 - Root reply-floor re-rank was removed from runtime root selection to reduce complexity/cost.
 - Search uses alpha-beta plus a bounded transposition table (TT). TT writes are skipped for budget-cut partial nodes to avoid polluted cache reuse.
 - On White turn 1, automove follows one random hardcoded opening route (one move per call). If the current position no longer matches any route, it falls back to normal smart search.
@@ -136,6 +136,8 @@ Candidate is considered promotable only when all are true:
 - `runtime_pre_tactical_runtime`: snapshot before current tactical-runtime scorer promotion.
 - `runtime_pre_transposition`: snapshot before TT-enabled search path.
 - `runtime_pre_normal_x15`: snapshot before normal 1.5x budget/runtime-shape update.
+- `runtime_normal_efficiency_reply_floor`: current promoted normal root-efficiency/backtrack path.
+- `runtime_pre_normal_efficiency_reply_floor`: snapshot before promoting normal root-efficiency/backtrack in runtime.
 - `runtime_pre_drainer_context`: snapshot before current fast drainer-context promotion.
 - `runtime_legacy_phase_adaptive`: older legacy reference.
 - `runtime_drainer_context`: fast-only drainer-context candidate path.

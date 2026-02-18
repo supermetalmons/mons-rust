@@ -469,6 +469,18 @@ fn candidate_model_runtime_normal_efficiency_reply_floor(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+fn model_runtime_pre_normal_efficiency_reply_floor(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_root_efficiency = false;
+        runtime.enable_backtrack_penalty = false;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn model_runtime_pre_root_upgrade_bundle(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.enable_event_ordering_bonus = false;
@@ -2196,6 +2208,9 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_normal_efficiency_reply_floor" => {
             candidate_model_runtime_normal_efficiency_reply_floor(game, config)
         }
+        "runtime_pre_normal_efficiency_reply_floor" => {
+            model_runtime_pre_normal_efficiency_reply_floor(game, config)
+        }
         "runtime_pre_normal_root_safety_deep_floor" => {
             model_runtime_pre_normal_root_safety_deep_floor(game, config)
         }
@@ -2391,6 +2406,10 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_normal_efficiency_reply_floor",
             candidate_model_runtime_normal_efficiency_reply_floor,
+        ),
+        (
+            "runtime_pre_normal_efficiency_reply_floor",
+            model_runtime_pre_normal_efficiency_reply_floor,
         ),
         (
             "runtime_pre_normal_root_safety_deep_floor",

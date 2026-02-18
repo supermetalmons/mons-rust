@@ -262,9 +262,9 @@ impl SmartSearchConfig {
                     (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 220);
                 tuned.node_enum_limit =
                     (tuned.node_branch_limit * 5).clamp(tuned.node_branch_limit, 120);
-                tuned.enable_root_efficiency = false;
+                tuned.enable_root_efficiency = true;
                 tuned.enable_event_ordering_bonus = false;
-                tuned.enable_backtrack_penalty = false;
+                tuned.enable_backtrack_penalty = true;
                 tuned.enable_forced_drainer_attack = true;
                 tuned.enable_root_drainer_safety_prefilter = true;
                 tuned.enable_normal_root_safety_rerank = true;
