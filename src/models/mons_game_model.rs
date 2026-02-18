@@ -103,6 +103,18 @@ const SMART_MOVE_CLASS_ROOT_SCORE_MARGIN: i32 = 120;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_MOVE_CLASS_CHILD_SCORE_MARGIN: i32 = 110;
 #[cfg(any(target_arch = "wasm32", test))]
+const SMART_FORCED_DRAINER_ATTACK_FALLBACK_FAST_CANDIDATES: usize = 4;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_FORCED_DRAINER_ATTACK_FALLBACK_NORMAL_CANDIDATES: usize = 6;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_FORCED_DRAINER_ATTACK_FALLBACK_NODE_BUDGET_FAST: usize = 600;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_FORCED_DRAINER_ATTACK_FALLBACK_NODE_BUDGET_NORMAL: usize = 1_800;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_FORCED_DRAINER_ATTACK_FALLBACK_ENUM_LIMIT_FAST: usize = 220;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_FORCED_DRAINER_ATTACK_FALLBACK_ENUM_LIMIT_NORMAL: usize = 280;
+#[cfg(any(target_arch = "wasm32", test))]
 const SMART_AUTOMOVE_FAST_DEPTH: i32 = 2;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_AUTOMOVE_FAST_MAX_VISITED_NODES: i32 = 480;
@@ -296,6 +308,7 @@ struct SmartSearchConfig {
     max_extensions_per_path: usize,
     enable_root_mana_handoff_guard: bool,
     enable_forced_drainer_attack: bool,
+    enable_forced_drainer_attack_fallback: bool,
     enable_root_drainer_safety_prefilter: bool,
     enable_root_reply_risk_guard: bool,
     root_reply_risk_score_margin: i32,
@@ -328,6 +341,7 @@ impl SmartSearchConfig {
                 tuned.max_extensions_per_path = 1;
                 tuned.enable_root_mana_handoff_guard = false;
                 tuned.enable_forced_drainer_attack = true;
+                tuned.enable_forced_drainer_attack_fallback = true;
                 tuned.enable_root_drainer_safety_prefilter = true;
                 tuned.enable_root_reply_risk_guard = true;
                 tuned.root_reply_risk_score_margin = SMART_ROOT_REPLY_RISK_SCORE_MARGIN;
@@ -362,6 +376,7 @@ impl SmartSearchConfig {
                 tuned.max_extensions_per_path = 1;
                 tuned.enable_root_mana_handoff_guard = false;
                 tuned.enable_forced_drainer_attack = true;
+                tuned.enable_forced_drainer_attack_fallback = true;
                 tuned.enable_root_drainer_safety_prefilter = true;
                 tuned.enable_root_reply_risk_guard = true;
                 tuned.root_reply_risk_score_margin = SMART_ROOT_REPLY_RISK_SCORE_MARGIN;
@@ -410,6 +425,7 @@ impl SmartSearchConfig {
             max_extensions_per_path: 0,
             enable_root_mana_handoff_guard: false,
             enable_forced_drainer_attack: true,
+            enable_forced_drainer_attack_fallback: true,
             enable_root_drainer_safety_prefilter: true,
             enable_root_reply_risk_guard: false,
             root_reply_risk_score_margin: SMART_ROOT_REPLY_RISK_SCORE_MARGIN,
@@ -1122,6 +1138,301 @@ impl MonsGameModel {
         }
     }
 
+    fn build_scored_root_move(
+        game: &MonsGame,
+        perspective: Color,
+        config: SmartSearchConfig,
+        own_drainer_vulnerable_before: bool,
+        inputs: &[Input],
+    ) -> Option<ScoredRootMove> {
+        let (simulated_game, events) = Self::apply_inputs_for_search_with_events(game, inputs)?;
+        let efficiency = if config.enable_root_efficiency {
+            Self::move_efficiency_delta(
+                game,
+                &simulated_game,
+                perspective,
+                &events,
+                true,
+                config.enable_backtrack_penalty,
+                config.enable_root_mana_handoff_guard,
+            )
+        } else {
+            0
+        };
+        let heuristic = Self::score_state(
+            &simulated_game,
+            perspective,
+            config.depth.saturating_sub(1),
+            config.depth,
+            config.scoring_weights,
+        );
+        let ordering_bonus = if config.enable_event_ordering_bonus {
+            Self::ordering_event_bonus(game.active_color, perspective, &events)
+        } else {
+            0
+        };
+        let attacks_opponent_drainer =
+            Self::events_include_opponent_drainer_fainted(&events, perspective);
+        let wins_immediately = simulated_game.winner_color() == Some(perspective);
+        let own_drainer_vulnerable = if config.enable_root_drainer_safety_prefilter {
+            Self::is_own_drainer_vulnerable_next_turn(&simulated_game, perspective)
+        } else {
+            false
+        };
+        let classes = if config.enable_move_class_coverage {
+            Self::classify_move_classes(
+                game,
+                &simulated_game,
+                perspective,
+                &events,
+                own_drainer_vulnerable_before,
+                own_drainer_vulnerable,
+            )
+        } else {
+            MoveClassFlags::default()
+        };
+
+        Some(ScoredRootMove {
+            inputs: inputs.to_vec(),
+            game: simulated_game,
+            heuristic: heuristic.saturating_add(ordering_bonus),
+            efficiency,
+            wins_immediately,
+            attacks_opponent_drainer,
+            own_drainer_vulnerable,
+            classes,
+        })
+    }
+
+    fn forced_drainer_attack_fallback_candidates_limit(config: SmartSearchConfig) -> usize {
+        if config.depth >= 3 {
+            SMART_FORCED_DRAINER_ATTACK_FALLBACK_NORMAL_CANDIDATES
+        } else {
+            SMART_FORCED_DRAINER_ATTACK_FALLBACK_FAST_CANDIDATES
+        }
+    }
+
+    fn forced_drainer_attack_fallback_node_budget(config: SmartSearchConfig) -> usize {
+        if config.depth >= 3 {
+            SMART_FORCED_DRAINER_ATTACK_FALLBACK_NODE_BUDGET_NORMAL
+        } else {
+            SMART_FORCED_DRAINER_ATTACK_FALLBACK_NODE_BUDGET_FAST
+        }
+    }
+
+    fn forced_drainer_attack_fallback_enum_limit(config: SmartSearchConfig) -> usize {
+        if config.depth >= 3 {
+            SMART_FORCED_DRAINER_ATTACK_FALLBACK_ENUM_LIMIT_NORMAL
+        } else {
+            SMART_FORCED_DRAINER_ATTACK_FALLBACK_ENUM_LIMIT_FAST
+        }
+    }
+
+    fn opponent_awake_drainer_location(board: &Board, perspective: Color) -> Option<Location> {
+        board.items.iter().find_map(|(&location, item)| {
+            let mon = item.mon()?;
+            if mon.color == perspective.other() && mon.kind == MonKind::Drainer && !mon.is_fainted()
+            {
+                Some(location)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn min_steps_to_mystic_attack_source(from: Location, target: Location) -> i32 {
+        target
+            .reachable_by_mystic_action()
+            .into_iter()
+            .map(|source| from.distance(&source))
+            .min()
+            .unwrap_or(i32::MAX)
+    }
+
+    fn min_steps_to_demon_attack_source(from: Location, target: Location) -> i32 {
+        target
+            .reachable_by_demon_action()
+            .into_iter()
+            .map(|source| from.distance(&source))
+            .min()
+            .unwrap_or(i32::MAX)
+    }
+
+    fn can_attempt_forced_drainer_attack_fallback(game: &MonsGame, perspective: Color) -> bool {
+        if !game.player_can_move_mon() {
+            return false;
+        }
+        let Some(opponent_drainer_location) =
+            Self::opponent_awake_drainer_location(&game.board, perspective)
+        else {
+            return false;
+        };
+
+        let remaining_mon_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
+        if remaining_mon_moves <= 0 {
+            return false;
+        }
+
+        let opponent_drainer_guarded = Self::is_location_guarded_by_angel(
+            &game.board,
+            perspective.other(),
+            opponent_drainer_location,
+        );
+        let bomb_pickup_locations = game
+            .board
+            .items
+            .iter()
+            .filter_map(|(&location, item)| match item {
+                Item::Consumable {
+                    consumable: Consumable::BombOrPotion,
+                } => Some(location),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        for (&location, item) in &game.board.items {
+            let Some(mon) = item.mon() else {
+                continue;
+            };
+            if mon.color != perspective || mon.is_fainted() {
+                continue;
+            }
+
+            let has_bomb = matches!(
+                item,
+                Item::MonWithConsumable {
+                    consumable: Consumable::Bomb,
+                    ..
+                }
+            );
+            if has_bomb && location.distance(&opponent_drainer_location) <= remaining_mon_moves + 3
+            {
+                return true;
+            }
+
+            if !opponent_drainer_guarded {
+                let action_distance = match mon.kind {
+                    MonKind::Mystic => {
+                        Self::min_steps_to_mystic_attack_source(location, opponent_drainer_location)
+                    }
+                    MonKind::Demon => {
+                        Self::min_steps_to_demon_attack_source(location, opponent_drainer_location)
+                    }
+                    _ => i32::MAX,
+                };
+                if action_distance <= remaining_mon_moves {
+                    return true;
+                }
+            }
+
+            for bomb_location in &bomb_pickup_locations {
+                let to_bomb = location.distance(bomb_location);
+                if to_bomb > remaining_mon_moves {
+                    continue;
+                }
+                let moves_after_pickup = remaining_mon_moves - to_bomb;
+                if bomb_location.distance(&opponent_drainer_location) <= moves_after_pickup + 3 {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    fn collect_forced_drainer_attack_inputs(
+        game: &MonsGame,
+        perspective: Color,
+        config: SmartSearchConfig,
+        max_candidates: usize,
+    ) -> Vec<Vec<Input>> {
+        let mut memo_true = std::collections::HashSet::<u64>::new();
+        let mut attack_inputs = Vec::new();
+        let mut continuation_budget = Self::forced_drainer_attack_fallback_node_budget(config);
+        let enum_limit = Self::forced_drainer_attack_fallback_enum_limit(config);
+        let mut root_inputs = Self::enumerate_legal_inputs(game, usize::MAX);
+        if root_inputs.len() > enum_limit {
+            root_inputs.truncate(enum_limit);
+        }
+        for inputs in root_inputs {
+            if attack_inputs.len() >= max_candidates.max(1) {
+                break;
+            }
+
+            let Some((after, events)) = Self::apply_inputs_for_search_with_events(game, &inputs)
+            else {
+                continue;
+            };
+            if Self::events_include_opponent_drainer_fainted(&events, perspective) {
+                attack_inputs.push(inputs);
+                continue;
+            }
+            if after.active_color != perspective {
+                continue;
+            }
+            if Self::can_attack_opponent_drainer_before_turn_ends(
+                &after,
+                perspective,
+                enum_limit,
+                &mut continuation_budget,
+                &mut memo_true,
+            ) {
+                attack_inputs.push(inputs);
+            }
+        }
+
+        attack_inputs
+    }
+
+    fn can_attack_opponent_drainer_before_turn_ends(
+        game: &MonsGame,
+        perspective: Color,
+        enum_limit: usize,
+        continuation_budget: &mut usize,
+        memo_true: &mut std::collections::HashSet<u64>,
+    ) -> bool {
+        if game.active_color != perspective || *continuation_budget == 0 {
+            return false;
+        }
+        let state_hash = Self::search_state_hash(game);
+        if memo_true.contains(&state_hash) {
+            return true;
+        }
+
+        let mut legal_inputs = Self::enumerate_legal_inputs(game, usize::MAX);
+        if legal_inputs.len() > enum_limit {
+            legal_inputs.truncate(enum_limit);
+        }
+        for inputs in legal_inputs {
+            if *continuation_budget == 0 {
+                break;
+            }
+            *continuation_budget = continuation_budget.saturating_sub(1);
+            let Some((after, events)) = Self::apply_inputs_for_search_with_events(game, &inputs)
+            else {
+                continue;
+            };
+            if Self::events_include_opponent_drainer_fainted(&events, perspective) {
+                memo_true.insert(state_hash);
+                return true;
+            }
+            if after.active_color == perspective
+                && Self::can_attack_opponent_drainer_before_turn_ends(
+                    &after,
+                    perspective,
+                    enum_limit,
+                    continuation_budget,
+                    memo_true,
+                )
+            {
+                memo_true.insert(state_hash);
+                return true;
+            }
+        }
+
+        false
+    }
+
     fn ranked_root_moves(
         game: &MonsGame,
         perspective: Color,
@@ -1135,74 +1446,77 @@ impl MonsGameModel {
         };
 
         for inputs in Self::enumerate_legal_inputs(game, config.root_enum_limit) {
-            if let Some((simulated_game, events)) =
-                Self::apply_inputs_for_search_with_events(game, &inputs)
-            {
-                let efficiency = if config.enable_root_efficiency {
-                    Self::move_efficiency_delta(
-                        game,
-                        &simulated_game,
-                        perspective,
-                        &events,
-                        true,
-                        config.enable_backtrack_penalty,
-                        config.enable_root_mana_handoff_guard,
-                    )
-                } else {
-                    0
-                };
-                let heuristic = Self::score_state(
-                    &simulated_game,
-                    perspective,
-                    config.depth.saturating_sub(1),
-                    config.depth,
-                    config.scoring_weights,
-                );
-                let ordering_bonus = if config.enable_event_ordering_bonus {
-                    Self::ordering_event_bonus(game.active_color, perspective, &events)
-                } else {
-                    0
-                };
-                let attacks_opponent_drainer =
-                    Self::events_include_opponent_drainer_fainted(&events, perspective);
-                let wins_immediately = simulated_game.winner_color() == Some(perspective);
-                let own_drainer_vulnerable = if config.enable_root_drainer_safety_prefilter {
-                    Self::is_own_drainer_vulnerable_next_turn(&simulated_game, perspective)
-                } else {
-                    false
-                };
-                let classes = if config.enable_move_class_coverage {
-                    Self::classify_move_classes(
-                        game,
-                        &simulated_game,
-                        perspective,
-                        &events,
-                        own_drainer_vulnerable_before,
-                        own_drainer_vulnerable,
-                    )
-                } else {
-                    MoveClassFlags::default()
-                };
-                candidates.push(ScoredRootMove {
-                    inputs,
-                    game: simulated_game,
-                    heuristic: heuristic.saturating_add(ordering_bonus),
-                    efficiency,
-                    wins_immediately,
-                    attacks_opponent_drainer,
-                    own_drainer_vulnerable,
-                    classes,
-                });
+            if let Some(candidate) = Self::build_scored_root_move(
+                game,
+                perspective,
+                config,
+                own_drainer_vulnerable_before,
+                inputs.as_slice(),
+            ) {
+                candidates.push(candidate);
             }
         }
 
         candidates.sort_by(|a, b| b.heuristic.cmp(&a.heuristic));
+        let mut forced_turn_attack_input_fens: Option<std::collections::HashSet<String>> = None;
+        if config.enable_forced_drainer_attack
+            && config.enable_forced_drainer_attack_fallback
+            && !candidates
+                .iter()
+                .any(|candidate| candidate.attacks_opponent_drainer)
+            && Self::can_attempt_forced_drainer_attack_fallback(game, perspective)
+        {
+            let fallback_limit = Self::forced_drainer_attack_fallback_candidates_limit(config);
+            let fallback_inputs = Self::collect_forced_drainer_attack_inputs(
+                game,
+                perspective,
+                config,
+                fallback_limit,
+            );
+
+            if !fallback_inputs.is_empty() {
+                let forced_fens = fallback_inputs
+                    .iter()
+                    .map(|inputs| Input::fen_from_array(inputs.as_slice()))
+                    .collect::<std::collections::HashSet<_>>();
+                let mut seen_inputs = candidates
+                    .iter()
+                    .map(|candidate| Input::fen_from_array(candidate.inputs.as_slice()))
+                    .collect::<std::collections::HashSet<_>>();
+
+                for inputs in fallback_inputs {
+                    let input_fen = Input::fen_from_array(inputs.as_slice());
+                    if !seen_inputs.insert(input_fen) {
+                        continue;
+                    }
+                    if let Some(candidate) = Self::build_scored_root_move(
+                        game,
+                        perspective,
+                        config,
+                        own_drainer_vulnerable_before,
+                        inputs.as_slice(),
+                    ) {
+                        candidates.push(candidate);
+                    }
+                }
+
+                candidates.sort_by(|a, b| b.heuristic.cmp(&a.heuristic));
+                forced_turn_attack_input_fens = Some(forced_fens);
+            }
+        }
+
         if config.enable_forced_drainer_attack
             && candidates
                 .iter()
                 .any(|candidate| candidate.attacks_opponent_drainer)
         {
             candidates.retain(|candidate| candidate.attacks_opponent_drainer);
+        } else if config.enable_forced_drainer_attack {
+            if let Some(forced_fens) = forced_turn_attack_input_fens {
+                candidates.retain(|candidate| {
+                    forced_fens.contains(&Input::fen_from_array(candidate.inputs.as_slice()))
+                });
+            }
         }
         if candidates.len() > config.root_branch_limit {
             if config.enable_move_class_coverage {
@@ -3417,6 +3731,61 @@ mod opening_book_tests {
             &events,
             Color::White
         ));
+    }
+
+    #[test]
+    fn forced_drainer_attack_with_bomb_survives_root_enumeration_cutoff() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(10, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 2),
+                    Item::Consumable {
+                        consumable: Consumable::BombOrPotion,
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.root_enum_limit = 0;
+        let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
+        let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("expected selected bomb inputs to be legal");
+        let attacks_now =
+            MonsGameModel::events_include_opponent_drainer_fainted(&events, Color::White);
+        let mut continuation_budget = SMART_FORCED_DRAINER_ATTACK_FALLBACK_NODE_BUDGET_FAST;
+        let attacks_later_this_turn = after.active_color == Color::White
+            && MonsGameModel::can_attack_opponent_drainer_before_turn_ends(
+                &after,
+                Color::White,
+                SMART_FORCED_DRAINER_ATTACK_FALLBACK_ENUM_LIMIT_FAST,
+                &mut continuation_budget,
+                &mut std::collections::HashSet::new(),
+            );
+        assert!(
+            attacks_now || attacks_later_this_turn,
+            "selected line must keep same-turn drainer attack reachable"
+        );
     }
 
     #[test]

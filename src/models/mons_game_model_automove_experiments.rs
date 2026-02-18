@@ -584,7 +584,17 @@ fn model_runtime_pre_drainer_tactical_requirements(
 ) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.enable_forced_drainer_attack = false;
+    runtime.enable_forced_drainer_attack_fallback = false;
     runtime.enable_root_drainer_safety_prefilter = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_forced_drainer_attack_fallback(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_forced_drainer_attack_fallback = false;
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
@@ -2393,6 +2403,9 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_pre_drainer_tactical_requirements" => {
             model_runtime_pre_drainer_tactical_requirements(game, config)
         }
+        "runtime_pre_forced_drainer_attack_fallback" => {
+            model_runtime_pre_forced_drainer_attack_fallback(game, config)
+        }
         "runtime_pre_normal_phase_deeper_lite" => {
             model_runtime_pre_normal_phase_deeper_lite(game, config)
         }
@@ -2626,6 +2639,10 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_pre_drainer_tactical_requirements",
             model_runtime_pre_drainer_tactical_requirements,
+        ),
+        (
+            "runtime_pre_forced_drainer_attack_fallback",
+            model_runtime_pre_forced_drainer_attack_fallback,
         ),
         (
             "runtime_pre_normal_phase_deeper_lite",
@@ -4504,6 +4521,67 @@ fn assert_tactical_guardrails(
             Color::White
         ),
         "profile '{}' must take available same-turn drainer attack",
+        profile_name
+    );
+
+    let bomb_drainer_attack_game = tactical_game_with_items(
+        vec![
+            (
+                Location::new(10, 0),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Angel, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(10, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(8, 2),
+                Item::Consumable {
+                    consumable: Consumable::BombOrPotion,
+                },
+            ),
+            (
+                Location::new(5, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    );
+    let mut bomb_drainer_attack_config =
+        SearchBudget::from_preference(SmartAutomovePreference::Fast)
+            .runtime_config_for_game(&bomb_drainer_attack_game);
+    bomb_drainer_attack_config.root_enum_limit = 0;
+    let bomb_drainer_attack_inputs =
+        selector(&bomb_drainer_attack_game, bomb_drainer_attack_config);
+    let (after_bomb_probe, bomb_drainer_attack_events) =
+        MonsGameModel::apply_inputs_for_search_with_events(
+            &bomb_drainer_attack_game,
+            &bomb_drainer_attack_inputs,
+        )
+        .expect("bomb drainer attack move should be legal");
+    let bomb_attacks_now = MonsGameModel::events_include_opponent_drainer_fainted(
+        &bomb_drainer_attack_events,
+        Color::White,
+    );
+    let mut bomb_continuation_budget = SMART_FORCED_DRAINER_ATTACK_FALLBACK_NODE_BUDGET_FAST;
+    let bomb_attacks_later_this_turn = after_bomb_probe.active_color == Color::White
+        && MonsGameModel::can_attack_opponent_drainer_before_turn_ends(
+            &after_bomb_probe,
+            Color::White,
+            SMART_FORCED_DRAINER_ATTACK_FALLBACK_ENUM_LIMIT_FAST,
+            &mut bomb_continuation_budget,
+            &mut std::collections::HashSet::new(),
+        );
+    assert!(
+        bomb_attacks_now || bomb_attacks_later_this_turn,
+        "profile '{}' must take bomb-based drainer attack even when root enum misses it",
         profile_name
     );
 
