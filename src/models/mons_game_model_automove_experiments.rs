@@ -543,6 +543,7 @@ fn model_runtime_pre_normal_reply_risk_cleanup(
 fn model_runtime_pre_move_class_coverage(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.enable_move_class_coverage = false;
+    runtime.enable_child_move_class_coverage = false;
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
@@ -577,6 +578,7 @@ fn model_runtime_pre_search_upgrade_bundle(
     runtime.enable_root_mana_handoff_guard = false;
     runtime.enable_root_reply_risk_guard = false;
     runtime.enable_move_class_coverage = false;
+    runtime.enable_child_move_class_coverage = false;
     runtime.scoring_weights = runtime_pre_horizon_phase_weights(game, runtime.depth);
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
@@ -610,6 +612,28 @@ fn model_runtime_pre_forced_drainer_attack_fallback(
 ) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.enable_forced_drainer_attack_fallback = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_forced_tactical_prepass(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_forced_tactical_prepass = true;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_phase1_root_quality_bundle(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_forced_tactical_prepass = true;
+    if runtime.depth < 3 {
+        runtime.enable_move_class_coverage = false;
+        runtime.enable_child_move_class_coverage = false;
+    }
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
@@ -2433,6 +2457,12 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_pre_forced_drainer_attack_fallback" => {
             model_runtime_pre_forced_drainer_attack_fallback(game, config)
         }
+        "runtime_pre_forced_tactical_prepass" => {
+            model_runtime_pre_forced_tactical_prepass(game, config)
+        }
+        "runtime_pre_phase1_root_quality_bundle" => {
+            model_runtime_pre_phase1_root_quality_bundle(game, config)
+        }
         "runtime_pre_spirit_development_pref" => {
             model_runtime_pre_spirit_development_pref(game, config)
         }
@@ -2677,6 +2707,14 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_pre_forced_drainer_attack_fallback",
             model_runtime_pre_forced_drainer_attack_fallback,
+        ),
+        (
+            "runtime_pre_forced_tactical_prepass",
+            model_runtime_pre_forced_tactical_prepass,
+        ),
+        (
+            "runtime_pre_phase1_root_quality_bundle",
+            model_runtime_pre_phase1_root_quality_bundle,
         ),
         (
             "runtime_pre_spirit_development_pref",
