@@ -68,6 +68,10 @@ Core knobs:
 - `SMART_POOL_MAX_PLIES`
 - `SMART_USE_WHITE_OPENING_BOOK` (`true/false`, default `false`)
 - `SMART_DUEL_SEED_TAG` (optional; when set, duel openings are seeded by this tag instead of profile names)
+- `SMART_GATE_BASELINE_PROFILE` (strict gate baseline, default `runtime_current`)
+- `SMART_GATE_SPEED_POSITIONS`
+- `SMART_GATE_PRIMARY_GAMES`, `SMART_GATE_PRIMARY_REPEATS`, `SMART_GATE_PRIMARY_MAX_PLIES`
+- `SMART_GATE_CONFIRM_GAMES`, `SMART_GATE_CONFIRM_REPEATS`, `SMART_GATE_CONFIRM_MAX_PLIES`
 
 Why `SMART_USE_WHITE_OPENING_BOOK` defaults to `false`:
 
@@ -81,16 +85,15 @@ Use this loop for most work:
 
 1. Speed + quick strength screen:
    - `SMART_FAST_PROFILES=runtime_current,<candidate_profile> SMART_FAST_BASELINE=runtime_current SMART_FAST_USE_CLIENT_MODES=true cargo test --lib smart_automove_pool_fast_pipeline -- --ignored --nocapture`
-2. Direct duel vs shipped runtime (first orientation):
-   - `SMART_DUEL_A=<candidate_profile> SMART_DUEL_B=runtime_current SMART_DUEL_REPEATS=3 SMART_DUEL_SEED_TAG=neutral_v1 cargo test --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
-3. Reverse orientation with the same seed tag:
-   - `SMART_DUEL_A=runtime_current SMART_DUEL_B=<candidate_profile> SMART_DUEL_REPEATS=3 SMART_DUEL_SEED_TAG=neutral_v1 cargo test --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
-4. Aggregate both orientations before deciding; this cancels opening-parity bias.
-5. If still positive, run larger two-way duel:
-   - `SMART_DUEL_A=<candidate_profile> SMART_DUEL_B=runtime_current SMART_DUEL_GAMES=4 SMART_DUEL_REPEATS=5 SMART_DUEL_MAX_PLIES=80 SMART_DUEL_SEED_TAG=neutral_v2 cargo test --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
-   - `SMART_DUEL_A=runtime_current SMART_DUEL_B=<candidate_profile> SMART_DUEL_GAMES=4 SMART_DUEL_REPEATS=5 SMART_DUEL_MAX_PLIES=80 SMART_DUEL_SEED_TAG=neutral_v2 cargo test --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
-6. Only then run full pool promotion:
-   - `SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_POOL_GAMES=100 cargo test --lib smart_automove_pool_candidate_promotion_with_client_budgets -- --ignored --nocapture`
+2. Quick mirrored duel screen (opening-book off), first orientation:
+   - `SMART_DUEL_A=<candidate_profile> SMART_DUEL_B=runtime_current SMART_DUEL_GAMES=2 SMART_DUEL_REPEATS=2 SMART_DUEL_MAX_PLIES=72 SMART_DUEL_SEED_TAG=quick_v1 cargo test --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
+3. Quick mirrored duel screen, reverse orientation:
+   - `SMART_DUEL_A=runtime_current SMART_DUEL_B=<candidate_profile> SMART_DUEL_GAMES=2 SMART_DUEL_REPEATS=2 SMART_DUEL_MAX_PLIES=72 SMART_DUEL_SEED_TAG=quick_v1 cargo test --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
+4. Keep-going bar for small screens: aggregate delta win-rate `>= +0.04` before spending larger compute.
+5. Run strict gate in reduced mode for quick feedback (includes tactical guardrails and CPU gate):
+   - `SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current SMART_GATE_PRIMARY_GAMES=2 SMART_GATE_PRIMARY_REPEATS=2 SMART_GATE_CONFIRM_GAMES=2 SMART_GATE_CONFIRM_REPEATS=2 cargo test --lib smart_automove_pool_promotion_gate_v2 -- --ignored --nocapture`
+6. Only if reduced gate is promising, run the full strict promotion gate:
+   - `SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current cargo test --lib smart_automove_pool_promotion_gate_v2 -- --ignored --nocapture`
 
 ## Useful Test Commands
 
@@ -114,11 +117,23 @@ Fast-vs-normal head-to-head (same profile, different budgets):
 
 Candidate is considered promotable only when all are true:
 
-- Beats at least `MIN_OPPONENTS_BEAT_TO_PROMOTE` opponents (`7` currently).
-- Per-opponent confidence for beaten matchups >= `MIN_CONFIDENCE_TO_PROMOTE` (`0.75` currently).
-- Per-mode aggregate confidence >= `0.75`.
-- Combined aggregate confidence >= `0.75`.
-- CPU is within acceptable ratio in fast pipeline gates.
+- Primary strength gate (opening-book off):
+  - Mirrored two-way duels across seed tags `neutral_v1`, `neutral_v2`, `neutral_v3`.
+  - Duel settings: `SMART_DUEL_GAMES=4`, `SMART_DUEL_REPEATS=6`, client modes (`fast`, `normal`).
+  - Aggregate delta win-rate vs `runtime_current` is `>= +0.12`.
+  - Per-mode delta win-rate is `>= +0.08` for both `fast` and `normal`.
+  - Aggregate confidence is `>= 0.90`.
+- Production-like confirmation gate (opening-book on):
+  - Mirrored two-way duel seed tag `prod_open_v1`.
+  - Aggregate delta win-rate is `>= +0.05`.
+  - Aggregate confidence is `>= 0.75`.
+- CPU gate:
+  - fast ratio `<= 1.08x`
+  - normal ratio `<= 1.15x`
+
+Official command:
+
+- `SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current cargo test --lib smart_automove_pool_promotion_gate_v2 -- --ignored --nocapture`
 
 ## Candidate Profiles To Know
 

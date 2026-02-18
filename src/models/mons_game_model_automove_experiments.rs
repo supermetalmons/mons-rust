@@ -387,6 +387,68 @@ fn model_runtime_pre_backtrack_penalty(game: &MonsGame, config: SmartSearchConfi
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+fn model_runtime_pre_tt_best_child_ordering(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_tt_best_child_ordering = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_root_aspiration(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_root_aspiration = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_two_pass_root_allocation(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_two_pass_root_allocation = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_selective_extensions(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_selective_extensions = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_quiet_reductions(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_quiet_reductions = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_root_mana_handoff_guard(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_root_mana_handoff_guard = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_search_upgrade_bundle(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_tt_best_child_ordering = false;
+    runtime.enable_root_aspiration = false;
+    runtime.enable_two_pass_root_allocation = false;
+    runtime.enable_quiet_reductions = false;
+    runtime.enable_selective_extensions = false;
+    runtime.enable_root_mana_handoff_guard = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn model_runtime_pre_fast_efficiency_cleanup(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -1116,6 +1178,7 @@ fn search_scored_roots_with_states(
                 &mut visited_nodes,
                 config,
                 &mut transposition_table,
+                config.max_extensions_per_path,
                 true,
             )
         } else {
@@ -2184,6 +2247,21 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_pre_root_reply_floor" => model_runtime_pre_root_reply_floor(game, config),
         "runtime_pre_event_ordering" => model_runtime_pre_event_ordering(game, config),
         "runtime_pre_backtrack_penalty" => model_runtime_pre_backtrack_penalty(game, config),
+        "runtime_pre_tt_best_child_ordering" => {
+            model_runtime_pre_tt_best_child_ordering(game, config)
+        }
+        "runtime_pre_root_aspiration" => model_runtime_pre_root_aspiration(game, config),
+        "runtime_pre_two_pass_root_allocation" => {
+            model_runtime_pre_two_pass_root_allocation(game, config)
+        }
+        "runtime_pre_selective_extensions" => model_runtime_pre_selective_extensions(game, config),
+        "runtime_pre_quiet_reductions" => model_runtime_pre_quiet_reductions(game, config),
+        "runtime_pre_root_mana_handoff_guard" => {
+            model_runtime_pre_root_mana_handoff_guard(game, config)
+        }
+        "runtime_pre_search_upgrade_bundle" => {
+            model_runtime_pre_search_upgrade_bundle(game, config)
+        }
         "runtime_pre_fast_efficiency_cleanup" => {
             model_runtime_pre_fast_efficiency_cleanup(game, config)
         }
@@ -2374,6 +2452,34 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_pre_backtrack_penalty",
             model_runtime_pre_backtrack_penalty,
+        ),
+        (
+            "runtime_pre_tt_best_child_ordering",
+            model_runtime_pre_tt_best_child_ordering,
+        ),
+        (
+            "runtime_pre_root_aspiration",
+            model_runtime_pre_root_aspiration,
+        ),
+        (
+            "runtime_pre_two_pass_root_allocation",
+            model_runtime_pre_two_pass_root_allocation,
+        ),
+        (
+            "runtime_pre_selective_extensions",
+            model_runtime_pre_selective_extensions,
+        ),
+        (
+            "runtime_pre_quiet_reductions",
+            model_runtime_pre_quiet_reductions,
+        ),
+        (
+            "runtime_pre_root_mana_handoff_guard",
+            model_runtime_pre_root_mana_handoff_guard,
+        ),
+        (
+            "runtime_pre_search_upgrade_bundle",
+            model_runtime_pre_search_upgrade_bundle,
         ),
         (
             "runtime_pre_fast_efficiency_cleanup",
@@ -4099,5 +4205,456 @@ fn smart_automove_pool_budget_duel() {
         aggregate.draws,
         aggregate.win_rate_points(),
         aggregate.confidence_better_than_even(),
+    );
+}
+
+fn mirrored_candidate_stats(ab: MatchupStats, ba: MatchupStats) -> MatchupStats {
+    MatchupStats {
+        wins: ab.wins + ba.losses,
+        losses: ab.losses + ba.wins,
+        draws: ab.draws + ba.draws,
+    }
+}
+
+fn run_mirrored_duel_for_seed_tag(
+    candidate: AutomoveModel,
+    baseline: AutomoveModel,
+    budgets: &[SearchBudget],
+    seed_tag: &str,
+    repeats: usize,
+    games_per_mode: usize,
+    max_plies: usize,
+    use_white_opening_book: bool,
+) -> Vec<(SearchBudget, MatchupStats)> {
+    let original_max_plies = env::var("SMART_POOL_MAX_PLIES").ok();
+    let original_opening_book = env::var("SMART_USE_WHITE_OPENING_BOOK").ok();
+    env::set_var("SMART_POOL_MAX_PLIES", max_plies.to_string());
+    env::set_var(
+        "SMART_USE_WHITE_OPENING_BOOK",
+        if use_white_opening_book {
+            "true"
+        } else {
+            "false"
+        },
+    );
+
+    let mut results = Vec::with_capacity(budgets.len());
+    for budget in budgets.iter().copied() {
+        let mut aggregate = MatchupStats::default();
+        for repeat_index in 0..repeats {
+            let seed = seed_for_budget_repeat_and_tag(budget, repeat_index, seed_tag);
+            let ab = run_matchup_series(candidate, baseline, games_per_mode, budget, seed);
+            let ba = run_matchup_series(baseline, candidate, games_per_mode, budget, seed);
+            aggregate.merge(mirrored_candidate_stats(ab, ba));
+        }
+        results.push((budget, aggregate));
+    }
+
+    if let Some(previous) = original_max_plies {
+        env::set_var("SMART_POOL_MAX_PLIES", previous);
+    } else {
+        env::remove_var("SMART_POOL_MAX_PLIES");
+    }
+    if let Some(previous) = original_opening_book {
+        env::set_var("SMART_USE_WHITE_OPENING_BOOK", previous);
+    } else {
+        env::remove_var("SMART_USE_WHITE_OPENING_BOOK");
+    }
+
+    results
+}
+
+fn merge_mode_stats(
+    target: &mut std::collections::HashMap<&'static str, MatchupStats>,
+    updates: &[(SearchBudget, MatchupStats)],
+) {
+    for (budget, stats) in updates {
+        let entry = target.entry(budget.key()).or_default();
+        entry.merge(*stats);
+    }
+}
+
+fn tactical_game_with_items(
+    items: Vec<(Location, Item)>,
+    active_color: Color,
+    turn_number: i32,
+) -> MonsGame {
+    let mut game = MonsGame::new(false);
+    let board_items = items
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>();
+    game.board = Board::new_with_items(board_items);
+    game.active_color = active_color;
+    game.turn_number = turn_number;
+    game.actions_used_count = 0;
+    game.mana_moves_count = 0;
+    game.mons_moves_count = 0;
+    game.white_score = 0;
+    game.black_score = 0;
+    game.white_potions_count = 0;
+    game.black_potions_count = 0;
+    game
+}
+
+fn assert_tactical_guardrails(
+    selector: fn(&MonsGame, SmartSearchConfig) -> Vec<Input>,
+    profile_name: &str,
+) {
+    let drainer_attack_game = tactical_game_with_items(
+        vec![
+            (
+                Location::new(5, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Mystic, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(10, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(7, 7),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    );
+    let drainer_attack_config = SearchBudget::from_preference(SmartAutomovePreference::Fast)
+        .runtime_config_for_game(&drainer_attack_game);
+    let drainer_attack_inputs = selector(&drainer_attack_game, drainer_attack_config);
+    let (_, drainer_attack_events) = MonsGameModel::apply_inputs_for_search_with_events(
+        &drainer_attack_game,
+        &drainer_attack_inputs,
+    )
+    .expect("drainer attack move should be legal");
+    assert!(
+        MonsGameModel::events_include_opponent_drainer_fainted(
+            &drainer_attack_events,
+            Color::White
+        ),
+        "profile '{}' must take available same-turn drainer attack",
+        profile_name
+    );
+
+    let mut winning_carrier_game = None;
+    for location in [
+        Location::new(9, 0),
+        Location::new(9, 1),
+        Location::new(9, 2),
+        Location::new(8, 1),
+    ] {
+        let mut probe = tactical_game_with_items(
+            vec![(
+                location,
+                Item::MonWithMana {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    mana: Mana::Regular(Color::Black),
+                },
+            )],
+            Color::White,
+            3,
+        );
+        probe.white_score = Config::TARGET_SCORE - 2;
+        let has_immediate_win = MonsGameModel::enumerate_legal_inputs(&probe, 96)
+            .into_iter()
+            .any(|inputs| {
+                let mut after = probe.clone_for_simulation();
+                matches!(after.process_input(inputs, false, false), Output::Events(_))
+                    && after.winner_color() == Some(Color::White)
+            });
+        if has_immediate_win {
+            winning_carrier_game = Some(probe);
+            break;
+        }
+    }
+
+    let mut winning_carrier_game =
+        winning_carrier_game.expect("expected at least one immediate-winning carrier setup");
+    let winning_config = SearchBudget::from_preference(SmartAutomovePreference::Fast)
+        .runtime_config_for_game(&winning_carrier_game);
+    let winning_inputs = selector(&winning_carrier_game, winning_config);
+    assert!(
+        !winning_inputs.is_empty(),
+        "profile '{}' should produce a move in immediate-win setup",
+        profile_name
+    );
+    assert!(matches!(
+        winning_carrier_game.process_input(winning_inputs, false, false),
+        Output::Events(_)
+    ));
+    assert_eq!(
+        winning_carrier_game.winner_color(),
+        Some(Color::White),
+        "profile '{}' should convert immediate winning carrier line",
+        profile_name
+    );
+
+    let random_openings = generate_opening_fens(seed_for_pairing("tactical", "roundtrip"), 12);
+    for opening in random_openings {
+        let game = MonsGame::from_fen(opening.as_str(), false).expect("valid opening fen");
+        let config = SearchBudget::from_preference(SmartAutomovePreference::Fast)
+            .runtime_config_for_game(&game);
+        let selected_inputs = selector(&game, config);
+        let Some((_, selected_events)) =
+            MonsGameModel::apply_inputs_for_search_with_events(&game, &selected_inputs)
+        else {
+            continue;
+        };
+        if !MonsGameModel::has_roundtrip_mon_move(&selected_events) {
+            continue;
+        }
+
+        let root_moves = MonsGameModel::ranked_root_moves(&game, game.active_color, config);
+        let mut has_better_non_roundtrip = false;
+        for root in root_moves {
+            let Some((_, events)) =
+                MonsGameModel::apply_inputs_for_search_with_events(&game, &root.inputs)
+            else {
+                continue;
+            };
+            if MonsGameModel::has_roundtrip_mon_move(&events) {
+                continue;
+            }
+            if root.efficiency > 0 || MonsGameModel::has_material_event(&events) {
+                has_better_non_roundtrip = true;
+                break;
+            }
+        }
+
+        assert!(
+            !has_better_non_roundtrip,
+            "profile '{}' selected roundtrip line while better non-roundtrip progress existed",
+            profile_name
+        );
+    }
+}
+
+#[test]
+#[ignore = "tactical guardrail suite for runtime candidate quality"]
+fn smart_automove_tactical_suite() {
+    let runtime_selector = profile_selector_from_name("runtime_current")
+        .expect("runtime_current selector should exist");
+    assert_tactical_guardrails(runtime_selector, "runtime_current");
+}
+
+#[test]
+#[ignore = "strict promotion gate with raised +12pp target and cpu caps"]
+fn smart_automove_pool_promotion_gate_v2() {
+    let candidate_profile_name = candidate_profile().as_str().to_string();
+    let baseline_profile_name = env::var("SMART_GATE_BASELINE_PROFILE")
+        .ok()
+        .map(|value| value.trim().to_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "runtime_current".to_string());
+    assert!(
+        candidate_profile_name != baseline_profile_name,
+        "candidate profile and baseline profile must differ for gate_v2"
+    );
+
+    let candidate = AutomoveModel {
+        id: "candidate",
+        select_inputs: CANDIDATE_MODEL.select_inputs,
+    };
+    let baseline = AutomoveModel {
+        id: "baseline",
+        select_inputs: profile_selector_from_name(baseline_profile_name.as_str()).unwrap_or_else(
+            || panic!("baseline selector '{}' should exist", baseline_profile_name),
+        ),
+    };
+    println!(
+        "promotion gate profiles: candidate={} baseline={}",
+        candidate_profile_name, baseline_profile_name
+    );
+    let budgets = client_budgets().to_vec();
+
+    let speed_positions = env_usize("SMART_GATE_SPEED_POSITIONS").unwrap_or(12).max(4);
+    let speed_seed = seed_for_pairing("promotion_gate_v2", "speed");
+    let speed_openings = generate_opening_fens_cached(speed_seed, speed_positions);
+    let baseline_speed = profile_speed_by_mode_ms(
+        baseline.select_inputs,
+        speed_openings.as_slice(),
+        budgets.as_slice(),
+    );
+    let candidate_speed = profile_speed_by_mode_ms(
+        candidate.select_inputs,
+        speed_openings.as_slice(),
+        budgets.as_slice(),
+    );
+    let baseline_map = baseline_speed
+        .iter()
+        .map(|stat| (stat.budget.key(), stat.avg_ms))
+        .collect::<std::collections::HashMap<_, _>>();
+    let mut speed_ratios = std::collections::HashMap::new();
+    for stat in &candidate_speed {
+        let baseline_ms = baseline_map.get(stat.budget.key()).copied().unwrap_or(1.0);
+        let ratio = if baseline_ms > 0.0 {
+            stat.avg_ms / baseline_ms
+        } else {
+            1.0
+        };
+        speed_ratios.insert(stat.budget.key(), ratio);
+        println!(
+            "promotion gate speed: mode={} candidate_ms={:.2} baseline_ms={:.2} ratio={:.3}",
+            stat.budget.key(),
+            stat.avg_ms,
+            baseline_ms,
+            ratio
+        );
+    }
+    assert!(
+        speed_ratios.get("fast").copied().unwrap_or(1.0) <= 1.08,
+        "fast cpu gate failed: ratio={:.3}",
+        speed_ratios.get("fast").copied().unwrap_or(1.0)
+    );
+    assert!(
+        speed_ratios.get("normal").copied().unwrap_or(1.0) <= 1.15,
+        "normal cpu gate failed: ratio={:.3}",
+        speed_ratios.get("normal").copied().unwrap_or(1.0)
+    );
+
+    let quick_results = run_mirrored_duel_for_seed_tag(
+        candidate,
+        baseline,
+        budgets.as_slice(),
+        "quick_v1",
+        2,
+        2,
+        72,
+        false,
+    );
+    let mut quick_aggregate = MatchupStats::default();
+    for (_budget, stats) in &quick_results {
+        quick_aggregate.merge(*stats);
+    }
+    let quick_delta = quick_aggregate.win_rate_points() - 0.5;
+    println!(
+        "promotion gate quick-screen: wins={} losses={} draws={} win_rate={:.3} delta={:.3} confidence={:.3}",
+        quick_aggregate.wins,
+        quick_aggregate.losses,
+        quick_aggregate.draws,
+        quick_aggregate.win_rate_points(),
+        quick_delta,
+        quick_aggregate.confidence_better_than_even()
+    );
+    assert!(
+        quick_delta >= 0.04,
+        "quick screen failed: delta={:.3} < 0.040",
+        quick_delta
+    );
+
+    assert_tactical_guardrails(candidate.select_inputs, candidate_profile_name.as_str());
+
+    let primary_games = env_usize("SMART_GATE_PRIMARY_GAMES").unwrap_or(4).max(2);
+    let primary_repeats = env_usize("SMART_GATE_PRIMARY_REPEATS").unwrap_or(6).max(2);
+    let primary_max_plies = env_usize("SMART_GATE_PRIMARY_MAX_PLIES")
+        .unwrap_or(80)
+        .max(56);
+    let primary_seed_tags = ["neutral_v1", "neutral_v2", "neutral_v3"];
+
+    let mut primary_mode_stats = std::collections::HashMap::<&'static str, MatchupStats>::new();
+    for seed_tag in primary_seed_tags {
+        let mode_results = run_mirrored_duel_for_seed_tag(
+            candidate,
+            baseline,
+            budgets.as_slice(),
+            seed_tag,
+            primary_repeats,
+            primary_games,
+            primary_max_plies,
+            false,
+        );
+        merge_mode_stats(&mut primary_mode_stats, mode_results.as_slice());
+    }
+    let mut primary_aggregate = MatchupStats::default();
+    for budget in &budgets {
+        let stats = primary_mode_stats
+            .get(budget.key())
+            .copied()
+            .unwrap_or_default();
+        primary_aggregate.merge(stats);
+        let mode_delta = stats.win_rate_points() - 0.5;
+        println!(
+            "promotion gate primary mode {}: wins={} losses={} draws={} win_rate={:.3} delta={:.3} confidence={:.3}",
+            budget.key(),
+            stats.wins,
+            stats.losses,
+            stats.draws,
+            stats.win_rate_points(),
+            mode_delta,
+            stats.confidence_better_than_even(),
+        );
+        assert!(
+            mode_delta >= 0.08,
+            "primary mode {} failed delta gate: {:.3} < 0.080",
+            budget.key(),
+            mode_delta
+        );
+    }
+    let primary_delta = primary_aggregate.win_rate_points() - 0.5;
+    let primary_confidence = primary_aggregate.confidence_better_than_even();
+    println!(
+        "promotion gate primary aggregate: wins={} losses={} draws={} win_rate={:.3} delta={:.3} confidence={:.3}",
+        primary_aggregate.wins,
+        primary_aggregate.losses,
+        primary_aggregate.draws,
+        primary_aggregate.win_rate_points(),
+        primary_delta,
+        primary_confidence
+    );
+    assert!(
+        primary_delta >= 0.12,
+        "primary aggregate failed delta gate: {:.3} < 0.120",
+        primary_delta
+    );
+    assert!(
+        primary_confidence >= 0.90,
+        "primary aggregate failed confidence gate: {:.3} < 0.900",
+        primary_confidence
+    );
+
+    let confirm_games = env_usize("SMART_GATE_CONFIRM_GAMES").unwrap_or(4).max(2);
+    let confirm_repeats = env_usize("SMART_GATE_CONFIRM_REPEATS").unwrap_or(6).max(2);
+    let confirm_max_plies = env_usize("SMART_GATE_CONFIRM_MAX_PLIES")
+        .unwrap_or(80)
+        .max(56);
+    let confirm_results = run_mirrored_duel_for_seed_tag(
+        candidate,
+        baseline,
+        budgets.as_slice(),
+        "prod_open_v1",
+        confirm_repeats,
+        confirm_games,
+        confirm_max_plies,
+        true,
+    );
+    let mut confirm_aggregate = MatchupStats::default();
+    for (_budget, stats) in &confirm_results {
+        confirm_aggregate.merge(*stats);
+    }
+    let confirm_delta = confirm_aggregate.win_rate_points() - 0.5;
+    let confirm_confidence = confirm_aggregate.confidence_better_than_even();
+    println!(
+        "promotion gate confirmation aggregate: wins={} losses={} draws={} win_rate={:.3} delta={:.3} confidence={:.3}",
+        confirm_aggregate.wins,
+        confirm_aggregate.losses,
+        confirm_aggregate.draws,
+        confirm_aggregate.win_rate_points(),
+        confirm_delta,
+        confirm_confidence
+    );
+    assert!(
+        confirm_delta >= 0.05,
+        "confirmation delta gate failed: {:.3} < 0.050",
+        confirm_delta
+    );
+    assert!(
+        confirm_confidence >= 0.75,
+        "confirmation confidence gate failed: {:.3} < 0.750",
+        confirm_confidence
     );
 }
