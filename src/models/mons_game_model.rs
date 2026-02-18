@@ -103,6 +103,12 @@ const SMART_MOVE_CLASS_ROOT_SCORE_MARGIN: i32 = 120;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_MOVE_CLASS_CHILD_SCORE_MARGIN: i32 = 110;
 #[cfg(any(target_arch = "wasm32", test))]
+const SMART_ROOT_SPIRIT_DEVELOPMENT_SCORE_MARGIN: i32 = 700;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_SPIRIT_DEPLOY_EFFICIENCY_BONUS: i32 = 90;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_SPIRIT_ACTION_TARGET_DELTA_WEIGHT: i32 = 22;
+#[cfg(any(target_arch = "wasm32", test))]
 const SMART_FORCED_DRAINER_ATTACK_FALLBACK_FAST_CANDIDATES: usize = 4;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_FORCED_DRAINER_ATTACK_FALLBACK_NORMAL_CANDIDATES: usize = 6;
@@ -310,6 +316,7 @@ struct SmartSearchConfig {
     enable_forced_drainer_attack: bool,
     enable_forced_drainer_attack_fallback: bool,
     enable_root_drainer_safety_prefilter: bool,
+    enable_root_spirit_development_pref: bool,
     enable_root_reply_risk_guard: bool,
     root_reply_risk_score_margin: i32,
     root_reply_risk_shortlist_max: usize,
@@ -343,6 +350,7 @@ impl SmartSearchConfig {
                 tuned.enable_forced_drainer_attack = true;
                 tuned.enable_forced_drainer_attack_fallback = true;
                 tuned.enable_root_drainer_safety_prefilter = true;
+                tuned.enable_root_spirit_development_pref = true;
                 tuned.enable_root_reply_risk_guard = true;
                 tuned.root_reply_risk_score_margin = SMART_ROOT_REPLY_RISK_SCORE_MARGIN;
                 tuned.root_reply_risk_shortlist_max = SMART_ROOT_REPLY_RISK_SHORTLIST_FAST;
@@ -378,6 +386,7 @@ impl SmartSearchConfig {
                 tuned.enable_forced_drainer_attack = true;
                 tuned.enable_forced_drainer_attack_fallback = true;
                 tuned.enable_root_drainer_safety_prefilter = true;
+                tuned.enable_root_spirit_development_pref = true;
                 tuned.enable_root_reply_risk_guard = true;
                 tuned.root_reply_risk_score_margin = SMART_ROOT_REPLY_RISK_SCORE_MARGIN;
                 tuned.root_reply_risk_shortlist_max = SMART_ROOT_REPLY_RISK_SHORTLIST_NORMAL;
@@ -427,6 +436,7 @@ impl SmartSearchConfig {
             enable_forced_drainer_attack: true,
             enable_forced_drainer_attack_fallback: true,
             enable_root_drainer_safety_prefilter: true,
+            enable_root_spirit_development_pref: true,
             enable_root_reply_risk_guard: false,
             root_reply_risk_score_margin: SMART_ROOT_REPLY_RISK_SCORE_MARGIN,
             root_reply_risk_shortlist_max: SMART_ROOT_REPLY_RISK_SHORTLIST_FAST,
@@ -486,6 +496,7 @@ struct ScoredRootMove {
     wins_immediately: bool,
     attacks_opponent_drainer: bool,
     own_drainer_vulnerable: bool,
+    spirit_development: bool,
     classes: MoveClassFlags,
 }
 
@@ -498,6 +509,7 @@ struct RootEvaluation {
     wins_immediately: bool,
     attacks_opponent_drainer: bool,
     own_drainer_vulnerable: bool,
+    spirit_development: bool,
     classes: MoveClassFlags,
 }
 
@@ -510,6 +522,10 @@ struct MoveEfficiencySnapshot {
     opponent_best_drainer_to_mana_steps: i32,
     my_carrier_count: i32,
     opponent_carrier_count: i32,
+    my_spirit_on_base: bool,
+    opponent_spirit_on_base: bool,
+    my_spirit_action_targets: i32,
+    opponent_spirit_action_targets: i32,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -528,6 +544,7 @@ enum MoveClass {
     ImmediateScore,
     DrainerAttack,
     DrainerSafetyRecover,
+    SpiritDevelopment,
     CarrierProgress,
     Material,
     Quiet,
@@ -539,6 +556,7 @@ struct MoveClassFlags {
     immediate_score: bool,
     drainer_attack: bool,
     drainer_safety_recover: bool,
+    spirit_development: bool,
     carrier_progress: bool,
     material: bool,
     quiet: bool,
@@ -551,6 +569,7 @@ impl MoveClassFlags {
             MoveClass::ImmediateScore => self.immediate_score,
             MoveClass::DrainerAttack => self.drainer_attack,
             MoveClass::DrainerSafetyRecover => self.drainer_safety_recover,
+            MoveClass::SpiritDevelopment => self.spirit_development,
             MoveClass::CarrierProgress => self.carrier_progress,
             MoveClass::Material => self.material,
             MoveClass::Quiet => self.quiet,
@@ -1174,6 +1193,8 @@ impl MonsGameModel {
         let attacks_opponent_drainer =
             Self::events_include_opponent_drainer_fainted(&events, perspective);
         let wins_immediately = simulated_game.winner_color() == Some(perspective);
+        let spirit_development =
+            Self::has_spirit_development_turn(game, &simulated_game, perspective, &events);
         let own_drainer_vulnerable = if config.enable_root_drainer_safety_prefilter {
             Self::is_own_drainer_vulnerable_next_turn(&simulated_game, perspective)
         } else {
@@ -1200,8 +1221,69 @@ impl MonsGameModel {
             wins_immediately,
             attacks_opponent_drainer,
             own_drainer_vulnerable,
+            spirit_development,
             classes,
         })
+    }
+
+    fn spirit_base_for_color(board: &Board, color: Color) -> Location {
+        board.base(Mon::new(MonKind::Spirit, color, 0))
+    }
+
+    fn is_awake_spirit_item_for_color(item: &Item, color: Color) -> bool {
+        item.mon()
+            .map(|mon| mon.kind == MonKind::Spirit && mon.color == color && !mon.is_fainted())
+            .unwrap_or(false)
+    }
+
+    fn has_awake_spirit_on_base(board: &Board, color: Color) -> bool {
+        let base = Self::spirit_base_for_color(board, color);
+        board
+            .item(base)
+            .map(|item| Self::is_awake_spirit_item_for_color(item, color))
+            .unwrap_or(false)
+    }
+
+    fn has_awake_spirit_off_base(board: &Board, color: Color) -> bool {
+        let base = Self::spirit_base_for_color(board, color);
+        board.items.iter().any(|(&location, item)| {
+            location != base && Self::is_awake_spirit_item_for_color(item, color)
+        })
+    }
+
+    fn spirit_action_target_count(board: &Board, location: Location) -> i32 {
+        location
+            .reachable_by_spirit_action()
+            .into_iter()
+            .filter(|target| {
+                let Some(item) = board.item(*target) else {
+                    return false;
+                };
+                match item {
+                    Item::Mon { mon }
+                    | Item::MonWithMana { mon, .. }
+                    | Item::MonWithConsumable { mon, .. } => !mon.is_fainted(),
+                    Item::Mana { .. } | Item::Consumable { .. } => true,
+                }
+            })
+            .count() as i32
+    }
+
+    fn has_spirit_development_turn(
+        before: &MonsGame,
+        after: &MonsGame,
+        perspective: Color,
+        events: &[Event],
+    ) -> bool {
+        if events
+            .iter()
+            .any(|event| matches!(event, Event::SpiritTargetMove { .. }))
+        {
+            return true;
+        }
+
+        Self::has_awake_spirit_on_base(&before.board, perspective)
+            && Self::has_awake_spirit_off_base(&after.board, perspective)
     }
 
     fn forced_drainer_attack_fallback_candidates_limit(config: SmartSearchConfig) -> usize {
@@ -1458,9 +1540,13 @@ impl MonsGameModel {
         }
 
         candidates.sort_by(|a, b| b.heuristic.cmp(&a.heuristic));
+        let mut has_winning_candidate = candidates
+            .iter()
+            .any(|candidate| candidate.wins_immediately);
         let mut forced_turn_attack_input_fens: Option<std::collections::HashSet<String>> = None;
         if config.enable_forced_drainer_attack
             && config.enable_forced_drainer_attack_fallback
+            && !has_winning_candidate
             && !candidates
                 .iter()
                 .any(|candidate| candidate.attacks_opponent_drainer)
@@ -1501,11 +1587,15 @@ impl MonsGameModel {
                 }
 
                 candidates.sort_by(|a, b| b.heuristic.cmp(&a.heuristic));
+                has_winning_candidate = candidates
+                    .iter()
+                    .any(|candidate| candidate.wins_immediately);
                 forced_turn_attack_input_fens = Some(forced_fens);
             }
         }
 
         if config.enable_forced_drainer_attack
+            && !has_winning_candidate
             && candidates
                 .iter()
                 .any(|candidate| candidate.attacks_opponent_drainer)
@@ -1547,6 +1637,7 @@ impl MonsGameModel {
             MoveClass::ImmediateScore,
             MoveClass::DrainerAttack,
             MoveClass::DrainerSafetyRecover,
+            MoveClass::SpiritDevelopment,
         ] {
             if let Some((index, _)) = candidates.iter().enumerate().find(|(_, candidate)| {
                 candidate.classes.has(class) && candidate.heuristic >= min_critical_heuristic
@@ -1589,17 +1680,21 @@ impl MonsGameModel {
             .any(|event| matches!(event, Event::ManaScored { .. }));
         let drainer_attack = Self::events_include_opponent_drainer_fainted(events, actor_color);
         let drainer_safety_recover = own_drainer_vulnerable_before && !own_drainer_vulnerable_after;
+        let spirit_development =
+            Self::has_spirit_development_turn(before, after, actor_color, events);
         let material = Self::has_material_event(events);
         let carrier_progress = Self::has_actor_carrier_progress(before, after, actor_color);
         let quiet = !immediate_score
             && !drainer_attack
             && !drainer_safety_recover
+            && !spirit_development
             && !carrier_progress
             && !material;
         MoveClassFlags {
             immediate_score,
             drainer_attack,
             drainer_safety_recover,
+            spirit_development,
             carrier_progress,
             material,
             quiet,
@@ -1727,6 +1822,7 @@ impl MonsGameModel {
                 wins_immediately: candidate.wins_immediately,
                 attacks_opponent_drainer: candidate.attacks_opponent_drainer,
                 own_drainer_vulnerable: candidate.own_drainer_vulnerable,
+                spirit_development: candidate.spirit_development,
                 classes: candidate.classes,
             });
 
@@ -2466,6 +2562,16 @@ impl MonsGameModel {
         );
         delta += (after.my_carrier_count - before.my_carrier_count) * 55;
         delta -= (after.opponent_carrier_count - before.opponent_carrier_count) * 48;
+        if before.my_spirit_on_base && !after.my_spirit_on_base {
+            delta += SMART_SPIRIT_DEPLOY_EFFICIENCY_BONUS;
+        }
+        if !before.opponent_spirit_on_base && after.opponent_spirit_on_base {
+            delta += SMART_SPIRIT_DEPLOY_EFFICIENCY_BONUS / 3;
+        }
+        delta += (after.my_spirit_action_targets - before.my_spirit_action_targets)
+            * SMART_SPIRIT_ACTION_TARGET_DELTA_WEIGHT;
+        delta -= (after.opponent_spirit_action_targets - before.opponent_spirit_action_targets)
+            * (SMART_SPIRIT_ACTION_TARGET_DELTA_WEIGHT / 2);
 
         if is_root {
             let root_compensates_handoff = events
@@ -2549,7 +2655,13 @@ impl MonsGameModel {
             opponent_best_drainer_to_mana_steps: unknown_steps,
             my_carrier_count: 0,
             opponent_carrier_count: 0,
+            my_spirit_on_base: false,
+            opponent_spirit_on_base: false,
+            my_spirit_action_targets: 0,
+            opponent_spirit_action_targets: 0,
         };
+        let my_spirit_base = Self::spirit_base_for_color(&game.board, perspective);
+        let opponent_spirit_base = Self::spirit_base_for_color(&game.board, perspective.other());
 
         for (&location, item) in &game.board.items {
             match item {
@@ -2570,7 +2682,23 @@ impl MonsGameModel {
                     }
                 }
                 Item::Mon { mon } | Item::MonWithConsumable { mon, .. } => {
-                    if mon.is_fainted() || mon.kind != MonKind::Drainer {
+                    if mon.is_fainted() {
+                        continue;
+                    }
+                    if mon.kind == MonKind::Spirit {
+                        let spirit_targets =
+                            Self::spirit_action_target_count(&game.board, location);
+                        if mon.color == perspective {
+                            snapshot.my_spirit_on_base = location == my_spirit_base;
+                            snapshot.my_spirit_action_targets =
+                                snapshot.my_spirit_action_targets.max(spirit_targets);
+                        } else {
+                            snapshot.opponent_spirit_on_base = location == opponent_spirit_base;
+                            snapshot.opponent_spirit_action_targets =
+                                snapshot.opponent_spirit_action_targets.max(spirit_targets);
+                        }
+                    }
+                    if mon.kind != MonKind::Drainer {
                         continue;
                     }
                     let Some(nearest_mana_steps) =
@@ -2735,6 +2863,7 @@ impl MonsGameModel {
             wins_immediately: candidate.wins_immediately,
             attacks_opponent_drainer: candidate.attacks_opponent_drainer,
             own_drainer_vulnerable: candidate.own_drainer_vulnerable,
+            spirit_development: candidate.spirit_development,
             classes: candidate.classes,
         });
 
@@ -2871,8 +3000,16 @@ impl MonsGameModel {
         Self::is_own_drainer_immediately_vulnerable(&probe, perspective)
     }
 
+    fn should_prefer_spirit_development(game: &MonsGame, perspective: Color) -> bool {
+        !game.is_first_turn()
+            && game.player_can_move_mon()
+            && Self::has_awake_spirit_on_base(&game.board, perspective)
+    }
+
     fn filtered_root_candidate_indices(
+        game: &MonsGame,
         scored_roots: &[RootEvaluation],
+        perspective: Color,
         config: SmartSearchConfig,
     ) -> Vec<usize> {
         if scored_roots.is_empty() {
@@ -2919,6 +3056,31 @@ impl MonsGameModel {
             }
         }
 
+        if config.enable_root_spirit_development_pref
+            && Self::should_prefer_spirit_development(game, perspective)
+            && candidate_indices
+                .iter()
+                .any(|index| scored_roots[*index].spirit_development)
+        {
+            let best_score = candidate_indices
+                .iter()
+                .map(|index| scored_roots[*index].score)
+                .max()
+                .unwrap_or(i32::MIN);
+            let margin = SMART_ROOT_SPIRIT_DEVELOPMENT_SCORE_MARGIN.max(0);
+            let spirit_indices = candidate_indices
+                .iter()
+                .copied()
+                .filter(|index| {
+                    let root = &scored_roots[*index];
+                    root.spirit_development && root.score + margin >= best_score
+                })
+                .collect::<Vec<_>>();
+            if !spirit_indices.is_empty() {
+                candidate_indices = spirit_indices;
+            }
+        }
+
         candidate_indices
     }
 
@@ -2948,7 +3110,8 @@ impl MonsGameModel {
             return Vec::new();
         }
 
-        let mut candidate_indices = Self::filtered_root_candidate_indices(scored_roots, config);
+        let mut candidate_indices =
+            Self::filtered_root_candidate_indices(game, scored_roots, perspective, config);
         if candidate_indices.is_empty() {
             candidate_indices = (0..scored_roots.len()).collect();
         }
@@ -2993,19 +3156,30 @@ impl MonsGameModel {
             Self::best_scored_root_index(scored_roots, candidate_indices.as_slice());
         let mut best_efficiency = i32::MIN;
         let mut best_shortlisted_score = i32::MIN;
+        let prefer_spirit_development = config.enable_root_spirit_development_pref
+            && Self::should_prefer_spirit_development(game, perspective);
+        let mut best_spirit_development = scored_roots[best_index].spirit_development;
 
         for index in candidate_indices {
             let evaluation = &scored_roots[index];
             if evaluation.score + score_margin < best_score {
                 continue;
             }
-            if evaluation.efficiency > best_efficiency
-                || (evaluation.efficiency == best_efficiency
-                    && evaluation.score > best_shortlisted_score)
+            let spirit_better = prefer_spirit_development
+                && evaluation.spirit_development
+                && !best_spirit_development;
+            let equal_spirit_preference = !prefer_spirit_development
+                || evaluation.spirit_development == best_spirit_development;
+            if spirit_better
+                || (equal_spirit_preference
+                    && (evaluation.efficiency > best_efficiency
+                        || (evaluation.efficiency == best_efficiency
+                            && evaluation.score > best_shortlisted_score)))
             {
                 best_index = index;
                 best_efficiency = evaluation.efficiency;
                 best_shortlisted_score = evaluation.score;
+                best_spirit_development = evaluation.spirit_development;
             }
         }
 
@@ -3202,6 +3376,9 @@ impl MonsGameModel {
         }
         if candidate.attacks_opponent_drainer != incumbent.attacks_opponent_drainer {
             return candidate.attacks_opponent_drainer;
+        }
+        if candidate.spirit_development != incumbent.spirit_development {
+            return candidate.spirit_development;
         }
         if candidate_snapshot.worst_reply_score != incumbent_snapshot.worst_reply_score {
             return candidate_snapshot.worst_reply_score > incumbent_snapshot.worst_reply_score;
@@ -3820,6 +3997,48 @@ mod opening_book_tests {
             &guarded,
             Color::White
         ));
+    }
+
+    #[test]
+    fn spirit_development_is_preferred_when_drainer_progress_is_still_available() {
+        let spirit = Mon::new(MonKind::Spirit, Color::White, 0);
+        let spirit_base = Board::new().base(spirit);
+        let game = game_with_items(
+            vec![
+                (spirit_base, Item::Mon { mon: spirit }),
+                (
+                    Location::new(9, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 5),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(1, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let inputs = MonsGameModel::smart_search_best_inputs(
+            &game,
+            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+        );
+        let (after, _) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected spirit development inputs should be legal");
+        assert!(
+            !MonsGameModel::has_awake_spirit_on_base(&after.board, Color::White),
+            "selected move should deploy awake spirit off base when core progress remains available"
+        );
     }
 }
 

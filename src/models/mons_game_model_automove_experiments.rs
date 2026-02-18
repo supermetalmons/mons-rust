@@ -598,6 +598,15 @@ fn model_runtime_pre_forced_drainer_attack_fallback(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+fn model_runtime_pre_spirit_development_pref(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_root_spirit_development_pref = false;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn model_runtime_pre_normal_root_safety(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.enable_normal_root_safety_rerank = false;
@@ -2406,6 +2415,9 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_pre_forced_drainer_attack_fallback" => {
             model_runtime_pre_forced_drainer_attack_fallback(game, config)
         }
+        "runtime_pre_spirit_development_pref" => {
+            model_runtime_pre_spirit_development_pref(game, config)
+        }
         "runtime_pre_normal_phase_deeper_lite" => {
             model_runtime_pre_normal_phase_deeper_lite(game, config)
         }
@@ -2643,6 +2655,10 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_pre_forced_drainer_attack_fallback",
             model_runtime_pre_forced_drainer_attack_fallback,
+        ),
+        (
+            "runtime_pre_spirit_development_pref",
+            model_runtime_pre_spirit_development_pref,
         ),
         (
             "runtime_pre_normal_phase_deeper_lite",
