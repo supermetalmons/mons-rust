@@ -387,11 +387,7 @@ impl SmartSearchConfig {
                 tuned.enable_forced_drainer_attack_fallback = true;
                 tuned.enable_root_drainer_safety_prefilter = true;
                 tuned.enable_root_spirit_development_pref = true;
-                tuned.enable_root_reply_risk_guard = true;
-                tuned.root_reply_risk_score_margin = SMART_ROOT_REPLY_RISK_SCORE_MARGIN;
-                tuned.root_reply_risk_shortlist_max = SMART_ROOT_REPLY_RISK_SHORTLIST_NORMAL;
-                tuned.root_reply_risk_reply_limit = SMART_ROOT_REPLY_RISK_REPLY_LIMIT_NORMAL;
-                tuned.root_reply_risk_node_share_bp = SMART_ROOT_REPLY_RISK_NODE_SHARE_BP_NORMAL;
+                tuned.enable_root_reply_risk_guard = false;
                 tuned.enable_move_class_coverage = true;
                 tuned.enable_normal_root_safety_rerank = true;
                 tuned.enable_normal_root_safety_deep_floor = true;

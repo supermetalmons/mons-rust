@@ -525,6 +525,21 @@ fn model_runtime_pre_root_reply_risk_guard(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+fn model_runtime_pre_normal_reply_risk_cleanup(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = SMART_ROOT_REPLY_RISK_SCORE_MARGIN;
+        runtime.root_reply_risk_shortlist_max = SMART_ROOT_REPLY_RISK_SHORTLIST_NORMAL;
+        runtime.root_reply_risk_reply_limit = SMART_ROOT_REPLY_RISK_REPLY_LIMIT_NORMAL;
+        runtime.root_reply_risk_node_share_bp = SMART_ROOT_REPLY_RISK_NODE_SHARE_BP_NORMAL;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn model_runtime_pre_move_class_coverage(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.enable_move_class_coverage = false;
@@ -2398,6 +2413,9 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_pre_root_reply_risk_guard" => {
             model_runtime_pre_root_reply_risk_guard(game, config)
         }
+        "runtime_pre_normal_reply_risk_cleanup" => {
+            model_runtime_pre_normal_reply_risk_cleanup(game, config)
+        }
         "runtime_pre_move_class_coverage" => model_runtime_pre_move_class_coverage(game, config),
         "runtime_pre_horizon_eval" => model_runtime_pre_horizon_eval(game, config),
         "runtime_pre_normal_guarded_lookahead" => {
@@ -2630,6 +2648,10 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_pre_root_reply_risk_guard",
             model_runtime_pre_root_reply_risk_guard,
+        ),
+        (
+            "runtime_pre_normal_reply_risk_cleanup",
+            model_runtime_pre_normal_reply_risk_cleanup,
         ),
         (
             "runtime_pre_move_class_coverage",
