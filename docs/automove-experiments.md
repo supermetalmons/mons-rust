@@ -14,10 +14,13 @@ Current runtime behavior:
 - `fast` is CPU-shaped around `depth=2/max_nodes=480`.
 - `normal` is CPU-shaped around `depth=3/max_nodes=3800`.
 - `fast` uses `RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS`.
-- `normal` uses `RUNTIME_RUSH_SCORING_WEIGHTS`.
-- `fast` uses a light root efficiency tie-break (progress-aware, with soft no-effect/low-impact penalties) to reduce wasted move loops.
-- `normal` now also applies root efficiency tie-break plus backtrack penalty (`enable_root_efficiency=true`, `enable_backtrack_penalty=true`) while keeping normal root-safety rerank/deep-floor.
-- Root reply-floor re-rank was removed from runtime root selection to reduce complexity/cost.
+- `normal` uses phase-adaptive runtime normal weights (`RUNTIME_NORMAL_*_SPIRIT_BASE_SCORING_WEIGHTS` family).
+- `fast` and `normal` both use root efficiency tie-breaks (progress-aware, with soft no-effect/low-impact penalties).
+- `normal` keeps root-safety rerank/deep-floor and now also uses root reply-risk guard (`score_margin=140`, shortlist `5`, reply-limit `12`, node-share cap `10%`).
+- `fast` keeps reply-risk guard disabled for lower overhead.
+- Root/child tactical class coverage uses strict guarantees for critical tactical classes before truncation.
+- Root anti-help filtering rejects near-best mana-handoff/roundtrip roots when non-losing clean alternatives exist.
+- Selective tactical extension is normal-only, capped to one extension per path with a dedicated node-share budget (`12%`).
 - Search uses alpha-beta plus a bounded transposition table (TT). TT writes are skipped for budget-cut partial nodes to avoid polluted cache reuse.
 - On White turn 1, automove follows one random hardcoded opening route (one move per call). If the current position no longer matches any route, it falls back to normal smart search.
 
@@ -70,6 +73,8 @@ Core knobs:
 - `SMART_DUEL_SEED_TAG` (optional; when set, duel openings are seeded by this tag instead of profile names)
 - `SMART_GATE_BASELINE_PROFILE` (strict gate baseline, default `runtime_current`)
 - `SMART_GATE_SPEED_POSITIONS`
+- `SMART_GATE_BUDGET_DUEL_GAMES`, `SMART_GATE_BUDGET_DUEL_REPEATS`, `SMART_GATE_BUDGET_DUEL_MAX_PLIES`
+- `SMART_GATE_BUDGET_DUEL_SEED_TAG`
 - `SMART_GATE_PRIMARY_GAMES`, `SMART_GATE_PRIMARY_REPEATS`, `SMART_GATE_PRIMARY_MAX_PLIES`
 - `SMART_GATE_CONFIRM_GAMES`, `SMART_GATE_CONFIRM_REPEATS`, `SMART_GATE_CONFIRM_MAX_PLIES`
 
@@ -92,7 +97,9 @@ Use this loop for most work:
 4. Keep-going bar for small screens: aggregate delta win-rate `>= +0.04` before spending larger compute.
 5. Run strict gate in reduced mode for quick feedback (includes tactical guardrails and CPU gate):
    - `SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current SMART_GATE_PRIMARY_GAMES=2 SMART_GATE_PRIMARY_REPEATS=2 SMART_GATE_CONFIRM_GAMES=2 SMART_GATE_CONFIRM_REPEATS=2 cargo test --lib smart_automove_pool_promotion_gate_v2 -- --ignored --nocapture`
-6. Only if reduced gate is promising, run the full strict promotion gate:
+6. Run the staged ladder (artifacts + early-stop + budget-conversion diagnostic):
+   - `SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current SMART_LADDER_ARTIFACT_PATH=target/smart_ladder_artifacts.jsonl cargo test --lib smart_automove_pool_promotion_ladder -- --ignored --nocapture`
+7. Only if reduced gate is promising, run the full strict promotion gate:
    - `SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current cargo test --lib smart_automove_pool_promotion_gate_v2 -- --ignored --nocapture`
 
 ## Useful Test Commands
@@ -113,6 +120,10 @@ Fast-vs-normal head-to-head (same profile, different budgets):
 
 - `SMART_BUDGET_DUEL_A=runtime_current SMART_BUDGET_DUEL_B=runtime_current SMART_BUDGET_DUEL_A_MODE=fast SMART_BUDGET_DUEL_B_MODE=normal SMART_BUDGET_DUEL_GAMES=3 SMART_BUDGET_DUEL_REPEATS=4 SMART_BUDGET_DUEL_MAX_PLIES=56 SMART_BUDGET_DUEL_SEED_TAG=fast_normal_v1 cargo test --lib smart_automove_pool_budget_duel -- --ignored --nocapture`
 
+Eval tuning dataset export (test-only helper):
+
+- `SMART_TUNE_PROFILE=runtime_current SMART_TUNE_POSITIONS=64 SMART_TUNE_ROOT_LIMIT=8 SMART_TUNE_SEED_TAG=eval_tune_v1 SMART_TUNE_OUTPUT_PATH=target/smart_eval_tuning_samples.jsonl cargo test --lib smart_automove_pool_export_eval_tuning_dataset -- --ignored --nocapture`
+
 ## Promotion Criteria
 
 Candidate is considered promotable only when all are true:
@@ -130,6 +141,9 @@ Candidate is considered promotable only when all are true:
 - CPU gate:
   - fast ratio `<= 1.08x`
   - normal ratio `<= 1.15x`
+- Budget-conversion regression guard:
+  - Run fast-vs-normal diagnostic for baseline and candidate inside promotion gate/ladder.
+  - Candidate normal-edge (normal advantage over fast) must not regress vs baseline by more than `0.04`.
 
 Official command:
 

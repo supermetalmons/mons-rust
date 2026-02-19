@@ -28,12 +28,23 @@ const MIN_OPPONENTS_BEAT_TO_PROMOTE: usize = 7;
 const LEGACY_NORMAL_MAX_VISITED_NODES: i32 = 2300;
 const LEGACY_RUNTIME_FAST_MAX_VISITED_NODES: i32 = 420;
 const LEGACY_RUNTIME_NORMAL_MAX_VISITED_NODES: i32 = 3450;
+const SMART_BUDGET_CONVERSION_REGRESSION_TOLERANCE: f64 = 0.04;
 
 #[derive(Debug, Clone, Copy)]
 struct SearchBudget {
     label: &'static str,
     depth: i32,
     max_nodes: i32,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct BudgetConversionDiagnostic {
+    fast_wins: usize,
+    fast_losses: usize,
+    draws: usize,
+    fast_win_rate: f64,
+    normal_edge: f64,
+    confidence: f64,
 }
 
 impl SearchBudget {
@@ -1452,6 +1463,15 @@ fn search_scored_roots_with_states(
     let mut alpha = i32::MIN;
     let mut scored_roots = Vec::with_capacity(root_moves.len());
     let mut transposition_table = std::collections::HashMap::new();
+    let extension_node_budget = if config.enable_selective_extensions
+        && config.selective_extension_node_share_bp > 0
+    {
+        ((config.max_visited_nodes * config.selective_extension_node_share_bp as usize) / 10_000)
+            .max(1)
+    } else {
+        0
+    };
+    let mut extension_nodes_used = 0usize;
 
     for candidate in root_moves {
         if visited_nodes >= config.max_visited_nodes {
@@ -1470,6 +1490,8 @@ fn search_scored_roots_with_states(
                 config,
                 &mut transposition_table,
                 config.max_extensions_per_path,
+                &mut extension_nodes_used,
+                extension_node_budget,
                 true,
             )
         } else {
@@ -3540,6 +3562,56 @@ fn run_budget_duel_series(
     stats
 }
 
+fn run_budget_conversion_diagnostic(
+    profile_name: &str,
+    selector: fn(&MonsGame, SmartSearchConfig) -> Vec<Input>,
+    games_per_repeat: usize,
+    repeats: usize,
+    max_plies: usize,
+    seed_tag: &str,
+) -> BudgetConversionDiagnostic {
+    let fast_budget = SearchBudget::from_preference(SmartAutomovePreference::Fast);
+    let normal_budget = SearchBudget::from_preference(SmartAutomovePreference::Normal);
+    let model_fast = AutomoveModel {
+        id: "budget_conversion_fast",
+        select_inputs: selector,
+    };
+    let model_normal = AutomoveModel {
+        id: "budget_conversion_normal",
+        select_inputs: selector,
+    };
+
+    let mut aggregate = MatchupStats::default();
+    for repeat_index in 0..repeats {
+        let seed = seed_for_budget_duel_repeat_and_tag(
+            fast_budget,
+            normal_budget,
+            repeat_index,
+            format!("{}:{}", seed_tag, profile_name).as_str(),
+        );
+        let stats = run_budget_duel_series(
+            model_fast,
+            fast_budget,
+            model_normal,
+            normal_budget,
+            games_per_repeat,
+            seed,
+            max_plies,
+        );
+        aggregate.merge(stats);
+    }
+
+    let fast_win_rate = aggregate.win_rate_points();
+    BudgetConversionDiagnostic {
+        fast_wins: aggregate.wins,
+        fast_losses: aggregate.losses,
+        draws: aggregate.draws,
+        fast_win_rate,
+        normal_edge: 0.5 - fast_win_rate,
+        confidence: aggregate.confidence_better_than_even(),
+    }
+}
+
 fn play_one_game_budget_duel(
     model_a: AutomoveModel,
     budget_a: SearchBudget,
@@ -4654,6 +4726,125 @@ fn persist_ladder_artifacts(lines: &[String]) {
     }
 }
 
+fn json_escape(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn collect_eval_tuning_samples_for_budget(
+    profile_name: &str,
+    selector: fn(&MonsGame, SmartSearchConfig) -> Vec<Input>,
+    budget: SearchBudget,
+    openings: &[String],
+    root_limit: usize,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    for opening in openings {
+        let game = MonsGame::from_fen(opening.as_str(), false).expect("valid opening fen");
+        if game.winner_color().is_some() {
+            continue;
+        }
+
+        let config = budget.runtime_config_for_game(&game);
+        let selected_inputs = selector(&game, config);
+        let selected_fen = Input::fen_from_array(&selected_inputs);
+
+        let mut roots = MonsGameModel::ranked_root_moves(&game, game.active_color, config);
+        if roots.is_empty() {
+            continue;
+        }
+        roots.truncate(root_limit.max(1));
+
+        let mut visited_nodes = 0usize;
+        let mut alpha = i32::MIN;
+        let mut transposition_table = std::collections::HashMap::new();
+        let extension_node_budget =
+            if config.enable_selective_extensions && config.selective_extension_node_share_bp > 0 {
+                ((config.max_visited_nodes * config.selective_extension_node_share_bp as usize)
+                    / 10_000)
+                    .max(1)
+            } else {
+                0
+            };
+        let mut extension_nodes_used = 0usize;
+        let mut scored_roots = Vec::new();
+
+        for root in &roots {
+            if visited_nodes >= config.max_visited_nodes {
+                break;
+            }
+            visited_nodes += 1;
+            let score = MonsGameModel::evaluate_root_candidate_score(
+                root,
+                game.active_color,
+                alpha,
+                &mut visited_nodes,
+                config,
+                &mut transposition_table,
+                &mut extension_nodes_used,
+                extension_node_budget,
+                true,
+            );
+            alpha = alpha.max(score);
+            scored_roots.push((
+                Input::fen_from_array(root.inputs.as_slice()),
+                score,
+                root.efficiency,
+                root.attacks_opponent_drainer,
+                root.own_drainer_vulnerable,
+                root.mana_handoff_to_opponent,
+                root.has_roundtrip,
+                root.classes,
+            ));
+        }
+        if scored_roots.is_empty() {
+            continue;
+        }
+
+        let best_score = scored_roots
+            .iter()
+            .map(|(_, score, ..)| *score)
+            .max()
+            .unwrap_or(i32::MIN);
+        for (
+            input_fen,
+            score,
+            efficiency,
+            attacks_opponent_drainer,
+            own_drainer_vulnerable,
+            mana_handoff_to_opponent,
+            has_roundtrip,
+            classes,
+        ) in scored_roots
+        {
+            let regret = best_score.saturating_sub(score);
+            lines.push(format!(
+                r#"{{"profile":"{}","mode":"{}","fen":"{}","input":"{}","selected":{},"score":{},"best_score":{},"regret":{},"efficiency":{},"attack_drainer":{},"own_drainer_vulnerable":{},"mana_handoff":{},"roundtrip":{},"class_immediate_score":{},"class_drainer_attack":{},"class_drainer_safety_recover":{},"class_carrier_progress":{},"class_material":{},"class_quiet":{}}}"#,
+                json_escape(profile_name),
+                budget.key(),
+                json_escape(opening.as_str()),
+                json_escape(input_fen.as_str()),
+                if input_fen == selected_fen { "true" } else { "false" },
+                score,
+                best_score,
+                regret,
+                efficiency,
+                if attacks_opponent_drainer { "true" } else { "false" },
+                if own_drainer_vulnerable { "true" } else { "false" },
+                if mana_handoff_to_opponent { "true" } else { "false" },
+                if has_roundtrip { "true" } else { "false" },
+                if classes.immediate_score { "true" } else { "false" },
+                if classes.drainer_attack { "true" } else { "false" },
+                if classes.drainer_safety_recover { "true" } else { "false" },
+                if classes.carrier_progress { "true" } else { "false" },
+                if classes.material { "true" } else { "false" },
+                if classes.quiet { "true" } else { "false" },
+            ));
+        }
+    }
+
+    lines
+}
+
 fn tactical_game_with_items(
     items: Vec<(Location, Item)>,
     active_color: Color,
@@ -5057,7 +5248,11 @@ fn assert_tactical_guardrails(
             winning_carrier_initial_fen,
             MoveClass::ImmediateScore,
         ),
-        ("quiet_probe", carrier_progress_game.fen(), MoveClass::Quiet),
+        (
+            "carrier_progress_probe",
+            carrier_progress_game.fen(),
+            MoveClass::CarrierProgress,
+        ),
     ];
     for (scenario_id, fen, expected_class) in scenario_pack {
         let game = MonsGame::from_fen(fen.as_str(), false).expect("valid scenario fen");
@@ -5079,6 +5274,75 @@ fn assert_tactical_guardrails(
             classes.quiet
         );
     }
+}
+
+#[test]
+#[ignore = "exports test-only move-regret samples for offline evaluation tuning"]
+fn smart_automove_pool_export_eval_tuning_dataset() {
+    let profile_name = env::var("SMART_TUNE_PROFILE")
+        .ok()
+        .map(|value| value.trim().to_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "runtime_current".to_string());
+    let Some(selector) = profile_selector_from_name(profile_name.as_str()) else {
+        panic!("unknown profile for SMART_TUNE_PROFILE: {}", profile_name);
+    };
+
+    let positions = env_usize("SMART_TUNE_POSITIONS").unwrap_or(64).max(8);
+    let root_limit = env_usize("SMART_TUNE_ROOT_LIMIT").unwrap_or(8).max(2);
+    let seed_tag = env::var("SMART_TUNE_SEED_TAG")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "eval_tune_v1".to_string());
+    let output_path = env::var("SMART_TUNE_OUTPUT_PATH")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "target/smart_eval_tuning_samples.jsonl".to_string());
+
+    let openings_seed = seed_for_pairing(seed_tag.as_str(), profile_name.as_str());
+    let openings = generate_opening_fens_cached(openings_seed, positions);
+    let fast_samples = collect_eval_tuning_samples_for_budget(
+        profile_name.as_str(),
+        selector,
+        SearchBudget::from_preference(SmartAutomovePreference::Fast),
+        openings.as_slice(),
+        root_limit,
+    );
+    let normal_samples = collect_eval_tuning_samples_for_budget(
+        profile_name.as_str(),
+        selector,
+        SearchBudget::from_preference(SmartAutomovePreference::Normal),
+        openings.as_slice(),
+        root_limit,
+    );
+    let mut all_samples = Vec::with_capacity(fast_samples.len() + normal_samples.len());
+    all_samples.extend(fast_samples);
+    all_samples.extend(normal_samples);
+
+    assert!(
+        !all_samples.is_empty(),
+        "eval tuning dataset produced no samples"
+    );
+    if let Err(error) = std::fs::write(output_path.as_str(), all_samples.join("\n")) {
+        panic!(
+            "failed writing SMART_TUNE_OUTPUT_PATH '{}': {}",
+            output_path, error
+        );
+    }
+
+    println!(
+        "eval tuning dataset: profile={} positions={} root_limit={} samples={} output={}",
+        profile_name,
+        positions,
+        root_limit,
+        all_samples.len(),
+        output_path
+    );
+    println!(
+        "next step: tune only small runtime feature subset and copy resulting constants into src/models/scoring.rs"
+    );
 }
 
 #[test]
@@ -5162,6 +5426,69 @@ fn smart_automove_pool_promotion_gate_v2() {
         speed_ratios.get("normal").copied().unwrap_or(1.0) <= 1.15,
         "normal cpu gate failed: ratio={:.3}",
         speed_ratios.get("normal").copied().unwrap_or(1.0)
+    );
+
+    let budget_duel_games = env_usize("SMART_GATE_BUDGET_DUEL_GAMES")
+        .unwrap_or(3)
+        .max(1);
+    let budget_duel_repeats = env_usize("SMART_GATE_BUDGET_DUEL_REPEATS")
+        .unwrap_or(4)
+        .max(1);
+    let budget_duel_max_plies = env_usize("SMART_GATE_BUDGET_DUEL_MAX_PLIES")
+        .or_else(|| env_usize("SMART_POOL_MAX_PLIES"))
+        .unwrap_or(56)
+        .max(32);
+    let budget_duel_seed_tag = env::var("SMART_GATE_BUDGET_DUEL_SEED_TAG")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "fast_normal_v1".to_string());
+    let baseline_budget_conversion = run_budget_conversion_diagnostic(
+        baseline_profile_name.as_str(),
+        baseline.select_inputs,
+        budget_duel_games,
+        budget_duel_repeats,
+        budget_duel_max_plies,
+        budget_duel_seed_tag.as_str(),
+    );
+    let candidate_budget_conversion = run_budget_conversion_diagnostic(
+        candidate_profile_name.as_str(),
+        candidate.select_inputs,
+        budget_duel_games,
+        budget_duel_repeats,
+        budget_duel_max_plies,
+        budget_duel_seed_tag.as_str(),
+    );
+    let conversion_delta =
+        candidate_budget_conversion.normal_edge - baseline_budget_conversion.normal_edge;
+    println!(
+        "promotion gate budget conversion baseline={} fast_wins={} fast_losses={} draws={} fast_wr={:.3} normal_edge={:.3} confidence={:.3}",
+        baseline_profile_name,
+        baseline_budget_conversion.fast_wins,
+        baseline_budget_conversion.fast_losses,
+        baseline_budget_conversion.draws,
+        baseline_budget_conversion.fast_win_rate,
+        baseline_budget_conversion.normal_edge,
+        baseline_budget_conversion.confidence
+    );
+    println!(
+        "promotion gate budget conversion candidate={} fast_wins={} fast_losses={} draws={} fast_wr={:.3} normal_edge={:.3} confidence={:.3} delta_vs_baseline={:.3}",
+        candidate_profile_name,
+        candidate_budget_conversion.fast_wins,
+        candidate_budget_conversion.fast_losses,
+        candidate_budget_conversion.draws,
+        candidate_budget_conversion.fast_win_rate,
+        candidate_budget_conversion.normal_edge,
+        candidate_budget_conversion.confidence,
+        conversion_delta
+    );
+    assert!(
+        candidate_budget_conversion.normal_edge + SMART_BUDGET_CONVERSION_REGRESSION_TOLERANCE
+            >= baseline_budget_conversion.normal_edge,
+        "budget conversion regression: candidate normal_edge {:.3} baseline {:.3} tolerance {:.3}",
+        candidate_budget_conversion.normal_edge,
+        baseline_budget_conversion.normal_edge,
+        SMART_BUDGET_CONVERSION_REGRESSION_TOLERANCE
     );
 
     let quick_results = run_mirrored_duel_for_seed_tag(
@@ -5381,6 +5708,56 @@ fn smart_automove_pool_promotion_ladder() {
         normal_ratio <= 1.15,
         "normal cpu gate failed: ratio={:.3}",
         normal_ratio
+    );
+
+    let budget_duel_games = env_usize("SMART_GATE_BUDGET_DUEL_GAMES")
+        .unwrap_or(3)
+        .max(1);
+    let budget_duel_repeats = env_usize("SMART_GATE_BUDGET_DUEL_REPEATS")
+        .unwrap_or(4)
+        .max(1);
+    let budget_duel_max_plies = env_usize("SMART_GATE_BUDGET_DUEL_MAX_PLIES")
+        .or_else(|| env_usize("SMART_POOL_MAX_PLIES"))
+        .unwrap_or(56)
+        .max(32);
+    let budget_duel_seed_tag = env::var("SMART_GATE_BUDGET_DUEL_SEED_TAG")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "fast_normal_v1".to_string());
+    let baseline_budget_conversion = run_budget_conversion_diagnostic(
+        baseline_profile_name.as_str(),
+        baseline.select_inputs,
+        budget_duel_games,
+        budget_duel_repeats,
+        budget_duel_max_plies,
+        budget_duel_seed_tag.as_str(),
+    );
+    let candidate_budget_conversion = run_budget_conversion_diagnostic(
+        candidate_profile_name.as_str(),
+        candidate.select_inputs,
+        budget_duel_games,
+        budget_duel_repeats,
+        budget_duel_max_plies,
+        budget_duel_seed_tag.as_str(),
+    );
+    let conversion_delta =
+        candidate_budget_conversion.normal_edge - baseline_budget_conversion.normal_edge;
+    artifacts.push(format!(
+        r#"{{"stage":"A_budget_conversion","baseline_fast_wr":{:.5},"baseline_normal_edge":{:.5},"candidate_fast_wr":{:.5},"candidate_normal_edge":{:.5},"delta":{:.5}}}"#,
+        baseline_budget_conversion.fast_win_rate,
+        baseline_budget_conversion.normal_edge,
+        candidate_budget_conversion.fast_win_rate,
+        candidate_budget_conversion.normal_edge,
+        conversion_delta
+    ));
+    assert!(
+        candidate_budget_conversion.normal_edge + SMART_BUDGET_CONVERSION_REGRESSION_TOLERANCE
+            >= baseline_budget_conversion.normal_edge,
+        "budget conversion regression: candidate normal_edge {:.3} baseline {:.3} tolerance {:.3}",
+        candidate_budget_conversion.normal_edge,
+        baseline_budget_conversion.normal_edge,
+        SMART_BUDGET_CONVERSION_REGRESSION_TOLERANCE
     );
 
     let quick_results = run_mirrored_duel_for_seed_tag(
