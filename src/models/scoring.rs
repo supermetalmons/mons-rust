@@ -2,6 +2,7 @@ use crate::*;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ScoringWeights {
+    pub use_legacy_formula: bool,
     pub confirmed_score: i32,
     pub fainted_mon: i32,
     pub fainted_drainer: i32,
@@ -42,6 +43,7 @@ pub struct ScoringWeights {
 }
 
 pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    use_legacy_formula: true,
     confirmed_score: 1000,
     fainted_mon: -500,
     fainted_drainer: -800,
@@ -82,6 +84,7 @@ pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
 };
 
 pub const BALANCED_DISTANCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    use_legacy_formula: true,
     confirmed_score: 1000,
     fainted_mon: -520,
     fainted_drainer: -900,
@@ -302,21 +305,23 @@ pub const TACTICAL_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS: ScoringWeights = S
 };
 
 pub const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
-    drainer_best_mana_path: 220,
-    drainer_pickup_score_this_turn: 180,
-    mana_carrier_score_this_turn: 260,
-    drainer_immediate_threat: -190,
-    score_race_path_progress: 140,
-    opponent_score_race_path_progress: 120,
-    immediate_score_window: 210,
-    opponent_immediate_score_window: 170,
-    spirit_action_utility: 44,
+    use_legacy_formula: false,
+    confirmed_score: 920,
+    drainer_best_mana_path: 250,
+    drainer_pickup_score_this_turn: 210,
+    mana_carrier_score_this_turn: 290,
+    drainer_immediate_threat: -220,
+    score_race_path_progress: 165,
+    opponent_score_race_path_progress: 150,
+    immediate_score_window: 240,
+    opponent_immediate_score_window: 220,
+    spirit_action_utility: 56,
     drainer_close_to_mana: 360,
     drainer_holding_mana: 430,
-    mana_carrier_at_risk: -250,
-    mana_carrier_guarded: 130,
-    mana_carrier_one_step_from_pool: 300,
-    supermana_carrier_one_step_from_pool_extra: 190,
+    mana_carrier_at_risk: -285,
+    mana_carrier_guarded: 145,
+    mana_carrier_one_step_from_pool: 320,
+    supermana_carrier_one_step_from_pool_extra: 210,
     immediate_winning_carrier: 520,
     ..MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS
 };
@@ -403,6 +408,7 @@ pub fn evaluate_preferability_with_weights(
     color: Color,
     weights: &ScoringWeights,
 ) -> i32 {
+    let use_legacy_formula = weights.use_legacy_formula;
     let supermana_base = game.board.supermana_base();
     let remaining_mon_moves_for_active =
         (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
@@ -438,7 +444,7 @@ pub fn evaluate_preferability_with_weights(
                     score += my_mon_multiplier * weights.fainted_cooldown_step * mon.cooldown;
                 } else if is_drainer {
                     let (danger, min_mana, angel_nearby) =
-                        drainer_distances(&game.board, mon.color, location);
+                        drainer_distances(&game.board, mon.color, location, use_legacy_formula);
                     score += my_mon_multiplier * weights.drainer_close_to_mana / min_mana;
                     score += my_mon_multiplier * weights.drainer_close_to_own_pool
                         / distance(location, Destination::ClosestPool(mon.color));
@@ -464,8 +470,12 @@ pub fn evaluate_preferability_with_weights(
                         }
                     }
 
-                    let (action_threats, bomb_threats) =
-                        drainer_immediate_threats(&game.board, mon.color, location);
+                    let (action_threats, bomb_threats) = drainer_immediate_threats(
+                        &game.board,
+                        mon.color,
+                        location,
+                        use_legacy_formula,
+                    );
                     let immediate_threats = if angel_nearby {
                         bomb_threats
                     } else {
@@ -487,7 +497,10 @@ pub fn evaluate_preferability_with_weights(
                             location,
                             weights.spirit_on_own_base_penalty,
                         );
-                    let spirit_utility = spirit_action_utility(&game.board, location).min(4);
+                    let spirit_utility_cap = if use_legacy_formula { 4 } else { 6 };
+                    let spirit_utility =
+                        spirit_action_utility(&game.board, mon.color, location, use_legacy_formula)
+                            .min(spirit_utility_cap);
                     score += my_mon_multiplier * weights.spirit_action_utility * spirit_utility;
                 } else if mon.kind == MonKind::Angel {
                     let friendly_drainer_distance =
@@ -510,7 +523,7 @@ pub fn evaluate_preferability_with_weights(
 
                 if is_drainer {
                     let (danger, min_mana, angel_nearby) =
-                        drainer_distances(&game.board, mon.color, location);
+                        drainer_distances(&game.board, mon.color, location, use_legacy_formula);
                     score += my_mon_multiplier * weights.drainer_close_to_mana / min_mana;
                     score += my_mon_multiplier * weights.drainer_close_to_own_pool
                         / distance(location, Destination::ClosestPool(mon.color));
@@ -522,8 +535,12 @@ pub fn evaluate_preferability_with_weights(
                         score += my_mon_multiplier * weights.angel_guarding_drainer;
                     }
 
-                    let (action_threats, bomb_threats) =
-                        drainer_immediate_threats(&game.board, mon.color, location);
+                    let (action_threats, bomb_threats) = drainer_immediate_threats(
+                        &game.board,
+                        mon.color,
+                        location,
+                        use_legacy_formula,
+                    );
                     let immediate_threats = if angel_nearby {
                         bomb_threats
                     } else {
@@ -533,6 +550,22 @@ pub fn evaluate_preferability_with_weights(
                         score += my_mon_multiplier
                             * weights.drainer_immediate_threat
                             * immediate_threats;
+                    }
+                    if !use_legacy_formula {
+                        if let Some((path_steps, mana_value)) =
+                            best_drainer_pickup_path(&game.board, mon.color, location)
+                        {
+                            score +=
+                                my_mon_multiplier * weights.drainer_best_mana_path * mana_value
+                                    / (path_steps + 1);
+                            if mon.color == game.active_color
+                                && path_steps <= remaining_mon_moves_for_active
+                            {
+                                score += my_mon_multiplier
+                                    * weights.drainer_pickup_score_this_turn
+                                    * mana_value;
+                            }
+                        }
                     }
                 } else if mon.kind == MonKind::Spirit {
                     let enemy_distance =
@@ -545,7 +578,10 @@ pub fn evaluate_preferability_with_weights(
                             location,
                             weights.spirit_on_own_base_penalty,
                         );
-                    let spirit_utility = spirit_action_utility(&game.board, location).min(4);
+                    let spirit_utility_cap = if use_legacy_formula { 4 } else { 6 };
+                    let spirit_utility =
+                        spirit_action_utility(&game.board, mon.color, location, use_legacy_formula)
+                            .min(spirit_utility_cap);
                     score += my_mon_multiplier * weights.spirit_action_utility * spirit_utility;
                 } else if mon.kind == MonKind::Angel {
                     let friendly_drainer_distance =
@@ -555,6 +591,10 @@ pub fn evaluate_preferability_with_weights(
                 } else if mon.kind != MonKind::Angel {
                     score += my_mon_multiplier * weights.mon_close_to_center
                         / distance(location, Destination::Center);
+                }
+
+                if !use_legacy_formula && !mons_bases.contains(&location) {
+                    score += my_mon_multiplier * weights.active_mon;
                 }
             }
             Item::Mana { mana } => {
@@ -629,7 +669,8 @@ pub fn evaluate_preferability_with_weights(
                     }
                 }
 
-                let (danger, _, angel_nearby) = drainer_distances(&game.board, mon.color, location);
+                let (danger, _, angel_nearby) =
+                    drainer_distances(&game.board, mon.color, location, use_legacy_formula);
                 score += my_mon_multiplier * weights.mana_carrier_at_risk / danger;
                 if angel_nearby {
                     score += my_mon_multiplier * weights.mana_carrier_guarded;
@@ -646,8 +687,12 @@ pub fn evaluate_preferability_with_weights(
                     score += my_mon_multiplier * weights.drainer_close_to_own_pool
                         / distance(location, Destination::ClosestPool(mon.color));
 
-                    let (action_threats, bomb_threats) =
-                        drainer_immediate_threats(&game.board, mon.color, location);
+                    let (action_threats, bomb_threats) = drainer_immediate_threats(
+                        &game.board,
+                        mon.color,
+                        location,
+                        use_legacy_formula,
+                    );
                     let immediate_threats = if angel_nearby {
                         bomb_threats
                     } else {
@@ -666,16 +711,25 @@ pub fn evaluate_preferability_with_weights(
                             location,
                             weights.spirit_on_own_base_penalty,
                         );
-                    let spirit_utility = spirit_action_utility(&game.board, location).min(4);
+                    let spirit_utility_cap = if use_legacy_formula { 4 } else { 6 };
+                    let spirit_utility =
+                        spirit_action_utility(&game.board, mon.color, location, use_legacy_formula)
+                            .min(spirit_utility_cap);
                     score += my_mon_multiplier * weights.spirit_action_utility * spirit_utility;
+                }
+
+                if !use_legacy_formula && !mons_bases.contains(&location) {
+                    score += my_mon_multiplier * weights.active_mon;
                 }
             }
             Item::Consumable { .. } => {}
         }
     }
 
-    let my_best_carrier_steps = best_carrier_steps_to_any_pool(&game.board, color);
-    let opponent_best_carrier_steps = best_carrier_steps_to_any_pool(&game.board, color.other());
+    let my_best_carrier_steps =
+        best_score_path_steps_to_any_pool(&game.board, color, !use_legacy_formula);
+    let opponent_best_carrier_steps =
+        best_score_path_steps_to_any_pool(&game.board, color.other(), !use_legacy_formula);
     if let Some(steps) = my_best_carrier_steps {
         score += weights.score_race_path_progress / steps.max(1);
     }
@@ -684,13 +738,35 @@ pub fn evaluate_preferability_with_weights(
     }
 
     if game.active_color == color {
-        let immediate_score =
-            best_immediate_score_window(&game.board, color, remaining_mon_moves_for_active);
+        let immediate_score = best_immediate_score_window(
+            &game.board,
+            color,
+            remaining_mon_moves_for_active,
+            !use_legacy_formula,
+        );
         score += weights.immediate_score_window * immediate_score;
+        if !use_legacy_formula {
+            let opponent_next_turn_score = best_immediate_score_window(
+                &game.board,
+                color.other(),
+                Config::MONS_MOVES_PER_TURN,
+                true,
+            );
+            score -= (weights.opponent_immediate_score_window * opponent_next_turn_score) / 2;
+        }
     } else {
-        let opponent_immediate_score =
-            best_immediate_score_window(&game.board, color.other(), remaining_mon_moves_for_active);
+        let opponent_immediate_score = best_immediate_score_window(
+            &game.board,
+            color.other(),
+            remaining_mon_moves_for_active,
+            !use_legacy_formula,
+        );
         score -= weights.opponent_immediate_score_window * opponent_immediate_score;
+        if !use_legacy_formula {
+            let my_next_turn_score =
+                best_immediate_score_window(&game.board, color, Config::MONS_MOVES_PER_TURN, true);
+            score += (weights.immediate_score_window * my_next_turn_score) / 2;
+        }
     }
 
     score
@@ -704,26 +780,91 @@ fn spirit_on_own_base_penalty(board: &Board, mon: Mon, location: Location, penal
     }
 }
 
-fn spirit_action_utility(board: &Board, location: Location) -> i32 {
-    location
-        .reachable_by_spirit_action()
-        .into_iter()
-        .filter(|target| {
-            let Some(item) = board.item(*target) else {
-                return false;
-            };
-            match item {
-                Item::Mon { mon }
-                | Item::MonWithMana { mon, .. }
-                | Item::MonWithConsumable { mon, .. } => !mon.is_fainted(),
-                Item::Mana { .. } | Item::Consumable { .. } => true,
+fn spirit_action_utility(
+    board: &Board,
+    spirit_color: Color,
+    location: Location,
+    use_legacy_formula: bool,
+) -> i32 {
+    if use_legacy_formula {
+        return location
+            .reachable_by_spirit_action()
+            .into_iter()
+            .filter(|target| {
+                let Some(item) = board.item(*target) else {
+                    return false;
+                };
+                match item {
+                    Item::Mon { mon }
+                    | Item::MonWithMana { mon, .. }
+                    | Item::MonWithConsumable { mon, .. } => !mon.is_fainted(),
+                    Item::Mana { .. } | Item::Consumable { .. } => true,
+                }
+            })
+            .count() as i32;
+    }
+
+    let mut utility = 0;
+    for target in location.reachable_by_spirit_action() {
+        let Some(item) = board.item(target) else {
+            continue;
+        };
+
+        let delta = match item {
+            Item::Mon { mon } | Item::MonWithConsumable { mon, .. } => {
+                if mon.is_fainted() {
+                    0
+                } else if mon.color == spirit_color && mon.kind == MonKind::Drainer {
+                    4
+                } else if mon.color == spirit_color {
+                    2
+                } else if mon.kind == MonKind::Drainer {
+                    3
+                } else {
+                    1
+                }
             }
-        })
-        .count() as i32
+            Item::MonWithMana { mon, .. } => {
+                if mon.is_fainted() {
+                    0
+                } else if mon.color == spirit_color && mon.kind == MonKind::Drainer {
+                    6
+                } else if mon.color == spirit_color {
+                    4
+                } else if mon.kind == MonKind::Drainer {
+                    5
+                } else {
+                    3
+                }
+            }
+            Item::Mana { mana } => {
+                if *mana == Mana::Supermana {
+                    5
+                } else {
+                    3
+                }
+            }
+            Item::Consumable { consumable } => {
+                if *consumable == Consumable::BombOrPotion {
+                    2
+                } else {
+                    1
+                }
+            }
+        };
+
+        utility += delta;
+    }
+
+    utility
 }
 
-fn best_carrier_steps_to_any_pool(board: &Board, color: Color) -> Option<i32> {
-    board.items.iter().fold(None, |best, (location, item)| {
+fn best_score_path_steps_to_any_pool(
+    board: &Board,
+    color: Color,
+    include_drainer_pickups: bool,
+) -> Option<i32> {
+    let mut best: Option<i32> = board.items.iter().fold(None, |best, (location, item)| {
         let Item::MonWithMana { mon, .. } = item else {
             return best;
         };
@@ -735,15 +876,41 @@ fn best_carrier_steps_to_any_pool(board: &Board, color: Color) -> Option<i32> {
             Some(current_best) => Some(current_best.min(steps)),
             None => Some(steps),
         }
-    })
+    });
+
+    if !include_drainer_pickups {
+        return best;
+    }
+
+    for (&location, item) in &board.items {
+        let Some(mon) = item.mon() else {
+            continue;
+        };
+        if mon.color != color || mon.kind != MonKind::Drainer || mon.is_fainted() {
+            continue;
+        }
+        if let Some((path_steps, _)) = best_drainer_pickup_path(board, color, location) {
+            best = Some(match best {
+                Some(current_best) => current_best.min(path_steps + 1),
+                None => path_steps + 1,
+            });
+        }
+    }
+
+    best
 }
 
-fn best_immediate_score_window(board: &Board, color: Color, remaining_mon_moves: i32) -> i32 {
+fn best_immediate_score_window(
+    board: &Board,
+    color: Color,
+    remaining_mon_moves: i32,
+    include_drainer_pickups: bool,
+) -> i32 {
     if remaining_mon_moves <= 0 {
         return 0;
     }
 
-    board
+    let carrier_immediate = board
         .items
         .iter()
         .filter_map(|(location, item)| {
@@ -761,7 +928,32 @@ fn best_immediate_score_window(board: &Board, color: Color, remaining_mon_moves:
             }
         })
         .max()
-        .unwrap_or(0)
+        .unwrap_or(0);
+    if !include_drainer_pickups {
+        return carrier_immediate;
+    }
+
+    let mut best_pickup_score = 0;
+    for (&location, item) in &board.items {
+        let Some(mon) = item.mon() else {
+            continue;
+        };
+        if mon.color != color || mon.kind != MonKind::Drainer || mon.is_fainted() {
+            continue;
+        }
+        for (&mana_location, mana_item) in &board.items {
+            let Item::Mana { mana } = mana_item else {
+                continue;
+            };
+            let pickup_steps = location.distance(&mana_location) as i32;
+            let score_steps = distance(mana_location, Destination::AnyClosestPool) - 1;
+            if pickup_steps + score_steps <= remaining_mon_moves {
+                best_pickup_score = best_pickup_score.max(mana.score(color));
+            }
+        }
+    }
+
+    carrier_immediate.max(best_pickup_score)
 }
 
 enum Destination {
@@ -770,7 +962,12 @@ enum Destination {
     ClosestPool(Color),
 }
 
-fn drainer_distances(board: &Board, color: Color, location: Location) -> (i32, i32, bool) {
+fn drainer_distances(
+    board: &Board,
+    color: Color,
+    location: Location,
+    use_legacy_formula: bool,
+) -> (i32, i32, bool) {
     let mut min_mana = Config::BOARD_SIZE as i32;
     let mut min_danger = Config::BOARD_SIZE as i32;
     let mut angel_nearby = false;
@@ -783,16 +980,40 @@ fn drainer_distances(board: &Board, color: Color, location: Location) -> (i32, i
                     min_mana = delta;
                 }
             }
-            Item::Mon { mon } | Item::MonWithConsumable { mon, .. } => {
-                if mon.color != color
-                    && !mon.is_fainted()
-                    && (mon.kind == MonKind::Mystic
-                        || mon.kind == MonKind::Demon
-                        || matches!(item, Item::MonWithConsumable { .. }))
-                {
-                    let delta = item_location.distance(&location) as i32;
-                    if delta < min_danger {
-                        min_danger = delta;
+            Item::Mon { mon }
+            | Item::MonWithMana { mon, .. }
+            | Item::MonWithConsumable { mon, .. } => {
+                if use_legacy_formula && matches!(item, Item::MonWithMana { .. }) {
+                    continue;
+                }
+                if mon.color != color && !mon.is_fainted() {
+                    let mut delta = None;
+                    if use_legacy_formula {
+                        if mon.kind == MonKind::Mystic
+                            || mon.kind == MonKind::Demon
+                            || matches!(item, Item::MonWithConsumable { .. })
+                        {
+                            delta = Some(item_location.distance(&location) as i32);
+                        }
+                    } else {
+                        if mon.kind == MonKind::Mystic || mon.kind == MonKind::Demon {
+                            delta = Some(item_location.distance(&location) as i32);
+                        }
+                        if matches!(
+                            item,
+                            Item::MonWithConsumable {
+                                consumable: Consumable::Bomb,
+                                ..
+                            }
+                        ) {
+                            let bomb_delta = (item_location.distance(&location) as i32 - 2).max(1);
+                            delta = Some(delta.map_or(bomb_delta, |base| base.min(bomb_delta)));
+                        }
+                    }
+                    if let Some(delta) = delta {
+                        if delta < min_danger {
+                            min_danger = delta;
+                        }
                     }
                 } else if mon.color == color
                     && !mon.is_fainted()
@@ -803,16 +1024,21 @@ fn drainer_distances(board: &Board, color: Color, location: Location) -> (i32, i
                 }
             }
             Item::Consumable { .. } => {
-                let delta = item_location.distance(&location) as i32;
-                if delta < min_danger {
-                    min_danger = delta;
+                if use_legacy_formula {
+                    let delta = item_location.distance(&location) as i32;
+                    if delta < min_danger {
+                        min_danger = delta;
+                    }
                 }
             }
-            Item::MonWithMana { .. } => {}
         }
     }
 
-    (min_danger, min_mana, angel_nearby)
+    if use_legacy_formula {
+        (min_danger, min_mana, angel_nearby)
+    } else {
+        (min_danger.max(1), min_mana.max(1), angel_nearby)
+    }
 }
 
 fn best_drainer_pickup_path(board: &Board, color: Color, from: Location) -> Option<(i32, i32)> {
@@ -898,46 +1124,62 @@ mod tests {
     }
 }
 
-fn drainer_immediate_threats(board: &Board, color: Color, location: Location) -> (i32, i32) {
+fn drainer_immediate_threats(
+    board: &Board,
+    color: Color,
+    location: Location,
+    use_legacy_formula: bool,
+) -> (i32, i32) {
     let mut action_threats = 0;
     let mut bomb_threats = 0;
 
     for (&threat_location, item) in &board.items {
         match item {
-            Item::Mon { mon } => {
+            Item::Mon { mon }
+            | Item::MonWithMana { mon, .. }
+            | Item::MonWithConsumable { mon, .. } => {
+                if use_legacy_formula && matches!(item, Item::MonWithMana { .. }) {
+                    continue;
+                }
                 if mon.color == color || mon.is_fainted() {
                     continue;
                 }
-                if mon.kind == MonKind::Mystic
-                    && (threat_location.i - location.i).abs() == 2
-                    && (threat_location.j - location.j).abs() == 2
-                {
-                    action_threats += 1;
-                } else if mon.kind == MonKind::Demon {
-                    let di = (threat_location.i - location.i).abs();
-                    let dj = (threat_location.j - location.j).abs();
-                    if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
-                        let middle = threat_location.location_between(&location);
-                        if board.item(middle).is_none()
-                            && !matches!(
-                                board.square(middle),
-                                Square::SupermanaBase | Square::MonBase { .. }
-                            )
-                        {
-                            action_threats += 1;
+                let allow_action_threats =
+                    !use_legacy_formula || !matches!(item, Item::MonWithConsumable { .. });
+                if allow_action_threats {
+                    if mon.kind == MonKind::Mystic
+                        && (threat_location.i - location.i).abs() == 2
+                        && (threat_location.j - location.j).abs() == 2
+                    {
+                        action_threats += 1;
+                    } else if mon.kind == MonKind::Demon {
+                        let di = (threat_location.i - location.i).abs();
+                        let dj = (threat_location.j - location.j).abs();
+                        if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
+                            let middle = threat_location.location_between(&location);
+                            if board.item(middle).is_none()
+                                && !matches!(
+                                    board.square(middle),
+                                    Square::SupermanaBase | Square::MonBase { .. }
+                                )
+                            {
+                                action_threats += 1;
+                            }
                         }
                     }
                 }
-            }
-            Item::MonWithConsumable { mon, consumable } => {
-                if mon.color == color || mon.is_fainted() {
-                    continue;
-                }
-                if *consumable == Consumable::Bomb && threat_location.distance(&location) <= 3 {
+                if matches!(
+                    item,
+                    Item::MonWithConsumable {
+                        consumable: Consumable::Bomb,
+                        ..
+                    }
+                ) && threat_location.distance(&location) <= 3
+                {
                     bomb_threats += 1;
                 }
             }
-            Item::Mana { .. } | Item::MonWithMana { .. } | Item::Consumable { .. } => {}
+            Item::Mana { .. } | Item::Consumable { .. } => {}
         }
     }
 

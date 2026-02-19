@@ -239,6 +239,85 @@ const RUNTIME_PRE_HORIZON_NORMAL_FINISHER_AGGR_SCORING_WEIGHTS: ScoringWeights =
     ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
 };
 
+const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_PRE_EVAL_V2: ScoringWeights = ScoringWeights {
+    use_legacy_formula: true,
+    confirmed_score: 1000,
+    drainer_best_mana_path: 220,
+    drainer_pickup_score_this_turn: 180,
+    mana_carrier_score_this_turn: 260,
+    drainer_immediate_threat: -190,
+    score_race_path_progress: 140,
+    opponent_score_race_path_progress: 120,
+    immediate_score_window: 210,
+    opponent_immediate_score_window: 170,
+    spirit_action_utility: 44,
+    mana_carrier_at_risk: -250,
+    mana_carrier_guarded: 130,
+    mana_carrier_one_step_from_pool: 300,
+    supermana_carrier_one_step_from_pool_extra: 190,
+    ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_PRE_EVAL_V2: ScoringWeights =
+    ScoringWeights {
+        use_legacy_formula: true,
+        confirmed_score: 1000,
+        score_race_path_progress: 72,
+        opponent_score_race_path_progress: 132,
+        immediate_score_window: 70,
+        opponent_immediate_score_window: 170,
+        spirit_action_utility: 58,
+        ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_PRE_EVAL_V2: ScoringWeights =
+    ScoringWeights {
+        use_legacy_formula: true,
+        confirmed_score: 1000,
+        score_race_path_progress: 82,
+        opponent_score_race_path_progress: 155,
+        immediate_score_window: 82,
+        opponent_immediate_score_window: 215,
+        spirit_action_utility: 64,
+        ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PRE_EVAL_V2:
+    ScoringWeights = ScoringWeights {
+    use_legacy_formula: true,
+    confirmed_score: 1000,
+    score_race_path_progress: 92,
+    opponent_score_race_path_progress: 180,
+    immediate_score_window: 95,
+    opponent_immediate_score_window: 250,
+    spirit_action_utility: 70,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_PRE_EVAL_V2:
+    ScoringWeights = ScoringWeights {
+    use_legacy_formula: true,
+    confirmed_score: 1000,
+    score_race_path_progress: 140,
+    opponent_score_race_path_progress: 130,
+    immediate_score_window: 210,
+    opponent_immediate_score_window: 175,
+    spirit_action_utility: 58,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PRE_EVAL_V2:
+    ScoringWeights = ScoringWeights {
+    use_legacy_formula: true,
+    confirmed_score: 1000,
+    score_race_path_progress: 160,
+    opponent_score_race_path_progress: 145,
+    immediate_score_window: 260,
+    opponent_immediate_score_window: 195,
+    spirit_action_utility: 62,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
 #[derive(Clone, Copy)]
 struct AutomoveModel {
     id: &'static str,
@@ -516,6 +595,36 @@ fn runtime_pre_horizon_phase_weights(game: &MonsGame, depth: usize) -> &'static 
     }
 }
 
+fn runtime_phase_adaptive_scoring_weights_pre_eval_v2(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_PRE_EVAL_V2;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PRE_EVAL_V2
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PRE_EVAL_V2
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_PRE_EVAL_V2
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_PRE_EVAL_V2
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_PRE_EVAL_V2
+    }
+}
+
 fn model_runtime_pre_root_reply_risk_guard(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -550,6 +659,13 @@ fn model_runtime_pre_move_class_coverage(game: &MonsGame, config: SmartSearchCon
 fn model_runtime_pre_horizon_eval(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.scoring_weights = runtime_pre_horizon_phase_weights(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_eval_formula_v2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights =
+        runtime_phase_adaptive_scoring_weights_pre_eval_v2(game, runtime.depth);
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
@@ -2442,6 +2558,7 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         }
         "runtime_pre_move_class_coverage" => model_runtime_pre_move_class_coverage(game, config),
         "runtime_pre_horizon_eval" => model_runtime_pre_horizon_eval(game, config),
+        "runtime_pre_eval_formula_v2" => model_runtime_pre_eval_formula_v2(game, config),
         "runtime_pre_normal_guarded_lookahead" => {
             model_runtime_pre_normal_guarded_lookahead(game, config)
         }
@@ -2688,6 +2805,10 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
             model_runtime_pre_move_class_coverage,
         ),
         ("runtime_pre_horizon_eval", model_runtime_pre_horizon_eval),
+        (
+            "runtime_pre_eval_formula_v2",
+            model_runtime_pre_eval_formula_v2,
+        ),
         (
             "runtime_pre_normal_guarded_lookahead",
             model_runtime_pre_normal_guarded_lookahead,

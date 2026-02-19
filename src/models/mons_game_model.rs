@@ -197,56 +197,66 @@ const WHITE_OPENING_BOOK: [[&str; 5]; 9] = [
 #[cfg(any(target_arch = "wasm32", test))]
 const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
     ScoringWeights {
+        use_legacy_formula: false,
+        confirmed_score: 900,
         spirit_on_own_base_penalty: 260,
-        score_race_path_progress: 72,
-        opponent_score_race_path_progress: 132,
-        immediate_score_window: 70,
-        opponent_immediate_score_window: 170,
-        spirit_action_utility: 58,
+        score_race_path_progress: 88,
+        opponent_score_race_path_progress: 168,
+        immediate_score_window: 96,
+        opponent_immediate_score_window: 220,
+        spirit_action_utility: 68,
         ..BALANCED_DISTANCE_SCORING_WEIGHTS
     };
 #[cfg(any(target_arch = "wasm32", test))]
 const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
     ScoringWeights {
+        use_legacy_formula: false,
+        confirmed_score: 900,
         spirit_on_own_base_penalty: 260,
-        score_race_path_progress: 82,
-        opponent_score_race_path_progress: 155,
-        immediate_score_window: 82,
-        opponent_immediate_score_window: 215,
-        spirit_action_utility: 64,
+        score_race_path_progress: 96,
+        opponent_score_race_path_progress: 190,
+        immediate_score_window: 104,
+        opponent_immediate_score_window: 260,
+        spirit_action_utility: 72,
         ..TACTICAL_BALANCED_SCORING_WEIGHTS
     };
 #[cfg(any(target_arch = "wasm32", test))]
 const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
     ScoringWeights {
+        use_legacy_formula: false,
+        confirmed_score: 890,
         spirit_on_own_base_penalty: 260,
-        score_race_path_progress: 92,
-        opponent_score_race_path_progress: 180,
-        immediate_score_window: 95,
-        opponent_immediate_score_window: 250,
-        spirit_action_utility: 70,
+        score_race_path_progress: 108,
+        opponent_score_race_path_progress: 220,
+        immediate_score_window: 118,
+        opponent_immediate_score_window: 300,
+        spirit_action_utility: 78,
         ..TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS
     };
 #[cfg(any(target_arch = "wasm32", test))]
 const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
     ScoringWeights {
+        use_legacy_formula: false,
+        confirmed_score: 930,
         spirit_on_own_base_penalty: 260,
-        score_race_path_progress: 140,
-        opponent_score_race_path_progress: 130,
-        immediate_score_window: 210,
-        opponent_immediate_score_window: 175,
-        spirit_action_utility: 58,
+        score_race_path_progress: 170,
+        opponent_score_race_path_progress: 170,
+        immediate_score_window: 275,
+        opponent_immediate_score_window: 235,
+        spirit_action_utility: 66,
         ..FINISHER_BALANCED_SOFT_SCORING_WEIGHTS
     };
 #[cfg(any(target_arch = "wasm32", test))]
 const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
     ScoringWeights {
+        use_legacy_formula: false,
+        confirmed_score: 940,
         spirit_on_own_base_penalty: 260,
-        score_race_path_progress: 160,
-        opponent_score_race_path_progress: 145,
-        immediate_score_window: 260,
-        opponent_immediate_score_window: 195,
-        spirit_action_utility: 62,
+        score_race_path_progress: 195,
+        opponent_score_race_path_progress: 185,
+        immediate_score_window: 330,
+        opponent_immediate_score_window: 265,
+        spirit_action_utility: 70,
         ..FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS
     };
 
