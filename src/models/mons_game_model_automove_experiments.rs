@@ -269,6 +269,15 @@ const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_PRE_EVAL_V2: ScoringWeights =
     ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
 };
 
+const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_PRE_MULTI_LANE: ScoringWeights =
+    ScoringWeights {
+        score_race_multi_path: 0,
+        opponent_score_race_multi_path: 0,
+        immediate_score_multi_window: 0,
+        opponent_immediate_score_multi_window: 0,
+        ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+    };
+
 const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_PRE_EVAL_V2: ScoringWeights =
     ScoringWeights {
         use_legacy_formula: true,
@@ -326,6 +335,349 @@ const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGH
     immediate_score_window: 260,
     opponent_immediate_score_window: 195,
     spirit_action_utility: 62,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW: ScoringWeights =
+    ScoringWeights {
+        include_regular_mana_move_windows: true,
+        ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW: ScoringWeights =
+    ScoringWeights {
+        include_regular_mana_move_windows: true,
+        ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW:
+    ScoringWeights = ScoringWeights {
+    include_regular_mana_move_windows: true,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW:
+    ScoringWeights = ScoringWeights {
+    include_regular_mana_move_windows: true,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW:
+    ScoringWeights = ScoringWeights {
+    include_regular_mana_move_windows: true,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE:
+    ScoringWeights = ScoringWeights {
+    score_race_path_progress: 100,
+    opponent_score_race_path_progress: 230,
+    immediate_score_window: 110,
+    opponent_immediate_score_window: 300,
+    drainer_immediate_threat: -70,
+    drainer_best_mana_path: 32,
+    spirit_action_utility: 74,
+    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE:
+    ScoringWeights = ScoringWeights {
+    score_race_path_progress: 108,
+    opponent_score_race_path_progress: 260,
+    immediate_score_window: 120,
+    opponent_immediate_score_window: 370,
+    drainer_immediate_threat: -115,
+    drainer_best_mana_path: 52,
+    spirit_action_utility: 78,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE:
+    ScoringWeights = ScoringWeights {
+    score_race_path_progress: 118,
+    opponent_score_race_path_progress: 300,
+    immediate_score_window: 132,
+    opponent_immediate_score_window: 420,
+    drainer_immediate_threat: -145,
+    drainer_best_mana_path: 66,
+    spirit_action_utility: 84,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE:
+    ScoringWeights = ScoringWeights {
+    score_race_path_progress: 185,
+    opponent_score_race_path_progress: 190,
+    immediate_score_window: 300,
+    opponent_immediate_score_window: 280,
+    spirit_action_utility: 72,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE:
+    ScoringWeights = ScoringWeights {
+    score_race_path_progress: 210,
+    opponent_score_race_path_progress: 205,
+    immediate_score_window: 360,
+    opponent_immediate_score_window: 320,
+    spirit_action_utility: 76,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW
+};
+
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_PRESSURE:
+    ScoringWeights = ScoringWeights {
+    next_turn_window_scale_bp: 8_000,
+    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_PRESSURE:
+    ScoringWeights = ScoringWeights {
+    next_turn_window_scale_bp: 8_000,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_PRESSURE:
+    ScoringWeights = ScoringWeights {
+    next_turn_window_scale_bp: 8_000,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_PRESSURE:
+    ScoringWeights = ScoringWeights {
+    next_turn_window_scale_bp: 8_000,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_PRESSURE:
+    ScoringWeights = ScoringWeights {
+    next_turn_window_scale_bp: 8_000,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW
+};
+
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_NO_CONFIRMED_SQUARE:
+    ScoringWeights = ScoringWeights {
+    double_confirmed_score: false,
+    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_NO_CONFIRMED_SQUARE:
+    ScoringWeights = ScoringWeights {
+    double_confirmed_score: false,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_NO_CONFIRMED_SQUARE:
+    ScoringWeights = ScoringWeights {
+    double_confirmed_score: false,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_NO_CONFIRMED_SQUARE:
+    ScoringWeights = ScoringWeights {
+    double_confirmed_score: false,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_NO_CONFIRMED_SQUARE:
+    ScoringWeights = ScoringWeights {
+    double_confirmed_score: false,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MATCH_POINT_WINDOW:
+    ScoringWeights = ScoringWeights {
+    include_match_point_window: true,
+    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MATCH_POINT_WINDOW:
+    ScoringWeights = ScoringWeights {
+    include_match_point_window: true,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MATCH_POINT_WINDOW:
+    ScoringWeights = ScoringWeights {
+    include_match_point_window: true,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_MATCH_POINT_WINDOW:
+    ScoringWeights = ScoringWeights {
+    include_match_point_window: true,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MATCH_POINT_WINDOW:
+    ScoringWeights = ScoringWeights {
+    include_match_point_window: true,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_GLOBAL_PRESSURE: ScoringWeights =
+    ScoringWeights {
+        include_regular_mana_move_windows: true,
+        include_match_point_window: true,
+        next_turn_window_scale_bp: 8_000,
+        score_race_path_progress: 180,
+        opponent_score_race_path_progress: 200,
+        immediate_score_window: 280,
+        opponent_immediate_score_window: 300,
+        drainer_immediate_threat: -260,
+        spirit_action_utility: 62,
+        immediate_winning_carrier: 700,
+        ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_GLOBAL_PRESSURE:
+    ScoringWeights = ScoringWeights {
+    include_match_point_window: true,
+    next_turn_window_scale_bp: 8_000,
+    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_GLOBAL_PRESSURE:
+    ScoringWeights = ScoringWeights {
+    include_match_point_window: true,
+    next_turn_window_scale_bp: 8_000,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_GLOBAL_PRESSURE:
+    ScoringWeights = ScoringWeights {
+    include_match_point_window: true,
+    next_turn_window_scale_bp: 8_000,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_GLOBAL_PRESSURE:
+    ScoringWeights = ScoringWeights {
+    include_match_point_window: true,
+    next_turn_window_scale_bp: 8_000,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_GLOBAL_PRESSURE:
+    ScoringWeights = ScoringWeights {
+    include_match_point_window: true,
+    next_turn_window_scale_bp: 8_000,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE
+};
+
+const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_MULTI_LANE_LIGHT: ScoringWeights =
+    ScoringWeights {
+        score_race_multi_path: 90,
+        opponent_score_race_multi_path: 130,
+        immediate_score_multi_window: 120,
+        opponent_immediate_score_multi_window: 170,
+        ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_LIGHT:
+    ScoringWeights = ScoringWeights {
+    score_race_multi_path: 80,
+    opponent_score_race_multi_path: 150,
+    immediate_score_multi_window: 95,
+    opponent_immediate_score_multi_window: 170,
+    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_LIGHT:
+    ScoringWeights = ScoringWeights {
+    score_race_multi_path: 95,
+    opponent_score_race_multi_path: 185,
+    immediate_score_multi_window: 120,
+    opponent_immediate_score_multi_window: 230,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_LIGHT:
+    ScoringWeights = ScoringWeights {
+    score_race_multi_path: 105,
+    opponent_score_race_multi_path: 215,
+    immediate_score_multi_window: 145,
+    opponent_immediate_score_multi_window: 265,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_LIGHT:
+    ScoringWeights = ScoringWeights {
+    score_race_multi_path: 125,
+    opponent_score_race_multi_path: 155,
+    immediate_score_multi_window: 175,
+    opponent_immediate_score_multi_window: 185,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_LIGHT:
+    ScoringWeights = ScoringWeights {
+    score_race_multi_path: 145,
+    opponent_score_race_multi_path: 175,
+    immediate_score_multi_window: 205,
+    opponent_immediate_score_multi_window: 215,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_MULTI_LANE_AGGR: ScoringWeights =
+    ScoringWeights {
+        score_race_multi_path: 130,
+        opponent_score_race_multi_path: 180,
+        immediate_score_multi_window: 185,
+        opponent_immediate_score_multi_window: 245,
+        ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+    };
+
+const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_MULTI_LANE_MIXED: ScoringWeights =
+    ScoringWeights {
+        score_race_multi_path: 120,
+        opponent_score_race_multi_path: 170,
+        immediate_score_multi_window: 170,
+        opponent_immediate_score_multi_window: 230,
+        ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_AGGR:
+    ScoringWeights = ScoringWeights {
+    score_race_multi_path: 120,
+    opponent_score_race_multi_path: 220,
+    immediate_score_multi_window: 150,
+    opponent_immediate_score_multi_window: 270,
+    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_AGGR:
+    ScoringWeights = ScoringWeights {
+    score_race_multi_path: 145,
+    opponent_score_race_multi_path: 270,
+    immediate_score_multi_window: 190,
+    opponent_immediate_score_multi_window: 360,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_AGGR:
+    ScoringWeights = ScoringWeights {
+    score_race_multi_path: 170,
+    opponent_score_race_multi_path: 315,
+    immediate_score_multi_window: 230,
+    opponent_immediate_score_multi_window: 420,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_AGGR:
+    ScoringWeights = ScoringWeights {
+    score_race_multi_path: 180,
+    opponent_score_race_multi_path: 200,
+    immediate_score_multi_window: 260,
+    opponent_immediate_score_multi_window: 250,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_AGGR:
+    ScoringWeights = ScoringWeights {
+    score_race_multi_path: 220,
+    opponent_score_race_multi_path: 240,
+    immediate_score_multi_window: 310,
+    opponent_immediate_score_multi_window: 290,
     ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
 };
 
@@ -636,6 +988,386 @@ fn runtime_phase_adaptive_scoring_weights_pre_eval_v2(
     }
 }
 
+fn runtime_phase_adaptive_scoring_weights_mana_window(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW
+    }
+}
+
+fn runtime_phase_adaptive_scoring_weights_mana_window_defense(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE
+    }
+}
+
+fn runtime_phase_adaptive_scoring_weights_mana_window_pressure(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_PRESSURE
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_PRESSURE
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_PRESSURE
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_PRESSURE
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_PRESSURE
+    }
+}
+
+fn runtime_phase_adaptive_scoring_weights_no_confirmed_square(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_NO_CONFIRMED_SQUARE
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_NO_CONFIRMED_SQUARE
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_NO_CONFIRMED_SQUARE
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_NO_CONFIRMED_SQUARE
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_NO_CONFIRMED_SQUARE
+    }
+}
+
+fn runtime_phase_adaptive_scoring_weights_match_point_window(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MATCH_POINT_WINDOW
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MATCH_POINT_WINDOW
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_MATCH_POINT_WINDOW
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MATCH_POINT_WINDOW
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MATCH_POINT_WINDOW
+    }
+}
+
+fn runtime_phase_adaptive_scoring_weights_global_pressure(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_GLOBAL_PRESSURE;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_GLOBAL_PRESSURE
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_GLOBAL_PRESSURE
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_GLOBAL_PRESSURE
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_GLOBAL_PRESSURE
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_GLOBAL_PRESSURE
+    }
+}
+
+fn runtime_phase_adaptive_scoring_weights_multi_lane_light(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_MULTI_LANE_LIGHT;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_LIGHT
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_LIGHT
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_LIGHT
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_LIGHT
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_LIGHT
+    }
+}
+
+fn runtime_phase_adaptive_scoring_weights_multi_lane_aggr(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_MULTI_LANE_AGGR;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_AGGR
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_AGGR
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_AGGR
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_AGGR
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_AGGR
+    }
+}
+
+fn runtime_phase_adaptive_scoring_weights_multi_lane_normal_only(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS;
+    }
+
+    runtime_phase_adaptive_scoring_weights_multi_lane_aggr(game, depth)
+}
+
+fn runtime_phase_adaptive_scoring_weights_multi_lane_mixed(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_MULTI_LANE_MIXED;
+    }
+
+    runtime_phase_adaptive_scoring_weights_multi_lane_aggr(game, depth)
+}
+
+fn env_tuned_eval_weights(base: ScoringWeights, fast_mode: bool) -> ScoringWeights {
+    let mut tuned = base;
+    let prefix = if fast_mode { "FAST" } else { "NORMAL" };
+
+    let score_multi =
+        env_i32(format!("SMART_EVAL_{}_SCORE_MULTI", prefix).as_str()).unwrap_or(tuned.score_race_multi_path);
+    let opponent_score_multi = env_i32(format!("SMART_EVAL_{}_OPP_SCORE_MULTI", prefix).as_str())
+        .unwrap_or(tuned.opponent_score_race_multi_path);
+    let immediate_multi =
+        env_i32(format!("SMART_EVAL_{}_IMM_MULTI", prefix).as_str()).unwrap_or(tuned.immediate_score_multi_window);
+    let opponent_immediate_multi =
+        env_i32(format!("SMART_EVAL_{}_OPP_IMM_MULTI", prefix).as_str())
+            .unwrap_or(tuned.opponent_immediate_score_multi_window);
+    let immediate_delta =
+        env_i32(format!("SMART_EVAL_{}_IMM_DELTA", prefix).as_str()).unwrap_or(0);
+    let opponent_immediate_delta =
+        env_i32(format!("SMART_EVAL_{}_OPP_IMM_DELTA", prefix).as_str()).unwrap_or(0);
+    let next_turn_bp = env_i32(format!("SMART_EVAL_{}_NEXT_TURN_BP", prefix).as_str())
+        .unwrap_or(tuned.next_turn_window_scale_bp);
+
+    tuned.score_race_multi_path = score_multi.max(0);
+    tuned.opponent_score_race_multi_path = opponent_score_multi.max(0);
+    tuned.immediate_score_multi_window = immediate_multi.max(0);
+    tuned.opponent_immediate_score_multi_window = opponent_immediate_multi.max(0);
+    tuned.immediate_score_window = (tuned.immediate_score_window + immediate_delta).max(0);
+    tuned.opponent_immediate_score_window =
+        (tuned.opponent_immediate_score_window + opponent_immediate_delta).max(0);
+    tuned.next_turn_window_scale_bp = next_turn_bp.clamp(0, 20_000);
+    tuned
+}
+
+fn runtime_eval_env_fast_weights() -> &'static ScoringWeights {
+    static FAST: OnceLock<ScoringWeights> = OnceLock::new();
+    FAST.get_or_init(|| {
+        env_tuned_eval_weights(RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS, true)
+    })
+}
+
+fn runtime_eval_env_normal_balanced_weights() -> &'static ScoringWeights {
+    static W: OnceLock<ScoringWeights> = OnceLock::new();
+    W.get_or_init(|| {
+        env_tuned_eval_weights(
+            RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS,
+            false,
+        )
+    })
+}
+
+fn runtime_eval_env_normal_tactical_weights() -> &'static ScoringWeights {
+    static W: OnceLock<ScoringWeights> = OnceLock::new();
+    W.get_or_init(|| {
+        env_tuned_eval_weights(
+            RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS,
+            false,
+        )
+    })
+}
+
+fn runtime_eval_env_normal_tactical_aggr_weights() -> &'static ScoringWeights {
+    static W: OnceLock<ScoringWeights> = OnceLock::new();
+    W.get_or_init(|| {
+        env_tuned_eval_weights(
+            RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS,
+            false,
+        )
+    })
+}
+
+fn runtime_eval_env_normal_finisher_weights() -> &'static ScoringWeights {
+    static W: OnceLock<ScoringWeights> = OnceLock::new();
+    W.get_or_init(|| {
+        env_tuned_eval_weights(
+            RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS,
+            false,
+        )
+    })
+}
+
+fn runtime_eval_env_normal_finisher_aggr_weights() -> &'static ScoringWeights {
+    static W: OnceLock<ScoringWeights> = OnceLock::new();
+    W.get_or_init(|| {
+        env_tuned_eval_weights(
+            RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS,
+            false,
+        )
+    })
+}
+
+fn runtime_phase_adaptive_scoring_weights_env_multi(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return runtime_eval_env_fast_weights();
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        runtime_eval_env_normal_finisher_aggr_weights()
+    } else if opponent_distance_to_win <= 1 {
+        runtime_eval_env_normal_tactical_aggr_weights()
+    } else if my_distance_to_win <= 2 {
+        runtime_eval_env_normal_finisher_weights()
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        runtime_eval_env_normal_tactical_weights()
+    } else {
+        runtime_eval_env_normal_balanced_weights()
+    }
+}
+
 fn model_runtime_pre_root_reply_risk_guard(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -677,6 +1409,97 @@ fn model_runtime_pre_eval_formula_v2(game: &MonsGame, config: SmartSearchConfig)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.scoring_weights =
         runtime_phase_adaptive_scoring_weights_pre_eval_v2(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pre_fast_multi_lane_eval(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        runtime.scoring_weights = &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_PRE_MULTI_LANE;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_eval_mana_window(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights = runtime_phase_adaptive_scoring_weights_mana_window(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_eval_mana_window_defense(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights =
+        runtime_phase_adaptive_scoring_weights_mana_window_defense(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_eval_mana_window_pressure(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights =
+        runtime_phase_adaptive_scoring_weights_mana_window_pressure(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_eval_no_confirmed_square(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights =
+        runtime_phase_adaptive_scoring_weights_no_confirmed_square(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_eval_match_point_window(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights =
+        runtime_phase_adaptive_scoring_weights_match_point_window(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_eval_global_pressure(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights = runtime_phase_adaptive_scoring_weights_global_pressure(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_eval_multi_lane_light(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights =
+        runtime_phase_adaptive_scoring_weights_multi_lane_light(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_eval_multi_lane_aggr(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights =
+        runtime_phase_adaptive_scoring_weights_multi_lane_aggr(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_eval_multi_lane_normal_only(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights =
+        runtime_phase_adaptive_scoring_weights_multi_lane_normal_only(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_eval_multi_lane_mixed(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights =
+        runtime_phase_adaptive_scoring_weights_multi_lane_mixed(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_eval_env_multi(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights = runtime_phase_adaptive_scoring_weights_env_multi(game, runtime.depth);
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
@@ -2581,6 +3404,20 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_pre_move_class_coverage" => model_runtime_pre_move_class_coverage(game, config),
         "runtime_pre_horizon_eval" => model_runtime_pre_horizon_eval(game, config),
         "runtime_pre_eval_formula_v2" => model_runtime_pre_eval_formula_v2(game, config),
+        "runtime_pre_fast_multi_lane_eval" => model_runtime_pre_fast_multi_lane_eval(game, config),
+        "runtime_eval_mana_window" => model_runtime_eval_mana_window(game, config),
+        "runtime_eval_mana_window_defense" => model_runtime_eval_mana_window_defense(game, config),
+        "runtime_eval_mana_window_pressure" => model_runtime_eval_mana_window_pressure(game, config),
+        "runtime_eval_no_confirmed_square" => model_runtime_eval_no_confirmed_square(game, config),
+        "runtime_eval_match_point_window" => model_runtime_eval_match_point_window(game, config),
+        "runtime_eval_global_pressure" => model_runtime_eval_global_pressure(game, config),
+        "runtime_eval_multi_lane_light" => model_runtime_eval_multi_lane_light(game, config),
+        "runtime_eval_multi_lane_aggr" => model_runtime_eval_multi_lane_aggr(game, config),
+        "runtime_eval_multi_lane_normal_only" => {
+            model_runtime_eval_multi_lane_normal_only(game, config)
+        }
+        "runtime_eval_multi_lane_mixed" => model_runtime_eval_multi_lane_mixed(game, config),
+        "runtime_eval_env_multi" => model_runtime_eval_env_multi(game, config),
         "runtime_pre_normal_guarded_lookahead" => {
             model_runtime_pre_normal_guarded_lookahead(game, config)
         }
@@ -2831,6 +3668,48 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
             "runtime_pre_eval_formula_v2",
             model_runtime_pre_eval_formula_v2,
         ),
+        (
+            "runtime_pre_fast_multi_lane_eval",
+            model_runtime_pre_fast_multi_lane_eval,
+        ),
+        ("runtime_eval_mana_window", model_runtime_eval_mana_window),
+        (
+            "runtime_eval_mana_window_defense",
+            model_runtime_eval_mana_window_defense,
+        ),
+        (
+            "runtime_eval_mana_window_pressure",
+            model_runtime_eval_mana_window_pressure,
+        ),
+        (
+            "runtime_eval_no_confirmed_square",
+            model_runtime_eval_no_confirmed_square,
+        ),
+        (
+            "runtime_eval_match_point_window",
+            model_runtime_eval_match_point_window,
+        ),
+        (
+            "runtime_eval_global_pressure",
+            model_runtime_eval_global_pressure,
+        ),
+        (
+            "runtime_eval_multi_lane_light",
+            model_runtime_eval_multi_lane_light,
+        ),
+        (
+            "runtime_eval_multi_lane_aggr",
+            model_runtime_eval_multi_lane_aggr,
+        ),
+        (
+            "runtime_eval_multi_lane_normal_only",
+            model_runtime_eval_multi_lane_normal_only,
+        ),
+        (
+            "runtime_eval_multi_lane_mixed",
+            model_runtime_eval_multi_lane_mixed,
+        ),
+        ("runtime_eval_env_multi", model_runtime_eval_env_multi),
         (
             "runtime_pre_normal_guarded_lookahead",
             model_runtime_pre_normal_guarded_lookahead,
@@ -3908,6 +4787,12 @@ fn env_usize(name: &str) -> Option<usize> {
     env::var(name)
         .ok()
         .and_then(|value| value.trim().parse::<usize>().ok())
+}
+
+fn env_i32(name: &str) -> Option<i32> {
+    env::var(name)
+        .ok()
+        .and_then(|value| value.trim().parse::<i32>().ok())
 }
 
 fn env_bool(name: &str) -> Option<bool> {

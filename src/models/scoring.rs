@@ -3,6 +3,10 @@ use crate::*;
 #[derive(Debug, Clone, Copy)]
 pub struct ScoringWeights {
     pub use_legacy_formula: bool,
+    pub include_regular_mana_move_windows: bool,
+    pub include_match_point_window: bool,
+    pub next_turn_window_scale_bp: i32,
+    pub double_confirmed_score: bool,
     pub confirmed_score: i32,
     pub fainted_mon: i32,
     pub fainted_drainer: i32,
@@ -37,13 +41,21 @@ pub struct ScoringWeights {
     pub drainer_immediate_threat: i32,
     pub score_race_path_progress: i32,
     pub opponent_score_race_path_progress: i32,
+    pub score_race_multi_path: i32,
+    pub opponent_score_race_multi_path: i32,
     pub immediate_score_window: i32,
     pub opponent_immediate_score_window: i32,
+    pub immediate_score_multi_window: i32,
+    pub opponent_immediate_score_multi_window: i32,
     pub spirit_action_utility: i32,
 }
 
 pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     use_legacy_formula: true,
+    include_regular_mana_move_windows: false,
+    include_match_point_window: false,
+    next_turn_window_scale_bp: 5_000,
+    double_confirmed_score: true,
     confirmed_score: 1000,
     fainted_mon: -500,
     fainted_drainer: -800,
@@ -78,13 +90,21 @@ pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     drainer_immediate_threat: 0,
     score_race_path_progress: 0,
     opponent_score_race_path_progress: 0,
+    score_race_multi_path: 0,
+    opponent_score_race_multi_path: 0,
     immediate_score_window: 0,
     opponent_immediate_score_window: 0,
+    immediate_score_multi_window: 0,
+    opponent_immediate_score_multi_window: 0,
     spirit_action_utility: 0,
 };
 
 pub const BALANCED_DISTANCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     use_legacy_formula: true,
+    include_regular_mana_move_windows: false,
+    include_match_point_window: false,
+    next_turn_window_scale_bp: 5_000,
+    double_confirmed_score: true,
     confirmed_score: 1000,
     fainted_mon: -520,
     fainted_drainer: -900,
@@ -119,8 +139,12 @@ pub const BALANCED_DISTANCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     drainer_immediate_threat: 0,
     score_race_path_progress: 0,
     opponent_score_race_path_progress: 0,
+    score_race_multi_path: 0,
+    opponent_score_race_multi_path: 0,
     immediate_score_window: 0,
     opponent_immediate_score_window: 0,
+    immediate_score_multi_window: 0,
+    opponent_immediate_score_multi_window: 0,
     spirit_action_utility: 0,
 };
 
@@ -313,8 +337,12 @@ pub const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS: ScoringWeights = Scoring
     drainer_immediate_threat: -220,
     score_race_path_progress: 165,
     opponent_score_race_path_progress: 150,
+    score_race_multi_path: 60,
+    opponent_score_race_multi_path: 90,
     immediate_score_window: 240,
     opponent_immediate_score_window: 220,
+    immediate_score_multi_window: 80,
+    opponent_immediate_score_multi_window: 120,
     spirit_action_utility: 56,
     drainer_close_to_mana: 360,
     drainer_holding_mana: 430,
@@ -409,11 +437,27 @@ pub fn evaluate_preferability_with_weights(
     weights: &ScoringWeights,
 ) -> i32 {
     let use_legacy_formula = weights.use_legacy_formula;
+    let include_regular_mana_move_windows =
+        weights.include_regular_mana_move_windows && !use_legacy_formula;
+    let include_match_point_window = weights.include_match_point_window && !use_legacy_formula;
+    let next_turn_window_scale_bp = weights.next_turn_window_scale_bp.clamp(0, 20_000);
     let supermana_base = game.board.supermana_base();
     let remaining_mon_moves_for_active =
         (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
 
     let mons_bases = Config::mons_bases_ref();
+    let my_score_now = if color == Color::White {
+        game.white_score
+    } else {
+        game.black_score
+    };
+    let opponent_score_now = if color == Color::White {
+        game.black_score
+    } else {
+        game.white_score
+    };
+    let offense_scale_bp = 10_000;
+    let defense_scale_bp = 10_000;
 
     let mut score = match color {
         Color::White => {
@@ -426,7 +470,9 @@ pub fn evaluate_preferability_with_weights(
         }
     };
 
-    score *= weights.confirmed_score;
+    if weights.double_confirmed_score {
+        score *= weights.confirmed_score;
+    }
 
     for (&location, item) in &game.board.items {
         match item {
@@ -726,50 +772,152 @@ pub fn evaluate_preferability_with_weights(
         }
     }
 
-    let my_best_carrier_steps =
-        best_score_path_steps_to_any_pool(&game.board, color, !use_legacy_formula);
-    let opponent_best_carrier_steps =
-        best_score_path_steps_to_any_pool(&game.board, color.other(), !use_legacy_formula);
-    if let Some(steps) = my_best_carrier_steps {
-        score += weights.score_race_path_progress / steps.max(1);
+    let my_score_path_window = score_path_window_to_any_pool(
+        &game.board,
+        color,
+        !use_legacy_formula,
+        include_regular_mana_move_windows,
+    );
+    let opponent_score_path_window = score_path_window_to_any_pool(
+        &game.board,
+        color.other(),
+        !use_legacy_formula,
+        include_regular_mana_move_windows,
+    );
+    if let Some(steps) = my_score_path_window.best_steps {
+        score += scale_by_bp(weights.score_race_path_progress / steps.max(1), offense_scale_bp);
+        if !use_legacy_formula {
+            score += scale_by_bp(
+                weights.score_race_multi_path * my_score_path_window.multi_pressure / 100,
+                offense_scale_bp,
+            );
+        }
     }
-    if let Some(steps) = opponent_best_carrier_steps {
-        score -= weights.opponent_score_race_path_progress / steps.max(1);
+    if let Some(steps) = opponent_score_path_window.best_steps {
+        score -= scale_by_bp(
+            weights.opponent_score_race_path_progress / steps.max(1),
+            defense_scale_bp,
+        );
+        if !use_legacy_formula {
+            score -= scale_by_bp(
+                weights.opponent_score_race_multi_path * opponent_score_path_window.multi_pressure
+                    / 100,
+                defense_scale_bp,
+            );
+        }
     }
 
     if game.active_color == color {
-        let immediate_score = best_immediate_score_window(
+        let immediate_window = immediate_score_window_summary(
             &game.board,
             color,
             remaining_mon_moves_for_active,
             !use_legacy_formula,
+            include_regular_mana_move_windows,
+            include_regular_mana_move_windows && game.player_can_move_mana(),
         );
-        score += weights.immediate_score_window * immediate_score;
+        score += scale_by_bp(
+            weights.immediate_score_window * immediate_window.best_score,
+            offense_scale_bp,
+        );
         if !use_legacy_formula {
-            let opponent_next_turn_score = best_immediate_score_window(
+            score += scale_by_bp(
+                weights.immediate_score_multi_window * immediate_window.multi_pressure / 100,
+                offense_scale_bp,
+            );
+
+            let opponent_next_turn_window = immediate_score_window_summary(
                 &game.board,
                 color.other(),
                 Config::MONS_MOVES_PER_TURN,
                 true,
+                include_regular_mana_move_windows,
+                include_regular_mana_move_windows,
             );
-            score -= (weights.opponent_immediate_score_window * opponent_next_turn_score) / 2;
+            score -= scale_by_bp(
+                (weights.opponent_immediate_score_window
+                    * opponent_next_turn_window.best_score
+                    * next_turn_window_scale_bp)
+                    / 10_000,
+                defense_scale_bp,
+            );
+            score -= scale_by_bp(
+                (weights.opponent_immediate_score_multi_window
+                    * opponent_next_turn_window.multi_pressure
+                    * next_turn_window_scale_bp)
+                    / 1_000_000,
+                defense_scale_bp,
+            );
+            if include_match_point_window {
+                if my_score_now + immediate_window.best_score >= Config::TARGET_SCORE {
+                    score += weights.immediate_winning_carrier;
+                }
+                if opponent_score_now + opponent_next_turn_window.best_score >= Config::TARGET_SCORE
+                {
+                    score -= weights.immediate_winning_carrier;
+                }
+            }
         }
     } else {
-        let opponent_immediate_score = best_immediate_score_window(
+        let opponent_immediate_window = immediate_score_window_summary(
             &game.board,
             color.other(),
             remaining_mon_moves_for_active,
             !use_legacy_formula,
+            include_regular_mana_move_windows,
+            include_regular_mana_move_windows && game.player_can_move_mana(),
         );
-        score -= weights.opponent_immediate_score_window * opponent_immediate_score;
+        score -= scale_by_bp(
+            weights.opponent_immediate_score_window * opponent_immediate_window.best_score,
+            defense_scale_bp,
+        );
         if !use_legacy_formula {
-            let my_next_turn_score =
-                best_immediate_score_window(&game.board, color, Config::MONS_MOVES_PER_TURN, true);
-            score += (weights.immediate_score_window * my_next_turn_score) / 2;
+            score -= scale_by_bp(
+                weights.opponent_immediate_score_multi_window
+                    * opponent_immediate_window.multi_pressure
+                    / 100,
+                defense_scale_bp,
+            );
+
+            let my_next_turn_window = immediate_score_window_summary(
+                &game.board,
+                color,
+                Config::MONS_MOVES_PER_TURN,
+                true,
+                include_regular_mana_move_windows,
+                include_regular_mana_move_windows,
+            );
+            score += scale_by_bp(
+                (weights.immediate_score_window
+                    * my_next_turn_window.best_score
+                    * next_turn_window_scale_bp)
+                    / 10_000,
+                offense_scale_bp,
+            );
+            score += scale_by_bp(
+                (weights.immediate_score_multi_window
+                    * my_next_turn_window.multi_pressure
+                    * next_turn_window_scale_bp)
+                    / 1_000_000,
+                offense_scale_bp,
+            );
+            if include_match_point_window {
+                if opponent_score_now + opponent_immediate_window.best_score >= Config::TARGET_SCORE
+                {
+                    score -= weights.immediate_winning_carrier;
+                }
+                if my_score_now + my_next_turn_window.best_score >= Config::TARGET_SCORE {
+                    score += weights.immediate_winning_carrier;
+                }
+            }
         }
     }
 
     score
+}
+
+fn scale_by_bp(value: i32, basis_points: i32) -> i32 {
+    ((value as i64 * basis_points as i64) / 10_000) as i32
 }
 
 fn spirit_on_own_base_penalty(board: &Board, mon: Mon, location: Location, penalty: i32) -> i32 {
@@ -859,101 +1007,189 @@ fn spirit_action_utility(
     utility
 }
 
-fn best_score_path_steps_to_any_pool(
+#[derive(Clone, Copy, Default)]
+struct ScorePathWindow {
+    best_steps: Option<i32>,
+    multi_pressure: i32,
+}
+
+#[derive(Clone, Copy, Default)]
+struct ImmediateScoreWindow {
+    best_score: i32,
+    multi_pressure: i32,
+}
+
+fn score_path_window_to_any_pool(
     board: &Board,
     color: Color,
     include_drainer_pickups: bool,
-) -> Option<i32> {
-    let mut best: Option<i32> = board.items.iter().fold(None, |best, (location, item)| {
-        let Item::MonWithMana { mon, .. } = item else {
-            return best;
-        };
-        if mon.color != color || mon.is_fainted() {
-            return best;
-        }
-        let steps = distance(*location, Destination::AnyClosestPool);
-        match best {
-            Some(current_best) => Some(current_best.min(steps)),
-            None => Some(steps),
-        }
-    });
-
-    if !include_drainer_pickups {
-        return best;
-    }
+    include_regular_mana_move_windows: bool,
+) -> ScorePathWindow {
+    let mut top_steps = [i32::MAX; 3];
 
     for (&location, item) in &board.items {
-        let Some(mon) = item.mon() else {
+        let Item::MonWithMana { mon, .. } = item else {
             continue;
         };
-        if mon.color != color || mon.kind != MonKind::Drainer || mon.is_fainted() {
+        if mon.color != color || mon.is_fainted() {
             continue;
         }
-        if let Some((path_steps, _)) = best_drainer_pickup_path(board, color, location) {
-            best = Some(match best {
-                Some(current_best) => current_best.min(path_steps + 1),
-                None => path_steps + 1,
-            });
+        insert_lowest_step(&mut top_steps, distance(location, Destination::AnyClosestPool));
+    }
+
+    if include_drainer_pickups {
+        for (&location, item) in &board.items {
+            let Some(mon) = item.mon() else {
+                continue;
+            };
+            if mon.color != color || mon.kind != MonKind::Drainer || mon.is_fainted() {
+                continue;
+            }
+            if let Some((path_steps, _)) = best_drainer_pickup_path(board, color, location) {
+                insert_lowest_step(&mut top_steps, path_steps + 1);
+            }
         }
     }
 
-    best
+    if include_regular_mana_move_windows {
+        for (&location, item) in &board.items {
+            let Item::Mana { mana } = item else {
+                continue;
+            };
+            if *mana != Mana::Regular(color) {
+                continue;
+            }
+            insert_lowest_step(&mut top_steps, distance(location, Destination::AnyClosestPool));
+        }
+    }
+
+    let best_steps = (top_steps[0] != i32::MAX).then_some(top_steps[0]);
+    let mut multi_pressure = 0i32;
+    if top_steps[1] != i32::MAX {
+        multi_pressure += 70 / top_steps[1].max(1);
+    }
+    if top_steps[2] != i32::MAX {
+        multi_pressure += 40 / top_steps[2].max(1);
+    }
+
+    ScorePathWindow {
+        best_steps,
+        multi_pressure,
+    }
 }
 
-fn best_immediate_score_window(
+fn immediate_score_window_summary(
     board: &Board,
     color: Color,
     remaining_mon_moves: i32,
     include_drainer_pickups: bool,
-) -> i32 {
+    include_regular_mana_move_windows: bool,
+    allow_mana_move: bool,
+) -> ImmediateScoreWindow {
     if remaining_mon_moves <= 0 {
-        return 0;
+        return ImmediateScoreWindow::default();
     }
 
-    let carrier_immediate = board
-        .items
-        .iter()
-        .filter_map(|(location, item)| {
-            let Item::MonWithMana { mon, mana } = item else {
-                return None;
-            };
-            if mon.color != color || mon.is_fainted() {
-                return None;
-            }
-            let pool_steps = distance(*location, Destination::AnyClosestPool) - 1;
-            if pool_steps <= remaining_mon_moves {
-                Some(mana.score(color))
-            } else {
-                None
-            }
-        })
-        .max()
-        .unwrap_or(0);
-    if !include_drainer_pickups {
-        return carrier_immediate;
-    }
+    let mut top_scores = [0i32; 3];
 
-    let mut best_pickup_score = 0;
     for (&location, item) in &board.items {
-        let Some(mon) = item.mon() else {
+        let Item::MonWithMana { mon, mana } = item else {
             continue;
         };
-        if mon.color != color || mon.kind != MonKind::Drainer || mon.is_fainted() {
+        if mon.color != color || mon.is_fainted() {
             continue;
         }
-        for (&mana_location, mana_item) in &board.items {
-            let Item::Mana { mana } = mana_item else {
+        let pool_steps = distance(location, Destination::AnyClosestPool) - 1;
+        if pool_steps <= remaining_mon_moves {
+            insert_top_score(&mut top_scores, mana.score(color));
+        }
+    }
+
+    if include_drainer_pickups {
+        for (&location, item) in &board.items {
+            let Some(mon) = item.mon() else {
                 continue;
             };
-            let pickup_steps = location.distance(&mana_location) as i32;
-            let score_steps = distance(mana_location, Destination::AnyClosestPool) - 1;
-            if pickup_steps + score_steps <= remaining_mon_moves {
-                best_pickup_score = best_pickup_score.max(mana.score(color));
+            if mon.color != color || mon.kind != MonKind::Drainer || mon.is_fainted() {
+                continue;
+            }
+            let mut best_pickup_score = 0;
+            for (&mana_location, mana_item) in &board.items {
+                let Item::Mana { mana } = mana_item else {
+                    continue;
+                };
+                let pickup_steps = location.distance(&mana_location) as i32;
+                let score_steps = distance(mana_location, Destination::AnyClosestPool) - 1;
+                if pickup_steps + score_steps <= remaining_mon_moves {
+                    best_pickup_score = best_pickup_score.max(mana.score(color));
+                }
+            }
+            if best_pickup_score > 0 {
+                insert_top_score(&mut top_scores, best_pickup_score);
             }
         }
     }
 
-    carrier_immediate.max(best_pickup_score)
+    if include_regular_mana_move_windows && allow_mana_move {
+        let mana_move_immediate = best_regular_mana_move_score_window(board, color);
+        if mana_move_immediate > 0 {
+            insert_top_score(&mut top_scores, mana_move_immediate);
+        }
+    }
+
+    ImmediateScoreWindow {
+        best_score: top_scores[0],
+        multi_pressure: top_scores[1] * 70 + top_scores[2] * 35,
+    }
+}
+
+fn best_regular_mana_move_score_window(board: &Board, color: Color) -> i32 {
+    for (&location, item) in &board.items {
+        let Item::Mana { mana } = item else {
+            continue;
+        };
+        if *mana != Mana::Regular(color) {
+            continue;
+        }
+        if distance(location, Destination::AnyClosestPool) <= 2 {
+            return mana.score(color);
+        }
+    }
+    0
+}
+
+fn insert_lowest_step(top_steps: &mut [i32; 3], step: i32) {
+    if step >= top_steps[2] {
+        return;
+    }
+
+    if step < top_steps[0] {
+        top_steps[2] = top_steps[1];
+        top_steps[1] = top_steps[0];
+        top_steps[0] = step;
+    } else if step < top_steps[1] {
+        top_steps[2] = top_steps[1];
+        top_steps[1] = step;
+    } else {
+        top_steps[2] = step;
+    }
+}
+
+fn insert_top_score(top_scores: &mut [i32; 3], score: i32) {
+    if score <= top_scores[2] {
+        return;
+    }
+
+    if score > top_scores[0] {
+        top_scores[2] = top_scores[1];
+        top_scores[1] = top_scores[0];
+        top_scores[0] = score;
+    } else if score > top_scores[1] {
+        top_scores[2] = top_scores[1];
+        top_scores[1] = score;
+    } else {
+        top_scores[2] = score;
+    }
 }
 
 enum Destination {
