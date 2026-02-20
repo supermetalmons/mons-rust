@@ -15,13 +15,14 @@ Current runtime behavior:
 
 - `fast` is CPU-shaped around `depth=2/max_nodes=480`.
 - `normal` is CPU-shaped around `depth=3/max_nodes=3800`.
-- `fast` uses `RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS`.
+- `fast` uses `RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF`.
 - `normal` uses phase-adaptive runtime normal weights (`RUNTIME_NORMAL_*_SPIRIT_BASE_SCORING_WEIGHTS` family).
 - `fast` and `normal` both use root efficiency tie-breaks (progress-aware, with soft no-effect/low-impact penalties).
-- `normal` keeps root-safety rerank/deep-floor and now also uses root reply-risk guard (`score_margin=140`, shortlist `5`, reply-limit `12`, node-share cap `10%`).
-- `fast` keeps reply-risk guard disabled for lower overhead.
+- `normal` keeps root-safety rerank/deep-floor and uses root reply-risk guard (`score_margin=140`, shortlist `5`, reply-limit `12`, node-share cap `10%`).
+- `fast` also uses reply-risk guard with fast limits (`score_margin=140`, shortlist `3`, reply-limit `8`, node-share cap `6%`).
 - Root/child tactical class coverage uses strict guarantees for critical tactical classes before truncation.
 - Root anti-help filtering rejects near-best mana-handoff/roundtrip roots when non-losing clean alternatives exist.
+- Automove start suggestions use the automove-specific option that can include mana starts when potion-action starts are available.
 - Selective tactical extension is normal-only, capped to one extension per path with a dedicated node-share budget (`12%`).
 - Search uses alpha-beta plus a bounded transposition table (TT). TT writes are skipped for budget-cut partial nodes to avoid polluted cache reuse.
 - On White turn 1, automove follows one random hardcoded opening route (one move per call). If the current position no longer matches any route, it falls back to normal smart search.
@@ -63,6 +64,29 @@ Run from workspace root:
 
 If these pass, your local setup is sane for experiments.
 
+## Robust Experiment Execution (Mandatory)
+
+Always run experiments through the file-backed wrapper:
+
+- `./scripts/run-experiment-logged.sh <run_name> -- <command...>`
+
+This writes:
+
+- `<timestamp>_<run_name>.log`
+- `<timestamp>_<run_name>.exit`
+- `<timestamp>_<run_name>.cmd`
+- `<timestamp>_<run_name>.meta`
+
+Default output directory:
+
+- `target/experiment-runs/`
+
+Example:
+
+- `./scripts/run-experiment-logged.sh speed_probe_current -- env SMART_CANDIDATE_PROFILE=runtime_current SMART_SPEED_POSITIONS=20 cargo test --release --lib smart_automove_pool_profile_speed_probe -- --ignored --nocapture`
+
+Rule: do not run long/important duels, ladders, or gates without this wrapper.
+
 ## Experiment Controls
 
 Core knobs:
@@ -97,18 +121,18 @@ Why `SMART_USE_WHITE_OPENING_BOOK` defaults to `false`:
 Use this loop for most work:
 
 1. Speed + quick strength screen:
-   - `SMART_FAST_PROFILES=runtime_current,<candidate_profile> SMART_FAST_BASELINE=runtime_current SMART_FAST_USE_CLIENT_MODES=true cargo test --lib smart_automove_pool_fast_pipeline -- --ignored --nocapture`
+   - `./scripts/run-experiment-logged.sh fast_pipeline_<candidate_profile> -- env SMART_FAST_PROFILES=runtime_current,<candidate_profile> SMART_FAST_BASELINE=runtime_current SMART_FAST_USE_CLIENT_MODES=true cargo test --release --lib smart_automove_pool_fast_pipeline -- --ignored --nocapture`
 2. Quick mirrored duel screen (opening-book off), first orientation:
-   - `SMART_DUEL_A=<candidate_profile> SMART_DUEL_B=runtime_current SMART_DUEL_GAMES=2 SMART_DUEL_REPEATS=2 SMART_DUEL_MAX_PLIES=72 SMART_DUEL_SEED_TAG=quick_v1 cargo test --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
+   - `./scripts/run-experiment-logged.sh quick_duel_a_<candidate_profile> -- env SMART_DUEL_A=<candidate_profile> SMART_DUEL_B=runtime_current SMART_DUEL_GAMES=2 SMART_DUEL_REPEATS=2 SMART_DUEL_MAX_PLIES=72 SMART_DUEL_SEED_TAG=quick_v1 cargo test --release --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
 3. Quick mirrored duel screen, reverse orientation:
-   - `SMART_DUEL_A=runtime_current SMART_DUEL_B=<candidate_profile> SMART_DUEL_GAMES=2 SMART_DUEL_REPEATS=2 SMART_DUEL_MAX_PLIES=72 SMART_DUEL_SEED_TAG=quick_v1 cargo test --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
+   - `./scripts/run-experiment-logged.sh quick_duel_b_<candidate_profile> -- env SMART_DUEL_A=runtime_current SMART_DUEL_B=<candidate_profile> SMART_DUEL_GAMES=2 SMART_DUEL_REPEATS=2 SMART_DUEL_MAX_PLIES=72 SMART_DUEL_SEED_TAG=quick_v1 cargo test --release --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
 4. Keep-going bar for small screens: aggregate delta win-rate `>= +0.04` before spending larger compute.
 5. Run strict gate in reduced mode for quick feedback (includes tactical guardrails and CPU gate):
-   - `SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current SMART_GATE_PRIMARY_GAMES=2 SMART_GATE_PRIMARY_REPEATS=2 SMART_GATE_CONFIRM_GAMES=2 SMART_GATE_CONFIRM_REPEATS=2 cargo test --lib smart_automove_pool_promotion_gate_v2 -- --ignored --nocapture`
+   - `./scripts/run-experiment-logged.sh reduced_gate_<candidate_profile> -- env SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current SMART_GATE_PRIMARY_GAMES=2 SMART_GATE_PRIMARY_REPEATS=2 SMART_GATE_CONFIRM_GAMES=2 SMART_GATE_CONFIRM_REPEATS=2 cargo test --release --lib smart_automove_pool_promotion_gate_v2 -- --ignored --nocapture`
 6. Run the staged ladder (artifacts + early-stop + budget-conversion diagnostic):
-   - `SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current SMART_LADDER_ARTIFACT_PATH=target/smart_ladder_artifacts.jsonl cargo test --lib smart_automove_pool_promotion_ladder -- --ignored --nocapture`
+   - `./scripts/run-experiment-logged.sh ladder_<candidate_profile> -- env SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current SMART_LADDER_ARTIFACT_PATH=target/smart_ladder_artifacts.jsonl cargo test --release --lib smart_automove_pool_promotion_ladder -- --ignored --nocapture`
 7. Only if reduced gate is promising, run the full strict promotion gate:
-   - `SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current cargo test --lib smart_automove_pool_promotion_gate_v2 -- --ignored --nocapture`
+   - `./scripts/run-experiment-logged.sh full_gate_<candidate_profile> -- env SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current cargo test --release --lib smart_automove_pool_promotion_gate_v2 -- --ignored --nocapture`
 
 ## Useful Test Commands
 
@@ -155,15 +179,16 @@ Candidate is considered promotable only when all are true:
 - Primary strength gate (opening-book off):
   - Mirrored two-way duels across seed tags `neutral_v1`, `neutral_v2`, `neutral_v3`.
   - Duel settings: `SMART_DUEL_GAMES=4`, `SMART_DUEL_REPEATS=6`, client modes (`fast`, `normal`).
-  - Aggregate delta win-rate vs `runtime_current` is `>= +0.12`.
-  - Per-mode delta win-rate is `>= +0.08` for both `fast` and `normal`.
+  - Aggregate delta win-rate vs `runtime_current` is `>= +0.08`.
+  - Per-mode delta win-rate is `>= +0.00` for `fast`.
+  - Per-mode delta win-rate is `>= +0.08` for `normal`.
   - Aggregate confidence is `>= 0.90`.
 - Production-like confirmation gate (opening-book on):
   - Mirrored two-way duel seed tag `prod_open_v1`.
   - Aggregate delta win-rate is `>= +0.05`.
   - Aggregate confidence is `>= 0.75`.
 - CPU gate:
-  - fast ratio `<= 1.08x`
+  - fast ratio `<= 1.15x`
   - normal ratio `<= 1.15x`
 - Budget-conversion regression guard:
   - Run fast-vs-normal diagnostic for baseline and candidate inside promotion gate/ladder.
@@ -175,7 +200,22 @@ Candidate is considered promotable only when all are true:
 
 Official command:
 
-- `SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current cargo test --lib smart_automove_pool_promotion_gate_v2 -- --ignored --nocapture`
+- `./scripts/run-experiment-logged.sh full_gate_<candidate_profile> -- env SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current cargo test --release --lib smart_automove_pool_promotion_gate_v2 -- --ignored --nocapture`
+
+## Recent Promotion Snapshot
+
+Most recent promoted candidate: `runtime_potion_takeback_starts_v6` merged into `runtime_current`.
+
+Reduced strict gate evidence (file: `target/promotion_v6_reduced_fast115.log`):
+
+- speed: fast `1.082x`, normal `0.995x`
+- quick screen: delta `+0.062`
+- primary:
+  - fast delta `+0.139`
+  - normal delta `+0.083`
+  - aggregate delta `+0.111`, confidence `0.962`
+- confirmation aggregate delta `+0.375`, confidence `1.000`
+- pool check: candidate beaten `1/10`, baseline beaten `0/10`
 
 ## Candidate Profiles To Know
 

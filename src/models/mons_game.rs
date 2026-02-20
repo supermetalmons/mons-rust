@@ -1666,6 +1666,76 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
+    fn assert_regular_api_matches_default_start_options(
+        game: &MonsGame,
+        input: Vec<Input>,
+        do_not_apply_events: bool,
+        one_option_enough: bool,
+    ) -> Output {
+        let mut regular = game.clone_for_simulation();
+        let mut none_options = game.clone_for_simulation();
+        let mut default_options = game.clone_for_simulation();
+
+        let regular_output =
+            regular.process_input(input.clone(), do_not_apply_events, one_option_enough);
+        let none_output = none_options.process_input_with_start_options(
+            input.clone(),
+            do_not_apply_events,
+            one_option_enough,
+            None,
+        );
+        let default_output = default_options.process_input_with_start_options(
+            input,
+            do_not_apply_events,
+            one_option_enough,
+            Some(SuggestedStartInputOptions::default()),
+        );
+
+        assert_eq!(regular_output, none_output);
+        assert_eq!(regular_output, default_output);
+        assert_eq!(regular.fen(), none_options.fen());
+        assert_eq!(regular.fen(), default_options.fen());
+        assert_eq!(regular.takeback_fens, none_options.takeback_fens);
+        assert_eq!(regular.takeback_fens, default_options.takeback_fens);
+        assert_eq!(
+            regular.verbose_tracking_entities.len(),
+            none_options.verbose_tracking_entities.len()
+        );
+        assert_eq!(
+            regular.verbose_tracking_entities.len(),
+            default_options.verbose_tracking_entities.len()
+        );
+
+        regular_output
+    }
+
+    fn first_chain_from_state(game: &MonsGame) -> Option<Vec<Input>> {
+        let starts = match assert_regular_api_matches_default_start_options(game, vec![], true, false)
+        {
+            Output::LocationsToStartFrom(starts) => starts,
+            _ => return None,
+        };
+        let start = *starts.first()?;
+        let prefix = vec![Input::Location(start)];
+        let second_options =
+            match assert_regular_api_matches_default_start_options(game, prefix.clone(), true, false)
+            {
+                Output::NextInputOptions(options) => options,
+                _ => return None,
+            };
+        let second = second_options.first()?.input;
+        let pair = vec![Input::Location(start), second];
+        let result =
+            assert_regular_api_matches_default_start_options(game, pair.clone(), true, false);
+        match result {
+            Output::Events(_) => Some(pair),
+            Output::NextInputOptions(third_options) => third_options
+                .first()
+                .map(|third| vec![Input::Location(start), second, third.input]),
+            _ => None,
+        }
+    }
+
     fn potion_action_only_turn_game() -> MonsGame {
         let mut items = HashMap::new();
         items.insert(
@@ -1759,5 +1829,63 @@ mod tests {
         assert!(locations
             .iter()
             .any(|location| matches!(game.board.item(*location), Some(Item::Mana { .. }))));
+    }
+
+    #[test]
+    fn regular_player_api_matches_default_start_options_across_states() {
+        let mut states = vec![MonsGame::new(false), potion_action_only_turn_game()];
+        let mut progressed = MonsGame::new(false);
+
+        for _ in 0..6 {
+            states.push(progressed.clone_for_simulation());
+            let Some(chain) = first_chain_from_state(&progressed) else {
+                break;
+            };
+            let output = progressed.process_input(chain, false, false);
+            if !matches!(output, Output::Events(_)) || progressed.winner_color().is_some() {
+                break;
+            }
+        }
+
+        for game in states {
+            let start_output =
+                assert_regular_api_matches_default_start_options(&game, vec![], true, false);
+            let starts = match start_output {
+                Output::LocationsToStartFrom(starts) => starts,
+                _ => continue,
+            };
+            let Some(start) = starts.first().copied() else {
+                continue;
+            };
+            let first_input = vec![Input::Location(start)];
+            let second_output = assert_regular_api_matches_default_start_options(
+                &game,
+                first_input.clone(),
+                true,
+                false,
+            );
+            let second_options = match second_output {
+                Output::NextInputOptions(options) => options,
+                _ => continue,
+            };
+            let Some(second) = second_options.first().map(|option| option.input) else {
+                continue;
+            };
+            let second_input = vec![Input::Location(start), second];
+            let third_output = assert_regular_api_matches_default_start_options(
+                &game,
+                second_input.clone(),
+                true,
+                false,
+            );
+            if let Output::NextInputOptions(third_options) = third_output {
+                if let Some(third) = third_options.first().map(|option| option.input) {
+                    let full_input = vec![Input::Location(start), second, third];
+                    let _ = assert_regular_api_matches_default_start_options(
+                        &game, full_input, false, false,
+                    );
+                }
+            }
+        }
     }
 }

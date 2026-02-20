@@ -366,6 +366,13 @@ pub const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS: ScoringWeights = Scoring
     ..MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS
 };
 
+pub const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF: ScoringWeights =
+    ScoringWeights {
+        has_consumable: 320,
+        spirit_action_utility: 72,
+        ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+    };
+
 pub const RUNTIME_RUSH_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     drainer_at_risk: -300,
     mana_close_to_same_pool: 600,

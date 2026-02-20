@@ -3,8 +3,9 @@ use crate::models::scoring::{
     evaluate_preferability_with_weights, ScoringWeights, BALANCED_DISTANCE_SCORING_WEIGHTS,
     DEFAULT_SCORING_WEIGHTS, FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS,
     FINISHER_BALANCED_SOFT_SCORING_WEIGHTS, MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
-    RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS, TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS,
-    TACTICAL_BALANCED_SCORING_WEIGHTS,
+    RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
+    RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF,
+    TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS, TACTICAL_BALANCED_SCORING_WEIGHTS,
 };
 use crate::*;
 
@@ -416,19 +417,19 @@ impl SmartSearchConfig {
                 tuned.enable_quiet_reductions = true;
                 tuned.max_extensions_per_path = 1;
                 tuned.selective_extension_node_share_bp = 0;
-                tuned.enable_root_mana_handoff_guard = false;
+                tuned.enable_root_mana_handoff_guard = true;
                 tuned.enable_forced_drainer_attack = true;
                 tuned.enable_forced_drainer_attack_fallback = true;
                 tuned.enable_forced_tactical_prepass = true;
                 tuned.enable_root_drainer_safety_prefilter = true;
                 tuned.enable_root_spirit_development_pref = true;
-                tuned.enable_root_reply_risk_guard = false;
+                tuned.enable_root_reply_risk_guard = true;
                 tuned.root_reply_risk_score_margin = SMART_ROOT_REPLY_RISK_SCORE_MARGIN;
                 tuned.root_reply_risk_shortlist_max = SMART_ROOT_REPLY_RISK_SHORTLIST_FAST;
                 tuned.root_reply_risk_reply_limit = SMART_ROOT_REPLY_RISK_REPLY_LIMIT_FAST;
                 tuned.root_reply_risk_node_share_bp = SMART_ROOT_REPLY_RISK_NODE_SHARE_BP_FAST;
                 tuned.enable_move_class_coverage = true;
-                tuned.enable_child_move_class_coverage = false;
+                tuned.enable_child_move_class_coverage = true;
                 tuned.enable_strict_tactical_class_coverage = true;
                 tuned.enable_strict_anti_help_filter = true;
                 tuned.root_anti_help_score_margin = SMART_ROOT_ANTI_HELP_SCORE_MARGIN;
@@ -437,9 +438,17 @@ impl SmartSearchConfig {
                 tuned.enable_normal_root_safety_rerank = false;
                 tuned.enable_normal_root_safety_deep_floor = false;
                 tuned.enable_interview_hard_spirit_deploy = false;
-                tuned.enable_interview_soft_root_priors = false;
+                tuned.enable_interview_soft_root_priors = true;
                 tuned.enable_interview_deterministic_tiebreak = false;
-                tuned.enable_mana_start_mix_with_potion_actions = false;
+                tuned.enable_mana_start_mix_with_potion_actions = true;
+                tuned.interview_soft_score_margin = 80;
+                tuned.interview_soft_supermana_progress_bonus = 220;
+                tuned.interview_soft_supermana_score_bonus = 360;
+                tuned.interview_soft_opponent_mana_progress_bonus = 180;
+                tuned.interview_soft_opponent_mana_score_bonus = 310;
+                tuned.interview_soft_mana_handoff_penalty = 260;
+                tuned.interview_soft_roundtrip_penalty = 190;
+                tuned.scoring_weights = &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF;
                 tuned
             }
             SmartAutomovePreference::Normal => {
@@ -465,7 +474,7 @@ impl SmartSearchConfig {
                 tuned.max_extensions_per_path = 1;
                 tuned.selective_extension_node_share_bp =
                     SMART_SELECTIVE_EXTENSION_NODE_SHARE_BP_NORMAL;
-                tuned.enable_root_mana_handoff_guard = false;
+                tuned.enable_root_mana_handoff_guard = true;
                 tuned.enable_forced_drainer_attack = true;
                 tuned.enable_forced_drainer_attack_fallback = true;
                 tuned.enable_forced_tactical_prepass = true;
@@ -486,9 +495,16 @@ impl SmartSearchConfig {
                 tuned.enable_normal_root_safety_rerank = true;
                 tuned.enable_normal_root_safety_deep_floor = true;
                 tuned.enable_interview_hard_spirit_deploy = false;
-                tuned.enable_interview_soft_root_priors = false;
+                tuned.enable_interview_soft_root_priors = true;
                 tuned.enable_interview_deterministic_tiebreak = false;
-                tuned.enable_mana_start_mix_with_potion_actions = false;
+                tuned.enable_mana_start_mix_with_potion_actions = true;
+                tuned.interview_soft_score_margin = 100;
+                tuned.interview_soft_supermana_progress_bonus = 180;
+                tuned.interview_soft_supermana_score_bonus = 300;
+                tuned.interview_soft_opponent_mana_progress_bonus = 160;
+                tuned.interview_soft_opponent_mana_score_bonus = 280;
+                tuned.interview_soft_mana_handoff_penalty = 240;
+                tuned.interview_soft_roundtrip_penalty = 170;
                 tuned
             }
         }
@@ -1283,7 +1299,13 @@ impl MonsGameModel {
         game: &MonsGame,
         mut config: SmartSearchConfig,
     ) -> SmartSearchConfig {
-        config.scoring_weights = Self::runtime_phase_adaptive_scoring_weights(game, config.depth);
+        config.scoring_weights = if config.depth < 3
+            && config.enable_mana_start_mix_with_potion_actions
+        {
+            &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF
+        } else {
+            Self::runtime_phase_adaptive_scoring_weights(game, config.depth)
+        };
         config
     }
 
