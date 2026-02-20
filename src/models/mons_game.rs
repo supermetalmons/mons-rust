@@ -26,6 +26,19 @@ pub struct MonsGame {
     pub verbose_tracking_entities: Vec<VerboseTrackingEntity>,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SuggestedStartInputOptions {
+    pub include_mana_starts_with_potion_action: bool,
+}
+
+impl SuggestedStartInputOptions {
+    pub const fn for_automove() -> Self {
+        Self {
+            include_mana_starts_with_potion_action: true,
+        }
+    }
+}
+
 impl MonsGame {
     pub fn new(with_verbose_tracking: bool) -> Self {
         Self {
@@ -105,11 +118,36 @@ impl MonsGame {
         do_not_apply_events: bool,
         one_option_enough: bool,
     ) -> Output {
+        self.process_input_with_start_options(input, do_not_apply_events, one_option_enough, None)
+    }
+
+    pub fn process_input_with_start_options(
+        &mut self,
+        input: Vec<Input>,
+        do_not_apply_events: bool,
+        one_option_enough: bool,
+        suggested_start_options: Option<SuggestedStartInputOptions>,
+    ) -> Output {
+        self.process_input_internal(
+            input,
+            do_not_apply_events,
+            one_option_enough,
+            suggested_start_options.unwrap_or_default(),
+        )
+    }
+
+    fn process_input_internal(
+        &mut self,
+        input: Vec<Input>,
+        do_not_apply_events: bool,
+        one_option_enough: bool,
+        suggested_start_options: SuggestedStartInputOptions,
+    ) -> Output {
         if self.winner_color().is_some() {
             return Output::InvalidInput;
         }
         if input.is_empty() {
-            return self.suggested_input_to_start_with();
+            return self.suggested_input_to_start_with(suggested_start_options);
         }
 
         if input.len() == 1 {
@@ -276,27 +314,43 @@ impl MonsGame {
 
     // MARK: - process step by step
 
-    fn suggested_input_to_start_with(&mut self) -> Output {
+    fn suggested_input_to_start_with(
+        &mut self,
+        suggested_start_options: SuggestedStartInputOptions,
+    ) -> Output {
         let mut suggested_locations: Vec<Location> = Vec::new();
 
         for location in self.board.all_mons_locations(self.active_color) {
-            let output = self.process_input(vec![Input::Location(location.clone())], true, true);
+            let output = self.process_input_internal(
+                vec![Input::Location(location)],
+                true,
+                true,
+                suggested_start_options,
+            );
             if matches!(output, Output::NextInputOptions(options) if !options.is_empty()) {
                 suggested_locations.push(location);
             }
         }
 
-        if (!self.player_can_move_mon() && !self.player_can_use_action()
-            || suggested_locations.is_empty())
-            && self.player_can_move_mana()
-        {
-            for location in self
-                .board
-                .all_free_regular_mana_locations(self.active_color)
-            {
-                let output =
-                    self.process_input(vec![Input::Location(location.clone())], true, true);
-                if matches!(output, Output::NextInputOptions(options) if !options.is_empty()) {
+        let should_add_regular_mana_starts = self.player_can_move_mana()
+            && ((!self.player_can_move_mon() && !self.player_can_use_action())
+                || suggested_locations.is_empty()
+                || (suggested_start_options.include_mana_starts_with_potion_action
+                    && !self.player_can_move_mon()
+                    && self.actions_used_count >= Config::ACTIONS_PER_TURN
+                    && self.player_potions_count() > 0));
+
+        if should_add_regular_mana_starts {
+            for location in self.board.all_free_regular_mana_locations(self.active_color) {
+                let output = self.process_input_internal(
+                    vec![Input::Location(location)],
+                    true,
+                    true,
+                    suggested_start_options,
+                );
+                if matches!(output, Output::NextInputOptions(options) if !options.is_empty())
+                    && !suggested_locations.contains(&location)
+                {
                     suggested_locations.push(location);
                 }
             }
@@ -1604,5 +1658,106 @@ impl MonsGame {
         } else {
             std::collections::HashSet::new()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn potion_action_only_turn_game() -> MonsGame {
+        let mut items = HashMap::new();
+        items.insert(
+            Location::new(9, 6),
+            Item::Mon {
+                mon: Mon::new(MonKind::Spirit, Color::White, 0),
+            },
+        );
+        items.insert(
+            Location::new(7, 6),
+            Item::Mana {
+                mana: Mana::Regular(Color::White),
+            },
+        );
+        items.insert(
+            Location::new(6, 5),
+            Item::Mana {
+                mana: Mana::Regular(Color::White),
+            },
+        );
+        items.insert(
+            Location::new(0, 5),
+            Item::Mon {
+                mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+            },
+        );
+
+        MonsGame {
+            board: Board::new_with_items(items),
+            white_score: 0,
+            black_score: 0,
+            active_color: Color::White,
+            actions_used_count: Config::ACTIONS_PER_TURN,
+            mana_moves_count: 0,
+            mons_moves_count: Config::MONS_MOVES_PER_TURN,
+            white_potions_count: 1,
+            black_potions_count: 0,
+            turn_number: 2,
+            takeback_fens: vec![],
+            is_moves_verified: true,
+            with_verbose_tracking: false,
+            verbose_tracking_entities: vec![],
+        }
+    }
+
+    #[test]
+    fn default_suggestions_keep_player_facing_potion_prompt_priority() {
+        let mut game = potion_action_only_turn_game();
+        let output = game.process_input(vec![], true, false);
+        let locations = match output {
+            Output::LocationsToStartFrom(locations) => locations,
+            _ => panic!("expected locations to start from"),
+        };
+
+        assert!(!locations.is_empty());
+        assert!(locations.iter().any(|location| {
+            matches!(
+                game.board.item(*location),
+                Some(Item::Mon { .. })
+                    | Some(Item::MonWithMana { .. })
+                    | Some(Item::MonWithConsumable { .. })
+            )
+        }));
+        assert!(locations.iter().all(|location| {
+            !matches!(game.board.item(*location), Some(Item::Mana { .. }))
+        }));
+    }
+
+    #[test]
+    fn automove_suggestions_can_include_mana_and_potion_action_starts() {
+        let mut game = potion_action_only_turn_game();
+        let output = game.process_input_with_start_options(
+            vec![],
+            true,
+            false,
+            Some(SuggestedStartInputOptions::for_automove()),
+        );
+        let locations = match output {
+            Output::LocationsToStartFrom(locations) => locations,
+            _ => panic!("expected locations to start from"),
+        };
+
+        assert!(locations.iter().any(|location| {
+            matches!(
+                game.board.item(*location),
+                Some(Item::Mon { .. })
+                    | Some(Item::MonWithMana { .. })
+                    | Some(Item::MonWithConsumable { .. })
+            )
+        }));
+        assert!(locations
+            .iter()
+            .any(|location| matches!(game.board.item(*location), Some(Item::Mana { .. }))));
     }
 }

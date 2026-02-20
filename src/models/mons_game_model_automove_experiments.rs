@@ -928,6 +928,219 @@ fn model_runtime_pre_efficiency_logic(game: &MonsGame, config: SmartSearchConfig
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+fn model_runtime_potion_takeback_starts_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_mana_start_mix_with_potion_actions = true;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF_V2: ScoringWeights =
+    ScoringWeights {
+        has_consumable: 240,
+        spirit_action_utility: 66,
+        ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+    };
+
+const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF_V3: ScoringWeights =
+    ScoringWeights {
+        has_consumable: 320,
+        spirit_action_utility: 72,
+        ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+    };
+
+const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF_V7: ScoringWeights =
+    ScoringWeights {
+        has_consumable: 380,
+        spirit_action_utility: 84,
+        opponent_immediate_score_window: 240,
+        opponent_immediate_score_multi_window: 135,
+        ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+    };
+
+fn model_runtime_potion_takeback_starts_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_mana_start_mix_with_potion_actions = true;
+    if runtime.depth < 3 {
+        runtime.scoring_weights = &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF_V2;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_potion_takeback_starts_v3(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_mana_start_mix_with_potion_actions = true;
+    if runtime.depth < 3 {
+        runtime.scoring_weights = &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF_V3;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_potion_takeback_starts_v4(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_mana_start_mix_with_potion_actions = true;
+    if runtime.depth < 3 {
+        runtime.enable_tt_best_child_ordering = false;
+        runtime.enable_root_aspiration = false;
+        runtime.enable_two_pass_root_allocation = false;
+        runtime.enable_quiet_reductions = false;
+        runtime.enable_selective_extensions = false;
+        runtime.enable_root_mana_handoff_guard = false;
+        runtime.enable_root_reply_risk_guard = false;
+        runtime.enable_move_class_coverage = false;
+        runtime.enable_child_move_class_coverage = false;
+        runtime.scoring_weights = runtime_pre_horizon_phase_weights(game, runtime.depth);
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_potion_takeback_starts_v5(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let runtime = model_runtime_potion_takeback_starts_v5_config(game, config);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_potion_takeback_starts_v6(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let runtime = model_runtime_potion_takeback_starts_v6_config(game, config);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_potion_takeback_starts_v7(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = model_runtime_potion_takeback_starts_v5_config(game, config);
+    if runtime.depth < 3 {
+        runtime.enable_interview_hard_spirit_deploy = true;
+        runtime.enable_interview_deterministic_tiebreak = true;
+        runtime.root_reply_risk_score_margin = 220;
+        runtime.root_reply_risk_shortlist_max = 4;
+        runtime.root_reply_risk_reply_limit = 10;
+        runtime.root_reply_risk_node_share_bp = 700;
+        runtime.scoring_weights = &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF_V7;
+    } else {
+        runtime.enable_interview_soft_root_priors = true;
+        runtime.interview_soft_score_margin = 100;
+        runtime.interview_soft_supermana_progress_bonus = 180;
+        runtime.interview_soft_supermana_score_bonus = 300;
+        runtime.interview_soft_opponent_mana_progress_bonus = 160;
+        runtime.interview_soft_opponent_mana_score_bonus = 280;
+        runtime.interview_soft_mana_handoff_penalty = 240;
+        runtime.interview_soft_roundtrip_penalty = 170;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_potion_takeback_starts_v8(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = model_runtime_potion_takeback_starts_v6_config(game, config);
+    if runtime.depth < 3 {
+        runtime.enable_interview_hard_spirit_deploy = true;
+        runtime.enable_interview_deterministic_tiebreak = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_potion_takeback_starts_v10(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = model_runtime_potion_takeback_starts_v6_config(game, config);
+    if runtime.depth < 3 {
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 180;
+        runtime.root_reply_risk_shortlist_max = 5;
+        runtime.root_reply_risk_reply_limit = 12;
+        runtime.root_reply_risk_node_share_bp = 900;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_potion_takeback_starts_v11(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_mana_start_mix_with_potion_actions = true;
+    runtime.enable_root_mana_handoff_guard = true;
+
+    if runtime.depth < 3 {
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.enable_child_move_class_coverage = true;
+        runtime.enable_interview_soft_root_priors = false;
+        runtime.scoring_weights = &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF_V3;
+    } else {
+        runtime.enable_interview_soft_root_priors = true;
+        runtime.interview_soft_score_margin = 100;
+        runtime.interview_soft_supermana_progress_bonus = 180;
+        runtime.interview_soft_supermana_score_bonus = 300;
+        runtime.interview_soft_opponent_mana_progress_bonus = 160;
+        runtime.interview_soft_opponent_mana_score_bonus = 280;
+        runtime.interview_soft_mana_handoff_penalty = 240;
+        runtime.interview_soft_roundtrip_penalty = 170;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_potion_takeback_starts_v5_config(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_mana_start_mix_with_potion_actions = true;
+    runtime.enable_root_mana_handoff_guard = true;
+    if runtime.depth < 3 {
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.enable_child_move_class_coverage = true;
+        runtime.enable_interview_soft_root_priors = true;
+        runtime.interview_soft_score_margin = 80;
+        runtime.interview_soft_supermana_progress_bonus = 220;
+        runtime.interview_soft_supermana_score_bonus = 360;
+        runtime.interview_soft_opponent_mana_progress_bonus = 180;
+        runtime.interview_soft_opponent_mana_score_bonus = 310;
+        runtime.interview_soft_mana_handoff_penalty = 260;
+        runtime.interview_soft_roundtrip_penalty = 190;
+        runtime.scoring_weights = &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF_V3;
+    }
+    runtime
+}
+
+fn model_runtime_potion_takeback_starts_v6_config(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = model_runtime_potion_takeback_starts_v5_config(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_interview_soft_root_priors = true;
+        runtime.interview_soft_score_margin = 100;
+        runtime.interview_soft_supermana_progress_bonus = 180;
+        runtime.interview_soft_supermana_score_bonus = 300;
+        runtime.interview_soft_opponent_mana_progress_bonus = 160;
+        runtime.interview_soft_opponent_mana_score_bonus = 280;
+        runtime.interview_soft_mana_handoff_penalty = 240;
+        runtime.interview_soft_roundtrip_penalty = 170;
+    }
+    runtime
+}
+
 fn model_runtime_pre_root_reply_floor(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Root reply-floor re-rank was removed from runtime search cleanup.
     model_current_best(game, config)
@@ -2930,8 +3143,13 @@ fn candidate_model_runtime_root_safety_tiebreak(
     let mut best_floor = i32::MIN;
     let mut best_root_score = i32::MIN;
     for (index, root) in shortlist.iter().enumerate() {
-        let reply_floor =
-            root_reply_floor(&root.game, perspective, config.scoring_weights, reply_limit);
+        let reply_floor = root_reply_floor(
+            &root.game,
+            perspective,
+            config.scoring_weights,
+            reply_limit,
+            MonsGameModel::automove_start_input_options(config),
+        );
         if reply_floor > best_floor || (reply_floor == best_floor && root.score > best_root_score) {
             best_floor = reply_floor;
             best_root_score = root.score;
@@ -3010,6 +3228,7 @@ fn root_reply_floor(
     perspective: Color,
     scoring_weights: &'static ScoringWeights,
     reply_limit: usize,
+    start_options: SuggestedStartInputOptions,
 ) -> i32 {
     if let Some(winner) = state_after_move.winner_color() {
         return if winner == perspective {
@@ -3023,7 +3242,11 @@ fn root_reply_floor(
         return evaluate_preferability_with_weights(state_after_move, perspective, scoring_weights);
     }
 
-    let replies = MonsGameModel::enumerate_legal_inputs(state_after_move, reply_limit.max(1));
+    let replies = MonsGameModel::enumerate_legal_inputs(
+        state_after_move,
+        reply_limit.max(1),
+        start_options,
+    );
     if replies.is_empty() {
         return SMART_TERMINAL_SCORE / 4;
     }
@@ -3123,7 +3346,11 @@ fn reply_guard_lite_floor(
     }
 
     let reply_limit = config.node_enum_limit.clamp(6, 14);
-    let replies = MonsGameModel::enumerate_legal_inputs(state_after_move, reply_limit);
+    let replies = MonsGameModel::enumerate_legal_inputs(
+        state_after_move,
+        reply_limit,
+        MonsGameModel::automove_start_input_options(config),
+    );
     if replies.is_empty() {
         return SMART_TERMINAL_SCORE / 4;
     }
@@ -3816,8 +4043,13 @@ fn candidate_model_runtime_normal_x15_guarded_root(
             break;
         }
 
-        let reply_floor =
-            root_reply_floor(&root.game, perspective, tuned.scoring_weights, reply_limit);
+        let reply_floor = root_reply_floor(
+            &root.game,
+            perspective,
+            tuned.scoring_weights,
+            reply_limit,
+            MonsGameModel::automove_start_input_options(tuned),
+        );
         let drainer_bonus = drainer_priority_delta(&root.game, perspective) / 5;
         let combined_score = root.score as i64 + (reply_floor as i64) * 2 + drainer_bonus as i64;
 
@@ -3858,8 +4090,13 @@ fn candidate_model_runtime_normal_x15_guarded_root_v2(
             break;
         }
 
-        let reply_floor =
-            root_reply_floor(&root.game, perspective, tuned.scoring_weights, reply_limit);
+        let reply_floor = root_reply_floor(
+            &root.game,
+            perspective,
+            tuned.scoring_weights,
+            reply_limit,
+            MonsGameModel::automove_start_input_options(tuned),
+        );
         let combined_score = root.score as i64 + (reply_floor as i64) * 4;
         if combined_score > best_combined_score {
             best_combined_score = combined_score;
@@ -4259,7 +4496,11 @@ fn turn_reply_guard_floor(
     } else {
         config.node_enum_limit.clamp(6, 18)
     };
-    let replies = MonsGameModel::enumerate_legal_inputs(&probe, reply_limit);
+    let replies = MonsGameModel::enumerate_legal_inputs(
+        &probe,
+        reply_limit,
+        MonsGameModel::automove_start_input_options(config),
+    );
     if replies.is_empty() {
         return SMART_TERMINAL_SCORE / 4;
     }
@@ -4305,6 +4546,36 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     match candidate_profile().as_str() {
         "base" => candidate_model_base(game, config),
         "runtime_current" => candidate_model_base(game, config),
+        "runtime_potion_takeback_starts_v1" => {
+            model_runtime_potion_takeback_starts_v1(game, config)
+        }
+        "runtime_potion_takeback_starts_v2" => {
+            model_runtime_potion_takeback_starts_v2(game, config)
+        }
+        "runtime_potion_takeback_starts_v3" => {
+            model_runtime_potion_takeback_starts_v3(game, config)
+        }
+        "runtime_potion_takeback_starts_v4" => {
+            model_runtime_potion_takeback_starts_v4(game, config)
+        }
+        "runtime_potion_takeback_starts_v5" => {
+            model_runtime_potion_takeback_starts_v5(game, config)
+        }
+        "runtime_potion_takeback_starts_v6" => {
+            model_runtime_potion_takeback_starts_v6(game, config)
+        }
+        "runtime_potion_takeback_starts_v7" => {
+            model_runtime_potion_takeback_starts_v7(game, config)
+        }
+        "runtime_potion_takeback_starts_v8" => {
+            model_runtime_potion_takeback_starts_v8(game, config)
+        }
+        "runtime_potion_takeback_starts_v10" => {
+            model_runtime_potion_takeback_starts_v10(game, config)
+        }
+        "runtime_potion_takeback_starts_v11" => {
+            model_runtime_potion_takeback_starts_v11(game, config)
+        }
         "runtime_pre_efficiency_logic" => model_runtime_pre_efficiency_logic(game, config),
         "runtime_pre_root_reply_floor" => model_runtime_pre_root_reply_floor(game, config),
         "runtime_pre_event_ordering" => model_runtime_pre_event_ordering(game, config),
@@ -4581,6 +4852,46 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
     vec![
         ("base", candidate_model_base),
         ("runtime_current", candidate_model_base),
+        (
+            "runtime_potion_takeback_starts_v1",
+            model_runtime_potion_takeback_starts_v1,
+        ),
+        (
+            "runtime_potion_takeback_starts_v2",
+            model_runtime_potion_takeback_starts_v2,
+        ),
+        (
+            "runtime_potion_takeback_starts_v3",
+            model_runtime_potion_takeback_starts_v3,
+        ),
+        (
+            "runtime_potion_takeback_starts_v4",
+            model_runtime_potion_takeback_starts_v4,
+        ),
+        (
+            "runtime_potion_takeback_starts_v5",
+            model_runtime_potion_takeback_starts_v5,
+        ),
+        (
+            "runtime_potion_takeback_starts_v6",
+            model_runtime_potion_takeback_starts_v6,
+        ),
+        (
+            "runtime_potion_takeback_starts_v7",
+            model_runtime_potion_takeback_starts_v7,
+        ),
+        (
+            "runtime_potion_takeback_starts_v8",
+            model_runtime_potion_takeback_starts_v8,
+        ),
+        (
+            "runtime_potion_takeback_starts_v10",
+            model_runtime_potion_takeback_starts_v10,
+        ),
+        (
+            "runtime_potion_takeback_starts_v11",
+            model_runtime_potion_takeback_starts_v11,
+        ),
         (
             "runtime_pre_efficiency_logic",
             model_runtime_pre_efficiency_logic,
@@ -5672,7 +5983,11 @@ fn generate_opening_fens_cached(seed: u64, count: usize) -> Arc<Vec<String>> {
 }
 
 fn apply_seeded_random_move(game: &mut MonsGame, rng: &mut StdRng) -> bool {
-    let legal_inputs = MonsGameModel::enumerate_legal_inputs(game, 256);
+    let legal_inputs = MonsGameModel::enumerate_legal_inputs(
+        game,
+        256,
+        SuggestedStartInputOptions::default(),
+    );
     if legal_inputs.is_empty() {
         return false;
     }
@@ -7617,6 +7932,7 @@ fn assert_tactical_guardrails(
             &after_bomb_probe,
             Color::White,
             SMART_FORCED_DRAINER_ATTACK_FALLBACK_ENUM_LIMIT_FAST,
+            SuggestedStartInputOptions::for_automove(),
             &mut bomb_continuation_budget,
             &mut std::collections::HashSet::new(),
         );
@@ -7645,7 +7961,11 @@ fn assert_tactical_guardrails(
             3,
         );
         probe.white_score = Config::TARGET_SCORE - 2;
-        let has_immediate_win = MonsGameModel::enumerate_legal_inputs(&probe, 96)
+        let has_immediate_win = MonsGameModel::enumerate_legal_inputs(
+            &probe,
+            96,
+            SuggestedStartInputOptions::for_automove(),
+        )
             .into_iter()
             .any(|inputs| {
                 let mut after = probe.clone_for_simulation();
@@ -8368,6 +8688,14 @@ fn smart_automove_tactical_suite() {
     let runtime_selector = profile_selector_from_name("runtime_current")
         .expect("runtime_current selector should exist");
     assert_tactical_guardrails(runtime_selector, "runtime_current");
+}
+
+#[test]
+#[ignore = "tactical guardrail suite for selected candidate profile"]
+fn smart_automove_tactical_candidate_profile() {
+    let profile_name = candidate_profile().as_str().to_string();
+    assert_tactical_guardrails(CANDIDATE_MODEL.select_inputs, profile_name.as_str());
+    assert_interview_policy_regressions(CANDIDATE_MODEL.select_inputs, profile_name.as_str());
 }
 
 #[test]

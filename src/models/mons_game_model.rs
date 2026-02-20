@@ -133,6 +133,12 @@ const SMART_INTERVIEW_SOFT_MANA_HANDOFF_PENALTY: i32 = 220;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_INTERVIEW_SOFT_ROUNDTRIP_PENALTY: i32 = 140;
 #[cfg(any(target_arch = "wasm32", test))]
+const SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_FAST: i32 = 340;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_NORMAL: i32 = 260;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_ROOT_POTION_HOLD_SCORE_MARGIN: i32 = 180;
+#[cfg(any(target_arch = "wasm32", test))]
 const SMART_SPIRIT_DEPLOY_EFFICIENCY_BONUS: i32 = 90;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_SPIRIT_ACTION_TARGET_DELTA_WEIGHT: i32 = 22;
@@ -380,6 +386,7 @@ struct SmartSearchConfig {
     enable_interview_hard_spirit_deploy: bool,
     enable_interview_soft_root_priors: bool,
     enable_interview_deterministic_tiebreak: bool,
+    enable_mana_start_mix_with_potion_actions: bool,
     interview_soft_score_margin: i32,
     interview_soft_supermana_progress_bonus: i32,
     interview_soft_supermana_score_bonus: i32,
@@ -432,6 +439,7 @@ impl SmartSearchConfig {
                 tuned.enable_interview_hard_spirit_deploy = false;
                 tuned.enable_interview_soft_root_priors = false;
                 tuned.enable_interview_deterministic_tiebreak = false;
+                tuned.enable_mana_start_mix_with_potion_actions = false;
                 tuned
             }
             SmartAutomovePreference::Normal => {
@@ -480,6 +488,7 @@ impl SmartSearchConfig {
                 tuned.enable_interview_hard_spirit_deploy = false;
                 tuned.enable_interview_soft_root_priors = false;
                 tuned.enable_interview_deterministic_tiebreak = false;
+                tuned.enable_mana_start_mix_with_potion_actions = false;
                 tuned
             }
         }
@@ -541,6 +550,7 @@ impl SmartSearchConfig {
             enable_interview_hard_spirit_deploy: false,
             enable_interview_soft_root_priors: false,
             enable_interview_deterministic_tiebreak: false,
+            enable_mana_start_mix_with_potion_actions: false,
             interview_soft_score_margin: SMART_INTERVIEW_SOFT_PRIORITY_SCORE_MARGIN,
             interview_soft_supermana_progress_bonus: SMART_INTERVIEW_SOFT_SUPERMANA_PROGRESS_BONUS,
             interview_soft_supermana_score_bonus: SMART_INTERVIEW_SOFT_SUPERMANA_SCORE_BONUS,
@@ -627,6 +637,7 @@ struct RootEvaluation {
     mana_handoff_to_opponent: bool,
     has_roundtrip: bool,
     interview_soft_priority: i32,
+    classes: MoveClassFlags,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -977,8 +988,10 @@ impl MonsGameModel {
             }
         }
 
+        let automove_start_options = Some(SuggestedStartInputOptions::for_automove());
         let mut inputs = Vec::new();
-        let mut output = game.process_input(vec![], false, false);
+        let mut output =
+            game.process_input_with_start_options(vec![], false, false, automove_start_options);
 
         loop {
             match output {
@@ -992,7 +1005,12 @@ impl MonsGameModel {
                     let random_index = random_index(locations.len());
                     let location = locations[random_index];
                     inputs.push(Input::Location(location));
-                    output = game.process_input(inputs.clone(), false, false);
+                    output = game.process_input_with_start_options(
+                        inputs.clone(),
+                        false,
+                        false,
+                        automove_start_options,
+                    );
                 }
                 Output::NextInputOptions(options) => {
                     if options.is_empty() {
@@ -1001,7 +1019,12 @@ impl MonsGameModel {
                     let random_index = random_index(options.len());
                     let next_input = options[random_index].input.clone();
                     inputs.push(next_input);
-                    output = game.process_input(inputs.clone(), false, false);
+                    output = game.process_input_with_start_options(
+                        inputs.clone(),
+                        false,
+                        false,
+                        automove_start_options,
+                    );
                 }
                 Output::Events(events) => {
                     let input_fen = Input::fen_from_array(&inputs);
@@ -1343,6 +1366,27 @@ impl MonsGameModel {
         let opponent_mana_progress = scores_opponent_mana_this_turn
             || Self::events_pickup_opponent_mana(&events, perspective)
             || Self::events_move_opponent_mana_toward_color(&events, perspective);
+        let score_before = Self::score_for_color(game, perspective);
+        let score_after = Self::score_for_color(&simulated_game, perspective);
+        let scored_two_or_more = score_after >= score_before.saturating_add(2);
+        let spent_potion = Self::events_use_potion(&events);
+        let potion_compensated = wins_immediately
+            || attacks_opponent_drainer
+            || scored_two_or_more
+            || scores_supermana_this_turn
+            || scores_opponent_mana_this_turn;
+        let potion_spend_penalty = if config.enable_mana_start_mix_with_potion_actions
+            && spent_potion
+            && !potion_compensated
+        {
+            if config.depth >= 3 {
+                SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_NORMAL
+            } else {
+                SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_FAST
+            }
+        } else {
+            0
+        };
         let root_compensates_handoff = wins_immediately
             || attacks_opponent_drainer
             || scores_supermana_this_turn
@@ -1384,7 +1428,8 @@ impl MonsGameModel {
                 interview_soft_priority
             } else {
                 0
-            });
+            })
+            .saturating_sub(potion_spend_penalty);
 
         Some(ScoredRootMove {
             inputs: inputs.to_vec(),
@@ -1489,6 +1534,12 @@ impl MonsGameModel {
                 } if *owner == perspective.other()
             )
         })
+    }
+
+    fn events_use_potion(events: &[Event]) -> bool {
+        events
+            .iter()
+            .any(|event| matches!(event, Event::UsePotion { .. }))
     }
 
     fn events_pickup_supermana(events: &[Event]) -> bool {
@@ -1605,6 +1656,13 @@ impl MonsGameModel {
             SMART_FORCED_DRAINER_ATTACK_FALLBACK_ENUM_LIMIT_NORMAL
         } else {
             SMART_FORCED_DRAINER_ATTACK_FALLBACK_ENUM_LIMIT_FAST
+        }
+    }
+
+    fn automove_start_input_options(config: SmartSearchConfig) -> SuggestedStartInputOptions {
+        SuggestedStartInputOptions {
+            include_mana_starts_with_potion_action:
+                config.enable_mana_start_mix_with_potion_actions,
         }
     }
 
@@ -1730,7 +1788,8 @@ impl MonsGameModel {
         let mut attack_inputs = Vec::new();
         let mut continuation_budget = Self::forced_drainer_attack_fallback_node_budget(config);
         let enum_limit = Self::forced_drainer_attack_fallback_enum_limit(config);
-        let mut root_inputs = Self::enumerate_legal_inputs(game, usize::MAX);
+        let start_options = Self::automove_start_input_options(config);
+        let mut root_inputs = Self::enumerate_legal_inputs(game, usize::MAX, start_options);
         if root_inputs.len() > enum_limit {
             root_inputs.truncate(enum_limit);
         }
@@ -1754,6 +1813,7 @@ impl MonsGameModel {
                 &after,
                 perspective,
                 enum_limit,
+                start_options,
                 &mut continuation_budget,
                 &mut memo_true,
             ) {
@@ -1768,6 +1828,7 @@ impl MonsGameModel {
         game: &MonsGame,
         perspective: Color,
         enum_limit: usize,
+        start_options: SuggestedStartInputOptions,
         continuation_budget: &mut usize,
         memo_true: &mut std::collections::HashSet<u64>,
     ) -> bool {
@@ -1779,7 +1840,7 @@ impl MonsGameModel {
             return true;
         }
 
-        let mut legal_inputs = Self::enumerate_legal_inputs(game, usize::MAX);
+        let mut legal_inputs = Self::enumerate_legal_inputs(game, usize::MAX, start_options);
         if legal_inputs.len() > enum_limit {
             legal_inputs.truncate(enum_limit);
         }
@@ -1801,6 +1862,7 @@ impl MonsGameModel {
                     &after,
                     perspective,
                     enum_limit,
+                    start_options,
                     continuation_budget,
                     memo_true,
                 )
@@ -1825,7 +1887,8 @@ impl MonsGameModel {
             false
         };
 
-        for inputs in Self::enumerate_legal_inputs(game, config.root_enum_limit) {
+        let start_options = Self::automove_start_input_options(config);
+        for inputs in Self::enumerate_legal_inputs(game, config.root_enum_limit, start_options) {
             if let Some(candidate) = Self::build_scored_root_move(
                 game,
                 perspective,
@@ -2305,6 +2368,7 @@ impl MonsGameModel {
                 mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
                 has_roundtrip: candidate.has_roundtrip,
                 interview_soft_priority: candidate.interview_soft_priority,
+                classes: candidate.classes,
             });
 
             if candidate_score > alpha {
@@ -2785,7 +2849,8 @@ impl MonsGameModel {
         } else {
             false
         };
-        for inputs in Self::enumerate_legal_inputs(game, config.node_enum_limit) {
+        let start_options = Self::automove_start_input_options(config);
+        for inputs in Self::enumerate_legal_inputs(game, config.node_enum_limit, start_options) {
             let needs_events = config.enable_event_ordering_bonus
                 || config.enable_child_move_class_coverage
                 || config.enable_selective_extensions;
@@ -2900,7 +2965,11 @@ impl MonsGameModel {
         scored_states.into_iter().map(|(_, state)| state).collect()
     }
 
-    fn enumerate_legal_inputs(game: &MonsGame, max_moves: usize) -> Vec<Vec<Input>> {
+    fn enumerate_legal_inputs(
+        game: &MonsGame,
+        max_moves: usize,
+        start_options: SuggestedStartInputOptions,
+    ) -> Vec<Vec<Input>> {
         let mut all_inputs = Vec::new();
         let mut partial_inputs = Vec::new();
         let mut simulated_game = game.clone_for_simulation();
@@ -2909,6 +2978,7 @@ impl MonsGameModel {
             &mut partial_inputs,
             &mut all_inputs,
             max_moves,
+            start_options,
         );
         all_inputs.sort_by(|a, b| Input::fen_from_array(a).cmp(&Input::fen_from_array(b)));
         all_inputs
@@ -2919,12 +2989,18 @@ impl MonsGameModel {
         partial_inputs: &mut Vec<Input>,
         all_inputs: &mut Vec<Vec<Input>>,
         max_moves: usize,
+        start_options: SuggestedStartInputOptions,
     ) {
         if all_inputs.len() >= max_moves || partial_inputs.len() > SMART_MAX_INPUT_CHAIN {
             return;
         }
 
-        match game.process_input(partial_inputs.clone(), true, false) {
+        match game.process_input_with_start_options(
+            partial_inputs.clone(),
+            true,
+            false,
+            Some(start_options),
+        ) {
             Output::InvalidInput => {}
             Output::Events(_) => all_inputs.push(partial_inputs.clone()),
             Output::LocationsToStartFrom(locations) => {
@@ -2933,7 +3009,13 @@ impl MonsGameModel {
                         break;
                     }
                     partial_inputs.push(Input::Location(location));
-                    Self::collect_legal_inputs(game, partial_inputs, all_inputs, max_moves);
+                    Self::collect_legal_inputs(
+                        game,
+                        partial_inputs,
+                        all_inputs,
+                        max_moves,
+                        start_options,
+                    );
                     partial_inputs.pop();
                 }
             }
@@ -2943,7 +3025,13 @@ impl MonsGameModel {
                         break;
                     }
                     partial_inputs.push(option.input);
-                    Self::collect_legal_inputs(game, partial_inputs, all_inputs, max_moves);
+                    Self::collect_legal_inputs(
+                        game,
+                        partial_inputs,
+                        all_inputs,
+                        max_moves,
+                        start_options,
+                    );
                     partial_inputs.pop();
                 }
             }
@@ -3418,6 +3506,7 @@ impl MonsGameModel {
             mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
             has_roundtrip: candidate.has_roundtrip,
             interview_soft_priority: candidate.interview_soft_priority,
+            classes: candidate.classes,
         });
 
         if candidate_score > state.alpha {
@@ -3576,6 +3665,38 @@ impl MonsGameModel {
         }
     }
 
+    fn potions_for_color(game: &MonsGame, color: Color) -> i32 {
+        if color == Color::White {
+            game.white_potions_count
+        } else {
+            game.black_potions_count
+        }
+    }
+
+    fn should_prefer_potion_takeback_lines(game: &MonsGame, perspective: Color) -> bool {
+        game.active_color == perspective
+            && !game.is_first_turn()
+            && !game.player_can_move_mon()
+            && game.actions_used_count >= Config::ACTIONS_PER_TURN
+            && game.player_can_move_mana()
+            && Self::potions_for_color(game, perspective) > 0
+    }
+
+    fn root_spends_potion(game_before: &MonsGame, root: &RootEvaluation, perspective: Color) -> bool {
+        Self::potions_for_color(&root.game, perspective) < Self::potions_for_color(game_before, perspective)
+    }
+
+    fn root_potion_spend_compensated(
+        game_before: &MonsGame,
+        root: &RootEvaluation,
+        perspective: Color,
+    ) -> bool {
+        root.wins_immediately
+            || root.attacks_opponent_drainer
+            || Self::score_for_color(&root.game, perspective)
+                >= Self::score_for_color(game_before, perspective).saturating_add(2)
+    }
+
     fn root_allows_immediate_opponent_win_quick(
         state_after_move: &MonsGame,
         perspective: Color,
@@ -3700,6 +3821,64 @@ impl MonsGameModel {
                 .collect::<Vec<_>>();
             if !spirit_indices.is_empty() {
                 candidate_indices = spirit_indices;
+            }
+        }
+
+        if config.enable_mana_start_mix_with_potion_actions
+            && !forced_attack_applied
+            && candidate_indices.len() > 1
+            && Self::should_prefer_potion_takeback_lines(game, perspective)
+        {
+            let best_score = candidate_indices
+                .iter()
+                .map(|index| scored_roots[*index].score)
+                .max()
+                .unwrap_or(i32::MIN);
+            let margin = SMART_ROOT_POTION_HOLD_SCORE_MARGIN.max(0);
+            let near_best = candidate_indices
+                .iter()
+                .copied()
+                .filter(|index| scored_roots[*index].score + margin >= best_score)
+                .collect::<Vec<_>>();
+
+            if near_best.len() > 1 {
+                let mut quick_loss_cache = std::collections::HashMap::<usize, bool>::new();
+                let has_non_potion_non_losing_alternative = near_best.iter().copied().any(|index| {
+                    let root = &scored_roots[index];
+                    if Self::root_spends_potion(game, root, perspective) {
+                        return false;
+                    }
+                    let allows_loss = *quick_loss_cache.entry(index).or_insert_with(|| {
+                        Self::root_allows_immediate_opponent_win_quick(
+                            &root.game,
+                            perspective,
+                            config,
+                        )
+                    });
+                    !allows_loss
+                });
+
+                if has_non_potion_non_losing_alternative {
+                    let near_best_set = near_best
+                        .iter()
+                        .copied()
+                        .collect::<std::collections::HashSet<_>>();
+                    let strict_indices = candidate_indices
+                        .iter()
+                        .copied()
+                        .filter(|index| {
+                            let root = &scored_roots[*index];
+                            if root.wins_immediately || !near_best_set.contains(index) {
+                                return true;
+                            }
+                            !Self::root_spends_potion(game, root, perspective)
+                                || Self::root_potion_spend_compensated(game, root, perspective)
+                        })
+                        .collect::<Vec<_>>();
+                    if !strict_indices.is_empty() {
+                        candidate_indices = strict_indices;
+                    }
+                }
             }
         }
 
@@ -3997,7 +4176,11 @@ impl MonsGameModel {
             };
         }
 
-        let replies = Self::enumerate_legal_inputs(state_after_move, reply_limit.max(1));
+        let replies = Self::enumerate_legal_inputs(
+            state_after_move,
+            reply_limit.max(1),
+            Self::automove_start_input_options(config),
+        );
         if replies.is_empty() {
             return RootReplyRiskSnapshot {
                 allows_immediate_opponent_win: false,
@@ -4088,6 +4271,23 @@ impl MonsGameModel {
         {
             return !candidate_snapshot.opponent_reaches_match_point;
         }
+        if config.enable_mana_start_mix_with_potion_actions && config.enable_move_class_coverage {
+            let candidate_progress_adv =
+                candidate.classes.carrier_progress && !incumbent.classes.carrier_progress;
+            let incumbent_progress_adv =
+                incumbent.classes.carrier_progress && !candidate.classes.carrier_progress;
+            if candidate_progress_adv || incumbent_progress_adv {
+                let no_tactical_priority = !candidate.classes.is_tactical_priority()
+                    && !incumbent.classes.is_tactical_priority();
+                let tight_reply_floor = (candidate_snapshot.worst_reply_score
+                    - incumbent_snapshot.worst_reply_score)
+                    .abs()
+                    <= 80;
+                if no_tactical_priority && tight_reply_floor {
+                    return candidate_progress_adv;
+                }
+            }
+        }
         if config.enable_interview_deterministic_tiebreak
             && candidate.spirit_development != incumbent.spirit_development
         {
@@ -4177,6 +4377,7 @@ impl MonsGameModel {
         }
 
         let shortlist_indices = shortlist;
+        let start_options = Self::automove_start_input_options(config);
 
         let mut best_index = best_scored_index;
         let mut best_snapshot = Self::normal_root_safety_snapshot(
@@ -4185,6 +4386,7 @@ impl MonsGameModel {
             my_score_before,
             config.scoring_weights,
             reply_limit,
+            start_options,
         );
 
         for index in shortlist_indices.iter().copied().skip(1) {
@@ -4195,6 +4397,7 @@ impl MonsGameModel {
                 my_score_before,
                 config.scoring_weights,
                 reply_limit,
+                start_options,
             );
             if Self::is_better_normal_root_safety_candidate(
                 snapshot,
@@ -4230,6 +4433,7 @@ impl MonsGameModel {
         my_score_before: i32,
         scoring_weights: &'static ScoringWeights,
         reply_limit: usize,
+        start_options: SuggestedStartInputOptions,
     ) -> NormalRootSafetySnapshot {
         let my_score_after_move = if perspective == Color::White {
             state_after_move.white_score
@@ -4277,7 +4481,11 @@ impl MonsGameModel {
         } else {
             state_after_move.white_score
         };
-        let replies = Self::enumerate_legal_inputs(state_after_move, reply_limit.max(1));
+        let replies = Self::enumerate_legal_inputs(
+            state_after_move,
+            reply_limit.max(1),
+            start_options,
+        );
         if replies.is_empty() {
             return NormalRootSafetySnapshot {
                 allows_immediate_opponent_win: false,
@@ -4443,7 +4651,11 @@ impl MonsGameModel {
         probe.root_enum_limit = (probe.root_branch_limit * 3).clamp(probe.root_branch_limit, 48);
         probe.node_enum_limit = (probe.node_branch_limit * 3).clamp(probe.node_branch_limit, 36);
 
-        let replies = Self::enumerate_legal_inputs(state_after_move, reply_limit.max(1));
+        let replies = Self::enumerate_legal_inputs(
+            state_after_move,
+            reply_limit.max(1),
+            Self::automove_start_input_options(config),
+        );
         if replies.is_empty() {
             return SMART_TERMINAL_SCORE / 4;
         }
@@ -4665,6 +4877,7 @@ mod opening_book_tests {
                 &after,
                 Color::White,
                 SMART_FORCED_DRAINER_ATTACK_FALLBACK_ENUM_LIMIT_FAST,
+                SuggestedStartInputOptions::for_automove(),
                 &mut continuation_budget,
                 &mut std::collections::HashSet::new(),
             );
