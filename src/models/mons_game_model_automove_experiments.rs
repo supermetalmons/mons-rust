@@ -1110,6 +1110,249 @@ fn model_runtime_potion_takeback_starts_v11(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V1: ScoringWeights =
+    ScoringWeights {
+        angel_guarding_drainer: 150,
+        drainer_close_to_mana: 330,
+        drainer_best_mana_path: 34,
+        spirit_action_utility: 74,
+        ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V1: ScoringWeights =
+    ScoringWeights {
+        angel_guarding_drainer: 230,
+        drainer_close_to_mana: 350,
+        drainer_best_mana_path: 56,
+        spirit_action_utility: 78,
+        ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V1:
+    ScoringWeights = ScoringWeights {
+    angel_guarding_drainer: 240,
+    drainer_close_to_mana: 370,
+    drainer_best_mana_path: 70,
+    spirit_action_utility: 82,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V1:
+    ScoringWeights = ScoringWeights {
+    angel_guarding_drainer: 220,
+    drainer_close_to_mana: 345,
+    drainer_best_mana_path: 48,
+    spirit_action_utility: 74,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V1:
+    ScoringWeights = ScoringWeights {
+    angel_guarding_drainer: 235,
+    drainer_close_to_mana: 360,
+    drainer_best_mana_path: 60,
+    spirit_action_utility: 76,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+fn runtime_phase_feedback_cleanup_v1_weights(game: &MonsGame) -> &'static ScoringWeights {
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V1
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V1
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V1
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V1
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V1
+    }
+}
+
+fn model_runtime_feedback_cleanup_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+
+    if runtime.depth < 3 {
+        runtime.enable_potion_progress_compensation = true;
+        runtime.potion_spend_penalty_fast = 250;
+    } else {
+        runtime.enable_potion_progress_compensation = true;
+        runtime.prefer_clean_reply_risk_roots = true;
+        runtime.enable_root_drainer_safety_prefilter = false;
+        runtime.max_visited_nodes = (runtime.max_visited_nodes * 108 / 100)
+            .clamp(runtime.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
+        runtime.root_branch_limit = (runtime.root_branch_limit + 1).clamp(8, 36);
+        runtime.node_branch_limit = (runtime.node_branch_limit + 1).clamp(9, 18);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 240);
+        runtime.node_enum_limit =
+            (runtime.node_branch_limit * 6).clamp(runtime.node_branch_limit, 144);
+        runtime.root_drainer_safety_score_margin = 700;
+        runtime.root_mana_handoff_penalty = 280;
+        runtime.root_backtrack_penalty = 180;
+        runtime.potion_spend_penalty_normal = 190;
+        runtime.interview_soft_score_margin = 95;
+        runtime.interview_soft_supermana_progress_bonus = 210;
+        runtime.interview_soft_opponent_mana_progress_bonus = 190;
+        runtime.interview_soft_mana_handoff_penalty = 280;
+        runtime.interview_soft_roundtrip_penalty = 200;
+        runtime.scoring_weights = runtime_phase_feedback_cleanup_v1_weights(game);
+    }
+
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V2: ScoringWeights =
+    ScoringWeights {
+        angel_guarding_drainer: 120,
+        drainer_close_to_mana: 360,
+        drainer_best_mana_path: 58,
+        drainer_holding_mana: 470,
+        drainer_pickup_score_this_turn: 90,
+        mana_carrier_score_this_turn: 150,
+        spirit_action_utility: 86,
+        supermana_race_control: 30,
+        opponent_mana_denial: 24,
+        ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V2: ScoringWeights =
+    ScoringWeights {
+        angel_guarding_drainer: 180,
+        drainer_close_to_mana: 390,
+        drainer_best_mana_path: 84,
+        drainer_holding_mana: 500,
+        drainer_pickup_score_this_turn: 110,
+        mana_carrier_score_this_turn: 180,
+        spirit_action_utility: 90,
+        supermana_race_control: 34,
+        opponent_mana_denial: 30,
+        ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V2:
+    ScoringWeights = ScoringWeights {
+    angel_guarding_drainer: 190,
+    drainer_close_to_mana: 410,
+    drainer_best_mana_path: 96,
+    drainer_holding_mana: 520,
+    drainer_pickup_score_this_turn: 130,
+    mana_carrier_score_this_turn: 220,
+    spirit_action_utility: 94,
+    supermana_race_control: 40,
+    opponent_mana_denial: 34,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V2:
+    ScoringWeights = ScoringWeights {
+    angel_guarding_drainer: 170,
+    drainer_close_to_mana: 375,
+    drainer_best_mana_path: 72,
+    drainer_holding_mana: 500,
+    drainer_pickup_score_this_turn: 120,
+    mana_carrier_score_this_turn: 240,
+    spirit_action_utility: 88,
+    supermana_race_control: 32,
+    opponent_mana_denial: 28,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V2:
+    ScoringWeights = ScoringWeights {
+    angel_guarding_drainer: 180,
+    drainer_close_to_mana: 395,
+    drainer_best_mana_path: 84,
+    drainer_holding_mana: 520,
+    drainer_pickup_score_this_turn: 140,
+    mana_carrier_score_this_turn: 280,
+    spirit_action_utility: 90,
+    supermana_race_control: 36,
+    opponent_mana_denial: 30,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+fn runtime_phase_feedback_cleanup_v2_weights(game: &MonsGame) -> &'static ScoringWeights {
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V2
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V2
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V2
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V2
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_FEEDBACK_V2
+    }
+}
+
+fn model_runtime_feedback_cleanup_v2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+
+    if runtime.depth < 3 {
+        runtime.enable_potion_progress_compensation = true;
+        runtime.root_anti_help_score_margin = 220;
+        runtime.root_mana_handoff_penalty = 260;
+        runtime.root_backtrack_penalty = 180;
+        runtime.root_efficiency_score_margin = 1_900;
+        runtime.potion_spend_penalty_fast = 220;
+        runtime.interview_soft_mana_handoff_penalty = 280;
+        runtime.interview_soft_roundtrip_penalty = 220;
+        runtime.interview_soft_supermana_progress_bonus = 240;
+        runtime.interview_soft_opponent_mana_progress_bonus = 200;
+    } else {
+        runtime.enable_potion_progress_compensation = true;
+        runtime.prefer_clean_reply_risk_roots = true;
+        runtime.enable_interview_hard_spirit_deploy = true;
+        runtime.enable_root_drainer_safety_prefilter = true;
+        runtime.max_visited_nodes = (runtime.max_visited_nodes * 112 / 100)
+            .clamp(runtime.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
+        runtime.root_branch_limit = runtime.root_branch_limit.saturating_sub(1).clamp(8, 34);
+        runtime.node_branch_limit = (runtime.node_branch_limit + 2).clamp(10, 18);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 220);
+        runtime.node_enum_limit =
+            (runtime.node_branch_limit * 6).clamp(runtime.node_branch_limit, 156);
+        runtime.root_reply_risk_score_margin = 170;
+        runtime.root_reply_risk_shortlist_max = 6;
+        runtime.root_reply_risk_reply_limit = 14;
+        runtime.root_reply_risk_node_share_bp = 1_150;
+        runtime.root_drainer_safety_score_margin = 900;
+        runtime.root_anti_help_score_margin = 300;
+        runtime.root_anti_help_reply_limit = 10;
+        runtime.root_mana_handoff_penalty = 340;
+        runtime.root_backtrack_penalty = 240;
+        runtime.root_efficiency_score_margin = 1_400;
+        runtime.potion_spend_penalty_normal = 130;
+        runtime.interview_soft_score_margin = 80;
+        runtime.interview_soft_supermana_progress_bonus = 240;
+        runtime.interview_soft_opponent_mana_progress_bonus = 220;
+        runtime.interview_soft_mana_handoff_penalty = 340;
+        runtime.interview_soft_roundtrip_penalty = 260;
+        runtime.scoring_weights = runtime_phase_feedback_cleanup_v2_weights(game);
+    }
+
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn model_runtime_potion_takeback_starts_v5_config(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -4586,6 +4829,8 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_potion_takeback_starts_v11" => {
             model_runtime_potion_takeback_starts_v11(game, config)
         }
+        "runtime_feedback_cleanup_v1" => model_runtime_feedback_cleanup_v1(game, config),
+        "runtime_feedback_cleanup_v2" => model_runtime_feedback_cleanup_v2(game, config),
         "runtime_pre_efficiency_logic" => model_runtime_pre_efficiency_logic(game, config),
         "runtime_pre_root_reply_floor" => model_runtime_pre_root_reply_floor(game, config),
         "runtime_pre_event_ordering" => model_runtime_pre_event_ordering(game, config),
@@ -4901,6 +5146,14 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_potion_takeback_starts_v11",
             model_runtime_potion_takeback_starts_v11,
+        ),
+        (
+            "runtime_feedback_cleanup_v1",
+            model_runtime_feedback_cleanup_v1,
+        ),
+        (
+            "runtime_feedback_cleanup_v2",
+            model_runtime_feedback_cleanup_v2,
         ),
         (
             "runtime_pre_efficiency_logic",

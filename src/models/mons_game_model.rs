@@ -239,9 +239,16 @@ const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeigh
         opponent_score_race_path_progress: 184,
         immediate_score_window: 96,
         opponent_immediate_score_window: 245,
+        angel_guarding_drainer: 120,
+        supermana_race_control: 30,
+        opponent_mana_denial: 24,
+        drainer_holding_mana: 470,
         drainer_immediate_threat: -55,
-        drainer_best_mana_path: 24,
-        spirit_action_utility: 68,
+        drainer_best_mana_path: 58,
+        drainer_pickup_score_this_turn: 90,
+        mana_carrier_score_this_turn: 150,
+        drainer_close_to_mana: 360,
+        spirit_action_utility: 86,
         ..BALANCED_DISTANCE_SCORING_WEIGHTS
     };
 #[cfg(any(target_arch = "wasm32", test))]
@@ -254,9 +261,16 @@ const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeigh
         opponent_score_race_path_progress: 220,
         immediate_score_window: 102,
         opponent_immediate_score_window: 310,
+        angel_guarding_drainer: 180,
+        supermana_race_control: 34,
+        opponent_mana_denial: 30,
+        drainer_holding_mana: 500,
         drainer_immediate_threat: -90,
-        drainer_best_mana_path: 42,
-        spirit_action_utility: 72,
+        drainer_best_mana_path: 84,
+        drainer_pickup_score_this_turn: 110,
+        mana_carrier_score_this_turn: 180,
+        drainer_close_to_mana: 390,
+        spirit_action_utility: 90,
         ..TACTICAL_BALANCED_SCORING_WEIGHTS
     };
 #[cfg(any(target_arch = "wasm32", test))]
@@ -269,9 +283,16 @@ const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS: S
         opponent_score_race_path_progress: 255,
         immediate_score_window: 114,
         opponent_immediate_score_window: 360,
+        angel_guarding_drainer: 190,
+        supermana_race_control: 40,
+        opponent_mana_denial: 34,
+        drainer_holding_mana: 520,
         drainer_immediate_threat: -120,
-        drainer_best_mana_path: 54,
-        spirit_action_utility: 78,
+        drainer_best_mana_path: 96,
+        drainer_pickup_score_this_turn: 130,
+        mana_carrier_score_this_turn: 220,
+        drainer_close_to_mana: 410,
+        spirit_action_utility: 94,
         ..TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS
     };
 #[cfg(any(target_arch = "wasm32", test))]
@@ -284,7 +305,15 @@ const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS: Scoring
         opponent_score_race_path_progress: 170,
         immediate_score_window: 275,
         opponent_immediate_score_window: 235,
-        spirit_action_utility: 66,
+        supermana_race_control: 32,
+        opponent_mana_denial: 28,
+        drainer_holding_mana: 500,
+        drainer_best_mana_path: 72,
+        drainer_pickup_score_this_turn: 120,
+        mana_carrier_score_this_turn: 240,
+        drainer_close_to_mana: 375,
+        angel_guarding_drainer: 170,
+        spirit_action_utility: 88,
         ..FINISHER_BALANCED_SOFT_SCORING_WEIGHTS
     };
 #[cfg(any(target_arch = "wasm32", test))]
@@ -297,7 +326,15 @@ const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGH
         opponent_score_race_path_progress: 185,
         immediate_score_window: 330,
         opponent_immediate_score_window: 265,
-        spirit_action_utility: 70,
+        supermana_race_control: 36,
+        opponent_mana_denial: 30,
+        drainer_holding_mana: 520,
+        drainer_best_mana_path: 84,
+        drainer_pickup_score_this_turn: 140,
+        mana_carrier_score_this_turn: 280,
+        drainer_close_to_mana: 395,
+        angel_guarding_drainer: 180,
+        spirit_action_utility: 90,
         ..FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS
     };
 
@@ -388,6 +425,14 @@ struct SmartSearchConfig {
     enable_interview_soft_root_priors: bool,
     enable_interview_deterministic_tiebreak: bool,
     enable_mana_start_mix_with_potion_actions: bool,
+    enable_potion_progress_compensation: bool,
+    prefer_clean_reply_risk_roots: bool,
+    root_drainer_safety_score_margin: i32,
+    root_mana_handoff_penalty: i32,
+    root_backtrack_penalty: i32,
+    root_efficiency_score_margin: i32,
+    potion_spend_penalty_fast: i32,
+    potion_spend_penalty_normal: i32,
     interview_soft_score_margin: i32,
     interview_soft_supermana_progress_bonus: i32,
     interview_soft_supermana_score_bonus: i32,
@@ -432,7 +477,7 @@ impl SmartSearchConfig {
                 tuned.enable_child_move_class_coverage = true;
                 tuned.enable_strict_tactical_class_coverage = true;
                 tuned.enable_strict_anti_help_filter = true;
-                tuned.root_anti_help_score_margin = SMART_ROOT_ANTI_HELP_SCORE_MARGIN;
+                tuned.root_anti_help_score_margin = 220;
                 tuned.root_anti_help_reply_limit = SMART_ROOT_ANTI_HELP_REPLY_LIMIT_FAST;
                 tuned.enable_two_pass_volatility_focus = false;
                 tuned.enable_normal_root_safety_rerank = false;
@@ -441,13 +486,22 @@ impl SmartSearchConfig {
                 tuned.enable_interview_soft_root_priors = true;
                 tuned.enable_interview_deterministic_tiebreak = false;
                 tuned.enable_mana_start_mix_with_potion_actions = true;
+                tuned.enable_potion_progress_compensation = true;
+                tuned.prefer_clean_reply_risk_roots = false;
+                tuned.root_drainer_safety_score_margin = SMART_ROOT_DRAINER_SAFETY_SCORE_MARGIN;
+                tuned.root_mana_handoff_penalty = 260;
+                tuned.root_backtrack_penalty = 180;
+                tuned.root_efficiency_score_margin = 1_900;
+                tuned.potion_spend_penalty_fast = 220;
+                tuned.potion_spend_penalty_normal =
+                    SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_NORMAL;
                 tuned.interview_soft_score_margin = 80;
-                tuned.interview_soft_supermana_progress_bonus = 220;
+                tuned.interview_soft_supermana_progress_bonus = 240;
                 tuned.interview_soft_supermana_score_bonus = 360;
-                tuned.interview_soft_opponent_mana_progress_bonus = 180;
+                tuned.interview_soft_opponent_mana_progress_bonus = 200;
                 tuned.interview_soft_opponent_mana_score_bonus = 310;
-                tuned.interview_soft_mana_handoff_penalty = 260;
-                tuned.interview_soft_roundtrip_penalty = 190;
+                tuned.interview_soft_mana_handoff_penalty = 280;
+                tuned.interview_soft_roundtrip_penalty = 220;
                 tuned.scoring_weights = &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF;
                 tuned
             }
@@ -455,12 +509,14 @@ impl SmartSearchConfig {
                 let mut tuned = Self::with_normal_deeper_shape(config);
                 tuned.max_visited_nodes = (tuned.max_visited_nodes * 3 / 2)
                     .clamp(tuned.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
-                tuned.root_branch_limit = tuned.root_branch_limit.saturating_sub(4).clamp(8, 36);
-                tuned.node_branch_limit = (tuned.node_branch_limit + 2).clamp(8, 18);
+                tuned.max_visited_nodes = (tuned.max_visited_nodes * 112 / 100)
+                    .clamp(tuned.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
+                tuned.root_branch_limit = tuned.root_branch_limit.saturating_sub(5).clamp(8, 34);
+                tuned.node_branch_limit = (tuned.node_branch_limit + 4).clamp(10, 18);
                 tuned.root_enum_limit =
                     (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 220);
                 tuned.node_enum_limit =
-                    (tuned.node_branch_limit * 5).clamp(tuned.node_branch_limit, 120);
+                    (tuned.node_branch_limit * 6).clamp(tuned.node_branch_limit, 156);
                 tuned.enable_root_efficiency = true;
                 tuned.enable_event_ordering_bonus = false;
                 tuned.enable_backtrack_penalty = true;
@@ -481,30 +537,38 @@ impl SmartSearchConfig {
                 tuned.enable_root_drainer_safety_prefilter = true;
                 tuned.enable_root_spirit_development_pref = true;
                 tuned.enable_root_reply_risk_guard = true;
-                tuned.root_reply_risk_score_margin = SMART_ROOT_REPLY_RISK_SCORE_MARGIN;
-                tuned.root_reply_risk_shortlist_max = SMART_ROOT_REPLY_RISK_SHORTLIST_NORMAL;
-                tuned.root_reply_risk_reply_limit = SMART_ROOT_REPLY_RISK_REPLY_LIMIT_NORMAL;
-                tuned.root_reply_risk_node_share_bp = SMART_ROOT_REPLY_RISK_NODE_SHARE_BP_NORMAL;
+                tuned.root_reply_risk_score_margin = 170;
+                tuned.root_reply_risk_shortlist_max = 6;
+                tuned.root_reply_risk_reply_limit = 14;
+                tuned.root_reply_risk_node_share_bp = 1_150;
                 tuned.enable_move_class_coverage = true;
                 tuned.enable_child_move_class_coverage = true;
                 tuned.enable_strict_tactical_class_coverage = true;
                 tuned.enable_strict_anti_help_filter = true;
-                tuned.root_anti_help_score_margin = SMART_ROOT_ANTI_HELP_SCORE_MARGIN;
-                tuned.root_anti_help_reply_limit = SMART_ROOT_ANTI_HELP_REPLY_LIMIT_NORMAL;
+                tuned.root_anti_help_score_margin = 300;
+                tuned.root_anti_help_reply_limit = 10;
                 tuned.enable_two_pass_volatility_focus = true;
                 tuned.enable_normal_root_safety_rerank = true;
                 tuned.enable_normal_root_safety_deep_floor = true;
-                tuned.enable_interview_hard_spirit_deploy = false;
+                tuned.enable_interview_hard_spirit_deploy = true;
                 tuned.enable_interview_soft_root_priors = true;
                 tuned.enable_interview_deterministic_tiebreak = false;
                 tuned.enable_mana_start_mix_with_potion_actions = true;
-                tuned.interview_soft_score_margin = 100;
-                tuned.interview_soft_supermana_progress_bonus = 180;
+                tuned.enable_potion_progress_compensation = true;
+                tuned.prefer_clean_reply_risk_roots = true;
+                tuned.root_drainer_safety_score_margin = 900;
+                tuned.root_mana_handoff_penalty = 340;
+                tuned.root_backtrack_penalty = 240;
+                tuned.root_efficiency_score_margin = 1_400;
+                tuned.potion_spend_penalty_fast = SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_FAST;
+                tuned.potion_spend_penalty_normal = 130;
+                tuned.interview_soft_score_margin = 80;
+                tuned.interview_soft_supermana_progress_bonus = 240;
                 tuned.interview_soft_supermana_score_bonus = 300;
-                tuned.interview_soft_opponent_mana_progress_bonus = 160;
+                tuned.interview_soft_opponent_mana_progress_bonus = 220;
                 tuned.interview_soft_opponent_mana_score_bonus = 280;
-                tuned.interview_soft_mana_handoff_penalty = 240;
-                tuned.interview_soft_roundtrip_penalty = 170;
+                tuned.interview_soft_mana_handoff_penalty = 340;
+                tuned.interview_soft_roundtrip_penalty = 260;
                 tuned
             }
         }
@@ -567,6 +631,14 @@ impl SmartSearchConfig {
             enable_interview_soft_root_priors: false,
             enable_interview_deterministic_tiebreak: false,
             enable_mana_start_mix_with_potion_actions: false,
+            enable_potion_progress_compensation: false,
+            prefer_clean_reply_risk_roots: false,
+            root_drainer_safety_score_margin: SMART_ROOT_DRAINER_SAFETY_SCORE_MARGIN,
+            root_mana_handoff_penalty: SMART_ROOT_MANA_HANDOFF_PENALTY,
+            root_backtrack_penalty: SMART_ROOT_BACKTRACK_PENALTY,
+            root_efficiency_score_margin: SMART_ROOT_EFFICIENCY_SCORE_MARGIN,
+            potion_spend_penalty_fast: SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_FAST,
+            potion_spend_penalty_normal: SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_NORMAL,
             interview_soft_score_margin: SMART_INTERVIEW_SOFT_PRIORITY_SCORE_MARGIN,
             interview_soft_supermana_progress_bonus: SMART_INTERVIEW_SOFT_SUPERMANA_PROGRESS_BONUS,
             interview_soft_supermana_score_bonus: SMART_INTERVIEW_SOFT_SUPERMANA_SCORE_BONUS,
@@ -652,6 +724,10 @@ struct RootEvaluation {
     keeps_awake_spirit_on_base: bool,
     mana_handoff_to_opponent: bool,
     has_roundtrip: bool,
+    scores_supermana_this_turn: bool,
+    scores_opponent_mana_this_turn: bool,
+    supermana_progress: bool,
+    opponent_mana_progress: bool,
     interview_soft_priority: i32,
     classes: MoveClassFlags,
 }
@@ -1357,6 +1433,8 @@ impl MonsGameModel {
                 true,
                 config.enable_backtrack_penalty,
                 config.enable_root_mana_handoff_guard,
+                config.root_backtrack_penalty,
+                config.root_mana_handoff_penalty,
             )
         } else {
             0
@@ -1388,6 +1466,11 @@ impl MonsGameModel {
         let opponent_mana_progress = scores_opponent_mana_this_turn
             || Self::events_pickup_opponent_mana(&events, perspective)
             || Self::events_move_opponent_mana_toward_color(&events, perspective);
+        let own_drainer_vulnerable = if config.enable_root_drainer_safety_prefilter {
+            Self::is_own_drainer_vulnerable_next_turn(&simulated_game, perspective)
+        } else {
+            false
+        };
         let score_before = Self::score_for_color(game, perspective);
         let score_after = Self::score_for_color(&simulated_game, perspective);
         let scored_two_or_more = score_after >= score_before.saturating_add(2);
@@ -1396,15 +1479,18 @@ impl MonsGameModel {
             || attacks_opponent_drainer
             || scored_two_or_more
             || scores_supermana_this_turn
-            || scores_opponent_mana_this_turn;
+            || scores_opponent_mana_this_turn
+            || (config.enable_potion_progress_compensation
+                && !own_drainer_vulnerable
+                && (supermana_progress || opponent_mana_progress));
         let potion_spend_penalty = if config.enable_mana_start_mix_with_potion_actions
             && spent_potion
             && !potion_compensated
         {
             if config.depth >= 3 {
-                SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_NORMAL
+                config.potion_spend_penalty_normal.max(0)
             } else {
-                SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_FAST
+                config.potion_spend_penalty_fast.max(0)
             }
         } else {
             0
@@ -1414,13 +1500,13 @@ impl MonsGameModel {
             || scores_supermana_this_turn
             || scores_opponent_mana_this_turn;
         let mana_handoff_to_opponent =
-            !root_compensates_handoff && Self::mana_handoff_penalty(&events, perspective) > 0;
+            !root_compensates_handoff
+                && Self::mana_handoff_penalty(
+                    &events,
+                    perspective,
+                    config.root_mana_handoff_penalty.max(0),
+                ) > 0;
         let has_roundtrip = Self::has_roundtrip_mon_move(&events);
-        let own_drainer_vulnerable = if config.enable_root_drainer_safety_prefilter {
-            Self::is_own_drainer_vulnerable_next_turn(&simulated_game, perspective)
-        } else {
-            false
-        };
         let classes = if config.enable_move_class_coverage {
             Self::classify_move_classes(
                 game,
@@ -2389,6 +2475,10 @@ impl MonsGameModel {
                 keeps_awake_spirit_on_base: candidate.keeps_awake_spirit_on_base,
                 mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
                 has_roundtrip: candidate.has_roundtrip,
+                scores_supermana_this_turn: candidate.scores_supermana_this_turn,
+                scores_opponent_mana_this_turn: candidate.scores_opponent_mana_this_turn,
+                supermana_progress: candidate.supermana_progress,
+                opponent_mana_progress: candidate.opponent_mana_progress,
                 interview_soft_priority: candidate.interview_soft_priority,
                 classes: candidate.classes,
             });
@@ -2901,6 +2991,8 @@ impl MonsGameModel {
                         false,
                         false,
                         false,
+                        config.root_backtrack_penalty,
+                        config.root_mana_handoff_penalty,
                     )
                 } else {
                     0
@@ -3184,6 +3276,8 @@ impl MonsGameModel {
         is_root: bool,
         apply_backtrack_penalty: bool,
         apply_root_mana_handoff_guard: bool,
+        root_backtrack_penalty: i32,
+        root_mana_handoff_penalty: i32,
     ) -> i32 {
         let before = Self::move_efficiency_snapshot(game, perspective);
         let after = Self::move_efficiency_snapshot(simulated_game, perspective);
@@ -3237,7 +3331,8 @@ impl MonsGameModel {
                 .any(|event| matches!(event, Event::ManaScored { .. }))
                 || Self::events_include_opponent_drainer_fainted(events, perspective);
             if apply_root_mana_handoff_guard && !root_compensates_handoff {
-                delta -= Self::mana_handoff_penalty(events, perspective);
+                delta -=
+                    Self::mana_handoff_penalty(events, perspective, root_mana_handoff_penalty);
             }
 
             if SMART_NO_EFFECT_ROOT_PENALTY != 0
@@ -3250,8 +3345,11 @@ impl MonsGameModel {
             {
                 delta -= SMART_LOW_IMPACT_ROOT_PENALTY;
             }
-            if apply_backtrack_penalty && Self::has_roundtrip_mon_move(events) {
-                delta -= SMART_ROOT_BACKTRACK_PENALTY;
+            if apply_backtrack_penalty
+                && root_backtrack_penalty > 0
+                && Self::has_roundtrip_mon_move(events)
+            {
+                delta -= root_backtrack_penalty;
             }
         } else if SMART_NO_EFFECT_CHILD_PENALTY != 0
             && Self::is_no_effect_state_transition(game, simulated_game)
@@ -3267,7 +3365,14 @@ impl MonsGameModel {
         delta
     }
 
-    fn mana_handoff_penalty(events: &[Event], perspective: Color) -> i32 {
+    fn mana_handoff_penalty(
+        events: &[Event],
+        perspective: Color,
+        per_step_penalty: i32,
+    ) -> i32 {
+        if per_step_penalty <= 0 {
+            return 0;
+        }
         let mut penalty = 0i32;
         let opponent = perspective.other();
 
@@ -3287,7 +3392,7 @@ impl MonsGameModel {
             if moved_toward_opponent > moved_toward_me {
                 penalty += (moved_toward_opponent - moved_toward_me)
                     * mana.score(opponent)
-                    * SMART_ROOT_MANA_HANDOFF_PENALTY;
+                    * per_step_penalty;
             }
         }
 
@@ -3527,6 +3632,10 @@ impl MonsGameModel {
             keeps_awake_spirit_on_base: candidate.keeps_awake_spirit_on_base,
             mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
             has_roundtrip: candidate.has_roundtrip,
+            scores_supermana_this_turn: candidate.scores_supermana_this_turn,
+            scores_opponent_mana_this_turn: candidate.scores_opponent_mana_this_turn,
+            supermana_progress: candidate.supermana_progress,
+            opponent_mana_progress: candidate.opponent_mana_progress,
             interview_soft_priority: candidate.interview_soft_priority,
             classes: candidate.classes,
         });
@@ -3712,11 +3821,17 @@ impl MonsGameModel {
         game_before: &MonsGame,
         root: &RootEvaluation,
         perspective: Color,
+        config: SmartSearchConfig,
     ) -> bool {
         root.wins_immediately
             || root.attacks_opponent_drainer
             || Self::score_for_color(&root.game, perspective)
                 >= Self::score_for_color(game_before, perspective).saturating_add(2)
+            || root.scores_supermana_this_turn
+            || root.scores_opponent_mana_this_turn
+            || (config.enable_potion_progress_compensation
+                && !root.own_drainer_vulnerable
+                && (root.supermana_progress || root.opponent_mana_progress))
     }
 
     fn root_allows_immediate_opponent_win_quick(
@@ -3807,7 +3922,7 @@ impl MonsGameModel {
                 .map(|index| scored_roots[*index].score)
                 .max()
                 .unwrap_or(i32::MIN);
-            let margin = SMART_ROOT_DRAINER_SAFETY_SCORE_MARGIN.max(0);
+            let margin = config.root_drainer_safety_score_margin.max(0);
             let safer_indices = candidate_indices
                 .iter()
                 .copied()
@@ -3894,7 +4009,12 @@ impl MonsGameModel {
                                 return true;
                             }
                             !Self::root_spends_potion(game, root, perspective)
-                                || Self::root_potion_spend_compensated(game, root, perspective)
+                                || Self::root_potion_spend_compensated(
+                                    game,
+                                    root,
+                                    perspective,
+                                    config,
+                                )
                         })
                         .collect::<Vec<_>>();
                     if !strict_indices.is_empty() {
@@ -4025,7 +4145,7 @@ impl MonsGameModel {
             .map(|index| scored_roots[*index].score)
             .max()
             .unwrap_or(i32::MIN);
-        let score_margin = SMART_ROOT_EFFICIENCY_SCORE_MARGIN.max(0);
+        let score_margin = config.root_efficiency_score_margin.max(0);
 
         let mut best_index =
             Self::best_scored_root_index(scored_roots, candidate_indices.as_slice());
@@ -4308,6 +4428,14 @@ impl MonsGameModel {
                 if no_tactical_priority && tight_reply_floor {
                     return candidate_progress_adv;
                 }
+            }
+        }
+        if config.prefer_clean_reply_risk_roots {
+            if candidate.mana_handoff_to_opponent != incumbent.mana_handoff_to_opponent {
+                return !candidate.mana_handoff_to_opponent;
+            }
+            if candidate.has_roundtrip != incumbent.has_roundtrip {
+                return !candidate.has_roundtrip;
             }
         }
         if config.enable_interview_deterministic_tiebreak
