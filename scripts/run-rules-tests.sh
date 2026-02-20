@@ -185,7 +185,11 @@ cd "${REPO_DIR}"
 temp_dir=""
 cleanup() {
   if [[ -n "${temp_dir}" && -d "${temp_dir}" ]]; then
+    cleanup_started_at="$(date +%s)"
+    echo "🧹 Cleaning up extracted fixtures at ${temp_dir}..."
     rm -rf "${temp_dir}"
+    cleanup_elapsed="$(( $(date +%s) - cleanup_started_at ))"
+    echo "🧹 Cleanup finished in ${cleanup_elapsed}s"
   fi
 }
 trap cleanup EXIT
