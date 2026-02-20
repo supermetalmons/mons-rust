@@ -2,6 +2,8 @@
 
 This document is the entry point for iterating on automove strength safely and quickly.
 
+Pro-player strategy interview notes used as iteration input are tracked in `docs/automove-pro-strategy-interview.md`.
+
 ## What Is Shipped Right Now
 
 Public API:
