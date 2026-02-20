@@ -77,6 +77,12 @@ Core knobs:
 - `SMART_GATE_BUDGET_DUEL_SEED_TAG`
 - `SMART_GATE_PRIMARY_GAMES`, `SMART_GATE_PRIMARY_REPEATS`, `SMART_GATE_PRIMARY_MAX_PLIES`
 - `SMART_GATE_CONFIRM_GAMES`, `SMART_GATE_CONFIRM_REPEATS`, `SMART_GATE_CONFIRM_MAX_PLIES`
+- `SMART_GATE_POOL_GAMES` (pool non-regression stage in gate/ladder)
+- `SMART_GATE_ALLOW_SELF_BASELINE` (`true` only for baseline artifact capture; disables `candidate != baseline` check)
+- `SMART_TUNE_TRAIN_POSITIONS_PER_SEED`, `SMART_TUNE_HOLDOUT_POSITIONS_PER_SEED`
+- `SMART_TUNE_ROOT_LIMIT`, `SMART_TUNE_TOP_K`, `SMART_TUNE_MANIFEST_OUTPUT`
+- `SMART_TUNE_LABEL_DEPTH_BOOST`, `SMART_TUNE_LABEL_NODE_MULTIPLIER`
+- `SMART_TUNE_FULL_GRID` (`true` = full +/-35% grid search; default quick local sweep)
 
 Why `SMART_USE_WHITE_OPENING_BOOK` defaults to `false`:
 
@@ -124,6 +130,22 @@ Eval tuning dataset export (test-only helper):
 
 - `SMART_TUNE_PROFILE=runtime_current SMART_TUNE_POSITIONS=64 SMART_TUNE_ROOT_LIMIT=8 SMART_TUNE_SEED_TAG=eval_tune_v1 SMART_TUNE_OUTPUT_PATH=target/smart_eval_tuning_samples.jsonl cargo test --lib smart_automove_pool_export_eval_tuning_dataset -- --ignored --nocapture`
 
+Train/holdout dataset suite export (board-eval workflow):
+
+- `SMART_TUNE_PROFILE=runtime_current SMART_TUNE_TRAIN_POSITIONS_PER_SEED=256 SMART_TUNE_HOLDOUT_POSITIONS_PER_SEED=128 SMART_TUNE_ROOT_LIMIT=12 cargo test --lib smart_automove_pool_export_eval_tuning_dataset_suite -- --ignored --nocapture`
+
+Deterministic coordinate-descent board-eval tuner:
+
+- `SMART_TUNE_PROFILE=runtime_current SMART_TUNE_TRAIN_POSITIONS_PER_SEED=256 SMART_TUNE_HOLDOUT_POSITIONS_PER_SEED=128 SMART_TUNE_ROOT_LIMIT=12 SMART_TUNE_TOP_K=8 SMART_TUNE_MANIFEST_OUTPUT=target/eval_tune_ranked_candidates.json cargo test --lib smart_automove_pool_tune_eval_weights_coordinate_descent -- --ignored --nocapture`
+
+Quick tuning mode (fast iteration):
+
+- `SMART_TUNE_PROFILE=runtime_current SMART_TUNE_TRAIN_POSITIONS_PER_SEED=48 SMART_TUNE_HOLDOUT_POSITIONS_PER_SEED=24 SMART_TUNE_ROOT_LIMIT=10 SMART_TUNE_TOP_K=4 SMART_TUNE_LABEL_DEPTH_BOOST=0 SMART_TUNE_LABEL_NODE_MULTIPLIER=1 cargo test --lib smart_automove_pool_tune_eval_weights_coordinate_descent -- --ignored --nocapture`
+
+Quality tuning mode (long run):
+
+- `SMART_TUNE_PROFILE=runtime_current SMART_TUNE_TRAIN_POSITIONS_PER_SEED=256 SMART_TUNE_HOLDOUT_POSITIONS_PER_SEED=128 SMART_TUNE_ROOT_LIMIT=12 SMART_TUNE_TOP_K=8 SMART_TUNE_LABEL_DEPTH_BOOST=1 SMART_TUNE_LABEL_NODE_MULTIPLIER=2 SMART_TUNE_FULL_GRID=true cargo test --lib smart_automove_pool_tune_eval_weights_coordinate_descent -- --ignored --nocapture`
+
 ## Promotion Criteria
 
 Candidate is considered promotable only when all are true:
@@ -144,6 +166,10 @@ Candidate is considered promotable only when all are true:
 - Budget-conversion regression guard:
   - Run fast-vs-normal diagnostic for baseline and candidate inside promotion gate/ladder.
   - Candidate normal-edge (normal advantage over fast) must not regress vs baseline by more than `0.04`.
+- Pool non-regression guard:
+  - Candidate and baseline are each evaluated against `POOL_MODELS` under the same budgets.
+  - Candidate must not beat fewer pool opponents than baseline.
+  - Candidate aggregate pool win-rate must not be more than `0.01` below baseline.
 
 Official command:
 
@@ -171,6 +197,22 @@ Official command:
 - `runtime_legacy_phase_adaptive`: older legacy reference.
 - `runtime_drainer_context`: fast-only drainer-context candidate path.
 - `runtime_d2_tuned`: older fixed-weight reference.
+- `runtime_eval_board_v1`: board-eval candidate profile hook (for tuned board-weight promotion runs).
+- `runtime_eval_board_v2`: board-eval candidate profile hook (second tuned board-weight slot).
+
+## Board Eval Workflow (Recommended)
+
+1. Freeze baseline evidence:
+   - `cargo test --lib smart_automove_tactical_suite -- --ignored --nocapture`
+   - `SMART_CANDIDATE_PROFILE=runtime_current SMART_SPEED_POSITIONS=20 cargo test --lib smart_automove_pool_profile_speed_probe -- --ignored --nocapture`
+   - `SMART_BUDGET_DUEL_A=runtime_current SMART_BUDGET_DUEL_B=runtime_current SMART_BUDGET_DUEL_A_MODE=fast SMART_BUDGET_DUEL_B_MODE=normal SMART_BUDGET_DUEL_GAMES=3 SMART_BUDGET_DUEL_REPEATS=4 SMART_BUDGET_DUEL_MAX_PLIES=56 SMART_BUDGET_DUEL_SEED_TAG=fast_normal_v1 cargo test --lib smart_automove_pool_budget_duel -- --ignored --nocapture`
+2. Export train/holdout datasets with root labels.
+3. Run coordinate-descent tuning to produce `target/eval_tune_ranked_candidates.json`.
+4. Map best ranked bundle into a named profile (`runtime_eval_board_v1` / `runtime_eval_board_v2`).
+5. Run strict ladder and strict gate against `runtime_current`:
+   - `SMART_CANDIDATE_PROFILE=runtime_eval_board_v1 SMART_GATE_BASELINE_PROFILE=runtime_current SMART_LADDER_ARTIFACT_PATH=target/smart_ladder_artifacts_board_v1.jsonl cargo test --lib smart_automove_pool_promotion_ladder -- --ignored --nocapture`
+   - `SMART_CANDIDATE_PROFILE=runtime_eval_board_v1 SMART_GATE_BASELINE_PROFILE=runtime_current cargo test --lib smart_automove_pool_promotion_gate_v2 -- --ignored --nocapture`
+6. Promote runtime constants only after strict pass, keeping all tuner/export helpers test-only.
 
 ## Failed Experiments Log
 
@@ -358,13 +400,46 @@ Takeaway:
 - Light root efficiency signals can improve practical fast-mode move quality without material CPU cost.
 - Keep this as a small, conservative layer; avoid aggressive penalties or child-search rewrites.
 
+### 12) Same-budget self-label board-eval tuning
+
+Idea:
+
+- Export move-regret labels from the same runtime search budget and tune eval weights to minimize those regrets.
+
+What happened:
+
+- Coordinate-descent repeatedly converged to near-baseline weights.
+- Ranked candidates were often identical or effectively equivalent to runtime defaults.
+
+Takeaway:
+
+- Same-budget self-labeling is weak supervision; use deeper-label targets (`SMART_TUNE_LABEL_DEPTH_BOOST`, `SMART_TUNE_LABEL_NODE_MULTIPLIER`) for meaningful signal.
+
+### 13) Full-grid board-eval tuning by default
+
+Idea:
+
+- Run full `+/-35%` grid search for every tuned field in each family on every iteration.
+
+What happened:
+
+- Iteration time became too high for practical screening loops.
+- It was useful for final quality runs but too slow for daily candidate churn.
+
+Takeaway:
+
+- Keep quick mode as default local sweep and reserve `SMART_TUNE_FULL_GRID=true` for final quality passes.
+
 ## What Worked Best So Far
 
 Current promoted direction:
 
 - Keep modestly larger runtime node budgets (`fast=480`, `normal=3800`) versus prior runtime (`420`/`3450`).
-- Use a single runtime preferability profile for both modes: `RUNTIME_RUSH_SCORING_WEIGHTS`.
-- Apply a light fast-only root efficiency tie-break; keep normal on the pre-efficiency root path.
+- Keep phase-adaptive runtime scoring:
+  - `fast`: `RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS`
+  - `normal`: `RUNTIME_NORMAL_*_SPIRIT_BASE_SCORING_WEIGHTS` family
+- Apply root efficiency tie-breaks in both client modes.
+- Keep normal root-safety rerank/deep-floor and reply-risk guard.
 - Keep TT enabled in runtime search, but validate with de-biased two-way duels.
 - Keep opening-route policy in production, but disabled by default in promotion experiments.
 

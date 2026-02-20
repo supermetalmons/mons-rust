@@ -427,8 +427,304 @@ pub const RUNTIME_FAST_DRAINER_PRIORITY_SCORING_WEIGHTS: ScoringWeights = Scorin
     ..MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS
 };
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EvalFeatureSnapshot {
+    pub active_color_is_perspective: bool,
+    pub remaining_mon_moves_for_active: i32,
+    pub my_score_path_best_steps: i32,
+    pub my_score_path_multi_pressure: i32,
+    pub opponent_score_path_best_steps: i32,
+    pub opponent_score_path_multi_pressure: i32,
+    pub my_immediate_best_score: i32,
+    pub my_immediate_multi_pressure: i32,
+    pub opponent_immediate_best_score: i32,
+    pub opponent_immediate_multi_pressure: i32,
+    pub include_regular_mana_move_windows: bool,
+    pub include_match_point_window: bool,
+    pub next_turn_window_scale_bp: i32,
+    pub double_confirmed_score: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EvalTermContributions {
+    pub confirmed_score: i32,
+    pub consumable_score: i32,
+    pub score_race_path_progress: i32,
+    pub opponent_score_race_path_progress: i32,
+    pub score_race_multi_path: i32,
+    pub opponent_score_race_multi_path: i32,
+    pub immediate_score_window: i32,
+    pub opponent_immediate_score_window: i32,
+    pub immediate_score_multi_window: i32,
+    pub opponent_immediate_score_multi_window: i32,
+    pub match_point_window: i32,
+    pub residual_board_state: i32,
+}
+
+impl EvalTermContributions {
+    pub fn sum(self) -> i32 {
+        self.confirmed_score
+            + self.consumable_score
+            + self.score_race_path_progress
+            + self.opponent_score_race_path_progress
+            + self.score_race_multi_path
+            + self.opponent_score_race_multi_path
+            + self.immediate_score_window
+            + self.opponent_immediate_score_window
+            + self.immediate_score_multi_window
+            + self.opponent_immediate_score_multi_window
+            + self.match_point_window
+            + self.residual_board_state
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EvalBreakdown {
+    pub total: i32,
+    pub terms: EvalTermContributions,
+    pub features: EvalFeatureSnapshot,
+}
+
 pub fn evaluate_preferability(game: &MonsGame, color: Color) -> i32 {
     evaluate_preferability_with_weights(game, color, &DEFAULT_SCORING_WEIGHTS)
+}
+
+pub fn evaluate_preferability_breakdown(game: &MonsGame, color: Color) -> EvalBreakdown {
+    evaluate_preferability_breakdown_with_weights(game, color, &DEFAULT_SCORING_WEIGHTS)
+}
+
+pub fn evaluate_preferability_breakdown_with_weights(
+    game: &MonsGame,
+    color: Color,
+    weights: &ScoringWeights,
+) -> EvalBreakdown {
+    let use_legacy_formula = weights.use_legacy_formula;
+    let include_regular_mana_move_windows =
+        weights.include_regular_mana_move_windows && !use_legacy_formula;
+    let include_match_point_window = weights.include_match_point_window && !use_legacy_formula;
+    let next_turn_window_scale_bp = weights.next_turn_window_scale_bp.clamp(0, 20_000);
+    let remaining_mon_moves_for_active =
+        (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
+    let offense_scale_bp = 10_000;
+    let defense_scale_bp = 10_000;
+
+    let total = evaluate_preferability_with_weights(game, color, weights);
+
+    let score_diff = if color == Color::White {
+        game.white_score - game.black_score
+    } else {
+        game.black_score - game.white_score
+    };
+    let potion_diff = if color == Color::White {
+        game.white_potions_count - game.black_potions_count
+    } else {
+        game.black_potions_count - game.white_potions_count
+    };
+
+    let mut terms = EvalTermContributions {
+        confirmed_score: score_diff * weights.confirmed_score,
+        consumable_score: potion_diff * weights.has_consumable,
+        ..EvalTermContributions::default()
+    };
+
+    if weights.double_confirmed_score {
+        terms.confirmed_score *= weights.confirmed_score;
+        terms.consumable_score *= weights.confirmed_score;
+    }
+
+    let my_score_now = if color == Color::White {
+        game.white_score
+    } else {
+        game.black_score
+    };
+    let opponent_score_now = if color == Color::White {
+        game.black_score
+    } else {
+        game.white_score
+    };
+
+    let my_score_path_window = score_path_window_to_any_pool(
+        &game.board,
+        color,
+        !use_legacy_formula,
+        include_regular_mana_move_windows,
+    );
+    let opponent_score_path_window = score_path_window_to_any_pool(
+        &game.board,
+        color.other(),
+        !use_legacy_formula,
+        include_regular_mana_move_windows,
+    );
+
+    if let Some(steps) = my_score_path_window.best_steps {
+        terms.score_race_path_progress = scale_by_bp(
+            weights.score_race_path_progress / steps.max(1),
+            offense_scale_bp,
+        );
+        if !use_legacy_formula {
+            terms.score_race_multi_path = scale_by_bp(
+                weights.score_race_multi_path * my_score_path_window.multi_pressure / 100,
+                offense_scale_bp,
+            );
+        }
+    }
+    if let Some(steps) = opponent_score_path_window.best_steps {
+        terms.opponent_score_race_path_progress = -scale_by_bp(
+            weights.opponent_score_race_path_progress / steps.max(1),
+            defense_scale_bp,
+        );
+        if !use_legacy_formula {
+            terms.opponent_score_race_multi_path = -scale_by_bp(
+                weights.opponent_score_race_multi_path * opponent_score_path_window.multi_pressure
+                    / 100,
+                defense_scale_bp,
+            );
+        }
+    }
+
+    let mut my_immediate_window = ImmediateScoreWindow::default();
+    let mut opponent_immediate_window = ImmediateScoreWindow::default();
+
+    if game.active_color == color {
+        my_immediate_window = immediate_score_window_summary(
+            &game.board,
+            color,
+            remaining_mon_moves_for_active,
+            !use_legacy_formula,
+            include_regular_mana_move_windows,
+            include_regular_mana_move_windows && game.player_can_move_mana(),
+        );
+        terms.immediate_score_window = scale_by_bp(
+            weights.immediate_score_window * my_immediate_window.best_score,
+            offense_scale_bp,
+        );
+        if !use_legacy_formula {
+            terms.immediate_score_multi_window = scale_by_bp(
+                weights.immediate_score_multi_window * my_immediate_window.multi_pressure / 100,
+                offense_scale_bp,
+            );
+
+            opponent_immediate_window = immediate_score_window_summary(
+                &game.board,
+                color.other(),
+                Config::MONS_MOVES_PER_TURN,
+                true,
+                include_regular_mana_move_windows,
+                include_regular_mana_move_windows,
+            );
+            terms.opponent_immediate_score_window = -scale_by_bp(
+                (weights.opponent_immediate_score_window
+                    * opponent_immediate_window.best_score
+                    * next_turn_window_scale_bp)
+                    / 10_000,
+                defense_scale_bp,
+            );
+            terms.opponent_immediate_score_multi_window = -scale_by_bp(
+                (weights.opponent_immediate_score_multi_window
+                    * opponent_immediate_window.multi_pressure
+                    * next_turn_window_scale_bp)
+                    / 1_000_000,
+                defense_scale_bp,
+            );
+
+            if include_match_point_window {
+                if my_score_now + my_immediate_window.best_score >= Config::TARGET_SCORE {
+                    terms.match_point_window += weights.immediate_winning_carrier;
+                }
+                if opponent_score_now + opponent_immediate_window.best_score >= Config::TARGET_SCORE
+                {
+                    terms.match_point_window -= weights.immediate_winning_carrier;
+                }
+            }
+        }
+    } else {
+        opponent_immediate_window = immediate_score_window_summary(
+            &game.board,
+            color.other(),
+            remaining_mon_moves_for_active,
+            !use_legacy_formula,
+            include_regular_mana_move_windows,
+            include_regular_mana_move_windows && game.player_can_move_mana(),
+        );
+        terms.opponent_immediate_score_window = -scale_by_bp(
+            weights.opponent_immediate_score_window * opponent_immediate_window.best_score,
+            defense_scale_bp,
+        );
+        if !use_legacy_formula {
+            terms.opponent_immediate_score_multi_window = -scale_by_bp(
+                weights.opponent_immediate_score_multi_window
+                    * opponent_immediate_window.multi_pressure
+                    / 100,
+                defense_scale_bp,
+            );
+            my_immediate_window = immediate_score_window_summary(
+                &game.board,
+                color,
+                Config::MONS_MOVES_PER_TURN,
+                true,
+                include_regular_mana_move_windows,
+                include_regular_mana_move_windows,
+            );
+            terms.immediate_score_window = scale_by_bp(
+                (weights.immediate_score_window
+                    * my_immediate_window.best_score
+                    * next_turn_window_scale_bp)
+                    / 10_000,
+                offense_scale_bp,
+            );
+            terms.immediate_score_multi_window = scale_by_bp(
+                (weights.immediate_score_multi_window
+                    * my_immediate_window.multi_pressure
+                    * next_turn_window_scale_bp)
+                    / 1_000_000,
+                offense_scale_bp,
+            );
+
+            if include_match_point_window {
+                if opponent_score_now + opponent_immediate_window.best_score >= Config::TARGET_SCORE
+                {
+                    terms.match_point_window -= weights.immediate_winning_carrier;
+                }
+                if my_score_now + my_immediate_window.best_score >= Config::TARGET_SCORE {
+                    terms.match_point_window += weights.immediate_winning_carrier;
+                }
+            }
+        }
+    }
+
+    let known_total = terms.confirmed_score
+        + terms.consumable_score
+        + terms.score_race_path_progress
+        + terms.opponent_score_race_path_progress
+        + terms.score_race_multi_path
+        + terms.opponent_score_race_multi_path
+        + terms.immediate_score_window
+        + terms.opponent_immediate_score_window
+        + terms.immediate_score_multi_window
+        + terms.opponent_immediate_score_multi_window
+        + terms.match_point_window;
+    terms.residual_board_state = total.saturating_sub(known_total);
+
+    EvalBreakdown {
+        total,
+        terms,
+        features: EvalFeatureSnapshot {
+            active_color_is_perspective: game.active_color == color,
+            remaining_mon_moves_for_active,
+            my_score_path_best_steps: my_score_path_window.best_steps.unwrap_or(-1),
+            my_score_path_multi_pressure: my_score_path_window.multi_pressure,
+            opponent_score_path_best_steps: opponent_score_path_window.best_steps.unwrap_or(-1),
+            opponent_score_path_multi_pressure: opponent_score_path_window.multi_pressure,
+            my_immediate_best_score: my_immediate_window.best_score,
+            my_immediate_multi_pressure: my_immediate_window.multi_pressure,
+            opponent_immediate_best_score: opponent_immediate_window.best_score,
+            opponent_immediate_multi_pressure: opponent_immediate_window.multi_pressure,
+            include_regular_mana_move_windows,
+            include_match_point_window,
+            next_turn_window_scale_bp,
+            double_confirmed_score: weights.double_confirmed_score,
+        },
+    }
 }
 
 pub fn evaluate_preferability_with_weights(
@@ -785,7 +1081,10 @@ pub fn evaluate_preferability_with_weights(
         include_regular_mana_move_windows,
     );
     if let Some(steps) = my_score_path_window.best_steps {
-        score += scale_by_bp(weights.score_race_path_progress / steps.max(1), offense_scale_bp);
+        score += scale_by_bp(
+            weights.score_race_path_progress / steps.max(1),
+            offense_scale_bp,
+        );
         if !use_legacy_formula {
             score += scale_by_bp(
                 weights.score_race_multi_path * my_score_path_window.multi_pressure / 100,
@@ -1034,7 +1333,10 @@ fn score_path_window_to_any_pool(
         if mon.color != color || mon.is_fainted() {
             continue;
         }
-        insert_lowest_step(&mut top_steps, distance(location, Destination::AnyClosestPool));
+        insert_lowest_step(
+            &mut top_steps,
+            distance(location, Destination::AnyClosestPool),
+        );
     }
 
     if include_drainer_pickups {
@@ -1059,7 +1361,10 @@ fn score_path_window_to_any_pool(
             if *mana != Mana::Regular(color) {
                 continue;
             }
-            insert_lowest_step(&mut top_steps, distance(location, Destination::AnyClosestPool));
+            insert_lowest_step(
+                &mut top_steps,
+                distance(location, Destination::AnyClosestPool),
+            );
         }
     }
 
@@ -1309,6 +1614,78 @@ fn best_drainer_pickup_path(board: &Board, color: Color, from: Location) -> Opti
 mod tests {
     use super::*;
 
+    fn game_with_items(items: Vec<(Location, Item)>, active_color: Color) -> MonsGame {
+        let mut game = MonsGame::new(false);
+        game.board = Board::new_with_items(items.into_iter().collect());
+        game.active_color = active_color;
+        game.actions_used_count = 0;
+        game.mana_moves_count = 0;
+        game.mons_moves_count = 0;
+        game.turn_number = 2;
+        game.white_score = 0;
+        game.black_score = 0;
+        game.white_potions_count = 0;
+        game.black_potions_count = 0;
+        game
+    }
+
+    fn swapped_color(color: Color) -> Color {
+        color.other()
+    }
+
+    fn mirror_location(location: Location) -> Location {
+        Location::new(Config::MAX_LOCATION_INDEX - location.i, location.j)
+    }
+
+    fn mirror_item(item: &Item) -> Item {
+        match item {
+            Item::Mon { mon } => Item::Mon {
+                mon: Mon::new(mon.kind, swapped_color(mon.color), mon.cooldown),
+            },
+            Item::MonWithMana { mon, mana } => Item::MonWithMana {
+                mon: Mon::new(mon.kind, swapped_color(mon.color), mon.cooldown),
+                mana: match mana {
+                    Mana::Regular(color) => Mana::Regular(swapped_color(*color)),
+                    Mana::Supermana => Mana::Supermana,
+                },
+            },
+            Item::MonWithConsumable { mon, consumable } => Item::MonWithConsumable {
+                mon: Mon::new(mon.kind, swapped_color(mon.color), mon.cooldown),
+                consumable: *consumable,
+            },
+            Item::Mana { mana } => Item::Mana {
+                mana: match mana {
+                    Mana::Regular(color) => Mana::Regular(swapped_color(*color)),
+                    Mana::Supermana => Mana::Supermana,
+                },
+            },
+            Item::Consumable { consumable } => Item::Consumable {
+                consumable: *consumable,
+            },
+        }
+    }
+
+    fn mirrored_game_with_swapped_colors(game: &MonsGame) -> MonsGame {
+        let mirrored_items = game
+            .board
+            .items
+            .iter()
+            .map(|(location, item)| (mirror_location(*location), mirror_item(item)))
+            .collect::<std::collections::HashMap<_, _>>();
+        let mut mirrored = MonsGame::new(false);
+        mirrored.board = Board::new_with_items(mirrored_items);
+        mirrored.active_color = swapped_color(game.active_color);
+        mirrored.actions_used_count = game.actions_used_count;
+        mirrored.mana_moves_count = game.mana_moves_count;
+        mirrored.mons_moves_count = game.mons_moves_count;
+        mirrored.turn_number = game.turn_number;
+        mirrored.white_score = game.black_score;
+        mirrored.black_score = game.white_score;
+        mirrored.white_potions_count = game.black_potions_count;
+        mirrored.black_potions_count = game.white_potions_count;
+        mirrored
+    }
+
     #[test]
     fn spirit_on_own_base_penalty_applies_for_awake_spirit_on_base() {
         let spirit = Mon::new(MonKind::Spirit, Color::White, 0);
@@ -1357,6 +1734,244 @@ mod tests {
             ),
             0
         );
+    }
+
+    #[test]
+    fn immediate_score_window_detects_carrier_scoring_this_turn() {
+        let board = Board::new_with_items(
+            vec![(
+                Location::new(9, 0),
+                Item::MonWithMana {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    mana: Mana::Regular(Color::Black),
+                },
+            )]
+            .into_iter()
+            .collect(),
+        );
+        let window = immediate_score_window_summary(&board, Color::White, 3, true, true, true);
+        assert_eq!(
+            window.best_score,
+            Mana::Regular(Color::Black).score(Color::White)
+        );
+    }
+
+    #[test]
+    fn regular_mana_move_window_requires_allow_mana_move() {
+        let board = Board::new_with_items(
+            vec![(
+                Location::new(9, 0),
+                Item::Mana {
+                    mana: Mana::Regular(Color::White),
+                },
+            )]
+            .into_iter()
+            .collect(),
+        );
+        let disallowed = immediate_score_window_summary(&board, Color::White, 3, true, true, false);
+        let allowed = immediate_score_window_summary(&board, Color::White, 3, true, true, true);
+        assert_eq!(disallowed.best_score, 0);
+        assert!(allowed.best_score > 0);
+    }
+
+    #[test]
+    fn opponent_next_turn_window_penalizes_preferability() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 6),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(1, 0),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let mut zero_threat = RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS;
+        zero_threat.opponent_immediate_score_window = 0;
+        zero_threat.opponent_immediate_score_multi_window = 0;
+        let mut with_threat = zero_threat;
+        with_threat.opponent_immediate_score_window = 400;
+        with_threat.opponent_immediate_score_multi_window = 120;
+
+        let score_zero = evaluate_preferability_with_weights(&game, Color::White, &zero_threat);
+        let score_threat = evaluate_preferability_with_weights(&game, Color::White, &with_threat);
+        assert!(
+            score_threat < score_zero,
+            "opponent immediate threat should lower preferability"
+        );
+    }
+
+    #[test]
+    fn match_point_window_applies_immediate_winning_bonus() {
+        let mut game = game_with_items(
+            vec![(
+                Location::new(9, 0),
+                Item::MonWithMana {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    mana: Mana::Supermana,
+                },
+            )],
+            Color::White,
+        );
+        game.white_score = Config::TARGET_SCORE - 1;
+
+        let mut without_match_point = RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS;
+        without_match_point.include_match_point_window = false;
+        without_match_point.immediate_score_window = 0;
+        without_match_point.opponent_immediate_score_window = 0;
+        without_match_point.immediate_score_multi_window = 0;
+        without_match_point.opponent_immediate_score_multi_window = 0;
+        without_match_point.immediate_winning_carrier = 520;
+
+        let mut with_match_point = without_match_point;
+        with_match_point.include_match_point_window = true;
+
+        let score_without =
+            evaluate_preferability_with_weights(&game, Color::White, &without_match_point);
+        let score_with =
+            evaluate_preferability_with_weights(&game, Color::White, &with_match_point);
+        assert_eq!(
+            score_with - score_without,
+            with_match_point.immediate_winning_carrier
+        );
+    }
+
+    #[test]
+    fn spirit_off_base_is_preferred_when_penalty_is_enabled() {
+        let base = Board::new().base(Mon::new(MonKind::Spirit, Color::White, 0));
+        let off_base = if base.i > 0 {
+            Location::new(base.i - 1, base.j)
+        } else {
+            Location::new(base.i + 1, base.j)
+        };
+        let on_base_game = game_with_items(
+            vec![(
+                base,
+                Item::Mon {
+                    mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                },
+            )],
+            Color::White,
+        );
+        let off_base_game = game_with_items(
+            vec![(
+                off_base,
+                Item::Mon {
+                    mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                },
+            )],
+            Color::White,
+        );
+
+        let mut weights = RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS;
+        weights.spirit_on_own_base_penalty = 400;
+        weights.spirit_action_utility = 0;
+        let on_base_score =
+            evaluate_preferability_with_weights(&on_base_game, Color::White, &weights);
+        let off_base_score =
+            evaluate_preferability_with_weights(&off_base_game, Color::White, &weights);
+        assert!(off_base_score > on_base_score);
+    }
+
+    #[test]
+    fn eval_breakdown_sum_matches_total() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(9, 0),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(1, 0),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(10, 6),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 6),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        let breakdown = evaluate_preferability_breakdown_with_weights(
+            &game,
+            Color::White,
+            &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
+        );
+        assert_eq!(breakdown.total, breakdown.terms.sum());
+    }
+
+    #[test]
+    fn mirrored_board_breakdown_is_symmetric_between_colors() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(9, 0),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(8, 6),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(1, 0),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(2, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        game.white_score = 2;
+        game.black_score = 1;
+        game.white_potions_count = 1;
+        let mirrored = mirrored_game_with_swapped_colors(&game);
+
+        let original = evaluate_preferability_breakdown_with_weights(
+            &game,
+            Color::White,
+            &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
+        );
+        let mirrored_eval = evaluate_preferability_breakdown_with_weights(
+            &mirrored,
+            Color::Black,
+            &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
+        );
+        assert_eq!(original.total, mirrored_eval.total);
     }
 }
 

@@ -1,8 +1,8 @@
 use super::*;
 use crate::models::scoring::{
-    FINISHER_BALANCED_SCORING_WEIGHTS, FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS,
-    FINISHER_BALANCED_SOFT_SCORING_WEIGHTS, FINISHER_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS,
-    FINISHER_MANA_RACE_LITE_SCORING_WEIGHTS,
+    evaluate_preferability_breakdown_with_weights, FINISHER_BALANCED_SCORING_WEIGHTS,
+    FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS, FINISHER_BALANCED_SOFT_SCORING_WEIGHTS,
+    FINISHER_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS, FINISHER_MANA_RACE_LITE_SCORING_WEIGHTS,
     FINISHER_MANA_RACE_LITE_SOFT_AGGRESSIVE_SCORING_WEIGHTS,
     FINISHER_MANA_RACE_LITE_SOFT_SCORING_WEIGHTS,
     MANA_RACE_LITE_D2_TUNED_AGGRESSIVE_SCORING_WEIGHTS, MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
@@ -45,6 +45,68 @@ struct BudgetConversionDiagnostic {
     fast_win_rate: f64,
     normal_edge: f64,
     confidence: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum EvalPhaseFamily {
+    Fast,
+    NormalBalanced,
+    NormalTactical,
+    NormalTacticalAggressive,
+    NormalFinisher,
+    NormalFinisherAggressive,
+}
+
+impl EvalPhaseFamily {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Fast => "fast",
+            Self::NormalBalanced => "normal_balanced",
+            Self::NormalTactical => "normal_tactical",
+            Self::NormalTacticalAggressive => "normal_tactical_aggr",
+            Self::NormalFinisher => "normal_finisher",
+            Self::NormalFinisherAggressive => "normal_finisher_aggr",
+        }
+    }
+}
+
+#[derive(Clone)]
+struct EvalTuningSample {
+    mode: &'static str,
+    phase_family: EvalPhaseFamily,
+    fen: String,
+    input: String,
+    after_fen: String,
+    after_game: MonsGame,
+    perspective: Color,
+    selected: bool,
+    score: i32,
+    best_score: i32,
+    regret: i32,
+    efficiency: i32,
+    attack_drainer: bool,
+    own_drainer_vulnerable: bool,
+    mana_handoff: bool,
+    roundtrip: bool,
+    class_immediate_score: bool,
+    class_drainer_attack: bool,
+    class_drainer_safety_recover: bool,
+    class_carrier_progress: bool,
+    class_material: bool,
+    class_quiet: bool,
+    eval_total: i32,
+    eval_confirmed_score: i32,
+    eval_consumable_score: i32,
+    eval_score_race_path: i32,
+    eval_opp_score_race_path: i32,
+    eval_score_race_multi: i32,
+    eval_opp_score_race_multi: i32,
+    eval_immediate_window: i32,
+    eval_opp_immediate_window: i32,
+    eval_immediate_multi: i32,
+    eval_opp_immediate_multi: i32,
+    eval_match_point: i32,
+    eval_residual: i32,
 }
 
 impl SearchBudget {
@@ -529,19 +591,19 @@ const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_GLOBAL_PRESSURE: ScoringWeigh
         ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
     };
 
-const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_GLOBAL_PRESSURE:
-    ScoringWeights = ScoringWeights {
-    include_match_point_window: true,
-    next_turn_window_scale_bp: 8_000,
-    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE
-};
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_GLOBAL_PRESSURE: ScoringWeights =
+    ScoringWeights {
+        include_match_point_window: true,
+        next_turn_window_scale_bp: 8_000,
+        ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE
+    };
 
-const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_GLOBAL_PRESSURE:
-    ScoringWeights = ScoringWeights {
-    include_match_point_window: true,
-    next_turn_window_scale_bp: 8_000,
-    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE
-};
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_GLOBAL_PRESSURE: ScoringWeights =
+    ScoringWeights {
+        include_match_point_window: true,
+        next_turn_window_scale_bp: 8_000,
+        ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MANA_WINDOW_DEFENSE
+    };
 
 const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_GLOBAL_PRESSURE:
     ScoringWeights = ScoringWeights {
@@ -636,23 +698,23 @@ const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_MULTI_LANE_MIXED: ScoringWeig
         ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
     };
 
-const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_AGGR:
-    ScoringWeights = ScoringWeights {
-    score_race_multi_path: 120,
-    opponent_score_race_multi_path: 220,
-    immediate_score_multi_window: 150,
-    opponent_immediate_score_multi_window: 270,
-    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
-};
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_AGGR: ScoringWeights =
+    ScoringWeights {
+        score_race_multi_path: 120,
+        opponent_score_race_multi_path: 220,
+        immediate_score_multi_window: 150,
+        opponent_immediate_score_multi_window: 270,
+        ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
 
-const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_AGGR:
-    ScoringWeights = ScoringWeights {
-    score_race_multi_path: 145,
-    opponent_score_race_multi_path: 270,
-    immediate_score_multi_window: 190,
-    opponent_immediate_score_multi_window: 360,
-    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
-};
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_AGGR: ScoringWeights =
+    ScoringWeights {
+        score_race_multi_path: 145,
+        opponent_score_race_multi_path: 270,
+        immediate_score_multi_window: 190,
+        opponent_immediate_score_multi_window: 360,
+        ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+    };
 
 const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_MULTI_LANE_AGGR:
     ScoringWeights = ScoringWeights {
@@ -1254,17 +1316,15 @@ fn env_tuned_eval_weights(base: ScoringWeights, fast_mode: bool) -> ScoringWeigh
     let mut tuned = base;
     let prefix = if fast_mode { "FAST" } else { "NORMAL" };
 
-    let score_multi =
-        env_i32(format!("SMART_EVAL_{}_SCORE_MULTI", prefix).as_str()).unwrap_or(tuned.score_race_multi_path);
+    let score_multi = env_i32(format!("SMART_EVAL_{}_SCORE_MULTI", prefix).as_str())
+        .unwrap_or(tuned.score_race_multi_path);
     let opponent_score_multi = env_i32(format!("SMART_EVAL_{}_OPP_SCORE_MULTI", prefix).as_str())
         .unwrap_or(tuned.opponent_score_race_multi_path);
-    let immediate_multi =
-        env_i32(format!("SMART_EVAL_{}_IMM_MULTI", prefix).as_str()).unwrap_or(tuned.immediate_score_multi_window);
-    let opponent_immediate_multi =
-        env_i32(format!("SMART_EVAL_{}_OPP_IMM_MULTI", prefix).as_str())
-            .unwrap_or(tuned.opponent_immediate_score_multi_window);
-    let immediate_delta =
-        env_i32(format!("SMART_EVAL_{}_IMM_DELTA", prefix).as_str()).unwrap_or(0);
+    let immediate_multi = env_i32(format!("SMART_EVAL_{}_IMM_MULTI", prefix).as_str())
+        .unwrap_or(tuned.immediate_score_multi_window);
+    let opponent_immediate_multi = env_i32(format!("SMART_EVAL_{}_OPP_IMM_MULTI", prefix).as_str())
+        .unwrap_or(tuned.opponent_immediate_score_multi_window);
+    let immediate_delta = env_i32(format!("SMART_EVAL_{}_IMM_DELTA", prefix).as_str()).unwrap_or(0);
     let opponent_immediate_delta =
         env_i32(format!("SMART_EVAL_{}_OPP_IMM_DELTA", prefix).as_str()).unwrap_or(0);
     let next_turn_bp = env_i32(format!("SMART_EVAL_{}_NEXT_TURN_BP", prefix).as_str())
@@ -1283,9 +1343,7 @@ fn env_tuned_eval_weights(base: ScoringWeights, fast_mode: bool) -> ScoringWeigh
 
 fn runtime_eval_env_fast_weights() -> &'static ScoringWeights {
     static FAST: OnceLock<ScoringWeights> = OnceLock::new();
-    FAST.get_or_init(|| {
-        env_tuned_eval_weights(RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS, true)
-    })
+    FAST.get_or_init(|| env_tuned_eval_weights(RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS, true))
 }
 
 fn runtime_eval_env_normal_balanced_weights() -> &'static ScoringWeights {
@@ -1425,25 +1483,35 @@ fn model_runtime_pre_fast_multi_lane_eval(
 
 fn model_runtime_eval_mana_window(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
-    runtime.scoring_weights = runtime_phase_adaptive_scoring_weights_mana_window(game, runtime.depth);
+    runtime.scoring_weights =
+        runtime_phase_adaptive_scoring_weights_mana_window(game, runtime.depth);
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_eval_mana_window_defense(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+fn model_runtime_eval_mana_window_defense(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.scoring_weights =
         runtime_phase_adaptive_scoring_weights_mana_window_defense(game, runtime.depth);
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_eval_mana_window_pressure(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+fn model_runtime_eval_mana_window_pressure(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.scoring_weights =
         runtime_phase_adaptive_scoring_weights_mana_window_pressure(game, runtime.depth);
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_eval_no_confirmed_square(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+fn model_runtime_eval_no_confirmed_square(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.scoring_weights =
         runtime_phase_adaptive_scoring_weights_no_confirmed_square(game, runtime.depth);
@@ -1459,7 +1527,8 @@ fn model_runtime_eval_match_point_window(game: &MonsGame, config: SmartSearchCon
 
 fn model_runtime_eval_global_pressure(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
-    runtime.scoring_weights = runtime_phase_adaptive_scoring_weights_global_pressure(game, runtime.depth);
+    runtime.scoring_weights =
+        runtime_phase_adaptive_scoring_weights_global_pressure(game, runtime.depth);
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
@@ -1487,10 +1556,7 @@ fn model_runtime_eval_multi_lane_normal_only(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_eval_multi_lane_mixed(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_eval_multi_lane_mixed(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.scoring_weights =
         runtime_phase_adaptive_scoring_weights_multi_lane_mixed(game, runtime.depth);
@@ -1500,6 +1566,134 @@ fn model_runtime_eval_multi_lane_mixed(
 fn model_runtime_eval_env_multi(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.scoring_weights = runtime_phase_adaptive_scoring_weights_env_multi(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_BOARD_V1: ScoringWeights = ScoringWeights {
+    spirit_action_utility: 61,
+    ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+};
+
+const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_BOARD_V3: ScoringWeights = ScoringWeights {
+    immediate_score_window: 240,
+    opponent_immediate_score_window: 220,
+    immediate_score_multi_window: 80,
+    opponent_immediate_score_multi_window: 120,
+    next_turn_window_scale_bp: 5000,
+    include_regular_mana_move_windows: false,
+    include_match_point_window: false,
+    double_confirmed_score: true,
+    spirit_action_utility: 56,
+    drainer_immediate_threat: -220,
+    ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_BOARD_V1: ScoringWeights =
+    ScoringWeights {
+        spirit_action_utility: 63,
+        ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_BOARD_V3: ScoringWeights =
+    ScoringWeights {
+        immediate_score_window: 96,
+        opponent_immediate_score_window: 245,
+        next_turn_window_scale_bp: 5000,
+        include_regular_mana_move_windows: true,
+        include_match_point_window: false,
+        double_confirmed_score: true,
+        spirit_action_utility: 45,
+        drainer_immediate_threat: -55,
+        ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_BOARD_V3: ScoringWeights =
+    ScoringWeights {
+        immediate_score_window: 102,
+        opponent_immediate_score_window: 310,
+        ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_BOARD_V3: ScoringWeights =
+    ScoringWeights {
+        immediate_score_window: 275,
+        opponent_immediate_score_window: 235,
+        ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+fn runtime_phase_adaptive_scoring_weights_board_v1(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_BOARD_V1;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_BOARD_V1
+    }
+}
+
+fn model_runtime_eval_board_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights = runtime_phase_adaptive_scoring_weights_board_v1(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_eval_board_v2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    model_runtime_eval_multi_lane_aggr(game, config)
+}
+
+fn runtime_phase_adaptive_scoring_weights_board_v3(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_BOARD_V3;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_BOARD_V3
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_BOARD_V3
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_BOARD_V3
+    }
+}
+
+fn model_runtime_eval_board_v3(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights = runtime_phase_adaptive_scoring_weights_board_v3(game, runtime.depth);
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
@@ -3407,7 +3601,9 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_pre_fast_multi_lane_eval" => model_runtime_pre_fast_multi_lane_eval(game, config),
         "runtime_eval_mana_window" => model_runtime_eval_mana_window(game, config),
         "runtime_eval_mana_window_defense" => model_runtime_eval_mana_window_defense(game, config),
-        "runtime_eval_mana_window_pressure" => model_runtime_eval_mana_window_pressure(game, config),
+        "runtime_eval_mana_window_pressure" => {
+            model_runtime_eval_mana_window_pressure(game, config)
+        }
         "runtime_eval_no_confirmed_square" => model_runtime_eval_no_confirmed_square(game, config),
         "runtime_eval_match_point_window" => model_runtime_eval_match_point_window(game, config),
         "runtime_eval_global_pressure" => model_runtime_eval_global_pressure(game, config),
@@ -3418,6 +3614,9 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         }
         "runtime_eval_multi_lane_mixed" => model_runtime_eval_multi_lane_mixed(game, config),
         "runtime_eval_env_multi" => model_runtime_eval_env_multi(game, config),
+        "runtime_eval_board_v1" => model_runtime_eval_board_v1(game, config),
+        "runtime_eval_board_v2" => model_runtime_eval_board_v2(game, config),
+        "runtime_eval_board_v3" => model_runtime_eval_board_v3(game, config),
         "runtime_pre_normal_guarded_lookahead" => {
             model_runtime_pre_normal_guarded_lookahead(game, config)
         }
@@ -3710,6 +3909,9 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
             model_runtime_eval_multi_lane_mixed,
         ),
         ("runtime_eval_env_multi", model_runtime_eval_env_multi),
+        ("runtime_eval_board_v1", model_runtime_eval_board_v1),
+        ("runtime_eval_board_v2", model_runtime_eval_board_v2),
+        ("runtime_eval_board_v3", model_runtime_eval_board_v3),
         (
             "runtime_pre_normal_guarded_lookahead",
             model_runtime_pre_normal_guarded_lookahead,
@@ -5593,6 +5795,22 @@ fn max_achievable_delta(current: MatchupStats, remaining_games: usize) -> f64 {
     best_case_win_rate - 0.5
 }
 
+fn run_pool_non_regression_check(
+    candidate: AutomoveModel,
+    baseline: AutomoveModel,
+    budgets: &[SearchBudget],
+    games_per_matchup: usize,
+) -> (CandidateEvaluation, CandidateEvaluation, f64, f64) {
+    let pool = selected_pool_models();
+    let candidate_eval =
+        evaluate_candidate_against_pool(candidate, &pool, games_per_matchup, budgets);
+    let baseline_eval =
+        evaluate_candidate_against_pool(baseline, &pool, games_per_matchup, budgets);
+    let candidate_wr = candidate_eval.aggregate_stats.win_rate_points();
+    let baseline_wr = baseline_eval.aggregate_stats.win_rate_points();
+    (candidate_eval, baseline_eval, candidate_wr, baseline_wr)
+}
+
 fn persist_ladder_artifacts(lines: &[String]) {
     let Some(path) = env::var("SMART_LADDER_ARTIFACT_PATH")
         .ok()
@@ -5615,14 +5833,133 @@ fn json_escape(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+fn eval_phase_family_for_game(game: &MonsGame, budget: SearchBudget) -> EvalPhaseFamily {
+    if budget.key() == "fast" {
+        return EvalPhaseFamily::Fast;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        EvalPhaseFamily::NormalFinisherAggressive
+    } else if opponent_distance_to_win <= 1 {
+        EvalPhaseFamily::NormalTacticalAggressive
+    } else if my_distance_to_win <= 2 {
+        EvalPhaseFamily::NormalFinisher
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        EvalPhaseFamily::NormalTactical
+    } else {
+        EvalPhaseFamily::NormalBalanced
+    }
+}
+
+fn eval_phase_family_base_weights(family: EvalPhaseFamily) -> &'static ScoringWeights {
+    match family {
+        EvalPhaseFamily::Fast => &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
+        EvalPhaseFamily::NormalBalanced => {
+            &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+        }
+        EvalPhaseFamily::NormalTactical => {
+            &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+        }
+        EvalPhaseFamily::NormalTacticalAggressive => {
+            &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+        }
+        EvalPhaseFamily::NormalFinisher => {
+            &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+        }
+        EvalPhaseFamily::NormalFinisherAggressive => {
+            &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+        }
+    }
+}
+
+fn eval_tuning_sample_json_line(profile_name: &str, sample: &EvalTuningSample) -> String {
+    format!(
+        concat!(
+            r#"{{"profile":"{}","mode":"{}","phase":"{}","fen":"{}","input":"{}","after_fen":"{}","selected":{},"score":{},"best_score":{},"regret":{},"efficiency":{},"attack_drainer":{},"own_drainer_vulnerable":{},"mana_handoff":{},"roundtrip":{},"class_immediate_score":{},"class_drainer_attack":{},"class_drainer_safety_recover":{},"class_carrier_progress":{},"class_material":{},"class_quiet":{},"#,
+            r#""eval_total":{},"eval_confirmed_score":{},"eval_consumable_score":{},"eval_score_race_path":{},"eval_opp_score_race_path":{},"eval_score_race_multi":{},"eval_opp_score_race_multi":{},"eval_immediate_window":{},"eval_opp_immediate_window":{},"eval_immediate_multi":{},"eval_opp_immediate_multi":{},"eval_match_point":{},"eval_residual":{}}}"#
+        ),
+        json_escape(profile_name),
+        sample.mode,
+        sample.phase_family.as_str(),
+        json_escape(sample.fen.as_str()),
+        json_escape(sample.input.as_str()),
+        json_escape(sample.after_fen.as_str()),
+        if sample.selected { "true" } else { "false" },
+        sample.score,
+        sample.best_score,
+        sample.regret,
+        sample.efficiency,
+        if sample.attack_drainer {
+            "true"
+        } else {
+            "false"
+        },
+        if sample.own_drainer_vulnerable {
+            "true"
+        } else {
+            "false"
+        },
+        if sample.mana_handoff { "true" } else { "false" },
+        if sample.roundtrip { "true" } else { "false" },
+        if sample.class_immediate_score {
+            "true"
+        } else {
+            "false"
+        },
+        if sample.class_drainer_attack {
+            "true"
+        } else {
+            "false"
+        },
+        if sample.class_drainer_safety_recover {
+            "true"
+        } else {
+            "false"
+        },
+        if sample.class_carrier_progress {
+            "true"
+        } else {
+            "false"
+        },
+        if sample.class_material {
+            "true"
+        } else {
+            "false"
+        },
+        if sample.class_quiet { "true" } else { "false" },
+        sample.eval_total,
+        sample.eval_confirmed_score,
+        sample.eval_consumable_score,
+        sample.eval_score_race_path,
+        sample.eval_opp_score_race_path,
+        sample.eval_score_race_multi,
+        sample.eval_opp_score_race_multi,
+        sample.eval_immediate_window,
+        sample.eval_opp_immediate_window,
+        sample.eval_immediate_multi,
+        sample.eval_opp_immediate_multi,
+        sample.eval_match_point,
+        sample.eval_residual,
+    )
+}
+
 fn collect_eval_tuning_samples_for_budget(
-    profile_name: &str,
+    _profile_name: &str,
     selector: fn(&MonsGame, SmartSearchConfig) -> Vec<Input>,
     budget: SearchBudget,
     openings: &[String],
     root_limit: usize,
-) -> Vec<String> {
-    let mut lines = Vec::new();
+) -> Vec<EvalTuningSample> {
+    let mut samples = Vec::new();
     for opening in openings {
         let game = MonsGame::from_fen(opening.as_str(), false).expect("valid opening fen");
         if game.winner_color().is_some() {
@@ -5632,6 +5969,26 @@ fn collect_eval_tuning_samples_for_budget(
         let config = budget.runtime_config_for_game(&game);
         let selected_inputs = selector(&game, config);
         let selected_fen = Input::fen_from_array(&selected_inputs);
+        let phase_family = eval_phase_family_for_game(&game, budget);
+        let label_depth_boost = env_usize("SMART_TUNE_LABEL_DEPTH_BOOST").unwrap_or(0);
+        let label_node_multiplier = env_usize("SMART_TUNE_LABEL_NODE_MULTIPLIER").unwrap_or(1);
+        let mut label_config = config;
+        if label_depth_boost > 0 {
+            label_config.depth =
+                (config.depth + label_depth_boost).clamp(1, MAX_SMART_SEARCH_DEPTH);
+        }
+        if label_node_multiplier > 1 {
+            label_config.max_visited_nodes = (config.max_visited_nodes * label_node_multiplier)
+                .clamp(config.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
+            label_config.root_branch_limit = (config.root_branch_limit + label_node_multiplier * 2)
+                .clamp(config.root_branch_limit, 48);
+            label_config.node_branch_limit = (config.node_branch_limit + label_node_multiplier)
+                .clamp(config.node_branch_limit, 24);
+            label_config.root_enum_limit =
+                (label_config.root_branch_limit * 6).clamp(label_config.root_branch_limit, 320);
+            label_config.node_enum_limit =
+                (label_config.node_branch_limit * 5).clamp(label_config.node_branch_limit, 180);
+        }
 
         let mut roots = MonsGameModel::ranked_root_moves(&game, game.active_color, config);
         if roots.is_empty() {
@@ -5663,22 +6020,30 @@ fn collect_eval_tuning_samples_for_budget(
                 game.active_color,
                 alpha,
                 &mut visited_nodes,
-                config,
+                label_config,
                 &mut transposition_table,
                 &mut extension_nodes_used,
                 extension_node_budget,
                 true,
             );
             alpha = alpha.max(score);
+            let eval_breakdown = evaluate_preferability_breakdown_with_weights(
+                &root.game,
+                game.active_color,
+                config.scoring_weights,
+            );
             scored_roots.push((
                 Input::fen_from_array(root.inputs.as_slice()),
                 score,
+                root.game.fen(),
+                root.game.clone(),
                 root.efficiency,
                 root.attacks_opponent_drainer,
                 root.own_drainer_vulnerable,
                 root.mana_handoff_to_opponent,
                 root.has_roundtrip,
                 root.classes,
+                eval_breakdown,
             ));
         }
         if scored_roots.is_empty() {
@@ -5693,41 +6058,612 @@ fn collect_eval_tuning_samples_for_budget(
         for (
             input_fen,
             score,
+            after_fen,
+            after_game,
             efficiency,
             attacks_opponent_drainer,
             own_drainer_vulnerable,
             mana_handoff_to_opponent,
             has_roundtrip,
             classes,
+            eval_breakdown,
         ) in scored_roots
         {
             let regret = best_score.saturating_sub(score);
-            lines.push(format!(
-                r#"{{"profile":"{}","mode":"{}","fen":"{}","input":"{}","selected":{},"score":{},"best_score":{},"regret":{},"efficiency":{},"attack_drainer":{},"own_drainer_vulnerable":{},"mana_handoff":{},"roundtrip":{},"class_immediate_score":{},"class_drainer_attack":{},"class_drainer_safety_recover":{},"class_carrier_progress":{},"class_material":{},"class_quiet":{}}}"#,
-                json_escape(profile_name),
-                budget.key(),
-                json_escape(opening.as_str()),
-                json_escape(input_fen.as_str()),
-                if input_fen == selected_fen { "true" } else { "false" },
+            let selected = input_fen == selected_fen;
+            samples.push(EvalTuningSample {
+                mode: budget.key(),
+                phase_family,
+                fen: opening.clone(),
+                input: input_fen,
+                after_fen,
+                after_game,
+                perspective: game.active_color,
+                selected,
                 score,
                 best_score,
                 regret,
                 efficiency,
-                if attacks_opponent_drainer { "true" } else { "false" },
-                if own_drainer_vulnerable { "true" } else { "false" },
-                if mana_handoff_to_opponent { "true" } else { "false" },
-                if has_roundtrip { "true" } else { "false" },
-                if classes.immediate_score { "true" } else { "false" },
-                if classes.drainer_attack { "true" } else { "false" },
-                if classes.drainer_safety_recover { "true" } else { "false" },
-                if classes.carrier_progress { "true" } else { "false" },
-                if classes.material { "true" } else { "false" },
-                if classes.quiet { "true" } else { "false" },
-            ));
+                attack_drainer: attacks_opponent_drainer,
+                own_drainer_vulnerable,
+                mana_handoff: mana_handoff_to_opponent,
+                roundtrip: has_roundtrip,
+                class_immediate_score: classes.immediate_score,
+                class_drainer_attack: classes.drainer_attack,
+                class_drainer_safety_recover: classes.drainer_safety_recover,
+                class_carrier_progress: classes.carrier_progress,
+                class_material: classes.material,
+                class_quiet: classes.quiet,
+                eval_total: eval_breakdown.total,
+                eval_confirmed_score: eval_breakdown.terms.confirmed_score,
+                eval_consumable_score: eval_breakdown.terms.consumable_score,
+                eval_score_race_path: eval_breakdown.terms.score_race_path_progress,
+                eval_opp_score_race_path: eval_breakdown.terms.opponent_score_race_path_progress,
+                eval_score_race_multi: eval_breakdown.terms.score_race_multi_path,
+                eval_opp_score_race_multi: eval_breakdown.terms.opponent_score_race_multi_path,
+                eval_immediate_window: eval_breakdown.terms.immediate_score_window,
+                eval_opp_immediate_window: eval_breakdown.terms.opponent_immediate_score_window,
+                eval_immediate_multi: eval_breakdown.terms.immediate_score_multi_window,
+                eval_opp_immediate_multi: eval_breakdown
+                    .terms
+                    .opponent_immediate_score_multi_window,
+                eval_match_point: eval_breakdown.terms.match_point_window,
+                eval_residual: eval_breakdown.terms.residual_board_state,
+            });
         }
     }
 
-    lines
+    samples
+}
+
+#[derive(Clone, Copy)]
+struct EvalTuneBundle {
+    fast: ScoringWeights,
+    normal_balanced: ScoringWeights,
+    normal_tactical: ScoringWeights,
+    normal_tactical_aggressive: ScoringWeights,
+    normal_finisher: ScoringWeights,
+    normal_finisher_aggressive: ScoringWeights,
+}
+
+impl EvalTuneBundle {
+    fn baseline() -> Self {
+        Self {
+            fast: RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
+            normal_balanced: RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS,
+            normal_tactical: RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS,
+            normal_tactical_aggressive:
+                RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS,
+            normal_finisher: RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS,
+            normal_finisher_aggressive:
+                RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS,
+        }
+    }
+
+    fn weights_for_family(self, family: EvalPhaseFamily) -> ScoringWeights {
+        match family {
+            EvalPhaseFamily::Fast => self.fast,
+            EvalPhaseFamily::NormalBalanced => self.normal_balanced,
+            EvalPhaseFamily::NormalTactical => self.normal_tactical,
+            EvalPhaseFamily::NormalTacticalAggressive => self.normal_tactical_aggressive,
+            EvalPhaseFamily::NormalFinisher => self.normal_finisher,
+            EvalPhaseFamily::NormalFinisherAggressive => self.normal_finisher_aggressive,
+        }
+    }
+
+    fn with_family_weights(mut self, family: EvalPhaseFamily, weights: ScoringWeights) -> Self {
+        match family {
+            EvalPhaseFamily::Fast => self.fast = weights,
+            EvalPhaseFamily::NormalBalanced => self.normal_balanced = weights,
+            EvalPhaseFamily::NormalTactical => self.normal_tactical = weights,
+            EvalPhaseFamily::NormalTacticalAggressive => self.normal_tactical_aggressive = weights,
+            EvalPhaseFamily::NormalFinisher => self.normal_finisher = weights,
+            EvalPhaseFamily::NormalFinisherAggressive => self.normal_finisher_aggressive = weights,
+        }
+        self
+    }
+}
+
+#[derive(Clone, Copy)]
+enum EvalTuneField {
+    ScoreRacePathProgress,
+    OpponentScoreRacePathProgress,
+    ScoreRaceMultiPath,
+    OpponentScoreRaceMultiPath,
+    ImmediateScoreWindow,
+    OpponentImmediateScoreWindow,
+    ImmediateScoreMultiWindow,
+    OpponentImmediateScoreMultiWindow,
+    SpiritActionUtility,
+    DrainerImmediateThreat,
+    DrainerBestManaPath,
+    DrainerPickupScoreThisTurn,
+    ManaCarrierScoreThisTurn,
+    NextTurnWindowScaleBp,
+    IncludeRegularManaMoveWindows,
+    IncludeMatchPointWindow,
+    DoubleConfirmedScore,
+}
+
+const EVAL_TUNE_FIELDS: [EvalTuneField; 17] = [
+    EvalTuneField::ScoreRacePathProgress,
+    EvalTuneField::OpponentScoreRacePathProgress,
+    EvalTuneField::ScoreRaceMultiPath,
+    EvalTuneField::OpponentScoreRaceMultiPath,
+    EvalTuneField::ImmediateScoreWindow,
+    EvalTuneField::OpponentImmediateScoreWindow,
+    EvalTuneField::ImmediateScoreMultiWindow,
+    EvalTuneField::OpponentImmediateScoreMultiWindow,
+    EvalTuneField::SpiritActionUtility,
+    EvalTuneField::DrainerImmediateThreat,
+    EvalTuneField::DrainerBestManaPath,
+    EvalTuneField::DrainerPickupScoreThisTurn,
+    EvalTuneField::ManaCarrierScoreThisTurn,
+    EvalTuneField::NextTurnWindowScaleBp,
+    EvalTuneField::IncludeRegularManaMoveWindows,
+    EvalTuneField::IncludeMatchPointWindow,
+    EvalTuneField::DoubleConfirmedScore,
+];
+
+fn eval_tune_field_is_bool(field: EvalTuneField) -> bool {
+    matches!(
+        field,
+        EvalTuneField::IncludeRegularManaMoveWindows
+            | EvalTuneField::IncludeMatchPointWindow
+            | EvalTuneField::DoubleConfirmedScore
+    )
+}
+
+fn eval_tune_field_non_negative(field: EvalTuneField) -> bool {
+    !matches!(field, EvalTuneField::DrainerImmediateThreat)
+}
+
+fn eval_tune_field_step(field: EvalTuneField, base: i32) -> i32 {
+    if matches!(field, EvalTuneField::NextTurnWindowScaleBp) {
+        return 250;
+    }
+    if base.abs() >= 150 {
+        10
+    } else {
+        5
+    }
+}
+
+fn eval_tune_get_numeric(weights: &ScoringWeights, field: EvalTuneField) -> i32 {
+    match field {
+        EvalTuneField::ScoreRacePathProgress => weights.score_race_path_progress,
+        EvalTuneField::OpponentScoreRacePathProgress => weights.opponent_score_race_path_progress,
+        EvalTuneField::ScoreRaceMultiPath => weights.score_race_multi_path,
+        EvalTuneField::OpponentScoreRaceMultiPath => weights.opponent_score_race_multi_path,
+        EvalTuneField::ImmediateScoreWindow => weights.immediate_score_window,
+        EvalTuneField::OpponentImmediateScoreWindow => weights.opponent_immediate_score_window,
+        EvalTuneField::ImmediateScoreMultiWindow => weights.immediate_score_multi_window,
+        EvalTuneField::OpponentImmediateScoreMultiWindow => {
+            weights.opponent_immediate_score_multi_window
+        }
+        EvalTuneField::SpiritActionUtility => weights.spirit_action_utility,
+        EvalTuneField::DrainerImmediateThreat => weights.drainer_immediate_threat,
+        EvalTuneField::DrainerBestManaPath => weights.drainer_best_mana_path,
+        EvalTuneField::DrainerPickupScoreThisTurn => weights.drainer_pickup_score_this_turn,
+        EvalTuneField::ManaCarrierScoreThisTurn => weights.mana_carrier_score_this_turn,
+        EvalTuneField::NextTurnWindowScaleBp => weights.next_turn_window_scale_bp,
+        EvalTuneField::IncludeRegularManaMoveWindows => {
+            if weights.include_regular_mana_move_windows {
+                1
+            } else {
+                0
+            }
+        }
+        EvalTuneField::IncludeMatchPointWindow => {
+            if weights.include_match_point_window {
+                1
+            } else {
+                0
+            }
+        }
+        EvalTuneField::DoubleConfirmedScore => {
+            if weights.double_confirmed_score {
+                1
+            } else {
+                0
+            }
+        }
+    }
+}
+
+fn eval_tune_set_field(weights: &mut ScoringWeights, field: EvalTuneField, value: i32) {
+    match field {
+        EvalTuneField::ScoreRacePathProgress => weights.score_race_path_progress = value,
+        EvalTuneField::OpponentScoreRacePathProgress => {
+            weights.opponent_score_race_path_progress = value
+        }
+        EvalTuneField::ScoreRaceMultiPath => weights.score_race_multi_path = value,
+        EvalTuneField::OpponentScoreRaceMultiPath => weights.opponent_score_race_multi_path = value,
+        EvalTuneField::ImmediateScoreWindow => weights.immediate_score_window = value,
+        EvalTuneField::OpponentImmediateScoreWindow => {
+            weights.opponent_immediate_score_window = value
+        }
+        EvalTuneField::ImmediateScoreMultiWindow => weights.immediate_score_multi_window = value,
+        EvalTuneField::OpponentImmediateScoreMultiWindow => {
+            weights.opponent_immediate_score_multi_window = value
+        }
+        EvalTuneField::SpiritActionUtility => weights.spirit_action_utility = value,
+        EvalTuneField::DrainerImmediateThreat => weights.drainer_immediate_threat = value,
+        EvalTuneField::DrainerBestManaPath => weights.drainer_best_mana_path = value,
+        EvalTuneField::DrainerPickupScoreThisTurn => weights.drainer_pickup_score_this_turn = value,
+        EvalTuneField::ManaCarrierScoreThisTurn => weights.mana_carrier_score_this_turn = value,
+        EvalTuneField::NextTurnWindowScaleBp => {
+            weights.next_turn_window_scale_bp = value.clamp(0, 20_000)
+        }
+        EvalTuneField::IncludeRegularManaMoveWindows => {
+            weights.include_regular_mana_move_windows = value != 0
+        }
+        EvalTuneField::IncludeMatchPointWindow => weights.include_match_point_window = value != 0,
+        EvalTuneField::DoubleConfirmedScore => weights.double_confirmed_score = value != 0,
+    }
+}
+
+fn eval_tune_group_indices(
+    samples: &[EvalTuningSample],
+    family: EvalPhaseFamily,
+) -> Vec<Vec<usize>> {
+    let mut grouped = std::collections::BTreeMap::<String, Vec<usize>>::new();
+    for (index, sample) in samples.iter().enumerate() {
+        if sample.phase_family != family {
+            continue;
+        }
+        let key = format!("{}|{}", sample.mode, sample.fen);
+        grouped.entry(key).or_default().push(index);
+    }
+    grouped.into_values().collect()
+}
+
+fn eval_tune_objective(
+    samples: &[EvalTuningSample],
+    groups: &[Vec<usize>],
+    weights: &ScoringWeights,
+    base: &ScoringWeights,
+) -> f64 {
+    if groups.is_empty() {
+        return f64::NEG_INFINITY;
+    }
+
+    let mut loss = 0.0f64;
+    for group in groups {
+        let mut evals = Vec::with_capacity(group.len());
+        for index in group {
+            let sample = &samples[*index];
+            let eval = evaluate_preferability_with_weights(
+                &sample.after_game,
+                sample.perspective,
+                weights,
+            );
+            evals.push((*index, eval));
+        }
+
+        let mut best_index = evals[0].0;
+        let mut best_eval = evals[0].1;
+        let mut best_regret = samples[best_index].regret;
+        for (index, eval) in &evals {
+            let sample = &samples[*index];
+            if *eval > best_eval || (*eval == best_eval && sample.regret < best_regret) {
+                best_eval = *eval;
+                best_regret = sample.regret;
+                best_index = *index;
+            }
+        }
+
+        let chosen = &samples[best_index];
+        loss += chosen.regret as f64;
+
+        let any_drainer_attack = group
+            .iter()
+            .any(|index| samples[*index].class_drainer_attack);
+        let any_immediate = group
+            .iter()
+            .any(|index| samples[*index].class_immediate_score);
+        let any_safety = group
+            .iter()
+            .any(|index| samples[*index].class_drainer_safety_recover);
+
+        if any_drainer_attack && !chosen.class_drainer_attack {
+            loss += 20.0;
+        }
+        if any_immediate && !chosen.class_immediate_score {
+            loss += 14.0;
+        }
+        if any_safety && !chosen.class_drainer_safety_recover {
+            loss += 8.0;
+        }
+
+        let has_non_handoff_alt = group.iter().any(|index| {
+            let candidate = &samples[*index];
+            !candidate.mana_handoff && candidate.regret <= chosen.regret
+        });
+        if chosen.mana_handoff && has_non_handoff_alt {
+            loss += 5.0;
+        }
+
+        let has_non_roundtrip_alt = group.iter().any(|index| {
+            let candidate = &samples[*index];
+            !candidate.roundtrip && candidate.regret <= chosen.regret
+        });
+        if chosen.roundtrip && has_non_roundtrip_alt {
+            loss += 3.0;
+        }
+
+        let has_safer_alt = group.iter().any(|index| {
+            let candidate = &samples[*index];
+            !candidate.own_drainer_vulnerable && candidate.regret <= chosen.regret + 1
+        });
+        if chosen.own_drainer_vulnerable && has_safer_alt {
+            loss += 6.0;
+        }
+
+        for i in 0..evals.len() {
+            for j in (i + 1)..evals.len() {
+                let (index_i, eval_i) = evals[i];
+                let (index_j, eval_j) = evals[j];
+                let label_diff = samples[index_i].score - samples[index_j].score;
+                if label_diff == 0 {
+                    continue;
+                }
+                let eval_diff = eval_i - eval_j;
+                if eval_diff == 0
+                    || (label_diff > 0 && eval_diff < 0)
+                    || (label_diff < 0 && eval_diff > 0)
+                {
+                    loss += 0.35;
+                }
+            }
+        }
+    }
+
+    for field in EVAL_TUNE_FIELDS {
+        let base_value = eval_tune_get_numeric(base, field);
+        let value = eval_tune_get_numeric(weights, field);
+        let delta = (value - base_value).abs() as f64;
+        let denom = base_value.abs().max(5) as f64;
+        if eval_tune_field_is_bool(field) {
+            if value != base_value {
+                loss += 0.20;
+            }
+        } else {
+            loss += 0.01 * (delta / denom);
+        }
+    }
+
+    -loss
+}
+
+fn tune_weights_for_family(
+    train_samples: &[EvalTuningSample],
+    train_groups: &[Vec<usize>],
+    base: ScoringWeights,
+    rotation: usize,
+) -> ScoringWeights {
+    let mut tuned = base;
+    let mut best_score = eval_tune_objective(train_samples, train_groups, &tuned, &base);
+    let mut fields = EVAL_TUNE_FIELDS.to_vec();
+    let fields_len = fields.len().max(1);
+    fields.rotate_left(rotation % fields_len);
+    let full_grid = env_bool("SMART_TUNE_FULL_GRID").unwrap_or(false);
+
+    for _ in 0..3 {
+        let mut improved = false;
+        for field in &fields {
+            if eval_tune_field_is_bool(*field) {
+                let current = eval_tune_get_numeric(&tuned, *field);
+                let mut trial = tuned;
+                eval_tune_set_field(&mut trial, *field, if current == 0 { 1 } else { 0 });
+                let trial_score = eval_tune_objective(train_samples, train_groups, &trial, &base);
+                if trial_score > best_score {
+                    best_score = trial_score;
+                    tuned = trial;
+                    improved = true;
+                }
+                continue;
+            }
+
+            let current = eval_tune_get_numeric(&tuned, *field);
+            let base_value = eval_tune_get_numeric(&base, *field);
+            let step = eval_tune_field_step(*field, base_value).max(1);
+            let span = ((base_value.abs() * 35) / 100).max(step);
+            let mut min_value = base_value - span;
+            let mut max_value = base_value + span;
+            if eval_tune_field_non_negative(*field) {
+                min_value = min_value.max(0);
+            }
+            if matches!(field, EvalTuneField::NextTurnWindowScaleBp) {
+                min_value = min_value.clamp(0, 20_000);
+                max_value = max_value.clamp(0, 20_000);
+            }
+
+            if full_grid {
+                let mut candidate = min_value;
+                while candidate <= max_value {
+                    if candidate == current {
+                        candidate += step;
+                        continue;
+                    }
+                    let mut trial = tuned;
+                    eval_tune_set_field(&mut trial, *field, candidate);
+                    let trial_score =
+                        eval_tune_objective(train_samples, train_groups, &trial, &base);
+                    if trial_score > best_score {
+                        best_score = trial_score;
+                        tuned = trial;
+                        improved = true;
+                    }
+                    candidate += step;
+                }
+            } else {
+                let mut candidates = vec![
+                    base_value,
+                    current - 2 * step,
+                    current - step,
+                    current + step,
+                    current + 2 * step,
+                ];
+                candidates.sort();
+                candidates.dedup();
+                for candidate in candidates {
+                    let candidate = candidate.clamp(min_value, max_value);
+                    if candidate == current {
+                        continue;
+                    }
+                    let mut trial = tuned;
+                    eval_tune_set_field(&mut trial, *field, candidate);
+                    let trial_score =
+                        eval_tune_objective(train_samples, train_groups, &trial, &base);
+                    if trial_score > best_score {
+                        best_score = trial_score;
+                        tuned = trial;
+                        improved = true;
+                    }
+                }
+            }
+        }
+        if !improved {
+            break;
+        }
+    }
+
+    tuned
+}
+
+fn eval_tune_bundle_score(
+    samples: &[EvalTuningSample],
+    groups_by_family: &std::collections::HashMap<EvalPhaseFamily, Vec<Vec<usize>>>,
+    bundle: EvalTuneBundle,
+) -> f64 {
+    let mut score = 0.0;
+    for family in [
+        EvalPhaseFamily::Fast,
+        EvalPhaseFamily::NormalBalanced,
+        EvalPhaseFamily::NormalTactical,
+        EvalPhaseFamily::NormalTacticalAggressive,
+        EvalPhaseFamily::NormalFinisher,
+        EvalPhaseFamily::NormalFinisherAggressive,
+    ] {
+        let groups = groups_by_family
+            .get(&family)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        if groups.is_empty() {
+            continue;
+        }
+        let weights = bundle.weights_for_family(family);
+        let base = eval_phase_family_base_weights(family);
+        score += eval_tune_objective(samples, groups, &weights, base);
+    }
+    score
+}
+
+fn write_eval_tune_manifest(
+    path: &str,
+    ranked: &[(usize, f64, f64, EvalTuneBundle)],
+) -> std::io::Result<()> {
+    let mut lines = Vec::new();
+    lines.push("[".to_string());
+    for (index, (_candidate_id, train_score, holdout_score, bundle)) in ranked.iter().enumerate() {
+        let comma = if index + 1 == ranked.len() { "" } else { "," };
+        lines.push(format!(
+            concat!(
+                r#"  {{"rank":{},"train_score":{:.6},"holdout_score":{:.6},"#,
+                r#""fast_imm":{},"fast_opp_imm":{},"fast_multi":{},"fast_opp_multi":{},"#,
+                r#""fast_next_turn_bp":{},"fast_include_regular":{},"fast_include_match_point":{},"fast_double_confirmed":{},"fast_spirit_utility":{},"fast_drainer_threat":{},"#,
+                r#""normal_balanced_imm":{},"normal_balanced_opp_imm":{},"#,
+                r#""normal_balanced_next_turn_bp":{},"normal_balanced_include_regular":{},"normal_balanced_include_match_point":{},"normal_balanced_double_confirmed":{},"normal_balanced_spirit_utility":{},"normal_balanced_drainer_threat":{},"#,
+                r#""normal_tactical_imm":{},"normal_tactical_opp_imm":{},"#,
+                r#""normal_finisher_imm":{},"normal_finisher_opp_imm":{}}}"#
+            ),
+            index + 1,
+            *train_score,
+            *holdout_score,
+            bundle.fast.immediate_score_window,
+            bundle.fast.opponent_immediate_score_window,
+            bundle.fast.immediate_score_multi_window,
+            bundle.fast.opponent_immediate_score_multi_window,
+            bundle.fast.next_turn_window_scale_bp,
+            if bundle.fast.include_regular_mana_move_windows {
+                "true"
+            } else {
+                "false"
+            },
+            if bundle.fast.include_match_point_window {
+                "true"
+            } else {
+                "false"
+            },
+            if bundle.fast.double_confirmed_score {
+                "true"
+            } else {
+                "false"
+            },
+            bundle.fast.spirit_action_utility,
+            bundle.fast.drainer_immediate_threat,
+            bundle.normal_balanced.immediate_score_window,
+            bundle.normal_balanced.opponent_immediate_score_window,
+            bundle.normal_balanced.next_turn_window_scale_bp,
+            if bundle.normal_balanced.include_regular_mana_move_windows {
+                "true"
+            } else {
+                "false"
+            },
+            if bundle.normal_balanced.include_match_point_window {
+                "true"
+            } else {
+                "false"
+            },
+            if bundle.normal_balanced.double_confirmed_score {
+                "true"
+            } else {
+                "false"
+            },
+            bundle.normal_balanced.spirit_action_utility,
+            bundle.normal_balanced.drainer_immediate_threat,
+            bundle.normal_tactical.immediate_score_window,
+            bundle.normal_tactical.opponent_immediate_score_window,
+            bundle.normal_finisher.immediate_score_window,
+            bundle.normal_finisher.opponent_immediate_score_window,
+        ));
+        if !comma.is_empty() {
+            let last = lines.pop().unwrap_or_default();
+            lines.push(format!("{last}{comma}"));
+        }
+    }
+    lines.push("]".to_string());
+    std::fs::write(path, lines.join("\n").as_bytes())
+}
+
+fn collect_eval_tuning_samples_for_seed_tags(
+    profile_name: &str,
+    selector: fn(&MonsGame, SmartSearchConfig) -> Vec<Input>,
+    seed_tags: &[&str],
+    positions_per_seed: usize,
+    root_limit: usize,
+) -> Vec<EvalTuningSample> {
+    let mut all = Vec::new();
+    for seed_tag in seed_tags {
+        let openings_seed = seed_for_pairing(seed_tag, profile_name);
+        let openings = generate_opening_fens_cached(openings_seed, positions_per_seed.max(8));
+        all.extend(collect_eval_tuning_samples_for_budget(
+            profile_name,
+            selector,
+            SearchBudget::from_preference(SmartAutomovePreference::Fast),
+            openings.as_slice(),
+            root_limit,
+        ));
+        all.extend(collect_eval_tuning_samples_for_budget(
+            profile_name,
+            selector,
+            SearchBudget::from_preference(SmartAutomovePreference::Normal),
+            openings.as_slice(),
+            root_limit,
+        ));
+    }
+    all
 }
 
 fn tactical_game_with_items(
@@ -6205,12 +7141,16 @@ fn smart_automove_pool_export_eval_tuning_dataset() {
     let mut all_samples = Vec::with_capacity(fast_samples.len() + normal_samples.len());
     all_samples.extend(fast_samples);
     all_samples.extend(normal_samples);
+    let serialized = all_samples
+        .iter()
+        .map(|sample| eval_tuning_sample_json_line(profile_name.as_str(), sample))
+        .collect::<Vec<_>>();
 
     assert!(
         !all_samples.is_empty(),
         "eval tuning dataset produced no samples"
     );
-    if let Err(error) = std::fs::write(output_path.as_str(), all_samples.join("\n")) {
+    if let Err(error) = std::fs::write(output_path.as_str(), serialized.join("\n")) {
         panic!(
             "failed writing SMART_TUNE_OUTPUT_PATH '{}': {}",
             output_path, error
@@ -6231,6 +7171,246 @@ fn smart_automove_pool_export_eval_tuning_dataset() {
 }
 
 #[test]
+#[ignore = "exports default train/holdout evaluation datasets for board-score tuning"]
+fn smart_automove_pool_export_eval_tuning_dataset_suite() {
+    let profile_name = env::var("SMART_TUNE_PROFILE")
+        .ok()
+        .map(|value| value.trim().to_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "runtime_current".to_string());
+    let Some(selector) = profile_selector_from_name(profile_name.as_str()) else {
+        panic!("unknown profile for SMART_TUNE_PROFILE: {}", profile_name);
+    };
+
+    let train_positions_per_seed = env_usize("SMART_TUNE_TRAIN_POSITIONS_PER_SEED")
+        .unwrap_or(256)
+        .max(16);
+    let holdout_positions_per_seed = env_usize("SMART_TUNE_HOLDOUT_POSITIONS_PER_SEED")
+        .unwrap_or(128)
+        .max(16);
+    let root_limit = env_usize("SMART_TUNE_ROOT_LIMIT").unwrap_or(12).max(2);
+
+    let train_seed_tags = ["eval_train_v1", "eval_train_v2", "eval_train_v3"];
+    let holdout_seed_tags = ["eval_holdout_v1", "eval_holdout_v2"];
+
+    let train_samples = collect_eval_tuning_samples_for_seed_tags(
+        profile_name.as_str(),
+        selector,
+        train_seed_tags.as_slice(),
+        train_positions_per_seed,
+        root_limit,
+    );
+    let holdout_samples = collect_eval_tuning_samples_for_seed_tags(
+        profile_name.as_str(),
+        selector,
+        holdout_seed_tags.as_slice(),
+        holdout_positions_per_seed,
+        root_limit,
+    );
+
+    assert!(
+        !train_samples.is_empty(),
+        "train eval tuning suite produced no samples"
+    );
+    assert!(
+        !holdout_samples.is_empty(),
+        "holdout eval tuning suite produced no samples"
+    );
+
+    for seed_tag in &train_seed_tags {
+        let seed = seed_for_pairing(seed_tag, profile_name.as_str());
+        let openings = generate_opening_fens_cached(seed, train_positions_per_seed);
+        let mut seed_samples = collect_eval_tuning_samples_for_budget(
+            profile_name.as_str(),
+            selector,
+            SearchBudget::from_preference(SmartAutomovePreference::Fast),
+            openings.as_slice(),
+            root_limit,
+        );
+        seed_samples.extend(collect_eval_tuning_samples_for_budget(
+            profile_name.as_str(),
+            selector,
+            SearchBudget::from_preference(SmartAutomovePreference::Normal),
+            openings.as_slice(),
+            root_limit,
+        ));
+        let lines = seed_samples
+            .iter()
+            .map(|sample| eval_tuning_sample_json_line(profile_name.as_str(), sample))
+            .collect::<Vec<_>>();
+        let output = format!("target/{}_{}.jsonl", seed_tag, "samples");
+        std::fs::write(output.as_str(), lines.join("\n")).unwrap_or_else(|error| {
+            panic!(
+                "failed writing eval train seed artifact '{}': {}",
+                output, error
+            )
+        });
+    }
+    for seed_tag in &holdout_seed_tags {
+        let seed = seed_for_pairing(seed_tag, profile_name.as_str());
+        let openings = generate_opening_fens_cached(seed, holdout_positions_per_seed);
+        let mut seed_samples = collect_eval_tuning_samples_for_budget(
+            profile_name.as_str(),
+            selector,
+            SearchBudget::from_preference(SmartAutomovePreference::Fast),
+            openings.as_slice(),
+            root_limit,
+        );
+        seed_samples.extend(collect_eval_tuning_samples_for_budget(
+            profile_name.as_str(),
+            selector,
+            SearchBudget::from_preference(SmartAutomovePreference::Normal),
+            openings.as_slice(),
+            root_limit,
+        ));
+        let lines = seed_samples
+            .iter()
+            .map(|sample| eval_tuning_sample_json_line(profile_name.as_str(), sample))
+            .collect::<Vec<_>>();
+        let output = format!("target/{}_{}.jsonl", seed_tag, "samples");
+        std::fs::write(output.as_str(), lines.join("\n")).unwrap_or_else(|error| {
+            panic!(
+                "failed writing eval holdout seed artifact '{}': {}",
+                output, error
+            )
+        });
+    }
+
+    println!(
+        "eval tuning suite: profile={} train_samples={} holdout_samples={} root_limit={}",
+        profile_name,
+        train_samples.len(),
+        holdout_samples.len(),
+        root_limit
+    );
+}
+
+#[test]
+#[ignore = "deterministic coordinate-descent tuning of runtime board evaluation weights"]
+fn smart_automove_pool_tune_eval_weights_coordinate_descent() {
+    let profile_name = env::var("SMART_TUNE_PROFILE")
+        .ok()
+        .map(|value| value.trim().to_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "runtime_current".to_string());
+    let Some(selector) = profile_selector_from_name(profile_name.as_str()) else {
+        panic!("unknown profile for SMART_TUNE_PROFILE: {}", profile_name);
+    };
+
+    let train_positions_per_seed = env_usize("SMART_TUNE_TRAIN_POSITIONS_PER_SEED")
+        .unwrap_or(256)
+        .max(16);
+    let holdout_positions_per_seed = env_usize("SMART_TUNE_HOLDOUT_POSITIONS_PER_SEED")
+        .unwrap_or(128)
+        .max(16);
+    let root_limit = env_usize("SMART_TUNE_ROOT_LIMIT").unwrap_or(12).max(2);
+    let top_k = env_usize("SMART_TUNE_TOP_K").unwrap_or(8).max(1);
+    let manifest_output = env::var("SMART_TUNE_MANIFEST_OUTPUT")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "target/eval_tune_ranked_candidates.json".to_string());
+
+    let train_seed_tags = ["eval_train_v1", "eval_train_v2", "eval_train_v3"];
+    let holdout_seed_tags = ["eval_holdout_v1", "eval_holdout_v2"];
+
+    let train_samples = collect_eval_tuning_samples_for_seed_tags(
+        profile_name.as_str(),
+        selector,
+        train_seed_tags.as_slice(),
+        train_positions_per_seed,
+        root_limit,
+    );
+    let holdout_samples = collect_eval_tuning_samples_for_seed_tags(
+        profile_name.as_str(),
+        selector,
+        holdout_seed_tags.as_slice(),
+        holdout_positions_per_seed,
+        root_limit,
+    );
+    assert!(!train_samples.is_empty(), "no train samples collected");
+    assert!(!holdout_samples.is_empty(), "no holdout samples collected");
+
+    let families = [
+        EvalPhaseFamily::Fast,
+        EvalPhaseFamily::NormalBalanced,
+        EvalPhaseFamily::NormalTactical,
+        EvalPhaseFamily::NormalTacticalAggressive,
+        EvalPhaseFamily::NormalFinisher,
+        EvalPhaseFamily::NormalFinisherAggressive,
+    ];
+
+    let mut train_groups = std::collections::HashMap::<EvalPhaseFamily, Vec<Vec<usize>>>::new();
+    let mut holdout_groups = std::collections::HashMap::<EvalPhaseFamily, Vec<Vec<usize>>>::new();
+    for family in families {
+        train_groups.insert(
+            family,
+            eval_tune_group_indices(train_samples.as_slice(), family),
+        );
+        holdout_groups.insert(
+            family,
+            eval_tune_group_indices(holdout_samples.as_slice(), family),
+        );
+    }
+
+    let baseline_bundle = EvalTuneBundle::baseline();
+    let baseline_train =
+        eval_tune_bundle_score(train_samples.as_slice(), &train_groups, baseline_bundle);
+    let baseline_holdout =
+        eval_tune_bundle_score(holdout_samples.as_slice(), &holdout_groups, baseline_bundle);
+
+    let mut ranked = Vec::<(usize, f64, f64, EvalTuneBundle)>::new();
+    ranked.push((0, baseline_train, baseline_holdout, baseline_bundle));
+
+    for candidate_index in 0..(top_k * 2).max(2) {
+        let mut bundle = baseline_bundle;
+        for (family_offset, family) in families.iter().enumerate() {
+            let groups = train_groups.get(family).map(Vec::as_slice).unwrap_or(&[]);
+            if groups.is_empty() {
+                continue;
+            }
+            let base_weights = eval_phase_family_base_weights(*family);
+            let tuned = tune_weights_for_family(
+                train_samples.as_slice(),
+                groups,
+                *base_weights,
+                candidate_index + family_offset,
+            );
+            bundle = bundle.with_family_weights(*family, tuned);
+        }
+        let train_score = eval_tune_bundle_score(train_samples.as_slice(), &train_groups, bundle);
+        let holdout_score =
+            eval_tune_bundle_score(holdout_samples.as_slice(), &holdout_groups, bundle);
+        ranked.push((candidate_index + 1, train_score, holdout_score, bundle));
+    }
+
+    ranked.sort_by(|a, b| {
+        b.2.partial_cmp(&a.2)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal))
+    });
+    if ranked.len() > top_k {
+        ranked.truncate(top_k);
+    }
+
+    write_eval_tune_manifest(manifest_output.as_str(), ranked.as_slice())
+        .unwrap_or_else(|error| panic!("failed writing eval tune manifest: {}", error));
+
+    let best = ranked[0];
+    println!(
+        "eval tune ranked: profile={} train_samples={} holdout_samples={} baseline_train={:.4} baseline_holdout={:.4} best_train={:.4} best_holdout={:.4} output={}",
+        profile_name,
+        train_samples.len(),
+        holdout_samples.len(),
+        baseline_train,
+        baseline_holdout,
+        best.1,
+        best.2,
+        manifest_output
+    );
+}
+
+#[test]
 #[ignore = "tactical guardrail suite for runtime candidate quality"]
 fn smart_automove_tactical_suite() {
     let runtime_selector = profile_selector_from_name("runtime_current")
@@ -6247,10 +7427,13 @@ fn smart_automove_pool_promotion_gate_v2() {
         .map(|value| value.trim().to_lowercase())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "runtime_current".to_string());
-    assert!(
-        candidate_profile_name != baseline_profile_name,
-        "candidate profile and baseline profile must differ for gate_v2"
-    );
+    let allow_self_baseline = env_bool("SMART_GATE_ALLOW_SELF_BASELINE").unwrap_or(false);
+    if !allow_self_baseline {
+        assert!(
+            candidate_profile_name != baseline_profile_name,
+            "candidate profile and baseline profile must differ for gate_v2"
+        );
+    }
 
     let candidate = AutomoveModel {
         id: "candidate",
@@ -6516,6 +7699,31 @@ fn smart_automove_pool_promotion_gate_v2() {
         "confirmation confidence gate failed: {:.3} < 0.750",
         confirm_confidence
     );
+
+    let pool_games = env_usize("SMART_GATE_POOL_GAMES").unwrap_or(3).max(1);
+    let (candidate_pool_eval, baseline_pool_eval, candidate_pool_wr, baseline_pool_wr) =
+        run_pool_non_regression_check(candidate, baseline, budgets.as_slice(), pool_games);
+    println!(
+        "promotion gate pool check: candidate_beaten={}/{} baseline_beaten={}/{} candidate_wr={:.3} baseline_wr={:.3}",
+        candidate_pool_eval.beaten_opponents,
+        candidate_pool_eval.opponents.len(),
+        baseline_pool_eval.beaten_opponents,
+        baseline_pool_eval.opponents.len(),
+        candidate_pool_wr,
+        baseline_pool_wr
+    );
+    assert!(
+        candidate_pool_eval.beaten_opponents >= baseline_pool_eval.beaten_opponents,
+        "pool non-regression failed beaten opponents: candidate {} < baseline {}",
+        candidate_pool_eval.beaten_opponents,
+        baseline_pool_eval.beaten_opponents
+    );
+    assert!(
+        candidate_pool_wr + 0.01 >= baseline_pool_wr,
+        "pool non-regression failed aggregate win-rate: candidate {:.3} baseline {:.3}",
+        candidate_pool_wr,
+        baseline_pool_wr
+    );
 }
 
 #[test]
@@ -6527,10 +7735,13 @@ fn smart_automove_pool_promotion_ladder() {
         .map(|value| value.trim().to_lowercase())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "runtime_current".to_string());
-    assert!(
-        candidate_profile_name != baseline_profile_name,
-        "candidate profile and baseline profile must differ for ladder gate"
-    );
+    let allow_self_baseline = env_bool("SMART_GATE_ALLOW_SELF_BASELINE").unwrap_or(false);
+    if !allow_self_baseline {
+        assert!(
+            candidate_profile_name != baseline_profile_name,
+            "candidate profile and baseline profile must differ for ladder gate"
+        );
+    }
 
     let candidate = AutomoveModel {
         id: "candidate",
@@ -6894,6 +8105,31 @@ fn smart_automove_pool_promotion_ladder() {
         confirm_confidence >= 0.75,
         "confirmation confidence gate failed: {:.3} < 0.750",
         confirm_confidence
+    );
+
+    let pool_games = env_usize("SMART_GATE_POOL_GAMES").unwrap_or(3).max(1);
+    let (candidate_pool_eval, baseline_pool_eval, candidate_pool_wr, baseline_pool_wr) =
+        run_pool_non_regression_check(candidate, baseline, budgets.as_slice(), pool_games);
+    artifacts.push(format!(
+        r#"{{"stage":"D_pool","candidate_beaten":{},"candidate_total":{},"baseline_beaten":{},"baseline_total":{},"candidate_wr":{:.5},"baseline_wr":{:.5}}}"#,
+        candidate_pool_eval.beaten_opponents,
+        candidate_pool_eval.opponents.len(),
+        baseline_pool_eval.beaten_opponents,
+        baseline_pool_eval.opponents.len(),
+        candidate_pool_wr,
+        baseline_pool_wr
+    ));
+    assert!(
+        candidate_pool_eval.beaten_opponents >= baseline_pool_eval.beaten_opponents,
+        "pool non-regression failed beaten opponents: candidate {} < baseline {}",
+        candidate_pool_eval.beaten_opponents,
+        baseline_pool_eval.beaten_opponents
+    );
+    assert!(
+        candidate_pool_wr + 0.01 >= baseline_pool_wr,
+        "pool non-regression failed aggregate win-rate: candidate {:.3} baseline {:.3}",
+        candidate_pool_wr,
+        baseline_pool_wr
     );
 
     persist_ladder_artifacts(artifacts.as_slice());
