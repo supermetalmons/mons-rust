@@ -199,6 +199,11 @@ Official command:
 - `runtime_d2_tuned`: older fixed-weight reference.
 - `runtime_eval_board_v1`: board-eval candidate profile hook (for tuned board-weight promotion runs).
 - `runtime_eval_board_v2`: board-eval candidate profile hook (second tuned board-weight slot).
+- `runtime_fast_env_tune_normal_x15_tactical_lite`: test-only fast env-tuning hook (normal branch fixed to `runtime_normal_x15_tactical_lite`) for rapid fast toggle/shape sweeps.
+
+Fast env-tuning example:
+
+- `SMART_DUEL_A=runtime_fast_env_tune_normal_x15_tactical_lite SMART_DUEL_B=runtime_current SMART_DUEL_MODE=fast SMART_DUEL_GAMES=2 SMART_DUEL_REPEATS=2 SMART_DUEL_MAX_PLIES=72 SMART_FAST_TUNE_NODE_SCALE_BP=10500 SMART_FAST_TUNE_EVENT_ORDERING=false SMART_FAST_TUNE_BACKTRACK=true SMART_FAST_TUNE_MOVE_CLASS=true SMART_FAST_TUNE_CHILD_MOVE_CLASS=false SMART_FAST_TUNE_SPIRIT_PREF=true SMART_FAST_TUNE_FORCED_PREPASS=true SMART_FAST_TUNE_REPLY_GUARD=false cargo test --release --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
 
 ## Board Eval Workflow (Recommended)
 
@@ -429,6 +434,54 @@ What happened:
 Takeaway:
 
 - Keep quick mode as default local sweep and reserve `SMART_TUNE_FULL_GRID=true` for final quality passes.
+
+### 14) `runtime_normal_x15_tactical_lite` as direct promotion candidate
+
+Idea:
+
+- Use the strongest quick-screen candidate (normal tactical-lite shape) directly against `runtime_current`.
+
+What happened:
+
+- CPU stayed within gate limits and quick-screen looked strong.
+- Strict gate failed at primary fast mode (no required fast delta).
+
+Takeaway:
+
+- Normal-only gains are not enough for strict promotion.
+- Candidate selection must include explicit fast-mode proof on primary seed tags.
+
+### 15) Fast-side micro-patches (reply-risk lite, simplified root heuristics)
+
+Idea:
+
+- Improve fast by toggling small fast-only controls:
+  - enable light reply-risk guard
+  - disable selected root heuristics (event-ordering/backtrack/class coverage/spirit pref)
+
+What happened:
+
+- Reply-risk variants were either neutral on strength or over fast CPU mode-ratio cap in screens.
+- Simplified-root variants were neutral-to-worse in mirrored checks.
+
+Takeaway:
+
+- Small heuristic toggles alone did not produce robust fast-mode lift.
+- Keep these as experiment-only probes; do not promote by quick-screen signal.
+
+### 16) Fast depth-3 lite probe under branch caps
+
+Idea:
+
+- Try bounded `depth=3` for fast with tight branch caps and fast-specific scoring.
+
+What happened:
+
+- Fast mode-ratio exploded in screening (`>2x` in mode ratio), violating CPU expectations.
+
+Takeaway:
+
+- Depth bump for fast is not viable under current CPU caps unless search shape is fundamentally redesigned.
 
 ## What Worked Best So Far
 

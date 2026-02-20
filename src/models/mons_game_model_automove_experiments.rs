@@ -2973,6 +2973,262 @@ fn candidate_model_runtime_normal_x15_tactical_lite(
     MonsGameModel::smart_search_best_inputs(game, tuned)
 }
 
+fn tuned_fast_reply_risk_guard_config(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = SMART_ROOT_REPLY_RISK_SCORE_MARGIN;
+        runtime.root_reply_risk_shortlist_max = 2;
+        runtime.root_reply_risk_reply_limit = 6;
+        runtime.root_reply_risk_node_share_bp = 350;
+        runtime.enable_child_move_class_coverage = true;
+    }
+    runtime
+}
+
+fn candidate_model_runtime_fast_reply_guard_normal_current(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let tuned = tuned_fast_reply_risk_guard_config(game, config);
+    MonsGameModel::smart_search_best_inputs(game, tuned)
+}
+
+fn candidate_model_runtime_fast_reply_guard_normal_x15_tactical_lite(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if config.depth >= 3 {
+        return candidate_model_runtime_normal_x15_tactical_lite(game, config);
+    }
+
+    let tuned = tuned_fast_reply_risk_guard_config(game, config);
+    MonsGameModel::smart_search_best_inputs(game, tuned)
+}
+
+fn tuned_fast_simplified_root_config(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        runtime.enable_event_ordering_bonus = false;
+        runtime.enable_backtrack_penalty = false;
+        runtime.enable_move_class_coverage = false;
+        runtime.enable_child_move_class_coverage = false;
+        runtime.enable_root_spirit_development_pref = false;
+    }
+    runtime
+}
+
+fn candidate_model_runtime_fast_simplified_normal_current(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let tuned = tuned_fast_simplified_root_config(game, config);
+    MonsGameModel::smart_search_best_inputs(game, tuned)
+}
+
+fn candidate_model_runtime_fast_simplified_normal_x15_tactical_lite(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if config.depth >= 3 {
+        return candidate_model_runtime_normal_x15_tactical_lite(game, config);
+    }
+
+    let tuned = tuned_fast_simplified_root_config(game, config);
+    MonsGameModel::smart_search_best_inputs(game, tuned)
+}
+
+fn candidate_model_runtime_fast_no_event_ordering_normal_x15_tactical_lite(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if config.depth >= 3 {
+        return candidate_model_runtime_normal_x15_tactical_lite(game, config);
+    }
+
+    let mut tuned = MonsGameModel::with_runtime_scoring_weights(game, config);
+    tuned.enable_event_ordering_bonus = false;
+    MonsGameModel::smart_search_best_inputs(game, tuned)
+}
+
+fn tuned_fast_eventless_reinvest_config(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+    budget_scale_bp: i32,
+) -> SmartSearchConfig {
+    let mut tuned = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if tuned.depth < 3 {
+        tuned.enable_event_ordering_bonus = false;
+        tuned.max_visited_nodes = ((tuned.max_visited_nodes * budget_scale_bp as usize) / 10_000)
+            .clamp(tuned.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
+        let extra_root = if budget_scale_bp >= 11_500 { 2 } else { 1 };
+        tuned.root_branch_limit = (tuned.root_branch_limit + extra_root).clamp(8, 44);
+        tuned.root_enum_limit = (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 260);
+    }
+    tuned
+}
+
+fn candidate_model_runtime_fast_eventless_reinvest10_normal_x15_tactical_lite(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if config.depth >= 3 {
+        return candidate_model_runtime_normal_x15_tactical_lite(game, config);
+    }
+
+    let tuned = tuned_fast_eventless_reinvest_config(game, config, 11_000);
+    MonsGameModel::smart_search_best_inputs(game, tuned)
+}
+
+fn candidate_model_runtime_fast_eventless_reinvest15_normal_x15_tactical_lite(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if config.depth >= 3 {
+        return candidate_model_runtime_normal_x15_tactical_lite(game, config);
+    }
+
+    let tuned = tuned_fast_eventless_reinvest_config(game, config, 11_500);
+    MonsGameModel::smart_search_best_inputs(game, tuned)
+}
+
+fn tuned_fast_depth3_lite_config(max_nodes: usize, root_branch_limit: usize) -> SmartSearchConfig {
+    let mut tuned = SmartSearchConfig::from_budget(3, max_nodes as i32).for_runtime();
+    tuned.root_branch_limit = root_branch_limit.clamp(8, 16);
+    tuned.node_branch_limit = 7;
+    tuned.root_enum_limit = (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 96);
+    tuned.node_enum_limit = (tuned.node_branch_limit * 4).clamp(tuned.node_branch_limit, 36);
+    tuned.scoring_weights = &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS;
+    tuned.enable_root_efficiency = true;
+    tuned.enable_event_ordering_bonus = false;
+    tuned.enable_backtrack_penalty = true;
+    tuned.enable_tt_best_child_ordering = true;
+    tuned.enable_root_aspiration = false;
+    tuned.enable_two_pass_root_allocation = false;
+    tuned.root_focus_k = 2;
+    tuned.root_focus_budget_share_bp = 6_000;
+    tuned.enable_selective_extensions = false;
+    tuned.enable_quiet_reductions = true;
+    tuned.max_extensions_per_path = 0;
+    tuned.selective_extension_node_share_bp = 0;
+    tuned.enable_root_mana_handoff_guard = false;
+    tuned.enable_forced_drainer_attack = true;
+    tuned.enable_forced_drainer_attack_fallback = true;
+    tuned.enable_forced_tactical_prepass = true;
+    tuned.enable_root_drainer_safety_prefilter = true;
+    tuned.enable_root_spirit_development_pref = true;
+    tuned.enable_root_reply_risk_guard = false;
+    tuned.root_reply_risk_score_margin = SMART_ROOT_REPLY_RISK_SCORE_MARGIN;
+    tuned.root_reply_risk_shortlist_max = SMART_ROOT_REPLY_RISK_SHORTLIST_FAST;
+    tuned.root_reply_risk_reply_limit = SMART_ROOT_REPLY_RISK_REPLY_LIMIT_FAST;
+    tuned.root_reply_risk_node_share_bp = SMART_ROOT_REPLY_RISK_NODE_SHARE_BP_FAST;
+    tuned.enable_move_class_coverage = true;
+    tuned.enable_child_move_class_coverage = false;
+    tuned.enable_strict_tactical_class_coverage = true;
+    tuned.enable_strict_anti_help_filter = true;
+    tuned.root_anti_help_score_margin = SMART_ROOT_ANTI_HELP_SCORE_MARGIN;
+    tuned.root_anti_help_reply_limit = SMART_ROOT_ANTI_HELP_REPLY_LIMIT_FAST;
+    tuned.enable_two_pass_volatility_focus = false;
+    tuned.enable_normal_root_safety_rerank = false;
+    tuned.enable_normal_root_safety_deep_floor = false;
+    tuned
+}
+
+fn candidate_model_runtime_fast_d3_lite600_normal_x15_tactical_lite(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if config.depth >= 3 {
+        return candidate_model_runtime_normal_x15_tactical_lite(game, config);
+    }
+
+    let tuned = tuned_fast_depth3_lite_config(600, 12);
+    MonsGameModel::smart_search_best_inputs(game, tuned)
+}
+
+fn candidate_model_runtime_fast_d3_lite700_normal_x15_tactical_lite(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if config.depth >= 3 {
+        return candidate_model_runtime_normal_x15_tactical_lite(game, config);
+    }
+
+    let tuned = tuned_fast_depth3_lite_config(700, 12);
+    MonsGameModel::smart_search_best_inputs(game, tuned)
+}
+
+fn candidate_model_runtime_fast_env_tune_normal_x15_tactical_lite(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if config.depth >= 3 {
+        return candidate_model_runtime_normal_x15_tactical_lite(game, config);
+    }
+
+    let mut tuned = MonsGameModel::with_runtime_scoring_weights(game, config);
+    let scale_bp = env_i32("SMART_FAST_TUNE_NODE_SCALE_BP")
+        .unwrap_or(10_000)
+        .clamp(7_000, 13_000);
+    tuned.max_visited_nodes = ((tuned.max_visited_nodes * scale_bp as usize) / 10_000)
+        .clamp(120, MAX_SMART_MAX_VISITED_NODES);
+
+    let root_branch_delta = env_i32("SMART_FAST_TUNE_ROOT_BRANCH_DELTA")
+        .unwrap_or(0)
+        .clamp(-6, 6);
+    let node_branch_delta = env_i32("SMART_FAST_TUNE_NODE_BRANCH_DELTA")
+        .unwrap_or(0)
+        .clamp(-6, 6);
+    tuned.root_branch_limit = ((tuned.root_branch_limit as i32) + root_branch_delta)
+        .clamp(6, 44) as usize;
+    tuned.node_branch_limit = ((tuned.node_branch_limit as i32) + node_branch_delta)
+        .clamp(4, 22) as usize;
+    tuned.root_enum_limit = (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 260);
+    tuned.node_enum_limit = (tuned.node_branch_limit * 4).clamp(tuned.node_branch_limit, 120);
+
+    if let Some(value) = env_bool("SMART_FAST_TUNE_EVENT_ORDERING") {
+        tuned.enable_event_ordering_bonus = value;
+    }
+    if let Some(value) = env_bool("SMART_FAST_TUNE_BACKTRACK") {
+        tuned.enable_backtrack_penalty = value;
+    }
+    if let Some(value) = env_bool("SMART_FAST_TUNE_MOVE_CLASS") {
+        tuned.enable_move_class_coverage = value;
+    }
+    if let Some(value) = env_bool("SMART_FAST_TUNE_CHILD_MOVE_CLASS") {
+        tuned.enable_child_move_class_coverage = value;
+    }
+    if let Some(value) = env_bool("SMART_FAST_TUNE_SPIRIT_PREF") {
+        tuned.enable_root_spirit_development_pref = value;
+    }
+    if let Some(value) = env_bool("SMART_FAST_TUNE_FORCED_PREPASS") {
+        tuned.enable_forced_tactical_prepass = value;
+    }
+    if let Some(value) = env_bool("SMART_FAST_TUNE_REPLY_GUARD") {
+        tuned.enable_root_reply_risk_guard = value;
+    }
+    if let Some(value) = env_usize("SMART_FAST_TUNE_REPLY_LIMIT") {
+        tuned.root_reply_risk_reply_limit = value.clamp(2, 12);
+    }
+    if let Some(value) = env_usize("SMART_FAST_TUNE_REPLY_SHORTLIST") {
+        tuned.root_reply_risk_shortlist_max = value.clamp(1, 6);
+    }
+    if let Some(value) = env_i32("SMART_FAST_TUNE_REPLY_MARGIN") {
+        tuned.root_reply_risk_score_margin = value.clamp(50, 300);
+    }
+    if let Some(value) = env_i32("SMART_FAST_TUNE_REPLY_NODE_SHARE_BP") {
+        tuned.root_reply_risk_node_share_bp = value.clamp(100, 1_200);
+    }
+
+    MonsGameModel::smart_search_best_inputs(game, tuned)
+}
+
 fn candidate_model_runtime_normal_x15_tactical_phase(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -3746,6 +4002,36 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_fast_wideroot_normal_tactical" => {
             candidate_model_runtime_fast_wideroot_normal_tactical(game, config)
         }
+        "runtime_fast_reply_guard_normal_current" => {
+            candidate_model_runtime_fast_reply_guard_normal_current(game, config)
+        }
+        "runtime_fast_reply_guard_normal_x15_tactical_lite" => {
+            candidate_model_runtime_fast_reply_guard_normal_x15_tactical_lite(game, config)
+        }
+        "runtime_fast_simplified_normal_current" => {
+            candidate_model_runtime_fast_simplified_normal_current(game, config)
+        }
+        "runtime_fast_simplified_normal_x15_tactical_lite" => {
+            candidate_model_runtime_fast_simplified_normal_x15_tactical_lite(game, config)
+        }
+        "runtime_fast_no_event_ordering_normal_x15_tactical_lite" => {
+            candidate_model_runtime_fast_no_event_ordering_normal_x15_tactical_lite(game, config)
+        }
+        "runtime_fast_eventless_reinvest10_normal_x15_tactical_lite" => {
+            candidate_model_runtime_fast_eventless_reinvest10_normal_x15_tactical_lite(game, config)
+        }
+        "runtime_fast_eventless_reinvest15_normal_x15_tactical_lite" => {
+            candidate_model_runtime_fast_eventless_reinvest15_normal_x15_tactical_lite(game, config)
+        }
+        "runtime_fast_d3_lite600_normal_x15_tactical_lite" => {
+            candidate_model_runtime_fast_d3_lite600_normal_x15_tactical_lite(game, config)
+        }
+        "runtime_fast_d3_lite700_normal_x15_tactical_lite" => {
+            candidate_model_runtime_fast_d3_lite700_normal_x15_tactical_lite(game, config)
+        }
+        "runtime_fast_env_tune_normal_x15_tactical_lite" => {
+            candidate_model_runtime_fast_env_tune_normal_x15_tactical_lite(game, config)
+        }
         "runtime_normal_x15_phase_deeper" => {
             candidate_model_runtime_normal_x15_phase_deeper(game, config)
         }
@@ -4124,6 +4410,46 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_fast_wideroot_normal_tactical",
             candidate_model_runtime_fast_wideroot_normal_tactical,
+        ),
+        (
+            "runtime_fast_reply_guard_normal_current",
+            candidate_model_runtime_fast_reply_guard_normal_current,
+        ),
+        (
+            "runtime_fast_reply_guard_normal_x15_tactical_lite",
+            candidate_model_runtime_fast_reply_guard_normal_x15_tactical_lite,
+        ),
+        (
+            "runtime_fast_simplified_normal_current",
+            candidate_model_runtime_fast_simplified_normal_current,
+        ),
+        (
+            "runtime_fast_simplified_normal_x15_tactical_lite",
+            candidate_model_runtime_fast_simplified_normal_x15_tactical_lite,
+        ),
+        (
+            "runtime_fast_no_event_ordering_normal_x15_tactical_lite",
+            candidate_model_runtime_fast_no_event_ordering_normal_x15_tactical_lite,
+        ),
+        (
+            "runtime_fast_eventless_reinvest10_normal_x15_tactical_lite",
+            candidate_model_runtime_fast_eventless_reinvest10_normal_x15_tactical_lite,
+        ),
+        (
+            "runtime_fast_eventless_reinvest15_normal_x15_tactical_lite",
+            candidate_model_runtime_fast_eventless_reinvest15_normal_x15_tactical_lite,
+        ),
+        (
+            "runtime_fast_d3_lite600_normal_x15_tactical_lite",
+            candidate_model_runtime_fast_d3_lite600_normal_x15_tactical_lite,
+        ),
+        (
+            "runtime_fast_d3_lite700_normal_x15_tactical_lite",
+            candidate_model_runtime_fast_d3_lite700_normal_x15_tactical_lite,
+        ),
+        (
+            "runtime_fast_env_tune_normal_x15_tactical_lite",
+            candidate_model_runtime_fast_env_tune_normal_x15_tactical_lite,
         ),
         (
             "runtime_normal_x15_phase_deeper",
