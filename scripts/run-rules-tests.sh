@@ -267,4 +267,8 @@ if [[ -z "${rules_dir}" ]]; then
   fi
 fi
 
-cargo run --quiet --bin rules_tests -- --dir "${rules_dir}" "${runner_args[@]}"
+if ((${#runner_args[@]} > 0)); then
+  cargo run --quiet --bin rules_tests -- --dir "${rules_dir}" "${runner_args[@]}"
+else
+  cargo run --quiet --bin rules_tests -- --dir "${rules_dir}"
+fi
