@@ -1697,6 +1697,482 @@ fn model_runtime_eval_board_v3(game: &MonsGame, config: SmartSearchConfig) -> Ve
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_PROTECTED_CARRIER_V1: ScoringWeights =
+    ScoringWeights {
+        supermana_race_control: 3,
+        opponent_mana_denial: 3,
+        ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V1:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 3,
+    opponent_mana_denial: 3,
+    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V1:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 3,
+    opponent_mana_denial: 4,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V1:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 4,
+    opponent_mana_denial: 4,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V1:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 3,
+    opponent_mana_denial: 3,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V1:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 4,
+    opponent_mana_denial: 4,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_PROTECTED_CARRIER_V2: ScoringWeights =
+    ScoringWeights {
+        supermana_race_control: 2,
+        opponent_mana_denial: 2,
+        ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V2:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 2,
+    opponent_mana_denial: 2,
+    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V2:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 2,
+    opponent_mana_denial: 3,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V2:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 3,
+    opponent_mana_denial: 3,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V2:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 2,
+    opponent_mana_denial: 2,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V2:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 3,
+    opponent_mana_denial: 3,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_PROTECTED_CARRIER_V3: ScoringWeights =
+    ScoringWeights {
+        supermana_race_control: 4,
+        opponent_mana_denial: 4,
+        ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+    };
+
+const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_PROTECTED_CARRIER_V4: ScoringWeights =
+    ScoringWeights {
+        supermana_race_control: 0,
+        opponent_mana_denial: 0,
+        ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V3:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 4,
+    opponent_mana_denial: 4,
+    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V3:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 4,
+    opponent_mana_denial: 5,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V3:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 5,
+    opponent_mana_denial: 5,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V3:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 4,
+    opponent_mana_denial: 4,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V3:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 5,
+    opponent_mana_denial: 5,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V4:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 1,
+    opponent_mana_denial: 1,
+    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V4:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 1,
+    opponent_mana_denial: 2,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V4:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 2,
+    opponent_mana_denial: 2,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V4:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 1,
+    opponent_mana_denial: 1,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V4:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 2,
+    opponent_mana_denial: 2,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+fn runtime_phase_adaptive_scoring_weights_protected_carrier_v1(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_PROTECTED_CARRIER_V1;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V1
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V1
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V1
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V1
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V1
+    }
+}
+
+fn runtime_phase_adaptive_scoring_weights_protected_carrier_v2(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_PROTECTED_CARRIER_V2;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V2
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V2
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V2
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V2
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V2
+    }
+}
+
+fn runtime_phase_adaptive_scoring_weights_protected_carrier_v3(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_PROTECTED_CARRIER_V3;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V3
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V3
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V3
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V3
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V3
+    }
+}
+
+fn runtime_phase_adaptive_scoring_weights_protected_carrier_v4(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_PROTECTED_CARRIER_V4;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V4
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V4
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V4
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V4
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_PROTECTED_CARRIER_V4
+    }
+}
+
+fn model_runtime_eval_protected_carrier_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights =
+        runtime_phase_adaptive_scoring_weights_protected_carrier_v1(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_eval_protected_carrier_v2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights =
+        runtime_phase_adaptive_scoring_weights_protected_carrier_v2(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_eval_protected_carrier_v3(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights =
+        runtime_phase_adaptive_scoring_weights_protected_carrier_v3(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_eval_protected_carrier_v4(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.scoring_weights =
+        runtime_phase_adaptive_scoring_weights_protected_carrier_v4(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn with_interview_policy_hard(mut runtime: SmartSearchConfig) -> SmartSearchConfig {
+    runtime.enable_forced_drainer_attack = true;
+    runtime.enable_forced_drainer_attack_fallback = true;
+    runtime.enable_strict_anti_help_filter = true;
+    runtime.enable_interview_hard_spirit_deploy = true;
+    runtime.enable_interview_deterministic_tiebreak = true;
+    runtime
+}
+
+fn with_interview_policy_soft(mut runtime: SmartSearchConfig) -> SmartSearchConfig {
+    runtime.enable_interview_soft_root_priors = true;
+    runtime.interview_soft_score_margin = 80;
+    runtime.interview_soft_supermana_progress_bonus = 280;
+    runtime.interview_soft_supermana_score_bonus = 460;
+    runtime.interview_soft_opponent_mana_progress_bonus = 240;
+    runtime.interview_soft_opponent_mana_score_bonus = 390;
+    runtime.interview_soft_mana_handoff_penalty = 260;
+    runtime.interview_soft_roundtrip_penalty = 180;
+    runtime
+}
+
+fn with_interview_policy_soft_light(mut runtime: SmartSearchConfig) -> SmartSearchConfig {
+    runtime.enable_interview_soft_root_priors = true;
+    runtime.interview_soft_score_margin = 90;
+    runtime.interview_soft_supermana_progress_bonus = 140;
+    runtime.interview_soft_supermana_score_bonus = 220;
+    runtime.interview_soft_opponent_mana_progress_bonus = 120;
+    runtime.interview_soft_opponent_mana_score_bonus = 190;
+    runtime.interview_soft_mana_handoff_penalty = 180;
+    runtime.interview_soft_roundtrip_penalty = 120;
+    runtime
+}
+
+const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_INTERVIEW_V3: ScoringWeights = ScoringWeights {
+    opponent_immediate_score_window: 245,
+    supermana_race_control: 22,
+    opponent_mana_denial: 18,
+    spirit_action_utility: 58,
+    ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_INTERVIEW_V3: ScoringWeights =
+    ScoringWeights {
+        opponent_immediate_score_window: 285,
+        supermana_race_control: 26,
+        opponent_mana_denial: 22,
+        spirit_action_utility: 72,
+        ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_INTERVIEW_V3: ScoringWeights =
+    ScoringWeights {
+        opponent_immediate_score_window: 355,
+        supermana_race_control: 34,
+        opponent_mana_denial: 30,
+        spirit_action_utility: 78,
+        ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_INTERVIEW_V3:
+    ScoringWeights = ScoringWeights {
+    opponent_immediate_score_window: 405,
+    supermana_race_control: 40,
+    opponent_mana_denial: 36,
+    spirit_action_utility: 84,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_INTERVIEW_V3:
+    ScoringWeights = ScoringWeights {
+    opponent_immediate_score_window: 255,
+    supermana_race_control: 30,
+    opponent_mana_denial: 26,
+    spirit_action_utility: 70,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_INTERVIEW_V3:
+    ScoringWeights = ScoringWeights {
+    opponent_immediate_score_window: 290,
+    supermana_race_control: 34,
+    opponent_mana_denial: 30,
+    spirit_action_utility: 74,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+fn runtime_phase_adaptive_scoring_weights_interview_v3(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_INTERVIEW_V3;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_INTERVIEW_V3
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS_INTERVIEW_V3
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS_INTERVIEW_V3
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS_INTERVIEW_V3
+    } else {
+        &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS_INTERVIEW_V3
+    }
+}
+
+fn model_runtime_interview_policy_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let runtime = with_interview_policy_hard(MonsGameModel::with_runtime_scoring_weights(
+        game, config,
+    ));
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_interview_policy_v2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let runtime = with_interview_policy_soft(with_interview_policy_hard(
+        MonsGameModel::with_runtime_scoring_weights(game, config),
+    ));
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_interview_policy_v3(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = with_interview_policy_soft(with_interview_policy_hard(
+        MonsGameModel::with_runtime_scoring_weights(game, config),
+    ));
+    runtime.scoring_weights =
+        runtime_phase_adaptive_scoring_weights_interview_v3(game, runtime.depth);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_interview_policy_v4(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = with_interview_policy_hard(MonsGameModel::with_runtime_scoring_weights(
+        game, config,
+    ));
+    runtime.enable_interview_deterministic_tiebreak = true;
+    if runtime.depth >= 3 {
+        runtime.enable_interview_hard_spirit_deploy = false;
+        runtime = with_interview_policy_soft_light(runtime);
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_interview_policy_v5(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_interview_deterministic_tiebreak = true;
+    if runtime.depth < 3 {
+        runtime.enable_interview_hard_spirit_deploy = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn model_runtime_pre_normal_guarded_lookahead(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -3873,6 +4349,15 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_eval_board_v1" => model_runtime_eval_board_v1(game, config),
         "runtime_eval_board_v2" => model_runtime_eval_board_v2(game, config),
         "runtime_eval_board_v3" => model_runtime_eval_board_v3(game, config),
+        "runtime_eval_protected_carrier_v1" => model_runtime_eval_protected_carrier_v1(game, config),
+        "runtime_eval_protected_carrier_v2" => model_runtime_eval_protected_carrier_v2(game, config),
+        "runtime_eval_protected_carrier_v3" => model_runtime_eval_protected_carrier_v3(game, config),
+        "runtime_eval_protected_carrier_v4" => model_runtime_eval_protected_carrier_v4(game, config),
+        "runtime_interview_policy_v1" => model_runtime_interview_policy_v1(game, config),
+        "runtime_interview_policy_v2" => model_runtime_interview_policy_v2(game, config),
+        "runtime_interview_policy_v3" => model_runtime_interview_policy_v3(game, config),
+        "runtime_interview_policy_v4" => model_runtime_interview_policy_v4(game, config),
+        "runtime_interview_policy_v5" => model_runtime_interview_policy_v5(game, config),
         "runtime_pre_normal_guarded_lookahead" => {
             model_runtime_pre_normal_guarded_lookahead(game, config)
         }
@@ -4198,6 +4683,27 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         ("runtime_eval_board_v1", model_runtime_eval_board_v1),
         ("runtime_eval_board_v2", model_runtime_eval_board_v2),
         ("runtime_eval_board_v3", model_runtime_eval_board_v3),
+        (
+            "runtime_eval_protected_carrier_v1",
+            model_runtime_eval_protected_carrier_v1,
+        ),
+        (
+            "runtime_eval_protected_carrier_v2",
+            model_runtime_eval_protected_carrier_v2,
+        ),
+        (
+            "runtime_eval_protected_carrier_v3",
+            model_runtime_eval_protected_carrier_v3,
+        ),
+        (
+            "runtime_eval_protected_carrier_v4",
+            model_runtime_eval_protected_carrier_v4,
+        ),
+        ("runtime_interview_policy_v1", model_runtime_interview_policy_v1),
+        ("runtime_interview_policy_v2", model_runtime_interview_policy_v2),
+        ("runtime_interview_policy_v3", model_runtime_interview_policy_v3),
+        ("runtime_interview_policy_v4", model_runtime_interview_policy_v4),
+        ("runtime_interview_policy_v5", model_runtime_interview_policy_v5),
         (
             "runtime_pre_normal_guarded_lookahead",
             model_runtime_pre_normal_guarded_lookahead,
@@ -7423,6 +7929,126 @@ fn assert_tactical_guardrails(
     }
 }
 
+fn assert_interview_policy_regressions(
+    selector: fn(&MonsGame, SmartSearchConfig) -> Vec<Input>,
+    profile_name: &str,
+) {
+    let selected_root = |game: &MonsGame,
+                         config: SmartSearchConfig,
+                         selected: &[Input]|
+     -> Option<ScoredRootMove> {
+        let selected_fen = Input::fen_from_array(selected);
+        MonsGameModel::ranked_root_moves(game, game.active_color, config)
+            .into_iter()
+            .find(|root| Input::fen_from_array(&root.inputs) == selected_fen)
+    };
+
+    let supermana_progress_game = tactical_game_with_items(
+        vec![
+            (
+                Location::new(6, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(10, 0),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Angel, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(5, 5),
+                Item::Mana {
+                    mana: Mana::Supermana,
+                },
+            ),
+            (
+                Location::new(0, 10),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    );
+    let supermana_config = SearchBudget::from_preference(SmartAutomovePreference::Fast)
+        .runtime_config_for_game(&supermana_progress_game);
+    let supermana_roots =
+        MonsGameModel::ranked_root_moves(&supermana_progress_game, Color::White, supermana_config);
+    let safe_supermana_exists = supermana_roots.iter().any(|root| {
+        root.supermana_progress
+            && !root.own_drainer_vulnerable
+            && !root.wins_immediately
+            && !root.attacks_opponent_drainer
+    });
+    if safe_supermana_exists {
+        let selected = selector(&supermana_progress_game, supermana_config);
+        let selected = selected_root(&supermana_progress_game, supermana_config, &selected)
+            .expect("selected root should be in ranked list");
+        assert!(
+            selected.supermana_progress || selected.scores_supermana_this_turn,
+            "profile '{}' should prefer safe supermana progress when available",
+            profile_name
+        );
+    }
+
+    let opponent_mana_progress_game = tactical_game_with_items(
+        vec![
+            (
+                Location::new(8, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(10, 0),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Angel, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(7, 5),
+                Item::Mana {
+                    mana: Mana::Regular(Color::Black),
+                },
+            ),
+            (
+                Location::new(0, 10),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    );
+    let opponent_mana_config = SearchBudget::from_preference(SmartAutomovePreference::Fast)
+        .runtime_config_for_game(&opponent_mana_progress_game);
+    let opponent_mana_roots = MonsGameModel::ranked_root_moves(
+        &opponent_mana_progress_game,
+        Color::White,
+        opponent_mana_config,
+    );
+    let safe_opponent_mana_exists = opponent_mana_roots.iter().any(|root| {
+        root.opponent_mana_progress
+            && !root.own_drainer_vulnerable
+            && !root.wins_immediately
+            && !root.attacks_opponent_drainer
+    });
+    if safe_opponent_mana_exists {
+        let selected = selector(&opponent_mana_progress_game, opponent_mana_config);
+        let selected = selected_root(&opponent_mana_progress_game, opponent_mana_config, &selected)
+            .expect("selected root should be in ranked list");
+        assert!(
+            selected.opponent_mana_progress || selected.scores_opponent_mana_this_turn,
+            "profile '{}' should prefer safe opponent-mana progress when available",
+            profile_name
+        );
+    }
+}
+
 #[test]
 #[ignore = "exports test-only move-regret samples for offline evaluation tuning"]
 fn smart_automove_pool_export_eval_tuning_dataset() {
@@ -7916,6 +8542,7 @@ fn smart_automove_pool_promotion_gate_v2() {
     );
 
     assert_tactical_guardrails(candidate.select_inputs, candidate_profile_name.as_str());
+    assert_interview_policy_regressions(candidate.select_inputs, candidate_profile_name.as_str());
 
     let primary_games = env_usize("SMART_GATE_PRIMARY_GAMES").unwrap_or(4).max(2);
     let primary_repeats = env_usize("SMART_GATE_PRIMARY_REPEATS").unwrap_or(6).max(2);
@@ -8083,6 +8710,7 @@ fn smart_automove_pool_promotion_ladder() {
     let mut artifacts = Vec::<String>::new();
 
     assert_tactical_guardrails(candidate.select_inputs, candidate_profile_name.as_str());
+    assert_interview_policy_regressions(candidate.select_inputs, candidate_profile_name.as_str());
     artifacts.push(format!(
         r#"{{"stage":"A_tactical","profile":"{}","status":"pass"}}"#,
         candidate_profile_name

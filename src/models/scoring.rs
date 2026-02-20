@@ -1,5 +1,11 @@
 use crate::*;
 
+const PROTECTED_HIGH_VALUE_CARRIER_SAFE_DANGER_MIN: i32 = 3;
+const PROTECTED_HIGH_VALUE_CARRIER_SUPERMANA_SCALE_BP: i32 = 2_500;
+const PROTECTED_HIGH_VALUE_CARRIER_OPPONENT_MANA_SCALE_BP: i32 = 2_500;
+const PROTECTED_HIGH_VALUE_CARRIER_VIRTUAL_SCORE_BP_MAX: i32 = 9_200;
+const PROTECTED_HIGH_VALUE_CARRIER_OPPONENT_SCORE_MARGIN: i32 = 2;
+
 #[derive(Debug, Clone, Copy)]
 pub struct ScoringWeights {
     pub use_legacy_formula: bool,
@@ -30,6 +36,8 @@ pub struct ScoringWeights {
     pub regular_mana_to_owner_pool: i32,
     pub regular_mana_drainer_control: i32,
     pub supermana_drainer_control: i32,
+    pub supermana_race_control: i32,
+    pub opponent_mana_denial: i32,
     pub mana_carrier_at_risk: i32,
     pub mana_carrier_guarded: i32,
     pub mana_carrier_one_step_from_pool: i32,
@@ -79,6 +87,8 @@ pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     regular_mana_to_owner_pool: 0,
     regular_mana_drainer_control: 0,
     supermana_drainer_control: 0,
+    supermana_race_control: 0,
+    opponent_mana_denial: 0,
     mana_carrier_at_risk: 0,
     mana_carrier_guarded: 0,
     mana_carrier_one_step_from_pool: 0,
@@ -128,6 +138,8 @@ pub const BALANCED_DISTANCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     regular_mana_to_owner_pool: 0,
     regular_mana_drainer_control: 0,
     supermana_drainer_control: 0,
+    supermana_race_control: 0,
+    opponent_mana_denial: 0,
     mana_carrier_at_risk: 0,
     mana_carrier_guarded: 0,
     mana_carrier_one_step_from_pool: 160,
@@ -956,9 +968,13 @@ pub fn evaluate_preferability_with_weights(
                         );
                         let drainer_control =
                             (enemy_drainer_distance - owner_drainer_distance).clamp(-4, 4);
-                        owner_multiplier
+                        let mut regular_bonus = owner_multiplier
                             * (weights.regular_mana_to_owner_pool / owner_pool_distance
-                                + weights.regular_mana_drainer_control * drainer_control)
+                                + weights.regular_mana_drainer_control * drainer_control);
+                        if !use_legacy_formula && *mana_color == color.other() {
+                            regular_bonus += weights.opponent_mana_denial * (-drainer_control);
+                        }
+                        regular_bonus
                     }
                     Mana::Supermana => {
                         let my_drainer_distance =
@@ -968,6 +984,11 @@ pub fn evaluate_preferability_with_weights(
                         let drainer_control =
                             (enemy_drainer_distance - my_drainer_distance).clamp(-4, 4);
                         weights.supermana_drainer_control * drainer_control
+                            + if use_legacy_formula {
+                                0
+                            } else {
+                                weights.supermana_race_control * drainer_control
+                            }
                     }
                 };
                 score += mana_bonus;
@@ -1016,6 +1037,49 @@ pub fn evaluate_preferability_with_weights(
                 score += my_mon_multiplier * weights.mana_carrier_at_risk / danger;
                 if angel_nearby {
                     score += my_mon_multiplier * weights.mana_carrier_guarded;
+                }
+
+                if !use_legacy_formula && mon.kind == MonKind::Drainer {
+                    let carries_high_value_mana = matches!(mana, Mana::Supermana)
+                        || matches!(mana, Mana::Regular(owner) if *owner != mon.color);
+                    if carries_high_value_mana {
+                        let virtual_score_bp = match mana {
+                            Mana::Supermana => {
+                                weights
+                                    .supermana_race_control
+                                    .saturating_mul(PROTECTED_HIGH_VALUE_CARRIER_SUPERMANA_SCALE_BP)
+                            }
+                            Mana::Regular(owner) if *owner != mon.color => {
+                                weights.opponent_mana_denial.saturating_mul(
+                                    PROTECTED_HIGH_VALUE_CARRIER_OPPONENT_MANA_SCALE_BP,
+                                )
+                            }
+                            Mana::Regular(_) => 0,
+                        }
+                        .clamp(0, PROTECTED_HIGH_VALUE_CARRIER_VIRTUAL_SCORE_BP_MAX);
+                        let carrier_opponent_score = if mon.color == Color::White {
+                            game.black_score
+                        } else {
+                            game.white_score
+                        };
+                        let opponent_score_limit =
+                            (Config::TARGET_SCORE - PROTECTED_HIGH_VALUE_CARRIER_OPPONENT_SCORE_MARGIN)
+                                .max(0);
+                        let protected =
+                            angel_nearby || danger >= PROTECTED_HIGH_VALUE_CARRIER_SAFE_DANGER_MIN;
+                        if virtual_score_bp > 0
+                            && protected
+                            && carrier_opponent_score <= opponent_score_limit
+                        {
+                            let virtual_two_point_score =
+                                weights.confirmed_score.saturating_mul(2);
+                            let virtual_bonus = scale_by_bp(
+                                virtual_two_point_score,
+                                virtual_score_bp,
+                            );
+                            score += my_mon_multiplier * virtual_bonus;
+                        }
+                    }
                 }
 
                 if mon.color == game.active_color {
@@ -1879,6 +1943,172 @@ mod tests {
         let off_base_score =
             evaluate_preferability_with_weights(&off_base_game, Color::White, &weights);
         assert!(off_base_score > on_base_score);
+    }
+
+    #[test]
+    fn protected_supermana_carrier_gets_less_virtual_credit_when_opponent_is_high() {
+        let carrier_location = Location::new(7, 5);
+        let guard_location = Location::new(7, 4);
+        let enemy_drainer_location = Location::new(0, 5);
+        let mut carrier_game = game_with_items(
+            vec![
+                (
+                    carrier_location,
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    guard_location,
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    enemy_drainer_location,
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let mut no_mana_game = game_with_items(
+            vec![
+                (
+                    carrier_location,
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    guard_location,
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    enemy_drainer_location,
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        let opponent_not_high = (Config::TARGET_SCORE - 3).max(0);
+        let opponent_high = (Config::TARGET_SCORE - 1).max(0);
+
+        let mut weights = RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS;
+        weights.include_match_point_window = false;
+        weights.immediate_score_window = 0;
+        weights.opponent_immediate_score_window = 0;
+        weights.immediate_score_multi_window = 0;
+        weights.opponent_immediate_score_multi_window = 0;
+        weights.mana_carrier_score_this_turn = 0;
+        weights.supermana_race_control = 3;
+
+        carrier_game.black_score = opponent_not_high;
+        no_mana_game.black_score = opponent_not_high;
+        let low_boost = evaluate_preferability_with_weights(&carrier_game, Color::White, &weights)
+            - evaluate_preferability_with_weights(&no_mana_game, Color::White, &weights);
+
+        carrier_game.black_score = opponent_high;
+        no_mana_game.black_score = opponent_high;
+        let high_boost = evaluate_preferability_with_weights(&carrier_game, Color::White, &weights)
+            - evaluate_preferability_with_weights(&no_mana_game, Color::White, &weights);
+
+        assert!(
+            low_boost > high_boost + weights.confirmed_score,
+            "protected supermana carrier should get strong extra credit when opponent score is not high (low_boost={}, high_boost={})",
+            low_boost,
+            high_boost
+        );
+    }
+
+    #[test]
+    fn protected_opponent_mana_carrier_gets_less_virtual_credit_when_opponent_is_high() {
+        let carrier_location = Location::new(7, 5);
+        let guard_location = Location::new(7, 4);
+        let enemy_drainer_location = Location::new(0, 5);
+        let mut carrier_game = game_with_items(
+            vec![
+                (
+                    carrier_location,
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    guard_location,
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    enemy_drainer_location,
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let mut no_mana_game = game_with_items(
+            vec![
+                (
+                    carrier_location,
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    guard_location,
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    enemy_drainer_location,
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        let opponent_not_high = (Config::TARGET_SCORE - 3).max(0);
+        let opponent_high = (Config::TARGET_SCORE - 1).max(0);
+
+        let mut weights = RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS;
+        weights.include_match_point_window = false;
+        weights.immediate_score_window = 0;
+        weights.opponent_immediate_score_window = 0;
+        weights.immediate_score_multi_window = 0;
+        weights.opponent_immediate_score_multi_window = 0;
+        weights.mana_carrier_score_this_turn = 0;
+        weights.opponent_mana_denial = 3;
+
+        carrier_game.black_score = opponent_not_high;
+        no_mana_game.black_score = opponent_not_high;
+        let low_boost = evaluate_preferability_with_weights(&carrier_game, Color::White, &weights)
+            - evaluate_preferability_with_weights(&no_mana_game, Color::White, &weights);
+
+        carrier_game.black_score = opponent_high;
+        no_mana_game.black_score = opponent_high;
+        let high_boost = evaluate_preferability_with_weights(&carrier_game, Color::White, &weights)
+            - evaluate_preferability_with_weights(&no_mana_game, Color::White, &weights);
+
+        assert!(
+            low_boost > high_boost + weights.confirmed_score,
+            "protected opponent-mana carrier should get strong extra credit when opponent score is not high (low_boost={}, high_boost={})",
+            low_boost,
+            high_boost
+        );
     }
 
     #[test]

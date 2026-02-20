@@ -119,6 +119,20 @@ const SMART_SELECTIVE_EXTENSION_NODE_SHARE_BP_NORMAL: i32 = 1_200;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_ROOT_SPIRIT_DEVELOPMENT_SCORE_MARGIN: i32 = 700;
 #[cfg(any(target_arch = "wasm32", test))]
+const SMART_INTERVIEW_SOFT_PRIORITY_SCORE_MARGIN: i32 = 120;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_INTERVIEW_SOFT_SUPERMANA_PROGRESS_BONUS: i32 = 240;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_INTERVIEW_SOFT_SUPERMANA_SCORE_BONUS: i32 = 420;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_INTERVIEW_SOFT_OPPONENT_MANA_PROGRESS_BONUS: i32 = 210;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_INTERVIEW_SOFT_OPPONENT_MANA_SCORE_BONUS: i32 = 360;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_INTERVIEW_SOFT_MANA_HANDOFF_PENALTY: i32 = 220;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_INTERVIEW_SOFT_ROUNDTRIP_PENALTY: i32 = 140;
+#[cfg(any(target_arch = "wasm32", test))]
 const SMART_SPIRIT_DEPLOY_EFFICIENCY_BONUS: i32 = 90;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_SPIRIT_ACTION_TARGET_DELTA_WEIGHT: i32 = 22;
@@ -363,6 +377,16 @@ struct SmartSearchConfig {
     enable_two_pass_volatility_focus: bool,
     enable_normal_root_safety_rerank: bool,
     enable_normal_root_safety_deep_floor: bool,
+    enable_interview_hard_spirit_deploy: bool,
+    enable_interview_soft_root_priors: bool,
+    enable_interview_deterministic_tiebreak: bool,
+    interview_soft_score_margin: i32,
+    interview_soft_supermana_progress_bonus: i32,
+    interview_soft_supermana_score_bonus: i32,
+    interview_soft_opponent_mana_progress_bonus: i32,
+    interview_soft_opponent_mana_score_bonus: i32,
+    interview_soft_mana_handoff_penalty: i32,
+    interview_soft_roundtrip_penalty: i32,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -405,6 +429,9 @@ impl SmartSearchConfig {
                 tuned.enable_two_pass_volatility_focus = false;
                 tuned.enable_normal_root_safety_rerank = false;
                 tuned.enable_normal_root_safety_deep_floor = false;
+                tuned.enable_interview_hard_spirit_deploy = false;
+                tuned.enable_interview_soft_root_priors = false;
+                tuned.enable_interview_deterministic_tiebreak = false;
                 tuned
             }
             SmartAutomovePreference::Normal => {
@@ -450,6 +477,9 @@ impl SmartSearchConfig {
                 tuned.enable_two_pass_volatility_focus = true;
                 tuned.enable_normal_root_safety_rerank = true;
                 tuned.enable_normal_root_safety_deep_floor = true;
+                tuned.enable_interview_hard_spirit_deploy = false;
+                tuned.enable_interview_soft_root_priors = false;
+                tuned.enable_interview_deterministic_tiebreak = false;
                 tuned
             }
         }
@@ -508,6 +538,18 @@ impl SmartSearchConfig {
             enable_two_pass_volatility_focus: false,
             enable_normal_root_safety_rerank: false,
             enable_normal_root_safety_deep_floor: false,
+            enable_interview_hard_spirit_deploy: false,
+            enable_interview_soft_root_priors: false,
+            enable_interview_deterministic_tiebreak: false,
+            interview_soft_score_margin: SMART_INTERVIEW_SOFT_PRIORITY_SCORE_MARGIN,
+            interview_soft_supermana_progress_bonus: SMART_INTERVIEW_SOFT_SUPERMANA_PROGRESS_BONUS,
+            interview_soft_supermana_score_bonus: SMART_INTERVIEW_SOFT_SUPERMANA_SCORE_BONUS,
+            interview_soft_opponent_mana_progress_bonus:
+                SMART_INTERVIEW_SOFT_OPPONENT_MANA_PROGRESS_BONUS,
+            interview_soft_opponent_mana_score_bonus:
+                SMART_INTERVIEW_SOFT_OPPONENT_MANA_SCORE_BONUS,
+            interview_soft_mana_handoff_penalty: SMART_INTERVIEW_SOFT_MANA_HANDOFF_PENALTY,
+            interview_soft_roundtrip_penalty: SMART_INTERVIEW_SOFT_ROUNDTRIP_PENALTY,
         }
     }
 
@@ -560,8 +602,14 @@ struct ScoredRootMove {
     attacks_opponent_drainer: bool,
     own_drainer_vulnerable: bool,
     spirit_development: bool,
+    keeps_awake_spirit_on_base: bool,
     mana_handoff_to_opponent: bool,
     has_roundtrip: bool,
+    scores_supermana_this_turn: bool,
+    scores_opponent_mana_this_turn: bool,
+    supermana_progress: bool,
+    opponent_mana_progress: bool,
+    interview_soft_priority: i32,
     classes: MoveClassFlags,
 }
 
@@ -575,8 +623,10 @@ struct RootEvaluation {
     attacks_opponent_drainer: bool,
     own_drainer_vulnerable: bool,
     spirit_development: bool,
+    keeps_awake_spirit_on_base: bool,
     mana_handoff_to_opponent: bool,
     has_roundtrip: bool,
+    interview_soft_priority: i32,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -1283,10 +1333,20 @@ impl MonsGameModel {
         let wins_immediately = simulated_game.winner_color() == Some(perspective);
         let spirit_development =
             Self::has_spirit_development_turn(game, &simulated_game, perspective, &events);
-        let root_compensates_handoff = events
-            .iter()
-            .any(|event| matches!(event, Event::ManaScored { .. }))
-            || attacks_opponent_drainer;
+        let keeps_awake_spirit_on_base = Self::has_awake_spirit_on_base(&game.board, perspective)
+            && Self::has_awake_spirit_on_base(&simulated_game.board, perspective);
+        let scores_supermana_this_turn = Self::events_score_supermana(&events);
+        let scores_opponent_mana_this_turn = Self::events_score_opponent_mana(&events, perspective);
+        let supermana_progress = scores_supermana_this_turn
+            || Self::events_pickup_supermana(&events)
+            || Self::events_move_supermana_toward_color(&events, perspective);
+        let opponent_mana_progress = scores_opponent_mana_this_turn
+            || Self::events_pickup_opponent_mana(&events, perspective)
+            || Self::events_move_opponent_mana_toward_color(&events, perspective);
+        let root_compensates_handoff = wins_immediately
+            || attacks_opponent_drainer
+            || scores_supermana_this_turn
+            || scores_opponent_mana_this_turn;
         let mana_handoff_to_opponent =
             !root_compensates_handoff && Self::mana_handoff_penalty(&events, perspective) > 0;
         let has_roundtrip = Self::has_roundtrip_mon_move(&events);
@@ -1307,18 +1367,42 @@ impl MonsGameModel {
         } else {
             MoveClassFlags::default()
         };
+        let interview_soft_priority = Self::interview_root_soft_priority(
+            config,
+            supermana_progress,
+            opponent_mana_progress,
+            scores_supermana_this_turn,
+            scores_opponent_mana_this_turn,
+            own_drainer_vulnerable,
+            mana_handoff_to_opponent,
+            has_roundtrip,
+        );
+
+        let heuristic_with_policy = heuristic
+            .saturating_add(ordering_bonus)
+            .saturating_add(if config.enable_interview_soft_root_priors {
+                interview_soft_priority
+            } else {
+                0
+            });
 
         Some(ScoredRootMove {
             inputs: inputs.to_vec(),
             game: simulated_game,
-            heuristic: heuristic.saturating_add(ordering_bonus),
+            heuristic: heuristic_with_policy,
             efficiency,
             wins_immediately,
             attacks_opponent_drainer,
             own_drainer_vulnerable,
             spirit_development,
+            keeps_awake_spirit_on_base,
             mana_handoff_to_opponent,
             has_roundtrip,
+            scores_supermana_this_turn,
+            scores_opponent_mana_this_turn,
+            supermana_progress,
+            opponent_mana_progress,
+            interview_soft_priority,
             classes,
         })
     }
@@ -1381,6 +1465,123 @@ impl MonsGameModel {
 
         Self::has_awake_spirit_on_base(&before.board, perspective)
             && Self::has_awake_spirit_off_base(&after.board, perspective)
+    }
+
+    fn events_score_supermana(events: &[Event]) -> bool {
+        events.iter().any(|event| {
+            matches!(
+                event,
+                Event::ManaScored {
+                    mana: Mana::Supermana,
+                    ..
+                }
+            )
+        })
+    }
+
+    fn events_score_opponent_mana(events: &[Event], perspective: Color) -> bool {
+        events.iter().any(|event| {
+            matches!(
+                event,
+                Event::ManaScored {
+                    mana: Mana::Regular(owner),
+                    ..
+                } if *owner == perspective.other()
+            )
+        })
+    }
+
+    fn events_pickup_supermana(events: &[Event]) -> bool {
+        events.iter().any(|event| {
+            matches!(
+                event,
+                Event::PickupMana {
+                    mana: Mana::Supermana,
+                    ..
+                }
+            )
+        })
+    }
+
+    fn events_pickup_opponent_mana(events: &[Event], perspective: Color) -> bool {
+        events.iter().any(|event| {
+            matches!(
+                event,
+                Event::PickupMana {
+                    mana: Mana::Regular(owner),
+                    ..
+                } if *owner == perspective.other()
+            )
+        })
+    }
+
+    fn mana_move_toward_color(from: Location, to: Location, color: Color) -> bool {
+        let before = Self::distance_to_color_pool_steps_for_efficiency(from, color);
+        let after = Self::distance_to_color_pool_steps_for_efficiency(to, color);
+        after < before
+    }
+
+    fn events_move_supermana_toward_color(events: &[Event], color: Color) -> bool {
+        events.iter().any(|event| {
+            matches!(
+                event,
+                Event::ManaMove {
+                    mana: Mana::Supermana,
+                    from,
+                    to
+                } if Self::mana_move_toward_color(*from, *to, color)
+            )
+        })
+    }
+
+    fn events_move_opponent_mana_toward_color(events: &[Event], perspective: Color) -> bool {
+        events.iter().any(|event| {
+            matches!(
+                event,
+                Event::ManaMove {
+                    mana: Mana::Regular(owner),
+                    from,
+                    to
+                } if *owner == perspective.other() && Self::mana_move_toward_color(*from, *to, perspective)
+            )
+        })
+    }
+
+    fn interview_root_soft_priority(
+        config: SmartSearchConfig,
+        supermana_progress: bool,
+        opponent_mana_progress: bool,
+        scores_supermana_this_turn: bool,
+        scores_opponent_mana_this_turn: bool,
+        own_drainer_vulnerable: bool,
+        mana_handoff_to_opponent: bool,
+        has_roundtrip: bool,
+    ) -> i32 {
+        if !config.enable_interview_soft_root_priors {
+            return 0;
+        }
+
+        let mut score = 0i32;
+        if scores_supermana_this_turn {
+            score = score.saturating_add(config.interview_soft_supermana_score_bonus.max(0));
+        } else if supermana_progress && !own_drainer_vulnerable {
+            score = score.saturating_add(config.interview_soft_supermana_progress_bonus.max(0));
+        }
+
+        if scores_opponent_mana_this_turn {
+            score = score.saturating_add(config.interview_soft_opponent_mana_score_bonus.max(0));
+        } else if opponent_mana_progress && !own_drainer_vulnerable {
+            score = score.saturating_add(config.interview_soft_opponent_mana_progress_bonus.max(0));
+        }
+
+        if mana_handoff_to_opponent {
+            score = score.saturating_sub(config.interview_soft_mana_handoff_penalty.max(0));
+        }
+        if has_roundtrip {
+            score = score.saturating_sub(config.interview_soft_roundtrip_penalty.max(0));
+        }
+
+        score
     }
 
     fn forced_drainer_attack_fallback_candidates_limit(config: SmartSearchConfig) -> usize {
@@ -1735,6 +1936,18 @@ impl MonsGameModel {
         if candidate.classes.immediate_score != incumbent.classes.immediate_score {
             return candidate.classes.immediate_score;
         }
+        if candidate.scores_supermana_this_turn != incumbent.scores_supermana_this_turn {
+            return candidate.scores_supermana_this_turn;
+        }
+        if candidate.scores_opponent_mana_this_turn != incumbent.scores_opponent_mana_this_turn {
+            return candidate.scores_opponent_mana_this_turn;
+        }
+        if candidate.supermana_progress != incumbent.supermana_progress {
+            return candidate.supermana_progress;
+        }
+        if candidate.opponent_mana_progress != incumbent.opponent_mana_progress {
+            return candidate.opponent_mana_progress;
+        }
         if candidate.mana_handoff_to_opponent != incumbent.mana_handoff_to_opponent {
             return !candidate.mana_handoff_to_opponent;
         }
@@ -2088,8 +2301,10 @@ impl MonsGameModel {
                 attacks_opponent_drainer: candidate.attacks_opponent_drainer,
                 own_drainer_vulnerable: candidate.own_drainer_vulnerable,
                 spirit_development: candidate.spirit_development,
+                keeps_awake_spirit_on_base: candidate.keeps_awake_spirit_on_base,
                 mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
                 has_roundtrip: candidate.has_roundtrip,
+                interview_soft_priority: candidate.interview_soft_priority,
             });
 
             if candidate_score > alpha {
@@ -3199,8 +3414,10 @@ impl MonsGameModel {
             attacks_opponent_drainer: candidate.attacks_opponent_drainer,
             own_drainer_vulnerable: candidate.own_drainer_vulnerable,
             spirit_development: candidate.spirit_development,
+            keeps_awake_spirit_on_base: candidate.keeps_awake_spirit_on_base,
             mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
             has_roundtrip: candidate.has_roundtrip,
+            interview_soft_priority: candidate.interview_soft_priority,
         });
 
         if candidate_score > state.alpha {
@@ -3351,6 +3568,14 @@ impl MonsGameModel {
             && Self::has_awake_spirit_on_base(&game.board, perspective)
     }
 
+    fn score_for_color(game: &MonsGame, color: Color) -> i32 {
+        if color == Color::White {
+            game.white_score
+        } else {
+            game.black_score
+        }
+    }
+
     fn root_allows_immediate_opponent_win_quick(
         state_after_move: &MonsGame,
         perspective: Color,
@@ -3390,6 +3615,47 @@ impl MonsGameModel {
         {
             candidate_indices.retain(|index| scored_roots[*index].attacks_opponent_drainer);
             forced_attack_applied = true;
+        }
+
+        if config.enable_interview_hard_spirit_deploy
+            && !forced_attack_applied
+            && Self::should_prefer_spirit_development(game, perspective)
+        {
+            let my_score_before = Self::score_for_color(game, perspective);
+            let spirit_ready_indices = candidate_indices
+                .iter()
+                .copied()
+                .filter(|index| !scored_roots[*index].keeps_awake_spirit_on_base)
+                .collect::<Vec<_>>();
+            if !spirit_ready_indices.is_empty() {
+                let safe_spirit_ready_indices = spirit_ready_indices
+                    .iter()
+                    .copied()
+                    .filter(|index| {
+                        let root = &scored_roots[*index];
+                        !root.own_drainer_vulnerable && !root.mana_handoff_to_opponent
+                    })
+                    .collect::<Vec<_>>();
+                let preferred_spirit_indices = if !safe_spirit_ready_indices.is_empty() {
+                    safe_spirit_ready_indices
+                } else {
+                    spirit_ready_indices
+                };
+
+                let keeps_spirit_and_scores = candidate_indices.iter().any(|index| {
+                    let root = &scored_roots[*index];
+                    root.keeps_awake_spirit_on_base
+                        && Self::score_for_color(&root.game, perspective) > my_score_before
+                });
+                let spirit_line_scores = preferred_spirit_indices.iter().any(|index| {
+                    let root = &scored_roots[*index];
+                    Self::score_for_color(&root.game, perspective) > my_score_before
+                });
+
+                if !keeps_spirit_and_scores || spirit_line_scores {
+                    candidate_indices = preferred_spirit_indices;
+                }
+            }
         }
 
         if config.enable_root_drainer_safety_prefilter && !forced_attack_applied {
@@ -3569,6 +3835,7 @@ impl MonsGameModel {
         let mut best_spirit_development = scored_roots[best_index].spirit_development;
         let mut best_mana_handoff = scored_roots[best_index].mana_handoff_to_opponent;
         let mut best_has_roundtrip = scored_roots[best_index].has_roundtrip;
+        let mut best_soft_priority = scored_roots[best_index].interview_soft_priority;
 
         for index in candidate_indices {
             let evaluation = &scored_roots[index];
@@ -3584,12 +3851,22 @@ impl MonsGameModel {
             let equal_handoff = evaluation.mana_handoff_to_opponent == best_mana_handoff;
             let roundtrip_better = !evaluation.has_roundtrip && best_has_roundtrip;
             let equal_roundtrip = evaluation.has_roundtrip == best_has_roundtrip;
+            let soft_better = config.enable_interview_soft_root_priors
+                && evaluation.interview_soft_priority
+                    > best_soft_priority.saturating_add(config.interview_soft_score_margin.max(0));
+            let soft_equal_or_disabled = !config.enable_interview_soft_root_priors
+                || evaluation.interview_soft_priority.saturating_add(
+                    config.interview_soft_score_margin.max(0),
+                ) >= best_soft_priority;
             let efficiency_or_score_better = evaluation.efficiency > best_efficiency
                 || (evaluation.efficiency == best_efficiency
                     && evaluation.score > best_shortlisted_score);
-            let tie_break_better = handoff_better
-                || (equal_handoff
-                    && (roundtrip_better || (equal_roundtrip && efficiency_or_score_better)));
+            let tie_break_better = soft_better
+                || (soft_equal_or_disabled
+                    && (handoff_better
+                        || (equal_handoff
+                            && (roundtrip_better
+                                || (equal_roundtrip && efficiency_or_score_better)))));
             if spirit_better || (equal_spirit_preference && tie_break_better) {
                 best_index = index;
                 best_efficiency = evaluation.efficiency;
@@ -3597,6 +3874,7 @@ impl MonsGameModel {
                 best_spirit_development = evaluation.spirit_development;
                 best_mana_handoff = evaluation.mana_handoff_to_opponent;
                 best_has_roundtrip = evaluation.has_roundtrip;
+                best_soft_priority = evaluation.interview_soft_priority;
             }
         }
 
@@ -3676,6 +3954,7 @@ impl MonsGameModel {
                 best_index,
                 best_snapshot,
                 scored_roots,
+                config,
             ) {
                 best_index = index;
                 best_snapshot = snapshot;
@@ -3788,6 +4067,7 @@ impl MonsGameModel {
         incumbent_index: usize,
         incumbent_snapshot: RootReplyRiskSnapshot,
         scored_roots: &[RootEvaluation],
+        config: SmartSearchConfig,
     ) -> bool {
         let candidate = &scored_roots[candidate_index];
         let incumbent = &scored_roots[incumbent_index];
@@ -3807,6 +4087,16 @@ impl MonsGameModel {
             != incumbent_snapshot.opponent_reaches_match_point
         {
             return !candidate_snapshot.opponent_reaches_match_point;
+        }
+        if config.enable_interview_deterministic_tiebreak
+            && candidate.spirit_development != incumbent.spirit_development
+        {
+            return candidate.spirit_development;
+        }
+        if config.enable_interview_soft_root_priors
+            && candidate.interview_soft_priority != incumbent.interview_soft_priority
+        {
+            return candidate.interview_soft_priority > incumbent.interview_soft_priority;
         }
         if candidate_snapshot.worst_reply_score != incumbent_snapshot.worst_reply_score {
             return candidate_snapshot.worst_reply_score > incumbent_snapshot.worst_reply_score;

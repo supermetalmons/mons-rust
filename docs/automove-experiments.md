@@ -485,6 +485,33 @@ Takeaway:
 
 - Depth bump for fast is not viable under current CPU caps unless search shape is fundamentally redesigned.
 
+### 17) Interview policy candidates (`runtime_interview_policy_v1..v5`)
+
+Idea:
+
+- Translate interview priorities into mixed hard/soft runtime policy:
+  - hard drainer-attack priority
+  - hard/conditional spirit-off-base preference
+  - deterministic root tie-break ordering
+  - optional soft supermana/opponent-mana progress priors
+- Validate both direct interview variants (`v1..v3`) and mode-split variants (`v4`, `v5`).
+
+What happened:
+
+- Mixed-mode neutral-seed screens for `runtime_interview_policy_v1`, `runtime_interview_policy_v4`, and `runtime_interview_policy_v5` were noisy and stayed around neutral in aggregate.
+- After keeping default runtime weights unchanged (no implicit promotion), rerunning `runtime_interview_policy_v5` on `neutral_v1..v3` with `SMART_DUEL_GAMES=1`, `SMART_DUEL_REPEATS=1`, `SMART_DUEL_MAX_PLIES=48` was negative:
+  - `neutral_v1`: `1W-1L`
+  - `neutral_v2`: `1W-1L`
+  - `neutral_v3`: `0W-2L`
+  - aggregate: `2W-4L`
+- A safety cleanup was kept in runtime interview filtering: hard spirit-deploy now preserves explicit same-turn scoring exceptions and prefers safe deploy alternatives when the interview spirit rule is enabled.
+
+Takeaway:
+
+- Interview policy priors are directionally useful but not sufficient for strict promotion under current search shape/caps.
+- Current evidence does not support promoting interview profiles over `runtime_current`.
+- Keep these profiles as experiment hooks; require larger-seed strict gate evidence before runtime promotion.
+
 ## What Worked Best So Far
 
 Current promoted direction:
