@@ -1056,13 +1056,7 @@ pub fn evaluate_preferability_with_weights(
 
                 let (danger, _, angel_nearby) =
                     drainer_distances(&game.board, mon.color, location, use_legacy_formula);
-                if use_boolean_drainer_danger {
-                    if danger < PROTECTED_HIGH_VALUE_CARRIER_SAFE_DANGER_MIN {
-                        score += my_mon_multiplier * weights.mana_carrier_at_risk;
-                    }
-                } else {
-                    score += my_mon_multiplier * weights.mana_carrier_at_risk / danger;
-                }
+                score += my_mon_multiplier * weights.mana_carrier_at_risk / danger;
                 if angel_nearby {
                     score += my_mon_multiplier * weights.mana_carrier_guarded;
                 }

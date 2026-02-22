@@ -991,6 +991,15 @@ fn model_runtime_boolean_drainer_v1(game: &MonsGame, config: SmartSearchConfig) 
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+fn model_runtime_boolean_drainer_v2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_mana_start_mix_with_potion_actions = true;
+    if runtime.depth < 3 {
+        runtime.scoring_weights = &RUNTIME_FAST_BOOLEAN_DRAINER_V1_WEIGHTS;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn model_runtime_potion_takeback_starts_v2(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -4819,6 +4828,7 @@ fn turn_reply_guard_rollout_config(
 fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     match candidate_profile().as_str() {
         "runtime_boolean_drainer_v1" => model_runtime_boolean_drainer_v1(game, config),
+        "runtime_boolean_drainer_v2" => model_runtime_boolean_drainer_v2(game, config),
         "base" => candidate_model_base(game, config),
         "runtime_current" => candidate_model_base(game, config),
         "runtime_potion_takeback_starts_v1" => {
@@ -5132,6 +5142,10 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_boolean_drainer_v1",
             model_runtime_boolean_drainer_v1,
+        ),
+        (
+            "runtime_boolean_drainer_v2",
+            model_runtime_boolean_drainer_v2,
         ),
         (
             "runtime_potion_takeback_starts_v1",
