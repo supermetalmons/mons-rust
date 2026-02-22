@@ -427,6 +427,8 @@ struct SmartSearchConfig {
     enable_mana_start_mix_with_potion_actions: bool,
     enable_potion_progress_compensation: bool,
     prefer_clean_reply_risk_roots: bool,
+    enable_drainer_one_move_threat_check: bool,
+    enable_drainer_boolean_safety_filter: bool,
     root_drainer_safety_score_margin: i32,
     root_mana_handoff_penalty: i32,
     root_backtrack_penalty: i32,
@@ -633,6 +635,8 @@ impl SmartSearchConfig {
             enable_mana_start_mix_with_potion_actions: false,
             enable_potion_progress_compensation: false,
             prefer_clean_reply_risk_roots: false,
+            enable_drainer_one_move_threat_check: false,
+            enable_drainer_boolean_safety_filter: false,
             root_drainer_safety_score_margin: SMART_ROOT_DRAINER_SAFETY_SCORE_MARGIN,
             root_mana_handoff_penalty: SMART_ROOT_MANA_HANDOFF_PENALTY,
             root_backtrack_penalty: SMART_ROOT_BACKTRACK_PENALTY,
@@ -1467,7 +1471,11 @@ impl MonsGameModel {
             || Self::events_pickup_opponent_mana(&events, perspective)
             || Self::events_move_opponent_mana_toward_color(&events, perspective);
         let own_drainer_vulnerable = if config.enable_root_drainer_safety_prefilter {
-            Self::is_own_drainer_vulnerable_next_turn(&simulated_game, perspective)
+            Self::is_own_drainer_vulnerable_next_turn(
+                &simulated_game,
+                perspective,
+                config.enable_drainer_one_move_threat_check,
+            )
         } else {
             false
         };
@@ -1990,7 +1998,11 @@ impl MonsGameModel {
     ) -> Vec<ScoredRootMove> {
         let mut candidates = Vec::new();
         let own_drainer_vulnerable_before = if config.enable_move_class_coverage {
-            Self::is_own_drainer_vulnerable_next_turn(game, perspective)
+            Self::is_own_drainer_vulnerable_next_turn(
+                game,
+                perspective,
+                config.enable_drainer_one_move_threat_check,
+            )
         } else {
             false
         };
@@ -2184,7 +2196,11 @@ impl MonsGameModel {
         }
 
         if config.enable_root_drainer_safety_prefilter
-            && Self::is_own_drainer_vulnerable_next_turn(game, perspective)
+            && Self::is_own_drainer_vulnerable_next_turn(
+                game,
+                perspective,
+                config.enable_drainer_one_move_threat_check,
+            )
         {
             if let Some(index) = Self::best_tactical_root_index(root_moves, |candidate| {
                 !candidate.own_drainer_vulnerable
@@ -2957,7 +2973,11 @@ impl MonsGameModel {
         let mut scored_states: Vec<(i32, RankedChildState)> = Vec::new();
         let actor_color = game.active_color;
         let own_drainer_vulnerable_before = if config.enable_child_move_class_coverage {
-            Self::is_own_drainer_vulnerable_next_turn(game, actor_color)
+            Self::is_own_drainer_vulnerable_next_turn(
+                game,
+                actor_color,
+                config.enable_drainer_one_move_threat_check,
+            )
         } else {
             false
         };
@@ -3018,7 +3038,11 @@ impl MonsGameModel {
                 }
 
                 let own_drainer_vulnerable_after = if config.enable_child_move_class_coverage {
-                    Self::is_own_drainer_vulnerable_next_turn(&simulated_game, actor_color)
+                    Self::is_own_drainer_vulnerable_next_turn(
+                        &simulated_game,
+                        actor_color,
+                        config.enable_drainer_one_move_threat_check,
+                    )
                 } else {
                     false
                 };
@@ -3772,14 +3796,110 @@ impl MonsGameModel {
         false
     }
 
-    fn is_own_drainer_vulnerable_next_turn(game: &MonsGame, perspective: Color) -> bool {
+    fn is_own_drainer_vulnerable_next_turn(
+        game: &MonsGame,
+        perspective: Color,
+        include_one_move_threats: bool,
+    ) -> bool {
         let opponent = perspective.other();
         let mut probe = game.clone_for_simulation();
         probe.active_color = opponent;
         probe.actions_used_count = 0;
         probe.mana_moves_count = 0;
         probe.mons_moves_count = 0;
-        Self::is_own_drainer_immediately_vulnerable(&probe, perspective)
+        if Self::is_own_drainer_immediately_vulnerable(&probe, perspective) {
+            return true;
+        }
+        if include_one_move_threats {
+            Self::can_opponent_reach_drainer_attack_in_one_move(&probe, perspective)
+        } else {
+            false
+        }
+    }
+
+    fn can_opponent_reach_drainer_attack_in_one_move(game: &MonsGame, perspective: Color) -> bool {
+        let mut own_drainer_location = None;
+        for (&location, item) in &game.board.items {
+            if let Some(mon) = item.mon() {
+                if mon.color == perspective && mon.kind == MonKind::Drainer && !mon.is_fainted() {
+                    own_drainer_location = Some(location);
+                    break;
+                }
+            }
+        }
+        let Some(drainer_location) = own_drainer_location else {
+            return false;
+        };
+        let drainer_action_protected =
+            Self::is_location_guarded_by_angel(&game.board, perspective, drainer_location);
+        if drainer_action_protected {
+            return false;
+        }
+        let opponent = perspective.other();
+        let mystic_attack_positions = drainer_location.reachable_by_mystic_action();
+        let demon_attack_positions = drainer_location.reachable_by_demon_action();
+        for (&threat_location, item) in &game.board.items {
+            let Item::Mon { mon } = item else {
+                continue;
+            };
+            if mon.color != opponent || mon.is_fainted() {
+                continue;
+            }
+            match mon.kind {
+                MonKind::Mystic => {
+                    for attack_pos in &mystic_attack_positions {
+                        if *attack_pos == threat_location {
+                            continue;
+                        }
+                        if attack_pos.distance(&threat_location) != 1 {
+                            continue;
+                        }
+                        if game.board.item(*attack_pos).is_some() {
+                            continue;
+                        }
+                        if matches!(
+                            game.board.square(*attack_pos),
+                            Square::MonBase { .. } | Square::SupermanaBase
+                        ) {
+                            continue;
+                        }
+                        return true;
+                    }
+                }
+                MonKind::Demon => {
+                    for attack_pos in &demon_attack_positions {
+                        if *attack_pos == threat_location {
+                            continue;
+                        }
+                        if attack_pos.distance(&threat_location) != 1 {
+                            continue;
+                        }
+                        if game.board.item(*attack_pos).is_some() {
+                            continue;
+                        }
+                        if matches!(
+                            game.board.square(*attack_pos),
+                            Square::MonBase { .. } | Square::SupermanaBase
+                        ) {
+                            continue;
+                        }
+                        let middle = attack_pos.location_between(&drainer_location);
+                        let middle_item_clear =
+                            middle == threat_location || game.board.item(middle).is_none();
+                        let middle_square_clear = !matches!(
+                            game.board.square(middle),
+                            Square::SupermanaBase | Square::MonBase { .. }
+                        );
+                        if !middle_item_clear || !middle_square_clear {
+                            continue;
+                        }
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
     }
 
     fn should_prefer_spirit_development(game: &MonsGame, perspective: Color) -> bool {
@@ -3917,20 +4037,28 @@ impl MonsGameModel {
         }
 
         if config.enable_root_drainer_safety_prefilter && !forced_attack_applied {
-            let best_score = candidate_indices
-                .iter()
-                .map(|index| scored_roots[*index].score)
-                .max()
-                .unwrap_or(i32::MIN);
-            let margin = config.root_drainer_safety_score_margin.max(0);
-            let safer_indices = candidate_indices
-                .iter()
-                .copied()
-                .filter(|index| {
-                    let root = &scored_roots[*index];
-                    !root.own_drainer_vulnerable && root.score + margin >= best_score
-                })
-                .collect::<Vec<_>>();
+            let safer_indices = if config.enable_drainer_boolean_safety_filter {
+                candidate_indices
+                    .iter()
+                    .copied()
+                    .filter(|index| !scored_roots[*index].own_drainer_vulnerable)
+                    .collect::<Vec<_>>()
+            } else {
+                let best_score = candidate_indices
+                    .iter()
+                    .map(|index| scored_roots[*index].score)
+                    .max()
+                    .unwrap_or(i32::MIN);
+                let margin = config.root_drainer_safety_score_margin.max(0);
+                candidate_indices
+                    .iter()
+                    .copied()
+                    .filter(|index| {
+                        let root = &scored_roots[*index];
+                        !root.own_drainer_vulnerable && root.score + margin >= best_score
+                    })
+                    .collect::<Vec<_>>()
+            };
             if !safer_indices.is_empty() {
                 candidate_indices = safer_indices;
             }
@@ -5069,6 +5197,80 @@ mod opening_book_tests {
             &guarded,
             Color::White
         ));
+    }
+
+    #[test]
+    fn drainer_one_move_threat_detection_catches_mystic_approaching_from_adjacent() {
+        let white_drainer = Mon::new(MonKind::Drainer, Color::White, 0);
+        let black_mystic = Mon::new(MonKind::Mystic, Color::Black, 0);
+
+        // Drainer at (5,5). Attack positions for drainer: (3,3),(3,7),(7,3),(7,7).
+        // Mystic at (4,4) is adjacent (distance 1) to attack position (3,3).
+        // Not immediately vulnerable, but one move away from threat.
+        let game = game_with_items(
+            vec![
+                (Location::new(5, 5), Item::Mon { mon: white_drainer }),
+                (Location::new(4, 4), Item::Mon { mon: black_mystic }),
+            ],
+            Color::White,
+            2,
+        );
+        assert!(
+            !MonsGameModel::is_own_drainer_immediately_vulnerable(&game, Color::White),
+            "mystic not yet in attack position"
+        );
+        assert!(
+            MonsGameModel::is_own_drainer_vulnerable_next_turn(&game, Color::White, true),
+            "one-move threat check should detect mystic approaching attack position"
+        );
+        assert!(
+            !MonsGameModel::is_own_drainer_vulnerable_next_turn(&game, Color::White, false),
+            "legacy check should not detect this threat"
+        );
+    }
+
+    #[test]
+    fn drainer_one_move_threat_blocked_when_attack_position_occupied() {
+        let white_drainer = Mon::new(MonKind::Drainer, Color::White, 0);
+        let black_mystic = Mon::new(MonKind::Mystic, Color::Black, 0);
+        let white_spirit = Mon::new(MonKind::Spirit, Color::White, 0);
+
+        // Mystic at (4,4), drainer at (5,5). Attack position (3,3) is occupied by white spirit.
+        let game = game_with_items(
+            vec![
+                (Location::new(5, 5), Item::Mon { mon: white_drainer }),
+                (Location::new(4, 4), Item::Mon { mon: black_mystic }),
+                (Location::new(3, 3), Item::Mon { mon: white_spirit }),
+            ],
+            Color::White,
+            2,
+        );
+        assert!(
+            !MonsGameModel::is_own_drainer_vulnerable_next_turn(&game, Color::White, true),
+            "one-move threat blocked when attack position is occupied"
+        );
+    }
+
+    #[test]
+    fn drainer_one_move_threat_blocked_by_angel_guard() {
+        let white_drainer = Mon::new(MonKind::Drainer, Color::White, 0);
+        let white_angel = Mon::new(MonKind::Angel, Color::White, 0);
+        let black_mystic = Mon::new(MonKind::Mystic, Color::Black, 0);
+
+        // Drainer guarded by angel, mystic approaching.
+        let game = game_with_items(
+            vec![
+                (Location::new(5, 5), Item::Mon { mon: white_drainer }),
+                (Location::new(5, 4), Item::Mon { mon: white_angel }),
+                (Location::new(4, 4), Item::Mon { mon: black_mystic }),
+            ],
+            Color::White,
+            2,
+        );
+        assert!(
+            !MonsGameModel::is_own_drainer_vulnerable_next_turn(&game, Color::White, true),
+            "one-move threat blocked when drainer is guarded by angel"
+        );
     }
 
     #[test]

@@ -2992,6 +2992,60 @@ fn legacy_runtime_phase_adaptive_scoring_weights(
     }
 }
 
+fn model_runtime_drainer_danger_check_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_drainer_one_move_threat_check = true;
+    runtime.enable_drainer_boolean_safety_filter = true;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_drainer_danger_check_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_drainer_one_move_threat_check = true;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_drainer_danger_check_v3(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_drainer_one_move_threat_check = true;
+    if runtime.depth < 3 {
+        runtime.enable_drainer_boolean_safety_filter = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_drainer_danger_check_v4(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        runtime.enable_drainer_one_move_threat_check = true;
+        runtime.enable_drainer_boolean_safety_filter = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_drainer_danger_check_v5(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        runtime.enable_drainer_boolean_safety_filter = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn pool_model_01(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     model_current_best(game, config)
 }
@@ -4943,6 +4997,21 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_pre_transposition" => model_current_best_legacy_no_transposition(game, config),
         "runtime_legacy_phase_adaptive" => model_runtime_legacy_phase_adaptive(game, config),
         "runtime_pre_drainer_context" => model_runtime_pre_drainer_context(game, config),
+        "runtime_drainer_danger_check_v1" => {
+            model_runtime_drainer_danger_check_v1(game, config)
+        }
+        "runtime_drainer_danger_check_v2" => {
+            model_runtime_drainer_danger_check_v2(game, config)
+        }
+        "runtime_drainer_danger_check_v3" => {
+            model_runtime_drainer_danger_check_v3(game, config)
+        }
+        "runtime_drainer_danger_check_v4" => {
+            model_runtime_drainer_danger_check_v4(game, config)
+        }
+        "runtime_drainer_danger_check_v5" => {
+            model_runtime_drainer_danger_check_v5(game, config)
+        }
         "runtime_pre_normal_x15" => model_runtime_pre_normal_x15(game, config),
         "focus" => candidate_model_focus(game, config),
         "focus_deep_only" => candidate_model_focus_deep_only(game, config),
@@ -5377,6 +5446,26 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_pre_drainer_context",
             model_runtime_pre_drainer_context,
+        ),
+        (
+            "runtime_drainer_danger_check_v1",
+            model_runtime_drainer_danger_check_v1,
+        ),
+        (
+            "runtime_drainer_danger_check_v2",
+            model_runtime_drainer_danger_check_v2,
+        ),
+        (
+            "runtime_drainer_danger_check_v3",
+            model_runtime_drainer_danger_check_v3,
+        ),
+        (
+            "runtime_drainer_danger_check_v4",
+            model_runtime_drainer_danger_check_v4,
+        ),
+        (
+            "runtime_drainer_danger_check_v5",
+            model_runtime_drainer_danger_check_v5,
         ),
         ("runtime_pre_normal_x15", model_runtime_pre_normal_x15),
         ("focus", candidate_model_focus),
@@ -8355,7 +8444,7 @@ fn assert_tactical_guardrails(
         )
         .expect("drainer safety move should be legal");
         assert!(
-            !MonsGameModel::is_own_drainer_vulnerable_next_turn(&safety_after, Color::White),
+            !MonsGameModel::is_own_drainer_vulnerable_next_turn(&safety_after, Color::White, false),
             "profile '{}' left drainer vulnerable while safe alternatives existed",
             profile_name
         );
