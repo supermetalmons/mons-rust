@@ -56,6 +56,7 @@ pub struct ScoringWeights {
     pub immediate_score_multi_window: i32,
     pub opponent_immediate_score_multi_window: i32,
     pub spirit_action_utility: i32,
+    pub use_boolean_drainer_danger: bool,
 }
 
 pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
@@ -107,6 +108,7 @@ pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     immediate_score_multi_window: 0,
     opponent_immediate_score_multi_window: 0,
     spirit_action_utility: 0,
+    use_boolean_drainer_danger: false,
 };
 
 pub const BALANCED_DISTANCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
@@ -158,6 +160,7 @@ pub const BALANCED_DISTANCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     immediate_score_multi_window: 0,
     opponent_immediate_score_multi_window: 0,
     spirit_action_utility: 0,
+    use_boolean_drainer_danger: false,
 };
 
 #[cfg(test)]
@@ -752,6 +755,7 @@ pub fn evaluate_preferability_with_weights(
     weights: &ScoringWeights,
 ) -> i32 {
     let use_legacy_formula = weights.use_legacy_formula;
+    let use_boolean_drainer_danger = weights.use_boolean_drainer_danger;
     let include_regular_mana_move_windows =
         weights.include_regular_mana_move_windows && !use_legacy_formula;
     let include_match_point_window = weights.include_match_point_window && !use_legacy_formula;
@@ -812,11 +816,16 @@ pub fn evaluate_preferability_with_weights(
                     score += my_mon_multiplier * weights.drainer_close_to_supermana
                         / distance_to_location(location, supermana_base);
                     if !angel_nearby {
-                        score += my_mon_multiplier * weights.drainer_at_risk / danger;
+                        if use_boolean_drainer_danger {
+                            if danger < PROTECTED_HIGH_VALUE_CARRIER_SAFE_DANGER_MIN {
+                                score += my_mon_multiplier * weights.drainer_at_risk;
+                            }
+                        } else {
+                            score += my_mon_multiplier * weights.drainer_at_risk / danger;
+                        }
                     } else {
                         score += my_mon_multiplier * weights.angel_guarding_drainer;
                     }
-
                     if let Some((path_steps, mana_value)) =
                         best_drainer_pickup_path(&game.board, mon.color, location)
                     {
@@ -891,7 +900,13 @@ pub fn evaluate_preferability_with_weights(
                     score += my_mon_multiplier * weights.drainer_close_to_supermana
                         / distance_to_location(location, supermana_base);
                     if !angel_nearby {
-                        score += my_mon_multiplier * weights.drainer_at_risk / danger;
+                        if use_boolean_drainer_danger {
+                            if danger < PROTECTED_HIGH_VALUE_CARRIER_SAFE_DANGER_MIN {
+                                score += my_mon_multiplier * weights.drainer_at_risk;
+                            }
+                        } else {
+                            score += my_mon_multiplier * weights.drainer_at_risk / danger;
+                        }
                     } else {
                         score += my_mon_multiplier * weights.angel_guarding_drainer;
                     }
@@ -2209,6 +2224,115 @@ mod tests {
             &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
         );
         assert_eq!(original.total, mirrored_eval.total);
+    }
+
+    #[test]
+    fn boolean_drainer_danger_applies_full_penalty_when_at_risk() {
+        let drainer_location = Location::new(5, 5);
+        let mystic_adjacent = Location::new(5, 4);
+        let mystic_at_range = Location::new(3, 3);
+        let mystic_safe = Location::new(5, 2);
+
+        let game_adjacent = game_with_items(
+            vec![
+                (
+                    drainer_location,
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    mystic_adjacent,
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        let game_at_range = game_with_items(
+            vec![
+                (
+                    drainer_location,
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    mystic_at_range,
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        let game_safe = game_with_items(
+            vec![
+                (
+                    drainer_location,
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    mystic_safe,
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        let no_threat = game_with_items(
+            vec![(
+                drainer_location,
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            )],
+            Color::White,
+        );
+
+        let mut weights = RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS;
+        weights.use_boolean_drainer_danger = true;
+        weights.drainer_close_to_mana = 0;
+        weights.drainer_close_to_own_pool = 0;
+        weights.drainer_close_to_supermana = 0;
+        weights.drainer_immediate_threat = 0;
+        weights.drainer_best_mana_path = 0;
+        weights.mon_close_to_center = 0;
+        weights.active_mon = 0;
+        weights.spirit_close_to_enemy = 0;
+
+        let score_no_threat =
+            evaluate_preferability_with_weights(&no_threat, Color::White, &weights);
+        let score_adjacent =
+            evaluate_preferability_with_weights(&game_adjacent, Color::White, &weights);
+        let score_at_range =
+            evaluate_preferability_with_weights(&game_at_range, Color::White, &weights);
+        let score_safe = evaluate_preferability_with_weights(&game_safe, Color::White, &weights);
+
+        assert_eq!(
+            score_adjacent, score_at_range,
+            "boolean danger: adjacent and at-range attackers should give the same penalty"
+        );
+        assert_eq!(
+            score_safe, score_no_threat,
+            "boolean danger: safe attacker (distance >= 3) should give no penalty"
+        );
+        assert!(
+            score_adjacent < score_no_threat,
+            "boolean danger: at-risk drainer should score lower than safe drainer"
+        );
+        assert_eq!(
+            score_no_threat - score_adjacent,
+            weights.drainer_at_risk.abs(),
+            "boolean danger: penalty should equal drainer_at_risk weight"
+        );
     }
 }
 
