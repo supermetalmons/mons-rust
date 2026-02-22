@@ -339,6 +339,39 @@ const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGH
     };
 
 #[cfg(any(target_arch = "wasm32", test))]
+const RUNTIME_NORMAL_BALANCED_DISTANCE_BOOLEAN_DRAINER_WEIGHTS: ScoringWeights = ScoringWeights {
+    use_boolean_drainer_danger: true,
+    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+#[cfg(any(target_arch = "wasm32", test))]
+const RUNTIME_NORMAL_TACTICAL_BALANCED_BOOLEAN_DRAINER_WEIGHTS: ScoringWeights = ScoringWeights {
+    use_boolean_drainer_danger: true,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+#[cfg(any(target_arch = "wasm32", test))]
+const RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_BOOLEAN_DRAINER_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        use_boolean_drainer_danger: true,
+        ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+#[cfg(any(target_arch = "wasm32", test))]
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_BOOLEAN_DRAINER_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        use_boolean_drainer_danger: true,
+        ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+#[cfg(any(target_arch = "wasm32", test))]
+const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_BOOLEAN_DRAINER_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        use_boolean_drainer_danger: true,
+        ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SmartAutomovePreference {
     Fast,
@@ -1413,6 +1446,37 @@ impl MonsGameModel {
             &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
         } else {
             &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+        }
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn runtime_phase_adaptive_boolean_drainer_scoring_weights(
+        game: &MonsGame,
+        depth: usize,
+    ) -> &'static ScoringWeights {
+        if depth < 3 {
+            return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS;
+        }
+
+        let (my_score, opponent_score) = if game.active_color == Color::White {
+            (game.white_score, game.black_score)
+        } else {
+            (game.black_score, game.white_score)
+        };
+        let my_distance_to_win = Config::TARGET_SCORE - my_score;
+        let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+        let score_gap = my_score - opponent_score;
+
+        if my_distance_to_win <= 1 {
+            &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_BOOLEAN_DRAINER_WEIGHTS
+        } else if opponent_distance_to_win <= 1 {
+            &RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_BOOLEAN_DRAINER_WEIGHTS
+        } else if my_distance_to_win <= 2 {
+            &RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_BOOLEAN_DRAINER_WEIGHTS
+        } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+            &RUNTIME_NORMAL_TACTICAL_BALANCED_BOOLEAN_DRAINER_WEIGHTS
+        } else {
+            &RUNTIME_NORMAL_BALANCED_DISTANCE_BOOLEAN_DRAINER_WEIGHTS
         }
     }
 

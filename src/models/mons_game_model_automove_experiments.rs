@@ -8,7 +8,8 @@ use crate::models::scoring::{
     MANA_RACE_LITE_D2_TUNED_AGGRESSIVE_SCORING_WEIGHTS, MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
     MANA_RACE_LITE_SCORING_WEIGHTS, MANA_RACE_NEUTRAL_SCORING_WEIGHTS, MANA_RACE_SCORING_WEIGHTS,
     RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS, RUNTIME_FAST_DRAINER_PRIORITY_SCORING_WEIGHTS,
-    RUNTIME_NORMAL_WINLOSS_SCORING_WEIGHTS, RUNTIME_RUSH_SCORING_WEIGHTS,
+    RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF, RUNTIME_NORMAL_WINLOSS_SCORING_WEIGHTS,
+    RUNTIME_RUSH_SCORING_WEIGHTS,
     TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS, TACTICAL_BALANCED_SCORING_WEIGHTS,
     TACTICAL_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS, TACTICAL_MANA_RACE_LITE_SCORING_WEIGHTS,
 };
@@ -969,6 +970,26 @@ const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF_V7: ScoringWeight
         opponent_immediate_score_multi_window: 135,
         ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
     };
+
+const RUNTIME_FAST_BOOLEAN_DRAINER_V1_WEIGHTS: ScoringWeights = ScoringWeights {
+    use_boolean_drainer_danger: true,
+    ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF
+};
+
+fn model_runtime_boolean_drainer_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_mana_start_mix_with_potion_actions = true;
+    if runtime.depth < 3 {
+        runtime.scoring_weights = &RUNTIME_FAST_BOOLEAN_DRAINER_V1_WEIGHTS;
+    } else {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_boolean_drainer_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
 
 fn model_runtime_potion_takeback_starts_v2(
     game: &MonsGame,
@@ -4797,6 +4818,7 @@ fn turn_reply_guard_rollout_config(
 // Replace this when introducing a real contender.
 fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     match candidate_profile().as_str() {
+        "runtime_boolean_drainer_v1" => model_runtime_boolean_drainer_v1(game, config),
         "base" => candidate_model_base(game, config),
         "runtime_current" => candidate_model_base(game, config),
         "runtime_potion_takeback_starts_v1" => {
@@ -5107,6 +5129,10 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
     vec![
         ("base", candidate_model_base),
         ("runtime_current", candidate_model_base),
+        (
+            "runtime_boolean_drainer_v1",
+            model_runtime_boolean_drainer_v1,
+        ),
         (
             "runtime_potion_takeback_starts_v1",
             model_runtime_potion_takeback_starts_v1,
