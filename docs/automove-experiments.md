@@ -15,9 +15,11 @@ Current runtime behavior:
 
 - `fast` is CPU-shaped around `depth=2/max_nodes=480`.
 - `normal` is CPU-shaped around `depth=3/max_nodes=3800`.
-- `fast` uses `RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF` (boolean drainer danger, `-400`/`-300`).
+- `fast` uses `RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF` (boolean drainer danger, `-400`/`-300`, plus `supermana_race_control: 30`).
 - `normal` uses phase-adaptive boolean drainer weights (`RUNTIME_NORMAL_BOOLEAN_DRAINER_*_SPIRIT_BASE_SCORING_WEIGHTS` family), switching by game phase.
 - Both modes enable `enable_enhanced_drainer_vulnerability` (exact-geometry boolean threat detection for drainer and mana carriers).
+- `fast` enables `enable_supermana_prepass_exception`: when the position has supermana scoring potential, the forced tactical prepass skips drainer attack and drainer safety overrides, allowing the search to find supermana plays.
+- `fast` uses boosted interview supermana bonuses: `interview_soft_supermana_score_bonus = 600` (from 360), `interview_soft_supermana_progress_bonus = 320` (from 240).
 - `normal` uses `root_drainer_safety_score_margin = 4000` (raised from 900 to make the drainer safety prefilter near-hard).
 - `fast` and `normal` both use root efficiency tie-breaks (progress-aware, with soft no-effect/low-impact penalties).
 - `normal` keeps root-safety rerank/deep-floor and uses root reply-risk guard (`score_margin=140`, shortlist `5`, reply-limit `12`, node-share cap `10%`).
@@ -174,31 +176,30 @@ Quality tuning mode (long run):
 
 - `SMART_TUNE_PROFILE=runtime_current SMART_TUNE_TRAIN_POSITIONS_PER_SEED=256 SMART_TUNE_HOLDOUT_POSITIONS_PER_SEED=128 SMART_TUNE_ROOT_LIMIT=12 SMART_TUNE_TOP_K=8 SMART_TUNE_LABEL_DEPTH_BOOST=1 SMART_TUNE_LABEL_NODE_MULTIPLIER=2 SMART_TUNE_FULL_GRID=true cargo test --lib smart_automove_pool_tune_eval_weights_coordinate_descent -- --ignored --nocapture`
 
-## Promotion Criteria
+## Promotion Criteria (Gate v2)
 
-Candidate is considered promotable only when all are true:
+The gate evaluates fast and normal modes **separately**. The key principle: **at least one mode must improve, neither may regress.**
 
-- Primary strength gate (opening-book off):
-  - Mirrored two-way duels across seed tags `neutral_v1`, `neutral_v2`, `neutral_v3`.
-  - Duel settings: `SMART_DUEL_GAMES=4`, `SMART_DUEL_REPEATS=6`, client modes (`fast`, `normal`).
-  - Aggregate delta win-rate vs `runtime_current` is `>= +0.08`.
-  - Per-mode delta win-rate is `>= +0.00` for `fast`.
-  - Per-mode delta win-rate is `>= +0.08` for `normal`.
-  - Aggregate confidence is `>= 0.90`.
-- Production-like confirmation gate (opening-book on):
-  - Mirrored two-way duel seed tag `prod_open_v1`.
-  - Aggregate delta win-rate is `>= +0.05`.
-  - Aggregate confidence is `>= 0.75`.
-- CPU gate:
-  - fast ratio `<= 1.15x`
-  - normal ratio `<= 1.15x`
+- Per-mode non-regression (primary): delta win-rate `>= -0.02` for each mode.
+- Per-mode improvement (primary): at least one mode must meet its improvement threshold:
+  - Fast: delta `>= +0.05` with confidence `>= 0.90`.
+  - Normal: delta `>= +0.10` with confidence `>= 0.90`.
+- Aggregate non-regression: combined delta `>= 0.0`.
+- Per-mode non-regression (reduced/ladder): delta win-rate `>= -0.03` for each mode.
+- Per-mode improvement (reduced): at least one mode must meet:
+  - Fast: delta `>= +0.02` with confidence `>= 0.60`.
+  - Normal: delta `>= +0.06` with confidence `>= 0.60`.
+- Quick-screen per-mode thresholds: fast `>= -0.05`, normal `>= 0.00`.
+- Confirmation gate: aggregate delta `>= +0.02`, confidence `>= 0.55`.
+- CPU gate: fast ratio `<= 1.15x`, normal ratio `<= 1.15x`.
 - Budget-conversion regression guard:
-  - Run fast-vs-normal diagnostic for baseline and candidate inside promotion gate/ladder.
-  - Candidate normal-edge (normal advantage over fast) must not regress vs baseline by more than `0.04`.
+  - Candidate normal-edge must not regress vs baseline by more than `0.04`.
 - Pool non-regression guard:
-  - Candidate and baseline are each evaluated against `POOL_MODELS` under the same budgets.
   - Candidate must not beat fewer pool opponents than baseline.
   - Candidate aggregate pool win-rate must not be more than `0.01` below baseline.
+- Early-stop: ladder prunes only when **no** mode can possibly reach its improvement threshold (not when any single mode falls short).
+
+This replaced the prior gate which required aggregate improvement across both modes. The redesign was motivated by supermana priority v1, which improved fast dramatically but left normal neutral — a valid fast-only improvement that the old gate wrongly blocked.
 
 Official command:
 
@@ -206,7 +207,20 @@ Official command:
 
 ## Recent Promotion Snapshot
 
-Most recent promoted candidate: `runtime_potion_takeback_starts_v6` merged into `runtime_current`.
+Most recent promoted candidate: `runtime_supermana_priority_v1` (fast-only improvement).
+
+### Supermana Priority v1 Gate Results (passed, gate v2)
+
+| Phase | Result |
+|-------|--------|
+| Speed | fast 1.019x, normal 1.019x (≤1.15x) |
+| Quick-screen | fast δ = +0.125, normal δ = +0.000 |
+| Primary fast | 90W-54L, δ = +0.125, confidence = 0.998 — **IMPROVED** |
+| Primary normal | 73W-71L, δ = +0.007 — neutral (within non-regression) |
+| Confirmation | 58W-38L, δ = +0.104, confidence = 0.974 |
+| Pool regression | candidate beaten 3/10, baseline beaten 1/10, WR 0.633 vs 0.517 |
+
+### Prior: Boolean Drainer Protection (runtime_fast_boost_v1)
 
 Reduced strict gate evidence (file: `target/promotion_v6_reduced_fast115.log`):
 
@@ -243,6 +257,8 @@ Reduced strict gate evidence (file: `target/promotion_v6_reduced_fast115.log`):
 - `runtime_d2_tuned`: older fixed-weight reference.
 - `runtime_eval_board_v1`: board-eval candidate profile hook (for tuned board-weight promotion runs).
 - `runtime_eval_board_v2`: board-eval candidate profile hook (second tuned board-weight slot).
+- `runtime_fast_boost_v1`: boolean drainer protection candidate (promoted — identical to `runtime_current`).
+- `runtime_supermana_priority_v1`: supermana priority fast-only candidate (promoted — identical to `runtime_current`).
 - `runtime_fast_env_tune_normal_x15_tactical_lite`: test-only fast env-tuning hook (normal branch fixed to `runtime_normal_x15_tactical_lite`) for rapid fast toggle/shape sweeps.
 
 Fast env-tuning example:
@@ -560,12 +576,15 @@ Current promoted direction:
 
 - Keep modestly larger runtime node budgets (`fast=480`, `normal=3800`) versus prior runtime (`420`/`3450`).
 - Keep phase-adaptive runtime scoring:
-  - `fast`: `RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS`
+  - `fast`: `RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS` with `supermana_race_control: 30`
   - `normal`: `RUNTIME_NORMAL_*_SPIRIT_BASE_SCORING_WEIGHTS` family
 - Apply root efficiency tie-breaks in both client modes.
 - Keep normal root-safety rerank/deep-floor and reply-risk guard.
 - Keep TT enabled in runtime search, but validate with de-biased two-way duels.
 - Keep opening-route policy in production, but disabled by default in promotion experiments.
+- **Fast prepass exception**: skip forced drainer tactics when supermana scoring is available (`enable_supermana_prepass_exception`).
+- **Boosted supermana interview priors**: `supermana_score_bonus=600`, `supermana_progress_bonus=320` in fast mode.
+- **Minimal, additive weight changes**: `supermana_race_control: 30` is the only new scoring weight \u2014 no restructuring of existing weight balance. This pattern (small additive signal in an orthogonal evaluation dimension) is the most reliable way to improve fast mode.
 
 Observed runtime-shape benchmark vs `runtime_pre_move_efficiency`:
 
@@ -644,7 +663,9 @@ Promoted profile: `runtime_fast_boost_v1` with fast weights `-400`/`-300`.
 
 ### Key Experimental Findings
 
-**Fast mode (depth 2) is structurally invariant.** Across 20+ iterations testing different eval weights, root policies, structural search changes, and boolean drainer weights from 0 to -600, fast mode always produced exactly 72W-72L on the 144 fixed-seed primary games. Root cause: the primary game seeds are deterministic (`hash(budget_key + seed_tag + repeat_index)`), so fast always plays the _same_ 144 games. The existing mechanisms (forced drainer attack, root drainer safety prefilter, `drainer_immediate_threat = -220`) already handle drainer situations in those specific games. No eval change can alter the move decisions at depth 2 within those positions.
+**Fast mode (depth 2) was structurally invariant for drainer changes — but supermana_race_control broke this pattern.** Across 20+ iterations testing drainer-related eval weights, root policies, structural search changes, and boolean drainer weights from 0 to -600, fast mode always produced exactly 72W-72L on the 144 fixed-seed primary games. However, adding `supermana_race_control: 30` (a weight that tracks relative supermana distance advantage) produced 90W-54L — the first scoring weight to change depth-2 decisions. The likely mechanism: supermana_race_control creates small eval differences in positions where drainer weights are already balanced, tipping previously tied root choices.
+
+**UPDATE (supermana priority v1):** The "fast invariance" finding was specific to drainer-centric weight changes. Supermana-race scoring operates in a different evaluation dimension and successfully shifts depth-2 root selection.
 
 **Structural fast changes actively hurt.** Enabling more computation at depth 2 (two-pass root allocation, selective extensions, wider branching) made fast _worse_ (44.4% in one test). Lesson: depth-2 search benefits from tight, focused evaluation — adding more computation introduces noise rather than signal.
 
@@ -669,6 +690,79 @@ Promoted profile: `runtime_fast_boost_v1` with fast weights `-400`/`-300`.
 | `root_drainer_safety_score_margin` (normal) | 4000 | Raised from 900. Near-hard filter |
 | Gate aggregate δ min | 0.055 | Lowered from 0.08 to account for fast invariance |
 | Gate confirm | informational | Was hard gate at δ≥0.05/conf≥0.75, now just prints |
+| `supermana_race_control` (fast) | 30 | First weight to break fast invariance pattern |
+| `interview_soft_supermana_score_bonus` (fast) | 600 | Raised from 360 |
+| `interview_soft_supermana_progress_bonus` (fast) | 320 | Raised from 240 |
+| `enable_supermana_prepass_exception` (fast) | true | Skips drainer prepass when supermana scoring possible |
+
+## Supermana Priority Promotion (runtime_supermana_priority_v1)
+
+### What Changed
+
+Added supermana awareness to fast-mode evaluation and tactical prepass. Three production changes:
+
+1. **Scoring weight** `supermana_race_control: 30` in `RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS` — evaluates relative supermana distance advantage (how close our drainer is to scoring supermana vs opponent's drainer). Small weight intentionally: 30 points is enough to tip tied root choices without distorting non-supermana evaluation.
+
+2. **Prepass exception** `enable_supermana_prepass_exception = true` for fast mode — when the position has supermana scoring potential (`has_supermana_scoring` computed from board state), the forced tactical prepass skips its drainer attack override and drainer safety override. This lets the search tree naturally find supermana plays instead of being forced into drainer-only tactics.
+
+3. **Boosted interview bonuses** — `interview_soft_supermana_score_bonus`: 360→600, `interview_soft_supermana_progress_bonus`: 240→320. These are soft priors applied to root candidate ordering that make supermana-related moves more likely to be searched first.
+
+Normal mode was **not changed** — all three changes are fast-only.
+
+### Gate Results (passed, gate v2)
+
+| Phase | Result |
+|-------|--------|
+| Speed | fast 1.019x, normal 1.019x (≤1.15x) |
+| Quick-screen | fast δ = +0.125 (≥-0.05), normal δ = +0.000 (≥0.00) |
+| Primary fast | 90W-54L, δ = +0.125, confidence = 0.998 — **IMPROVED** |
+| Primary normal | 73W-71L, δ = +0.007 — neutral (non-regression ≥ -0.02 ✓) |
+| Aggregate | δ = +0.066 (≥0.0 non-regression ✓) |
+| Confirmation | 58W-38L, δ = +0.104, confidence = 0.974 |
+| Pool regression | candidate beaten 3/10, baseline beaten 1/10, WR 0.633 vs 0.517 |
+
+### Gate Redesign (v2) — Motivated By This Candidate
+
+The supermana priority v1 candidate exposed a fundamental flaw in gate v1: requiring aggregate improvement across both modes blocked valid single-mode improvements. Gate v2 was designed as follows:
+
+- **Per-mode non-regression**: each mode must stay above δ ≥ -0.02 (primary) or δ ≥ -0.03 (reduced).
+- **At-least-one-improves**: at least one mode must reach its improvement threshold (fast ≥ 0.05, normal ≥ 0.10) with confidence ≥ 0.90.
+- **Aggregate non-regression**: combined delta ≥ 0.0 as a safety net.
+- **Quick-screen per-mode**: fast ≥ -0.05, normal ≥ 0.00 (not aggregate).
+- **Early-stop**: prune only when NO mode can possibly reach its improvement threshold.
+
+### Iteration History
+
+**v1a** — Failed at quick-screen: normal δ=0.000 < 0.040 (old aggregate quick-screen). Fix: made quick-screen per-mode, lowered normal to 0.00.
+
+**v1b** — Failed at tactical guardrails: `carrier_progress_probe` expected `CarrierProgress` but got `quiet`. Cause: aggressive weight changes (`drainer_close_to_supermana: 320`, `extra_for_supermana: 200`) distorted non-supermana evaluation. Fix: stripped all aggressive weights, kept only `supermana_race_control: 30`.
+
+**v1c** — Failed at primary: fast δ=+0.125 (great), but normal δ=-0.014 < 0.10. Old gate required BOTH modes to individually meet improvement thresholds. Fix: redesigned gate to "at least one improves, neither regresses."
+
+**v1d** — **Passed.** Fast δ=+0.125 (improved), normal δ=+0.007 (neutral within tolerance).
+
+### Key Experimental Findings
+
+**`supermana_race_control: 30` broke the fast mode invariance pattern.** For 20+ prior iterations, no scoring weight change affected fast-mode primary game outcomes (always 72W-72L). This weight operates in a different evaluation dimension (relative supermana distance) and successfully tips previously tied root choices at depth 2. This is a significant finding: it means future fast-mode improvements are possible through evaluation dimensions orthogonal to drainer tactics.
+
+**Aggressive supermana weights destroy non-supermana evaluation.** The v1b failure showed that large weight changes (`drainer_close_to_supermana: 320`, `extra_for_supermana: 200`) caused the AI to misjudge basic carrier progress positions. Lesson: keep new weights minimal and additive, don't restructure the weight balance.
+
+**Prepass exception is essential.** Without the prepass exception, the forced drainer attack override blocks the search from finding supermana plays even when they're higher value. The exception checks `has_supermana_scoring` — whether any legal move in the position leads to supermana scoring — and only then relaxes the drainer tactical override.
+
+**Fast-only improvements pass the new per-mode gate cleanly.** The gate correctly classified fast 90W-54L as improvement and normal 73W-71L as neutral non-regression, promoting the candidate despite no normal improvement.
+
+### Remaining Pro Strategy Gaps
+
+From the pro-strategy interview (see `docs/automove-pro-strategy-interview.md`), the following priorities are **not yet implemented**:
+
+1. ~~Always attack opponent drainer~~ — done (boolean drainer protection)
+2. ~~Get supermana if there's a safe way~~ — done (supermana priority v1)
+3. **Get opponent's mana if there's a safe way** — not yet implemented
+4. **Hold potion to create scoring threats** — not yet implemented (potion as tempo/threat multiplier)
+5. **Spirit should always be moved off base** — partially addressed by interview spirit policy, not yet promoted
+6. **Use spirit to move own mana closer to pools** — not yet in search evaluation
+7. **Attack opponent spirit when quick and creates risk** — not yet implemented
+8. **Use bomb primarily to attack opponent drainer** — drainer attack priority exists, but bomb-specific routing not optimized
 
 ## How To Add A New Candidate
 

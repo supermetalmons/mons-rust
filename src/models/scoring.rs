@@ -385,6 +385,7 @@ pub const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF: ScoringWeigh
 pub const RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     drainer_danger_boolean: -400,
     mana_carrier_danger_boolean: -300,
+    supermana_race_control: 30,
     ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
 };
 

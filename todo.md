@@ -1,3 +1,25 @@
+# Supermana Priority v1 (Fast-Only) — COMPLETED
+
+## Status
+
+**Promoted to production.** All changes are live in the `model_current_best` / `from_preference` production code path.
+
+Gate test `runtime_supermana_priority_v1` passed (gate v2): fast 90W-54L (δ=+0.125, confidence=0.998), normal 73W-71L (neutral), pool 3/10 vs 1/10. See `docs/automove-experiments.md` for full promotion snapshot, gate redesign details, and iteration history.
+
+### Changes
+- `scoring.rs`: Added `supermana_race_control: 30` to `RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS`
+- `mons_game_model.rs`: Fast mode `enable_supermana_prepass_exception = true`, boosted interview bonuses (600/320), prepass exception logic in `forced_tactical_prepass_choice`
+- `mons_game_model_automove_experiments.rs`: Gate v2 redesign (per-mode non-regression + at-least-one-improves), supermana experiment profile (marked promoted)
+
+### Next Priority Areas (from pro-strategy interview)
+1. Get opponent's mana if safe — not yet implemented
+2. Hold potion for scoring threats — not yet implemented
+3. Spirit always off base — partially addressed, not promoted
+4. Spirit to move own mana closer — not in search eval
+5. Attack opponent spirit when quick — not yet implemented
+
+---
+
 # Boolean Drainer Protection/Attack System — COMPLETED
 
 ## Status

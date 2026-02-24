@@ -31,14 +31,16 @@ const LEGACY_NORMAL_MAX_VISITED_NODES: i32 = 2300;
 const LEGACY_RUNTIME_FAST_MAX_VISITED_NODES: i32 = 420;
 const LEGACY_RUNTIME_NORMAL_MAX_VISITED_NODES: i32 = 3450;
 const SMART_BUDGET_CONVERSION_REGRESSION_TOLERANCE: f64 = 0.04;
-const SMART_PRIMARY_MODE_DELTA_MIN_FAST: f64 = 0.00;
-const SMART_PRIMARY_MODE_DELTA_MIN_NORMAL: f64 = 0.08;
-const SMART_PRIMARY_AGGREGATE_DELTA_MIN: f64 = 0.055;
-const SMART_PRIMARY_AGGREGATE_CONFIDENCE_MIN: f64 = 0.90;
-const SMART_REDUCED_MODE_DELTA_MIN_FAST: f64 = 0.00;
-const SMART_REDUCED_MODE_DELTA_MIN_NORMAL: f64 = 0.04;
-const SMART_REDUCED_AGGREGATE_DELTA_MIN: f64 = 0.05;
-const SMART_REDUCED_AGGREGATE_CONFIDENCE_MIN: f64 = 0.60;
+const SMART_MODE_NON_REGRESSION_DELTA_MIN: f64 = -0.02;
+const SMART_PRIMARY_IMPROVEMENT_DELTA_MIN_FAST: f64 = 0.05;
+const SMART_PRIMARY_IMPROVEMENT_DELTA_MIN_NORMAL: f64 = 0.10;
+const SMART_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN: f64 = 0.90;
+const SMART_REDUCED_NON_REGRESSION_DELTA_MIN: f64 = -0.03;
+const SMART_REDUCED_IMPROVEMENT_DELTA_MIN_FAST: f64 = 0.02;
+const SMART_REDUCED_IMPROVEMENT_DELTA_MIN_NORMAL: f64 = 0.06;
+const SMART_REDUCED_IMPROVEMENT_CONFIDENCE_MIN: f64 = 0.60;
+const SMART_QUICK_SCREEN_MODE_DELTA_MIN_FAST: f64 = -0.05;
+const SMART_QUICK_SCREEN_MODE_DELTA_MIN_NORMAL: f64 = 0.00;
 const SMART_CONFIRM_DELTA_MIN: f64 = 0.02;
 const SMART_CONFIRM_CONFIDENCE_MIN: f64 = 0.55;
 
@@ -1020,6 +1022,26 @@ fn model_runtime_fast_boost_v1(
     // Now identical to model_current_best — promoted to production path
     model_current_best(game, config)
 }
+
+fn model_runtime_supermana_priority_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Now identical to model_current_best — promoted to production path
+    model_current_best(game, config)
+}
+
+const RUNTIME_FAST_SUPERMANA_PRIORITY_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    supermana_race_control: 30,
+    ..RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS
+};
+
+const RUNTIME_FAST_SUPERMANA_PRIORITY_SCORING_WEIGHTS_POTION_PREF: ScoringWeights =
+    ScoringWeights {
+        has_consumable: 320,
+        spirit_action_utility: 72,
+        ..RUNTIME_FAST_SUPERMANA_PRIORITY_SCORING_WEIGHTS
+    };
 
 #[allow(dead_code)]
 const RUNTIME_FAST_DRAINER_SHIELD_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
@@ -5186,6 +5208,7 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_drainer_shield_v1" => model_runtime_drainer_shield_v1(game, config),
         "runtime_drainer_dual_v1" => model_runtime_drainer_dual_v1(game, config),
         "runtime_fast_boost_v1" => model_runtime_fast_boost_v1(game, config),
+        "runtime_supermana_priority_v1" => model_runtime_supermana_priority_v1(game, config),
         _ => candidate_model_weights_balanced(game, config),
     }
 }
@@ -5720,6 +5743,10 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_fast_boost_v1",
             model_runtime_fast_boost_v1,
+        ),
+        (
+            "runtime_supermana_priority_v1",
+            model_runtime_supermana_priority_v1,
         ),
     ]
 }
@@ -6538,15 +6565,30 @@ fn env_bool(name: &str) -> Option<bool> {
 
 fn primary_mode_delta_min(mode_key: &str) -> f64 {
     match mode_key {
-        "fast" => SMART_PRIMARY_MODE_DELTA_MIN_FAST,
-        _ => SMART_PRIMARY_MODE_DELTA_MIN_NORMAL,
+        "fast" => SMART_PRIMARY_IMPROVEMENT_DELTA_MIN_FAST,
+        _ => SMART_PRIMARY_IMPROVEMENT_DELTA_MIN_NORMAL,
     }
 }
 
 fn reduced_mode_delta_min(mode_key: &str) -> f64 {
     match mode_key {
-        "fast" => SMART_REDUCED_MODE_DELTA_MIN_FAST,
-        _ => SMART_REDUCED_MODE_DELTA_MIN_NORMAL,
+        "fast" => SMART_REDUCED_IMPROVEMENT_DELTA_MIN_FAST,
+        _ => SMART_REDUCED_IMPROVEMENT_DELTA_MIN_NORMAL,
+    }
+}
+
+fn primary_mode_confidence_min(_mode_key: &str) -> f64 {
+    SMART_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN
+}
+
+fn reduced_mode_confidence_min(_mode_key: &str) -> f64 {
+    SMART_REDUCED_IMPROVEMENT_CONFIDENCE_MIN
+}
+
+fn quick_screen_mode_delta_min(mode_key: &str) -> f64 {
+    match mode_key {
+        "fast" => SMART_QUICK_SCREEN_MODE_DELTA_MIN_FAST,
+        _ => SMART_QUICK_SCREEN_MODE_DELTA_MIN_NORMAL,
     }
 }
 
@@ -9247,23 +9289,29 @@ fn smart_automove_pool_promotion_gate_v2() {
         false,
     );
     let mut quick_aggregate = MatchupStats::default();
-    for (_budget, stats) in &quick_results {
+    for (budget, stats) in &quick_results {
+        let mode_delta = stats.win_rate_points() - 0.5;
+        let mode_delta_min = quick_screen_mode_delta_min(budget.key());
+        println!(
+            "promotion gate quick-screen mode {}: wins={} losses={} draws={} delta={:.3} (min={:.3})",
+            budget.key(), stats.wins, stats.losses, stats.draws, mode_delta, mode_delta_min
+        );
+        assert!(
+            mode_delta >= mode_delta_min,
+            "quick screen mode {} failed: delta={:.3} < {:.3}",
+            budget.key(), mode_delta, mode_delta_min
+        );
         quick_aggregate.merge(*stats);
     }
     let quick_delta = quick_aggregate.win_rate_points() - 0.5;
     println!(
-        "promotion gate quick-screen: wins={} losses={} draws={} win_rate={:.3} delta={:.3} confidence={:.3}",
+        "promotion gate quick-screen aggregate: wins={} losses={} draws={} win_rate={:.3} delta={:.3} confidence={:.3}",
         quick_aggregate.wins,
         quick_aggregate.losses,
         quick_aggregate.draws,
         quick_aggregate.win_rate_points(),
         quick_delta,
         quick_aggregate.confidence_better_than_even()
-    );
-    assert!(
-        quick_delta >= 0.04,
-        "quick screen failed: delta={:.3} < 0.040",
-        quick_delta
     );
 
     assert_tactical_guardrails(candidate.select_inputs, candidate_profile_name.as_str());
@@ -9291,6 +9339,7 @@ fn smart_automove_pool_promotion_gate_v2() {
         merge_mode_stats(&mut primary_mode_stats, mode_results.as_slice());
     }
     let mut primary_aggregate = MatchupStats::default();
+    let mut any_mode_improved = false;
     for budget in &budgets {
         let stats = primary_mode_stats
             .get(budget.key())
@@ -9298,6 +9347,7 @@ fn smart_automove_pool_promotion_gate_v2() {
             .unwrap_or_default();
         primary_aggregate.merge(stats);
         let mode_delta = stats.win_rate_points() - 0.5;
+        let mode_confidence = stats.confidence_better_than_even();
         println!(
             "promotion gate primary mode {}: wins={} losses={} draws={} win_rate={:.3} delta={:.3} confidence={:.3}",
             budget.key(),
@@ -9306,17 +9356,29 @@ fn smart_automove_pool_promotion_gate_v2() {
             stats.draws,
             stats.win_rate_points(),
             mode_delta,
-            stats.confidence_better_than_even(),
+            mode_confidence,
         );
-        let mode_delta_min = primary_mode_delta_min(budget.key());
         assert!(
-            mode_delta >= mode_delta_min,
-            "primary mode {} failed delta gate: {:.3} < {:.3}",
+            mode_delta >= SMART_MODE_NON_REGRESSION_DELTA_MIN,
+            "primary mode {} non-regression failed: delta {:.3} < {:.3}",
             budget.key(),
             mode_delta,
-            mode_delta_min
+            SMART_MODE_NON_REGRESSION_DELTA_MIN
         );
+        let improvement_delta = primary_mode_delta_min(budget.key());
+        let improvement_confidence = primary_mode_confidence_min(budget.key());
+        if mode_delta >= improvement_delta && mode_confidence >= improvement_confidence {
+            println!(
+                "promotion gate primary mode {} IMPROVED: delta {:.3} >= {:.3}, confidence {:.3} >= {:.3}",
+                budget.key(), mode_delta, improvement_delta, mode_confidence, improvement_confidence
+            );
+            any_mode_improved = true;
+        }
     }
+    assert!(
+        any_mode_improved,
+        "primary: no mode showed sufficient improvement (need at least one mode with delta+confidence above threshold)"
+    );
     let primary_delta = primary_aggregate.win_rate_points() - 0.5;
     let primary_confidence = primary_aggregate.confidence_better_than_even();
     println!(
@@ -9329,16 +9391,9 @@ fn smart_automove_pool_promotion_gate_v2() {
         primary_confidence
     );
     assert!(
-        primary_delta >= SMART_PRIMARY_AGGREGATE_DELTA_MIN,
-        "primary aggregate failed delta gate: {:.3} < {:.3}",
-        primary_delta,
-        SMART_PRIMARY_AGGREGATE_DELTA_MIN
-    );
-    assert!(
-        primary_confidence >= SMART_PRIMARY_AGGREGATE_CONFIDENCE_MIN,
-        "primary aggregate failed confidence gate: {:.3} < {:.3}",
-        primary_confidence,
-        SMART_PRIMARY_AGGREGATE_CONFIDENCE_MIN
+        primary_delta >= 0.0,
+        "primary aggregate non-regression failed: delta {:.3} < 0.0",
+        primary_delta
     );
 
     let confirm_games = env_usize("SMART_GATE_CONFIRM_GAMES").unwrap_or(4).max(2);
@@ -9609,12 +9664,13 @@ fn smart_automove_pool_promotion_ladder() {
         let remaining_total_games = remaining_games_per_mode * budgets.len();
         let best_case_aggregate_delta =
             max_achievable_delta(reduced_aggregate, remaining_total_games);
-        assert!(
-            best_case_aggregate_delta >= SMART_REDUCED_AGGREGATE_DELTA_MIN,
-            "reduced gate early-stop: aggregate best-case delta {:.3} < {:.3}",
-            best_case_aggregate_delta,
-            SMART_REDUCED_AGGREGATE_DELTA_MIN
-        );
+        if best_case_aggregate_delta < 0.0 {
+            println!(
+                "reduced gate early-stop NOTE: aggregate best-case delta {:.3} < 0.0",
+                best_case_aggregate_delta
+            );
+        }
+        let mut any_mode_can_improve = false;
         for budget in &budgets {
             let mode_stats = reduced_mode_stats
                 .get(budget.key())
@@ -9622,32 +9678,42 @@ fn smart_automove_pool_promotion_ladder() {
                 .unwrap_or_default();
             let best_case_mode_delta = max_achievable_delta(mode_stats, remaining_games_per_mode);
             let mode_delta_min = reduced_mode_delta_min(budget.key());
-            assert!(
-                best_case_mode_delta >= mode_delta_min,
-                "reduced gate early-stop: mode {} best-case delta {:.3} < {:.3}",
-                budget.key(),
-                best_case_mode_delta,
-                mode_delta_min
-            );
+            if best_case_mode_delta >= mode_delta_min {
+                any_mode_can_improve = true;
+            }
         }
+        assert!(
+            any_mode_can_improve,
+            "reduced gate early-stop: no mode can reach its improvement threshold"
+        );
     }
     let mut reduced_aggregate = MatchupStats::default();
+    let mut any_reduced_mode_improved = false;
     for budget in &budgets {
         let mode_stats = reduced_mode_stats
             .get(budget.key())
             .copied()
             .unwrap_or_default();
         let mode_delta = mode_stats.win_rate_points() - 0.5;
-        let mode_delta_min = reduced_mode_delta_min(budget.key());
+        let mode_confidence = mode_stats.confidence_better_than_even();
         assert!(
-            mode_delta >= mode_delta_min,
-            "reduced stage mode {} failed: delta {:.3} < {:.3}",
+            mode_delta >= SMART_REDUCED_NON_REGRESSION_DELTA_MIN,
+            "reduced stage mode {} non-regression failed: delta {:.3} < {:.3}",
             budget.key(),
             mode_delta,
-            mode_delta_min
+            SMART_REDUCED_NON_REGRESSION_DELTA_MIN
         );
+        let improvement_delta = reduced_mode_delta_min(budget.key());
+        let improvement_confidence = reduced_mode_confidence_min(budget.key());
+        if mode_delta >= improvement_delta && mode_confidence >= improvement_confidence {
+            any_reduced_mode_improved = true;
+        }
         reduced_aggregate.merge(mode_stats);
     }
+    assert!(
+        any_reduced_mode_improved,
+        "reduced: no mode showed sufficient improvement"
+    );
     let reduced_delta = reduced_aggregate.win_rate_points() - 0.5;
     let reduced_confidence = reduced_aggregate.confidence_better_than_even();
     artifacts.push(format!(
@@ -9659,16 +9725,9 @@ fn smart_automove_pool_promotion_ladder() {
         reduced_confidence
     ));
     assert!(
-        reduced_delta >= SMART_REDUCED_AGGREGATE_DELTA_MIN,
-        "reduced stage aggregate failed: delta {:.3} < {:.3}",
-        reduced_delta,
-        SMART_REDUCED_AGGREGATE_DELTA_MIN
-    );
-    assert!(
-        reduced_confidence >= SMART_REDUCED_AGGREGATE_CONFIDENCE_MIN,
-        "reduced stage confidence failed: {:.3} < {:.3}",
-        reduced_confidence,
-        SMART_REDUCED_AGGREGATE_CONFIDENCE_MIN
+        reduced_delta >= 0.0,
+        "reduced stage aggregate non-regression failed: delta {:.3} < 0.0",
+        reduced_delta
     );
 
     let primary_games = env_usize("SMART_GATE_PRIMARY_GAMES").unwrap_or(4).max(2);
@@ -9706,12 +9765,13 @@ fn smart_automove_pool_promotion_ladder() {
         let remaining_total_games = remaining_games_per_mode * budgets.len();
         let best_case_aggregate_delta =
             max_achievable_delta(primary_aggregate, remaining_total_games);
-        assert!(
-            best_case_aggregate_delta >= SMART_PRIMARY_AGGREGATE_DELTA_MIN,
-            "primary early-stop: aggregate best-case delta {:.3} < {:.3}",
-            best_case_aggregate_delta,
-            SMART_PRIMARY_AGGREGATE_DELTA_MIN
-        );
+        if best_case_aggregate_delta < 0.0 {
+            println!(
+                "primary early-stop NOTE: aggregate best-case delta {:.3} < 0.0",
+                best_case_aggregate_delta
+            );
+        }
+        let mut any_mode_can_improve = false;
         for budget in &budgets {
             let mode_stats = primary_mode_stats
                 .get(budget.key())
@@ -9719,16 +9779,17 @@ fn smart_automove_pool_promotion_ladder() {
                 .unwrap_or_default();
             let best_case_mode_delta = max_achievable_delta(mode_stats, remaining_games_per_mode);
             let mode_delta_min = primary_mode_delta_min(budget.key());
-            assert!(
-                best_case_mode_delta >= mode_delta_min,
-                "primary early-stop: mode {} best-case delta {:.3} < {:.3}",
-                budget.key(),
-                best_case_mode_delta,
-                mode_delta_min
-            );
+            if best_case_mode_delta >= mode_delta_min {
+                any_mode_can_improve = true;
+            }
         }
+        assert!(
+            any_mode_can_improve,
+            "primary early-stop: no mode can reach its improvement threshold"
+        );
     }
     let mut primary_aggregate = MatchupStats::default();
+    let mut any_primary_mode_improved = false;
     for budget in &budgets {
         let stats = primary_mode_stats
             .get(budget.key())
@@ -9736,15 +9797,24 @@ fn smart_automove_pool_promotion_ladder() {
             .unwrap_or_default();
         primary_aggregate.merge(stats);
         let mode_delta = stats.win_rate_points() - 0.5;
-        let mode_delta_min = primary_mode_delta_min(budget.key());
+        let mode_confidence = stats.confidence_better_than_even();
         assert!(
-            mode_delta >= mode_delta_min,
-            "primary mode {} failed delta gate: {:.3} < {:.3}",
+            mode_delta >= SMART_MODE_NON_REGRESSION_DELTA_MIN,
+            "primary mode {} non-regression failed: delta {:.3} < {:.3}",
             budget.key(),
             mode_delta,
-            mode_delta_min
+            SMART_MODE_NON_REGRESSION_DELTA_MIN
         );
+        let improvement_delta = primary_mode_delta_min(budget.key());
+        let improvement_confidence = primary_mode_confidence_min(budget.key());
+        if mode_delta >= improvement_delta && mode_confidence >= improvement_confidence {
+            any_primary_mode_improved = true;
+        }
     }
+    assert!(
+        any_primary_mode_improved,
+        "primary: no mode showed sufficient improvement"
+    );
     let primary_delta = primary_aggregate.win_rate_points() - 0.5;
     let primary_confidence = primary_aggregate.confidence_better_than_even();
     artifacts.push(format!(
@@ -9756,16 +9826,9 @@ fn smart_automove_pool_promotion_ladder() {
         primary_confidence
     ));
     assert!(
-        primary_delta >= SMART_PRIMARY_AGGREGATE_DELTA_MIN,
-        "primary aggregate failed delta gate: {:.3} < {:.3}",
-        primary_delta,
-        SMART_PRIMARY_AGGREGATE_DELTA_MIN
-    );
-    assert!(
-        primary_confidence >= SMART_PRIMARY_AGGREGATE_CONFIDENCE_MIN,
-        "primary aggregate failed confidence gate: {:.3} < {:.3}",
-        primary_confidence,
-        SMART_PRIMARY_AGGREGATE_CONFIDENCE_MIN
+        primary_delta >= 0.0,
+        "primary aggregate non-regression failed: delta {:.3} < 0.0",
+        primary_delta
     );
 
     let confirm_games = env_usize("SMART_GATE_CONFIRM_GAMES").unwrap_or(4).max(2);

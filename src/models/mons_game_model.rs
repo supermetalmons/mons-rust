@@ -544,6 +544,7 @@ struct SmartSearchConfig {
     interview_soft_mana_handoff_penalty: i32,
     interview_soft_roundtrip_penalty: i32,
     enable_enhanced_drainer_vulnerability: bool,
+    enable_supermana_prepass_exception: bool,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -600,13 +601,14 @@ impl SmartSearchConfig {
                 tuned.potion_spend_penalty_normal =
                     SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_NORMAL;
                 tuned.interview_soft_score_margin = 80;
-                tuned.interview_soft_supermana_progress_bonus = 240;
-                tuned.interview_soft_supermana_score_bonus = 360;
+                tuned.interview_soft_supermana_progress_bonus = 320;
+                tuned.interview_soft_supermana_score_bonus = 600;
                 tuned.interview_soft_opponent_mana_progress_bonus = 200;
                 tuned.interview_soft_opponent_mana_score_bonus = 310;
                 tuned.interview_soft_mana_handoff_penalty = 280;
                 tuned.interview_soft_roundtrip_penalty = 220;
                 tuned.enable_enhanced_drainer_vulnerability = true;
+                tuned.enable_supermana_prepass_exception = true;
                 tuned.scoring_weights = &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF;
                 tuned
             }
@@ -755,6 +757,7 @@ impl SmartSearchConfig {
             interview_soft_mana_handoff_penalty: SMART_INTERVIEW_SOFT_MANA_HANDOFF_PENALTY,
             interview_soft_roundtrip_penalty: SMART_INTERVIEW_SOFT_ROUNDTRIP_PENALTY,
             enable_enhanced_drainer_vulnerability: false,
+            enable_supermana_prepass_exception: false,
         }
     }
 
@@ -2344,7 +2347,10 @@ impl MonsGameModel {
             return Some(root_moves[index].inputs.clone());
         }
 
-        if config.enable_forced_drainer_attack {
+        let has_supermana_scoring = config.enable_supermana_prepass_exception
+            && root_moves.iter().any(|m| m.scores_supermana_this_turn);
+
+        if config.enable_forced_drainer_attack && !has_supermana_scoring {
             if let Some(index) = Self::best_tactical_root_index(root_moves, |candidate| {
                 candidate.attacks_opponent_drainer
             }) {
@@ -2353,6 +2359,7 @@ impl MonsGameModel {
         }
 
         if config.enable_root_drainer_safety_prefilter
+            && !has_supermana_scoring
             && Self::is_own_drainer_vulnerable_next_turn(game, perspective, config.enable_enhanced_drainer_vulnerability)
         {
             if let Some(index) = Self::best_tactical_root_index(root_moves, |candidate| {
