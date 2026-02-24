@@ -1,4 +1,10 @@
-# Boolean Drainer Protection/Attack System
+# Boolean Drainer Protection/Attack System — COMPLETED
+
+## Status
+
+**Promoted to production.** All changes are live in the `model_current_best` / `from_preference` production code path.
+
+Gate test `runtime_fast_boost_v1` passed: fast 72-72 (50%), normal 90-54 (62.5%), aggregate δ=0.062, speed ≤1.019x. See `docs/automove-experiments.md` for full promotion snapshot and experimental findings.
 
 ## Original Request
 

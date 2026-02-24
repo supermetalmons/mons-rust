@@ -3,6 +3,8 @@ use crate::models::scoring::{
     evaluate_preferability_with_weights, ScoringWeights, BALANCED_DISTANCE_SCORING_WEIGHTS,
     DEFAULT_SCORING_WEIGHTS, FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS,
     FINISHER_BALANCED_SOFT_SCORING_WEIGHTS, MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
+    RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS,
+    RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF,
     RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
     RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF,
     TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS, TACTICAL_BALANCED_SCORING_WEIGHTS,
@@ -92,14 +94,17 @@ const SMART_ROOT_REPLY_RISK_SCORE_MARGIN: i32 = 140;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_ROOT_REPLY_RISK_SHORTLIST_FAST: usize = 3;
 #[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
 const SMART_ROOT_REPLY_RISK_SHORTLIST_NORMAL: usize = 5;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_ROOT_REPLY_RISK_REPLY_LIMIT_FAST: usize = 8;
 #[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
 const SMART_ROOT_REPLY_RISK_REPLY_LIMIT_NORMAL: usize = 12;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_ROOT_REPLY_RISK_NODE_SHARE_BP_FAST: i32 = 600;
 #[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
 const SMART_ROOT_REPLY_RISK_NODE_SHARE_BP_NORMAL: i32 = 1_000;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_ROOT_REPLY_RISK_WINNER_SPREAD_SKIP: i32 = SMART_TWO_PASS_ROOT_NARROW_SPREAD_FALLBACK;
@@ -114,6 +119,7 @@ const SMART_ROOT_ANTI_HELP_SCORE_MARGIN: i32 = 180;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_ROOT_ANTI_HELP_REPLY_LIMIT_FAST: usize = 6;
 #[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
 const SMART_ROOT_ANTI_HELP_REPLY_LIMIT_NORMAL: usize = 8;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_SELECTIVE_EXTENSION_NODE_SHARE_BP_NORMAL: i32 = 1_200;
@@ -339,6 +345,103 @@ const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGH
     };
 
 #[cfg(any(target_arch = "wasm32", test))]
+const RUNTIME_NORMAL_BOOLEAN_DRAINER_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_danger_boolean: -1200,
+    mana_carrier_danger_boolean: -800,
+    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+const RUNTIME_NORMAL_BOOLEAN_DRAINER_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_danger_boolean: -1200,
+    mana_carrier_danger_boolean: -800,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+const RUNTIME_NORMAL_BOOLEAN_DRAINER_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_danger_boolean: -1200,
+    mana_carrier_danger_boolean: -800,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+const RUNTIME_NORMAL_BOOLEAN_DRAINER_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_danger_boolean: -1200,
+    mana_carrier_danger_boolean: -800,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+const RUNTIME_NORMAL_BOOLEAN_DRAINER_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_danger_boolean: -1200,
+    mana_carrier_danger_boolean: -800,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_DRAINER_SHIELD_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_immediate_threat: -200,
+    drainer_at_risk: -520,
+    angel_guarding_drainer: 190,
+    mana_carrier_at_risk: -320,
+    drainer_danger_boolean: -1200,
+    mana_carrier_danger_boolean: -800,
+    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_DRAINER_SHIELD_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_immediate_threat: -260,
+    drainer_at_risk: -560,
+    angel_guarding_drainer: 240,
+    mana_carrier_at_risk: -340,
+    drainer_danger_boolean: -1200,
+    mana_carrier_danger_boolean: -800,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_DRAINER_SHIELD_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_immediate_threat: -320,
+    drainer_at_risk: -600,
+    angel_guarding_drainer: 260,
+    mana_carrier_at_risk: -360,
+    drainer_danger_boolean: -1200,
+    mana_carrier_danger_boolean: -800,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_DRAINER_SHIELD_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_immediate_threat: -80,
+    drainer_at_risk: -480,
+    angel_guarding_drainer: 210,
+    mana_carrier_at_risk: -310,
+    drainer_danger_boolean: -1200,
+    mana_carrier_danger_boolean: -800,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_DRAINER_SHIELD_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_immediate_threat: -100,
+    drainer_at_risk: -500,
+    angel_guarding_drainer: 220,
+    mana_carrier_at_risk: -330,
+    drainer_danger_boolean: -1200,
+    mana_carrier_danger_boolean: -800,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SmartAutomovePreference {
     Fast,
@@ -440,6 +543,7 @@ struct SmartSearchConfig {
     interview_soft_opponent_mana_score_bonus: i32,
     interview_soft_mana_handoff_penalty: i32,
     interview_soft_roundtrip_penalty: i32,
+    enable_enhanced_drainer_vulnerability: bool,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -502,6 +606,7 @@ impl SmartSearchConfig {
                 tuned.interview_soft_opponent_mana_score_bonus = 310;
                 tuned.interview_soft_mana_handoff_penalty = 280;
                 tuned.interview_soft_roundtrip_penalty = 220;
+                tuned.enable_enhanced_drainer_vulnerability = true;
                 tuned.scoring_weights = &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF;
                 tuned
             }
@@ -556,7 +661,8 @@ impl SmartSearchConfig {
                 tuned.enable_mana_start_mix_with_potion_actions = true;
                 tuned.enable_potion_progress_compensation = true;
                 tuned.prefer_clean_reply_risk_roots = true;
-                tuned.root_drainer_safety_score_margin = 900;
+                tuned.root_drainer_safety_score_margin = 4000;
+                tuned.enable_enhanced_drainer_vulnerability = true;
                 tuned.root_mana_handoff_penalty = 340;
                 tuned.root_backtrack_penalty = 240;
                 tuned.root_efficiency_score_margin = 1_400;
@@ -648,6 +754,7 @@ impl SmartSearchConfig {
                 SMART_INTERVIEW_SOFT_OPPONENT_MANA_SCORE_BONUS,
             interview_soft_mana_handoff_penalty: SMART_INTERVIEW_SOFT_MANA_HANDOFF_PENALTY,
             interview_soft_roundtrip_penalty: SMART_INTERVIEW_SOFT_ROUNDTRIP_PENALTY,
+            enable_enhanced_drainer_vulnerability: false,
         }
     }
 
@@ -1378,14 +1485,14 @@ impl MonsGameModel {
         config.scoring_weights = if config.depth < 3
             && config.enable_mana_start_mix_with_potion_actions
         {
-            &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF
+            &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
         } else {
-            Self::runtime_phase_adaptive_scoring_weights(game, config.depth)
+            Self::runtime_phase_adaptive_boolean_drainer_scoring_weights(game, config.depth)
         };
         config
     }
 
-    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    #[allow(dead_code)]
     fn runtime_phase_adaptive_scoring_weights(
         game: &MonsGame,
         depth: usize,
@@ -1413,6 +1520,68 @@ impl MonsGameModel {
             &RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
         } else {
             &RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+        }
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn runtime_phase_adaptive_boolean_drainer_scoring_weights(
+        game: &MonsGame,
+        depth: usize,
+    ) -> &'static ScoringWeights {
+        if depth < 3 {
+            return &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS;
+        }
+
+        let (my_score, opponent_score) = if game.active_color == Color::White {
+            (game.white_score, game.black_score)
+        } else {
+            (game.black_score, game.white_score)
+        };
+        let my_distance_to_win = Config::TARGET_SCORE - my_score;
+        let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+        let score_gap = my_score - opponent_score;
+
+        if my_distance_to_win <= 1 {
+            &RUNTIME_NORMAL_BOOLEAN_DRAINER_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if opponent_distance_to_win <= 1 {
+            &RUNTIME_NORMAL_BOOLEAN_DRAINER_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if my_distance_to_win <= 2 {
+            &RUNTIME_NORMAL_BOOLEAN_DRAINER_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+            &RUNTIME_NORMAL_BOOLEAN_DRAINER_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+        } else {
+            &RUNTIME_NORMAL_BOOLEAN_DRAINER_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+        }
+    }
+
+    #[allow(dead_code)]
+    fn runtime_phase_adaptive_drainer_shield_scoring_weights(
+        game: &MonsGame,
+        depth: usize,
+    ) -> &'static ScoringWeights {
+        if depth < 3 {
+            return &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS;
+        }
+
+        let (my_score, opponent_score) = if game.active_color == Color::White {
+            (game.white_score, game.black_score)
+        } else {
+            (game.black_score, game.white_score)
+        };
+        let my_distance_to_win = Config::TARGET_SCORE - my_score;
+        let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+        let score_gap = my_score - opponent_score;
+
+        if my_distance_to_win <= 1 {
+            &RUNTIME_NORMAL_DRAINER_SHIELD_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if opponent_distance_to_win <= 1 {
+            &RUNTIME_NORMAL_DRAINER_SHIELD_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if my_distance_to_win <= 2 {
+            &RUNTIME_NORMAL_DRAINER_SHIELD_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+            &RUNTIME_NORMAL_DRAINER_SHIELD_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+        } else {
+            &RUNTIME_NORMAL_DRAINER_SHIELD_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
         }
     }
 
@@ -1467,7 +1636,7 @@ impl MonsGameModel {
             || Self::events_pickup_opponent_mana(&events, perspective)
             || Self::events_move_opponent_mana_toward_color(&events, perspective);
         let own_drainer_vulnerable = if config.enable_root_drainer_safety_prefilter {
-            Self::is_own_drainer_vulnerable_next_turn(&simulated_game, perspective)
+            Self::is_own_drainer_vulnerable_next_turn(&simulated_game, perspective, config.enable_enhanced_drainer_vulnerability)
         } else {
             false
         };
@@ -1990,7 +2159,7 @@ impl MonsGameModel {
     ) -> Vec<ScoredRootMove> {
         let mut candidates = Vec::new();
         let own_drainer_vulnerable_before = if config.enable_move_class_coverage {
-            Self::is_own_drainer_vulnerable_next_turn(game, perspective)
+            Self::is_own_drainer_vulnerable_next_turn(game, perspective, config.enable_enhanced_drainer_vulnerability)
         } else {
             false
         };
@@ -2184,7 +2353,7 @@ impl MonsGameModel {
         }
 
         if config.enable_root_drainer_safety_prefilter
-            && Self::is_own_drainer_vulnerable_next_turn(game, perspective)
+            && Self::is_own_drainer_vulnerable_next_turn(game, perspective, config.enable_enhanced_drainer_vulnerability)
         {
             if let Some(index) = Self::best_tactical_root_index(root_moves, |candidate| {
                 !candidate.own_drainer_vulnerable
@@ -2957,7 +3126,7 @@ impl MonsGameModel {
         let mut scored_states: Vec<(i32, RankedChildState)> = Vec::new();
         let actor_color = game.active_color;
         let own_drainer_vulnerable_before = if config.enable_child_move_class_coverage {
-            Self::is_own_drainer_vulnerable_next_turn(game, actor_color)
+            Self::is_own_drainer_vulnerable_next_turn(game, actor_color, config.enable_enhanced_drainer_vulnerability)
         } else {
             false
         };
@@ -3018,7 +3187,7 @@ impl MonsGameModel {
                 }
 
                 let own_drainer_vulnerable_after = if config.enable_child_move_class_coverage {
-                    Self::is_own_drainer_vulnerable_next_turn(&simulated_game, actor_color)
+                    Self::is_own_drainer_vulnerable_next_turn(&simulated_game, actor_color, config.enable_enhanced_drainer_vulnerability)
                 } else {
                     false
                 };
@@ -3693,7 +3862,11 @@ impl MonsGameModel {
             })
     }
 
-    fn is_own_drainer_immediately_vulnerable(game: &MonsGame, perspective: Color) -> bool {
+    fn is_own_drainer_immediately_vulnerable(
+        game: &MonsGame,
+        perspective: Color,
+        enhanced: bool,
+    ) -> bool {
         let mut own_drainer_location = None;
         for (&location, item) in &game.board.items {
             let Some(mon) = item.mon() else {
@@ -3723,63 +3896,123 @@ impl MonsGameModel {
         let opponent_can_use_action = game.player_can_use_action();
 
         for (&threat_location, item) in &game.board.items {
-            match item {
-                Item::Mon { mon } if mon.color == opponent && !mon.is_fainted() => {
-                    if opponent_can_use_action
-                        && !drainer_action_protected
-                        && !matches!(game.board.square(threat_location), Square::MonBase { .. })
+            if enhanced {
+                let mon = match item {
+                    Item::Mon { mon }
+                    | Item::MonWithMana { mon, .. }
+                    | Item::MonWithConsumable { mon, .. } => mon,
+                    _ => continue,
+                };
+                if mon.color != opponent || mon.is_fainted() {
+                    continue;
+                }
+                let on_own_base =
+                    matches!(game.board.square(threat_location), Square::MonBase { .. });
+                if opponent_can_use_action && !drainer_action_protected && !on_own_base {
+                    if mon.kind == MonKind::Mystic
+                        && (threat_location.i - drainer_location.i).abs() == 2
+                        && (threat_location.j - drainer_location.j).abs() == 2
                     {
-                        if mon.kind == MonKind::Mystic
-                            && (threat_location.i - drainer_location.i).abs() == 2
-                            && (threat_location.j - drainer_location.j).abs() == 2
-                        {
-                            return true;
-                        }
-
-                        if mon.kind == MonKind::Demon {
-                            let di = (threat_location.i - drainer_location.i).abs();
-                            let dj = (threat_location.j - drainer_location.j).abs();
-                            if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
-                                let middle = threat_location.location_between(&drainer_location);
-                                if game.board.item(middle).is_none()
-                                    && !matches!(
-                                        game.board.square(middle),
-                                        Square::SupermanaBase | Square::MonBase { .. }
-                                    )
-                                {
-                                    return true;
-                                }
+                        return true;
+                    }
+                    if mon.kind == MonKind::Demon {
+                        let di = (threat_location.i - drainer_location.i).abs();
+                        let dj = (threat_location.j - drainer_location.j).abs();
+                        if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
+                            let middle =
+                                threat_location.location_between(&drainer_location);
+                            if game.board.item(middle).is_none()
+                                && !matches!(
+                                    game.board.square(middle),
+                                    Square::SupermanaBase | Square::MonBase { .. }
+                                )
+                            {
+                                return true;
                             }
                         }
                     }
                 }
-                Item::MonWithConsumable { mon, consumable }
-                    if mon.color == opponent
-                        && !mon.is_fainted()
-                        && *consumable == Consumable::Bomb
-                        && threat_location.distance(&drainer_location) <= 3 =>
+                if matches!(
+                    item,
+                    Item::MonWithConsumable {
+                        consumable: Consumable::Bomb,
+                        ..
+                    }
+                ) && !on_own_base
+                    && threat_location.distance(&drainer_location) <= 3
                 {
                     return true;
                 }
-                Item::MonWithConsumable { .. }
-                | Item::MonWithMana { .. }
-                | Item::Mana { .. }
-                | Item::Consumable { .. } => {}
-                Item::Mon { .. } => {}
+            } else {
+                match item {
+                    Item::Mon { mon } if mon.color == opponent && !mon.is_fainted() => {
+                        if opponent_can_use_action
+                            && !drainer_action_protected
+                            && !matches!(
+                                game.board.square(threat_location),
+                                Square::MonBase { .. }
+                            )
+                        {
+                            if mon.kind == MonKind::Mystic
+                                && (threat_location.i - drainer_location.i).abs() == 2
+                                && (threat_location.j - drainer_location.j).abs() == 2
+                            {
+                                return true;
+                            }
+
+                            if mon.kind == MonKind::Demon {
+                                let di =
+                                    (threat_location.i - drainer_location.i).abs();
+                                let dj =
+                                    (threat_location.j - drainer_location.j).abs();
+                                if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
+                                    let middle = threat_location
+                                        .location_between(&drainer_location);
+                                    if game.board.item(middle).is_none()
+                                        && !matches!(
+                                            game.board.square(middle),
+                                            Square::SupermanaBase
+                                                | Square::MonBase { .. }
+                                        )
+                                    {
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Item::MonWithConsumable { mon, consumable }
+                        if mon.color == opponent
+                            && !mon.is_fainted()
+                            && *consumable == Consumable::Bomb
+                            && threat_location.distance(&drainer_location) <= 3 =>
+                    {
+                        return true;
+                    }
+                    Item::MonWithConsumable { .. }
+                    | Item::MonWithMana { .. }
+                    | Item::Mana { .. }
+                    | Item::Consumable { .. } => {}
+                    Item::Mon { .. } => {}
+                }
             }
         }
 
         false
     }
 
-    fn is_own_drainer_vulnerable_next_turn(game: &MonsGame, perspective: Color) -> bool {
+    fn is_own_drainer_vulnerable_next_turn(
+        game: &MonsGame,
+        perspective: Color,
+        enhanced: bool,
+    ) -> bool {
         let opponent = perspective.other();
         let mut probe = game.clone_for_simulation();
         probe.active_color = opponent;
         probe.actions_used_count = 0;
         probe.mana_moves_count = 0;
         probe.mons_moves_count = 0;
-        Self::is_own_drainer_immediately_vulnerable(&probe, perspective)
+        Self::is_own_drainer_immediately_vulnerable(&probe, perspective, enhanced)
     }
 
     fn should_prefer_spirit_development(game: &MonsGame, perspective: Color) -> bool {
@@ -5053,7 +5286,8 @@ mod opening_book_tests {
         );
         assert!(MonsGameModel::is_own_drainer_immediately_vulnerable(
             &unguarded,
-            Color::White
+            Color::White,
+            false,
         ));
 
         let guarded = game_with_items(
@@ -5067,7 +5301,8 @@ mod opening_book_tests {
         );
         assert!(!MonsGameModel::is_own_drainer_immediately_vulnerable(
             &guarded,
-            Color::White
+            Color::White,
+            false,
         ));
     }
 

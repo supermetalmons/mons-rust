@@ -56,6 +56,9 @@ pub struct ScoringWeights {
     pub immediate_score_multi_window: i32,
     pub opponent_immediate_score_multi_window: i32,
     pub spirit_action_utility: i32,
+    pub drainer_danger_boolean: i32,
+    pub mana_carrier_danger_boolean: i32,
+    pub opponent_drainer_attack_bonus: i32,
 }
 
 pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
@@ -107,6 +110,9 @@ pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     immediate_score_multi_window: 0,
     opponent_immediate_score_multi_window: 0,
     spirit_action_utility: 0,
+    drainer_danger_boolean: 0,
+    mana_carrier_danger_boolean: 0,
+    opponent_drainer_attack_bonus: 0,
 };
 
 pub const BALANCED_DISTANCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
@@ -158,6 +164,9 @@ pub const BALANCED_DISTANCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     immediate_score_multi_window: 0,
     opponent_immediate_score_multi_window: 0,
     spirit_action_utility: 0,
+    drainer_danger_boolean: 0,
+    mana_carrier_danger_boolean: 0,
+    opponent_drainer_attack_bonus: 0,
 };
 
 #[cfg(test)]
@@ -371,6 +380,19 @@ pub const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF: ScoringWeigh
         has_consumable: 320,
         spirit_action_utility: 72,
         ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+    };
+
+pub const RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    drainer_danger_boolean: -400,
+    mana_carrier_danger_boolean: -300,
+    ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+};
+
+pub const RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF: ScoringWeights =
+    ScoringWeights {
+        has_consumable: 320,
+        spirit_action_utility: 72,
+        ..RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS
     };
 
 pub const RUNTIME_RUSH_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
@@ -847,6 +869,20 @@ pub fn evaluate_preferability_with_weights(
                             * weights.drainer_immediate_threat
                             * immediate_threats;
                     }
+
+                    if weights.drainer_danger_boolean != 0
+                        && is_drainer_under_immediate_threat(
+                            &game.board,
+                            mon.color,
+                            location,
+                            angel_nearby,
+                        )
+                    {
+                        score += my_mon_multiplier * weights.drainer_danger_boolean;
+                        if my_mon_multiplier == -1 {
+                            score += weights.opponent_drainer_attack_bonus;
+                        }
+                    }
                 } else if mon.kind == MonKind::Spirit {
                     let enemy_distance =
                         nearest_enemy_mon_distance(&game.board, mon.color, location);
@@ -911,6 +947,20 @@ pub fn evaluate_preferability_with_weights(
                         score += my_mon_multiplier
                             * weights.drainer_immediate_threat
                             * immediate_threats;
+                    }
+
+                    if weights.drainer_danger_boolean != 0
+                        && is_drainer_under_immediate_threat(
+                            &game.board,
+                            mon.color,
+                            location,
+                            angel_nearby,
+                        )
+                    {
+                        score += my_mon_multiplier * weights.drainer_danger_boolean;
+                        if my_mon_multiplier == -1 {
+                            score += weights.opponent_drainer_attack_bonus;
+                        }
                     }
                     if !use_legacy_formula {
                         if let Some((path_steps, mana_value)) =
@@ -1115,6 +1165,20 @@ pub fn evaluate_preferability_with_weights(
                         score += my_mon_multiplier
                             * weights.drainer_immediate_threat
                             * immediate_threats;
+                    }
+
+                    if weights.mana_carrier_danger_boolean != 0
+                        && is_drainer_under_immediate_threat(
+                            &game.board,
+                            mon.color,
+                            location,
+                            angel_nearby,
+                        )
+                    {
+                        score += my_mon_multiplier * weights.mana_carrier_danger_boolean;
+                        if my_mon_multiplier == -1 {
+                            score += weights.opponent_drainer_attack_bonus;
+                        }
                     }
                 } else if mon.kind == MonKind::Spirit {
                     score -= my_mon_multiplier
@@ -2272,6 +2336,63 @@ fn drainer_immediate_threats(
     }
 
     (action_threats, bomb_threats)
+}
+
+fn is_drainer_under_immediate_threat(
+    board: &Board,
+    color: Color,
+    location: Location,
+    angel_nearby: bool,
+) -> bool {
+    for (&threat_location, item) in &board.items {
+        match item {
+            Item::Mon { mon }
+            | Item::MonWithMana { mon, .. }
+            | Item::MonWithConsumable { mon, .. } => {
+                if mon.color == color || mon.is_fainted() {
+                    continue;
+                }
+                let on_own_base =
+                    matches!(board.square(threat_location), Square::MonBase { .. });
+                if !on_own_base && !angel_nearby {
+                    if mon.kind == MonKind::Mystic
+                        && (threat_location.i - location.i).abs() == 2
+                        && (threat_location.j - location.j).abs() == 2
+                    {
+                        return true;
+                    }
+                    if mon.kind == MonKind::Demon {
+                        let di = (threat_location.i - location.i).abs();
+                        let dj = (threat_location.j - location.j).abs();
+                        if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
+                            let middle = threat_location.location_between(&location);
+                            if board.item(middle).is_none()
+                                && !matches!(
+                                    board.square(middle),
+                                    Square::SupermanaBase | Square::MonBase { .. }
+                                )
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                if matches!(
+                    item,
+                    Item::MonWithConsumable {
+                        consumable: Consumable::Bomb,
+                        ..
+                    }
+                ) && !on_own_base
+                    && threat_location.distance(&location) <= 3
+                {
+                    return true;
+                }
+            }
+            Item::Mana { .. } | Item::Consumable { .. } => {}
+        }
+    }
+    false
 }
 
 fn nearest_enemy_mon_distance(board: &Board, color: Color, location: Location) -> i32 {

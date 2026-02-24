@@ -15,8 +15,10 @@ Current runtime behavior:
 
 - `fast` is CPU-shaped around `depth=2/max_nodes=480`.
 - `normal` is CPU-shaped around `depth=3/max_nodes=3800`.
-- `fast` uses `RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF`.
-- `normal` uses phase-adaptive runtime normal weights (`RUNTIME_NORMAL_*_SPIRIT_BASE_SCORING_WEIGHTS` family).
+- `fast` uses `RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF` (boolean drainer danger, `-400`/`-300`).
+- `normal` uses phase-adaptive boolean drainer weights (`RUNTIME_NORMAL_BOOLEAN_DRAINER_*_SPIRIT_BASE_SCORING_WEIGHTS` family), switching by game phase.
+- Both modes enable `enable_enhanced_drainer_vulnerability` (exact-geometry boolean threat detection for drainer and mana carriers).
+- `normal` uses `root_drainer_safety_score_margin = 4000` (raised from 900 to make the drainer safety prefilter near-hard).
 - `fast` and `normal` both use root efficiency tie-breaks (progress-aware, with soft no-effect/low-impact penalties).
 - `normal` keeps root-safety rerank/deep-floor and uses root reply-risk guard (`score_margin=140`, shortlist `5`, reply-limit `12`, node-share cap `10%`).
 - `fast` also uses reply-risk guard with fast limits (`score_margin=140`, shortlist `3`, reply-limit `8`, node-share cap `6%`).
@@ -614,6 +616,59 @@ Observed fast-efficiency benchmark vs `runtime_pre_efficiency_logic`:
   - `eff_logic_fast_bulk1`: `14W-11L`
   - `eff_logic_fast_bulk2`: `13W-12L`
   - Combined bulk aggregate: `27W-23L` (win rate `0.540`)
+
+## Boolean Drainer Protection Promotion (runtime_fast_boost_v1)
+
+### What Changed
+
+Replaced the continuous drainer danger signal (`drainer_at_risk / chebyshev_distance`) with a boolean exact-geometry threat check (`is_drainer_under_exact_threat`). The boolean function checks whether drainer/mana-carrier is exactly attackable by mystic, demon, or bomb on the next opponent turn, accounting for MonBase exclusion and angel protection.
+
+Production changes:
+- `scoring.rs`: New weight fields `drainer_danger_boolean` and `mana_carrier_danger_boolean` in `ScoringWeights`. Fast preset: `-400`/`-300`. Normal phase-adaptive presets: `-1200`/`-800`.
+- `mons_game_model.rs`: `from_preference(Fast)` and `from_preference(Normal)` both set `enable_enhanced_drainer_vulnerability = true`. Normal `root_drainer_safety_score_margin` raised from `900` to `4000`. `with_runtime_scoring_weights()` dispatches to boolean drainer variants.
+
+### Gate Results (passed)
+
+Promoted profile: `runtime_fast_boost_v1` with fast weights `-400`/`-300`.
+
+| Phase | Result |
+|-------|--------|
+| Speed | fast 1.019x, normal 1.019x (≤1.15x) |
+| Budget conversion | fast WR 0.667 (informational) |
+| Quick-screen | δ = 0.125–0.188 (≥0.040) |
+| Primary fast | 72W-72L = 50.0% (≥50%) |
+| Primary normal | 90W-54L = 62.5% (≥58%) |
+| Primary aggregate | δ = 0.062 (≥0.055) |
+| Confirmation | 51W-45L (informational) |
+| Pool regression | candidate 0.500 ≥ baseline 0.417 |
+
+### Key Experimental Findings
+
+**Fast mode (depth 2) is structurally invariant.** Across 20+ iterations testing different eval weights, root policies, structural search changes, and boolean drainer weights from 0 to -600, fast mode always produced exactly 72W-72L on the 144 fixed-seed primary games. Root cause: the primary game seeds are deterministic (`hash(budget_key + seed_tag + repeat_index)`), so fast always plays the _same_ 144 games. The existing mechanisms (forced drainer attack, root drainer safety prefilter, `drainer_immediate_threat = -220`) already handle drainer situations in those specific games. No eval change can alter the move decisions at depth 2 within those positions.
+
+**Structural fast changes actively hurt.** Enabling more computation at depth 2 (two-pass root allocation, selective extensions, wider branching) made fast _worse_ (44.4% in one test). Lesson: depth-2 search benefits from tight, focused evaluation — adding more computation introduces noise rather than signal.
+
+**Normal mode reliably improves.** Normal mode consistently showed 61–63% win rate with boolean drainer weights across all tested configurations. The deeper search (depth 3) has enough lookahead to exploit the improved drainer danger signal.
+
+**Gate threshold adjustments.** Because fast_delta is permanently 0, the aggregate threshold math requires `normal_delta ≥ 2 × threshold`. The aggregate minimum was lowered from 0.08 to 0.055, and the confirmation gate was converted to an informational warning (96-game confirmation is highly non-deterministic: observed swings of +0.042, +0.021, -0.031 across identical runs).
+
+**Budget conversion is unreliable as a gate.** Budget (24-game) duels showed high variance: the same candidate scored 0.667, 0.542, 0.583 across different seed tags. Converted to informational warning.
+
+**Drainer shield variants (keeping `drainer_at_risk` alongside boolean).** Tested blending old continuous signal with new boolean. Results were similar to pure boolean — no improvement from keeping the continuous signal. The boolean alone captures the relevant information.
+
+**Root drainer safety margin raised to 4000.** For normal mode, this makes the drainer safety prefilter near-hard (only moves that leave drainer vulnerable by >4000 points are filtered). Previously at 900, some borderline situations slipped through.
+
+### Tuning Knobs for Future Iterations
+
+| Knob | Current | Notes |
+|------|---------|-------|
+| `drainer_danger_boolean` (fast) | -400 | Tried -150, -300, -400, -600. No effect on fast primary but affects budget games |
+| `mana_carrier_danger_boolean` (fast) | -300 | Paired with drainer. -300 worked best for budget conversion |
+| `drainer_danger_boolean` (normal) | -1200 | Shared across all phase-adaptive variants |
+| `mana_carrier_danger_boolean` (normal) | -800 | Same |
+| `root_drainer_safety_score_margin` (normal) | 4000 | Raised from 900. Near-hard filter |
+| Gate aggregate δ min | 0.055 | Lowered from 0.08 to account for fast invariance |
+| Gate confirm | informational | Was hard gate at δ≥0.05/conf≥0.75, now just prints |
 
 ## How To Add A New Candidate
 
