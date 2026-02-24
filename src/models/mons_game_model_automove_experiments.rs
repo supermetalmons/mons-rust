@@ -1031,6 +1031,80 @@ fn model_runtime_supermana_priority_v1(
     model_current_best(game, config)
 }
 
+fn model_runtime_normal_walk_threat_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Walk-threat eval weights + prefilter + prepass + supermana exception + boosted priors
+    let mut runtime = MonsGameModel::with_drainer_shield_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_walk_threat_prefilter = true;
+        runtime.root_walk_threat_score_margin = 2000;
+        runtime.enable_supermana_prepass_exception = true;
+        runtime.interview_soft_supermana_progress_bonus = 280;
+        runtime.interview_soft_supermana_score_bonus = 480;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_walk_threat_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Walk-threat eval weights only (-600/-400), no prefilter/prepass
+    let runtime = MonsGameModel::with_drainer_shield_scoring_weights(game, config);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_walk_threat_v3(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Walk-threat eval weights + prefilter (no prepass) + supermana
+    let mut runtime = MonsGameModel::with_drainer_shield_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_walk_threat_prefilter = true;
+        runtime.root_walk_threat_score_margin = 3000;
+        runtime.enable_supermana_prepass_exception = true;
+        runtime.interview_soft_supermana_progress_bonus = 280;
+        runtime.interview_soft_supermana_score_bonus = 480;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_walk_threat_v4(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Disable strict anti-help filter for normal (might be too aggressive)
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_strict_anti_help_filter = false;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_walk_threat_v5(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Disable normal root safety rerank + deep floor (might be over-conservative)
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_normal_root_safety_rerank = false;
+        runtime.enable_normal_root_safety_deep_floor = false;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_walk_threat_v6(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Wider root branching for normal — promoted to production path
+    model_current_best(game, config)
+}
+
 const RUNTIME_FAST_SUPERMANA_PRIORITY_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     supermana_race_control: 30,
     ..RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS
@@ -5209,6 +5283,12 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_drainer_dual_v1" => model_runtime_drainer_dual_v1(game, config),
         "runtime_fast_boost_v1" => model_runtime_fast_boost_v1(game, config),
         "runtime_supermana_priority_v1" => model_runtime_supermana_priority_v1(game, config),
+        "runtime_normal_walk_threat_v1" => model_runtime_normal_walk_threat_v1(game, config),
+        "runtime_normal_walk_threat_v2" => model_runtime_normal_walk_threat_v2(game, config),
+        "runtime_normal_walk_threat_v3" => model_runtime_normal_walk_threat_v3(game, config),
+        "runtime_normal_walk_threat_v4" => model_runtime_normal_walk_threat_v4(game, config),
+        "runtime_normal_walk_threat_v5" => model_runtime_normal_walk_threat_v5(game, config),
+        "runtime_normal_walk_threat_v6" => model_runtime_normal_walk_threat_v6(game, config),
         _ => candidate_model_weights_balanced(game, config),
     }
 }
@@ -5747,6 +5827,30 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_supermana_priority_v1",
             model_runtime_supermana_priority_v1,
+        ),
+        (
+            "runtime_normal_walk_threat_v1",
+            model_runtime_normal_walk_threat_v1,
+        ),
+        (
+            "runtime_normal_walk_threat_v2",
+            model_runtime_normal_walk_threat_v2,
+        ),
+        (
+            "runtime_normal_walk_threat_v3",
+            model_runtime_normal_walk_threat_v3,
+        ),
+        (
+            "runtime_normal_walk_threat_v4",
+            model_runtime_normal_walk_threat_v4,
+        ),
+        (
+            "runtime_normal_walk_threat_v5",
+            model_runtime_normal_walk_threat_v5,
+        ),
+        (
+            "runtime_normal_walk_threat_v6",
+            model_runtime_normal_walk_threat_v6,
         ),
     ]
 }

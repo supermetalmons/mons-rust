@@ -58,6 +58,8 @@ pub struct ScoringWeights {
     pub spirit_action_utility: i32,
     pub drainer_danger_boolean: i32,
     pub mana_carrier_danger_boolean: i32,
+    pub drainer_walk_threat_boolean: i32,
+    pub mana_carrier_walk_threat_boolean: i32,
     pub opponent_drainer_attack_bonus: i32,
 }
 
@@ -112,6 +114,8 @@ pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     spirit_action_utility: 0,
     drainer_danger_boolean: 0,
     mana_carrier_danger_boolean: 0,
+    drainer_walk_threat_boolean: 0,
+    mana_carrier_walk_threat_boolean: 0,
     opponent_drainer_attack_bonus: 0,
 };
 
@@ -166,6 +170,8 @@ pub const BALANCED_DISTANCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     spirit_action_utility: 0,
     drainer_danger_boolean: 0,
     mana_carrier_danger_boolean: 0,
+    drainer_walk_threat_boolean: 0,
+    mana_carrier_walk_threat_boolean: 0,
     opponent_drainer_attack_bonus: 0,
 };
 
@@ -884,6 +890,23 @@ pub fn evaluate_preferability_with_weights(
                             score += weights.opponent_drainer_attack_bonus;
                         }
                     }
+
+                    if weights.drainer_walk_threat_boolean != 0
+                        && !is_drainer_under_immediate_threat(
+                            &game.board,
+                            mon.color,
+                            location,
+                            angel_nearby,
+                        )
+                        && is_drainer_under_walk_threat(
+                            &game.board,
+                            mon.color,
+                            location,
+                            angel_nearby,
+                        )
+                    {
+                        score += my_mon_multiplier * weights.drainer_walk_threat_boolean;
+                    }
                 } else if mon.kind == MonKind::Spirit {
                     let enemy_distance =
                         nearest_enemy_mon_distance(&game.board, mon.color, location);
@@ -962,6 +985,23 @@ pub fn evaluate_preferability_with_weights(
                         if my_mon_multiplier == -1 {
                             score += weights.opponent_drainer_attack_bonus;
                         }
+                    }
+
+                    if weights.drainer_walk_threat_boolean != 0
+                        && !is_drainer_under_immediate_threat(
+                            &game.board,
+                            mon.color,
+                            location,
+                            angel_nearby,
+                        )
+                        && is_drainer_under_walk_threat(
+                            &game.board,
+                            mon.color,
+                            location,
+                            angel_nearby,
+                        )
+                    {
+                        score += my_mon_multiplier * weights.drainer_walk_threat_boolean;
                     }
                     if !use_legacy_formula {
                         if let Some((path_steps, mana_value)) =
@@ -1180,6 +1220,23 @@ pub fn evaluate_preferability_with_weights(
                         if my_mon_multiplier == -1 {
                             score += weights.opponent_drainer_attack_bonus;
                         }
+                    }
+
+                    if weights.mana_carrier_walk_threat_boolean != 0
+                        && !is_drainer_under_immediate_threat(
+                            &game.board,
+                            mon.color,
+                            location,
+                            angel_nearby,
+                        )
+                        && is_drainer_under_walk_threat(
+                            &game.board,
+                            mon.color,
+                            location,
+                            angel_nearby,
+                        )
+                    {
+                        score += my_mon_multiplier * weights.mana_carrier_walk_threat_boolean;
                     }
                 } else if mon.kind == MonKind::Spirit {
                     score -= my_mon_multiplier
@@ -2337,6 +2394,89 @@ fn drainer_immediate_threats(
     }
 
     (action_threats, bomb_threats)
+}
+
+fn is_drainer_under_walk_threat(
+    board: &Board,
+    color: Color,
+    location: Location,
+    angel_nearby: bool,
+) -> bool {
+    let valid = Location::valid_range();
+    for (&threat_location, item) in &board.items {
+        match item {
+            Item::Mon { mon }
+            | Item::MonWithMana { mon, .. }
+            | Item::MonWithConsumable { mon, .. } => {
+                if mon.color == color || mon.is_fainted() {
+                    continue;
+                }
+                let on_own_base =
+                    matches!(board.square(threat_location), Square::MonBase { .. });
+                if on_own_base {
+                    continue;
+                }
+                if !angel_nearby && (mon.kind == MonKind::Mystic || mon.kind == MonKind::Demon) {
+                    for dx in -1i32..=1 {
+                        for dy in -1i32..=1 {
+                            if dx == 0 && dy == 0 {
+                                continue;
+                            }
+                            let ni = threat_location.i + dx;
+                            let nj = threat_location.j + dy;
+                            if !valid.contains(&ni) || !valid.contains(&nj) {
+                                continue;
+                            }
+                            let neighbor = Location::new(ni, nj);
+                            if board.item(neighbor).is_some() {
+                                continue;
+                            }
+                            if matches!(
+                                board.square(neighbor),
+                                Square::MonBase { .. } | Square::SupermanaBase
+                            ) {
+                                continue;
+                            }
+                            if mon.kind == MonKind::Mystic {
+                                let di = (ni - location.i).abs();
+                                let dj = (nj - location.j).abs();
+                                if di == 2 && dj == 2 {
+                                    return true;
+                                }
+                            }
+                            if mon.kind == MonKind::Demon {
+                                let di = (ni - location.i).abs();
+                                let dj = (nj - location.j).abs();
+                                if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
+                                    let middle = neighbor.location_between(&location);
+                                    if board.item(middle).is_none()
+                                        && !matches!(
+                                            board.square(middle),
+                                            Square::SupermanaBase | Square::MonBase { .. }
+                                        )
+                                    {
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if matches!(
+                    item,
+                    Item::MonWithConsumable {
+                        consumable: Consumable::Bomb,
+                        ..
+                    }
+                ) && threat_location.distance(&location) <= 4
+                {
+                    return true;
+                }
+            }
+            Item::Mana { .. } | Item::Consumable { .. } => {}
+        }
+    }
+    false
 }
 
 fn is_drainer_under_immediate_threat(

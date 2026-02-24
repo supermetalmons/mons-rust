@@ -382,6 +382,129 @@ const RUNTIME_NORMAL_BOOLEAN_DRAINER_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BA
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[allow(dead_code)]
+const RUNTIME_NORMAL_STRONG_DRAINER_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_danger_boolean: -1800,
+    mana_carrier_danger_boolean: -1200,
+    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_STRONG_DRAINER_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_danger_boolean: -1800,
+    mana_carrier_danger_boolean: -1200,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_STRONG_DRAINER_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_danger_boolean: -1800,
+    mana_carrier_danger_boolean: -1200,
+    ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_STRONG_DRAINER_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_danger_boolean: -1800,
+    mana_carrier_danger_boolean: -1200,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_STRONG_DRAINER_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_danger_boolean: -1800,
+    mana_carrier_danger_boolean: -1200,
+    ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_WALK_THREAT_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_walk_threat_boolean: -600,
+    mana_carrier_walk_threat_boolean: -400,
+    ..RUNTIME_NORMAL_BOOLEAN_DRAINER_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_WALK_THREAT_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_walk_threat_boolean: -600,
+    mana_carrier_walk_threat_boolean: -400,
+    ..RUNTIME_NORMAL_BOOLEAN_DRAINER_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_WALK_THREAT_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_walk_threat_boolean: -600,
+    mana_carrier_walk_threat_boolean: -400,
+    ..RUNTIME_NORMAL_BOOLEAN_DRAINER_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_WALK_THREAT_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_walk_threat_boolean: -600,
+    mana_carrier_walk_threat_boolean: -400,
+    ..RUNTIME_NORMAL_BOOLEAN_DRAINER_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_WALK_THREAT_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_walk_threat_boolean: -600,
+    mana_carrier_walk_threat_boolean: -400,
+    ..RUNTIME_NORMAL_BOOLEAN_DRAINER_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_WALK_THREAT_LIGHT_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_walk_threat_boolean: -200,
+    mana_carrier_walk_threat_boolean: -100,
+    ..RUNTIME_NORMAL_BOOLEAN_DRAINER_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_WALK_THREAT_LIGHT_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_walk_threat_boolean: -200,
+    mana_carrier_walk_threat_boolean: -100,
+    ..RUNTIME_NORMAL_BOOLEAN_DRAINER_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_WALK_THREAT_LIGHT_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_walk_threat_boolean: -200,
+    mana_carrier_walk_threat_boolean: -100,
+    ..RUNTIME_NORMAL_BOOLEAN_DRAINER_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_WALK_THREAT_LIGHT_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_walk_threat_boolean: -200,
+    mana_carrier_walk_threat_boolean: -100,
+    ..RUNTIME_NORMAL_BOOLEAN_DRAINER_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+};
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
+const RUNTIME_NORMAL_WALK_THREAT_LIGHT_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    drainer_walk_threat_boolean: -200,
+    mana_carrier_walk_threat_boolean: -100,
+    ..RUNTIME_NORMAL_BOOLEAN_DRAINER_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[allow(dead_code)]
 const RUNTIME_NORMAL_DRAINER_SHIELD_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS:
     ScoringWeights = ScoringWeights {
     drainer_immediate_threat: -200,
@@ -390,6 +513,8 @@ const RUNTIME_NORMAL_DRAINER_SHIELD_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHT
     mana_carrier_at_risk: -320,
     drainer_danger_boolean: -1200,
     mana_carrier_danger_boolean: -800,
+    drainer_walk_threat_boolean: -600,
+    mana_carrier_walk_threat_boolean: -400,
     ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
 };
 #[cfg(any(target_arch = "wasm32", test))]
@@ -402,6 +527,8 @@ const RUNTIME_NORMAL_DRAINER_SHIELD_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHT
     mana_carrier_at_risk: -340,
     drainer_danger_boolean: -1200,
     mana_carrier_danger_boolean: -800,
+    drainer_walk_threat_boolean: -600,
+    mana_carrier_walk_threat_boolean: -400,
     ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
 };
 #[cfg(any(target_arch = "wasm32", test))]
@@ -414,6 +541,8 @@ const RUNTIME_NORMAL_DRAINER_SHIELD_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCO
     mana_carrier_at_risk: -360,
     drainer_danger_boolean: -1200,
     mana_carrier_danger_boolean: -800,
+    drainer_walk_threat_boolean: -600,
+    mana_carrier_walk_threat_boolean: -400,
     ..RUNTIME_NORMAL_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
 };
 #[cfg(any(target_arch = "wasm32", test))]
@@ -426,6 +555,8 @@ const RUNTIME_NORMAL_DRAINER_SHIELD_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_W
     mana_carrier_at_risk: -310,
     drainer_danger_boolean: -1200,
     mana_carrier_danger_boolean: -800,
+    drainer_walk_threat_boolean: -600,
+    mana_carrier_walk_threat_boolean: -400,
     ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
 };
 #[cfg(any(target_arch = "wasm32", test))]
@@ -438,6 +569,8 @@ const RUNTIME_NORMAL_DRAINER_SHIELD_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BAS
     mana_carrier_at_risk: -330,
     drainer_danger_boolean: -1200,
     mana_carrier_danger_boolean: -800,
+    drainer_walk_threat_boolean: -600,
+    mana_carrier_walk_threat_boolean: -400,
     ..RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
 };
 
@@ -545,6 +678,8 @@ struct SmartSearchConfig {
     interview_soft_roundtrip_penalty: i32,
     enable_enhanced_drainer_vulnerability: bool,
     enable_supermana_prepass_exception: bool,
+    enable_walk_threat_prefilter: bool,
+    root_walk_threat_score_margin: i32,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -618,12 +753,12 @@ impl SmartSearchConfig {
                     .clamp(tuned.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
                 tuned.max_visited_nodes = (tuned.max_visited_nodes * 112 / 100)
                     .clamp(tuned.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
-                tuned.root_branch_limit = tuned.root_branch_limit.saturating_sub(5).clamp(8, 34);
-                tuned.node_branch_limit = (tuned.node_branch_limit + 4).clamp(10, 18);
+                tuned.root_branch_limit = tuned.root_branch_limit.saturating_sub(1).clamp(12, 38);
+                tuned.node_branch_limit = (tuned.node_branch_limit + 2).clamp(8, 18);
                 tuned.root_enum_limit =
-                    (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 220);
+                    (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 240);
                 tuned.node_enum_limit =
-                    (tuned.node_branch_limit * 6).clamp(tuned.node_branch_limit, 156);
+                    ((tuned.node_branch_limit + 2) * 6).clamp(tuned.node_branch_limit, 156);
                 tuned.enable_root_efficiency = true;
                 tuned.enable_event_ordering_bonus = false;
                 tuned.enable_backtrack_penalty = true;
@@ -758,6 +893,8 @@ impl SmartSearchConfig {
             interview_soft_roundtrip_penalty: SMART_INTERVIEW_SOFT_ROUNDTRIP_PENALTY,
             enable_enhanced_drainer_vulnerability: false,
             enable_supermana_prepass_exception: false,
+            enable_walk_threat_prefilter: false,
+            root_walk_threat_score_margin: 2000,
         }
     }
 
@@ -809,6 +946,7 @@ struct ScoredRootMove {
     wins_immediately: bool,
     attacks_opponent_drainer: bool,
     own_drainer_vulnerable: bool,
+    own_drainer_walk_vulnerable: bool,
     spirit_development: bool,
     keeps_awake_spirit_on_base: bool,
     mana_handoff_to_opponent: bool,
@@ -830,6 +968,7 @@ struct RootEvaluation {
     wins_immediately: bool,
     attacks_opponent_drainer: bool,
     own_drainer_vulnerable: bool,
+    own_drainer_walk_vulnerable: bool,
     spirit_development: bool,
     keeps_awake_spirit_on_base: bool,
     mana_handoff_to_opponent: bool,
@@ -1588,6 +1727,114 @@ impl MonsGameModel {
         }
     }
 
+    #[allow(dead_code)]
+    fn with_drainer_shield_scoring_weights(
+        game: &MonsGame,
+        mut config: SmartSearchConfig,
+    ) -> SmartSearchConfig {
+        config.scoring_weights = if config.depth < 3
+            && config.enable_mana_start_mix_with_potion_actions
+        {
+            &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
+        } else {
+            Self::runtime_phase_adaptive_walk_threat_scoring_weights(game, config.depth)
+        };
+        config
+    }
+
+    #[allow(dead_code)]
+    fn runtime_phase_adaptive_walk_threat_scoring_weights(
+        game: &MonsGame,
+        depth: usize,
+    ) -> &'static ScoringWeights {
+        if depth < 3 {
+            return &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS;
+        }
+
+        let (my_score, opponent_score) = if game.active_color == Color::White {
+            (game.white_score, game.black_score)
+        } else {
+            (game.black_score, game.white_score)
+        };
+        let my_distance_to_win = Config::TARGET_SCORE - my_score;
+        let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+        let score_gap = my_score - opponent_score;
+
+        if my_distance_to_win <= 1 {
+            &RUNTIME_NORMAL_WALK_THREAT_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if opponent_distance_to_win <= 1 {
+            &RUNTIME_NORMAL_WALK_THREAT_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if my_distance_to_win <= 2 {
+            &RUNTIME_NORMAL_WALK_THREAT_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+            &RUNTIME_NORMAL_WALK_THREAT_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+        } else {
+            &RUNTIME_NORMAL_WALK_THREAT_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+        }
+    }
+
+    #[allow(dead_code)]
+    fn runtime_phase_adaptive_walk_threat_light_scoring_weights(
+        game: &MonsGame,
+        depth: usize,
+    ) -> &'static ScoringWeights {
+        if depth < 3 {
+            return &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS;
+        }
+
+        let (my_score, opponent_score) = if game.active_color == Color::White {
+            (game.white_score, game.black_score)
+        } else {
+            (game.black_score, game.white_score)
+        };
+        let my_distance_to_win = Config::TARGET_SCORE - my_score;
+        let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+        let score_gap = my_score - opponent_score;
+
+        if my_distance_to_win <= 1 {
+            &RUNTIME_NORMAL_WALK_THREAT_LIGHT_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if opponent_distance_to_win <= 1 {
+            &RUNTIME_NORMAL_WALK_THREAT_LIGHT_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if my_distance_to_win <= 2 {
+            &RUNTIME_NORMAL_WALK_THREAT_LIGHT_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+            &RUNTIME_NORMAL_WALK_THREAT_LIGHT_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+        } else {
+            &RUNTIME_NORMAL_WALK_THREAT_LIGHT_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+        }
+    }
+
+    #[allow(dead_code)]
+    fn runtime_phase_adaptive_strong_drainer_scoring_weights(
+        game: &MonsGame,
+        depth: usize,
+    ) -> &'static ScoringWeights {
+        if depth < 3 {
+            return &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS;
+        }
+
+        let (my_score, opponent_score) = if game.active_color == Color::White {
+            (game.white_score, game.black_score)
+        } else {
+            (game.black_score, game.white_score)
+        };
+        let my_distance_to_win = Config::TARGET_SCORE - my_score;
+        let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+        let score_gap = my_score - opponent_score;
+
+        if my_distance_to_win <= 1 {
+            &RUNTIME_NORMAL_STRONG_DRAINER_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if opponent_distance_to_win <= 1 {
+            &RUNTIME_NORMAL_STRONG_DRAINER_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if my_distance_to_win <= 2 {
+            &RUNTIME_NORMAL_STRONG_DRAINER_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+        } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+            &RUNTIME_NORMAL_STRONG_DRAINER_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+        } else {
+            &RUNTIME_NORMAL_STRONG_DRAINER_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+        }
+    }
+
     fn build_scored_root_move(
         game: &MonsGame,
         perspective: Color,
@@ -1640,6 +1887,11 @@ impl MonsGameModel {
             || Self::events_move_opponent_mana_toward_color(&events, perspective);
         let own_drainer_vulnerable = if config.enable_root_drainer_safety_prefilter {
             Self::is_own_drainer_vulnerable_next_turn(&simulated_game, perspective, config.enable_enhanced_drainer_vulnerability)
+        } else {
+            false
+        };
+        let own_drainer_walk_vulnerable = if config.enable_walk_threat_prefilter && !own_drainer_vulnerable {
+            Self::is_own_drainer_walk_vulnerable_next_turn(&simulated_game, perspective, config.enable_enhanced_drainer_vulnerability)
         } else {
             false
         };
@@ -1719,6 +1971,7 @@ impl MonsGameModel {
             wins_immediately,
             attacks_opponent_drainer,
             own_drainer_vulnerable,
+            own_drainer_walk_vulnerable,
             spirit_development,
             keeps_awake_spirit_on_base,
             mana_handoff_to_opponent,
@@ -2369,6 +2622,17 @@ impl MonsGameModel {
             }
         }
 
+        if config.enable_walk_threat_prefilter
+            && !has_supermana_scoring
+            && Self::is_own_drainer_walk_vulnerable_next_turn(game, perspective, config.enable_enhanced_drainer_vulnerability)
+        {
+            if let Some(index) = Self::best_tactical_root_index(root_moves, |candidate| {
+                !candidate.own_drainer_vulnerable && !candidate.own_drainer_walk_vulnerable
+            }) {
+                return Some(root_moves[index].inputs.clone());
+            }
+        }
+
         let opponent_score = if perspective == Color::White {
             game.black_score
         } else {
@@ -2647,6 +2911,7 @@ impl MonsGameModel {
                 wins_immediately: candidate.wins_immediately,
                 attacks_opponent_drainer: candidate.attacks_opponent_drainer,
                 own_drainer_vulnerable: candidate.own_drainer_vulnerable,
+                own_drainer_walk_vulnerable: candidate.own_drainer_walk_vulnerable,
                 spirit_development: candidate.spirit_development,
                 keeps_awake_spirit_on_base: candidate.keeps_awake_spirit_on_base,
                 mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
@@ -3804,6 +4069,7 @@ impl MonsGameModel {
             wins_immediately: candidate.wins_immediately,
             attacks_opponent_drainer: candidate.attacks_opponent_drainer,
             own_drainer_vulnerable: candidate.own_drainer_vulnerable,
+            own_drainer_walk_vulnerable: candidate.own_drainer_walk_vulnerable,
             spirit_development: candidate.spirit_development,
             keeps_awake_spirit_on_base: candidate.keeps_awake_spirit_on_base,
             mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
@@ -4022,6 +4288,121 @@ impl MonsGameModel {
         Self::is_own_drainer_immediately_vulnerable(&probe, perspective, enhanced)
     }
 
+    fn is_own_drainer_walk_vulnerable_next_turn(
+        game: &MonsGame,
+        perspective: Color,
+        enhanced: bool,
+    ) -> bool {
+        let opponent = perspective.other();
+        let mut probe = game.clone_for_simulation();
+        probe.active_color = opponent;
+        probe.actions_used_count = 0;
+        probe.mana_moves_count = 0;
+        probe.mons_moves_count = 0;
+        if Self::is_own_drainer_immediately_vulnerable(&probe, perspective, enhanced) {
+            return false;
+        }
+        let mut own_drainer_location = None;
+        for (&location, item) in &probe.board.items {
+            let Some(mon) = item.mon() else {
+                continue;
+            };
+            if mon.color != perspective || mon.kind != MonKind::Drainer {
+                continue;
+            }
+            if mon.is_fainted() {
+                return false;
+            }
+            own_drainer_location = Some(location);
+            break;
+        }
+        let Some(drainer_location) = own_drainer_location else {
+            return false;
+        };
+        let drainer_angel_protected = Self::is_location_guarded_by_angel(
+            &probe.board,
+            perspective,
+            drainer_location,
+        );
+        let valid = Location::valid_range();
+        for (&threat_location, item) in &probe.board.items {
+            let mon = match item {
+                Item::Mon { mon }
+                | Item::MonWithMana { mon, .. }
+                | Item::MonWithConsumable { mon, .. } => mon,
+                _ => continue,
+            };
+            if mon.color != opponent || mon.is_fainted() {
+                continue;
+            }
+            let on_own_base =
+                matches!(probe.board.square(threat_location), Square::MonBase { .. });
+            if on_own_base {
+                continue;
+            }
+            if !drainer_angel_protected
+                && (mon.kind == MonKind::Mystic || mon.kind == MonKind::Demon)
+            {
+                for dx in -1i32..=1 {
+                    for dy in -1i32..=1 {
+                        if dx == 0 && dy == 0 {
+                            continue;
+                        }
+                        let ni = threat_location.i + dx;
+                        let nj = threat_location.j + dy;
+                        if !valid.contains(&ni) || !valid.contains(&nj) {
+                            continue;
+                        }
+                        let neighbor = Location::new(ni, nj);
+                        if probe.board.item(neighbor).is_some() {
+                            continue;
+                        }
+                        if matches!(
+                            probe.board.square(neighbor),
+                            Square::MonBase { .. } | Square::SupermanaBase
+                        ) {
+                            continue;
+                        }
+                        if mon.kind == MonKind::Mystic {
+                            let di = (ni - drainer_location.i).abs();
+                            let dj = (nj - drainer_location.j).abs();
+                            if di == 2 && dj == 2 {
+                                return true;
+                            }
+                        }
+                        if mon.kind == MonKind::Demon {
+                            let di = (ni - drainer_location.i).abs();
+                            let dj = (nj - drainer_location.j).abs();
+                            if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
+                                let middle =
+                                    neighbor.location_between(&drainer_location);
+                                if probe.board.item(middle).is_none()
+                                    && !matches!(
+                                        probe.board.square(middle),
+                                        Square::SupermanaBase | Square::MonBase { .. }
+                                    )
+                                {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if matches!(
+                item,
+                Item::MonWithConsumable {
+                    consumable: Consumable::Bomb,
+                    ..
+                }
+            ) && threat_location.distance(&drainer_location) <= 4
+            {
+                return true;
+            }
+        }
+        false
+    }
+
     fn should_prefer_spirit_development(game: &MonsGame, perspective: Color) -> bool {
         !game.is_first_turn()
             && game.player_can_move_mon()
@@ -4172,7 +4553,30 @@ impl MonsGameModel {
                 })
                 .collect::<Vec<_>>();
             if !safer_indices.is_empty() {
-                candidate_indices = safer_indices;
+                if config.enable_walk_threat_prefilter {
+                    let walk_margin = config.root_walk_threat_score_margin.max(0);
+                    let walk_best = safer_indices
+                        .iter()
+                        .map(|index| scored_roots[*index].score)
+                        .max()
+                        .unwrap_or(i32::MIN);
+                    let fully_safe_indices = safer_indices
+                        .iter()
+                        .copied()
+                        .filter(|index| {
+                            let root = &scored_roots[*index];
+                            !root.own_drainer_walk_vulnerable
+                                && root.score + walk_margin >= walk_best
+                        })
+                        .collect::<Vec<_>>();
+                    if !fully_safe_indices.is_empty() {
+                        candidate_indices = fully_safe_indices;
+                    } else {
+                        candidate_indices = safer_indices;
+                    }
+                } else {
+                    candidate_indices = safer_indices;
+                }
             }
         }
 
