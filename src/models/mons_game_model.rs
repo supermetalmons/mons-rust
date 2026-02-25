@@ -684,6 +684,13 @@ struct SmartSearchConfig {
     root_walk_threat_score_margin: i32,
     enable_killer_move_ordering: bool,
     enable_tt_depth_preferred_replacement: bool,
+    enable_pvs: bool,
+    quiet_reduction_depth_threshold: usize,
+    enable_iterative_deepening: bool,
+    iterative_deepening_depth_offset: usize,
+    iterative_deepening_alpha_margin: i32,
+    enable_futility_pruning: bool,
+    futility_margin: i32,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -901,6 +908,13 @@ impl SmartSearchConfig {
             root_walk_threat_score_margin: 2000,
             enable_killer_move_ordering: false,
             enable_tt_depth_preferred_replacement: false,
+            enable_pvs: false,
+            quiet_reduction_depth_threshold: 3,
+            enable_iterative_deepening: false,
+            iterative_deepening_depth_offset: 2,
+            iterative_deepening_alpha_margin: 0,
+            enable_futility_pruning: false,
+            futility_margin: 3000,
         }
     }
 
@@ -2871,7 +2885,7 @@ impl MonsGameModel {
             return forced_inputs;
         }
 
-        let (root_moves, scout_visited_nodes) = Self::focused_root_candidates(
+        let (mut root_moves, scout_visited_nodes) = Self::focused_root_candidates(
             game,
             perspective,
             root_moves,
@@ -2896,6 +2910,56 @@ impl MonsGameModel {
             };
         let mut extension_nodes_used = 0usize;
         let mut killer_table: KillerTable = [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
+
+        // Iterative deepening: run a shallow pass to pre-populate TT and reorder roots
+        if config.enable_iterative_deepening && config.depth >= 3 {
+            let preliminary_depth =
+                config.depth.saturating_sub(config.iterative_deepening_depth_offset).max(1);
+            let mut prelim_alpha = i32::MIN;
+            let mut prelim_scores: Vec<i32> = Vec::with_capacity(root_moves.len());
+            for candidate in root_moves.iter() {
+                if visited_nodes >= config.max_visited_nodes {
+                    prelim_scores.push(i32::MIN);
+                    continue;
+                }
+                visited_nodes += 1;
+                let prelim_score = Self::search_score(
+                    &candidate.game,
+                    perspective,
+                    preliminary_depth,
+                    prelim_alpha,
+                    i32::MAX,
+                    &mut visited_nodes,
+                    config,
+                    &mut transposition_table,
+                    0,
+                    &mut extension_nodes_used,
+                    0,
+                    use_transposition_table,
+                    &mut killer_table,
+                );
+                prelim_scores.push(prelim_score);
+                if prelim_score > prelim_alpha {
+                    prelim_alpha = prelim_score;
+                }
+            }
+            // Reorder root candidates by preliminary score (best first)
+            let mut indexed: Vec<(i32, ScoredRootMove)> = prelim_scores
+                .into_iter()
+                .zip(root_moves.into_iter())
+                .collect();
+            indexed.sort_by(|a, b| b.0.cmp(&a.0));
+            // Optionally initialize alpha from preliminary best score
+            if config.iterative_deepening_alpha_margin > 0 {
+                if let Some((best_score, _)) = indexed.first() {
+                    if *best_score != i32::MIN {
+                        alpha = best_score
+                            .saturating_sub(config.iterative_deepening_alpha_margin);
+                    }
+                }
+            }
+            root_moves = indexed.into_iter().map(|(_, m)| m).collect();
+        }
 
         for candidate in root_moves {
             if visited_nodes >= config.max_visited_nodes {
@@ -3255,6 +3319,20 @@ impl MonsGameModel {
         }
 
         let maximizing = game.active_color == perspective;
+
+        // Futility pruning: at frontier nodes (depth=1), skip expansion if static eval
+        // is so far from the window that no child move could possibly improve it enough
+        if config.enable_futility_pruning && depth == 1 {
+            let static_eval =
+                evaluate_preferability_with_weights(game, perspective, config.scoring_weights);
+            if maximizing && static_eval + config.futility_margin < alpha {
+                return static_eval;
+            }
+            if !maximizing && static_eval - config.futility_margin > beta {
+                return static_eval;
+            }
+        }
+
         let current_killers = if config.enable_killer_move_ordering && depth < killer_table.len() {
             killer_table[depth]
         } else {
@@ -3270,6 +3348,7 @@ impl MonsGameModel {
         let mut best_child_hash = 0u64;
         let value = if maximizing {
             let mut value = i32::MIN;
+            let mut first_child = true;
             for child in children.drain(..) {
                 if *visited_nodes >= config.max_visited_nodes {
                     stopped_by_budget = true;
@@ -3290,27 +3369,67 @@ impl MonsGameModel {
                     }
                 } else if config.enable_quiet_reductions
                     && child.quiet_reduction_candidate
-                    && depth > 2
+                    && depth >= config.quiet_reduction_depth_threshold
                 {
                     child_depth = depth.saturating_sub(2);
                 }
 
                 *visited_nodes += 1;
-                let score = Self::search_score(
-                    &child.game,
-                    perspective,
-                    child_depth,
-                    alpha,
-                    beta,
-                    visited_nodes,
-                    config,
-                    transposition_table,
-                    child_extensions_remaining,
-                    extension_nodes_used,
-                    extension_node_budget,
-                    use_transposition_table,
-                    killer_table,
-                );
+                let score = if config.enable_pvs && !first_child && alpha + 1 < beta {
+                    // PVS: null-window probe
+                    let probe = Self::search_score(
+                        &child.game,
+                        perspective,
+                        child_depth,
+                        alpha,
+                        alpha + 1,
+                        visited_nodes,
+                        config,
+                        transposition_table,
+                        child_extensions_remaining,
+                        extension_nodes_used,
+                        extension_node_budget,
+                        use_transposition_table,
+                        killer_table,
+                    );
+                    if probe > alpha && probe < beta {
+                        // Fail high: re-search with full window
+                        Self::search_score(
+                            &child.game,
+                            perspective,
+                            child_depth,
+                            alpha,
+                            beta,
+                            visited_nodes,
+                            config,
+                            transposition_table,
+                            child_extensions_remaining,
+                            extension_nodes_used,
+                            extension_node_budget,
+                            use_transposition_table,
+                            killer_table,
+                        )
+                    } else {
+                        probe
+                    }
+                } else {
+                    Self::search_score(
+                        &child.game,
+                        perspective,
+                        child_depth,
+                        alpha,
+                        beta,
+                        visited_nodes,
+                        config,
+                        transposition_table,
+                        child_extensions_remaining,
+                        extension_nodes_used,
+                        extension_node_budget,
+                        use_transposition_table,
+                        killer_table,
+                    )
+                };
+                first_child = false;
                 if score > value {
                     value = score;
                     best_child_hash = child.hash;
@@ -3338,6 +3457,7 @@ impl MonsGameModel {
             }
         } else {
             let mut value = i32::MAX;
+            let mut first_child = true;
             for child in children.drain(..) {
                 if *visited_nodes >= config.max_visited_nodes {
                     stopped_by_budget = true;
@@ -3358,27 +3478,67 @@ impl MonsGameModel {
                     }
                 } else if config.enable_quiet_reductions
                     && child.quiet_reduction_candidate
-                    && depth > 2
+                    && depth >= config.quiet_reduction_depth_threshold
                 {
                     child_depth = depth.saturating_sub(2);
                 }
 
                 *visited_nodes += 1;
-                let score = Self::search_score(
-                    &child.game,
-                    perspective,
-                    child_depth,
-                    alpha,
-                    beta,
-                    visited_nodes,
-                    config,
-                    transposition_table,
-                    child_extensions_remaining,
-                    extension_nodes_used,
-                    extension_node_budget,
-                    use_transposition_table,
-                    killer_table,
-                );
+                let score = if config.enable_pvs && !first_child && beta - 1 > alpha {
+                    // PVS: null-window probe (minimizing)
+                    let probe = Self::search_score(
+                        &child.game,
+                        perspective,
+                        child_depth,
+                        beta - 1,
+                        beta,
+                        visited_nodes,
+                        config,
+                        transposition_table,
+                        child_extensions_remaining,
+                        extension_nodes_used,
+                        extension_node_budget,
+                        use_transposition_table,
+                        killer_table,
+                    );
+                    if probe < beta && probe > alpha {
+                        // Fail low: re-search with full window
+                        Self::search_score(
+                            &child.game,
+                            perspective,
+                            child_depth,
+                            alpha,
+                            beta,
+                            visited_nodes,
+                            config,
+                            transposition_table,
+                            child_extensions_remaining,
+                            extension_nodes_used,
+                            extension_node_budget,
+                            use_transposition_table,
+                            killer_table,
+                        )
+                    } else {
+                        probe
+                    }
+                } else {
+                    Self::search_score(
+                        &child.game,
+                        perspective,
+                        child_depth,
+                        alpha,
+                        beta,
+                        visited_nodes,
+                        config,
+                        transposition_table,
+                        child_extensions_remaining,
+                        extension_nodes_used,
+                        extension_node_budget,
+                        use_transposition_table,
+                        killer_table,
+                    )
+                };
+                first_child = false;
                 if score < value {
                     value = score;
                     best_child_hash = child.hash;

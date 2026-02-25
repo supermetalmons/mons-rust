@@ -1283,6 +1283,283 @@ fn model_runtime_normal_drainer_v12(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+fn model_runtime_normal_structural_v13(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Enable event ordering bonus (free: events already computed) + spirit tiebreak
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_event_ordering_bonus = true;
+        runtime.enable_interview_deterministic_tiebreak = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v14(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Tighter reply risk guard + supermana prepass exception
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.root_reply_risk_score_margin = 120;
+        runtime.root_reply_risk_reply_limit = 20;
+        runtime.enable_supermana_prepass_exception = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v15(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Combined: event ordering + spirit tiebreak + tighter reply risk + supermana exception
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_event_ordering_bonus = true;
+        runtime.enable_interview_deterministic_tiebreak = true;
+        runtime.root_reply_risk_score_margin = 120;
+        runtime.root_reply_risk_reply_limit = 20;
+        runtime.enable_supermana_prepass_exception = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v16(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Spirit tiebreak only (isolated from harmful event ordering)
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_interview_deterministic_tiebreak = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v17(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Supermana prepass exception alone (bypass forced drainer attack when scoring supermana)
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_supermana_prepass_exception = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v18(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Disable reply risk guard — let efficiency + safety rerank take over
+    // (safety rerank and deep floor are enabled but currently dead code due to reply risk guard)
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_root_reply_risk_guard = false;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v19(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // PVS (Principal Variation Search): null-window probes save node budget
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_pvs = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v20(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // PVS + spirit tiebreak + supermana prepass exception
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_pvs = true;
+        runtime.enable_interview_deterministic_tiebreak = true;
+        runtime.enable_supermana_prepass_exception = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v21(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Quiet reduction fix: activate at depth>=2 (was dead code with depth>2)
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.quiet_reduction_depth_threshold = 2;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v22(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Iterative deepening: depth-1 pre-pass with shared TT to improve move ordering
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_iterative_deepening = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v23(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Futility pruning at frontier nodes (depth=1)
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 3000;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v24(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Iterative deepening + quiet reduction fix (best combo of budget-saving features)
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_iterative_deepening = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v25(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Full combo: iterative deepening + quiet reduction fix + futility pruning
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_iterative_deepening = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 3000;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v26(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Iterative deepening + futility pruning (no quiet reduction)
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_iterative_deepening = true;
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2000;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v27(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Iterative deepening + aggressive futility pruning
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_iterative_deepening = true;
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 1200;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v28(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Iterative deepening + root aspiration enabled (synergy: ID ordering + narrow window)
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_iterative_deepening = true;
+        runtime.enable_root_aspiration = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v29(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Iterative deepening + prelim alpha initialization (tighter first-candidate window)
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_iterative_deepening = true;
+        runtime.iterative_deepening_alpha_margin = 3200;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v30(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Improved ID: progressive alpha in preliminary pass (better pruning in prelim)
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_iterative_deepening = true;
+        // depth_offset=2 means prelim at depth-2=1 (same as v22 but with progressive alpha)
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v31(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Full-depth ID: preliminary pass at depth-1=2 (matches main search depth)
+    // TT entries from prelim are directly reusable by the main pass
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_iterative_deepening = true;
+        runtime.iterative_deepening_depth_offset = 1; // prelim at depth-1 (full depth)
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v32(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Larger selective extension budget (more tactical depth)
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.selective_extension_node_share_bp = 2_000;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_structural_v33(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // ID + larger selective extension budget (best combo)
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_iterative_deepening = true;
+        runtime.selective_extension_node_share_bp = 2_000;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 const RUNTIME_FAST_SUPERMANA_PRIORITY_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     supermana_race_control: 30,
     ..RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS
@@ -5481,6 +5758,27 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_normal_drainer_v10" => model_runtime_normal_drainer_v10(game, config),
         "runtime_normal_drainer_v11" => model_runtime_normal_drainer_v11(game, config),
         "runtime_normal_drainer_v12" => model_runtime_normal_drainer_v12(game, config),
+        "runtime_normal_structural_v13" => model_runtime_normal_structural_v13(game, config),
+        "runtime_normal_structural_v14" => model_runtime_normal_structural_v14(game, config),
+        "runtime_normal_structural_v15" => model_runtime_normal_structural_v15(game, config),
+        "runtime_normal_structural_v16" => model_runtime_normal_structural_v16(game, config),
+        "runtime_normal_structural_v17" => model_runtime_normal_structural_v17(game, config),
+        "runtime_normal_structural_v18" => model_runtime_normal_structural_v18(game, config),
+        "runtime_normal_structural_v19" => model_runtime_normal_structural_v19(game, config),
+        "runtime_normal_structural_v20" => model_runtime_normal_structural_v20(game, config),
+        "runtime_normal_structural_v21" => model_runtime_normal_structural_v21(game, config),
+        "runtime_normal_structural_v22" => model_runtime_normal_structural_v22(game, config),
+        "runtime_normal_structural_v23" => model_runtime_normal_structural_v23(game, config),
+        "runtime_normal_structural_v24" => model_runtime_normal_structural_v24(game, config),
+        "runtime_normal_structural_v25" => model_runtime_normal_structural_v25(game, config),
+        "runtime_normal_structural_v26" => model_runtime_normal_structural_v26(game, config),
+        "runtime_normal_structural_v27" => model_runtime_normal_structural_v27(game, config),
+        "runtime_normal_structural_v28" => model_runtime_normal_structural_v28(game, config),
+        "runtime_normal_structural_v29" => model_runtime_normal_structural_v29(game, config),
+        "runtime_normal_structural_v30" => model_runtime_normal_structural_v30(game, config),
+        "runtime_normal_structural_v31" => model_runtime_normal_structural_v31(game, config),
+        "runtime_normal_structural_v32" => model_runtime_normal_structural_v32(game, config),
+        "runtime_normal_structural_v33" => model_runtime_normal_structural_v33(game, config),
         _ => candidate_model_weights_balanced(game, config),
     }
 }
@@ -6091,6 +6389,90 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_normal_drainer_v12",
             model_runtime_normal_drainer_v12,
+        ),
+        (
+            "runtime_normal_structural_v13",
+            model_runtime_normal_structural_v13,
+        ),
+        (
+            "runtime_normal_structural_v14",
+            model_runtime_normal_structural_v14,
+        ),
+        (
+            "runtime_normal_structural_v15",
+            model_runtime_normal_structural_v15,
+        ),
+        (
+            "runtime_normal_structural_v16",
+            model_runtime_normal_structural_v16,
+        ),
+        (
+            "runtime_normal_structural_v17",
+            model_runtime_normal_structural_v17,
+        ),
+        (
+            "runtime_normal_structural_v18",
+            model_runtime_normal_structural_v18,
+        ),
+        (
+            "runtime_normal_structural_v19",
+            model_runtime_normal_structural_v19,
+        ),
+        (
+            "runtime_normal_structural_v20",
+            model_runtime_normal_structural_v20,
+        ),
+        (
+            "runtime_normal_structural_v21",
+            model_runtime_normal_structural_v21,
+        ),
+        (
+            "runtime_normal_structural_v22",
+            model_runtime_normal_structural_v22,
+        ),
+        (
+            "runtime_normal_structural_v23",
+            model_runtime_normal_structural_v23,
+        ),
+        (
+            "runtime_normal_structural_v24",
+            model_runtime_normal_structural_v24,
+        ),
+        (
+            "runtime_normal_structural_v25",
+            model_runtime_normal_structural_v25,
+        ),
+        (
+            "runtime_normal_structural_v26",
+            model_runtime_normal_structural_v26,
+        ),
+        (
+            "runtime_normal_structural_v27",
+            model_runtime_normal_structural_v27,
+        ),
+        (
+            "runtime_normal_structural_v28",
+            model_runtime_normal_structural_v28,
+        ),
+        (
+            "runtime_normal_structural_v29",
+            model_runtime_normal_structural_v29,
+        ),
+        (
+            "runtime_normal_structural_v30",
+            model_runtime_normal_structural_v30,
+        ),
+        (
+            "runtime_normal_structural_v31",
+            model_runtime_normal_structural_v31,
+        ),
+        (
+            "runtime_normal_structural_v32",
+            model_runtime_normal_structural_v32,
+        ),
+        (
+            "runtime_normal_structural_v33",
+            model_runtime_normal_structural_v33,
         ),
     ]
 }
