@@ -56,6 +56,8 @@ const SMART_ROOT_ASPIRATION_WINDOW: i32 = 1_600;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_TT_BEST_CHILD_BONUS: i32 = 2_400;
 #[cfg(any(target_arch = "wasm32", test))]
+const SMART_KILLER_MOVE_BONUS: i32 = 1_200;
+#[cfg(any(target_arch = "wasm32", test))]
 const SMART_TWO_PASS_ROOT_SCOUT_DEPTH: usize = 2;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_TWO_PASS_ROOT_SCOUT_MIN_NODES: usize = 96;
@@ -680,6 +682,8 @@ struct SmartSearchConfig {
     enable_supermana_prepass_exception: bool,
     enable_walk_threat_prefilter: bool,
     root_walk_threat_score_margin: i32,
+    enable_killer_move_ordering: bool,
+    enable_tt_depth_preferred_replacement: bool,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -895,6 +899,8 @@ impl SmartSearchConfig {
             enable_supermana_prepass_exception: false,
             enable_walk_threat_prefilter: false,
             root_walk_threat_score_margin: 2000,
+            enable_killer_move_ordering: false,
+            enable_tt_depth_preferred_replacement: false,
         }
     }
 
@@ -1064,6 +1070,9 @@ enum TranspositionBound {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+type KillerTable = [[u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
+
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Clone, Copy)]
 struct TranspositionEntry {
     depth: usize,
@@ -1095,6 +1104,7 @@ struct AsyncSmartSearchState {
     extension_node_budget: usize,
     scored_roots: Vec<RootEvaluation>,
     transposition_table: std::collections::HashMap<u64, TranspositionEntry>,
+    killer_table: KillerTable,
 }
 
 #[wasm_bindgen]
@@ -1238,6 +1248,7 @@ impl MonsGameModel {
             extension_node_budget,
             scored_roots: Vec::new(),
             transposition_table: std::collections::HashMap::new(),
+            killer_table: [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2],
         }));
 
         js_sys::Promise::new(&mut move |resolve, reject| {
@@ -2884,6 +2895,7 @@ impl MonsGameModel {
                 0
             };
         let mut extension_nodes_used = 0usize;
+        let mut killer_table: KillerTable = [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
 
         for candidate in root_moves {
             if visited_nodes >= config.max_visited_nodes {
@@ -2901,6 +2913,7 @@ impl MonsGameModel {
                 &mut extension_nodes_used,
                 extension_node_budget,
                 use_transposition_table,
+                &mut killer_table,
             );
 
             scored_roots.push(RootEvaluation {
@@ -2946,6 +2959,7 @@ impl MonsGameModel {
         extension_nodes_used: &mut usize,
         extension_node_budget: usize,
         use_transposition_table: bool,
+        killer_table: &mut KillerTable,
     ) -> i32 {
         if config.depth <= 1 {
             return candidate.heuristic;
@@ -2972,6 +2986,7 @@ impl MonsGameModel {
             extension_nodes_used,
             extension_node_budget,
             use_transposition_table,
+            killer_table,
         );
 
         if config.enable_root_aspiration
@@ -2992,6 +3007,7 @@ impl MonsGameModel {
                 extension_nodes_used,
                 extension_node_budget,
                 use_transposition_table,
+                killer_table,
             );
         }
 
@@ -3041,6 +3057,7 @@ impl MonsGameModel {
         let mut scout_alpha = i32::MIN;
         let mut scout_transposition_table = std::collections::HashMap::new();
         let mut scout_extension_nodes_used = 0usize;
+        let mut scout_killer_table: KillerTable = [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
         let mut scout_scores = vec![i32::MIN; root_moves.len()];
         let mut best_scout_score = i32::MIN;
 
@@ -3065,6 +3082,7 @@ impl MonsGameModel {
                     &mut scout_extension_nodes_used,
                     0,
                     use_transposition_table,
+                    &mut scout_killer_table,
                 )
             } else {
                 candidate.heuristic.saturating_add(candidate.efficiency / 2)
@@ -3195,6 +3213,7 @@ impl MonsGameModel {
         extension_nodes_used: &mut usize,
         extension_node_budget: usize,
         use_transposition_table: bool,
+        killer_table: &mut KillerTable,
     ) -> i32 {
         if let Some(terminal_score) = Self::terminal_score(game, perspective, depth, config.depth) {
             return terminal_score;
@@ -3236,8 +3255,13 @@ impl MonsGameModel {
         }
 
         let maximizing = game.active_color == perspective;
+        let current_killers = if config.enable_killer_move_ordering && depth < killer_table.len() {
+            killer_table[depth]
+        } else {
+            [0u64; 2]
+        };
         let mut children =
-            Self::ranked_child_states(game, perspective, maximizing, preferred_child_hash, config);
+            Self::ranked_child_states(game, perspective, maximizing, preferred_child_hash, current_killers, config);
         if children.is_empty() {
             return evaluate_preferability_with_weights(game, perspective, config.scoring_weights);
         }
@@ -3285,6 +3309,7 @@ impl MonsGameModel {
                     extension_nodes_used,
                     extension_node_budget,
                     use_transposition_table,
+                    killer_table,
                 );
                 if score > value {
                     value = score;
@@ -3292,6 +3317,16 @@ impl MonsGameModel {
                 }
                 alpha = alpha.max(value);
                 if alpha >= beta {
+                    // Store killer move on beta cutoff
+                    if config.enable_killer_move_ordering
+                        && child.hash != 0
+                        && depth < killer_table.len()
+                    {
+                        if killer_table[depth][0] != child.hash {
+                            killer_table[depth][1] = killer_table[depth][0];
+                            killer_table[depth][0] = child.hash;
+                        }
+                    }
                     break;
                 }
             }
@@ -3342,6 +3377,7 @@ impl MonsGameModel {
                     extension_nodes_used,
                     extension_node_budget,
                     use_transposition_table,
+                    killer_table,
                 );
                 if score < value {
                     value = score;
@@ -3349,6 +3385,16 @@ impl MonsGameModel {
                 }
                 beta = beta.min(value);
                 if beta <= alpha {
+                    // Store killer move on alpha cutoff (minimizing side)
+                    if config.enable_killer_move_ordering
+                        && child.hash != 0
+                        && depth < killer_table.len()
+                    {
+                        if killer_table[depth][0] != child.hash {
+                            killer_table[depth][1] = killer_table[depth][0];
+                            killer_table[depth][0] = child.hash;
+                        }
+                    }
                     break;
                 }
             }
@@ -3369,20 +3415,41 @@ impl MonsGameModel {
                 TranspositionBound::Exact
             };
 
+            let mut skip_tt_write = false;
             if transposition_table.len() >= SMART_TRANSPOSITION_TABLE_MAX_ENTRIES
                 && !transposition_table.contains_key(&state_key)
             {
-                transposition_table.clear();
+                if config.enable_tt_depth_preferred_replacement {
+                    // Depth-preferred replacement: evict the shallowest entry
+                    let mut shallowest_key = 0u64;
+                    let mut shallowest_depth = usize::MAX;
+                    for (&k, v) in transposition_table.iter() {
+                        if v.depth < shallowest_depth {
+                            shallowest_depth = v.depth;
+                            shallowest_key = k;
+                        }
+                    }
+                    if shallowest_depth < depth {
+                        transposition_table.remove(&shallowest_key);
+                    } else {
+                        // No shallower entry exists; skip writing to respect capacity
+                        skip_tt_write = true;
+                    }
+                } else {
+                    transposition_table.clear();
+                }
             }
-            transposition_table.insert(
-                state_key,
-                TranspositionEntry {
-                    depth,
-                    score: value,
-                    bound,
-                    best_child_hash,
-                },
-            );
+            if !skip_tt_write {
+                transposition_table.insert(
+                    state_key,
+                    TranspositionEntry {
+                        depth,
+                        score: value,
+                        bound,
+                        best_child_hash,
+                    },
+                );
+            }
         }
 
         value
@@ -3393,6 +3460,7 @@ impl MonsGameModel {
         perspective: Color,
         maximizing: bool,
         preferred_child_hash: Option<u64>,
+        killer_hashes: [u64; 2],
         config: SmartSearchConfig,
     ) -> Vec<RankedChildState> {
         let mut scored_states: Vec<(i32, RankedChildState)> = Vec::new();
@@ -3456,6 +3524,13 @@ impl MonsGameModel {
                     && preferred_child_hash == Some(child_hash)
                 {
                     heuristic = heuristic.saturating_add(SMART_TT_BEST_CHILD_BONUS);
+                }
+                if config.enable_killer_move_ordering
+                    && (killer_hashes[0] == child_hash || killer_hashes[1] == child_hash)
+                    && child_hash != 0
+                    && preferred_child_hash != Some(child_hash)
+                {
+                    heuristic = heuristic.saturating_add(SMART_KILLER_MOVE_BONUS);
                 }
 
                 let own_drainer_vulnerable_after = if config.enable_child_move_class_coverage {
@@ -4059,6 +4134,7 @@ impl MonsGameModel {
             &mut state.extension_nodes_used,
             state.extension_node_budget,
             true,
+            &mut state.killer_table,
         );
 
         state.scored_roots.push(RootEvaluation {
@@ -5467,6 +5543,7 @@ impl MonsGameModel {
                     let mut transposition_table =
                         std::collections::HashMap::<u64, TranspositionEntry>::new();
                     let mut probe_extension_nodes_used = 0usize;
+                    let mut probe_killer_table: KillerTable = [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
                     Self::search_score(
                         &after_reply,
                         perspective,
@@ -5480,6 +5557,7 @@ impl MonsGameModel {
                         &mut probe_extension_nodes_used,
                         0,
                         true,
+                        &mut probe_killer_table,
                     )
                 }
             };
