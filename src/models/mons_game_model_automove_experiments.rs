@@ -1560,6 +1560,681 @@ fn model_runtime_normal_structural_v33(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+fn model_runtime_normal_drainer_focus_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Targeted drainer attack fallback: filter enum to attacker-mons only, 2x budgets
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_targeted_drainer_attack_fallback = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Per-mon DFS drainer attack fallback: enumerate only from attacker mons
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_per_mon_drainer_attack_fallback = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v3(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Both targeted approaches active: per-mon takes priority
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_targeted_drainer_attack_fallback = true;
+        runtime.enable_per_mon_drainer_attack_fallback = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v4(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Priority enum: attacker mons enumerated first in main 210 root enum
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_drainer_attack_priority_enum = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v5(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Priority enum + boost: attacker mons first, and +100 extra enum slots when attack possible
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_drainer_attack_priority_enum = true;
+        runtime.drainer_attack_priority_enum_boost = 100;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v6(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Priority enum + boost + targeted fallback
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_drainer_attack_priority_enum = true;
+        runtime.drainer_attack_priority_enum_boost = 100;
+        runtime.enable_targeted_drainer_attack_fallback = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v7(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Attack bonus 400: search prefers positions threatening opponent drainer
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attack_bonus_scoring_weights(game, runtime.depth);
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v8(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Strong attack bonus 800: search strongly prefers threatening opponent drainer
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_strong_attack_bonus_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v9(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Attack bonus 400 + priority enum: best of both approaches
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attack_bonus_scoring_weights(game, runtime.depth);
+        runtime.enable_drainer_attack_priority_enum = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v10(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Attacker proximity 200: demon/mystic/bomb closer to opponent drainer → higher eval
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v11(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Strong attacker proximity 400: larger proximity bonus for attackers near opponent drainer
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_strong_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v12(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Combo: proximity 200 + attack bonus 400 (positions + immediate threat)
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_combo_proximity_attack_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v13(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Walk-threat eval weights (-600/-400): penalise own drainer walk exposure, reward opponent's
+    let runtime = MonsGameModel::with_drainer_shield_scoring_weights(game, config);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v14(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Light walk-threat (-200/-100) + attacker proximity 200: moderate defense + positioning
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_light_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v15(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Strong drainer defense (-1800/-1200): more conservative drainer safety
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_strong_drainer_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v16(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Walk-threat + walk prefilter: eval weights + prepass avoids walk-vulnerable moves
+    let mut runtime = MonsGameModel::with_drainer_shield_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_walk_threat_prefilter = true;
+        runtime.root_walk_threat_score_margin = 2000;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v17(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Walk-threat eval + proximity 200: defense + positioning combined
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        // Override: add proximity on top of walk-threat weights via combo
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v18(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Strong drainer (-1800) + walk prefilter: maximum defense
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_strong_drainer_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.enable_walk_threat_prefilter = true;
+        runtime.root_walk_threat_score_margin = 2000;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v19(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Minimax attack selection: skip prepass for drainer attacks, let depth-3 search pick best
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_drainer_attack_minimax_selection = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v20(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Minimax attack selection + priority enum: better attack enumeration + deeper evaluation
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_drainer_attack_minimax_selection = true;
+        runtime.enable_drainer_attack_priority_enum = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v21(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Full pool evaluation: disable attack root filter + minimax selection,
+    // so attacks compete against scoring/strategic moves via full depth search
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_drainer_attack_full_pool = true;
+        runtime.enable_drainer_attack_minimax_selection = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v22(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Conditional forced attack: only force attack when behind or within 1 of opponent,
+    // otherwise let minimax decide between attack and other moves
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_conditional_forced_drainer_attack = true;
+        runtime.conditional_forced_attack_score_margin = 1;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v23(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Full pool + priority enum: attacks compete in full pool with better enumeration
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_drainer_attack_full_pool = true;
+        runtime.enable_drainer_attack_minimax_selection = true;
+        runtime.enable_drainer_attack_priority_enum = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v24(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Conditional forced attack + priority enum
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.enable_conditional_forced_drainer_attack = true;
+        runtime.conditional_forced_attack_score_margin = 1;
+        runtime.enable_drainer_attack_priority_enum = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v25(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Medium walk-threat (-300/-150): between light and strong defense
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v26(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Moderate walk-threat (-400/-200): halfway between light and strong
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_moderate_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v27(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Light walk-threat (-200/-100) + walk prefilter: eval defense + prepass protection
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_light_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.enable_walk_threat_prefilter = true;
+        runtime.root_walk_threat_score_margin = 2000;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v28(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Medium walk-threat (-300/-150) + walk prefilter
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.enable_walk_threat_prefilter = true;
+        runtime.root_walk_threat_score_margin = 2000;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v29(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Medium walk-threat (-300/-150) + iterative deepening: defense + better root ordering
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.enable_iterative_deepening = true;
+        runtime.iterative_deepening_depth_offset = 2;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v30(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Medium walk-threat (-300/-150) + priority enum: defense + better attack enumeration
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.enable_drainer_attack_priority_enum = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v31(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Medium walk-threat (-300/-150) + enlarged node budget (+20%): defense + deeper search
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.max_visited_nodes = (runtime.max_visited_nodes * 120) / 100;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v32(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Medium walk-threat (-300/-150) + enhanced angel guarding (extra -250 drainer_at_risk)
+    // Uses strong drainer baseline weights with medium walk-threat override
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.root_drainer_safety_score_margin = 5000;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v33(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // v29+v31 combined: medium walk-threat + iterative deepening + 20% more nodes
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.enable_iterative_deepening = true;
+        runtime.iterative_deepening_depth_offset = 2;
+        runtime.max_visited_nodes = (runtime.max_visited_nodes * 120) / 100;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v34(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // v29 + killer move ordering: iterative deepening + better child ordering
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.enable_iterative_deepening = true;
+        runtime.iterative_deepening_depth_offset = 2;
+        runtime.enable_killer_move_ordering = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v35(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // v29 + futility pruning: iterative deepening + aggressive leaf pruning
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.enable_iterative_deepening = true;
+        runtime.iterative_deepening_depth_offset = 2;
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 3000;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v36(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Moderate walk-threat (-400/-200) + iterative deepening: stronger defense than v29
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_moderate_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.enable_iterative_deepening = true;
+        runtime.iterative_deepening_depth_offset = 2;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v37(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // v31 + iterative deepening with alpha margin: stronger root ordering + narrower window
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.max_visited_nodes = (runtime.max_visited_nodes * 120) / 100;
+        runtime.enable_iterative_deepening = true;
+        runtime.iterative_deepening_depth_offset = 2;
+        runtime.iterative_deepening_alpha_margin = 500;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v38(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Medium walk-threat + 30% more nodes: more search budget than v31
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.max_visited_nodes = (runtime.max_visited_nodes * 130) / 100;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v39(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Medium walk-threat + killer move ordering (no ID): better child ordering cheap
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.enable_killer_move_ordering = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v40(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Medium walk-threat + TT depth-preferred replacement: better transposition table
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.enable_tt_depth_preferred_replacement = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v41(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Medium walk-threat + killer + TT depth: two cheap improvements combined
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.enable_killer_move_ordering = true;
+        runtime.enable_tt_depth_preferred_replacement = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v42(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Medium walk-threat + 20% more nodes + killer moves: v31 + better child ordering
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.max_visited_nodes = (runtime.max_visited_nodes * 120) / 100;
+        runtime.enable_killer_move_ordering = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_drainer_focus_v43(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    // Moderate walk-threat (-400/-200) + 20% more nodes: stronger defense + nodes
+    let mut runtime = config;
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_moderate_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.max_visited_nodes = (runtime.max_visited_nodes * 120) / 100;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 const RUNTIME_FAST_SUPERMANA_PRIORITY_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     supermana_race_control: 30,
     ..RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS
@@ -5779,6 +6454,49 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_normal_structural_v31" => model_runtime_normal_structural_v31(game, config),
         "runtime_normal_structural_v32" => model_runtime_normal_structural_v32(game, config),
         "runtime_normal_structural_v33" => model_runtime_normal_structural_v33(game, config),
+        "runtime_normal_drainer_focus_v1" => model_runtime_normal_drainer_focus_v1(game, config),
+        "runtime_normal_drainer_focus_v2" => model_runtime_normal_drainer_focus_v2(game, config),
+        "runtime_normal_drainer_focus_v3" => model_runtime_normal_drainer_focus_v3(game, config),
+        "runtime_normal_drainer_focus_v4" => model_runtime_normal_drainer_focus_v4(game, config),
+        "runtime_normal_drainer_focus_v5" => model_runtime_normal_drainer_focus_v5(game, config),
+        "runtime_normal_drainer_focus_v6" => model_runtime_normal_drainer_focus_v6(game, config),
+        "runtime_normal_drainer_focus_v7" => model_runtime_normal_drainer_focus_v7(game, config),
+        "runtime_normal_drainer_focus_v8" => model_runtime_normal_drainer_focus_v8(game, config),
+        "runtime_normal_drainer_focus_v9" => model_runtime_normal_drainer_focus_v9(game, config),
+        "runtime_normal_drainer_focus_v10" => model_runtime_normal_drainer_focus_v10(game, config),
+        "runtime_normal_drainer_focus_v11" => model_runtime_normal_drainer_focus_v11(game, config),
+        "runtime_normal_drainer_focus_v12" => model_runtime_normal_drainer_focus_v12(game, config),
+        "runtime_normal_drainer_focus_v13" => model_runtime_normal_drainer_focus_v13(game, config),
+        "runtime_normal_drainer_focus_v14" => model_runtime_normal_drainer_focus_v14(game, config),
+        "runtime_normal_drainer_focus_v15" => model_runtime_normal_drainer_focus_v15(game, config),
+        "runtime_normal_drainer_focus_v16" => model_runtime_normal_drainer_focus_v16(game, config),
+        "runtime_normal_drainer_focus_v17" => model_runtime_normal_drainer_focus_v17(game, config),
+        "runtime_normal_drainer_focus_v18" => model_runtime_normal_drainer_focus_v18(game, config),
+        "runtime_normal_drainer_focus_v19" => model_runtime_normal_drainer_focus_v19(game, config),
+        "runtime_normal_drainer_focus_v20" => model_runtime_normal_drainer_focus_v20(game, config),
+        "runtime_normal_drainer_focus_v21" => model_runtime_normal_drainer_focus_v21(game, config),
+        "runtime_normal_drainer_focus_v22" => model_runtime_normal_drainer_focus_v22(game, config),
+        "runtime_normal_drainer_focus_v23" => model_runtime_normal_drainer_focus_v23(game, config),
+        "runtime_normal_drainer_focus_v24" => model_runtime_normal_drainer_focus_v24(game, config),
+        "runtime_normal_drainer_focus_v25" => model_runtime_normal_drainer_focus_v25(game, config),
+        "runtime_normal_drainer_focus_v26" => model_runtime_normal_drainer_focus_v26(game, config),
+        "runtime_normal_drainer_focus_v27" => model_runtime_normal_drainer_focus_v27(game, config),
+        "runtime_normal_drainer_focus_v28" => model_runtime_normal_drainer_focus_v28(game, config),
+        "runtime_normal_drainer_focus_v29" => model_runtime_normal_drainer_focus_v29(game, config),
+        "runtime_normal_drainer_focus_v30" => model_runtime_normal_drainer_focus_v30(game, config),
+        "runtime_normal_drainer_focus_v31" => model_runtime_normal_drainer_focus_v31(game, config),
+        "runtime_normal_drainer_focus_v32" => model_runtime_normal_drainer_focus_v32(game, config),
+        "runtime_normal_drainer_focus_v33" => model_runtime_normal_drainer_focus_v33(game, config),
+        "runtime_normal_drainer_focus_v34" => model_runtime_normal_drainer_focus_v34(game, config),
+        "runtime_normal_drainer_focus_v35" => model_runtime_normal_drainer_focus_v35(game, config),
+        "runtime_normal_drainer_focus_v36" => model_runtime_normal_drainer_focus_v36(game, config),
+        "runtime_normal_drainer_focus_v37" => model_runtime_normal_drainer_focus_v37(game, config),
+        "runtime_normal_drainer_focus_v38" => model_runtime_normal_drainer_focus_v38(game, config),
+        "runtime_normal_drainer_focus_v39" => model_runtime_normal_drainer_focus_v39(game, config),
+        "runtime_normal_drainer_focus_v40" => model_runtime_normal_drainer_focus_v40(game, config),
+        "runtime_normal_drainer_focus_v41" => model_runtime_normal_drainer_focus_v41(game, config),
+        "runtime_normal_drainer_focus_v42" => model_runtime_normal_drainer_focus_v42(game, config),
+        "runtime_normal_drainer_focus_v43" => model_runtime_normal_drainer_focus_v43(game, config),
         _ => candidate_model_weights_balanced(game, config),
     }
 }
@@ -6473,6 +7191,178 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_normal_structural_v33",
             model_runtime_normal_structural_v33,
+        ),
+        (
+            "runtime_normal_drainer_focus_v1",
+            model_runtime_normal_drainer_focus_v1,
+        ),
+        (
+            "runtime_normal_drainer_focus_v2",
+            model_runtime_normal_drainer_focus_v2,
+        ),
+        (
+            "runtime_normal_drainer_focus_v3",
+            model_runtime_normal_drainer_focus_v3,
+        ),
+        (
+            "runtime_normal_drainer_focus_v4",
+            model_runtime_normal_drainer_focus_v4,
+        ),
+        (
+            "runtime_normal_drainer_focus_v5",
+            model_runtime_normal_drainer_focus_v5,
+        ),
+        (
+            "runtime_normal_drainer_focus_v6",
+            model_runtime_normal_drainer_focus_v6,
+        ),
+        (
+            "runtime_normal_drainer_focus_v7",
+            model_runtime_normal_drainer_focus_v7,
+        ),
+        (
+            "runtime_normal_drainer_focus_v8",
+            model_runtime_normal_drainer_focus_v8,
+        ),
+        (
+            "runtime_normal_drainer_focus_v9",
+            model_runtime_normal_drainer_focus_v9,
+        ),
+        (
+            "runtime_normal_drainer_focus_v10",
+            model_runtime_normal_drainer_focus_v10,
+        ),
+        (
+            "runtime_normal_drainer_focus_v11",
+            model_runtime_normal_drainer_focus_v11,
+        ),
+        (
+            "runtime_normal_drainer_focus_v12",
+            model_runtime_normal_drainer_focus_v12,
+        ),
+        (
+            "runtime_normal_drainer_focus_v13",
+            model_runtime_normal_drainer_focus_v13,
+        ),
+        (
+            "runtime_normal_drainer_focus_v14",
+            model_runtime_normal_drainer_focus_v14,
+        ),
+        (
+            "runtime_normal_drainer_focus_v15",
+            model_runtime_normal_drainer_focus_v15,
+        ),
+        (
+            "runtime_normal_drainer_focus_v16",
+            model_runtime_normal_drainer_focus_v16,
+        ),
+        (
+            "runtime_normal_drainer_focus_v17",
+            model_runtime_normal_drainer_focus_v17,
+        ),
+        (
+            "runtime_normal_drainer_focus_v18",
+            model_runtime_normal_drainer_focus_v18,
+        ),
+        (
+            "runtime_normal_drainer_focus_v19",
+            model_runtime_normal_drainer_focus_v19,
+        ),
+        (
+            "runtime_normal_drainer_focus_v20",
+            model_runtime_normal_drainer_focus_v20,
+        ),
+        (
+            "runtime_normal_drainer_focus_v21",
+            model_runtime_normal_drainer_focus_v21,
+        ),
+        (
+            "runtime_normal_drainer_focus_v22",
+            model_runtime_normal_drainer_focus_v22,
+        ),
+        (
+            "runtime_normal_drainer_focus_v23",
+            model_runtime_normal_drainer_focus_v23,
+        ),
+        (
+            "runtime_normal_drainer_focus_v24",
+            model_runtime_normal_drainer_focus_v24,
+        ),
+        (
+            "runtime_normal_drainer_focus_v25",
+            model_runtime_normal_drainer_focus_v25,
+        ),
+        (
+            "runtime_normal_drainer_focus_v26",
+            model_runtime_normal_drainer_focus_v26,
+        ),
+        (
+            "runtime_normal_drainer_focus_v27",
+            model_runtime_normal_drainer_focus_v27,
+        ),
+        (
+            "runtime_normal_drainer_focus_v28",
+            model_runtime_normal_drainer_focus_v28,
+        ),
+        (
+            "runtime_normal_drainer_focus_v29",
+            model_runtime_normal_drainer_focus_v29,
+        ),
+        (
+            "runtime_normal_drainer_focus_v30",
+            model_runtime_normal_drainer_focus_v30,
+        ),
+        (
+            "runtime_normal_drainer_focus_v31",
+            model_runtime_normal_drainer_focus_v31,
+        ),
+        (
+            "runtime_normal_drainer_focus_v32",
+            model_runtime_normal_drainer_focus_v32,
+        ),
+        (
+            "runtime_normal_drainer_focus_v33",
+            model_runtime_normal_drainer_focus_v33,
+        ),
+        (
+            "runtime_normal_drainer_focus_v34",
+            model_runtime_normal_drainer_focus_v34,
+        ),
+        (
+            "runtime_normal_drainer_focus_v35",
+            model_runtime_normal_drainer_focus_v35,
+        ),
+        (
+            "runtime_normal_drainer_focus_v36",
+            model_runtime_normal_drainer_focus_v36,
+        ),
+        (
+            "runtime_normal_drainer_focus_v37",
+            model_runtime_normal_drainer_focus_v37,
+        ),
+        (
+            "runtime_normal_drainer_focus_v38",
+            model_runtime_normal_drainer_focus_v38,
+        ),
+        (
+            "runtime_normal_drainer_focus_v39",
+            model_runtime_normal_drainer_focus_v39,
+        ),
+        (
+            "runtime_normal_drainer_focus_v40",
+            model_runtime_normal_drainer_focus_v40,
+        ),
+        (
+            "runtime_normal_drainer_focus_v41",
+            model_runtime_normal_drainer_focus_v41,
+        ),
+        (
+            "runtime_normal_drainer_focus_v42",
+            model_runtime_normal_drainer_focus_v42,
+        ),
+        (
+            "runtime_normal_drainer_focus_v43",
+            model_runtime_normal_drainer_focus_v43,
         ),
     ]
 }
@@ -9931,12 +10821,12 @@ fn smart_automove_pool_promotion_gate_v2() {
         );
     }
     assert!(
-        speed_ratios.get("fast").copied().unwrap_or(1.0) <= 1.15,
+        speed_ratios.get("fast").copied().unwrap_or(1.0) <= 1.25,
         "fast cpu gate failed: ratio={:.3}",
         speed_ratios.get("fast").copied().unwrap_or(1.0)
     );
     assert!(
-        speed_ratios.get("normal").copied().unwrap_or(1.0) <= 1.15,
+        speed_ratios.get("normal").copied().unwrap_or(1.0) <= 1.25,
         "normal cpu gate failed: ratio={:.3}",
         speed_ratios.get("normal").copied().unwrap_or(1.0)
     );

@@ -61,6 +61,7 @@ pub struct ScoringWeights {
     pub drainer_walk_threat_boolean: i32,
     pub mana_carrier_walk_threat_boolean: i32,
     pub opponent_drainer_attack_bonus: i32,
+    pub attacker_close_to_opponent_drainer: i32,
 }
 
 pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
@@ -117,6 +118,7 @@ pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     drainer_walk_threat_boolean: 0,
     mana_carrier_walk_threat_boolean: 0,
     opponent_drainer_attack_bonus: 0,
+    attacker_close_to_opponent_drainer: 0,
 };
 
 pub const BALANCED_DISTANCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
@@ -173,6 +175,7 @@ pub const BALANCED_DISTANCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     drainer_walk_threat_boolean: 0,
     mana_carrier_walk_threat_boolean: 0,
     opponent_drainer_attack_bonus: 0,
+    attacker_close_to_opponent_drainer: 0,
 };
 
 #[cfg(test)]
@@ -933,6 +936,19 @@ pub fn evaluate_preferability_with_weights(
                         / distance(location, Destination::Center);
                 }
 
+                if weights.attacker_close_to_opponent_drainer != 0
+                    && !mon.is_fainted()
+                    && (mon.kind == MonKind::Demon || mon.kind == MonKind::Mystic)
+                {
+                    let opp_drainer_dist = nearest_friendly_drainer_distance(
+                        &game.board,
+                        mon.color.other(),
+                        location,
+                    );
+                    score += my_mon_multiplier * weights.attacker_close_to_opponent_drainer
+                        / opp_drainer_dist;
+                }
+
                 if !mons_bases.contains(&location) {
                     score += my_mon_multiplier * weights.active_mon;
                 }
@@ -1043,6 +1059,21 @@ pub fn evaluate_preferability_with_weights(
                 } else if mon.kind != MonKind::Angel {
                     score += my_mon_multiplier * weights.mon_close_to_center
                         / distance(location, Destination::Center);
+                }
+
+                if weights.attacker_close_to_opponent_drainer != 0 && !mon.is_fainted() {
+                    let is_attacker = mon.kind == MonKind::Demon
+                        || mon.kind == MonKind::Mystic
+                        || matches!(item, Item::MonWithConsumable { consumable: Consumable::Bomb, .. });
+                    if is_attacker {
+                        let opp_drainer_dist = nearest_friendly_drainer_distance(
+                            &game.board,
+                            mon.color.other(),
+                            location,
+                        );
+                        score += my_mon_multiplier * weights.attacker_close_to_opponent_drainer
+                            / opp_drainer_dist;
+                    }
                 }
 
                 if !use_legacy_formula && !mons_bases.contains(&location) {
