@@ -53,11 +53,17 @@ impl Board {
 
     #[inline]
     pub fn item(&self, location: Location) -> Option<&Item> {
+        if !location.is_valid() {
+            return None;
+        }
         self.items[location.index()].as_ref()
     }
 
     #[inline]
     pub fn square(&self, location: Location) -> Square {
+        if !location.is_valid() {
+            return Square::Regular;
+        }
         Config::square_at(location)
     }
 

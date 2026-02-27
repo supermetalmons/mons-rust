@@ -29,6 +29,12 @@ impl Location {
 
 impl Location {
     #[inline]
+    pub fn is_valid(&self) -> bool {
+        let r = Self::valid_range();
+        r.contains(&self.i) && r.contains(&self.j)
+    }
+
+    #[inline]
     pub fn index(&self) -> usize {
         (self.i * 11 + self.j) as usize
     }
