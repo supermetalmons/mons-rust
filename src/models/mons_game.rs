@@ -1,5 +1,6 @@
 use crate::*;
 use std::collections::HashMap;
+use std::hash::Hash;
 
 #[derive(Debug, Clone)]
 pub struct VerboseTrackingEntity {
@@ -8,7 +9,47 @@ pub struct VerboseTrackingEntity {
     pub events: Vec<Event>,
 }
 
-#[derive(Debug, Clone)]
+const START_SUGGESTIONS_CACHE_CAPACITY: usize = 8;
+const SECOND_INPUT_OPTIONS_CACHE_CAPACITY: usize = 4_096;
+const SECOND_STAGE_CACHE_CAPACITY: usize = 8_192;
+const THIRD_STAGE_CACHE_CAPACITY: usize = 8_192;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct SecondInputOptionsCacheKey {
+    start_location: Location,
+    start_item: Item,
+    only_one: bool,
+    specific_next: Option<Input>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct SecondStageCacheKey {
+    kind: NextInputKind,
+    start_item: Item,
+    start_location: Location,
+    target_location: Location,
+    specific_next: Option<Input>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ThirdStageCacheKey {
+    third_input: Input,
+    third_input_kind: NextInputKind,
+    third_actor_mon_item: Option<Item>,
+    start_item: Item,
+    start_location: Location,
+    target_location: Location,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ProcessInputCache {
+    start_suggestions: HashMap<SuggestedStartInputOptions, Output>,
+    second_input_options: HashMap<SecondInputOptionsCacheKey, Vec<NextInput>>,
+    second_stage: HashMap<SecondStageCacheKey, Option<(Vec<Event>, Vec<NextInput>)>>,
+    third_stage: HashMap<ThirdStageCacheKey, Option<(Vec<Event>, Vec<NextInput>)>>,
+}
+
+#[derive(Debug)]
 pub struct MonsGame {
     pub board: Board,
     pub white_score: i32,
@@ -24,9 +65,11 @@ pub struct MonsGame {
     pub is_moves_verified: bool,
     pub with_verbose_tracking: bool,
     pub verbose_tracking_entities: Vec<VerboseTrackingEntity>,
+    track_takeback_history: bool,
+    process_input_cache: ProcessInputCache,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct SuggestedStartInputOptions {
     pub include_mana_starts_with_potion_action: bool,
 }
@@ -35,6 +78,29 @@ impl SuggestedStartInputOptions {
     pub const fn for_automove() -> Self {
         Self {
             include_mana_starts_with_potion_action: true,
+        }
+    }
+}
+
+impl Clone for MonsGame {
+    fn clone(&self) -> Self {
+        Self {
+            board: self.board.clone(),
+            white_score: self.white_score,
+            black_score: self.black_score,
+            active_color: self.active_color,
+            actions_used_count: self.actions_used_count,
+            mana_moves_count: self.mana_moves_count,
+            mons_moves_count: self.mons_moves_count,
+            white_potions_count: self.white_potions_count,
+            black_potions_count: self.black_potions_count,
+            turn_number: self.turn_number,
+            takeback_fens: self.takeback_fens.clone(),
+            is_moves_verified: self.is_moves_verified,
+            with_verbose_tracking: self.with_verbose_tracking,
+            verbose_tracking_entities: self.verbose_tracking_entities.clone(),
+            track_takeback_history: self.track_takeback_history,
+            process_input_cache: ProcessInputCache::default(),
         }
     }
 }
@@ -56,6 +122,8 @@ impl MonsGame {
             is_moves_verified: true,
             with_verbose_tracking,
             verbose_tracking_entities: vec![],
+            track_takeback_history: true,
+            process_input_cache: ProcessInputCache::default(),
         }
     }
 
@@ -75,7 +143,21 @@ impl MonsGame {
             is_moves_verified: self.is_moves_verified,
             with_verbose_tracking: false,
             verbose_tracking_entities: vec![],
+            track_takeback_history: false,
+            process_input_cache: ProcessInputCache::default(),
         }
+    }
+
+    pub(crate) fn set_takeback_history_tracking(&mut self, enabled: bool) {
+        self.track_takeback_history = enabled;
+        if !enabled {
+            self.takeback_fens.clear();
+        }
+        self.invalidate_process_input_cache();
+    }
+
+    pub(crate) fn invalidate_process_input_cache(&mut self) {
+        self.process_input_cache = ProcessInputCache::default();
     }
 
     pub fn set_verbose_tracking(&mut self, enabled: bool) {
@@ -91,6 +173,7 @@ impl MonsGame {
         self.takeback_fens.shrink_to_fit();
         self.verbose_tracking_entities.clear();
         self.verbose_tracking_entities.shrink_to_fit();
+        self.invalidate_process_input_cache();
     }
 
     fn update_with(&mut self, other_game: &MonsGame) {
@@ -104,12 +187,24 @@ impl MonsGame {
         self.white_potions_count = other_game.white_potions_count;
         self.black_potions_count = other_game.black_potions_count;
         self.turn_number = other_game.turn_number;
+        self.invalidate_process_input_cache();
+    }
+
+    #[inline]
+    fn bounded_cache_insert<K, V>(cache: &mut HashMap<K, V>, key: K, value: V, max_entries: usize)
+    where
+        K: Eq + Hash,
+    {
+        if cache.len() >= max_entries && !cache.contains_key(&key) {
+            cache.clear();
+        }
+        cache.insert(key, value);
     }
 
     // MARK: - process input
 
     pub fn can_takeback(&self, color: Color) -> bool {
-        self.takeback_fens.len() > 1 && self.active_color == color
+        self.track_takeback_history && self.takeback_fens.len() > 1 && self.active_color == color
     }
 
     pub fn process_input(
@@ -176,7 +271,21 @@ impl MonsGame {
             return Output::InvalidInput;
         }
         if input.is_empty() {
-            return self.suggested_input_to_start_with(suggested_start_options);
+            if let Some(cached) = self
+                .process_input_cache
+                .start_suggestions
+                .get(&suggested_start_options)
+            {
+                return cached.clone();
+            }
+            let output = self.suggested_input_to_start_with(suggested_start_options);
+            Self::bounded_cache_insert(
+                &mut self.process_input_cache.start_suggestions,
+                suggested_start_options,
+                output.clone(),
+                START_SUGGESTIONS_CACHE_CAPACITY,
+            );
+            return output;
         }
 
         if input.len() == 1 {
@@ -193,6 +302,7 @@ impl MonsGame {
                     } else {
                         return Output::InvalidInput;
                     }
+                    self.invalidate_process_input_cache();
                     return Output::Events(vec![Event::Takeback]);
                 } else {
                     return Output::InvalidInput;
@@ -390,12 +500,26 @@ impl MonsGame {
     }
 
     fn second_input_options(
-        &self,
+        &mut self,
         start_location: Location,
         start_item: &Item,
         only_one: bool,
         specific_next: Option<Input>,
     ) -> Vec<NextInput> {
+        let cache_key = SecondInputOptionsCacheKey {
+            start_location,
+            start_item: *start_item,
+            only_one,
+            specific_next,
+        };
+        if let Some(cached) = self
+            .process_input_cache
+            .second_input_options
+            .get(&cache_key)
+        {
+            return cached.clone();
+        }
+
         let specific_location = match specific_next {
             Some(Input::Location(location)) => Some(location),
             _ => None,
@@ -675,10 +799,52 @@ impl MonsGame {
             _ => (),
         }
 
+        Self::bounded_cache_insert(
+            &mut self.process_input_cache.second_input_options,
+            cache_key,
+            second_input_options.clone(),
+            SECOND_INPUT_OPTIONS_CACHE_CAPACITY,
+        );
+
         second_input_options
     }
 
     fn process_second_input(
+        &mut self,
+        kind: NextInputKind,
+        start_item: Item,
+        start_location: Location,
+        target_location: Location,
+        specific_next: Option<Input>,
+    ) -> Option<(Vec<Event>, Vec<NextInput>)> {
+        let cache_key = SecondStageCacheKey {
+            kind,
+            start_item,
+            start_location,
+            target_location,
+            specific_next,
+        };
+        if let Some(cached) = self.process_input_cache.second_stage.get(&cache_key) {
+            return cached.clone();
+        }
+
+        let computed = self.process_second_input_uncached(
+            kind,
+            start_item,
+            start_location,
+            target_location,
+            specific_next,
+        );
+        Self::bounded_cache_insert(
+            &mut self.process_input_cache.second_stage,
+            cache_key,
+            computed.clone(),
+            SECOND_STAGE_CACHE_CAPACITY,
+        );
+        computed
+    }
+
+    fn process_second_input_uncached(
         &mut self,
         kind: NextInputKind,
         start_item: Item,
@@ -1142,6 +1308,40 @@ impl MonsGame {
         _start_location: Location,
         target_location: Location,
     ) -> Option<(Vec<Event>, Vec<NextInput>)> {
+        let cache_key = ThirdStageCacheKey {
+            third_input: third_input.input,
+            third_input_kind: third_input.kind,
+            third_actor_mon_item: third_input.actor_mon_item,
+            start_item,
+            start_location: _start_location,
+            target_location,
+        };
+        if let Some(cached) = self.process_input_cache.third_stage.get(&cache_key) {
+            return cached.clone();
+        }
+
+        let computed = self.process_third_input_uncached(
+            third_input,
+            start_item,
+            _start_location,
+            target_location,
+        );
+        Self::bounded_cache_insert(
+            &mut self.process_input_cache.third_stage,
+            cache_key,
+            computed.clone(),
+            THIRD_STAGE_CACHE_CAPACITY,
+        );
+        computed
+    }
+
+    fn process_third_input_uncached(
+        &mut self,
+        third_input: &NextInput,
+        start_item: Item,
+        _start_location: Location,
+        target_location: Location,
+    ) -> Option<(Vec<Event>, Vec<NextInput>)> {
         let target_item = self.board.item(target_location);
         let mut forth_input_options = Vec::new();
         let mut events = Vec::new();
@@ -1373,7 +1573,9 @@ impl MonsGame {
     // MARK: - apply events
 
     pub fn apply_and_add_resulting_events(&mut self, events: Vec<Event>) -> Vec<Event> {
-        if self.takeback_fens.len() == 0 {
+        self.invalidate_process_input_cache();
+
+        if self.track_takeback_history && self.takeback_fens.is_empty() {
             let initial_fen = self.fen();
             let tracked_initial_fen = initial_fen.clone();
             self.takeback_fens.push(initial_fen);
@@ -1550,7 +1752,9 @@ impl MonsGame {
 
         if let Some(winner) = self.winner_color() {
             extra_events.push(Event::GameOver { winner });
-            self.takeback_fens.clear();
+            if self.track_takeback_history {
+                self.takeback_fens.clear();
+            }
         } else if self.is_first_turn() && !self.player_can_move_mon()
             || !self.is_first_turn() && !self.player_can_move_mana()
             || !self.is_first_turn()
@@ -1578,8 +1782,10 @@ impl MonsGame {
                     }
                 }
             }
-            self.takeback_fens = vec![self.fen()];
-        } else {
+            if self.track_takeback_history {
+                self.takeback_fens = vec![self.fen()];
+            }
+        } else if self.track_takeback_history {
             self.takeback_fens.push(self.fen());
         }
 
@@ -1893,6 +2099,8 @@ mod tests {
             is_moves_verified: true,
             with_verbose_tracking: false,
             verbose_tracking_entities: vec![],
+            track_takeback_history: true,
+            process_input_cache: ProcessInputCache::default(),
         }
     }
 
@@ -2002,5 +2210,41 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn process_input_cache_matches_cold_recomputation() {
+        let game = MonsGame::new(false);
+        let chain = first_chain_from_state(&game).expect("expected at least one legal input chain");
+
+        let mut queries = vec![Vec::<Input>::new()];
+        let mut prefix = Vec::<Input>::new();
+        for input in chain {
+            prefix.push(input);
+            queries.push(prefix.clone());
+        }
+
+        let mut warm = game.clone_for_simulation();
+        let mut cold = game.clone_for_simulation();
+        for query in queries {
+            let warm_output = warm.process_input(query.clone(), true, false);
+            cold.invalidate_process_input_cache();
+            let cold_output = cold.process_input(query, true, false);
+            assert_eq!(warm_output, cold_output);
+            assert_eq!(warm.fen(), cold.fen());
+        }
+    }
+
+    #[test]
+    fn simulation_games_do_not_accumulate_takeback_history() {
+        let base = MonsGame::new(false);
+        let mut simulation = base.clone_for_simulation();
+        let chain =
+            first_chain_from_state(&simulation).expect("expected legal chain for simulation game");
+        assert!(matches!(
+            simulation.process_input(chain, false, false),
+            Output::Events(_)
+        ));
+        assert!(simulation.takeback_fens.is_empty());
     }
 }

@@ -269,6 +269,18 @@ const WHITE_OPENING_BOOK: [[&str; 5]; 9] = [
         "l10,7;l9,7",
     ],
 ];
+static PARSED_WHITE_OPENING_BOOK: std::sync::LazyLock<Vec<Vec<Vec<Input>>>> =
+    std::sync::LazyLock::new(|| {
+        WHITE_OPENING_BOOK
+            .iter()
+            .map(|sequence| {
+                sequence
+                    .iter()
+                    .map(|step| Input::array_from_fen(step))
+                    .collect()
+            })
+            .collect()
+    });
 
 #[cfg(any(target_arch = "wasm32", test))]
 const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
@@ -1399,6 +1411,14 @@ struct RankedChildState {
     classes: MoveClassFlags,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone)]
+struct LegalInputTransition {
+    inputs: Vec<Input>,
+    game: MonsGame,
+    events: Vec<Event>,
+}
+
 #[cfg(target_arch = "wasm32")]
 struct AsyncSmartSearchState {
     game: MonsGame,
@@ -1431,7 +1451,9 @@ impl MonsGameModel {
 
     #[wasm_bindgen(js_name = newForSimulation)]
     pub fn new_for_simulation() -> MonsGameModel {
-        Self::with_game(MonsGame::new(false))
+        let mut game = MonsGame::new(false);
+        game.set_takeback_history_tracking(false);
+        Self::with_game(game)
     }
 
     pub fn from_fen(fen: &str) -> Option<MonsGameModel> {
@@ -1444,7 +1466,10 @@ impl MonsGameModel {
 
     #[wasm_bindgen(js_name = fromFenForSimulation)]
     pub fn from_fen_for_simulation(fen: &str) -> Option<MonsGameModel> {
-        MonsGame::from_fen(fen, false).map(Self::with_game)
+        MonsGame::from_fen(fen, false).map(|mut game| {
+            game.set_takeback_history_tracking(false);
+            Self::with_game(game)
+        })
     }
 
     pub fn without_last_turn(&self, takeback_fens: Vec<String>) -> Option<MonsGameModel> {
@@ -1737,6 +1762,7 @@ impl MonsGameModel {
 
     pub fn remove_item(&mut self, location: Location) {
         self.game.board.remove_item(location);
+        self.game.invalidate_process_input_cache();
     }
 
     pub fn item(&self, at: Location) -> Option<ItemModel> {
@@ -1890,21 +1916,21 @@ impl MonsGameModel {
             return None;
         }
 
+        let parsed_book = &*PARSED_WHITE_OPENING_BOOK;
         let opening_step = game.mons_moves_count.max(0) as usize;
-        if opening_step >= WHITE_OPENING_BOOK[0].len() {
+        if opening_step >= parsed_book[0].len() {
             return None;
         }
 
         let current_fen = game.fen();
         let mut viable_sequences = Vec::new();
 
-        for (sequence_index, sequence) in WHITE_OPENING_BOOK.iter().enumerate() {
+        for (sequence_index, sequence) in parsed_book.iter().enumerate() {
             let mut simulated = MonsGame::new(false);
             let mut prefix_is_valid = true;
-            for step_fen in sequence.iter().take(opening_step) {
-                let step_inputs = Input::array_from_fen(step_fen);
+            for step_inputs in sequence.iter().take(opening_step) {
                 if !matches!(
-                    simulated.process_input(step_inputs, false, false),
+                    simulated.process_input(step_inputs.clone(), false, false),
                     Output::Events(_)
                 ) {
                     prefix_is_valid = false;
@@ -1916,7 +1942,7 @@ impl MonsGameModel {
                 continue;
             }
 
-            let next_inputs = Input::array_from_fen(sequence[opening_step]);
+            let next_inputs = &sequence[opening_step];
             let mut probe = game.clone_for_simulation();
             if matches!(
                 probe.process_input_slice(next_inputs.as_slice(), true, false),
@@ -1931,9 +1957,7 @@ impl MonsGameModel {
         }
 
         let chosen = viable_sequences[random_index(viable_sequences.len())];
-        Some(Input::array_from_fen(
-            WHITE_OPENING_BOOK[chosen][opening_step],
-        ))
+        Some(parsed_book[chosen][opening_step].clone())
     }
 }
 
@@ -2373,6 +2397,7 @@ impl MonsGameModel {
         }
     }
 
+    #[allow(dead_code)]
     fn build_scored_root_move(
         game: &MonsGame,
         perspective: Color,
@@ -2381,6 +2406,26 @@ impl MonsGameModel {
         inputs: &[Input],
     ) -> Option<ScoredRootMove> {
         let (simulated_game, events) = Self::apply_inputs_for_search_with_events(game, inputs)?;
+        Self::build_scored_root_move_from_transition(
+            game,
+            perspective,
+            config,
+            own_drainer_vulnerable_before,
+            inputs.to_vec(),
+            simulated_game,
+            events,
+        )
+    }
+
+    fn build_scored_root_move_from_transition(
+        game: &MonsGame,
+        perspective: Color,
+        config: SmartSearchConfig,
+        own_drainer_vulnerable_before: bool,
+        inputs: Vec<Input>,
+        simulated_game: MonsGame,
+        events: Vec<Event>,
+    ) -> Option<ScoredRootMove> {
         let efficiency = if config.enable_root_efficiency {
             Self::move_efficiency_delta(
                 game,
@@ -2510,7 +2555,7 @@ impl MonsGameModel {
             .saturating_sub(potion_spend_penalty);
 
         Some(ScoredRootMove {
-            inputs: inputs.to_vec(),
+            inputs,
             game: simulated_game,
             heuristic: heuristic_with_policy,
             efficiency,
@@ -2873,7 +2918,7 @@ impl MonsGameModel {
         perspective: Color,
         config: SmartSearchConfig,
         max_candidates: usize,
-    ) -> Vec<Vec<Input>> {
+    ) -> Vec<LegalInputTransition> {
         let attacker_locations = Self::find_potential_drainer_attacker_locations(game, perspective);
         if attacker_locations.is_empty() {
             return Vec::new();
@@ -2889,39 +2934,39 @@ impl MonsGameModel {
         let enum_limit = base_enum * 2;
         let start_options = Self::automove_start_input_options(config);
 
-        let mut root_inputs = Self::enumerate_legal_inputs(game, usize::MAX, start_options);
-        root_inputs.retain(|inputs| {
-            matches!(inputs.first(), Some(Input::Location(loc)) if attacker_set.contains(loc))
+        let mut root_transitions =
+            Self::enumerate_legal_transitions(game, usize::MAX, start_options);
+        root_transitions.retain(|transition| {
+            matches!(
+                transition.inputs.first(),
+                Some(Input::Location(loc)) if attacker_set.contains(loc)
+            )
         });
-        if root_inputs.len() > enum_limit {
-            root_inputs.truncate(enum_limit);
+        if root_transitions.len() > enum_limit {
+            root_transitions.truncate(enum_limit);
         }
 
-        for inputs in root_inputs {
+        for transition in root_transitions {
             if attack_inputs.len() >= max_candidates.max(1) {
                 break;
             }
 
-            let Some((after, events)) = Self::apply_inputs_for_search_with_events(game, &inputs)
-            else {
-                continue;
-            };
-            if Self::events_include_opponent_drainer_fainted(&events, perspective) {
-                attack_inputs.push(inputs);
+            if Self::events_include_opponent_drainer_fainted(&transition.events, perspective) {
+                attack_inputs.push(transition);
                 continue;
             }
-            if after.active_color != perspective {
+            if transition.game.active_color != perspective {
                 continue;
             }
             if Self::can_attack_opponent_drainer_before_turn_ends(
-                &after,
+                &transition.game,
                 perspective,
                 enum_limit,
                 start_options,
                 &mut continuation_budget,
                 &mut memo_true,
             ) {
-                attack_inputs.push(inputs);
+                attack_inputs.push(transition);
             }
         }
 
@@ -2933,7 +2978,7 @@ impl MonsGameModel {
         perspective: Color,
         config: SmartSearchConfig,
         max_candidates: usize,
-    ) -> Vec<Vec<Input>> {
+    ) -> Vec<LegalInputTransition> {
         let attacker_locations = Self::find_potential_drainer_attacker_locations(game, perspective);
         if attacker_locations.is_empty() {
             return Vec::new();
@@ -2951,47 +2996,42 @@ impl MonsGameModel {
                 break;
             }
 
-            let mut per_mon_inputs = Vec::new();
+            let mut per_mon_transitions = Vec::new();
             let mut partial_inputs = vec![Input::Location(attacker_loc)];
             let mut simulated_game = game.clone_for_simulation();
-            Self::collect_legal_inputs(
+            Self::collect_legal_transitions(
                 &mut simulated_game,
                 &mut partial_inputs,
-                &mut per_mon_inputs,
+                &mut per_mon_transitions,
                 per_mon_enum_limit,
                 start_options,
             );
-            per_mon_inputs.sort();
+            per_mon_transitions.sort_by(|a, b| a.inputs.cmp(&b.inputs));
 
-            for inputs in per_mon_inputs {
+            for transition in per_mon_transitions {
                 if attack_inputs.len() >= max_candidates.max(1) {
                     break;
                 }
 
-                let Some((after, events)) =
-                    Self::apply_inputs_for_search_with_events(game, &inputs)
-                else {
-                    continue;
-                };
-                if Self::events_include_opponent_drainer_fainted(&events, perspective) {
-                    attack_inputs.push(inputs);
+                if Self::events_include_opponent_drainer_fainted(&transition.events, perspective) {
+                    attack_inputs.push(transition);
                     continue;
                 }
-                if after.active_color != perspective {
+                if transition.game.active_color != perspective {
                     continue;
                 }
                 if continuation_budget == 0 {
                     continue;
                 }
                 if Self::can_attack_opponent_drainer_before_turn_ends(
-                    &after,
+                    &transition.game,
                     perspective,
                     per_mon_enum_limit,
                     start_options,
                     &mut continuation_budget,
                     &mut memo_true,
                 ) {
-                    attack_inputs.push(inputs);
+                    attack_inputs.push(transition);
                 }
             }
         }
@@ -3004,41 +3044,38 @@ impl MonsGameModel {
         perspective: Color,
         config: SmartSearchConfig,
         max_candidates: usize,
-    ) -> Vec<Vec<Input>> {
+    ) -> Vec<LegalInputTransition> {
         let mut memo_true = U64HashSet::default();
         let mut attack_inputs = Vec::new();
         let mut continuation_budget = Self::forced_drainer_attack_fallback_node_budget(config);
         let enum_limit = Self::forced_drainer_attack_fallback_enum_limit(config);
         let start_options = Self::automove_start_input_options(config);
-        let mut root_inputs = Self::enumerate_legal_inputs(game, usize::MAX, start_options);
-        if root_inputs.len() > enum_limit {
-            root_inputs.truncate(enum_limit);
+        let mut root_transitions =
+            Self::enumerate_legal_transitions(game, usize::MAX, start_options);
+        if root_transitions.len() > enum_limit {
+            root_transitions.truncate(enum_limit);
         }
-        for inputs in root_inputs {
+        for transition in root_transitions {
             if attack_inputs.len() >= max_candidates.max(1) {
                 break;
             }
 
-            let Some((after, events)) = Self::apply_inputs_for_search_with_events(game, &inputs)
-            else {
-                continue;
-            };
-            if Self::events_include_opponent_drainer_fainted(&events, perspective) {
-                attack_inputs.push(inputs);
+            if Self::events_include_opponent_drainer_fainted(&transition.events, perspective) {
+                attack_inputs.push(transition);
                 continue;
             }
-            if after.active_color != perspective {
+            if transition.game.active_color != perspective {
                 continue;
             }
             if Self::can_attack_opponent_drainer_before_turn_ends(
-                &after,
+                &transition.game,
                 perspective,
                 enum_limit,
                 start_options,
                 &mut continuation_budget,
                 &mut memo_true,
             ) {
-                attack_inputs.push(inputs);
+                attack_inputs.push(transition);
             }
         }
 
@@ -3061,26 +3098,23 @@ impl MonsGameModel {
             return true;
         }
 
-        let mut legal_inputs = Self::enumerate_legal_inputs(game, usize::MAX, start_options);
-        if legal_inputs.len() > enum_limit {
-            legal_inputs.truncate(enum_limit);
+        let mut legal_transitions =
+            Self::enumerate_legal_transitions(game, usize::MAX, start_options);
+        if legal_transitions.len() > enum_limit {
+            legal_transitions.truncate(enum_limit);
         }
-        for inputs in legal_inputs {
+        for transition in legal_transitions {
             if *continuation_budget == 0 {
                 break;
             }
             *continuation_budget = continuation_budget.saturating_sub(1);
-            let Some((after, events)) = Self::apply_inputs_for_search_with_events(game, &inputs)
-            else {
-                continue;
-            };
-            if Self::events_include_opponent_drainer_fainted(&events, perspective) {
+            if Self::events_include_opponent_drainer_fainted(&transition.events, perspective) {
                 memo_true.insert(state_hash);
                 return true;
             }
-            if after.active_color == perspective
+            if transition.game.active_color == perspective
                 && Self::can_attack_opponent_drainer_before_turn_ends(
-                    &after,
+                    &transition.game,
                     perspective,
                     enum_limit,
                     start_options,
@@ -3122,12 +3156,12 @@ impl MonsGameModel {
             config.root_enum_limit
         };
 
-        let root_inputs = if config.enable_drainer_attack_priority_enum {
+        let root_transitions = if config.enable_drainer_attack_priority_enum {
             let attacker_locs = Self::find_potential_drainer_attacker_locations(game, perspective);
             if attacker_locs.is_empty() {
-                Self::enumerate_legal_inputs(game, effective_enum_limit, start_options)
+                Self::enumerate_legal_transitions(game, effective_enum_limit, start_options)
             } else {
-                Self::enumerate_legal_inputs_with_priority(
+                Self::enumerate_legal_transitions_with_priority(
                     game,
                     effective_enum_limit,
                     start_options,
@@ -3135,16 +3169,18 @@ impl MonsGameModel {
                 )
             }
         } else {
-            Self::enumerate_legal_inputs(game, effective_enum_limit, start_options)
+            Self::enumerate_legal_transitions(game, effective_enum_limit, start_options)
         };
 
-        for inputs in root_inputs {
-            if let Some(candidate) = Self::build_scored_root_move(
+        for transition in root_transitions {
+            if let Some(candidate) = Self::build_scored_root_move_from_transition(
                 game,
                 perspective,
                 config,
                 own_drainer_vulnerable_before,
-                inputs.as_slice(),
+                transition.inputs,
+                transition.game,
+                transition.events,
             ) {
                 candidates.push(candidate);
             }
@@ -3190,23 +3226,25 @@ impl MonsGameModel {
             if !fallback_inputs.is_empty() {
                 let forced_inputs = fallback_inputs
                     .iter()
-                    .cloned()
+                    .map(|transition| transition.inputs.clone())
                     .collect::<std::collections::HashSet<_>>();
                 let mut seen_inputs = candidates
                     .iter()
                     .map(|candidate| candidate.inputs.clone())
                     .collect::<std::collections::HashSet<_>>();
 
-                for inputs in fallback_inputs {
-                    if !seen_inputs.insert(inputs.clone()) {
+                for transition in fallback_inputs {
+                    if !seen_inputs.insert(transition.inputs.clone()) {
                         continue;
                     }
-                    if let Some(candidate) = Self::build_scored_root_move(
+                    if let Some(candidate) = Self::build_scored_root_move_from_transition(
                         game,
                         perspective,
                         config,
                         own_drainer_vulnerable_before,
-                        inputs.as_slice(),
+                        transition.inputs,
+                        transition.game,
+                        transition.events,
                     ) {
                         candidates.push(candidate);
                     }
@@ -4385,111 +4423,104 @@ impl MonsGameModel {
             false
         };
         let start_options = Self::automove_start_input_options(config);
-        for inputs in Self::enumerate_legal_inputs(game, config.node_enum_limit, start_options) {
-            let needs_events = config.enable_event_ordering_bonus
-                || config.enable_child_move_class_coverage
-                || config.enable_selective_extensions;
-            let maybe_state = if needs_events {
-                Self::apply_inputs_for_search_with_events(game, &inputs)
-            } else {
-                Self::apply_inputs_for_search(game, &inputs).map(|state| (state, Vec::new()))
-            };
+        for transition in
+            Self::enumerate_legal_transitions(game, config.node_enum_limit, start_options)
+        {
+            let simulated_game = transition.game;
+            let events = transition.events;
+            let child_hash = Self::search_state_hash(&simulated_game);
+            let mut heuristic = Self::score_state(
+                &simulated_game,
+                perspective,
+                0,
+                config.depth,
+                config.scoring_weights,
+            );
 
-            if let Some((simulated_game, events)) = maybe_state {
-                let child_hash = Self::search_state_hash(&simulated_game);
-                let mut heuristic = Self::score_state(
+            let efficiency_delta = if config.enable_root_efficiency {
+                Self::move_efficiency_delta(
+                    game,
                     &simulated_game,
                     perspective,
-                    0,
-                    config.depth,
-                    config.scoring_weights,
-                );
-
-                let efficiency_delta = if config.enable_root_efficiency {
-                    Self::move_efficiency_delta(
-                        game,
-                        &simulated_game,
-                        perspective,
-                        &events,
-                        false,
-                        false,
-                        false,
-                        config.root_backtrack_penalty,
-                        config.root_mana_handoff_penalty,
-                    )
-                } else {
-                    0
-                };
-                if config.enable_root_efficiency
-                    && SMART_NO_EFFECT_CHILD_PENALTY != 0
-                    && Self::is_no_effect_state_transition(game, &simulated_game)
-                {
-                    heuristic -= SMART_NO_EFFECT_CHILD_PENALTY;
-                }
-                if config.enable_event_ordering_bonus {
-                    heuristic = heuristic.saturating_add(Self::ordering_event_bonus(
-                        game.active_color,
-                        perspective,
-                        &events,
-                    ));
-                }
-                if config.enable_tt_best_child_ordering
-                    && preferred_child_hash.is_some()
-                    && preferred_child_hash == Some(child_hash)
-                {
-                    heuristic = heuristic.saturating_add(SMART_TT_BEST_CHILD_BONUS);
-                }
-                if config.enable_killer_move_ordering
-                    && (killer_hashes[0] == child_hash || killer_hashes[1] == child_hash)
-                    && child_hash != 0
-                    && preferred_child_hash != Some(child_hash)
-                {
-                    heuristic = heuristic.saturating_add(SMART_KILLER_MOVE_BONUS);
-                }
-
-                let own_drainer_vulnerable_after = if config.enable_child_move_class_coverage {
-                    Self::is_own_drainer_vulnerable_next_turn(
-                        &simulated_game,
-                        actor_color,
-                        config.enable_enhanced_drainer_vulnerability,
-                    )
-                } else {
-                    false
-                };
-                let own_drainer_vulnerability_transition =
-                    own_drainer_vulnerable_before != own_drainer_vulnerable_after;
-                let tactical_extension_trigger = Self::events_include_any_drainer_fainted(&events)
-                    || own_drainer_vulnerability_transition
-                    || events
-                        .iter()
-                        .any(|event| matches!(event, Event::ManaScored { .. }));
-                let quiet_reduction_candidate = !Self::has_material_event(&events)
-                    && efficiency_delta <= 0
-                    && !tactical_extension_trigger;
-                let classes = if config.enable_child_move_class_coverage {
-                    Self::classify_move_classes(
-                        game,
-                        &simulated_game,
-                        actor_color,
-                        &events,
-                        own_drainer_vulnerable_before,
-                        own_drainer_vulnerable_after,
-                    )
-                } else {
-                    MoveClassFlags::default()
-                };
-
-                scored_states.push((
-                    heuristic,
-                    RankedChildState {
-                        game: simulated_game,
-                        hash: child_hash,
-                        tactical_extension_trigger,
-                        quiet_reduction_candidate,
-                        classes,
-                    },
+                    &events,
+                    false,
+                    false,
+                    false,
+                    config.root_backtrack_penalty,
+                    config.root_mana_handoff_penalty,
+                )
+            } else {
+                0
+            };
+            if config.enable_root_efficiency
+                && SMART_NO_EFFECT_CHILD_PENALTY != 0
+                && Self::is_no_effect_state_transition(game, &simulated_game)
+            {
+                heuristic -= SMART_NO_EFFECT_CHILD_PENALTY;
+            }
+            if config.enable_event_ordering_bonus {
+                heuristic = heuristic.saturating_add(Self::ordering_event_bonus(
+                    game.active_color,
+                    perspective,
+                    &events,
                 ));
             }
+            if config.enable_tt_best_child_ordering
+                && preferred_child_hash.is_some()
+                && preferred_child_hash == Some(child_hash)
+            {
+                heuristic = heuristic.saturating_add(SMART_TT_BEST_CHILD_BONUS);
+            }
+            if config.enable_killer_move_ordering
+                && (killer_hashes[0] == child_hash || killer_hashes[1] == child_hash)
+                && child_hash != 0
+                && preferred_child_hash != Some(child_hash)
+            {
+                heuristic = heuristic.saturating_add(SMART_KILLER_MOVE_BONUS);
+            }
+
+            let own_drainer_vulnerable_after = if config.enable_child_move_class_coverage {
+                Self::is_own_drainer_vulnerable_next_turn(
+                    &simulated_game,
+                    actor_color,
+                    config.enable_enhanced_drainer_vulnerability,
+                )
+            } else {
+                false
+            };
+            let own_drainer_vulnerability_transition =
+                own_drainer_vulnerable_before != own_drainer_vulnerable_after;
+            let tactical_extension_trigger = Self::events_include_any_drainer_fainted(&events)
+                || own_drainer_vulnerability_transition
+                || events
+                    .iter()
+                    .any(|event| matches!(event, Event::ManaScored { .. }));
+            let quiet_reduction_candidate = !Self::has_material_event(&events)
+                && efficiency_delta <= 0
+                && !tactical_extension_trigger;
+            let classes = if config.enable_child_move_class_coverage {
+                Self::classify_move_classes(
+                    game,
+                    &simulated_game,
+                    actor_color,
+                    &events,
+                    own_drainer_vulnerable_before,
+                    own_drainer_vulnerable_after,
+                )
+            } else {
+                MoveClassFlags::default()
+            };
+
+            scored_states.push((
+                heuristic,
+                RankedChildState {
+                    game: simulated_game,
+                    hash: child_hash,
+                    tactical_extension_trigger,
+                    quiet_reduction_candidate,
+                    classes,
+                },
+            ));
         }
 
         if maximizing {
@@ -4513,73 +4544,75 @@ impl MonsGameModel {
         scored_states.into_iter().map(|(_, state)| state).collect()
     }
 
-    fn enumerate_legal_inputs(
+    fn enumerate_legal_transitions(
         game: &MonsGame,
         max_moves: usize,
         start_options: SuggestedStartInputOptions,
-    ) -> Vec<Vec<Input>> {
-        let mut all_inputs = Vec::new();
+    ) -> Vec<LegalInputTransition> {
+        let mut transitions = Vec::new();
         let mut partial_inputs = Vec::new();
         let mut simulated_game = game.clone_for_simulation();
-        Self::collect_legal_inputs(
+        Self::collect_legal_transitions(
             &mut simulated_game,
             &mut partial_inputs,
-            &mut all_inputs,
+            &mut transitions,
             max_moves,
             start_options,
         );
-        all_inputs.sort();
-        all_inputs
+        transitions.sort_by(|a, b| a.inputs.cmp(&b.inputs));
+        transitions
     }
 
-    fn enumerate_legal_inputs_with_priority(
+    fn enumerate_legal_transitions_with_priority(
         game: &MonsGame,
         max_moves: usize,
         start_options: SuggestedStartInputOptions,
         priority_locations: &[Location],
-    ) -> Vec<Vec<Input>> {
+    ) -> Vec<LegalInputTransition> {
         if priority_locations.is_empty() {
-            return Self::enumerate_legal_inputs(game, max_moves, start_options);
+            return Self::enumerate_legal_transitions(game, max_moves, start_options);
         }
 
         let priority_set: std::collections::HashSet<Location> =
             priority_locations.iter().copied().collect();
         let priority_budget = (max_moves / 2).max(max_moves.saturating_sub(60));
         let remaining_budget = max_moves.saturating_sub(priority_budget);
-        let all_inputs = Self::enumerate_legal_inputs(game, max_moves, start_options);
-        let mut priority_inputs = Vec::new();
-        let mut other_inputs = Vec::new();
+        let all_transitions = Self::enumerate_legal_transitions(game, max_moves, start_options);
+        let mut priority_transitions = Vec::new();
+        let mut other_transitions = Vec::new();
 
-        for inputs in all_inputs {
-            let is_priority =
-                matches!(inputs.first(), Some(Input::Location(loc)) if priority_set.contains(loc));
+        for transition in all_transitions {
+            let is_priority = matches!(
+                transition.inputs.first(),
+                Some(Input::Location(loc)) if priority_set.contains(loc)
+            );
             if is_priority {
-                if priority_inputs.len() < priority_budget {
-                    priority_inputs.push(inputs);
+                if priority_transitions.len() < priority_budget {
+                    priority_transitions.push(transition);
                 }
-            } else if remaining_budget > 0 && other_inputs.len() < remaining_budget {
-                other_inputs.push(inputs);
+            } else if remaining_budget > 0 && other_transitions.len() < remaining_budget {
+                other_transitions.push(transition);
             }
 
-            if priority_inputs.len() >= priority_budget
-                && (remaining_budget == 0 || other_inputs.len() >= remaining_budget)
+            if priority_transitions.len() >= priority_budget
+                && (remaining_budget == 0 || other_transitions.len() >= remaining_budget)
             {
                 break;
             }
         }
 
-        priority_inputs.extend(other_inputs);
-        priority_inputs
+        priority_transitions.extend(other_transitions);
+        priority_transitions
     }
 
-    fn collect_legal_inputs(
+    fn collect_legal_transitions(
         game: &mut MonsGame,
         partial_inputs: &mut Vec<Input>,
-        all_inputs: &mut Vec<Vec<Input>>,
+        transitions: &mut Vec<LegalInputTransition>,
         max_moves: usize,
         start_options: SuggestedStartInputOptions,
     ) {
-        if all_inputs.len() >= max_moves || partial_inputs.len() > SMART_MAX_INPUT_CHAIN {
+        if transitions.len() >= max_moves || partial_inputs.len() > SMART_MAX_INPUT_CHAIN {
             return;
         }
 
@@ -4590,17 +4623,25 @@ impl MonsGameModel {
             Some(start_options),
         ) {
             Output::InvalidInput => {}
-            Output::Events(_) => all_inputs.push(partial_inputs.clone()),
+            Output::Events(events) => {
+                let mut after_game = game.clone_for_simulation();
+                let applied_events = after_game.apply_and_add_resulting_events(events);
+                transitions.push(LegalInputTransition {
+                    inputs: partial_inputs.clone(),
+                    game: after_game,
+                    events: applied_events,
+                });
+            }
             Output::LocationsToStartFrom(locations) => {
                 for location in locations {
-                    if all_inputs.len() >= max_moves {
+                    if transitions.len() >= max_moves {
                         break;
                     }
                     partial_inputs.push(Input::Location(location));
-                    Self::collect_legal_inputs(
+                    Self::collect_legal_transitions(
                         game,
                         partial_inputs,
-                        all_inputs,
+                        transitions,
                         max_moves,
                         start_options,
                     );
@@ -4609,14 +4650,14 @@ impl MonsGameModel {
             }
             Output::NextInputOptions(options) => {
                 for option in options {
-                    if all_inputs.len() >= max_moves {
+                    if transitions.len() >= max_moves {
                         break;
                     }
                     partial_inputs.push(option.input);
-                    Self::collect_legal_inputs(
+                    Self::collect_legal_transitions(
                         game,
                         partial_inputs,
-                        all_inputs,
+                        transitions,
                         max_moves,
                         start_options,
                     );
@@ -4626,6 +4667,56 @@ impl MonsGameModel {
         }
     }
 
+    #[allow(dead_code)]
+    fn enumerate_legal_inputs(
+        game: &MonsGame,
+        max_moves: usize,
+        start_options: SuggestedStartInputOptions,
+    ) -> Vec<Vec<Input>> {
+        Self::enumerate_legal_transitions(game, max_moves, start_options)
+            .into_iter()
+            .map(|transition| transition.inputs)
+            .collect()
+    }
+
+    #[allow(dead_code)]
+    fn enumerate_legal_inputs_with_priority(
+        game: &MonsGame,
+        max_moves: usize,
+        start_options: SuggestedStartInputOptions,
+        priority_locations: &[Location],
+    ) -> Vec<Vec<Input>> {
+        Self::enumerate_legal_transitions_with_priority(
+            game,
+            max_moves,
+            start_options,
+            priority_locations,
+        )
+        .into_iter()
+        .map(|transition| transition.inputs)
+        .collect()
+    }
+
+    #[allow(dead_code)]
+    fn collect_legal_inputs(
+        game: &mut MonsGame,
+        partial_inputs: &mut Vec<Input>,
+        all_inputs: &mut Vec<Vec<Input>>,
+        max_moves: usize,
+        start_options: SuggestedStartInputOptions,
+    ) {
+        let mut transitions = Vec::new();
+        Self::collect_legal_transitions(
+            game,
+            partial_inputs,
+            &mut transitions,
+            max_moves,
+            start_options,
+        );
+        all_inputs.extend(transitions.into_iter().map(|transition| transition.inputs));
+    }
+
+    #[allow(dead_code)]
     fn apply_inputs_for_search(game: &MonsGame, inputs: &[Input]) -> Option<MonsGame> {
         Self::apply_inputs_for_search_with_events(game, inputs)
             .map(|(simulated_game, _)| simulated_game)
@@ -6061,7 +6152,7 @@ impl MonsGameModel {
             };
         }
 
-        let replies = Self::enumerate_legal_inputs(
+        let replies = Self::enumerate_legal_transitions(
             state_after_move,
             reply_limit.max(1),
             Self::automove_start_input_options(config),
@@ -6080,9 +6171,7 @@ impl MonsGameModel {
         let mut evaluated_reply = false;
 
         for reply in replies {
-            let Some(after_reply) = Self::apply_inputs_for_search(state_after_move, &reply) else {
-                continue;
-            };
+            let after_reply = reply.game;
             evaluated_reply = true;
 
             let opponent_score_after = if perspective == Color::White {
@@ -6375,7 +6464,7 @@ impl MonsGameModel {
             state_after_move.white_score
         };
         let replies =
-            Self::enumerate_legal_inputs(state_after_move, reply_limit.max(1), start_options);
+            Self::enumerate_legal_transitions(state_after_move, reply_limit.max(1), start_options);
         if replies.is_empty() {
             return NormalRootSafetySnapshot {
                 allows_immediate_opponent_win: false,
@@ -6393,9 +6482,7 @@ impl MonsGameModel {
         let mut evaluated_reply = false;
 
         for reply in replies {
-            let Some(after_reply) = Self::apply_inputs_for_search(state_after_move, &reply) else {
-                continue;
-            };
+            let after_reply = reply.game;
             evaluated_reply = true;
 
             let opponent_score_after = if perspective == Color::White {
@@ -6541,7 +6628,7 @@ impl MonsGameModel {
         probe.root_enum_limit = (probe.root_branch_limit * 3).clamp(probe.root_branch_limit, 48);
         probe.node_enum_limit = (probe.node_branch_limit * 3).clamp(probe.node_branch_limit, 36);
 
-        let replies = Self::enumerate_legal_inputs(
+        let replies = Self::enumerate_legal_transitions(
             state_after_move,
             reply_limit.max(1),
             Self::automove_start_input_options(config),
@@ -6552,9 +6639,7 @@ impl MonsGameModel {
 
         let mut worst = i32::MAX;
         for reply in replies {
-            let Some(after_reply) = Self::apply_inputs_for_search(state_after_move, &reply) else {
-                continue;
-            };
+            let after_reply = reply.game;
             let score = match after_reply.winner_color() {
                 Some(winner) if winner == perspective => SMART_TERMINAL_SCORE / 2,
                 Some(_) => -SMART_TERMINAL_SCORE / 2,
@@ -6855,6 +6940,49 @@ mod opening_book_tests {
             !MonsGameModel::has_awake_spirit_on_base(&after.board, Color::White),
             "selected move should deploy awake spirit off base when core progress remains available"
         );
+    }
+
+    #[test]
+    fn legal_transition_enumeration_matches_apply_helper() {
+        let game = MonsGame::new(false);
+        let transitions = MonsGameModel::enumerate_legal_transitions(
+            &game,
+            64,
+            SuggestedStartInputOptions::for_automove(),
+        );
+        assert!(!transitions.is_empty());
+
+        for transition in transitions.iter().take(16) {
+            let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(
+                &game,
+                transition.inputs.as_slice(),
+            )
+            .expect("enumerated transition input should remain legal");
+            assert_eq!(after.fen(), transition.game.fen());
+            assert_eq!(events, transition.events);
+        }
+    }
+
+    #[test]
+    fn model_remove_item_invalidates_cached_start_suggestions() {
+        let mut model = MonsGameModel::new_for_simulation();
+        let initial_suggestions = match model.game.process_input(vec![], true, false) {
+            Output::LocationsToStartFrom(locations) => locations,
+            output => panic!("expected start locations, got {:?}", output),
+        };
+        let removed = initial_suggestions
+            .iter()
+            .copied()
+            .find(|location| model.game.board.item(*location).is_some())
+            .expect("expected removable starting piece");
+
+        model.remove_item(removed);
+
+        let updated_suggestions = match model.game.process_input(vec![], true, false) {
+            Output::LocationsToStartFrom(locations) => locations,
+            output => panic!("expected start locations after removal, got {:?}", output),
+        };
+        assert!(!updated_suggestions.contains(&removed));
     }
 }
 

@@ -166,6 +166,7 @@ mod tests {
         let output = game.automove();
         assert_eq!(output.kind, OutputModelKind::Events);
         assert!(game.verbose_tracking_entities().is_empty());
+        assert!(game.takeback_fens().is_empty());
         Ok(())
     }
 

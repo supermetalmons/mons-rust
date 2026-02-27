@@ -28,22 +28,22 @@ impl MonsGame {
         if fields.len() != 10 {
             return None;
         }
-        Some(Self {
-            board: Board::from_fen(fields[9])?,
-            white_score: fields[0].parse().ok()?,
-            black_score: fields[1].parse().ok()?,
-            active_color: Color::from_fen(fields[2])?,
-            actions_used_count: fields[3].parse().ok()?,
-            mana_moves_count: fields[4].parse().ok()?,
-            mons_moves_count: fields[5].parse().ok()?,
-            white_potions_count: fields[6].parse().ok()?,
-            black_potions_count: fields[7].parse().ok()?,
-            turn_number: fields[8].parse().ok()?,
-            takeback_fens: vec![],
-            is_moves_verified: false,
-            with_verbose_tracking,
-            verbose_tracking_entities: vec![],
-        })
+        let mut game = Self::new(with_verbose_tracking);
+        game.board = Board::from_fen(fields[9])?;
+        game.white_score = fields[0].parse().ok()?;
+        game.black_score = fields[1].parse().ok()?;
+        game.active_color = Color::from_fen(fields[2])?;
+        game.actions_used_count = fields[3].parse().ok()?;
+        game.mana_moves_count = fields[4].parse().ok()?;
+        game.mons_moves_count = fields[5].parse().ok()?;
+        game.white_potions_count = fields[6].parse().ok()?;
+        game.black_potions_count = fields[7].parse().ok()?;
+        game.turn_number = fields[8].parse().ok()?;
+        game.takeback_fens.clear();
+        game.is_moves_verified = false;
+        game.verbose_tracking_entities.clear();
+        game.invalidate_process_input_cache();
+        Some(game)
     }
 }
 
