@@ -3,8 +3,7 @@ use crate::models::scoring::{
     evaluate_preferability_breakdown_with_weights,
     FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS, FINISHER_BALANCED_SOFT_SCORING_WEIGHTS,
     FINISHER_MANA_RACE_LITE_SOFT_AGGRESSIVE_SCORING_WEIGHTS,
-    FINISHER_MANA_RACE_LITE_SOFT_SCORING_WEIGHTS,
-    MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
+    FINISHER_MANA_RACE_LITE_SOFT_SCORING_WEIGHTS, MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
     MANA_RACE_LITE_SCORING_WEIGHTS, RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS,
     RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF,
     RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS, RUNTIME_RUSH_SCORING_WEIGHTS,
@@ -883,17 +882,11 @@ fn model_runtime_potion_takeback_starts_v1(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_pre_boolean_drainer(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_pre_boolean_drainer(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     model_current_best(game, config)
 }
 
-fn model_runtime_boolean_drainer_v1(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_boolean_drainer_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if config.depth >= 3 {
         runtime.enable_enhanced_drainer_vulnerability = true;
@@ -907,24 +900,15 @@ fn model_runtime_boolean_drainer_v1(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_drainer_shield_v1(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_drainer_shield_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     model_runtime_drainer_dual_impl(game, config)
 }
 
-fn model_runtime_drainer_dual_v1(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_drainer_dual_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     model_runtime_drainer_dual_impl(game, config)
 }
 
-fn model_runtime_drainer_dual_impl(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_drainer_dual_impl(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if config.depth >= 3 {
         // Normal: enhanced detection + boolean drainer weights + wide margin
@@ -947,26 +931,17 @@ fn model_runtime_drainer_dual_impl(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_fast_boost_v1(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_fast_boost_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Now identical to model_current_best — promoted to production path
     model_current_best(game, config)
 }
 
-fn model_runtime_supermana_priority_v1(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_supermana_priority_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Now identical to model_current_best — promoted to production path
     model_current_best(game, config)
 }
 
-fn model_runtime_normal_walk_threat_v1(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_walk_threat_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Walk-threat eval weights + prefilter + prepass + supermana exception + boosted priors
     let mut runtime = MonsGameModel::with_drainer_shield_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -979,19 +954,13 @@ fn model_runtime_normal_walk_threat_v1(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_walk_threat_v2(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_walk_threat_v2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Walk-threat eval weights only (-600/-400), no prefilter/prepass
     let runtime = MonsGameModel::with_drainer_shield_scoring_weights(game, config);
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_walk_threat_v3(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_walk_threat_v3(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Walk-threat eval weights + prefilter (no prepass) + supermana
     let mut runtime = MonsGameModel::with_drainer_shield_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1004,10 +973,7 @@ fn model_runtime_normal_walk_threat_v3(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_walk_threat_v4(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_walk_threat_v4(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Disable strict anti-help filter for normal (might be too aggressive)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1016,10 +982,7 @@ fn model_runtime_normal_walk_threat_v4(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_walk_threat_v5(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_walk_threat_v5(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Disable normal root safety rerank + deep floor (might be over-conservative)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1029,18 +992,12 @@ fn model_runtime_normal_walk_threat_v5(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_walk_threat_v6(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_walk_threat_v6(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Wider root branching for normal — promoted to production path
     model_current_best(game, config)
 }
 
-fn model_runtime_normal_search_v1(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_search_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Killer move ordering + TT depth-preferred replacement (both)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1050,10 +1007,7 @@ fn model_runtime_normal_search_v1(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_search_v2(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_search_v2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Killer move ordering only (no TT replacement change)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1062,10 +1016,7 @@ fn model_runtime_normal_search_v2(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_search_v3(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_search_v3(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // TT depth-preferred replacement only (no killer)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1074,10 +1025,7 @@ fn model_runtime_normal_search_v3(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_eval_v4(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_eval_v4(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Mana carrier risk awareness: penalize exposed carriers, reward guarded ones
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1089,10 +1037,7 @@ fn model_runtime_normal_eval_v4(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_eval_v5(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_eval_v5(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Game-closing pressure: boost carrier proximity to pools + winning carrier bonus
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1105,10 +1050,7 @@ fn model_runtime_normal_eval_v5(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_eval_v6(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_eval_v6(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Combined: carrier risk awareness + game-closing pressure
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1123,10 +1065,7 @@ fn model_runtime_normal_eval_v6(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_shape_v7(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_shape_v7(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Wider internal nodes: node_branch_limit +3 (12 → 15)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1137,10 +1076,7 @@ fn model_runtime_normal_shape_v7(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_shape_v8(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_shape_v8(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Boosted interview soft priors: stronger high-value mana prioritization
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1152,10 +1088,7 @@ fn model_runtime_normal_shape_v8(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_shape_v9(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_shape_v9(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Combined: wider internal nodes + boosted interview priors
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1170,10 +1103,7 @@ fn model_runtime_normal_shape_v9(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_drainer_v10(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_drainer_v10(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Stronger drainer danger: increase penalty for exposed drainer/carrier
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1185,10 +1115,7 @@ fn model_runtime_normal_drainer_v10(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_drainer_v11(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_drainer_v11(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Opponent drainer attack bonus: reward threatening opponent's drainer
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1199,10 +1126,7 @@ fn model_runtime_normal_drainer_v11(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_drainer_v12(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_drainer_v12(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Combined: stronger drainer danger + opponent attack bonus
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1215,10 +1139,7 @@ fn model_runtime_normal_drainer_v12(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v13(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v13(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Enable event ordering bonus (free: events already computed) + spirit tiebreak
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1228,10 +1149,7 @@ fn model_runtime_normal_structural_v13(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v14(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v14(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Tighter reply risk guard + supermana prepass exception
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1242,10 +1160,7 @@ fn model_runtime_normal_structural_v14(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v15(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v15(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Combined: event ordering + spirit tiebreak + tighter reply risk + supermana exception
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1258,10 +1173,7 @@ fn model_runtime_normal_structural_v15(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v16(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v16(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Spirit tiebreak only (isolated from harmful event ordering)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1270,10 +1182,7 @@ fn model_runtime_normal_structural_v16(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v17(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v17(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Supermana prepass exception alone (bypass forced drainer attack when scoring supermana)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1282,10 +1191,7 @@ fn model_runtime_normal_structural_v17(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v18(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v18(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Disable reply risk guard — let efficiency + safety rerank take over
     // (safety rerank and deep floor are enabled but currently dead code due to reply risk guard)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
@@ -1295,10 +1201,7 @@ fn model_runtime_normal_structural_v18(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v19(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v19(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // PVS (Principal Variation Search): null-window probes save node budget
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1307,10 +1210,7 @@ fn model_runtime_normal_structural_v19(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v20(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v20(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // PVS + spirit tiebreak + supermana prepass exception
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1321,10 +1221,7 @@ fn model_runtime_normal_structural_v20(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v21(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v21(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Quiet reduction fix: activate at depth>=2 (was dead code with depth>2)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1333,10 +1230,7 @@ fn model_runtime_normal_structural_v21(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v22(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v22(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Iterative deepening: depth-1 pre-pass with shared TT to improve move ordering
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1345,10 +1239,7 @@ fn model_runtime_normal_structural_v22(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v23(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v23(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Futility pruning at frontier nodes (depth=1)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1358,10 +1249,7 @@ fn model_runtime_normal_structural_v23(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v24(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v24(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Iterative deepening + quiet reduction fix (best combo of budget-saving features)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1371,10 +1259,7 @@ fn model_runtime_normal_structural_v24(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v25(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v25(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Full combo: iterative deepening + quiet reduction fix + futility pruning
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1386,10 +1271,7 @@ fn model_runtime_normal_structural_v25(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v26(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v26(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Iterative deepening + futility pruning (no quiet reduction)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1400,10 +1282,7 @@ fn model_runtime_normal_structural_v26(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v27(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v27(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Iterative deepening + aggressive futility pruning
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1414,10 +1293,7 @@ fn model_runtime_normal_structural_v27(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v28(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v28(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Iterative deepening + root aspiration enabled (synergy: ID ordering + narrow window)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1427,10 +1303,7 @@ fn model_runtime_normal_structural_v28(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v29(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v29(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Iterative deepening + prelim alpha initialization (tighter first-candidate window)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1440,10 +1313,7 @@ fn model_runtime_normal_structural_v29(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v30(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v30(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Improved ID: progressive alpha in preliminary pass (better pruning in prelim)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1453,10 +1323,7 @@ fn model_runtime_normal_structural_v30(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v31(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v31(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Full-depth ID: preliminary pass at depth-1=2 (matches main search depth)
     // TT entries from prelim are directly reusable by the main pass
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
@@ -1467,10 +1334,7 @@ fn model_runtime_normal_structural_v31(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v32(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v32(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Larger selective extension budget (more tactical depth)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1479,10 +1343,7 @@ fn model_runtime_normal_structural_v32(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_structural_v33(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_structural_v33(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // ID + larger selective extension budget (best combo)
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1492,10 +1353,7 @@ fn model_runtime_normal_structural_v33(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_drainer_focus_v1(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_drainer_focus_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Targeted drainer attack fallback: filter enum to attacker-mons only, 2x budgets
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1504,10 +1362,7 @@ fn model_runtime_normal_drainer_focus_v1(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_drainer_focus_v2(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_drainer_focus_v2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Per-mon DFS drainer attack fallback: enumerate only from attacker mons
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1516,10 +1371,7 @@ fn model_runtime_normal_drainer_focus_v2(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_drainer_focus_v3(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_drainer_focus_v3(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Both targeted approaches active: per-mon takes priority
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1529,10 +1381,7 @@ fn model_runtime_normal_drainer_focus_v3(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_drainer_focus_v4(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_drainer_focus_v4(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Priority enum: attacker mons enumerated first in main 210 root enum
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1541,10 +1390,7 @@ fn model_runtime_normal_drainer_focus_v4(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_drainer_focus_v5(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_drainer_focus_v5(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Priority enum + boost: attacker mons first, and +100 extra enum slots when attack possible
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1554,10 +1400,7 @@ fn model_runtime_normal_drainer_focus_v5(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_drainer_focus_v6(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_drainer_focus_v6(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Priority enum + boost + targeted fallback
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -1568,10 +1411,7 @@ fn model_runtime_normal_drainer_focus_v6(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_drainer_focus_v7(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_drainer_focus_v7(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Attack bonus 400: search prefers positions threatening opponent drainer
     let mut runtime = config;
     if runtime.depth >= 3 {
@@ -1581,10 +1421,7 @@ fn model_runtime_normal_drainer_focus_v7(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_drainer_focus_v8(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_drainer_focus_v8(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Strong attack bonus 800: search strongly prefers threatening opponent drainer
     let mut runtime = config;
     if runtime.depth >= 3 {
@@ -1597,10 +1434,7 @@ fn model_runtime_normal_drainer_focus_v8(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_normal_drainer_focus_v9(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
+fn model_runtime_normal_drainer_focus_v9(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     // Attack bonus 400 + priority enum: best of both approaches
     let mut runtime = config;
     if runtime.depth >= 3 {
@@ -1721,10 +1555,7 @@ fn model_runtime_normal_drainer_focus_v17(
     let mut runtime = config;
     if runtime.depth >= 3 {
         runtime.scoring_weights =
-            MonsGameModel::runtime_phase_adaptive_walk_threat_scoring_weights(
-                game,
-                runtime.depth,
-            );
+            MonsGameModel::runtime_phase_adaptive_walk_threat_scoring_weights(game, runtime.depth);
         // Override: add proximity on top of walk-threat weights via combo
     }
     MonsGameModel::smart_search_best_inputs(game, runtime)
@@ -3671,28 +3502,40 @@ fn runtime_phase_adaptive_scoring_weights_protected_carrier_v4(
     }
 }
 
-fn model_runtime_eval_protected_carrier_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+fn model_runtime_eval_protected_carrier_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.scoring_weights =
         runtime_phase_adaptive_scoring_weights_protected_carrier_v1(game, runtime.depth);
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_eval_protected_carrier_v2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+fn model_runtime_eval_protected_carrier_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.scoring_weights =
         runtime_phase_adaptive_scoring_weights_protected_carrier_v2(game, runtime.depth);
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_eval_protected_carrier_v3(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+fn model_runtime_eval_protected_carrier_v3(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.scoring_weights =
         runtime_phase_adaptive_scoring_weights_protected_carrier_v3(game, runtime.depth);
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
-fn model_runtime_eval_protected_carrier_v4(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+fn model_runtime_eval_protected_carrier_v4(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.scoring_weights =
         runtime_phase_adaptive_scoring_weights_protected_carrier_v4(game, runtime.depth);
@@ -3816,9 +3659,8 @@ fn runtime_phase_adaptive_scoring_weights_interview_v3(
 }
 
 fn model_runtime_interview_policy_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    let runtime = with_interview_policy_hard(MonsGameModel::with_runtime_scoring_weights(
-        game, config,
-    ));
+    let runtime =
+        with_interview_policy_hard(MonsGameModel::with_runtime_scoring_weights(game, config));
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
@@ -3839,9 +3681,8 @@ fn model_runtime_interview_policy_v3(game: &MonsGame, config: SmartSearchConfig)
 }
 
 fn model_runtime_interview_policy_v4(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    let mut runtime = with_interview_policy_hard(MonsGameModel::with_runtime_scoring_weights(
-        game, config,
-    ));
+    let mut runtime =
+        with_interview_policy_hard(MonsGameModel::with_runtime_scoring_weights(game, config));
     runtime.enable_interview_deterministic_tiebreak = true;
     if runtime.depth >= 3 {
         runtime.enable_interview_hard_spirit_deploy = false;
@@ -4316,7 +4157,7 @@ fn search_scored_roots_with_states(
     let mut visited_nodes = 0usize;
     let mut alpha = i32::MIN;
     let mut scored_roots = Vec::with_capacity(root_moves.len());
-    let mut transposition_table = std::collections::HashMap::new();
+    let mut transposition_table = U64HashMap::default();
     let extension_node_budget = if config.enable_selective_extensions
         && config.selective_extension_node_share_bp > 0
     {
@@ -4387,11 +4228,8 @@ fn root_reply_floor(
         return evaluate_preferability_with_weights(state_after_move, perspective, scoring_weights);
     }
 
-    let replies = MonsGameModel::enumerate_legal_inputs(
-        state_after_move,
-        reply_limit.max(1),
-        start_options,
-    );
+    let replies =
+        MonsGameModel::enumerate_legal_inputs(state_after_move, reply_limit.max(1), start_options);
     if replies.is_empty() {
         return SMART_TERMINAL_SCORE / 4;
     }
@@ -4763,10 +4601,10 @@ fn candidate_model_runtime_fast_env_tune_normal_x15_tactical_lite(
     let node_branch_delta = env_i32("SMART_FAST_TUNE_NODE_BRANCH_DELTA")
         .unwrap_or(0)
         .clamp(-6, 6);
-    tuned.root_branch_limit = ((tuned.root_branch_limit as i32) + root_branch_delta)
-        .clamp(6, 44) as usize;
-    tuned.node_branch_limit = ((tuned.node_branch_limit as i32) + node_branch_delta)
-        .clamp(4, 22) as usize;
+    tuned.root_branch_limit =
+        ((tuned.root_branch_limit as i32) + root_branch_delta).clamp(6, 44) as usize;
+    tuned.node_branch_limit =
+        ((tuned.node_branch_limit as i32) + node_branch_delta).clamp(4, 22) as usize;
     tuned.root_enum_limit = (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 260);
     tuned.node_enum_limit = (tuned.node_branch_limit * 4).clamp(tuned.node_branch_limit, 120);
 
@@ -5291,10 +5129,18 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_eval_board_v1" => model_runtime_eval_board_v1(game, config),
         "runtime_eval_board_v2" => model_runtime_eval_board_v2(game, config),
         "runtime_eval_board_v3" => model_runtime_eval_board_v3(game, config),
-        "runtime_eval_protected_carrier_v1" => model_runtime_eval_protected_carrier_v1(game, config),
-        "runtime_eval_protected_carrier_v2" => model_runtime_eval_protected_carrier_v2(game, config),
-        "runtime_eval_protected_carrier_v3" => model_runtime_eval_protected_carrier_v3(game, config),
-        "runtime_eval_protected_carrier_v4" => model_runtime_eval_protected_carrier_v4(game, config),
+        "runtime_eval_protected_carrier_v1" => {
+            model_runtime_eval_protected_carrier_v1(game, config)
+        }
+        "runtime_eval_protected_carrier_v2" => {
+            model_runtime_eval_protected_carrier_v2(game, config)
+        }
+        "runtime_eval_protected_carrier_v3" => {
+            model_runtime_eval_protected_carrier_v3(game, config)
+        }
+        "runtime_eval_protected_carrier_v4" => {
+            model_runtime_eval_protected_carrier_v4(game, config)
+        }
         "runtime_interview_policy_v1" => model_runtime_interview_policy_v1(game, config),
         "runtime_interview_policy_v2" => model_runtime_interview_policy_v2(game, config),
         "runtime_interview_policy_v3" => model_runtime_interview_policy_v3(game, config),
@@ -5702,11 +5548,26 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
             "runtime_eval_protected_carrier_v4",
             model_runtime_eval_protected_carrier_v4,
         ),
-        ("runtime_interview_policy_v1", model_runtime_interview_policy_v1),
-        ("runtime_interview_policy_v2", model_runtime_interview_policy_v2),
-        ("runtime_interview_policy_v3", model_runtime_interview_policy_v3),
-        ("runtime_interview_policy_v4", model_runtime_interview_policy_v4),
-        ("runtime_interview_policy_v5", model_runtime_interview_policy_v5),
+        (
+            "runtime_interview_policy_v1",
+            model_runtime_interview_policy_v1,
+        ),
+        (
+            "runtime_interview_policy_v2",
+            model_runtime_interview_policy_v2,
+        ),
+        (
+            "runtime_interview_policy_v3",
+            model_runtime_interview_policy_v3,
+        ),
+        (
+            "runtime_interview_policy_v4",
+            model_runtime_interview_policy_v4,
+        ),
+        (
+            "runtime_interview_policy_v5",
+            model_runtime_interview_policy_v5,
+        ),
         (
             "runtime_pre_normal_guarded_lookahead",
             model_runtime_pre_normal_guarded_lookahead,
@@ -5921,18 +5782,9 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
             "runtime_boolean_drainer_v1",
             model_runtime_boolean_drainer_v1,
         ),
-        (
-            "runtime_drainer_shield_v1",
-            model_runtime_drainer_shield_v1,
-        ),
-        (
-            "runtime_drainer_dual_v1",
-            model_runtime_drainer_dual_v1,
-        ),
-        (
-            "runtime_fast_boost_v1",
-            model_runtime_fast_boost_v1,
-        ),
+        ("runtime_drainer_shield_v1", model_runtime_drainer_shield_v1),
+        ("runtime_drainer_dual_v1", model_runtime_drainer_dual_v1),
+        ("runtime_fast_boost_v1", model_runtime_fast_boost_v1),
         (
             "runtime_supermana_priority_v1",
             model_runtime_supermana_priority_v1,
@@ -5961,42 +5813,15 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
             "runtime_normal_walk_threat_v6",
             model_runtime_normal_walk_threat_v6,
         ),
-        (
-            "runtime_normal_search_v1",
-            model_runtime_normal_search_v1,
-        ),
-        (
-            "runtime_normal_search_v2",
-            model_runtime_normal_search_v2,
-        ),
-        (
-            "runtime_normal_search_v3",
-            model_runtime_normal_search_v3,
-        ),
-        (
-            "runtime_normal_eval_v4",
-            model_runtime_normal_eval_v4,
-        ),
-        (
-            "runtime_normal_eval_v5",
-            model_runtime_normal_eval_v5,
-        ),
-        (
-            "runtime_normal_eval_v6",
-            model_runtime_normal_eval_v6,
-        ),
-        (
-            "runtime_normal_shape_v7",
-            model_runtime_normal_shape_v7,
-        ),
-        (
-            "runtime_normal_shape_v8",
-            model_runtime_normal_shape_v8,
-        ),
-        (
-            "runtime_normal_shape_v9",
-            model_runtime_normal_shape_v9,
-        ),
+        ("runtime_normal_search_v1", model_runtime_normal_search_v1),
+        ("runtime_normal_search_v2", model_runtime_normal_search_v2),
+        ("runtime_normal_search_v3", model_runtime_normal_search_v3),
+        ("runtime_normal_eval_v4", model_runtime_normal_eval_v4),
+        ("runtime_normal_eval_v5", model_runtime_normal_eval_v5),
+        ("runtime_normal_eval_v6", model_runtime_normal_eval_v6),
+        ("runtime_normal_shape_v7", model_runtime_normal_shape_v7),
+        ("runtime_normal_shape_v8", model_runtime_normal_shape_v8),
+        ("runtime_normal_shape_v9", model_runtime_normal_shape_v9),
         (
             "runtime_normal_drainer_v10",
             model_runtime_normal_drainer_v10,
@@ -6834,11 +6659,8 @@ fn generate_opening_fens_cached(seed: u64, count: usize) -> Arc<Vec<String>> {
 }
 
 fn apply_seeded_random_move(game: &mut MonsGame, rng: &mut StdRng) -> bool {
-    let legal_inputs = MonsGameModel::enumerate_legal_inputs(
-        game,
-        256,
-        SuggestedStartInputOptions::default(),
-    );
+    let legal_inputs =
+        MonsGameModel::enumerate_legal_inputs(game, 256, SuggestedStartInputOptions::default());
     if legal_inputs.is_empty() {
         return false;
     }
@@ -7116,11 +6938,15 @@ fn smart_automove_pool_fast_screen() {
 
     match result.stop_reason {
         ProgressiveStopReason::EarlyReject | ProgressiveStopReason::MathematicalReject => {
-            println!("VERDICT: FAIL — candidate is not promising, do not proceed to full evaluation");
+            println!(
+                "VERDICT: FAIL — candidate is not promising, do not proceed to full evaluation"
+            );
             assert!(false, "fast screen rejected candidate");
         }
         ProgressiveStopReason::EarlyPromote => {
-            println!("VERDICT: PASS — candidate looks strong, proceed to progressive duel or ladder");
+            println!(
+                "VERDICT: PASS — candidate looks strong, proceed to progressive duel or ladder"
+            );
         }
         ProgressiveStopReason::MaxGamesReached => {
             if result.final_delta >= 0.0 {
@@ -8150,12 +7976,24 @@ impl ProgressiveDuelConfig {
         config.max_games_per_seed = 64;
         config.repeats_per_game = 3;
 
-        config.mode_improvement_delta.insert("fast", SMART_PRIMARY_IMPROVEMENT_DELTA_MIN_FAST);
-        config.mode_improvement_delta.insert("normal", SMART_PRIMARY_IMPROVEMENT_DELTA_MIN_NORMAL);
-        config.mode_improvement_confidence.insert("fast", SMART_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN);
-        config.mode_improvement_confidence.insert("normal", SMART_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN);
-        config.mode_non_regression_delta.insert("fast", SMART_MODE_NON_REGRESSION_DELTA_MIN);
-        config.mode_non_regression_delta.insert("normal", SMART_MODE_NON_REGRESSION_DELTA_MIN);
+        config
+            .mode_improvement_delta
+            .insert("fast", SMART_PRIMARY_IMPROVEMENT_DELTA_MIN_FAST);
+        config
+            .mode_improvement_delta
+            .insert("normal", SMART_PRIMARY_IMPROVEMENT_DELTA_MIN_NORMAL);
+        config
+            .mode_improvement_confidence
+            .insert("fast", SMART_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN);
+        config
+            .mode_improvement_confidence
+            .insert("normal", SMART_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN);
+        config
+            .mode_non_regression_delta
+            .insert("fast", SMART_MODE_NON_REGRESSION_DELTA_MIN);
+        config
+            .mode_non_regression_delta
+            .insert("normal", SMART_MODE_NON_REGRESSION_DELTA_MIN);
         config
     }
 }
@@ -8167,8 +8005,7 @@ fn run_progressive_duel(
     config: &ProgressiveDuelConfig,
     artifact_path: Option<&str>,
 ) -> ProgressiveDuelResult {
-    let mut cumulative_mode_stats =
-        std::collections::HashMap::<&'static str, MatchupStats>::new();
+    let mut cumulative_mode_stats = std::collections::HashMap::<&'static str, MatchupStats>::new();
     let mut tiers = Vec::new();
     let mut games_per_seed = config.initial_games;
     let mut total_cumulative_games: usize;
@@ -8216,7 +8053,11 @@ fn run_progressive_duel(
 
         let tier_result = ProgressiveTierResult {
             tier: tier_index,
-            games_this_tier: games_per_seed * config.seed_tags.len() * config.repeats_per_game * budgets.len() * 2,
+            games_this_tier: games_per_seed
+                * config.seed_tags.len()
+                * config.repeats_per_game
+                * budgets.len()
+                * 2,
             cumulative_games: total_cumulative_games,
             mode_stats: cumulative_mode_stats.clone(),
             aggregate,
@@ -8298,7 +8139,8 @@ fn evaluate_progressive_stop(
     }
 
     // Check 2: can any mode still mathematically reach improvement?
-    let next_games_per_seed = (current_games_per_seed * config.growth_factor).min(config.max_games_per_seed);
+    let next_games_per_seed =
+        (current_games_per_seed * config.growth_factor).min(config.max_games_per_seed);
     let at_max = current_games_per_seed >= config.max_games_per_seed;
 
     if at_max {
@@ -8308,11 +8150,13 @@ fn evaluate_progressive_stop(
             let stats = mode_stats.get(budget.key()).copied().unwrap_or_default();
             let mode_delta = stats.win_rate_points() - 0.5;
             let mode_conf = stats.confidence_better_than_even();
-            let required_delta = config.mode_improvement_delta
+            let required_delta = config
+                .mode_improvement_delta
                 .get(budget.key())
                 .copied()
                 .unwrap_or(0.02);
-            let required_conf = config.mode_improvement_confidence
+            let required_conf = config
+                .mode_improvement_confidence
                 .get(budget.key())
                 .copied()
                 .unwrap_or(0.60);
@@ -8327,7 +8171,8 @@ fn evaluate_progressive_stop(
         for budget in budgets {
             let stats = mode_stats.get(budget.key()).copied().unwrap_or_default();
             let mode_delta = stats.win_rate_points() - 0.5;
-            let floor = config.mode_non_regression_delta
+            let floor = config
+                .mode_non_regression_delta
                 .get(budget.key())
                 .copied()
                 .unwrap_or(-0.03);
@@ -8359,7 +8204,8 @@ fn evaluate_progressive_stop(
     for budget in budgets {
         let stats = mode_stats.get(budget.key()).copied().unwrap_or_default();
         let best_case = max_achievable_delta(stats, remaining_per_mode);
-        let required_delta = config.mode_improvement_delta
+        let required_delta = config
+            .mode_improvement_delta
             .get(budget.key())
             .copied()
             .unwrap_or(0.02);
@@ -8379,15 +8225,18 @@ fn evaluate_progressive_stop(
         let stats = mode_stats.get(budget.key()).copied().unwrap_or_default();
         let mode_delta = stats.win_rate_points() - 0.5;
         let mode_conf = stats.confidence_better_than_even();
-        let required_delta = config.mode_improvement_delta
+        let required_delta = config
+            .mode_improvement_delta
             .get(budget.key())
             .copied()
             .unwrap_or(0.02);
-        let required_conf = config.mode_improvement_confidence
+        let required_conf = config
+            .mode_improvement_confidence
             .get(budget.key())
             .copied()
             .unwrap_or(0.60);
-        let floor = config.mode_non_regression_delta
+        let floor = config
+            .mode_non_regression_delta
             .get(budget.key())
             .copied()
             .unwrap_or(-0.03);
@@ -8402,8 +8251,13 @@ fn evaluate_progressive_stop(
 
     // Only early-promote if we have enough games for statistical significance
     let total_games: usize = mode_stats.values().map(|s| s.total_games()).sum();
-    let min_games_for_early_promote = config.initial_games * config.growth_factor * remaining_seeds_factor * budgets.len();
-    if any_mode_improved && all_modes_non_regressed && aggregate_delta >= 0.0 && total_games >= min_games_for_early_promote {
+    let min_games_for_early_promote =
+        config.initial_games * config.growth_factor * remaining_seeds_factor * budgets.len();
+    if any_mode_improved
+        && all_modes_non_regressed
+        && aggregate_delta >= 0.0
+        && total_games >= min_games_for_early_promote
+    {
         return Some(ProgressiveStopReason::EarlyPromote);
     }
 
@@ -8450,7 +8304,10 @@ fn flush_progressive_artifact(
     }
     let payload = lines.join("\n") + "\n";
     if let Err(err) = std::fs::write(path, payload.as_bytes()) {
-        println!("WARNING: failed writing progressive artifact to '{}': {}", path, err);
+        println!(
+            "WARNING: failed writing progressive artifact to '{}': {}",
+            path, err
+        );
     }
 }
 
@@ -8652,7 +8509,7 @@ fn collect_eval_tuning_samples_for_budget(
 
         let mut visited_nodes = 0usize;
         let mut alpha = i32::MIN;
-        let mut transposition_table = std::collections::HashMap::new();
+        let mut transposition_table = U64HashMap::default();
         let extension_node_budget =
             if config.enable_selective_extensions && config.selective_extension_node_share_bp > 0 {
                 ((config.max_visited_nodes * config.selective_extension_node_share_bp as usize)
@@ -9443,7 +9300,7 @@ fn assert_tactical_guardrails(
             SMART_FORCED_DRAINER_ATTACK_FALLBACK_ENUM_LIMIT_FAST,
             SuggestedStartInputOptions::for_automove(),
             &mut bomb_continuation_budget,
-            &mut std::collections::HashSet::new(),
+            &mut U64HashSet::default(),
         );
     assert!(
         bomb_attacks_now || bomb_attacks_later_this_turn,
@@ -9475,12 +9332,12 @@ fn assert_tactical_guardrails(
             96,
             SuggestedStartInputOptions::for_automove(),
         )
-            .into_iter()
-            .any(|inputs| {
-                let mut after = probe.clone_for_simulation();
-                matches!(after.process_input(inputs, false, false), Output::Events(_))
-                    && after.winner_color() == Some(Color::White)
-            });
+        .into_iter()
+        .any(|inputs| {
+            let mut after = probe.clone_for_simulation();
+            matches!(after.process_input(inputs, false, false), Output::Events(_))
+                && after.winner_color() == Some(Color::White)
+        });
         if has_immediate_win {
             winning_carrier_game = Some(probe);
             break;
@@ -9868,8 +9725,12 @@ fn assert_interview_policy_regressions(
     });
     if safe_opponent_mana_exists {
         let selected = selector(&opponent_mana_progress_game, opponent_mana_config);
-        let selected = selected_root(&opponent_mana_progress_game, opponent_mana_config, &selected)
-            .expect("selected root should be in ranked list");
+        let selected = selected_root(
+            &opponent_mana_progress_game,
+            opponent_mana_config,
+            &selected,
+        )
+        .expect("selected root should be in ranked list");
         assert!(
             selected.opponent_mana_progress || selected.scores_opponent_mana_this_turn,
             "profile '{}' should prefer safe opponent-mana progress when available",
@@ -10371,7 +10232,9 @@ fn smart_automove_pool_promotion_gate_v2() {
         assert!(
             mode_delta >= mode_delta_min,
             "quick screen mode {} failed: delta={:.3} < {:.3}",
-            budget.key(), mode_delta, mode_delta_min
+            budget.key(),
+            mode_delta,
+            mode_delta_min
         );
         quick_aggregate.merge(*stats);
     }

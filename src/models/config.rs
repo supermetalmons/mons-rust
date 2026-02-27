@@ -1,5 +1,5 @@
-use crate::*;
 use crate::models::location::BOARD_CELLS;
+use crate::*;
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
@@ -11,9 +11,8 @@ static SQUARES_ARRAY: LazyLock<[Square; BOARD_CELLS]> = LazyLock::new(|| {
     }
     arr
 });
-static MONS_BASES_SET: LazyLock<HashSet<Location>> = LazyLock::new(|| {
-    Config::MONS_BASE_LOCATIONS.iter().copied().collect()
-});
+static MONS_BASES_SET: LazyLock<HashSet<Location>> =
+    LazyLock::new(|| Config::MONS_BASE_LOCATIONS.iter().copied().collect());
 static IS_MON_BASE: LazyLock<[bool; BOARD_CELLS]> = LazyLock::new(|| {
     let mut arr = [false; BOARD_CELLS];
     for loc in &Config::MONS_BASE_LOCATIONS {

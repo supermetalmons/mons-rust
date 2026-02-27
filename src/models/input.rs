@@ -1,6 +1,6 @@
 use crate::*;
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
 pub enum Input {
     Takeback,
     Location(Location),
@@ -8,7 +8,7 @@ pub enum Input {
 }
 
 #[wasm_bindgen]
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
 pub enum Modifier {
     SelectPotion,
     SelectBomb,

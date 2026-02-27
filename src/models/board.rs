@@ -1,5 +1,5 @@
-use crate::*;
 use crate::models::location::BOARD_CELLS;
+use crate::*;
 
 #[derive(Clone)]
 pub struct Board {
@@ -8,7 +8,10 @@ pub struct Board {
 
 impl std::fmt::Debug for Board {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let occupied: Vec<(Location, &Item)> = self.items.iter().enumerate()
+        let occupied: Vec<(Location, &Item)> = self
+            .items
+            .iter()
+            .enumerate()
             .filter_map(|(idx, opt)| opt.as_ref().map(|item| (Location::from_index(idx), item)))
             .collect();
         f.debug_struct("Board").field("items", &occupied).finish()
@@ -59,9 +62,7 @@ impl Board {
     }
 
     pub fn all_mons_bases(&self) -> Vec<Location> {
-        let mut locations: Vec<Location> = Config::MONS_BASE_LOCATIONS.to_vec();
-        locations.sort();
-        locations
+        Config::MONS_BASE_LOCATIONS.to_vec()
     }
 
     #[inline]
@@ -70,7 +71,9 @@ impl Board {
     }
 
     pub fn all_mons_locations(&self, color: Color) -> Vec<Location> {
-        let mut locations: Vec<Location> = self.items.iter().enumerate()
+        self.items
+            .iter()
+            .enumerate()
             .filter_map(|(idx, opt)| {
                 if let Some(item) = opt {
                     if let Some(mon) = item.mon() {
@@ -81,22 +84,20 @@ impl Board {
                 }
                 None
             })
-            .collect();
-        locations.sort();
-        locations
+            .collect()
     }
 
     pub fn all_free_regular_mana_locations(&self, color: Color) -> Vec<Location> {
-        let mut locations: Vec<Location> = self.items.iter().enumerate()
+        self.items
+            .iter()
+            .enumerate()
             .filter_map(|(idx, opt)| match opt {
-                Some(Item::Mana { mana: Mana::Regular(mana_color) }) if *mana_color == color => {
-                    Some(Location::from_index(idx))
-                }
+                Some(Item::Mana {
+                    mana: Mana::Regular(mana_color),
+                }) if *mana_color == color => Some(Location::from_index(idx)),
                 _ => None,
             })
-            .collect();
-        locations.sort();
-        locations
+            .collect()
     }
 
     pub fn base(&self, mon: Mon) -> Location {
@@ -104,25 +105,28 @@ impl Board {
     }
 
     pub fn fainted_mons_locations(&self, color: Color) -> Vec<Location> {
-        let mut locations: Vec<Location> = self.items.iter().enumerate()
+        self.items
+            .iter()
+            .enumerate()
             .filter_map(|(idx, opt)| match opt {
                 Some(Item::Mon { mon }) if mon.color == color && mon.is_fainted() => {
                     Some(Location::from_index(idx))
                 }
                 _ => None,
             })
-            .collect();
-        locations.sort();
-        locations
+            .collect()
     }
 
     pub fn find_mana(&self, color: Color) -> Option<Location> {
-        self.items.iter().enumerate().find_map(|(idx, opt)| match opt {
-            Some(Item::Mana { mana: Mana::Regular(mana_color) }) if *mana_color == color => {
-                Some(Location::from_index(idx))
-            }
-            _ => None,
-        })
+        self.items
+            .iter()
+            .enumerate()
+            .find_map(|(idx, opt)| match opt {
+                Some(Item::Mana {
+                    mana: Mana::Regular(mana_color),
+                }) if *mana_color == color => Some(Location::from_index(idx)),
+                _ => None,
+            })
     }
 
     pub fn find_awake_angel(&self, color: Color) -> Option<Location> {
@@ -141,8 +145,9 @@ impl Board {
     /// Iterate over occupied cells: yields (Location, &Item)
     #[inline]
     pub fn occupied(&self) -> impl Iterator<Item = (Location, &Item)> {
-        self.items.iter().enumerate().filter_map(|(idx, opt)| {
-            opt.as_ref().map(|item| (Location::from_index(idx), item))
-        })
+        self.items
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, opt)| opt.as_ref().map(|item| (Location::from_index(idx), item)))
     }
 }

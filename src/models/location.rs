@@ -1,4 +1,5 @@
 use crate::*;
+use std::sync::LazyLock;
 
 #[wasm_bindgen]
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
@@ -8,6 +9,14 @@ pub struct Location {
 }
 
 pub const BOARD_CELLS: usize = 121; // 11 * 11
+
+static NEARBY_LOCATIONS_CACHE: LazyLock<Vec<Vec<Location>>> =
+    LazyLock::new(|| build_nearby_cache(1));
+static BOMB_REACHABILITY_CACHE: LazyLock<Vec<Vec<Location>>> =
+    LazyLock::new(|| build_nearby_cache(3));
+static MYSTIC_REACHABILITY_CACHE: LazyLock<Vec<Vec<Location>>> = LazyLock::new(build_mystic_cache);
+static DEMON_REACHABILITY_CACHE: LazyLock<Vec<Vec<Location>>> = LazyLock::new(build_demon_cache);
+static SPIRIT_REACHABILITY_CACHE: LazyLock<Vec<Vec<Location>>> = LazyLock::new(build_spirit_cache);
 
 #[wasm_bindgen]
 impl Location {
@@ -37,57 +46,49 @@ impl Location {
         0..Config::BOARD_SIZE
     }
 
+    #[inline]
+    pub fn nearby_locations_ref(&self) -> &'static [Location] {
+        &NEARBY_LOCATIONS_CACHE[self.index()]
+    }
+
     pub fn nearby_locations(&self) -> Vec<Location> {
-        self.nearby_locations_with_distance(1)
+        self.nearby_locations_ref().to_vec()
+    }
+
+    #[inline]
+    pub fn reachable_by_bomb_ref(&self) -> &'static [Location] {
+        &BOMB_REACHABILITY_CACHE[self.index()]
     }
 
     pub fn reachable_by_bomb(&self) -> Vec<Location> {
-        self.nearby_locations_with_distance(3)
+        self.reachable_by_bomb_ref().to_vec()
+    }
+
+    #[inline]
+    pub fn reachable_by_mystic_action_ref(&self) -> &'static [Location] {
+        &MYSTIC_REACHABILITY_CACHE[self.index()]
     }
 
     pub fn reachable_by_mystic_action(&self) -> Vec<Location> {
-        let deltas = [(-2, -2), (2, 2), (-2, 2), (2, -2)];
-        deltas
-            .iter()
-            .filter_map(|&(dx, dy)| {
-                let (new_i, new_j) = (self.i + dx, self.j + dy);
-                if Self::valid_range().contains(&new_i) && Self::valid_range().contains(&new_j) {
-                    Some(Location::new(new_i, new_j))
-                } else {
-                    None
-                }
-            })
-            .collect()
+        self.reachable_by_mystic_action_ref().to_vec()
+    }
+
+    #[inline]
+    pub fn reachable_by_demon_action_ref(&self) -> &'static [Location] {
+        &DEMON_REACHABILITY_CACHE[self.index()]
     }
 
     pub fn reachable_by_demon_action(&self) -> Vec<Location> {
-        let deltas = [(-2, 0), (2, 0), (0, 2), (0, -2)];
-        deltas
-            .iter()
-            .filter_map(|&(dx, dy)| {
-                let (new_i, new_j) = (self.i + dx, self.j + dy);
-                if Self::valid_range().contains(&new_i) && Self::valid_range().contains(&new_j) {
-                    Some(Location::new(new_i, new_j))
-                } else {
-                    None
-                }
-            })
-            .collect()
+        self.reachable_by_demon_action_ref().to_vec()
+    }
+
+    #[inline]
+    pub fn reachable_by_spirit_action_ref(&self) -> &'static [Location] {
+        &SPIRIT_REACHABILITY_CACHE[self.index()]
     }
 
     pub fn reachable_by_spirit_action(&self) -> Vec<Location> {
-        let mut locations = Vec::new();
-        for x in -2i32..=2 {
-            for y in -2i32..=2 {
-                if x.abs().max(y.abs()) == 2
-                    && Self::valid_range().contains(&(self.i + x))
-                    && Self::valid_range().contains(&(self.j + y))
-                {
-                    locations.push(Location::new(self.i + x, self.j + y));
-                }
-            }
-        }
-        locations
+        self.reachable_by_spirit_action_ref().to_vec()
     }
 
     #[inline]
@@ -99,19 +100,75 @@ impl Location {
     pub fn distance(&self, to: &Location) -> i32 {
         ((to.i - self.i).abs()).max((to.j - self.j).abs())
     }
+}
 
-    fn nearby_locations_with_distance(&self, distance: i32) -> Vec<Location> {
-        let mut locations = Vec::new();
-        for x in (self.i - distance)..=(self.i + distance) {
-            for y in (self.j - distance)..=(self.j + distance) {
-                if Self::valid_range().contains(&x)
-                    && Self::valid_range().contains(&y)
-                    && (x != self.i || y != self.j)
-                {
-                    locations.push(Location::new(x, y));
-                }
+fn build_nearby_cache(distance: i32) -> Vec<Vec<Location>> {
+    (0..BOARD_CELLS)
+        .map(|idx| nearby_locations_for(Location::from_index(idx), distance))
+        .collect()
+}
+
+fn build_mystic_cache() -> Vec<Vec<Location>> {
+    let deltas = [(-2, -2), (2, 2), (-2, 2), (2, -2)];
+    (0..BOARD_CELLS)
+        .map(|idx| directional_reachability_for(Location::from_index(idx), &deltas))
+        .collect()
+}
+
+fn build_demon_cache() -> Vec<Vec<Location>> {
+    let deltas = [(-2, 0), (2, 0), (0, 2), (0, -2)];
+    (0..BOARD_CELLS)
+        .map(|idx| directional_reachability_for(Location::from_index(idx), &deltas))
+        .collect()
+}
+
+fn build_spirit_cache() -> Vec<Vec<Location>> {
+    (0..BOARD_CELLS)
+        .map(|idx| spirit_reachability_for(Location::from_index(idx)))
+        .collect()
+}
+
+fn nearby_locations_for(location: Location, distance: i32) -> Vec<Location> {
+    let mut locations = Vec::new();
+    for x in (location.i - distance)..=(location.i + distance) {
+        for y in (location.j - distance)..=(location.j + distance) {
+            if Location::valid_range().contains(&x)
+                && Location::valid_range().contains(&y)
+                && (x != location.i || y != location.j)
+            {
+                locations.push(Location::new(x, y));
             }
         }
-        locations
     }
+    locations
+}
+
+fn directional_reachability_for(location: Location, deltas: &[(i32, i32)]) -> Vec<Location> {
+    deltas
+        .iter()
+        .filter_map(|&(dx, dy)| {
+            let (new_i, new_j) = (location.i + dx, location.j + dy);
+            if Location::valid_range().contains(&new_i) && Location::valid_range().contains(&new_j)
+            {
+                Some(Location::new(new_i, new_j))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn spirit_reachability_for(location: Location) -> Vec<Location> {
+    let mut locations = Vec::new();
+    for x in -2i32..=2 {
+        for y in -2i32..=2 {
+            if x.abs().max(y.abs()) == 2
+                && Location::valid_range().contains(&(location.i + x))
+                && Location::valid_range().contains(&(location.j + y))
+            {
+                locations.push(Location::new(location.i + x, location.j + y));
+            }
+        }
+    }
+    locations
 }

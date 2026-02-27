@@ -118,12 +118,41 @@ impl MonsGame {
         do_not_apply_events: bool,
         one_option_enough: bool,
     ) -> Output {
-        self.process_input_with_start_options(input, do_not_apply_events, one_option_enough, None)
+        self.process_input_slice(input.as_slice(), do_not_apply_events, one_option_enough)
     }
 
     pub fn process_input_with_start_options(
         &mut self,
         input: Vec<Input>,
+        do_not_apply_events: bool,
+        one_option_enough: bool,
+        suggested_start_options: Option<SuggestedStartInputOptions>,
+    ) -> Output {
+        self.process_input_with_start_options_slice(
+            input.as_slice(),
+            do_not_apply_events,
+            one_option_enough,
+            suggested_start_options,
+        )
+    }
+
+    pub(crate) fn process_input_slice(
+        &mut self,
+        input: &[Input],
+        do_not_apply_events: bool,
+        one_option_enough: bool,
+    ) -> Output {
+        self.process_input_with_start_options_slice(
+            input,
+            do_not_apply_events,
+            one_option_enough,
+            None,
+        )
+    }
+
+    pub(crate) fn process_input_with_start_options_slice(
+        &mut self,
+        input: &[Input],
         do_not_apply_events: bool,
         one_option_enough: bool,
         suggested_start_options: Option<SuggestedStartInputOptions>,
@@ -138,7 +167,7 @@ impl MonsGame {
 
     fn process_input_internal(
         &mut self,
-        input: Vec<Input>,
+        input: &[Input],
         do_not_apply_events: bool,
         one_option_enough: bool,
         suggested_start_options: SuggestedStartInputOptions,
@@ -176,10 +205,10 @@ impl MonsGame {
             _ => return Output::InvalidInput,
         };
         let start_item = match self.board.item(start_location) {
-            Some(item) => item.clone(),
+            Some(item) => *item,
             None => return Output::InvalidInput,
         };
-        let specific_second_input = input.get(1).cloned();
+        let specific_second_input = input.get(1).copied();
         let second_input_options = self.second_input_options(
             start_location,
             &start_item,
@@ -209,10 +238,10 @@ impl MonsGame {
             None => return Output::InvalidInput,
         };
 
-        let specific_third_input = input.get(2).cloned();
+        let specific_third_input = input.get(2).copied();
         let (mut events, third_input_options) = match self.process_second_input(
             second_input_kind,
-            start_item.clone(),
+            start_item,
             start_location,
             target_location,
             specific_third_input,
@@ -226,7 +255,7 @@ impl MonsGame {
                 return Output::NextInputOptions(third_input_options);
             } else if !events.is_empty() {
                 return Output::Events(if do_not_apply_events {
-                    events.clone()
+                    events
                 } else {
                     self.apply_and_add_resulting_events(events)
                 });
@@ -245,9 +274,9 @@ impl MonsGame {
             None => return Output::InvalidInput,
         };
 
-        let specific_forth_input = input.get(3).cloned();
+        let specific_forth_input = input.get(3).copied();
         let (forth_events, forth_input_options) = match self.process_third_input(
-            third_input.clone(),
+            third_input,
             start_item,
             start_location,
             target_location,
@@ -286,7 +315,7 @@ impl MonsGame {
                     Some(option) => option,
                     None => return Output::InvalidInput,
                 };
-                if let Some(actor_mon_item) = forth_input.actor_mon_item.clone() {
+                if let Some(actor_mon_item) = forth_input.actor_mon_item {
                     if let Some(actor_mon) = actor_mon_item.mon() {
                         match modifier {
                             Modifier::SelectBomb => events.push(Event::PickupBomb {
@@ -321,12 +350,9 @@ impl MonsGame {
         let mut suggested_locations: Vec<Location> = Vec::new();
 
         for location in self.board.all_mons_locations(self.active_color) {
-            let output = self.process_input_internal(
-                vec![Input::Location(location)],
-                true,
-                true,
-                suggested_start_options,
-            );
+            let start_input = [Input::Location(location)];
+            let output =
+                self.process_input_internal(&start_input, true, true, suggested_start_options);
             if matches!(output, Output::NextInputOptions(options) if !options.is_empty()) {
                 suggested_locations.push(location);
             }
@@ -341,13 +367,13 @@ impl MonsGame {
                     && self.player_potions_count() > 0));
 
         if should_add_regular_mana_starts {
-            for location in self.board.all_free_regular_mana_locations(self.active_color) {
-                let output = self.process_input_internal(
-                    vec![Input::Location(location)],
-                    true,
-                    true,
-                    suggested_start_options,
-                );
+            for location in self
+                .board
+                .all_free_regular_mana_locations(self.active_color)
+            {
+                let start_input = [Input::Location(location)];
+                let output =
+                    self.process_input_internal(&start_input, true, true, suggested_start_options);
                 if matches!(output, Output::NextInputOptions(options) if !options.is_empty())
                     && !suggested_locations.contains(&location)
                 {
@@ -374,13 +400,14 @@ impl MonsGame {
             Some(Input::Location(location)) => Some(location),
             _ => None,
         };
+        let opponents_angel_location = self.board.find_awake_angel(self.active_color.other());
         let start_square = self.board.square(start_location);
         let mut second_input_options = Vec::new();
         match start_item {
             Item::Mon { mon } if mon.color == self.active_color && !mon.is_fainted() => {
                 if self.player_can_move_mon() {
-                    second_input_options.extend(self.next_inputs(
-                        start_location.nearby_locations(),
+                    second_input_options.extend(self.next_inputs_from_slice(
+                        start_location.nearby_locations_ref(),
                         NextInputKind::MonMove,
                         only_one,
                         specific_next.map(|input| match input {
@@ -426,14 +453,17 @@ impl MonsGame {
                     match mon.kind {
                         MonKind::Angel | MonKind::Drainer => (),
                         MonKind::Mystic => {
-                            second_input_options.extend(self.next_inputs(
-                                start_location.reachable_by_mystic_action(),
+                            second_input_options.extend(self.next_inputs_from_slice(
+                                start_location.reachable_by_mystic_action_ref(),
                                 NextInputKind::MysticAction,
                                 only_one,
                                 specific_location,
                                 |location| {
                                     if let Some(item) = self.board.item(location) {
-                                        if self.protected_by_opponents_angel().contains(&location) {
+                                        if Self::is_location_guarded_by_angel_location(
+                                            opponents_angel_location,
+                                            location,
+                                        ) {
                                             return false;
                                         }
 
@@ -457,18 +487,20 @@ impl MonsGame {
                             ));
                         }
                         MonKind::Demon => {
-                            second_input_options.extend(self.next_inputs(
-                                start_location.reachable_by_demon_action(),
+                            second_input_options.extend(self.next_inputs_from_slice(
+                                start_location.reachable_by_demon_action_ref(),
                                 NextInputKind::DemonAction,
                                 only_one,
                                 specific_location,
                                 |location| {
                                     if let Some(item) = self.board.item(location) {
-                                        if self.protected_by_opponents_angel().contains(&location)
-                                            || self
-                                                .board
-                                                .item(start_location.location_between(&location))
-                                                .is_some()
+                                        if Self::is_location_guarded_by_angel_location(
+                                            opponents_angel_location,
+                                            location,
+                                        ) || self
+                                            .board
+                                            .item(start_location.location_between(&location))
+                                            .is_some()
                                             || matches!(
                                                 self.board.square(
                                                     start_location.location_between(&location)
@@ -499,8 +531,8 @@ impl MonsGame {
                             ));
                         }
                         MonKind::Spirit => {
-                            second_input_options.extend(self.next_inputs(
-                                start_location.reachable_by_spirit_action(),
+                            second_input_options.extend(self.next_inputs_from_slice(
+                                start_location.reachable_by_spirit_action_ref(),
                                 NextInputKind::SpiritTargetCapture,
                                 only_one,
                                 specific_location,
@@ -530,8 +562,8 @@ impl MonsGame {
                 if matches!(mana, Mana::Regular(color) if color == &self.active_color)
                     && self.player_can_move_mana() =>
             {
-                second_input_options.extend(self.next_inputs(
-                    start_location.nearby_locations(),
+                second_input_options.extend(self.next_inputs_from_slice(
+                    start_location.nearby_locations_ref(),
                     NextInputKind::ManaMove,
                     only_one,
                     specific_location,
@@ -564,8 +596,8 @@ impl MonsGame {
             Item::MonWithMana { mon, mana }
                 if mon.color == self.active_color && self.player_can_move_mon() =>
             {
-                second_input_options.extend(self.next_inputs(
-                    start_location.nearby_locations(),
+                second_input_options.extend(self.next_inputs_from_slice(
+                    start_location.nearby_locations_ref(),
                     NextInputKind::MonMove,
                     only_one,
                     specific_location,
@@ -592,8 +624,8 @@ impl MonsGame {
             }
             Item::MonWithConsumable { mon, consumable } if mon.color == self.active_color => {
                 if self.player_can_move_mon() {
-                    second_input_options.extend(self.next_inputs(
-                        start_location.nearby_locations(),
+                    second_input_options.extend(self.next_inputs_from_slice(
+                        start_location.nearby_locations_ref(),
                         NextInputKind::MonMove,
                         only_one,
                         specific_location,
@@ -620,8 +652,8 @@ impl MonsGame {
                 }
 
                 if matches!(consumable, Consumable::Bomb) {
-                    second_input_options.extend(self.next_inputs(
-                        start_location.reachable_by_bomb(),
+                    second_input_options.extend(self.next_inputs_from_slice(
+                        start_location.reachable_by_bomb_ref(),
                         NextInputKind::BombAttack,
                         only_one,
                         specific_location,
@@ -670,7 +702,7 @@ impl MonsGame {
                     return None;
                 }
                 events.push(Event::MonMove {
-                    item: start_item.clone(),
+                    item: start_item,
                     from: start_location,
                     to: target_location,
                 });
@@ -683,7 +715,7 @@ impl MonsGame {
                         Item::Mana { mana } => {
                             if let Some(start_mana) = start_item.mana() {
                                 events.push(Event::ManaDropped {
-                                    mana: start_mana.clone(),
+                                    mana: *start_mana,
                                     at: start_location,
                                 });
                             }
@@ -708,7 +740,7 @@ impl MonsGame {
                                     third_input_options.push(NextInput::new(
                                         Input::Modifier(Modifier::SelectBomb),
                                         NextInputKind::SelectConsumable,
-                                        Some(start_item.clone()),
+                                        Some(start_item),
                                     ));
                                     third_input_options.push(NextInput::new(
                                         Input::Modifier(Modifier::SelectPotion),
@@ -911,10 +943,9 @@ impl MonsGame {
                 }
 
                 if requires_additional_step {
-                    let nearby_locations = target_location.nearby_locations();
-                    for location in nearby_locations.iter() {
-                        let item = self.board.item(*location);
-                        let square = self.board.square(*location);
+                    for &location in target_location.nearby_locations_ref() {
+                        let item = self.board.item(location);
+                        let square = self.board.square(location);
 
                         let is_valid_location =
                             item.is_none() || matches!(item, Some(Item::Consumable { .. }));
@@ -926,7 +957,7 @@ impl MonsGame {
                                 | Square::ManaBase { .. }
                                 | Square::ManaPool { .. } => {
                                     third_input_options.push(NextInput {
-                                        input: Input::Location(*location),
+                                        input: Input::Location(location),
                                         kind: NextInputKind::DemonAdditionalStep,
                                         actor_mon_item: None,
                                     });
@@ -934,7 +965,7 @@ impl MonsGame {
                                 Square::MonBase { kind, color } => {
                                     if start_mon.kind == kind && start_mon.color == color {
                                         third_input_options.push(NextInput {
-                                            input: Input::Location(*location),
+                                            input: Input::Location(location),
                                             kind: NextInputKind::DemonAdditionalStep,
                                             actor_mon_item: None,
                                         });
@@ -953,55 +984,108 @@ impl MonsGame {
                 }
                 let target_mon = target_item.as_ref().and_then(|item| item.mon());
                 let target_mana = target_item.as_ref().and_then(|item| item.mana());
-                third_input_options.append(&mut self.next_inputs(target_location.nearby_locations(), NextInputKind::SpiritTargetMove, false, None, |location| {
-                    let destination_item = self.board.item(location);
-                    let destination_square = self.board.square(location);
+                third_input_options.extend(self.next_inputs_from_slice(
+                    target_location.nearby_locations_ref(),
+                    NextInputKind::SpiritTargetMove,
+                    false,
+                    None,
+                    |location| {
+                        let destination_item = self.board.item(location);
+                        let destination_square = self.board.square(location);
 
-                    let valid_destination = match destination_item {
-                        Some(Item::Mon { mon: destination_mon }) => match target_item {
-                            Some(Item::Mon { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => false,
-                            Some(Item::Mana { .. }) => destination_mon.kind == MonKind::Drainer && !destination_mon.is_fainted(),
-                            Some(Item::Consumable { consumable: target_consumable }) => *target_consumable == Consumable::BombOrPotion,
-                            None => false,
-                        },
-                        Some(Item::Mana { .. }) => matches!(target_mon, Some(mon) if mon.kind == MonKind::Drainer && !mon.is_fainted()),
-                        Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => match target_item {
-                            Some(Item::Mon { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => false,
-                            Some(Item::Mana { .. }) => false,
-                            Some(Item::Consumable { consumable: target_consumable }) => *target_consumable == Consumable::BombOrPotion,
-                            None => false,
-                        },
-                        Some(Item::Consumable { consumable: destination_consumable }) => matches!(target_item, Some(Item::Mon { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) if *destination_consumable == Consumable::BombOrPotion),
-                        None => true,
-                    };
-
-                    if valid_destination {
-                        match destination_square {
-                            Square::Regular | Square::ConsumableBase | Square::ManaBase { .. } | Square::ManaPool { .. } => true,
-                            Square::SupermanaBase => {
-                                target_mana == Some(&Mana::Supermana) ||
-                                (target_mana.is_none() && matches!(target_mon.map(|mon| mon.kind), Some(MonKind::Drainer)) && (destination_item.is_none() || matches!(destination_item, Some(Item::Mana { mana: Mana::Supermana })))) ||
-                                (matches!(target_mon.map(|mon| mon.kind), Some(MonKind::Drainer)) && (matches!(destination_item, Some(Item::Mana { mana: Mana::Supermana }))))
-                            },
-                            Square::MonBase { kind, color } => {
-                                if let Some(mon) = target_mon {
-                                    mon.kind == kind && mon.color == color && target_mana.is_none() && target_item.as_ref().and_then(|item| item.consumable()).is_none()
-                                } else {
-                                    false
+                        let valid_destination = match destination_item {
+                            Some(Item::Mon {
+                                mon: destination_mon,
+                            }) => match target_item {
+                                Some(Item::Mon { .. })
+                                | Some(Item::MonWithMana { .. })
+                                | Some(Item::MonWithConsumable { .. }) => false,
+                                Some(Item::Mana { .. }) => {
+                                    destination_mon.kind == MonKind::Drainer
+                                        && !destination_mon.is_fainted()
                                 }
+                                Some(Item::Consumable {
+                                    consumable: target_consumable,
+                                }) => *target_consumable == Consumable::BombOrPotion,
+                                None => false,
                             },
+                            Some(Item::Mana { .. }) => {
+                                matches!(target_mon, Some(mon) if mon.kind == MonKind::Drainer && !mon.is_fainted())
+                            }
+                            Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => {
+                                match target_item {
+                                    Some(Item::Mon { .. })
+                                    | Some(Item::MonWithMana { .. })
+                                    | Some(Item::MonWithConsumable { .. }) => false,
+                                    Some(Item::Mana { .. }) => false,
+                                    Some(Item::Consumable {
+                                        consumable: target_consumable,
+                                    }) => *target_consumable == Consumable::BombOrPotion,
+                                    None => false,
+                                }
+                            }
+                            Some(Item::Consumable {
+                                consumable: destination_consumable,
+                            }) => matches!(target_item, Some(Item::Mon { .. }) | Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) if *destination_consumable == Consumable::BombOrPotion),
+                            None => true,
+                        };
+
+                        if valid_destination {
+                            match destination_square {
+                                Square::Regular
+                                | Square::ConsumableBase
+                                | Square::ManaBase { .. }
+                                | Square::ManaPool { .. } => true,
+                                Square::SupermanaBase => {
+                                    target_mana == Some(&Mana::Supermana)
+                                        || (target_mana.is_none()
+                                            && matches!(
+                                                target_mon.map(|mon| mon.kind),
+                                                Some(MonKind::Drainer)
+                                            )
+                                            && (destination_item.is_none()
+                                                || matches!(
+                                                    destination_item,
+                                                    Some(Item::Mana {
+                                                        mana: Mana::Supermana
+                                                    })
+                                                )))
+                                        || (matches!(
+                                            target_mon.map(|mon| mon.kind),
+                                            Some(MonKind::Drainer)
+                                        ) && matches!(
+                                            destination_item,
+                                            Some(Item::Mana {
+                                                mana: Mana::Supermana
+                                            })
+                                        ))
+                                }
+                                Square::MonBase { kind, color } => {
+                                    if let Some(mon) = target_mon {
+                                        mon.kind == kind
+                                            && mon.color == color
+                                            && target_mana.is_none()
+                                            && target_item
+                                                .as_ref()
+                                                .and_then(|item| item.consumable())
+                                                .is_none()
+                                    } else {
+                                        false
+                                    }
+                                }
+                            }
+                        } else {
+                            false
                         }
-                    } else {
-                        false
-                    }
-                }));
+                    },
+                ));
             }
 
             NextInputKind::BombAttack => {
                 let start_mon = start_item.mon().unwrap();
 
                 events.push(Event::BombAttack {
-                    by: start_mon.clone(),
+                    by: *start_mon,
                     from: start_location,
                     to: target_location,
                 });
@@ -1053,7 +1137,7 @@ impl MonsGame {
 
     fn process_third_input(
         &mut self,
-        third_input: NextInput,
+        third_input: &NextInput,
         start_item: Item,
         _start_location: Location,
         target_location: Location,
@@ -1070,7 +1154,7 @@ impl MonsGame {
                         let destination_square = self.board.square(destination_location);
 
                         events.push(Event::SpiritTargetMove {
-                            item: target_item.clone(),
+                            item: *target_item,
                             from: target_location,
                             to: destination_location,
                             by: _start_location,
@@ -1101,12 +1185,12 @@ impl MonsGame {
                                             forth_input_options.push(NextInput::new(
                                                 Input::Modifier(Modifier::SelectBomb),
                                                 NextInputKind::SelectConsumable,
-                                                Some(target_item.clone()),
+                                                Some(*target_item),
                                             ));
                                             forth_input_options.push(NextInput::new(
                                                 Input::Modifier(Modifier::SelectPotion),
                                                 NextInputKind::SelectConsumable,
-                                                Some(target_item.clone()),
+                                                Some(*target_item),
                                             ));
                                         }
                                     },
@@ -1151,7 +1235,7 @@ impl MonsGame {
                                         Consumable::Potion | Consumable::Bomb => return None,
                                         Consumable::BombOrPotion => {
                                             events.push(Event::PickupPotion {
-                                                by: target_item.clone(),
+                                                by: *target_item,
                                                 at: destination_location,
                                             });
                                         }
@@ -1168,7 +1252,7 @@ impl MonsGame {
                                         Consumable::Potion | Consumable::Bomb => return None,
                                         Consumable::BombOrPotion => {
                                             events.push(Event::PickupPotion {
-                                                by: target_item.clone(),
+                                                by: *target_item,
                                                 at: destination_location,
                                             });
                                         }
@@ -1182,12 +1266,12 @@ impl MonsGame {
                                         forth_input_options.push(NextInput::new(
                                             Input::Modifier(Modifier::SelectBomb),
                                             NextInputKind::SelectConsumable,
-                                            Some(destination_item.clone()),
+                                            Some(*destination_item),
                                         ));
                                         forth_input_options.push(NextInput::new(
                                             Input::Modifier(Modifier::SelectPotion),
                                             NextInputKind::SelectConsumable,
-                                            Some(destination_item.clone()),
+                                            Some(*destination_item),
                                         ));
                                     }
                                     Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => {
@@ -1195,7 +1279,7 @@ impl MonsGame {
                                             Consumable::Potion | Consumable::Bomb => return None,
                                             Consumable::BombOrPotion => {
                                                 events.push(Event::PickupPotion {
-                                                    by: destination_item.clone(),
+                                                    by: *destination_item,
                                                     at: destination_location,
                                                 });
                                             }
@@ -1237,12 +1321,12 @@ impl MonsGame {
                                         forth_input_options.push(NextInput::new(
                                             Input::Modifier(Modifier::SelectBomb),
                                             NextInputKind::SelectConsumable,
-                                            Some(start_item.clone()),
+                                            Some(start_item),
                                         ));
                                         forth_input_options.push(NextInput::new(
                                             Input::Modifier(Modifier::SelectPotion),
                                             NextInputKind::SelectConsumable,
-                                            Some(start_item.clone()),
+                                            Some(start_item),
                                         ));
                                     }
                                 }
@@ -1267,7 +1351,7 @@ impl MonsGame {
                             }
                             Modifier::SelectPotion => {
                                 events.push(Event::PickupPotion {
-                                    by: start_item.clone(),
+                                    by: start_item,
                                     at: target_location,
                                 });
                             }
@@ -1291,10 +1375,11 @@ impl MonsGame {
     pub fn apply_and_add_resulting_events(&mut self, events: Vec<Event>) -> Vec<Event> {
         if self.takeback_fens.len() == 0 {
             let initial_fen = self.fen();
-            self.takeback_fens.push(initial_fen.clone());
+            let tracked_initial_fen = initial_fen.clone();
+            self.takeback_fens.push(initial_fen);
             if self.with_verbose_tracking && self.verbose_tracking_entities.is_empty() {
                 self.verbose_tracking_entities.push(VerboseTrackingEntity {
-                    fen: initial_fen,
+                    fen: tracked_initial_fen,
                     color: self.active_color,
                     events: vec![],
                 });
@@ -1307,7 +1392,7 @@ impl MonsGame {
                 Event::MonMove { item, from, to } => {
                     self.mons_moves_count += 1;
                     self.board.remove_item(*from);
-                    self.board.put(item.clone(), *to);
+                    self.board.put(*item, *to);
                 }
                 Event::ManaMove { mana, from, to } => {
                     self.mana_moves_count += 1;
@@ -1323,7 +1408,7 @@ impl MonsGame {
                     }
                     if let Some(item) = self.board.item(*at) {
                         if let Some(mon) = item.mon() {
-                            self.board.put(Item::Mon { mon: mon.clone() }, *at);
+                            self.board.put(Item::Mon { mon: *mon }, *at);
                         } else {
                             self.board.remove_item(*at);
                         }
@@ -1356,7 +1441,7 @@ impl MonsGame {
                         _ => None,
                     });
                     if demon_additional_to.is_none() {
-                        self.board.put(Item::Mon { mon: demon.clone() }, *to);
+                        self.board.put(Item::Mon { mon: *demon }, *to);
                     } else {
                         self.board.remove_item(*to);
                     }
@@ -1377,7 +1462,7 @@ impl MonsGame {
                     }
                 }
                 Event::DemonAdditionalStep { demon, from: _, to } => {
-                    self.board.put(Item::Mon { mon: demon.clone() }, *to);
+                    self.board.put(Item::Mon { mon: *demon }, *to);
                 }
                 Event::SpiritTargetMove { item, from, to, by } => {
                     if self.actions_used_count >= Config::ACTIONS_PER_TURN {
@@ -1391,12 +1476,12 @@ impl MonsGame {
                         self.actions_used_count += 1;
                     }
                     self.board.remove_item(*from);
-                    self.board.put(item.clone(), *to);
+                    self.board.put(*item, *to);
                 }
                 Event::PickupBomb { by, at } => {
                     self.board.put(
                         Item::MonWithConsumable {
-                            mon: by.clone(),
+                            mon: *by,
                             consumable: Consumable::Bomb,
                         },
                         *at,
@@ -1413,19 +1498,19 @@ impl MonsGame {
                     } else {
                         self.black_potions_count += 1;
                     }
-                    self.board.put(by.clone(), *at);
+                    self.board.put(*by, *at);
                 }
                 Event::PickupMana { mana, by, at } => {
                     self.board.put(
                         Item::MonWithMana {
-                            mon: by.clone(),
+                            mon: *by,
                             mana: *mana,
                         },
                         *at,
                     );
                 }
                 Event::MonFainted { mon, from: _, to } => {
-                    let mut fainted_mon = mon.clone();
+                    let mut fainted_mon = *mon;
                     fainted_mon.faint();
                     self.board.put(Item::Mon { mon: fainted_mon }, *to);
                 }
@@ -1436,7 +1521,7 @@ impl MonsGame {
                     if let Some(Item::Mon { mon }) = self.board.item(*to) {
                         self.board.put(
                             Item::MonWithMana {
-                                mon: mon.clone(),
+                                mon: *mon,
                                 mana: Mana::Supermana,
                             },
                             *to,
@@ -1452,7 +1537,7 @@ impl MonsGame {
                 }
                 Event::BombAttack { by, from, to } => {
                     self.board.remove_item(*to);
-                    self.board.put(Item::Mon { mon: by.clone() }, *from);
+                    self.board.put(Item::Mon { mon: *by }, *from);
                 }
                 Event::BombExplosion { at } => {
                     self.board.remove_item(*at);
@@ -1481,15 +1566,15 @@ impl MonsGame {
 
             for mon_location in self.board.fainted_mons_locations(self.active_color) {
                 if let Some(item) = self.board.item(mon_location) {
-                    if let Some(mut mon) = item.mon().cloned() {
+                    if let Some(mut mon) = item.mon().copied() {
                         mon.decrease_cooldown();
                         if !mon.is_fainted() {
                             extra_events.push(Event::MonAwake {
-                                mon: mon.clone(),
+                                mon,
                                 at: mon_location,
                             });
                         }
-                        self.board.put(Item::Mon { mon: mon.clone() }, mon_location);
+                        self.board.put(Item::Mon { mon }, mon_location);
                     }
                 }
             }
@@ -1519,6 +1604,14 @@ impl MonsGame {
     }
 
     // MARK: - helpers
+    #[inline]
+    fn is_location_guarded_by_angel_location(
+        angel_location: Option<Location>,
+        location: Location,
+    ) -> bool {
+        angel_location.map_or(false, |angel| angel.distance(&location) == 1)
+    }
+
     pub fn next_inputs<F>(
         &self,
         locations: Vec<Location>,
@@ -1530,8 +1623,26 @@ impl MonsGame {
     where
         F: Fn(Location) -> bool,
     {
+        self.next_inputs_from_slice(locations.as_slice(), kind, only_one, specific, filter)
+    }
+
+    pub fn next_inputs_from_slice<F>(
+        &self,
+        locations: &[Location],
+        kind: NextInputKind,
+        only_one: bool,
+        specific: Option<Location>,
+        filter: F,
+    ) -> Vec<NextInput>
+    where
+        F: Fn(Location) -> bool,
+    {
         if let Some(specific_location) = specific {
-            if locations.contains(&specific_location) && filter(specific_location) {
+            if locations
+                .iter()
+                .any(|location| *location == specific_location)
+                && filter(specific_location)
+            {
                 return vec![NextInput {
                     input: Input::Location(specific_location),
                     kind,
@@ -1541,7 +1652,7 @@ impl MonsGame {
                 return vec![];
             }
         } else if only_one {
-            if let Some(one) = locations.into_iter().find(|&loc| filter(loc)) {
+            if let Some(one) = locations.iter().copied().find(|&loc| filter(loc)) {
                 return vec![NextInput {
                     input: Input::Location(one),
                     kind,
@@ -1552,7 +1663,8 @@ impl MonsGame {
             }
         } else {
             return locations
-                .into_iter()
+                .iter()
+                .copied()
                 .filter_map(|loc| {
                     if filter(loc) {
                         Some(NextInput {
@@ -1710,19 +1822,22 @@ mod tests {
     }
 
     fn first_chain_from_state(game: &MonsGame) -> Option<Vec<Input>> {
-        let starts = match assert_regular_api_matches_default_start_options(game, vec![], true, false)
-        {
-            Output::LocationsToStartFrom(starts) => starts,
-            _ => return None,
-        };
-        let start = *starts.first()?;
-        let prefix = vec![Input::Location(start)];
-        let second_options =
-            match assert_regular_api_matches_default_start_options(game, prefix.clone(), true, false)
-            {
-                Output::NextInputOptions(options) => options,
+        let starts =
+            match assert_regular_api_matches_default_start_options(game, vec![], true, false) {
+                Output::LocationsToStartFrom(starts) => starts,
                 _ => return None,
             };
+        let start = *starts.first()?;
+        let prefix = vec![Input::Location(start)];
+        let second_options = match assert_regular_api_matches_default_start_options(
+            game,
+            prefix.clone(),
+            true,
+            false,
+        ) {
+            Output::NextInputOptions(options) => options,
+            _ => return None,
+        };
         let second = second_options.first()?.input;
         let pair = vec![Input::Location(start), second];
         let result =
@@ -1799,9 +1914,9 @@ mod tests {
                     | Some(Item::MonWithConsumable { .. })
             )
         }));
-        assert!(locations.iter().all(|location| {
-            !matches!(game.board.item(*location), Some(Item::Mana { .. }))
-        }));
+        assert!(locations
+            .iter()
+            .all(|location| { !matches!(game.board.item(*location), Some(Item::Mana { .. })) }));
     }
 
     #[test]

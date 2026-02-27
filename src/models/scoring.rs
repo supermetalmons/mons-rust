@@ -862,14 +862,16 @@ pub fn evaluate_preferability_with_weights(
                             * immediate_threats;
                     }
 
-                    if weights.drainer_danger_boolean != 0
+                    let evaluate_drainer_danger = weights.drainer_danger_boolean != 0
+                        || weights.drainer_walk_threat_boolean != 0;
+                    let drainer_under_immediate_threat = evaluate_drainer_danger
                         && is_drainer_under_immediate_threat(
                             &game.board,
                             mon.color,
                             location,
                             angel_nearby,
-                        )
-                    {
+                        );
+                    if weights.drainer_danger_boolean != 0 && drainer_under_immediate_threat {
                         score += my_mon_multiplier * weights.drainer_danger_boolean;
                         if my_mon_multiplier == -1 {
                             score += weights.opponent_drainer_attack_bonus;
@@ -877,12 +879,7 @@ pub fn evaluate_preferability_with_weights(
                     }
 
                     if weights.drainer_walk_threat_boolean != 0
-                        && !is_drainer_under_immediate_threat(
-                            &game.board,
-                            mon.color,
-                            location,
-                            angel_nearby,
-                        )
+                        && !drainer_under_immediate_threat
                         && is_drainer_under_walk_threat(
                             &game.board,
                             mon.color,
@@ -922,11 +919,8 @@ pub fn evaluate_preferability_with_weights(
                     && !mon.is_fainted()
                     && (mon.kind == MonKind::Demon || mon.kind == MonKind::Mystic)
                 {
-                    let opp_drainer_dist = nearest_friendly_drainer_distance(
-                        &game.board,
-                        mon.color.other(),
-                        location,
-                    );
+                    let opp_drainer_dist =
+                        nearest_friendly_drainer_distance(&game.board, mon.color.other(), location);
                     score += my_mon_multiplier * weights.attacker_close_to_opponent_drainer
                         / opp_drainer_dist;
                 }
@@ -971,14 +965,16 @@ pub fn evaluate_preferability_with_weights(
                             * immediate_threats;
                     }
 
-                    if weights.drainer_danger_boolean != 0
+                    let evaluate_drainer_danger = weights.drainer_danger_boolean != 0
+                        || weights.drainer_walk_threat_boolean != 0;
+                    let drainer_under_immediate_threat = evaluate_drainer_danger
                         && is_drainer_under_immediate_threat(
                             &game.board,
                             mon.color,
                             location,
                             angel_nearby,
-                        )
-                    {
+                        );
+                    if weights.drainer_danger_boolean != 0 && drainer_under_immediate_threat {
                         score += my_mon_multiplier * weights.drainer_danger_boolean;
                         if my_mon_multiplier == -1 {
                             score += weights.opponent_drainer_attack_bonus;
@@ -986,12 +982,7 @@ pub fn evaluate_preferability_with_weights(
                     }
 
                     if weights.drainer_walk_threat_boolean != 0
-                        && !is_drainer_under_immediate_threat(
-                            &game.board,
-                            mon.color,
-                            location,
-                            angel_nearby,
-                        )
+                        && !drainer_under_immediate_threat
                         && is_drainer_under_walk_threat(
                             &game.board,
                             mon.color,
@@ -1046,7 +1037,13 @@ pub fn evaluate_preferability_with_weights(
                 if weights.attacker_close_to_opponent_drainer != 0 && !mon.is_fainted() {
                     let is_attacker = mon.kind == MonKind::Demon
                         || mon.kind == MonKind::Mystic
-                        || matches!(item, Item::MonWithConsumable { consumable: Consumable::Bomb, .. });
+                        || matches!(
+                            item,
+                            Item::MonWithConsumable {
+                                consumable: Consumable::Bomb,
+                                ..
+                            }
+                        );
                     if is_attacker {
                         let opp_drainer_dist = nearest_friendly_drainer_distance(
                             &game.board,
@@ -1155,11 +1152,9 @@ pub fn evaluate_preferability_with_weights(
                         || matches!(mana, Mana::Regular(owner) if *owner != mon.color);
                     if carries_high_value_mana {
                         let virtual_score_bp = match mana {
-                            Mana::Supermana => {
-                                weights
-                                    .supermana_race_control
-                                    .saturating_mul(PROTECTED_HIGH_VALUE_CARRIER_SUPERMANA_SCALE_BP)
-                            }
+                            Mana::Supermana => weights
+                                .supermana_race_control
+                                .saturating_mul(PROTECTED_HIGH_VALUE_CARRIER_SUPERMANA_SCALE_BP),
                             Mana::Regular(owner) if *owner != mon.color => {
                                 weights.opponent_mana_denial.saturating_mul(
                                     PROTECTED_HIGH_VALUE_CARRIER_OPPONENT_MANA_SCALE_BP,
@@ -1173,21 +1168,18 @@ pub fn evaluate_preferability_with_weights(
                         } else {
                             game.white_score
                         };
-                        let opponent_score_limit =
-                            (Config::TARGET_SCORE - PROTECTED_HIGH_VALUE_CARRIER_OPPONENT_SCORE_MARGIN)
-                                .max(0);
+                        let opponent_score_limit = (Config::TARGET_SCORE
+                            - PROTECTED_HIGH_VALUE_CARRIER_OPPONENT_SCORE_MARGIN)
+                            .max(0);
                         let protected =
                             angel_nearby || danger >= PROTECTED_HIGH_VALUE_CARRIER_SAFE_DANGER_MIN;
                         if virtual_score_bp > 0
                             && protected
                             && carrier_opponent_score <= opponent_score_limit
                         {
-                            let virtual_two_point_score =
-                                weights.confirmed_score.saturating_mul(2);
-                            let virtual_bonus = scale_by_bp(
-                                virtual_two_point_score,
-                                virtual_score_bp,
-                            );
+                            let virtual_two_point_score = weights.confirmed_score.saturating_mul(2);
+                            let virtual_bonus =
+                                scale_by_bp(virtual_two_point_score, virtual_score_bp);
                             score += my_mon_multiplier * virtual_bonus;
                         }
                     }
@@ -1221,14 +1213,16 @@ pub fn evaluate_preferability_with_weights(
                             * immediate_threats;
                     }
 
-                    if weights.mana_carrier_danger_boolean != 0
+                    let evaluate_carrier_danger = weights.mana_carrier_danger_boolean != 0
+                        || weights.mana_carrier_walk_threat_boolean != 0;
+                    let drainer_under_immediate_threat = evaluate_carrier_danger
                         && is_drainer_under_immediate_threat(
                             &game.board,
                             mon.color,
                             location,
                             angel_nearby,
-                        )
-                    {
+                        );
+                    if weights.mana_carrier_danger_boolean != 0 && drainer_under_immediate_threat {
                         score += my_mon_multiplier * weights.mana_carrier_danger_boolean;
                         if my_mon_multiplier == -1 {
                             score += weights.opponent_drainer_attack_bonus;
@@ -1236,12 +1230,7 @@ pub fn evaluate_preferability_with_weights(
                     }
 
                     if weights.mana_carrier_walk_threat_boolean != 0
-                        && !is_drainer_under_immediate_threat(
-                            &game.board,
-                            mon.color,
-                            location,
-                            angel_nearby,
-                        )
+                        && !drainer_under_immediate_threat
                         && is_drainer_under_walk_threat(
                             &game.board,
                             mon.color,
@@ -1441,8 +1430,9 @@ fn spirit_action_utility(
 ) -> i32 {
     if use_legacy_formula {
         return location
-            .reachable_by_spirit_action()
-            .into_iter()
+            .reachable_by_spirit_action_ref()
+            .iter()
+            .copied()
             .filter(|target| {
                 let Some(item) = board.item(*target) else {
                     return false;
@@ -1458,7 +1448,7 @@ fn spirit_action_utility(
     }
 
     let mut utility = 0;
-    for target in location.reachable_by_spirit_action() {
+    for &target in location.reachable_by_spirit_action_ref() {
         let Some(item) = board.item(target) else {
             continue;
         };
@@ -2423,8 +2413,7 @@ fn is_drainer_under_walk_threat(
                 if mon.color == color || mon.is_fainted() {
                     continue;
                 }
-                let on_own_base =
-                    matches!(board.square(threat_location), Square::MonBase { .. });
+                let on_own_base = matches!(board.square(threat_location), Square::MonBase { .. });
                 if on_own_base {
                     continue;
                 }
@@ -2505,8 +2494,7 @@ fn is_drainer_under_immediate_threat(
                 if mon.color == color || mon.is_fainted() {
                     continue;
                 }
-                let on_own_base =
-                    matches!(board.square(threat_location), Square::MonBase { .. });
+                let on_own_base = matches!(board.square(threat_location), Square::MonBase { .. });
                 if !on_own_base && !angel_nearby {
                     if mon.kind == MonKind::Mystic
                         && (threat_location.i - location.i).abs() == 2

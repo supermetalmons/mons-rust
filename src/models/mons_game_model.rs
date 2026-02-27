@@ -171,6 +171,39 @@ const SMART_AUTOMOVE_FAST_MAX_VISITED_NODES: i32 = 480;
 const SMART_AUTOMOVE_NORMAL_DEPTH: i32 = 3;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_AUTOMOVE_NORMAL_MAX_VISITED_NODES: i32 = 3800;
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Default)]
+struct IdentityU64Hasher(u64);
+
+#[cfg(any(target_arch = "wasm32", test))]
+impl std::hash::Hasher for IdentityU64Hasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        let mut hash = 0xcbf29ce484222325u64;
+        for byte in bytes {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+        self.0 = hash;
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.0 = value;
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+type U64BuildHasher = std::hash::BuildHasherDefault<IdentityU64Hasher>;
+
+#[cfg(any(target_arch = "wasm32", test))]
+type U64HashMap<V> = std::collections::HashMap<u64, V, U64BuildHasher>;
+
+#[cfg(any(target_arch = "wasm32", test))]
+type U64HashSet = std::collections::HashSet<u64, U64BuildHasher>;
 const WHITE_OPENING_BOOK: [[&str; 5]; 9] = [
     [
         "l10,3;l9,2",
@@ -347,19 +380,19 @@ const RUNTIME_NORMAL_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGH
     };
 
 #[cfg(any(target_arch = "wasm32", test))]
-const RUNTIME_NORMAL_BOOLEAN_DRAINER_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS:
-    ScoringWeights = ScoringWeights {
-    drainer_danger_boolean: -1200,
-    mana_carrier_danger_boolean: -800,
-    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
-};
+const RUNTIME_NORMAL_BOOLEAN_DRAINER_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        drainer_danger_boolean: -1200,
+        mana_carrier_danger_boolean: -800,
+        ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
 #[cfg(any(target_arch = "wasm32", test))]
-const RUNTIME_NORMAL_BOOLEAN_DRAINER_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS:
-    ScoringWeights = ScoringWeights {
-    drainer_danger_boolean: -1200,
-    mana_carrier_danger_boolean: -800,
-    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
-};
+const RUNTIME_NORMAL_BOOLEAN_DRAINER_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        drainer_danger_boolean: -1200,
+        mana_carrier_danger_boolean: -800,
+        ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+    };
 #[cfg(any(target_arch = "wasm32", test))]
 const RUNTIME_NORMAL_BOOLEAN_DRAINER_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS:
     ScoringWeights = ScoringWeights {
@@ -384,20 +417,20 @@ const RUNTIME_NORMAL_BOOLEAN_DRAINER_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BA
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[allow(dead_code)]
-const RUNTIME_NORMAL_STRONG_DRAINER_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS:
-    ScoringWeights = ScoringWeights {
-    drainer_danger_boolean: -1800,
-    mana_carrier_danger_boolean: -1200,
-    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
-};
+const RUNTIME_NORMAL_STRONG_DRAINER_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        drainer_danger_boolean: -1800,
+        mana_carrier_danger_boolean: -1200,
+        ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
 #[cfg(any(target_arch = "wasm32", test))]
 #[allow(dead_code)]
-const RUNTIME_NORMAL_STRONG_DRAINER_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS:
-    ScoringWeights = ScoringWeights {
-    drainer_danger_boolean: -1800,
-    mana_carrier_danger_boolean: -1200,
-    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
-};
+const RUNTIME_NORMAL_STRONG_DRAINER_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        drainer_danger_boolean: -1800,
+        mana_carrier_danger_boolean: -1200,
+        ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+    };
 #[cfg(any(target_arch = "wasm32", test))]
 #[allow(dead_code)]
 const RUNTIME_NORMAL_STRONG_DRAINER_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS:
@@ -424,17 +457,17 @@ const RUNTIME_NORMAL_STRONG_DRAINER_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BAS
 };
 
 #[cfg(any(target_arch = "wasm32", test))]
-const RUNTIME_NORMAL_ATTACK_BONUS_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS:
-    ScoringWeights = ScoringWeights {
-    opponent_drainer_attack_bonus: 400,
-    ..RUNTIME_NORMAL_BOOLEAN_DRAINER_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
-};
+const RUNTIME_NORMAL_ATTACK_BONUS_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        opponent_drainer_attack_bonus: 400,
+        ..RUNTIME_NORMAL_BOOLEAN_DRAINER_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
 #[cfg(any(target_arch = "wasm32", test))]
-const RUNTIME_NORMAL_ATTACK_BONUS_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS:
-    ScoringWeights = ScoringWeights {
-    opponent_drainer_attack_bonus: 400,
-    ..RUNTIME_NORMAL_BOOLEAN_DRAINER_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
-};
+const RUNTIME_NORMAL_ATTACK_BONUS_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        opponent_drainer_attack_bonus: 400,
+        ..RUNTIME_NORMAL_BOOLEAN_DRAINER_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+    };
 #[cfg(any(target_arch = "wasm32", test))]
 const RUNTIME_NORMAL_ATTACK_BONUS_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS:
     ScoringWeights = ScoringWeights {
@@ -487,20 +520,20 @@ const RUNTIME_NORMAL_STRONG_ATTACK_BONUS_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRI
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[allow(dead_code)]
-const RUNTIME_NORMAL_WALK_THREAT_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS:
-    ScoringWeights = ScoringWeights {
-    drainer_walk_threat_boolean: -600,
-    mana_carrier_walk_threat_boolean: -400,
-    ..RUNTIME_NORMAL_BOOLEAN_DRAINER_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
-};
+const RUNTIME_NORMAL_WALK_THREAT_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        drainer_walk_threat_boolean: -600,
+        mana_carrier_walk_threat_boolean: -400,
+        ..RUNTIME_NORMAL_BOOLEAN_DRAINER_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
 #[cfg(any(target_arch = "wasm32", test))]
 #[allow(dead_code)]
-const RUNTIME_NORMAL_WALK_THREAT_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS:
-    ScoringWeights = ScoringWeights {
-    drainer_walk_threat_boolean: -600,
-    mana_carrier_walk_threat_boolean: -400,
-    ..RUNTIME_NORMAL_BOOLEAN_DRAINER_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
-};
+const RUNTIME_NORMAL_WALK_THREAT_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        drainer_walk_threat_boolean: -600,
+        mana_carrier_walk_threat_boolean: -400,
+        ..RUNTIME_NORMAL_BOOLEAN_DRAINER_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+    };
 #[cfg(any(target_arch = "wasm32", test))]
 #[allow(dead_code)]
 const RUNTIME_NORMAL_WALK_THREAT_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS:
@@ -651,32 +684,32 @@ const RUNTIME_NORMAL_WALK_THREAT_MODERATE_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIR
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[allow(dead_code)]
-const RUNTIME_NORMAL_DRAINER_SHIELD_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS:
-    ScoringWeights = ScoringWeights {
-    drainer_immediate_threat: -200,
-    drainer_at_risk: -520,
-    angel_guarding_drainer: 190,
-    mana_carrier_at_risk: -320,
-    drainer_danger_boolean: -1200,
-    mana_carrier_danger_boolean: -800,
-    drainer_walk_threat_boolean: -600,
-    mana_carrier_walk_threat_boolean: -400,
-    ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
-};
+const RUNTIME_NORMAL_DRAINER_SHIELD_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        drainer_immediate_threat: -200,
+        drainer_at_risk: -520,
+        angel_guarding_drainer: 190,
+        mana_carrier_at_risk: -320,
+        drainer_danger_boolean: -1200,
+        mana_carrier_danger_boolean: -800,
+        drainer_walk_threat_boolean: -600,
+        mana_carrier_walk_threat_boolean: -400,
+        ..RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
 #[cfg(any(target_arch = "wasm32", test))]
 #[allow(dead_code)]
-const RUNTIME_NORMAL_DRAINER_SHIELD_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS:
-    ScoringWeights = ScoringWeights {
-    drainer_immediate_threat: -260,
-    drainer_at_risk: -560,
-    angel_guarding_drainer: 240,
-    mana_carrier_at_risk: -340,
-    drainer_danger_boolean: -1200,
-    mana_carrier_danger_boolean: -800,
-    drainer_walk_threat_boolean: -600,
-    mana_carrier_walk_threat_boolean: -400,
-    ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
-};
+const RUNTIME_NORMAL_DRAINER_SHIELD_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        drainer_immediate_threat: -260,
+        drainer_at_risk: -560,
+        angel_guarding_drainer: 240,
+        mana_carrier_at_risk: -340,
+        drainer_danger_boolean: -1200,
+        mana_carrier_danger_boolean: -800,
+        drainer_walk_threat_boolean: -600,
+        mana_carrier_walk_threat_boolean: -400,
+        ..RUNTIME_NORMAL_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+    };
 #[cfg(any(target_arch = "wasm32", test))]
 #[allow(dead_code)]
 const RUNTIME_NORMAL_DRAINER_SHIELD_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS:
@@ -1378,7 +1411,7 @@ struct AsyncSmartSearchState {
     extension_nodes_used: usize,
     extension_node_budget: usize,
     scored_roots: Vec<RootEvaluation>,
-    transposition_table: std::collections::HashMap<u64, TranspositionEntry>,
+    transposition_table: U64HashMap<TranspositionEntry>,
     killer_table: KillerTable,
 }
 
@@ -1522,7 +1555,7 @@ impl MonsGameModel {
             extension_nodes_used: 0,
             extension_node_budget,
             scored_roots: Vec::new(),
-            transposition_table: std::collections::HashMap::new(),
+            transposition_table: U64HashMap::default(),
             killer_table: [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2],
         }));
 
@@ -1618,7 +1651,7 @@ impl MonsGameModel {
         let automove_start_options = Some(SuggestedStartInputOptions::for_automove());
         let mut inputs = Vec::new();
         let mut output =
-            game.process_input_with_start_options(vec![], false, false, automove_start_options);
+            game.process_input_with_start_options_slice(&[], false, false, automove_start_options);
 
         loop {
             match output {
@@ -1632,8 +1665,8 @@ impl MonsGameModel {
                     let random_index = random_index(locations.len());
                     let location = locations[random_index];
                     inputs.push(Input::Location(location));
-                    output = game.process_input_with_start_options(
-                        inputs.clone(),
+                    output = game.process_input_with_start_options_slice(
+                        inputs.as_slice(),
                         false,
                         false,
                         automove_start_options,
@@ -1644,10 +1677,10 @@ impl MonsGameModel {
                         return OutputModel::new(Output::InvalidInput, "");
                     }
                     let random_index = random_index(options.len());
-                    let next_input = options[random_index].input.clone();
+                    let next_input = options[random_index].input;
                     inputs.push(next_input);
-                    output = game.process_input_with_start_options(
-                        inputs.clone(),
+                    output = game.process_input_with_start_options_slice(
+                        inputs.as_slice(),
                         false,
                         false,
                         automove_start_options,
@@ -1886,7 +1919,7 @@ impl MonsGameModel {
             let next_inputs = Input::array_from_fen(sequence[opening_step]);
             let mut probe = game.clone_for_simulation();
             if matches!(
-                probe.process_input(next_inputs.clone(), true, false),
+                probe.process_input_slice(next_inputs.as_slice(), true, false),
                 Output::Events(_)
             ) {
                 viable_sequences.push(sequence_index);
@@ -1911,13 +1944,12 @@ impl MonsGameModel {
         game: &MonsGame,
         mut config: SmartSearchConfig,
     ) -> SmartSearchConfig {
-        config.scoring_weights = if config.depth < 3
-            && config.enable_mana_start_mix_with_potion_actions
-        {
-            &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
-        } else {
-            Self::runtime_phase_adaptive_walk_threat_medium_scoring_weights(game, config.depth)
-        };
+        config.scoring_weights =
+            if config.depth < 3 && config.enable_mana_start_mix_with_potion_actions {
+                &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
+            } else {
+                Self::runtime_phase_adaptive_walk_threat_medium_scoring_weights(game, config.depth)
+            };
         if config.depth >= 3 {
             config.max_visited_nodes = (config.max_visited_nodes * 120) / 100;
         }
@@ -2084,13 +2116,12 @@ impl MonsGameModel {
         game: &MonsGame,
         mut config: SmartSearchConfig,
     ) -> SmartSearchConfig {
-        config.scoring_weights = if config.depth < 3
-            && config.enable_mana_start_mix_with_potion_actions
-        {
-            &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
-        } else {
-            Self::runtime_phase_adaptive_walk_threat_scoring_weights(game, config.depth)
-        };
+        config.scoring_weights =
+            if config.depth < 3 && config.enable_mana_start_mix_with_potion_actions {
+                &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
+            } else {
+                Self::runtime_phase_adaptive_walk_threat_scoring_weights(game, config.depth)
+            };
         config
     }
 
@@ -2393,15 +2424,24 @@ impl MonsGameModel {
             || Self::events_pickup_opponent_mana(&events, perspective)
             || Self::events_move_opponent_mana_toward_color(&events, perspective);
         let own_drainer_vulnerable = if config.enable_root_drainer_safety_prefilter {
-            Self::is_own_drainer_vulnerable_next_turn(&simulated_game, perspective, config.enable_enhanced_drainer_vulnerability)
+            Self::is_own_drainer_vulnerable_next_turn(
+                &simulated_game,
+                perspective,
+                config.enable_enhanced_drainer_vulnerability,
+            )
         } else {
             false
         };
-        let own_drainer_walk_vulnerable = if config.enable_walk_threat_prefilter && !own_drainer_vulnerable {
-            Self::is_own_drainer_walk_vulnerable_next_turn(&simulated_game, perspective, config.enable_enhanced_drainer_vulnerability)
-        } else {
-            false
-        };
+        let own_drainer_walk_vulnerable =
+            if config.enable_walk_threat_prefilter && !own_drainer_vulnerable {
+                Self::is_own_drainer_walk_vulnerable_next_turn(
+                    &simulated_game,
+                    perspective,
+                    config.enable_enhanced_drainer_vulnerability,
+                )
+            } else {
+                false
+            };
         let score_before = Self::score_for_color(game, perspective);
         let score_after = Self::score_for_color(&simulated_game, perspective);
         let scored_two_or_more = score_after >= score_before.saturating_add(2);
@@ -2430,13 +2470,12 @@ impl MonsGameModel {
             || attacks_opponent_drainer
             || scores_supermana_this_turn
             || scores_opponent_mana_this_turn;
-        let mana_handoff_to_opponent =
-            !root_compensates_handoff
-                && Self::mana_handoff_penalty(
-                    &events,
-                    perspective,
-                    config.root_mana_handoff_penalty.max(0),
-                ) > 0;
+        let mana_handoff_to_opponent = !root_compensates_handoff
+            && Self::mana_handoff_penalty(
+                &events,
+                perspective,
+                config.root_mana_handoff_penalty.max(0),
+            ) > 0;
         let has_roundtrip = Self::has_roundtrip_mon_move(&events);
         let classes = if config.enable_move_class_coverage {
             Self::classify_move_classes(
@@ -2519,10 +2558,10 @@ impl MonsGameModel {
 
     fn spirit_action_target_count(board: &Board, location: Location) -> i32 {
         location
-            .reachable_by_spirit_action()
-            .into_iter()
+            .reachable_by_spirit_action_ref()
+            .iter()
             .filter(|target| {
-                let Some(item) = board.item(*target) else {
+                let Some(item) = board.item(**target) else {
                     return false;
                 };
                 match item {
@@ -2701,8 +2740,8 @@ impl MonsGameModel {
 
     fn automove_start_input_options(config: SmartSearchConfig) -> SuggestedStartInputOptions {
         SuggestedStartInputOptions {
-            include_mana_starts_with_potion_action:
-                config.enable_mana_start_mix_with_potion_actions,
+            include_mana_starts_with_potion_action: config
+                .enable_mana_start_mix_with_potion_actions,
         }
     }
 
@@ -2720,18 +2759,18 @@ impl MonsGameModel {
 
     fn min_steps_to_mystic_attack_source(from: Location, target: Location) -> i32 {
         target
-            .reachable_by_mystic_action()
-            .into_iter()
-            .map(|source| from.distance(&source))
+            .reachable_by_mystic_action_ref()
+            .iter()
+            .map(|source| from.distance(source))
             .min()
             .unwrap_or(i32::MAX)
     }
 
     fn min_steps_to_demon_attack_source(from: Location, target: Location) -> i32 {
         target
-            .reachable_by_demon_action()
-            .into_iter()
-            .map(|source| from.distance(&source))
+            .reachable_by_demon_action_ref()
+            .iter()
+            .map(|source| from.distance(source))
             .min()
             .unwrap_or(i32::MAX)
     }
@@ -2842,7 +2881,7 @@ impl MonsGameModel {
         let attacker_set: std::collections::HashSet<Location> =
             attacker_locations.into_iter().collect();
 
-        let mut memo_true = std::collections::HashSet::<u64>::new();
+        let mut memo_true = U64HashSet::default();
         let mut attack_inputs = Vec::new();
         let base_budget = Self::forced_drainer_attack_fallback_node_budget(config);
         let mut continuation_budget = base_budget * 2;
@@ -2900,7 +2939,7 @@ impl MonsGameModel {
             return Vec::new();
         }
 
-        let mut memo_true = std::collections::HashSet::<u64>::new();
+        let mut memo_true = U64HashSet::default();
         let mut attack_inputs = Vec::new();
         let base_budget = Self::forced_drainer_attack_fallback_node_budget(config);
         let mut continuation_budget = base_budget * 2;
@@ -2922,8 +2961,7 @@ impl MonsGameModel {
                 per_mon_enum_limit,
                 start_options,
             );
-            per_mon_inputs
-                .sort_by(|a, b| Input::fen_from_array(a).cmp(&Input::fen_from_array(b)));
+            per_mon_inputs.sort();
 
             for inputs in per_mon_inputs {
                 if attack_inputs.len() >= max_candidates.max(1) {
@@ -2967,7 +3005,7 @@ impl MonsGameModel {
         config: SmartSearchConfig,
         max_candidates: usize,
     ) -> Vec<Vec<Input>> {
-        let mut memo_true = std::collections::HashSet::<u64>::new();
+        let mut memo_true = U64HashSet::default();
         let mut attack_inputs = Vec::new();
         let mut continuation_budget = Self::forced_drainer_attack_fallback_node_budget(config);
         let enum_limit = Self::forced_drainer_attack_fallback_enum_limit(config);
@@ -3013,7 +3051,7 @@ impl MonsGameModel {
         enum_limit: usize,
         start_options: SuggestedStartInputOptions,
         continuation_budget: &mut usize,
-        memo_true: &mut std::collections::HashSet<u64>,
+        memo_true: &mut U64HashSet,
     ) -> bool {
         if game.active_color != perspective || *continuation_budget == 0 {
             return false;
@@ -3065,7 +3103,11 @@ impl MonsGameModel {
     ) -> Vec<ScoredRootMove> {
         let mut candidates = Vec::new();
         let own_drainer_vulnerable_before = if config.enable_move_class_coverage {
-            Self::is_own_drainer_vulnerable_next_turn(game, perspective, config.enable_enhanced_drainer_vulnerability)
+            Self::is_own_drainer_vulnerable_next_turn(
+                game,
+                perspective,
+                config.enable_enhanced_drainer_vulnerability,
+            )
         } else {
             false
         };
@@ -3081,8 +3123,7 @@ impl MonsGameModel {
         };
 
         let root_inputs = if config.enable_drainer_attack_priority_enum {
-            let attacker_locs =
-                Self::find_potential_drainer_attacker_locations(game, perspective);
+            let attacker_locs = Self::find_potential_drainer_attacker_locations(game, perspective);
             if attacker_locs.is_empty() {
                 Self::enumerate_legal_inputs(game, effective_enum_limit, start_options)
             } else {
@@ -3113,7 +3154,7 @@ impl MonsGameModel {
         let mut has_winning_candidate = candidates
             .iter()
             .any(|candidate| candidate.wins_immediately);
-        let mut forced_turn_attack_input_fens: Option<std::collections::HashSet<String>> = None;
+        let mut forced_turn_attack_inputs: Option<std::collections::HashSet<Vec<Input>>> = None;
         if config.enable_forced_drainer_attack
             && config.enable_forced_drainer_attack_fallback
             && !has_winning_candidate
@@ -3147,18 +3188,17 @@ impl MonsGameModel {
             };
 
             if !fallback_inputs.is_empty() {
-                let forced_fens = fallback_inputs
+                let forced_inputs = fallback_inputs
                     .iter()
-                    .map(|inputs| Input::fen_from_array(inputs.as_slice()))
+                    .cloned()
                     .collect::<std::collections::HashSet<_>>();
                 let mut seen_inputs = candidates
                     .iter()
-                    .map(|candidate| Input::fen_from_array(candidate.inputs.as_slice()))
+                    .map(|candidate| candidate.inputs.clone())
                     .collect::<std::collections::HashSet<_>>();
 
                 for inputs in fallback_inputs {
-                    let input_fen = Input::fen_from_array(inputs.as_slice());
-                    if !seen_inputs.insert(input_fen) {
+                    if !seen_inputs.insert(inputs.clone()) {
                         continue;
                     }
                     if let Some(candidate) = Self::build_scored_root_move(
@@ -3176,7 +3216,7 @@ impl MonsGameModel {
                 has_winning_candidate = candidates
                     .iter()
                     .any(|candidate| candidate.wins_immediately);
-                forced_turn_attack_input_fens = Some(forced_fens);
+                forced_turn_attack_inputs = Some(forced_inputs);
             }
         }
 
@@ -3202,10 +3242,8 @@ impl MonsGameModel {
         {
             candidates.retain(|candidate| candidate.attacks_opponent_drainer);
         } else if config.enable_forced_drainer_attack && should_filter_to_attacks {
-            if let Some(forced_fens) = forced_turn_attack_input_fens {
-                candidates.retain(|candidate| {
-                    forced_fens.contains(&Input::fen_from_array(candidate.inputs.as_slice()))
-                });
+            if let Some(forced_inputs) = forced_turn_attack_inputs {
+                candidates.retain(|candidate| forced_inputs.contains(&candidate.inputs));
             }
         }
         if candidates.len() > config.root_branch_limit {
@@ -3335,7 +3373,11 @@ impl MonsGameModel {
 
         if config.enable_root_drainer_safety_prefilter
             && !has_supermana_scoring
-            && Self::is_own_drainer_vulnerable_next_turn(game, perspective, config.enable_enhanced_drainer_vulnerability)
+            && Self::is_own_drainer_vulnerable_next_turn(
+                game,
+                perspective,
+                config.enable_enhanced_drainer_vulnerability,
+            )
         {
             if let Some(index) = Self::best_tactical_root_index(root_moves, |candidate| {
                 !candidate.own_drainer_vulnerable
@@ -3346,7 +3388,11 @@ impl MonsGameModel {
 
         if config.enable_walk_threat_prefilter
             && !has_supermana_scoring
-            && Self::is_own_drainer_walk_vulnerable_next_turn(game, perspective, config.enable_enhanced_drainer_vulnerability)
+            && Self::is_own_drainer_walk_vulnerable_next_turn(
+                game,
+                perspective,
+                config.enable_enhanced_drainer_vulnerability,
+            )
         {
             if let Some(index) = Self::best_tactical_root_index(root_moves, |candidate| {
                 !candidate.own_drainer_vulnerable && !candidate.own_drainer_walk_vulnerable
@@ -3596,7 +3642,7 @@ impl MonsGameModel {
         let mut visited_nodes = scout_visited_nodes;
         let mut alpha = i32::MIN;
         let mut scored_roots = Vec::with_capacity(root_moves.len());
-        let mut transposition_table = std::collections::HashMap::new();
+        let mut transposition_table = U64HashMap::default();
         let extension_node_budget =
             if config.enable_selective_extensions && config.selective_extension_node_share_bp > 0 {
                 ((config.max_visited_nodes * config.selective_extension_node_share_bp as usize)
@@ -3610,8 +3656,10 @@ impl MonsGameModel {
 
         // Iterative deepening: run a shallow pass to pre-populate TT and reorder roots
         if config.enable_iterative_deepening && config.depth >= 3 {
-            let preliminary_depth =
-                config.depth.saturating_sub(config.iterative_deepening_depth_offset).max(1);
+            let preliminary_depth = config
+                .depth
+                .saturating_sub(config.iterative_deepening_depth_offset)
+                .max(1);
             let mut prelim_alpha = i32::MIN;
             let mut prelim_scores: Vec<i32> = Vec::with_capacity(root_moves.len());
             for candidate in root_moves.iter() {
@@ -3650,8 +3698,7 @@ impl MonsGameModel {
             if config.iterative_deepening_alpha_margin > 0 {
                 if let Some((best_score, _)) = indexed.first() {
                     if *best_score != i32::MIN {
-                        alpha = best_score
-                            .saturating_sub(config.iterative_deepening_alpha_margin);
+                        alpha = best_score.saturating_sub(config.iterative_deepening_alpha_margin);
                     }
                 }
             }
@@ -3716,7 +3763,7 @@ impl MonsGameModel {
         alpha: i32,
         visited_nodes: &mut usize,
         config: SmartSearchConfig,
-        transposition_table: &mut std::collections::HashMap<u64, TranspositionEntry>,
+        transposition_table: &mut U64HashMap<TranspositionEntry>,
         extension_nodes_used: &mut usize,
         extension_node_budget: usize,
         use_transposition_table: bool,
@@ -3816,7 +3863,7 @@ impl MonsGameModel {
 
         let mut scout_visited_nodes = 0usize;
         let mut scout_alpha = i32::MIN;
-        let mut scout_transposition_table = std::collections::HashMap::new();
+        let mut scout_transposition_table = U64HashMap::default();
         let mut scout_extension_nodes_used = 0usize;
         let mut scout_killer_table: KillerTable = [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
         let mut scout_scores = vec![i32::MIN; root_moves.len()];
@@ -3969,7 +4016,7 @@ impl MonsGameModel {
         beta: i32,
         visited_nodes: &mut usize,
         config: SmartSearchConfig,
-        transposition_table: &mut std::collections::HashMap<u64, TranspositionEntry>,
+        transposition_table: &mut U64HashMap<TranspositionEntry>,
         extensions_remaining: usize,
         extension_nodes_used: &mut usize,
         extension_node_budget: usize,
@@ -4035,8 +4082,14 @@ impl MonsGameModel {
         } else {
             [0u64; 2]
         };
-        let mut children =
-            Self::ranked_child_states(game, perspective, maximizing, preferred_child_hash, current_killers, config);
+        let mut children = Self::ranked_child_states(
+            game,
+            perspective,
+            maximizing,
+            preferred_child_hash,
+            current_killers,
+            config,
+        );
         if children.is_empty() {
             return evaluate_preferability_with_weights(game, perspective, config.scoring_weights);
         }
@@ -4323,7 +4376,11 @@ impl MonsGameModel {
         let mut scored_states: Vec<(i32, RankedChildState)> = Vec::new();
         let actor_color = game.active_color;
         let own_drainer_vulnerable_before = if config.enable_child_move_class_coverage {
-            Self::is_own_drainer_vulnerable_next_turn(game, actor_color, config.enable_enhanced_drainer_vulnerability)
+            Self::is_own_drainer_vulnerable_next_turn(
+                game,
+                actor_color,
+                config.enable_enhanced_drainer_vulnerability,
+            )
         } else {
             false
         };
@@ -4391,7 +4448,11 @@ impl MonsGameModel {
                 }
 
                 let own_drainer_vulnerable_after = if config.enable_child_move_class_coverage {
-                    Self::is_own_drainer_vulnerable_next_turn(&simulated_game, actor_color, config.enable_enhanced_drainer_vulnerability)
+                    Self::is_own_drainer_vulnerable_next_turn(
+                        &simulated_game,
+                        actor_color,
+                        config.enable_enhanced_drainer_vulnerability,
+                    )
                 } else {
                     false
                 };
@@ -4467,7 +4528,7 @@ impl MonsGameModel {
             max_moves,
             start_options,
         );
-        all_inputs.sort_by(|a, b| Input::fen_from_array(a).cmp(&Input::fen_from_array(b)));
+        all_inputs.sort();
         all_inputs
     }
 
@@ -4483,62 +4544,32 @@ impl MonsGameModel {
 
         let priority_set: std::collections::HashSet<Location> =
             priority_locations.iter().copied().collect();
-
         let priority_budget = (max_moves / 2).max(max_moves.saturating_sub(60));
         let remaining_budget = max_moves.saturating_sub(priority_budget);
-
+        let all_inputs = Self::enumerate_legal_inputs(game, max_moves, start_options);
         let mut priority_inputs = Vec::new();
-        {
-            let mut simulated_game = game.clone_for_simulation();
-            for &loc in priority_locations {
-                let mut partial_inputs = vec![Input::Location(loc)];
-                Self::collect_legal_inputs(
-                    &mut simulated_game,
-                    &mut partial_inputs,
-                    &mut priority_inputs,
-                    priority_budget,
-                    start_options,
-                );
-            }
-        }
-        priority_inputs
-            .sort_by(|a, b| Input::fen_from_array(a).cmp(&Input::fen_from_array(b)));
-
-        if remaining_budget == 0 {
-            return priority_inputs;
-        }
-
         let mut other_inputs = Vec::new();
-        {
-            let all_inputs_full =
-                Self::enumerate_legal_inputs(game, max_moves, start_options);
-            for inputs in all_inputs_full {
-                if other_inputs.len() >= remaining_budget {
-                    break;
+
+        for inputs in all_inputs {
+            let is_priority =
+                matches!(inputs.first(), Some(Input::Location(loc)) if priority_set.contains(loc));
+            if is_priority {
+                if priority_inputs.len() < priority_budget {
+                    priority_inputs.push(inputs);
                 }
-                if let Some(Input::Location(loc)) = inputs.first() {
-                    if priority_set.contains(loc) {
-                        continue;
-                    }
-                }
+            } else if remaining_budget > 0 && other_inputs.len() < remaining_budget {
                 other_inputs.push(inputs);
             }
-        }
 
-        let priority_fens: std::collections::HashSet<String> = priority_inputs
-            .iter()
-            .map(|inputs| Input::fen_from_array(inputs.as_slice()))
-            .collect();
-
-        let mut combined = priority_inputs;
-        for inputs in other_inputs {
-            let fen = Input::fen_from_array(inputs.as_slice());
-            if !priority_fens.contains(&fen) {
-                combined.push(inputs);
+            if priority_inputs.len() >= priority_budget
+                && (remaining_budget == 0 || other_inputs.len() >= remaining_budget)
+            {
+                break;
             }
         }
 
-        combined
+        priority_inputs.extend(other_inputs);
+        priority_inputs
     }
 
     fn collect_legal_inputs(
@@ -4552,8 +4583,8 @@ impl MonsGameModel {
             return;
         }
 
-        match game.process_input_with_start_options(
-            partial_inputs.clone(),
+        match game.process_input_with_start_options_slice(
+            partial_inputs.as_slice(),
             true,
             false,
             Some(start_options),
@@ -4605,7 +4636,7 @@ impl MonsGameModel {
         inputs: &[Input],
     ) -> Option<(MonsGame, Vec<Event>)> {
         let mut simulated_game = game.clone_for_simulation();
-        match simulated_game.process_input(inputs.to_vec(), false, false) {
+        match simulated_game.process_input_slice(inputs, false, false) {
             Output::Events(events) => Some((simulated_game, events)),
             _ => None,
         }
@@ -4774,8 +4805,7 @@ impl MonsGameModel {
                 .any(|event| matches!(event, Event::ManaScored { .. }))
                 || Self::events_include_opponent_drainer_fainted(events, perspective);
             if apply_root_mana_handoff_guard && !root_compensates_handoff {
-                delta -=
-                    Self::mana_handoff_penalty(events, perspective, root_mana_handoff_penalty);
+                delta -= Self::mana_handoff_penalty(events, perspective, root_mana_handoff_penalty);
             }
 
             if SMART_NO_EFFECT_ROOT_PENALTY != 0
@@ -4808,11 +4838,7 @@ impl MonsGameModel {
         delta
     }
 
-    fn mana_handoff_penalty(
-        events: &[Event],
-        perspective: Color,
-        per_step_penalty: i32,
-    ) -> i32 {
+    fn mana_handoff_penalty(events: &[Event], perspective: Color, per_step_penalty: i32) -> i32 {
         if per_step_penalty <= 0 {
             return 0;
         }
@@ -5011,35 +5037,95 @@ impl MonsGameModel {
     }
 
     fn search_state_hash(game: &MonsGame) -> u64 {
-        use std::hash::{Hash, Hasher};
-
-        let mut items_mix = 0u64;
+        let mut state = 0x6a09e667f3bcc909u64;
         for (idx, item) in game.board.items.iter().enumerate() {
             let Some(item) = item else { continue };
-            let location = Location::from_index(idx);
-            let mut item_hasher = std::collections::hash_map::DefaultHasher::new();
-            location.hash(&mut item_hasher);
-            item.hash(&mut item_hasher);
-            let entry_hash = item_hasher.finish();
-            let rotate =
-                ((location.i as u32).wrapping_mul(13) ^ (location.j as u32).wrapping_mul(29)) & 63;
-            items_mix ^= entry_hash
-                .rotate_left(rotate)
-                .wrapping_mul(0x9e3779b185ebca87);
+            let entry = ((idx as u64)
+                .wrapping_add(1)
+                .wrapping_mul(0x9e3779b185ebca87))
+                ^ Self::search_hash_item(*item);
+            state ^= Self::search_mix_u64(entry);
+            state = state.rotate_left(17).wrapping_mul(0x94d049bb133111eb);
         }
 
-        let mut state_hasher = std::collections::hash_map::DefaultHasher::new();
-        items_mix.hash(&mut state_hasher);
-        game.white_score.hash(&mut state_hasher);
-        game.black_score.hash(&mut state_hasher);
-        game.active_color.hash(&mut state_hasher);
-        game.actions_used_count.hash(&mut state_hasher);
-        game.mana_moves_count.hash(&mut state_hasher);
-        game.mons_moves_count.hash(&mut state_hasher);
-        game.white_potions_count.hash(&mut state_hasher);
-        game.black_potions_count.hash(&mut state_hasher);
-        game.turn_number.hash(&mut state_hasher);
-        state_hasher.finish()
+        state ^= Self::search_mix_u64(game.white_score as i64 as u64 ^ 0x11);
+        state ^= Self::search_mix_u64(game.black_score as i64 as u64 ^ 0x23);
+        state ^= Self::search_mix_u64(Self::search_hash_color(game.active_color) ^ 0x35);
+        state ^= Self::search_mix_u64(game.actions_used_count as i64 as u64 ^ 0x47);
+        state ^= Self::search_mix_u64(game.mana_moves_count as i64 as u64 ^ 0x59);
+        state ^= Self::search_mix_u64(game.mons_moves_count as i64 as u64 ^ 0x6b);
+        state ^= Self::search_mix_u64(game.white_potions_count as i64 as u64 ^ 0x7d);
+        state ^= Self::search_mix_u64(game.black_potions_count as i64 as u64 ^ 0x8f);
+        state ^= Self::search_mix_u64(game.turn_number as i64 as u64 ^ 0xa1);
+        Self::search_mix_u64(state)
+    }
+
+    #[inline]
+    fn search_hash_item(item: Item) -> u64 {
+        match item {
+            Item::Mon { mon } => 0x100 | Self::search_hash_mon(mon),
+            Item::Mana { mana } => 0x200 | Self::search_hash_mana(mana),
+            Item::MonWithMana { mon, mana } => {
+                0x300 | Self::search_hash_mon(mon) | (Self::search_hash_mana(mana) << 16)
+            }
+            Item::MonWithConsumable { mon, consumable } => {
+                0x400
+                    | Self::search_hash_mon(mon)
+                    | (Self::search_hash_consumable(consumable) << 16)
+            }
+            Item::Consumable { consumable } => 0x500 | Self::search_hash_consumable(consumable),
+        }
+    }
+
+    #[inline]
+    fn search_hash_mon(mon: Mon) -> u64 {
+        Self::search_hash_mon_kind(mon.kind)
+            | (Self::search_hash_color(mon.color) << 4)
+            | (((mon.cooldown as i64 as u64) & 0xff) << 8)
+    }
+
+    #[inline]
+    fn search_hash_mon_kind(kind: MonKind) -> u64 {
+        match kind {
+            MonKind::Demon => 1,
+            MonKind::Drainer => 2,
+            MonKind::Angel => 3,
+            MonKind::Spirit => 4,
+            MonKind::Mystic => 5,
+        }
+    }
+
+    #[inline]
+    fn search_hash_color(color: Color) -> u64 {
+        match color {
+            Color::White => 1,
+            Color::Black => 2,
+        }
+    }
+
+    #[inline]
+    fn search_hash_mana(mana: Mana) -> u64 {
+        match mana {
+            Mana::Regular(color) => 0x10 | Self::search_hash_color(color),
+            Mana::Supermana => 0x20,
+        }
+    }
+
+    #[inline]
+    fn search_hash_consumable(consumable: Consumable) -> u64 {
+        match consumable {
+            Consumable::Potion => 1,
+            Consumable::Bomb => 2,
+            Consumable::BombOrPotion => 3,
+        }
+    }
+
+    #[inline]
+    fn search_mix_u64(mut value: u64) -> u64 {
+        value = value.wrapping_add(0x9e3779b97f4a7c15);
+        value = (value ^ (value >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+        value = (value ^ (value >> 27)).wrapping_mul(0x94d049bb133111eb);
+        value ^ (value >> 31)
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -5196,8 +5282,7 @@ impl MonsGameModel {
                         let di = (threat_location.i - drainer_location.i).abs();
                         let dj = (threat_location.j - drainer_location.j).abs();
                         if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
-                            let middle =
-                                threat_location.location_between(&drainer_location);
+                            let middle = threat_location.location_between(&drainer_location);
                             if game.board.item(middle).is_none()
                                 && !matches!(
                                     game.board.square(middle),
@@ -5225,10 +5310,7 @@ impl MonsGameModel {
                     Item::Mon { mon } if mon.color == opponent && !mon.is_fainted() => {
                         if opponent_can_use_action
                             && !drainer_action_protected
-                            && !matches!(
-                                game.board.square(threat_location),
-                                Square::MonBase { .. }
-                            )
+                            && !matches!(game.board.square(threat_location), Square::MonBase { .. })
                         {
                             if mon.kind == MonKind::Mystic
                                 && (threat_location.i - drainer_location.i).abs() == 2
@@ -5238,18 +5320,15 @@ impl MonsGameModel {
                             }
 
                             if mon.kind == MonKind::Demon {
-                                let di =
-                                    (threat_location.i - drainer_location.i).abs();
-                                let dj =
-                                    (threat_location.j - drainer_location.j).abs();
+                                let di = (threat_location.i - drainer_location.i).abs();
+                                let dj = (threat_location.j - drainer_location.j).abs();
                                 if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
-                                    let middle = threat_location
-                                        .location_between(&drainer_location);
+                                    let middle =
+                                        threat_location.location_between(&drainer_location);
                                     if game.board.item(middle).is_none()
                                         && !matches!(
                                             game.board.square(middle),
-                                            Square::SupermanaBase
-                                                | Square::MonBase { .. }
+                                            Square::SupermanaBase | Square::MonBase { .. }
                                         )
                                     {
                                         return true;
@@ -5323,11 +5402,8 @@ impl MonsGameModel {
         let Some(drainer_location) = own_drainer_location else {
             return false;
         };
-        let drainer_angel_protected = Self::is_location_guarded_by_angel(
-            &probe.board,
-            perspective,
-            drainer_location,
-        );
+        let drainer_angel_protected =
+            Self::is_location_guarded_by_angel(&probe.board, perspective, drainer_location);
         let valid = Location::valid_range();
         for (threat_location, item) in probe.board.occupied() {
             let mon = match item {
@@ -5339,8 +5415,7 @@ impl MonsGameModel {
             if mon.color != opponent || mon.is_fainted() {
                 continue;
             }
-            let on_own_base =
-                matches!(probe.board.square(threat_location), Square::MonBase { .. });
+            let on_own_base = matches!(probe.board.square(threat_location), Square::MonBase { .. });
             if on_own_base {
                 continue;
             }
@@ -5378,8 +5453,7 @@ impl MonsGameModel {
                             let di = (ni - drainer_location.i).abs();
                             let dj = (nj - drainer_location.j).abs();
                             if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
-                                let middle =
-                                    neighbor.location_between(&drainer_location);
+                                let middle = neighbor.location_between(&drainer_location);
                                 if probe.board.item(middle).is_none()
                                     && !matches!(
                                         probe.board.square(middle),
@@ -5438,8 +5512,13 @@ impl MonsGameModel {
             && Self::potions_for_color(game, perspective) > 0
     }
 
-    fn root_spends_potion(game_before: &MonsGame, root: &RootEvaluation, perspective: Color) -> bool {
-        Self::potions_for_color(&root.game, perspective) < Self::potions_for_color(game_before, perspective)
+    fn root_spends_potion(
+        game_before: &MonsGame,
+        root: &RootEvaluation,
+        perspective: Color,
+    ) -> bool {
+        Self::potions_for_color(&root.game, perspective)
+            < Self::potions_for_color(game_before, perspective)
     }
 
     fn root_potion_spend_compensated(
@@ -5642,20 +5721,21 @@ impl MonsGameModel {
 
             if near_best.len() > 1 {
                 let mut quick_loss_cache = std::collections::HashMap::<usize, bool>::new();
-                let has_non_potion_non_losing_alternative = near_best.iter().copied().any(|index| {
-                    let root = &scored_roots[index];
-                    if Self::root_spends_potion(game, root, perspective) {
-                        return false;
-                    }
-                    let allows_loss = *quick_loss_cache.entry(index).or_insert_with(|| {
-                        Self::root_allows_immediate_opponent_win_quick(
-                            &root.game,
-                            perspective,
-                            config,
-                        )
+                let has_non_potion_non_losing_alternative =
+                    near_best.iter().copied().any(|index| {
+                        let root = &scored_roots[index];
+                        if Self::root_spends_potion(game, root, perspective) {
+                            return false;
+                        }
+                        let allows_loss = *quick_loss_cache.entry(index).or_insert_with(|| {
+                            Self::root_allows_immediate_opponent_win_quick(
+                                &root.game,
+                                perspective,
+                                config,
+                            )
+                        });
+                        !allows_loss
                     });
-                    !allows_loss
-                });
 
                 if has_non_potion_non_losing_alternative {
                     let near_best_set = near_best
@@ -5838,9 +5918,10 @@ impl MonsGameModel {
                 && evaluation.interview_soft_priority
                     > best_soft_priority.saturating_add(config.interview_soft_score_margin.max(0));
             let soft_equal_or_disabled = !config.enable_interview_soft_root_priors
-                || evaluation.interview_soft_priority.saturating_add(
-                    config.interview_soft_score_margin.max(0),
-                ) >= best_soft_priority;
+                || evaluation
+                    .interview_soft_priority
+                    .saturating_add(config.interview_soft_score_margin.max(0))
+                    >= best_soft_priority;
             let efficiency_or_score_better = evaluation.efficiency > best_efficiency
                 || (evaluation.efficiency == best_efficiency
                     && evaluation.score > best_shortlisted_score);
@@ -6293,11 +6374,8 @@ impl MonsGameModel {
         } else {
             state_after_move.white_score
         };
-        let replies = Self::enumerate_legal_inputs(
-            state_after_move,
-            reply_limit.max(1),
-            start_options,
-        );
+        let replies =
+            Self::enumerate_legal_inputs(state_after_move, reply_limit.max(1), start_options);
         if replies.is_empty() {
             return NormalRootSafetySnapshot {
                 allows_immediate_opponent_win: false,
@@ -6482,10 +6560,10 @@ impl MonsGameModel {
                 Some(_) => -SMART_TERMINAL_SCORE / 2,
                 None => {
                     let mut visited_nodes = 0usize;
-                    let mut transposition_table =
-                        std::collections::HashMap::<u64, TranspositionEntry>::new();
+                    let mut transposition_table = U64HashMap::<TranspositionEntry>::default();
                     let mut probe_extension_nodes_used = 0usize;
-                    let mut probe_killer_table: KillerTable = [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
+                    let mut probe_killer_table: KillerTable =
+                        [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
                     Self::search_score(
                         &after_reply,
                         perspective,
@@ -6693,7 +6771,7 @@ mod opening_book_tests {
                 SMART_FORCED_DRAINER_ATTACK_FALLBACK_ENUM_LIMIT_FAST,
                 SuggestedStartInputOptions::for_automove(),
                 &mut continuation_budget,
-                &mut std::collections::HashSet::new(),
+                &mut U64HashSet::default(),
             );
         assert!(
             attacks_now || attacks_later_this_turn,
