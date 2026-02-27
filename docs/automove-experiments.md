@@ -163,9 +163,37 @@ fn model_my_candidate(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> 
 
 4. **Run fast screen** → if positive, run progressive duel → if positive, run full ladder.
 
-5. **Promote** — move runtime changes into `src/models/mons_game_model.rs` only after passing the full ladder.
+5. **Promote** — see the Promotion To Production section below.
 
 6. **Keep harness-only logic** in the experiment file.
+
+---
+
+## Iteration Strategy
+
+**Cardinal rule: always start small.** The biggest past waste was running large experiments for candidates that turned out to be no good. The progressive pipeline exists to prevent that — never skip straight to a full ladder.
+
+**When a candidate fails fast screen:**
+- The idea is likely fundamentally off. Don't tune parameters — rethink the approach.
+- Check the Failed Experiments Log below to avoid repeating known dead ends.
+
+**When a candidate fails progressive duel:**
+- Check per-mode breakdown. If one mode improves and the other regresses, consider a mode-specific change (fast and normal need separate strategies).
+- If both modes are neutral, the change probably doesn't affect depth-2/depth-3 decisions. Try a different evaluation dimension.
+- Shrink the change. The most reliable pattern is small, additive weight changes in orthogonal evaluation dimensions.
+
+**When a candidate fails the ladder:**
+- If CPU gate fails: the change adds too much computation. Optimize or reduce scope.
+- If tactical guardrails fail: the change broke a known-good position. Debug which guardrail and why.
+- If pool regression fails: the candidate is weaker against diverse opponents. The improvement was too narrow.
+- If primary strength passes but confirmation/pool fails: could be sample-size-dependent — consider re-running with different seeds before abandoning.
+
+**Design principles that have worked:**
+- Minimal, additive weight changes beat large restructurings.
+- Boolean/discrete signals beat continuous approximations (e.g., boolean drainer danger vs distance-based).
+- New evaluation dimensions orthogonal to existing tactics are the most reliable way to improve fast mode (depth-2 decisions are hard to shift within existing weight dimensions).
+- Fast mode benefits from tight, focused evaluation — adding more computation introduces noise, not signal.
+- Normal mode is more forgiving — deeper search (depth 3) can exploit richer evaluation signals.
 
 ---
 
@@ -354,6 +382,27 @@ Outcomes:
 Progressive duels write JSONL to `target/experiment-runs/progressive_<profile>_<timestamp>.jsonl`. Each line is one tier's cumulative results with per-mode breakdown.
 
 Ladder artifacts (when `SMART_LADDER_ARTIFACT_PATH` is set) are stage-by-stage JSON lines.
+
+---
+
+## Promotion To Production
+
+After a candidate passes the full promotion ladder:
+
+1. **Create a `runtime_pre_<feature>` snapshot** profile — captures the exact pre-change baseline for future comparisons.
+2. **Move runtime changes into `src/models/mons_game_model.rs`**:
+   - Update `SmartSearchConfig::from_preference(Fast)` and/or `from_preference(Normal)` with new config fields.
+   - If scoring weights changed, update `with_runtime_scoring_weights()` to dispatch to new presets.
+   - If new weight presets are needed, add them in `src/models/scoring.rs`.
+3. **Verify `runtime_current` now behaves identically** to the promoted candidate (both should select the same moves).
+4. **Run final validation**:
+   ```sh
+   cargo test --lib
+   cargo check --release
+   cargo check --release --target wasm32-unknown-unknown
+   ```
+5. **Update `docs/automove-experiments.md`** — add the new profile to "Candidate Profiles To Know", update "What Is Shipped Right Now", and note the promotion in "What Worked Best So Far" if applicable.
+6. **Keep experiment harness code test-only** — model functions, registration, and test entry points stay in the experiments file.
 
 ---
 
