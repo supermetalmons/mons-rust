@@ -1,3 +1,24 @@
+# Experiment Infrastructure Cleanup — COMPLETED
+
+## What Was Done
+
+- **Pruned 34+ failed model profiles** from `mons_game_model_automove_experiments.rs` (functions, dispatch entries, variant entries). Reduced file from 11,521 → ~10,850 lines.
+- **Removed dead scoring weight constants** (`RUNTIME_FAST_WINLOSS`, `RUNTIME_FAST_DRAINER_SHIELD` variants, `RUNTIME_FAST_SUPERMANA_PRIORITY` variants) from `scoring.rs` and experiments file.
+- **Deleted empty legacy directories** (`models_legacy/`, `models_v1/`).
+- **Added progressive duel infrastructure** — geometric-doubling evaluation (2→4→8→16→32→64 games/seed) with early exit on clear rejection or early promotion. Incremental JSONL artifact flushing preserves data from completed tiers.
+- **New test entry points**: `smart_automove_pool_fast_screen`, `smart_automove_pool_progressive_duel`.
+- **Rewrote `smart_automove_pool_promotion_ladder`** to use progressive duel (replaces old fixed-batch B_quick + C_reduced + D_primary stages).
+- **Rewrote `docs/automove-experiments.md`** as agent-focused runbook with Quick Reference section for the 3-command pipeline.
+- **Updated `AGENTS.md`** with experiment flow pointer.
+
+## Pipeline (see `docs/automove-experiments.md` Quick Reference)
+
+1. Fast screen (~10-20s) — `smart_automove_pool_fast_screen`
+2. Progressive duel (~1-5 min) — `smart_automove_pool_progressive_duel`
+3. Full promotion ladder (~5-30 min) — `smart_automove_pool_promotion_ladder`
+
+---
+
 # Supermana Priority v1 (Fast-Only) — COMPLETED
 
 ## Status

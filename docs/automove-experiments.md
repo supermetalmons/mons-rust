@@ -4,6 +4,93 @@ This document is the entry point for iterating on automove strength safely and q
 
 Pro-player strategy interview notes used as iteration input are tracked in `docs/automove-pro-strategy-interview.md`.
 
+---
+
+## Quick Reference (Agent Runbook)
+
+Three commands cover the full evaluation pipeline, from cheapest to most thorough.
+
+### 1. Fast Screen (~10-20s)
+
+Runs 2 tiers of geometric-doubling games (2→4 games/seed) on a single seed tag. Use to discard obviously bad candidates before investing compute.
+
+```sh
+./scripts/run-experiment-logged.sh fast_screen_<candidate> -- \
+  env SMART_CANDIDATE_PROFILE=<candidate> \
+      SMART_GATE_BASELINE_PROFILE=runtime_current \
+  cargo test --release --lib smart_automove_pool_fast_screen -- --ignored --nocapture
+```
+
+Pass criteria: aggregate delta ≥ 0.0 (not clearly worse).
+
+### 2. Progressive Duel (~1-5 min)
+
+Geometric-doubling evaluation across 3 seed tags (2→4→8→16→32 games/seed). Early exit on clear rejection or early promotion. Writes incremental JSONL artifacts to `target/experiment-runs/`.
+
+```sh
+./scripts/run-experiment-logged.sh progressive_<candidate> -- \
+  env SMART_CANDIDATE_PROFILE=<candidate> \
+      SMART_GATE_BASELINE_PROFILE=runtime_current \
+  cargo test --release --lib smart_automove_pool_progressive_duel -- --ignored --nocapture
+```
+
+Pass criteria: at least one mode (fast or normal) must improve, neither may regress.
+
+### 3. Full Promotion Ladder (~5-30 min)
+
+Staged evaluation: tactical guardrails → CPU speed gate → budget conversion diagnostic → progressive duel (primary strength) → confirmation duel → pool regression check.
+
+```sh
+./scripts/run-experiment-logged.sh ladder_<candidate> -- \
+  env SMART_CANDIDATE_PROFILE=<candidate> \
+      SMART_GATE_BASELINE_PROFILE=runtime_current \
+  cargo test --release --lib smart_automove_pool_promotion_ladder -- --ignored --nocapture
+```
+
+Pass criteria: all stages pass, artifacts written to `target/experiment-runs/`.
+
+---
+
+## How Progressive Evaluation Works
+
+The progressive duel replaces the old fixed-batch B_quick + C_reduced + D_primary stages with a single geometric-doubling evaluator.
+
+**Tier structure** (default `ProgressiveDuelConfig::standard()`):
+
+| Tier | Games/seed | Cumulative (3 seeds × 2 repeats × 2 budgets × 2 mirrors) |
+|------|-----------|-----------------------------------------------------------|
+| 0    | 2         | ~48 games                                                 |
+| 1    | 4         | ~96 games                                                 |
+| 2    | 8         | ~144 games                                                |
+| 3    | 16        | ~240 games                                                |
+| 4    | 32        | ~432 games                                                |
+
+**Stop conditions** (checked after each tier):
+
+1. **Early Reject** — aggregate delta drops below floor (default -0.05). Candidate is clearly worse.
+2. **Mathematical Reject** — no mode can mathematically reach its improvement threshold even if all remaining games are wins.
+3. **Early Promote** — at least one mode meets improvement + confidence thresholds, all modes pass non-regression, aggregate delta ≥ 0.0.
+4. **Max Games Reached** — all tiers exhausted; final gate conditions checked.
+
+**Artifact flushing** — after each tier, results are written to a JSONL file in `target/experiment-runs/`. If the process crashes or is killed, data from completed tiers is preserved.
+
+**Config presets** (in `ProgressiveDuelConfig`):
+
+| Preset | Use Case | Seeds | Max games/seed | Repeats |
+|--------|----------|-------|----------------|---------|
+| `fast_screen()` | Quick discard | 1 | 4 | 2 |
+| `standard()` | Progressive duel test | 3 | 32 | 2 |
+| `primary_strength()` | Promotion ladder | 3 | 64 | 3 |
+
+All presets can be overridden via environment variables (prefix `SMART_PROGRESSIVE_<STAGE>_`):
+
+- `SMART_PROGRESSIVE_LADDER_INITIAL_GAMES`
+- `SMART_PROGRESSIVE_LADDER_MAX_GAMES`
+- `SMART_PROGRESSIVE_LADDER_REPEATS`
+- `SMART_PROGRESSIVE_LADDER_MAX_PLIES`
+
+---
+
 ## What Is Shipped Right Now
 
 Public API:
@@ -31,21 +118,16 @@ Current runtime behavior:
 - Search uses alpha-beta plus a bounded transposition table (TT). TT writes are skipped for budget-cut partial nodes to avoid polluted cache reuse.
 - On White turn 1, automove follows one random hardcoded opening route (one move per call). If the current position no longer matches any route, it falls back to normal smart search.
 
+---
+
 ## Newcomer Map
 
 Read these files in this order:
 
-1. `src/models/mons_game.rs`
-2. `src/models/scoring.rs`
-3. `src/models/mons_game_model.rs`
-4. `src/models/mons_game_model_automove_experiments.rs`
-
-What each file is for:
-
-- `mons_game.rs`: legal moves, event application, turn transitions, win conditions.
-- `scoring.rs`: board preferability evaluation and weight presets.
-- `mons_game_model.rs`: production automove API and runtime selector logic.
-- `mons_game_model_automove_experiments.rs`: test-only tournament harness and candidate profiles.
+1. `src/models/mons_game.rs` — legal moves, event application, turn transitions, win conditions.
+2. `src/models/scoring.rs` — board preferability evaluation and weight presets.
+3. `src/models/mons_game_model.rs` — production automove API and runtime selector logic.
+4. `src/models/mons_game_model_automove_experiments.rs` — test-only tournament harness and candidate profiles.
 
 ## Release Safety
 
@@ -54,8 +136,38 @@ What each file is for:
 - Harness is included only under `#[cfg(test)]` in `src/models/mons_game_model.rs`:
   - `#[path = "mons_game_model_automove_experiments.rs"]`
   - `mod smart_automove_pool_tests;`
+- Tournament harness code does not ship in release builds.
 
-Result: tournament harness code does not ship in release builds.
+---
+
+## How To Create A New Candidate
+
+1. **Add a model function** in `src/models/mons_game_model_automove_experiments.rs`:
+
+```rust
+fn model_my_candidate(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut config = config;
+    // Modify scoring weights, search shape, or both:
+    config.scoring_weights.my_new_weight = 42;
+    smart_search_best_inputs(game, &config)
+}
+```
+
+2. **Register in `candidate_model()`** — add a match arm:
+
+```rust
+"my_candidate" => Some(model_my_candidate as fn(&MonsGame, SmartSearchConfig) -> Vec<Input>),
+```
+
+3. **Register in `all_profile_variants()`** — add the name string to the list.
+
+4. **Run fast screen** → if positive, run progressive duel → if positive, run full ladder.
+
+5. **Promote** — move runtime changes into `src/models/mons_game_model.rs` only after passing the full ladder.
+
+6. **Keep harness-only logic** in the experiment file.
+
+---
 
 ## First 10 Minutes
 
@@ -72,179 +184,138 @@ If these pass, your local setup is sane for experiments.
 
 Always run experiments through the file-backed wrapper:
 
-- `./scripts/run-experiment-logged.sh <run_name> -- <command...>`
+```sh
+./scripts/run-experiment-logged.sh <run_name> -- <command...>
+```
 
-This writes:
+This writes to `target/experiment-runs/`:
 
-- `<timestamp>_<run_name>.log`
-- `<timestamp>_<run_name>.exit`
-- `<timestamp>_<run_name>.cmd`
-- `<timestamp>_<run_name>.meta`
-
-Default output directory:
-
-- `target/experiment-runs/`
-
-Example:
-
-- `./scripts/run-experiment-logged.sh speed_probe_current -- env SMART_CANDIDATE_PROFILE=runtime_current SMART_SPEED_POSITIONS=20 cargo test --release --lib smart_automove_pool_profile_speed_probe -- --ignored --nocapture`
+- `<timestamp>_<run_name>.log` — full stdout+stderr
+- `<timestamp>_<run_name>.exit` — exit code
+- `<timestamp>_<run_name>.cmd` — the command that was run
+- `<timestamp>_<run_name>.meta` — timing metadata
 
 Rule: do not run long/important duels, ladders, or gates without this wrapper.
+
+---
 
 ## Experiment Controls
 
 Core knobs:
 
-- `SMART_CANDIDATE_PROFILE`
-- `SMART_POOL_GAMES`
-- `SMART_POOL_OPPONENTS`
-- `SMART_POOL_MAX_PLIES`
+- `SMART_CANDIDATE_PROFILE` — candidate profile name for all test entry points
+- `SMART_GATE_BASELINE_PROFILE` — baseline to compare against (default `runtime_current`)
+- `SMART_POOL_GAMES` — games per matchup in pool tournaments
+- `SMART_POOL_OPPONENTS` — number of pool opponents
+- `SMART_POOL_MAX_PLIES` — maximum plies per game
 - `SMART_USE_WHITE_OPENING_BOOK` (`true/false`, default `false`)
-- `SMART_DUEL_SEED_TAG` (optional; when set, duel openings are seeded by this tag instead of profile names)
-- `SMART_GATE_BASELINE_PROFILE` (strict gate baseline, default `runtime_current`)
-- `SMART_GATE_SPEED_POSITIONS`
-- `SMART_GATE_BUDGET_DUEL_GAMES`, `SMART_GATE_BUDGET_DUEL_REPEATS`, `SMART_GATE_BUDGET_DUEL_MAX_PLIES`
-- `SMART_GATE_BUDGET_DUEL_SEED_TAG`
-- `SMART_GATE_PRIMARY_GAMES`, `SMART_GATE_PRIMARY_REPEATS`, `SMART_GATE_PRIMARY_MAX_PLIES`
+- `SMART_DUEL_SEED_TAG` — optional seed tag for duel openings
+- `SMART_GATE_SPEED_POSITIONS` — positions for CPU speed measurement
+- `SMART_GATE_ALLOW_SELF_BASELINE` (`true` only for baseline artifact capture)
 - `SMART_GATE_CONFIRM_GAMES`, `SMART_GATE_CONFIRM_REPEATS`, `SMART_GATE_CONFIRM_MAX_PLIES`
-- `SMART_GATE_POOL_GAMES` (pool non-regression stage in gate/ladder)
-- `SMART_GATE_ALLOW_SELF_BASELINE` (`true` only for baseline artifact capture; disables `candidate != baseline` check)
-- `SMART_TUNE_TRAIN_POSITIONS_PER_SEED`, `SMART_TUNE_HOLDOUT_POSITIONS_PER_SEED`
-- `SMART_TUNE_ROOT_LIMIT`, `SMART_TUNE_TOP_K`, `SMART_TUNE_MANIFEST_OUTPUT`
-- `SMART_TUNE_LABEL_DEPTH_BOOST`, `SMART_TUNE_LABEL_NODE_MULTIPLIER`
-- `SMART_TUNE_FULL_GRID` (`true` = full +/-35% grid search; default quick local sweep)
+- `SMART_GATE_POOL_GAMES` — pool non-regression game count
+- `SMART_PROGRESSIVE_LADDER_INITIAL_GAMES` — override progressive tier-0 games
+- `SMART_PROGRESSIVE_LADDER_MAX_GAMES` — override progressive max games/seed
+- `SMART_PROGRESSIVE_LADDER_REPEATS` — override progressive repeats per game
+- `SMART_PROGRESSIVE_LADDER_MAX_PLIES` — override progressive max plies
 
 Why `SMART_USE_WHITE_OPENING_BOOK` defaults to `false`:
 
 - Production applies opening routes.
-- Promotion experiments usually should compare search/eval quality directly, not opening-book luck.
+- Promotion experiments should compare search/eval quality directly, not opening-book luck.
 - Enable it only when explicitly validating production-like opening behavior.
 
-## Fast Iteration Loop
+---
 
-Use this loop for most work:
+## Promotion Criteria
 
-1. Speed + quick strength screen:
-   - `./scripts/run-experiment-logged.sh fast_pipeline_<candidate_profile> -- env SMART_FAST_PROFILES=runtime_current,<candidate_profile> SMART_FAST_BASELINE=runtime_current SMART_FAST_USE_CLIENT_MODES=true cargo test --release --lib smart_automove_pool_fast_pipeline -- --ignored --nocapture`
-2. Quick mirrored duel screen (opening-book off), first orientation:
-   - `./scripts/run-experiment-logged.sh quick_duel_a_<candidate_profile> -- env SMART_DUEL_A=<candidate_profile> SMART_DUEL_B=runtime_current SMART_DUEL_GAMES=2 SMART_DUEL_REPEATS=2 SMART_DUEL_MAX_PLIES=72 SMART_DUEL_SEED_TAG=quick_v1 cargo test --release --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
-3. Quick mirrored duel screen, reverse orientation:
-   - `./scripts/run-experiment-logged.sh quick_duel_b_<candidate_profile> -- env SMART_DUEL_A=runtime_current SMART_DUEL_B=<candidate_profile> SMART_DUEL_GAMES=2 SMART_DUEL_REPEATS=2 SMART_DUEL_MAX_PLIES=72 SMART_DUEL_SEED_TAG=quick_v1 cargo test --release --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
-4. Keep-going bar for small screens: aggregate delta win-rate `>= +0.04` before spending larger compute.
-5. Run strict gate in reduced mode for quick feedback (includes tactical guardrails and CPU gate):
-   - `./scripts/run-experiment-logged.sh reduced_gate_<candidate_profile> -- env SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current SMART_GATE_PRIMARY_GAMES=2 SMART_GATE_PRIMARY_REPEATS=2 SMART_GATE_CONFIRM_GAMES=2 SMART_GATE_CONFIRM_REPEATS=2 cargo test --release --lib smart_automove_pool_promotion_gate_v2 -- --ignored --nocapture`
-6. Run the staged ladder (artifacts + early-stop + budget-conversion diagnostic):
-   - `./scripts/run-experiment-logged.sh ladder_<candidate_profile> -- env SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current SMART_LADDER_ARTIFACT_PATH=target/smart_ladder_artifacts.jsonl cargo test --release --lib smart_automove_pool_promotion_ladder -- --ignored --nocapture`
-7. Only if reduced gate is promising, run the full strict promotion gate:
-   - `./scripts/run-experiment-logged.sh full_gate_<candidate_profile> -- env SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current cargo test --release --lib smart_automove_pool_promotion_gate_v2 -- --ignored --nocapture`
+The evaluation assesses fast and normal modes **separately**. Key principle: **at least one mode must improve, neither may regress.**
+
+### Progressive Duel Thresholds (standard config)
+
+- Aggregate delta floor (early reject): -0.05
+- Per-mode non-regression: delta ≥ -0.03
+- Per-mode improvement (at least one must pass):
+  - Fast: delta ≥ +0.02, confidence ≥ 0.60
+  - Normal: delta ≥ +0.06, confidence ≥ 0.60
+- Aggregate non-regression: combined delta ≥ 0.0
+
+### Primary Strength Thresholds (ladder config)
+
+- Per-mode non-regression: delta ≥ -0.02
+- Per-mode improvement (at least one must pass):
+  - Fast: delta ≥ +0.05, confidence ≥ 0.90
+  - Normal: delta ≥ +0.10, confidence ≥ 0.90
+- Aggregate non-regression: combined delta ≥ 0.0
+
+### Other Ladder Stage Criteria
+
+- CPU gate: fast ratio ≤ 1.15x, normal ratio ≤ 1.15x
+- Budget-conversion regression: informational (printed but not asserted)
+- Confirmation gate: informational (printed but not asserted)
+- Pool non-regression: candidate must beat ≥ as many pool opponents as baseline; aggregate pool win-rate must not drop by > 0.01
+
+---
 
 ## Useful Test Commands
 
-Profile sweep:
-
-- `SMART_POOL_GAMES=4 SMART_SWEEP_PROFILES=runtime_current,weights_balanced cargo test --lib smart_automove_pool_profile_sweep -- --ignored --nocapture`
-
 Speed probe:
 
-- `SMART_CANDIDATE_PROFILE=runtime_current SMART_SPEED_POSITIONS=20 cargo test --lib smart_automove_pool_profile_speed_probe -- --ignored --nocapture`
+```sh
+SMART_CANDIDATE_PROFILE=runtime_current SMART_SPEED_POSITIONS=20 \
+  cargo test --lib smart_automove_pool_profile_speed_probe -- --ignored --nocapture
+```
+
+Mirrored duel (manual):
+
+```sh
+SMART_DUEL_A=<candidate> SMART_DUEL_B=runtime_current \
+  SMART_DUEL_GAMES=2 SMART_DUEL_REPEATS=2 SMART_DUEL_MAX_PLIES=72 \
+  SMART_DUEL_SEED_TAG=quick_v1 \
+  cargo test --release --lib smart_automove_pool_profile_duel -- --ignored --nocapture
+```
+
+Budget duel (fast vs normal same profile):
+
+```sh
+SMART_BUDGET_DUEL_A=runtime_current SMART_BUDGET_DUEL_B=runtime_current \
+  SMART_BUDGET_DUEL_A_MODE=fast SMART_BUDGET_DUEL_B_MODE=normal \
+  SMART_BUDGET_DUEL_GAMES=3 SMART_BUDGET_DUEL_REPEATS=4 \
+  SMART_BUDGET_DUEL_MAX_PLIES=56 SMART_BUDGET_DUEL_SEED_TAG=fast_normal_v1 \
+  cargo test --lib smart_automove_pool_budget_duel -- --ignored --nocapture
+```
 
 Runtime diagnostics:
 
-- `SMART_DIAG_GAMES=4 SMART_DIAG_MODE=normal cargo test --lib smart_automove_pool_runtime_diagnostics -- --ignored --nocapture`
-
-Fast-vs-normal head-to-head (same profile, different budgets):
-
-- `SMART_BUDGET_DUEL_A=runtime_current SMART_BUDGET_DUEL_B=runtime_current SMART_BUDGET_DUEL_A_MODE=fast SMART_BUDGET_DUEL_B_MODE=normal SMART_BUDGET_DUEL_GAMES=3 SMART_BUDGET_DUEL_REPEATS=4 SMART_BUDGET_DUEL_MAX_PLIES=56 SMART_BUDGET_DUEL_SEED_TAG=fast_normal_v1 cargo test --lib smart_automove_pool_budget_duel -- --ignored --nocapture`
-
-Eval tuning dataset export (test-only helper):
-
-- `SMART_TUNE_PROFILE=runtime_current SMART_TUNE_POSITIONS=64 SMART_TUNE_ROOT_LIMIT=8 SMART_TUNE_SEED_TAG=eval_tune_v1 SMART_TUNE_OUTPUT_PATH=target/smart_eval_tuning_samples.jsonl cargo test --lib smart_automove_pool_export_eval_tuning_dataset -- --ignored --nocapture`
-
-Train/holdout dataset suite export (board-eval workflow):
-
-- `SMART_TUNE_PROFILE=runtime_current SMART_TUNE_TRAIN_POSITIONS_PER_SEED=256 SMART_TUNE_HOLDOUT_POSITIONS_PER_SEED=128 SMART_TUNE_ROOT_LIMIT=12 cargo test --lib smart_automove_pool_export_eval_tuning_dataset_suite -- --ignored --nocapture`
+```sh
+SMART_DIAG_GAMES=4 SMART_DIAG_MODE=normal \
+  cargo test --lib smart_automove_pool_runtime_diagnostics -- --ignored --nocapture
+```
 
 Deterministic coordinate-descent board-eval tuner:
 
-- `SMART_TUNE_PROFILE=runtime_current SMART_TUNE_TRAIN_POSITIONS_PER_SEED=256 SMART_TUNE_HOLDOUT_POSITIONS_PER_SEED=128 SMART_TUNE_ROOT_LIMIT=12 SMART_TUNE_TOP_K=8 SMART_TUNE_MANIFEST_OUTPUT=target/eval_tune_ranked_candidates.json cargo test --lib smart_automove_pool_tune_eval_weights_coordinate_descent -- --ignored --nocapture`
+```sh
+SMART_TUNE_PROFILE=runtime_current \
+  SMART_TUNE_TRAIN_POSITIONS_PER_SEED=256 \
+  SMART_TUNE_HOLDOUT_POSITIONS_PER_SEED=128 \
+  SMART_TUNE_ROOT_LIMIT=12 SMART_TUNE_TOP_K=8 \
+  SMART_TUNE_MANIFEST_OUTPUT=target/eval_tune_ranked_candidates.json \
+  cargo test --lib smart_automove_pool_tune_eval_weights_coordinate_descent -- --ignored --nocapture
+```
 
-Quick tuning mode (fast iteration):
-
-- `SMART_TUNE_PROFILE=runtime_current SMART_TUNE_TRAIN_POSITIONS_PER_SEED=48 SMART_TUNE_HOLDOUT_POSITIONS_PER_SEED=24 SMART_TUNE_ROOT_LIMIT=10 SMART_TUNE_TOP_K=4 SMART_TUNE_LABEL_DEPTH_BOOST=0 SMART_TUNE_LABEL_NODE_MULTIPLIER=1 cargo test --lib smart_automove_pool_tune_eval_weights_coordinate_descent -- --ignored --nocapture`
-
-Quality tuning mode (long run):
-
-- `SMART_TUNE_PROFILE=runtime_current SMART_TUNE_TRAIN_POSITIONS_PER_SEED=256 SMART_TUNE_HOLDOUT_POSITIONS_PER_SEED=128 SMART_TUNE_ROOT_LIMIT=12 SMART_TUNE_TOP_K=8 SMART_TUNE_LABEL_DEPTH_BOOST=1 SMART_TUNE_LABEL_NODE_MULTIPLIER=2 SMART_TUNE_FULL_GRID=true cargo test --lib smart_automove_pool_tune_eval_weights_coordinate_descent -- --ignored --nocapture`
-
-## Promotion Criteria (Gate v2)
-
-The gate evaluates fast and normal modes **separately**. The key principle: **at least one mode must improve, neither may regress.**
-
-- Per-mode non-regression (primary): delta win-rate `>= -0.02` for each mode.
-- Per-mode improvement (primary): at least one mode must meet its improvement threshold:
-  - Fast: delta `>= +0.05` with confidence `>= 0.90`.
-  - Normal: delta `>= +0.10` with confidence `>= 0.90`.
-- Aggregate non-regression: combined delta `>= 0.0`.
-- Per-mode non-regression (reduced/ladder): delta win-rate `>= -0.03` for each mode.
-- Per-mode improvement (reduced): at least one mode must meet:
-  - Fast: delta `>= +0.02` with confidence `>= 0.60`.
-  - Normal: delta `>= +0.06` with confidence `>= 0.60`.
-- Quick-screen per-mode thresholds: fast `>= -0.05`, normal `>= 0.00`.
-- Confirmation gate: aggregate delta `>= +0.02`, confidence `>= 0.55`.
-- CPU gate: fast ratio `<= 1.15x`, normal ratio `<= 1.15x`.
-- Budget-conversion regression guard:
-  - Candidate normal-edge must not regress vs baseline by more than `0.04`.
-- Pool non-regression guard:
-  - Candidate must not beat fewer pool opponents than baseline.
-  - Candidate aggregate pool win-rate must not be more than `0.01` below baseline.
-- Early-stop: ladder prunes only when **no** mode can possibly reach its improvement threshold (not when any single mode falls short).
-
-This replaced the prior gate which required aggregate improvement across both modes. The redesign was motivated by supermana priority v1, which improved fast dramatically but left normal neutral — a valid fast-only improvement that the old gate wrongly blocked.
-
-Official command:
-
-- `./scripts/run-experiment-logged.sh full_gate_<candidate_profile> -- env SMART_CANDIDATE_PROFILE=<candidate_profile> SMART_GATE_BASELINE_PROFILE=runtime_current cargo test --release --lib smart_automove_pool_promotion_gate_v2 -- --ignored --nocapture`
-
-## Recent Promotion Snapshot
-
-Most recent promoted candidate: `runtime_supermana_priority_v1` (fast-only improvement).
-
-### Supermana Priority v1 Gate Results (passed, gate v2)
-
-| Phase | Result |
-|-------|--------|
-| Speed | fast 1.019x, normal 1.019x (≤1.15x) |
-| Quick-screen | fast δ = +0.125, normal δ = +0.000 |
-| Primary fast | 90W-54L, δ = +0.125, confidence = 0.998 — **IMPROVED** |
-| Primary normal | 73W-71L, δ = +0.007 — neutral (within non-regression) |
-| Confirmation | 58W-38L, δ = +0.104, confidence = 0.974 |
-| Pool regression | candidate beaten 3/10, baseline beaten 1/10, WR 0.633 vs 0.517 |
-
-### Prior: Boolean Drainer Protection (runtime_fast_boost_v1)
-
-Reduced strict gate evidence (file: `target/promotion_v6_reduced_fast115.log`):
-
-- speed: fast `1.082x`, normal `0.995x`
-- quick screen: delta `+0.062`
-- primary:
-  - fast delta `+0.139`
-  - normal delta `+0.083`
-  - aggregate delta `+0.111`, confidence `0.962`
-- confirmation aggregate delta `+0.375`, confidence `1.000`
-- pool check: candidate beaten `1/10`, baseline beaten `0/10`
+---
 
 ## Candidate Profiles To Know
 
 - `runtime_current`: currently shipped behavior.
-- `runtime_pre_efficiency_logic`: same runtime budgets/scoring as `runtime_current`, but with fast root-efficiency tie-break disabled.
-- `runtime_pre_fast_efficiency_cleanup`: legacy fast runtime for this cleanup iteration (root efficiency and backtrack penalty enabled in fast mode).
-- `runtime_pre_root_reply_floor`: legacy alias; reply-floor logic was removed from runtime root selection.
+- `runtime_pre_efficiency_logic`: runtime budgets/scoring as current, but with fast root-efficiency tie-break disabled.
+- `runtime_pre_fast_efficiency_cleanup`: legacy fast runtime for this cleanup iteration.
 - `runtime_pre_event_ordering`: baseline with event-aware root/child ordering bonus disabled.
 - `runtime_pre_backtrack_penalty`: baseline with fast root roundtrip/backtrack penalty disabled.
 - `runtime_pre_drainer_tactical_requirements`: baseline with forced drainer-attack root filtering and drainer-safety root prefilter disabled.
 - `runtime_pre_root_upgrade_bundle`: baseline with all three root upgrades above disabled.
-- `runtime_pre_move_efficiency`: snapshot before current node-budget/runtime-shape increase (`fast=420`, `normal=3450`).
-- `runtime_pre_fast_drainer_priority`: snapshot before current fast drainer-context promotion (uses fast `RUNTIME_RUSH` baseline).
+- `runtime_pre_move_efficiency`: snapshot before current node-budget/runtime-shape increase.
+- `runtime_pre_fast_drainer_priority`: snapshot before current fast drainer-context promotion.
 - `runtime_pre_winloss_weights`: snapshot before current rush-scoring promotion.
 - `runtime_pre_tactical_runtime`: snapshot before current tactical-runtime scorer promotion.
 - `runtime_pre_transposition`: snapshot before TT-enabled search path.
@@ -253,31 +324,49 @@ Reduced strict gate evidence (file: `target/promotion_v6_reduced_fast115.log`):
 - `runtime_pre_normal_efficiency_reply_floor`: snapshot before promoting normal root-efficiency/backtrack in runtime.
 - `runtime_pre_drainer_context`: snapshot before current fast drainer-context promotion.
 - `runtime_legacy_phase_adaptive`: older legacy reference.
-- `runtime_drainer_context`: fast-only drainer-context candidate path.
 - `runtime_d2_tuned`: older fixed-weight reference.
-- `runtime_eval_board_v1`: board-eval candidate profile hook (for tuned board-weight promotion runs).
-- `runtime_eval_board_v2`: board-eval candidate profile hook (second tuned board-weight slot).
+- `runtime_eval_board_v1` / `runtime_eval_board_v2`: board-eval candidate profile hooks for tuned board-weight promotion runs.
 - `runtime_fast_boost_v1`: boolean drainer protection candidate (promoted — identical to `runtime_current`).
 - `runtime_supermana_priority_v1`: supermana priority fast-only candidate (promoted — identical to `runtime_current`).
-- `runtime_fast_env_tune_normal_x15_tactical_lite`: test-only fast env-tuning hook (normal branch fixed to `runtime_normal_x15_tactical_lite`) for rapid fast toggle/shape sweeps.
 
-Fast env-tuning example:
+---
 
-- `SMART_DUEL_A=runtime_fast_env_tune_normal_x15_tactical_lite SMART_DUEL_B=runtime_current SMART_DUEL_MODE=fast SMART_DUEL_GAMES=2 SMART_DUEL_REPEATS=2 SMART_DUEL_MAX_PLIES=72 SMART_FAST_TUNE_NODE_SCALE_BP=10500 SMART_FAST_TUNE_EVENT_ORDERING=false SMART_FAST_TUNE_BACKTRACK=true SMART_FAST_TUNE_MOVE_CLASS=true SMART_FAST_TUNE_CHILD_MOVE_CLASS=false SMART_FAST_TUNE_SPIRIT_PREF=true SMART_FAST_TUNE_FORCED_PREPASS=true SMART_FAST_TUNE_REPLY_GUARD=false cargo test --release --lib smart_automove_pool_profile_duel -- --ignored --nocapture`
+## Interpreting Results
 
-## Board Eval Workflow (Recommended)
+### Progressive Duel Output
 
-1. Freeze baseline evidence:
-   - `cargo test --lib smart_automove_tactical_suite -- --ignored --nocapture`
-   - `SMART_CANDIDATE_PROFILE=runtime_current SMART_SPEED_POSITIONS=20 cargo test --lib smart_automove_pool_profile_speed_probe -- --ignored --nocapture`
-   - `SMART_BUDGET_DUEL_A=runtime_current SMART_BUDGET_DUEL_B=runtime_current SMART_BUDGET_DUEL_A_MODE=fast SMART_BUDGET_DUEL_B_MODE=normal SMART_BUDGET_DUEL_GAMES=3 SMART_BUDGET_DUEL_REPEATS=4 SMART_BUDGET_DUEL_MAX_PLIES=56 SMART_BUDGET_DUEL_SEED_TAG=fast_normal_v1 cargo test --lib smart_automove_pool_budget_duel -- --ignored --nocapture`
+Each tier prints a summary line:
+
+```
+progressive tier 0 | games/seed=2 | total=48 | δ=+0.0625 | conf=0.712 | continuing…
+  mode fast | 8W-4L-0D | δ=+0.1667 | conf=0.927
+  mode normal | 5W-7L-0D | δ=-0.0833 | conf=0.274
+```
+
+Outcomes:
+- **EARLY REJECT** — candidate is clearly worse. Stop iterating on this approach.
+- **MATH REJECT** — candidate can't possibly reach improvement thresholds. Stop.
+- **EARLY PROMOTE** — candidate clearly passes all criteria. Safe to proceed to ladder.
+- **MAX GAMES** — all tiers exhausted; check final stats to decide.
+
+### Artifact Files
+
+Progressive duels write JSONL to `target/experiment-runs/progressive_<profile>_<timestamp>.jsonl`. Each line is one tier's cumulative results with per-mode breakdown.
+
+Ladder artifacts (when `SMART_LADDER_ARTIFACT_PATH` is set) are stage-by-stage JSON lines.
+
+---
+
+## Board Eval Workflow
+
+1. Freeze baseline evidence (speed probe + budget duel + tactical suite).
 2. Export train/holdout datasets with root labels.
 3. Run coordinate-descent tuning to produce `target/eval_tune_ranked_candidates.json`.
 4. Map best ranked bundle into a named profile (`runtime_eval_board_v1` / `runtime_eval_board_v2`).
-5. Run strict ladder and strict gate against `runtime_current`:
-   - `SMART_CANDIDATE_PROFILE=runtime_eval_board_v1 SMART_GATE_BASELINE_PROFILE=runtime_current SMART_LADDER_ARTIFACT_PATH=target/smart_ladder_artifacts_board_v1.jsonl cargo test --lib smart_automove_pool_promotion_ladder -- --ignored --nocapture`
-   - `SMART_CANDIDATE_PROFILE=runtime_eval_board_v1 SMART_GATE_BASELINE_PROFILE=runtime_current cargo test --lib smart_automove_pool_promotion_gate_v2 -- --ignored --nocapture`
-6. Promote runtime constants only after strict pass, keeping all tuner/export helpers test-only.
+5. Run progressive duel, then full ladder against `runtime_current`.
+6. Promote runtime constants only after ladder pass, keeping all tuner/export helpers test-only.
+
+---
 
 ## Failed Experiments Log
 
@@ -285,504 +374,115 @@ Use this section as an anti-pattern memory so future iterations skip known dead 
 
 ### 1) `runtime_drainer_priority` (weights-only drainer emphasis)
 
-Idea:
-
-- Increase drainer-centric weights globally to force mana-race pressure.
-
-What happened:
-
-- CPU stayed near baseline (`~0.99x` in quick fast pipeline).
-- Strength did not beat baseline reliably (`0.500` quick win rate in fast pipeline checks).
-
-Takeaway:
-
-- Pure weight inflation without better tactical context was too blunt.
+Pure weight inflation without better tactical context was too blunt. CPU near baseline, strength at 0.500.
 
 ### 2) `runtime_drainer_priority_aggr` (more aggressive weights-only variant)
 
-Idea:
-
-- Push drainer and carrier urgency even harder than `runtime_drainer_priority`.
-
-What happened:
-
-- No robust strength lift vs `runtime_current`.
-- Similar CPU, but no promotion-quality confidence.
-
-Takeaway:
-
-- More aggressive static weights amplified noise, not decision quality.
+More aggressive static weights amplified noise, not decision quality.
 
 ### 3) `runtime_drainer_tiebreak` (root-level drainer heuristic tie-break)
 
-Idea:
+Late tie-break after search was weaker than integrating signals inside evaluation itself. Quick pipeline showed 0.000 win rate.
 
-- Keep search mostly unchanged, but re-rank near-top roots by a custom drainer delta metric.
+### 4) Full two-mode `runtime_drainer_context` (fast + normal)
 
-What happened:
-
-- Quick pipeline showed underperformance (`0.000` win rate in one screening run).
-- No consistent improvement in repeated checks.
-
-Takeaway:
-
-- Late tie-break after search was weaker than integrating signals inside evaluation itself.
-
-### 4) Full two-mode `runtime_drainer_context` (same idea applied to `fast` and `normal`)
-
-Idea:
-
-- Apply drainer-context scoring to both client modes.
-
-What happened:
-
-- Fast mode improved strongly.
-- Normal mode regressed in larger samples.
-- Combined large duel result: `22W-18L`, win rate `0.550`, confidence `0.682` (below confidence bar).
-
-Takeaway:
-
-- Fast and normal need separate strategies; one-size-fits-both-mode tuning was unstable.
+Fast improved strongly, normal regressed. Combined 22W-18L, confidence 0.682. Fast and normal need separate strategies.
 
 ### 5) `runtime_drainer_context` + wider-root in fast branch
 
-Idea:
-
-- Combine drainer-context scoring with wider-root search shape in fast mode.
-
-What happened:
-
-- Fast duel degraded vs non-wideroot variant:
-  - Wideroot: `12W-8L`, confidence `0.748`
-  - No wideroot: `13W-7L`, confidence `0.868`
-
-Takeaway:
-
-- For this scorer, widening fast root hurt move quality per node budget.
+Widening fast root hurt move quality per node budget. Wideroot 12W-8L vs no-wideroot 13W-7L.
 
 ### 6) `runtime_drainer_priority_fast_only`
 
-Idea:
-
-- Keep normal unchanged, but swap fast runtime scorer to drainer-priority weights.
-
-What happened:
-
-- Looked positive in small screens.
-- Lost in larger de-biased two-way duel vs baseline:
-  - aggregate `34W-38L`, win rate `0.472`.
-
-Takeaway:
-
-- Keep this as an experiment profile only; do not promote.
+Lost in larger de-biased two-way duel (34W-38L, win rate 0.472).
 
 ### 7) `runtime_d2_tuned_d3_winloss` (moderate normal win/loss blend)
 
-Idea:
-
-- Keep fast branch on tuned D2.
-- Replace normal branch with a moderate win/loss-aware tactical blend.
-
-What happened:
-
-- Lost in de-biased normal-mode two-way runs vs `runtime_pre_winloss_weights`.
-- Example aggregate from two neutral tags was negative (`3W-13L`).
-
-Takeaway:
-
-- Extra win/loss urgency in normal branch was unstable; avoid this shape as a direct runtime replacement.
+Extra win/loss urgency in normal branch was unstable; avoid as direct runtime replacement.
 
 ### 8) `runtime_fast_winloss` variants (fast-only win/loss weighting)
 
-Idea:
-
-- Improve fast mode by adding stronger carrier/drainer urgency and threat penalties.
-
-What happened:
-
-- Multiple tuned variants underperformed tuned D2 baseline in fast-only two-way duels.
-- Results were inconsistent across tags and trended negative overall.
-
-Takeaway:
-
-- Fast mode at current depth/node budget is sensitive to over-aggressive tactical weighting.
+Fast mode at current depth/node budget is sensitive to over-aggressive tactical weighting.
 
 ### 9) Aggressive `RUNTIME_RUSH` mana-pressure overlays
 
-Idea:
-
-- Add stronger immediate carrier and drainer-path urgency on top of `RUNTIME_RUSH_SCORING_WEIGHTS` to force quicker scoring.
-
-What happened:
-
-- In repeated duels this regressed versus baseline runtime behavior.
-- It overcommitted in tactical spots and did not improve aggregate strength.
-
-Takeaway:
-
-- Keep rush profile stable; large urgency overlays were too brittle.
+Overcommitted in tactical spots. Large urgency overlays were too brittle.
 
 ### 10) Hard no-effect pruning / heavy no-effect penalties
 
-Idea:
-
-- Detect no-effect turn transitions and aggressively remove or heavily penalize them.
-
-What happened:
-
-- Full pruning and high penalties reduced stability and hurt aggregate duel results.
-- Soft/no-op handling performed better than aggressive filtering.
-
-Takeaway:
-
-- Do not hard-prune no-effect transitions; if used, keep this signal very light.
+Full pruning and high penalties reduced stability. Soft/no-op handling performed better.
 
 ### 11) Fast root efficiency tie-break (light, fast-only)
 
-Idea:
-
-- Keep the main search/scoring path intact.
-- Add a small fast-mode root tie-break that prefers clearer progress (carrier/drainer path improvements) and softly penalizes no-effect/low-impact transitions.
-- Keep normal mode on the pre-efficiency selector path for stability.
-
-What happened:
-
-- Versus `runtime_pre_efficiency_logic` in fast-only duels, results were positive in aggregate but noisy per seed.
-- Fast short-seed set (`5` tags, `6` games/tag): `19W-11L`.
-- Fast longer-seed set (`3` tags, `15` games/tag): `23W-22L`.
-- Combined fast aggregate across those runs: `42W-33L` (win rate `0.560`).
-- Additional larger-seed pair (`2` tags, `25` games/tag): `27W-23L` (win rate `0.540`).
-- Normal-mode spot checks were near neutral/slightly positive (for example `2W-1L` in one `3`-game seed).
-
-CPU impact:
-
-- `SMART_SPEED_POSITIONS=20` showed near-parity runtime:
-  - `runtime_current`: fast `~54.55ms`, normal `~364.50ms`.
-  - `runtime_pre_efficiency_logic`: fast `~54.51ms`, normal `~368.65ms`.
-
-Takeaway:
-
-- Light root efficiency signals can improve practical fast-mode move quality without material CPU cost.
-- Keep this as a small, conservative layer; avoid aggressive penalties or child-search rewrites.
+Light root efficiency signals improved practical fast-mode quality without material CPU cost. **Promoted.**
 
 ### 12) Same-budget self-label board-eval tuning
 
-Idea:
-
-- Export move-regret labels from the same runtime search budget and tune eval weights to minimize those regrets.
-
-What happened:
-
-- Coordinate-descent repeatedly converged to near-baseline weights.
-- Ranked candidates were often identical or effectively equivalent to runtime defaults.
-
-Takeaway:
-
-- Same-budget self-labeling is weak supervision; use deeper-label targets (`SMART_TUNE_LABEL_DEPTH_BOOST`, `SMART_TUNE_LABEL_NODE_MULTIPLIER`) for meaningful signal.
+Same-budget self-labeling is weak supervision; use deeper-label targets for meaningful signal.
 
 ### 13) Full-grid board-eval tuning by default
 
-Idea:
-
-- Run full `+/-35%` grid search for every tuned field in each family on every iteration.
-
-What happened:
-
-- Iteration time became too high for practical screening loops.
-- It was useful for final quality runs but too slow for daily candidate churn.
-
-Takeaway:
-
-- Keep quick mode as default local sweep and reserve `SMART_TUNE_FULL_GRID=true` for final quality passes.
+Too slow for daily churn. Reserve `SMART_TUNE_FULL_GRID=true` for final quality passes.
 
 ### 14) `runtime_normal_x15_tactical_lite` as direct promotion candidate
 
-Idea:
-
-- Use the strongest quick-screen candidate (normal tactical-lite shape) directly against `runtime_current`.
-
-What happened:
-
-- CPU stayed within gate limits and quick-screen looked strong.
-- Strict gate failed at primary fast mode (no required fast delta).
-
-Takeaway:
-
-- Normal-only gains are not enough for strict promotion.
-- Candidate selection must include explicit fast-mode proof on primary seed tags.
+Normal-only gains not enough for strict promotion. Must include explicit fast-mode proof.
 
 ### 15) Fast-side micro-patches (reply-risk lite, simplified root heuristics)
 
-Idea:
-
-- Improve fast by toggling small fast-only controls:
-  - enable light reply-risk guard
-  - disable selected root heuristics (event-ordering/backtrack/class coverage/spirit pref)
-
-What happened:
-
-- Reply-risk variants were either neutral on strength or over fast CPU mode-ratio cap in screens.
-- Simplified-root variants were neutral-to-worse in mirrored checks.
-
-Takeaway:
-
-- Small heuristic toggles alone did not produce robust fast-mode lift.
-- Keep these as experiment-only probes; do not promote by quick-screen signal.
+Small heuristic toggles alone did not produce robust fast-mode lift.
 
 ### 16) Fast depth-3 lite probe under branch caps
 
-Idea:
-
-- Try bounded `depth=3` for fast with tight branch caps and fast-specific scoring.
-
-What happened:
-
-- Fast mode-ratio exploded in screening (`>2x` in mode ratio), violating CPU expectations.
-
-Takeaway:
-
-- Depth bump for fast is not viable under current CPU caps unless search shape is fundamentally redesigned.
+Fast mode-ratio exploded (>2x). Depth bump not viable under current CPU caps.
 
 ### 17) Interview policy candidates (`runtime_interview_policy_v1..v5`)
 
-Idea:
+Interview policy priors are directionally useful but not sufficient for strict promotion under current search shape/caps. Keep as experiment hooks.
 
-- Translate interview priorities into mixed hard/soft runtime policy:
-  - hard drainer-attack priority
-  - hard/conditional spirit-off-base preference
-  - deterministic root tie-break ordering
-  - optional soft supermana/opponent-mana progress priors
-- Validate both direct interview variants (`v1..v3`) and mode-split variants (`v4`, `v5`).
-
-What happened:
-
-- Mixed-mode neutral-seed screens for `runtime_interview_policy_v1`, `runtime_interview_policy_v4`, and `runtime_interview_policy_v5` were noisy and stayed around neutral in aggregate.
-- After keeping default runtime weights unchanged (no implicit promotion), rerunning `runtime_interview_policy_v5` on `neutral_v1..v3` with `SMART_DUEL_GAMES=1`, `SMART_DUEL_REPEATS=1`, `SMART_DUEL_MAX_PLIES=48` was negative:
-  - `neutral_v1`: `1W-1L`
-  - `neutral_v2`: `1W-1L`
-  - `neutral_v3`: `0W-2L`
-  - aggregate: `2W-4L`
-- A safety cleanup was kept in runtime interview filtering: hard spirit-deploy now preserves explicit same-turn scoring exceptions and prefers safe deploy alternatives when the interview spirit rule is enabled.
-
-Takeaway:
-
-- Interview policy priors are directionally useful but not sufficient for strict promotion under current search shape/caps.
-- Current evidence does not support promoting interview profiles over `runtime_current`.
-- Keep these profiles as experiment hooks; require larger-seed strict gate evidence before runtime promotion.
+---
 
 ## What Worked Best So Far
 
-Current promoted direction:
-
-- Keep modestly larger runtime node budgets (`fast=480`, `normal=3800`) versus prior runtime (`420`/`3450`).
-- Keep phase-adaptive runtime scoring:
-  - `fast`: `RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS` with `supermana_race_control: 30`
-  - `normal`: `RUNTIME_NORMAL_*_SPIRIT_BASE_SCORING_WEIGHTS` family
+- Keep modestly larger runtime node budgets (`fast=480`, `normal=3800`).
+- Keep phase-adaptive runtime scoring.
 - Apply root efficiency tie-breaks in both client modes.
 - Keep normal root-safety rerank/deep-floor and reply-risk guard.
-- Keep TT enabled in runtime search, but validate with de-biased two-way duels.
-- Keep opening-route policy in production, but disabled by default in promotion experiments.
-- **Fast prepass exception**: skip forced drainer tactics when supermana scoring is available (`enable_supermana_prepass_exception`).
+- Keep TT enabled in runtime search.
+- **Fast prepass exception**: skip forced drainer tactics when supermana scoring is available.
 - **Boosted supermana interview priors**: `supermana_score_bonus=600`, `supermana_progress_bonus=320` in fast mode.
-- **Minimal, additive weight changes**: `supermana_race_control: 30` is the only new scoring weight \u2014 no restructuring of existing weight balance. This pattern (small additive signal in an orthogonal evaluation dimension) is the most reliable way to improve fast mode.
+- **Minimal, additive weight changes**: `supermana_race_control: 30` is the only new scoring weight — no restructuring of existing weight balance. This pattern (small additive signal in an orthogonal evaluation dimension) is the most reliable way to improve fast mode.
 
-Observed runtime-shape benchmark vs `runtime_pre_move_efficiency`:
+### Key Invariant Discovery
 
-- De-biased two-way duel, seed `nodes3800_verify`: `9W-7L` for `runtime_current`.
-- De-biased two-way duel, seed `nodes3800_verify2`: `9W-7L` for `runtime_current`.
-- De-biased two-way duel, seed `nodes3800_verify3`: `10W-6L` for `runtime_current`.
-- Combined across these seed tags: `28W-20L` (win rate `0.583`).
-- Speed probe (`SMART_SPEED_POSITIONS=30`) remained close:
-  - `runtime_current`: fast `~53.8ms`, normal `~366.4ms`.
-  - `runtime_pre_move_efficiency`: fast `~52.6ms`, normal `~367.5ms`.
+**`supermana_race_control: 30` broke the fast mode invariance pattern.** For 20+ prior iterations, no scoring weight change affected fast-mode primary game outcomes (always 72W-72L). This weight operates in a different evaluation dimension (relative supermana distance) and successfully tips previously tied root choices at depth 2. Future fast-mode improvements are possible through evaluation dimensions orthogonal to drainer tactics.
 
-Observed proof against pre-promotion snapshot (fast mode):
+---
 
-- `runtime_current` vs `runtime_pre_drainer_context`:
-  - `13W-7L`
-  - win rate `0.650`
-  - confidence `0.868`
+## Remaining Pro Strategy Gaps
 
-Observed normal-mode benchmark after introducing `runtime_pre_normal_x15` snapshot:
-
-- Use multiple neutral duel tags (`neutral_v1`, `neutral_v2`, `neutral_v3`, ...).
-- Do not rely on a single profile-pairing seed, because profile-name-coupled seeding can flip conclusions.
-
-Observed TT benchmark vs `runtime_pre_transposition`:
-
-- Fast mode (de-biased two-way, larger run): `36W-36L` (neutral).
-- Normal mode (de-biased two-way): `8W-4L`, win rate `0.667`.
-- Speed probe (`SMART_SPEED_POSITIONS=30`):
-  - `runtime_current`: fast `~52.1ms`, normal `~360.0ms`.
-  - `runtime_pre_transposition`: fast `~52.9ms`, normal `~512.5ms`.
-
-Observed fast-efficiency benchmark vs `runtime_pre_efficiency_logic`:
-
-- Fast-only short seeds (`SMART_DUEL_GAMES=3`, `SMART_DUEL_REPEATS=2`, `SMART_DUEL_MAX_PLIES=56`):
-  - `eff_logic_fast_final_s1`: `4W-2L`
-  - `eff_logic_fast_final_s2`: `4W-2L`
-  - `eff_logic_fast_final_s3`: `2W-4L`
-  - `eff_logic_fast_final_s4`: `5W-1L`
-  - `eff_logic_fast_final_s5`: `4W-2L`
-  - Combined short-seed aggregate: `19W-11L` (win rate `0.633`)
-- Fast-only longer seeds (`SMART_DUEL_REPEATS=5`):
-  - `eff_logic_fast_long`: `7W-8L`
-  - `eff_logic_fast_long2`: `9W-6L`
-  - `eff_logic_fast_long3`: `7W-8L`
-  - Combined long-seed aggregate: `23W-22L` (win rate `0.511`)
-- Combined fast aggregate across all above: `42W-33L` (win rate `0.560`)
-- Fast-only larger-game seeds (`SMART_DUEL_GAMES=5`, `SMART_DUEL_REPEATS=5`):
-  - `eff_logic_fast_bulk1`: `14W-11L`
-  - `eff_logic_fast_bulk2`: `13W-12L`
-  - Combined bulk aggregate: `27W-23L` (win rate `0.540`)
-
-## Boolean Drainer Protection Promotion (runtime_fast_boost_v1)
-
-### What Changed
-
-Replaced the continuous drainer danger signal (`drainer_at_risk / chebyshev_distance`) with a boolean exact-geometry threat check (`is_drainer_under_exact_threat`). The boolean function checks whether drainer/mana-carrier is exactly attackable by mystic, demon, or bomb on the next opponent turn, accounting for MonBase exclusion and angel protection.
-
-Production changes:
-- `scoring.rs`: New weight fields `drainer_danger_boolean` and `mana_carrier_danger_boolean` in `ScoringWeights`. Fast preset: `-400`/`-300`. Normal phase-adaptive presets: `-1200`/`-800`.
-- `mons_game_model.rs`: `from_preference(Fast)` and `from_preference(Normal)` both set `enable_enhanced_drainer_vulnerability = true`. Normal `root_drainer_safety_score_margin` raised from `900` to `4000`. `with_runtime_scoring_weights()` dispatches to boolean drainer variants.
-
-### Gate Results (passed)
-
-Promoted profile: `runtime_fast_boost_v1` with fast weights `-400`/`-300`.
-
-| Phase | Result |
-|-------|--------|
-| Speed | fast 1.019x, normal 1.019x (≤1.15x) |
-| Budget conversion | fast WR 0.667 (informational) |
-| Quick-screen | δ = 0.125–0.188 (≥0.040) |
-| Primary fast | 72W-72L = 50.0% (≥50%) |
-| Primary normal | 90W-54L = 62.5% (≥58%) |
-| Primary aggregate | δ = 0.062 (≥0.055) |
-| Confirmation | 51W-45L (informational) |
-| Pool regression | candidate 0.500 ≥ baseline 0.417 |
-
-### Key Experimental Findings
-
-**Fast mode (depth 2) was structurally invariant for drainer changes — but supermana_race_control broke this pattern.** Across 20+ iterations testing drainer-related eval weights, root policies, structural search changes, and boolean drainer weights from 0 to -600, fast mode always produced exactly 72W-72L on the 144 fixed-seed primary games. However, adding `supermana_race_control: 30` (a weight that tracks relative supermana distance advantage) produced 90W-54L — the first scoring weight to change depth-2 decisions. The likely mechanism: supermana_race_control creates small eval differences in positions where drainer weights are already balanced, tipping previously tied root choices.
-
-**UPDATE (supermana priority v1):** The "fast invariance" finding was specific to drainer-centric weight changes. Supermana-race scoring operates in a different evaluation dimension and successfully shifts depth-2 root selection.
-
-**Structural fast changes actively hurt.** Enabling more computation at depth 2 (two-pass root allocation, selective extensions, wider branching) made fast _worse_ (44.4% in one test). Lesson: depth-2 search benefits from tight, focused evaluation — adding more computation introduces noise rather than signal.
-
-**Normal mode reliably improves.** Normal mode consistently showed 61–63% win rate with boolean drainer weights across all tested configurations. The deeper search (depth 3) has enough lookahead to exploit the improved drainer danger signal.
-
-**Gate threshold adjustments.** Because fast_delta is permanently 0, the aggregate threshold math requires `normal_delta ≥ 2 × threshold`. The aggregate minimum was lowered from 0.08 to 0.055, and the confirmation gate was converted to an informational warning (96-game confirmation is highly non-deterministic: observed swings of +0.042, +0.021, -0.031 across identical runs).
-
-**Budget conversion is unreliable as a gate.** Budget (24-game) duels showed high variance: the same candidate scored 0.667, 0.542, 0.583 across different seed tags. Converted to informational warning.
-
-**Drainer shield variants (keeping `drainer_at_risk` alongside boolean).** Tested blending old continuous signal with new boolean. Results were similar to pure boolean — no improvement from keeping the continuous signal. The boolean alone captures the relevant information.
-
-**Root drainer safety margin raised to 4000.** For normal mode, this makes the drainer safety prefilter near-hard (only moves that leave drainer vulnerable by >4000 points are filtered). Previously at 900, some borderline situations slipped through.
-
-### Tuning Knobs for Future Iterations
-
-| Knob | Current | Notes |
-|------|---------|-------|
-| `drainer_danger_boolean` (fast) | -400 | Tried -150, -300, -400, -600. No effect on fast primary but affects budget games |
-| `mana_carrier_danger_boolean` (fast) | -300 | Paired with drainer. -300 worked best for budget conversion |
-| `drainer_danger_boolean` (normal) | -1200 | Shared across all phase-adaptive variants |
-| `mana_carrier_danger_boolean` (normal) | -800 | Same |
-| `root_drainer_safety_score_margin` (normal) | 4000 | Raised from 900. Near-hard filter |
-| Gate aggregate δ min | 0.055 | Lowered from 0.08 to account for fast invariance |
-| Gate confirm | informational | Was hard gate at δ≥0.05/conf≥0.75, now just prints |
-| `supermana_race_control` (fast) | 30 | First weight to break fast invariance pattern |
-| `interview_soft_supermana_score_bonus` (fast) | 600 | Raised from 360 |
-| `interview_soft_supermana_progress_bonus` (fast) | 320 | Raised from 240 |
-| `enable_supermana_prepass_exception` (fast) | true | Skips drainer prepass when supermana scoring possible |
-
-## Supermana Priority Promotion (runtime_supermana_priority_v1)
-
-### What Changed
-
-Added supermana awareness to fast-mode evaluation and tactical prepass. Three production changes:
-
-1. **Scoring weight** `supermana_race_control: 30` in `RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS` — evaluates relative supermana distance advantage (how close our drainer is to scoring supermana vs opponent's drainer). Small weight intentionally: 30 points is enough to tip tied root choices without distorting non-supermana evaluation.
-
-2. **Prepass exception** `enable_supermana_prepass_exception = true` for fast mode — when the position has supermana scoring potential (`has_supermana_scoring` computed from board state), the forced tactical prepass skips its drainer attack override and drainer safety override. This lets the search tree naturally find supermana plays instead of being forced into drainer-only tactics.
-
-3. **Boosted interview bonuses** — `interview_soft_supermana_score_bonus`: 360→600, `interview_soft_supermana_progress_bonus`: 240→320. These are soft priors applied to root candidate ordering that make supermana-related moves more likely to be searched first.
-
-Normal mode was **not changed** — all three changes are fast-only.
-
-### Gate Results (passed, gate v2)
-
-| Phase | Result |
-|-------|--------|
-| Speed | fast 1.019x, normal 1.019x (≤1.15x) |
-| Quick-screen | fast δ = +0.125 (≥-0.05), normal δ = +0.000 (≥0.00) |
-| Primary fast | 90W-54L, δ = +0.125, confidence = 0.998 — **IMPROVED** |
-| Primary normal | 73W-71L, δ = +0.007 — neutral (non-regression ≥ -0.02 ✓) |
-| Aggregate | δ = +0.066 (≥0.0 non-regression ✓) |
-| Confirmation | 58W-38L, δ = +0.104, confidence = 0.974 |
-| Pool regression | candidate beaten 3/10, baseline beaten 1/10, WR 0.633 vs 0.517 |
-
-### Gate Redesign (v2) — Motivated By This Candidate
-
-The supermana priority v1 candidate exposed a fundamental flaw in gate v1: requiring aggregate improvement across both modes blocked valid single-mode improvements. Gate v2 was designed as follows:
-
-- **Per-mode non-regression**: each mode must stay above δ ≥ -0.02 (primary) or δ ≥ -0.03 (reduced).
-- **At-least-one-improves**: at least one mode must reach its improvement threshold (fast ≥ 0.05, normal ≥ 0.10) with confidence ≥ 0.90.
-- **Aggregate non-regression**: combined delta ≥ 0.0 as a safety net.
-- **Quick-screen per-mode**: fast ≥ -0.05, normal ≥ 0.00 (not aggregate).
-- **Early-stop**: prune only when NO mode can possibly reach its improvement threshold.
-
-### Iteration History
-
-**v1a** — Failed at quick-screen: normal δ=0.000 < 0.040 (old aggregate quick-screen). Fix: made quick-screen per-mode, lowered normal to 0.00.
-
-**v1b** — Failed at tactical guardrails: `carrier_progress_probe` expected `CarrierProgress` but got `quiet`. Cause: aggressive weight changes (`drainer_close_to_supermana: 320`, `extra_for_supermana: 200`) distorted non-supermana evaluation. Fix: stripped all aggressive weights, kept only `supermana_race_control: 30`.
-
-**v1c** — Failed at primary: fast δ=+0.125 (great), but normal δ=-0.014 < 0.10. Old gate required BOTH modes to individually meet improvement thresholds. Fix: redesigned gate to "at least one improves, neither regresses."
-
-**v1d** — **Passed.** Fast δ=+0.125 (improved), normal δ=+0.007 (neutral within tolerance).
-
-### Key Experimental Findings
-
-**`supermana_race_control: 30` broke the fast mode invariance pattern.** For 20+ prior iterations, no scoring weight change affected fast-mode primary game outcomes (always 72W-72L). This weight operates in a different evaluation dimension (relative supermana distance) and successfully tips previously tied root choices at depth 2. This is a significant finding: it means future fast-mode improvements are possible through evaluation dimensions orthogonal to drainer tactics.
-
-**Aggressive supermana weights destroy non-supermana evaluation.** The v1b failure showed that large weight changes (`drainer_close_to_supermana: 320`, `extra_for_supermana: 200`) caused the AI to misjudge basic carrier progress positions. Lesson: keep new weights minimal and additive, don't restructure the weight balance.
-
-**Prepass exception is essential.** Without the prepass exception, the forced drainer attack override blocks the search from finding supermana plays even when they're higher value. The exception checks `has_supermana_scoring` — whether any legal move in the position leads to supermana scoring — and only then relaxes the drainer tactical override.
-
-**Fast-only improvements pass the new per-mode gate cleanly.** The gate correctly classified fast 90W-54L as improvement and normal 73W-71L as neutral non-regression, promoting the candidate despite no normal improvement.
-
-### Remaining Pro Strategy Gaps
-
-From the pro-strategy interview (see `docs/automove-pro-strategy-interview.md`), the following priorities are **not yet implemented**:
+From the pro-strategy interview (see `docs/automove-pro-strategy-interview.md`):
 
 1. ~~Always attack opponent drainer~~ — done (boolean drainer protection)
 2. ~~Get supermana if there's a safe way~~ — done (supermana priority v1)
 3. **Get opponent's mana if there's a safe way** — not yet implemented
-4. **Hold potion to create scoring threats** — not yet implemented (potion as tempo/threat multiplier)
+4. **Hold potion to create scoring threats** — not yet (potion as tempo/threat multiplier)
 5. **Spirit should always be moved off base** — partially addressed by interview spirit policy, not yet promoted
 6. **Use spirit to move own mana closer to pools** — not yet in search evaluation
 7. **Attack opponent spirit when quick and creates risk** — not yet implemented
 8. **Use bomb primarily to attack opponent drainer** — drainer attack priority exists, but bomb-specific routing not optimized
 
-## How To Add A New Candidate
-
-1. Add a candidate function in `src/models/mons_game_model_automove_experiments.rs`.
-2. Register it in `candidate_model()` and `all_profile_variants()`.
-3. Run fast loop and duel loop.
-4. Promote only with strength + confidence + CPU evidence.
-5. Move runtime changes into `src/models/mons_game_model.rs`.
-6. Keep harness-only logic in experiment file.
+---
 
 ## Final Validation Before Release
 
-Run:
+```sh
+cargo test --lib
+cargo check --release
+cargo check --release --target wasm32-unknown-unknown
+```
 
-1. `cargo test --lib`
-2. `cargo check --release`
-3. `cargo check --release --target wasm32-unknown-unknown`
-
-Then verify:
-
+Verify:
 - No legacy API exposure (`smartAutomoveWithBudgetAsync` should not exist).
 - Experiment harness remains test-only.
 

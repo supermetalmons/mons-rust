@@ -424,24 +424,6 @@ pub const RUNTIME_RUSH_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
 };
 
 #[cfg(test)]
-pub const RUNTIME_FAST_WINLOSS_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
-    regular_mana_to_owner_pool: 176,
-    regular_mana_drainer_control: 19,
-    supermana_drainer_control: 28,
-    drainer_close_to_own_pool: 325,
-    mana_carrier_at_risk: -225,
-    mana_carrier_guarded: 105,
-    mana_carrier_one_step_from_pool: 285,
-    supermana_carrier_one_step_from_pool_extra: 170,
-    immediate_winning_carrier: 380,
-    drainer_best_mana_path: 90,
-    drainer_pickup_score_this_turn: 70,
-    mana_carrier_score_this_turn: 140,
-    drainer_immediate_threat: -95,
-    ..MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS
-};
-
-#[cfg(test)]
 pub const RUNTIME_NORMAL_WINLOSS_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     confirmed_score: 900,
     fainted_cooldown_step: -130,

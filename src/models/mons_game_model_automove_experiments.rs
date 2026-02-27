@@ -1,16 +1,13 @@
 use super::*;
 use crate::models::scoring::{
-    evaluate_preferability_breakdown_with_weights, FINISHER_BALANCED_SCORING_WEIGHTS,
+    evaluate_preferability_breakdown_with_weights,
     FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS, FINISHER_BALANCED_SOFT_SCORING_WEIGHTS,
-    FINISHER_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS, FINISHER_MANA_RACE_LITE_SCORING_WEIGHTS,
     FINISHER_MANA_RACE_LITE_SOFT_AGGRESSIVE_SCORING_WEIGHTS,
     FINISHER_MANA_RACE_LITE_SOFT_SCORING_WEIGHTS,
-    MANA_RACE_LITE_D2_TUNED_AGGRESSIVE_SCORING_WEIGHTS, MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
-    MANA_RACE_LITE_SCORING_WEIGHTS, MANA_RACE_NEUTRAL_SCORING_WEIGHTS, MANA_RACE_SCORING_WEIGHTS,
-    RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS,
+    MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
+    MANA_RACE_LITE_SCORING_WEIGHTS, RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS,
     RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF,
-    RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS, RUNTIME_FAST_DRAINER_PRIORITY_SCORING_WEIGHTS,
-    RUNTIME_NORMAL_WINLOSS_SCORING_WEIGHTS, RUNTIME_RUSH_SCORING_WEIGHTS,
+    RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS, RUNTIME_RUSH_SCORING_WEIGHTS,
     TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS, TACTICAL_BALANCED_SCORING_WEIGHTS,
     TACTICAL_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS, TACTICAL_MANA_RACE_LITE_SCORING_WEIGHTS,
 };
@@ -153,71 +150,6 @@ fn client_budgets() -> [SearchBudget; 2] {
         SearchBudget::from_preference(SmartAutomovePreference::Normal),
     ]
 }
-
-const CANDIDATE_SCORING_WEIGHTS_GUARDED: ScoringWeights = ScoringWeights {
-    drainer_at_risk: -520,
-    drainer_close_to_own_pool: 300,
-    drainer_close_to_supermana: 160,
-    spirit_close_to_enemy: 200,
-    angel_guarding_drainer: 360,
-    angel_close_to_friendly_drainer: 260,
-    ..BALANCED_DISTANCE_SCORING_WEIGHTS
-};
-
-const CANDIDATE_SCORING_WEIGHTS_RUSH: ScoringWeights = ScoringWeights {
-    drainer_at_risk: -300,
-    mana_close_to_same_pool: 600,
-    drainer_close_to_mana: 420,
-    drainer_close_to_own_pool: 360,
-    drainer_close_to_supermana: 220,
-    mon_close_to_center: 140,
-    spirit_close_to_enemy: 180,
-    angel_guarding_drainer: 200,
-    angel_close_to_friendly_drainer: 120,
-    ..BALANCED_DISTANCE_SCORING_WEIGHTS
-};
-
-const DRAINER_PRIORITY_FAST_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
-    drainer_at_risk: -520,
-    drainer_close_to_mana: 370,
-    drainer_holding_mana: 470,
-    drainer_close_to_own_pool: 350,
-    regular_mana_drainer_control: 24,
-    mana_carrier_at_risk: -240,
-    mana_carrier_guarded: 120,
-    mana_carrier_one_step_from_pool: 310,
-    supermana_carrier_one_step_from_pool_extra: 190,
-    immediate_winning_carrier: 460,
-    angel_guarding_drainer: 340,
-    ..MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS
-};
-
-const DRAINER_PRIORITY_NORMAL_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
-    drainer_at_risk: -560,
-    drainer_close_to_mana: 390,
-    drainer_holding_mana: 500,
-    drainer_close_to_own_pool: 380,
-    regular_mana_drainer_control: 24,
-    mana_carrier_at_risk: -280,
-    mana_carrier_guarded: 150,
-    mana_carrier_one_step_from_pool: 330,
-    supermana_carrier_one_step_from_pool_extra: 220,
-    immediate_winning_carrier: 640,
-    angel_guarding_drainer: 360,
-    ..TACTICAL_BALANCED_SCORING_WEIGHTS
-};
-
-const DRAINER_PRIORITY_NORMAL_AGGR_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
-    drainer_at_risk: -620,
-    mana_carrier_at_risk: -320,
-    mana_carrier_guarded: 165,
-    mana_carrier_one_step_from_pool: 360,
-    supermana_carrier_one_step_from_pool_extra: 240,
-    immediate_winning_carrier: 820,
-    spirit_close_to_enemy: 270,
-    angel_guarding_drainer: 370,
-    ..DRAINER_PRIORITY_NORMAL_SCORING_WEIGHTS
-};
 
 const BALANCED_DISTANCE_SPIRIT_BASE_STRICT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     spirit_on_own_base_penalty: 260,
@@ -2234,37 +2166,6 @@ fn model_runtime_normal_drainer_focus_v43(
     }
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
-
-const RUNTIME_FAST_SUPERMANA_PRIORITY_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
-    supermana_race_control: 30,
-    ..RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS
-};
-
-const RUNTIME_FAST_SUPERMANA_PRIORITY_SCORING_WEIGHTS_POTION_PREF: ScoringWeights =
-    ScoringWeights {
-        has_consumable: 320,
-        spirit_action_utility: 72,
-        ..RUNTIME_FAST_SUPERMANA_PRIORITY_SCORING_WEIGHTS
-    };
-
-#[allow(dead_code)]
-const RUNTIME_FAST_DRAINER_SHIELD_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
-    opponent_immediate_score_window: 310,
-    opponent_score_race_path_progress: 200,
-    opponent_score_race_multi_path: 120,
-    opponent_immediate_score_multi_window: 160,
-    immediate_winning_carrier: 680,
-    mana_carrier_score_this_turn: 340,
-    confirmed_score: 980,
-    ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
-};
-
-#[allow(dead_code)]
-const RUNTIME_FAST_DRAINER_SHIELD_SCORING_WEIGHTS_POTION_PREF: ScoringWeights = ScoringWeights {
-    has_consumable: 320,
-    spirit_action_utility: 72,
-    ..RUNTIME_FAST_DRAINER_SHIELD_SCORING_WEIGHTS
-};
 
 const RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF_V2: ScoringWeights =
     ScoringWeights {
@@ -4355,169 +4256,8 @@ fn candidate_model_base(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input
     model_current_best(game, config)
 }
 
-fn candidate_model_focus(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    MonsGameModel::smart_search_best_inputs(game, tuned_candidate_config_focus(config))
-}
-
-fn candidate_model_focus_deep_only(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    if config.depth >= 3 {
-        MonsGameModel::smart_search_best_inputs(game, tuned_candidate_config_focus(config))
-    } else {
-        MonsGameModel::smart_search_best_inputs(game, config)
-    }
-}
-
 fn candidate_model_weights_balanced(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     MonsGameModel::smart_search_best_inputs(game, tuned_candidate_config_weights_balanced(config))
-}
-
-fn candidate_model_weights_guarded(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    MonsGameModel::smart_search_best_inputs(
-        game,
-        with_scoring_weights(config, &CANDIDATE_SCORING_WEIGHTS_GUARDED),
-    )
-}
-
-fn candidate_model_weights_rush(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    MonsGameModel::smart_search_best_inputs(
-        game,
-        with_scoring_weights(config, &CANDIDATE_SCORING_WEIGHTS_RUSH),
-    )
-}
-
-fn candidate_model_weights_mana_race(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    MonsGameModel::smart_search_best_inputs(
-        game,
-        with_scoring_weights(config, &MANA_RACE_SCORING_WEIGHTS),
-    )
-}
-
-fn candidate_model_weights_mana_race_lite(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    MonsGameModel::smart_search_best_inputs(
-        game,
-        with_scoring_weights(config, &MANA_RACE_LITE_SCORING_WEIGHTS),
-    )
-}
-
-fn candidate_model_weights_mana_race_neutral(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    MonsGameModel::smart_search_best_inputs(
-        game,
-        with_scoring_weights(config, &MANA_RACE_NEUTRAL_SCORING_WEIGHTS),
-    )
-}
-
-fn candidate_model_focus_with_mana_race_d2(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        tuned_candidate_config_focus(config)
-    } else {
-        with_scoring_weights(config, &MANA_RACE_LITE_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_focus_light_with_mana_race_d2(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        tuned_candidate_config_focus_light(config)
-    } else {
-        with_scoring_weights(config, &MANA_RACE_LITE_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_focus_light_with_mana_race_d2_tactical(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        with_scoring_weights(
-            tuned_candidate_config_focus_light(config),
-            &TACTICAL_BALANCED_SCORING_WEIGHTS,
-        )
-    } else {
-        with_scoring_weights(config, &TACTICAL_MANA_RACE_LITE_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_focus_light_with_mana_race_d2_tactical_aggressive(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        with_scoring_weights(
-            tuned_candidate_config_focus_light(config),
-            &TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS,
-        )
-    } else {
-        with_scoring_weights(config, &TACTICAL_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_focus_light_with_tactical_d2_only(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        tuned_candidate_config_focus_light(config)
-    } else {
-        with_scoring_weights(config, &TACTICAL_MANA_RACE_LITE_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_focus_light_with_tactical_d2_only_aggressive(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        tuned_candidate_config_focus_light(config)
-    } else {
-        with_scoring_weights(config, &TACTICAL_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_focus_light_with_finisher_d2(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        with_scoring_weights(
-            tuned_candidate_config_focus_light(config),
-            &FINISHER_BALANCED_SCORING_WEIGHTS,
-        )
-    } else {
-        with_scoring_weights(config, &FINISHER_MANA_RACE_LITE_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_focus_light_with_finisher_d2_aggressive(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        with_scoring_weights(
-            tuned_candidate_config_focus_light(config),
-            &FINISHER_BALANCED_SCORING_WEIGHTS,
-        )
-    } else {
-        with_scoring_weights(config, &FINISHER_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
 }
 
 fn candidate_model_runtime_finisher_soft(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
@@ -4544,123 +4284,6 @@ fn candidate_model_runtime_finisher_soft_aggressive(
     MonsGameModel::smart_search_best_inputs(game, tuned)
 }
 
-fn candidate_model_runtime_d2_tuned(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        with_scoring_weights(config, &BALANCED_DISTANCE_SCORING_WEIGHTS)
-    } else {
-        with_scoring_weights(config, &MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_runtime_d2_tuned_aggressive(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        with_scoring_weights(config, &BALANCED_DISTANCE_SCORING_WEIGHTS)
-    } else {
-        with_scoring_weights(config, &MANA_RACE_LITE_D2_TUNED_AGGRESSIVE_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_runtime_d2_tuned_d3_tactical(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        with_scoring_weights(config, &TACTICAL_BALANCED_SCORING_WEIGHTS)
-    } else {
-        with_scoring_weights(config, &MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_runtime_d2_tuned_d3_winloss(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        with_scoring_weights(config, &RUNTIME_NORMAL_WINLOSS_SCORING_WEIGHTS)
-    } else {
-        with_scoring_weights(config, &MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_runtime_d2_tuned_d3_tactical_phase(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        with_scoring_weights(config, normal_tactical_phase_weights(game))
-    } else {
-        with_scoring_weights(config, &MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_runtime_d2_tuned_d3_tactical_aggr(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        with_scoring_weights(config, &TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS)
-    } else {
-        with_scoring_weights(config, &MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_runtime_d2_tuned_d3_finisher_soft_aggr(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        with_scoring_weights(config, &FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS)
-    } else {
-        with_scoring_weights(config, &MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_runtime_d2_tuned_d3_mana_neutral(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        with_scoring_weights(config, &MANA_RACE_NEUTRAL_SCORING_WEIGHTS)
-    } else {
-        with_scoring_weights(config, &MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_runtime_d2_tuned_d3_adaptive_neutral(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        with_scoring_weights(config, d3_adaptive_neutral_weights(game))
-    } else {
-        with_scoring_weights(config, &MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_runtime_d2_tuned_d3_phase_adaptive(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        with_scoring_weights(config, d3_phase_adaptive_weights(game))
-    } else {
-        with_scoring_weights(config, &MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
 fn candidate_model_runtime_fast_phase_normal_tactical(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -4678,58 +4301,6 @@ struct GuardedRootEvaluation {
     score: i32,
     inputs: Vec<Input>,
     game: MonsGame,
-}
-
-fn candidate_model_runtime_root_safety_tiebreak(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let perspective = game.active_color;
-    let mut scored_roots = search_scored_roots_with_states(game, config, perspective);
-    if scored_roots.is_empty() {
-        return Vec::new();
-    }
-
-    scored_roots.sort_by(|a, b| b.score.cmp(&a.score));
-    let best_score = scored_roots[0].score;
-    let score_margin = if config.depth >= 3 { 700 } else { 500 };
-    let shortlist_limit = if config.depth >= 3 { 3 } else { 2 };
-
-    let mut shortlist: Vec<GuardedRootEvaluation> = scored_roots
-        .into_iter()
-        .take_while(|root| root.score + score_margin >= best_score)
-        .take(shortlist_limit)
-        .collect();
-
-    if shortlist.len() <= 1 {
-        return shortlist.remove(0).inputs;
-    }
-
-    let reply_limit = if config.depth >= 3 {
-        config.node_enum_limit.clamp(4, 8)
-    } else {
-        config.node_enum_limit.clamp(4, 6)
-    };
-
-    let mut best_index = 0usize;
-    let mut best_floor = i32::MIN;
-    let mut best_root_score = i32::MIN;
-    for (index, root) in shortlist.iter().enumerate() {
-        let reply_floor = root_reply_floor(
-            &root.game,
-            perspective,
-            config.scoring_weights,
-            reply_limit,
-            MonsGameModel::automove_start_input_options(config),
-        );
-        if reply_floor > best_floor || (reply_floor == best_floor && root.score > best_root_score) {
-            best_floor = reply_floor;
-            best_root_score = root.score;
-            best_index = index;
-        }
-    }
-
-    shortlist[best_index].inputs.clone()
 }
 
 fn search_scored_roots_with_states(
@@ -4847,149 +4418,6 @@ fn root_reply_floor(
     }
 }
 
-fn candidate_model_runtime_d2_tuned_normal_reply_guard(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    if config.depth < 3 {
-        return candidate_model_runtime_d2_tuned(game, config);
-    }
-
-    let perspective = game.active_color;
-    let scoring_weights = &BALANCED_DISTANCE_SCORING_WEIGHTS;
-    let mut root_candidates = Vec::new();
-    push_unique_candidate(
-        &mut root_candidates,
-        candidate_model_runtime_d2_tuned(game, config),
-    );
-    push_unique_candidate(
-        &mut root_candidates,
-        candidate_model_runtime_d2_tuned_d3_tactical(game, config),
-    );
-    push_unique_candidate(
-        &mut root_candidates,
-        candidate_model_runtime_d2_tuned_d3_finisher_soft_aggr(game, config),
-    );
-
-    if root_candidates.is_empty() {
-        return Vec::new();
-    }
-
-    let mut best_inputs = root_candidates[0].clone();
-    let mut best_score = i32::MIN;
-
-    for inputs in root_candidates {
-        let Some(after_move) = MonsGameModel::apply_inputs_for_search(game, &inputs) else {
-            continue;
-        };
-
-        let optimistic =
-            evaluate_preferability_with_weights(&after_move, perspective, scoring_weights);
-        let reply_floor = reply_guard_lite_floor(&after_move, perspective, config, scoring_weights);
-        let combined_score = reply_floor.saturating_mul(3).saturating_add(optimistic);
-
-        if combined_score > best_score {
-            best_score = combined_score;
-            best_inputs = inputs;
-        }
-    }
-
-    if best_score == i32::MIN {
-        candidate_model_runtime_d2_tuned(game, config)
-    } else {
-        best_inputs
-    }
-}
-
-fn reply_guard_lite_floor(
-    state_after_move: &MonsGame,
-    perspective: Color,
-    config: SmartSearchConfig,
-    scoring_weights: &'static ScoringWeights,
-) -> i32 {
-    if let Some(winner) = state_after_move.winner_color() {
-        return if winner == perspective {
-            SMART_TERMINAL_SCORE / 2
-        } else {
-            -SMART_TERMINAL_SCORE / 2
-        };
-    }
-
-    if state_after_move.active_color == perspective {
-        return evaluate_preferability_with_weights(state_after_move, perspective, scoring_weights);
-    }
-
-    let reply_limit = config.node_enum_limit.clamp(6, 14);
-    let replies = MonsGameModel::enumerate_legal_inputs(
-        state_after_move,
-        reply_limit,
-        MonsGameModel::automove_start_input_options(config),
-    );
-    if replies.is_empty() {
-        return SMART_TERMINAL_SCORE / 4;
-    }
-
-    let mut worst_reply_score = i32::MAX;
-    for reply in replies {
-        let Some(after_reply) = MonsGameModel::apply_inputs_for_search(state_after_move, &reply)
-        else {
-            continue;
-        };
-
-        let score = match after_reply.winner_color() {
-            Some(winner) if winner == perspective => SMART_TERMINAL_SCORE / 2,
-            Some(_) => -SMART_TERMINAL_SCORE / 2,
-            None => evaluate_preferability_with_weights(&after_reply, perspective, scoring_weights),
-        };
-        worst_reply_score = worst_reply_score.min(score);
-    }
-
-    if worst_reply_score == i32::MAX {
-        evaluate_preferability_with_weights(state_after_move, perspective, scoring_weights)
-    } else {
-        worst_reply_score
-    }
-}
-
-fn d3_adaptive_neutral_weights(game: &MonsGame) -> &'static ScoringWeights {
-    let (my_score, opponent_score) = if game.active_color == Color::White {
-        (game.white_score, game.black_score)
-    } else {
-        (game.black_score, game.white_score)
-    };
-    let my_distance_to_win = Config::TARGET_SCORE - my_score;
-    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
-
-    if my_score < opponent_score || opponent_distance_to_win <= 2 || my_distance_to_win <= 2 {
-        &MANA_RACE_NEUTRAL_SCORING_WEIGHTS
-    } else {
-        &BALANCED_DISTANCE_SCORING_WEIGHTS
-    }
-}
-
-fn d3_phase_adaptive_weights(game: &MonsGame) -> &'static ScoringWeights {
-    let (my_score, opponent_score) = if game.active_color == Color::White {
-        (game.white_score, game.black_score)
-    } else {
-        (game.black_score, game.white_score)
-    };
-    let my_distance_to_win = Config::TARGET_SCORE - my_score;
-    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
-    let score_gap = my_score - opponent_score;
-
-    if my_distance_to_win <= 1 {
-        &FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS
-    } else if opponent_distance_to_win <= 1 {
-        &TACTICAL_BALANCED_AGGRESSIVE_SCORING_WEIGHTS
-    } else if my_distance_to_win <= 2 {
-        &FINISHER_BALANCED_SOFT_SCORING_WEIGHTS
-    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
-        &TACTICAL_BALANCED_SCORING_WEIGHTS
-    } else {
-        &BALANCED_DISTANCE_SCORING_WEIGHTS
-    }
-}
-
 fn normal_tactical_phase_weights(game: &MonsGame) -> &'static ScoringWeights {
     let (my_score, opponent_score) = if game.active_color == Color::White {
         (game.white_score, game.black_score)
@@ -5006,45 +4434,6 @@ fn normal_tactical_phase_weights(game: &MonsGame) -> &'static ScoringWeights {
     } else {
         &TACTICAL_BALANCED_SCORING_WEIGHTS
     }
-}
-
-fn candidate_model_phase_adaptive_d2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        with_scoring_weights(config, &BALANCED_DISTANCE_SCORING_WEIGHTS)
-    } else {
-        with_scoring_weights(config, phase_adaptive_d2_weights(game))
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn phase_adaptive_d2_weights(game: &MonsGame) -> &'static ScoringWeights {
-    let (my_score, opponent_score) = if game.active_color == Color::White {
-        (game.white_score, game.black_score)
-    } else {
-        (game.black_score, game.white_score)
-    };
-    let my_distance_to_win = Config::TARGET_SCORE - my_score;
-    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
-
-    if my_distance_to_win <= 1 {
-        &FINISHER_MANA_RACE_LITE_SOFT_AGGRESSIVE_SCORING_WEIGHTS
-    } else if opponent_distance_to_win <= 1 {
-        &TACTICAL_MANA_RACE_LITE_AGGRESSIVE_SCORING_WEIGHTS
-    } else if my_distance_to_win <= 2 || opponent_distance_to_win <= 2 {
-        &FINISHER_MANA_RACE_LITE_SOFT_SCORING_WEIGHTS
-    } else if opponent_score > my_score {
-        &TACTICAL_MANA_RACE_LITE_SCORING_WEIGHTS
-    } else {
-        &MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS
-    }
-}
-
-fn candidate_model_phase_adaptive_scoring_v2(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let scoring_weights = phase_adaptive_scoring_v2_weights(game, config.depth >= 3);
-    MonsGameModel::smart_search_best_inputs(game, with_scoring_weights(config, scoring_weights))
 }
 
 fn phase_adaptive_scoring_v2_weights(game: &MonsGame, deep_mode: bool) -> &'static ScoringWeights {
@@ -5084,10 +4473,6 @@ fn phase_adaptive_scoring_v2_weights(game: &MonsGame, deep_mode: bool) -> &'stat
     }
 }
 
-fn candidate_model_wideroot(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    MonsGameModel::smart_search_best_inputs(game, tuned_candidate_config_wideroot(config))
-}
-
 fn candidate_model_runtime_fast_wideroot_normal_current(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -5110,67 +4495,6 @@ fn candidate_model_runtime_fast_wideroot_lite_normal_current(
     }
 }
 
-fn candidate_model_runtime_drainer_priority(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        with_scoring_weights(config, &DRAINER_PRIORITY_NORMAL_SCORING_WEIGHTS)
-    } else {
-        with_scoring_weights(config, &DRAINER_PRIORITY_FAST_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_runtime_drainer_priority_aggr(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        with_scoring_weights(config, &DRAINER_PRIORITY_NORMAL_AGGR_SCORING_WEIGHTS)
-    } else {
-        with_scoring_weights(config, &DRAINER_PRIORITY_FAST_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_runtime_drainer_tiebreak(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let perspective = game.active_color;
-    let mut scored_roots = search_scored_roots_with_states(game, config, perspective);
-    if scored_roots.is_empty() {
-        return Vec::new();
-    }
-
-    scored_roots.sort_by(|a, b| b.score.cmp(&a.score));
-    let best_root_score = scored_roots[0].score;
-    let shortlist_limit = if config.depth >= 3 { 6 } else { 5 };
-    let score_margin = if config.depth >= 3 { 120_000 } else { 90_000 };
-
-    let mut best_inputs = scored_roots[0].inputs.clone();
-    let mut best_drainer_score = i32::MIN;
-    let mut best_root_tiebreak = i32::MIN;
-
-    for root in scored_roots.iter().take(shortlist_limit) {
-        if root.score + score_margin < best_root_score {
-            break;
-        }
-
-        let drainer_score = drainer_priority_delta(&root.game, perspective);
-        if drainer_score > best_drainer_score
-            || (drainer_score == best_drainer_score && root.score > best_root_tiebreak)
-        {
-            best_drainer_score = drainer_score;
-            best_root_tiebreak = root.score;
-            best_inputs = root.inputs.clone();
-        }
-    }
-
-    best_inputs
-}
-
 fn candidate_model_runtime_drainer_context(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -5181,29 +4505,6 @@ fn candidate_model_runtime_drainer_context(
         with_scoring_weights(config, &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS)
     };
     MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_runtime_drainer_priority_fast_only(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    let tuned = if config.depth >= 3 {
-        MonsGameModel::with_runtime_scoring_weights(game, config)
-    } else {
-        with_scoring_weights(config, &RUNTIME_FAST_DRAINER_PRIORITY_SCORING_WEIGHTS)
-    };
-    MonsGameModel::smart_search_best_inputs(game, tuned)
-}
-
-fn candidate_model_runtime_fast_wideroot_normal_tactical(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    if config.depth >= 3 {
-        candidate_model_runtime_d2_tuned_d3_tactical(game, config)
-    } else {
-        MonsGameModel::smart_search_best_inputs(game, tuned_candidate_config_wideroot(config))
-    }
 }
 
 fn candidate_model_runtime_normal_x15_phase_deeper(
@@ -5909,212 +5210,6 @@ fn distance_to_any_pool_for_eval(location: Location) -> i32 {
     ) + 1
 }
 
-fn candidate_model_narrow(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    MonsGameModel::smart_search_best_inputs(game, tuned_candidate_config_narrow(config))
-}
-
-fn candidate_model_hybrid(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    MonsGameModel::smart_search_best_inputs(game, tuned_candidate_config_hybrid(config))
-}
-
-fn candidate_model_deeper(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    MonsGameModel::smart_search_best_inputs(game, tuned_candidate_config_deeper(config))
-}
-
-fn candidate_model_hybrid_deeper(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    if config.depth >= 3 {
-        MonsGameModel::smart_search_best_inputs(game, tuned_candidate_config_deeper(config))
-    } else {
-        MonsGameModel::smart_search_best_inputs(game, config)
-    }
-}
-
-fn candidate_model_hybrid_deeper_fast(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    if config.depth >= 3 {
-        MonsGameModel::smart_search_best_inputs(
-            game,
-            tuned_candidate_config_hybrid_deeper_fast(config),
-        )
-    } else {
-        MonsGameModel::smart_search_best_inputs(game, config)
-    }
-}
-
-fn candidate_model_turn_reply_guard(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    let perspective = game.active_color;
-    let scoring_weights = if config.depth >= 3 {
-        &BALANCED_DISTANCE_SCORING_WEIGHTS
-    } else {
-        &MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS
-    };
-
-    let mut root_candidates = Vec::new();
-    push_unique_candidate(
-        &mut root_candidates,
-        candidate_model_runtime_d2_tuned(game, config),
-    );
-    push_unique_candidate(&mut root_candidates, candidate_model_base(game, config));
-    if config.depth >= 3 {
-        push_unique_candidate(
-            &mut root_candidates,
-            candidate_model_weights_balanced(game, config),
-        );
-    } else {
-        push_unique_candidate(
-            &mut root_candidates,
-            candidate_model_focus_light_with_tactical_d2_only(game, config),
-        );
-    }
-
-    if root_candidates.is_empty() {
-        return Vec::new();
-    }
-
-    let mut best_inputs = root_candidates[0].clone();
-    let mut best_score = i32::MIN;
-
-    for inputs in root_candidates {
-        let Some(after_move) = MonsGameModel::apply_inputs_for_search(game, &inputs) else {
-            continue;
-        };
-
-        let optimistic =
-            evaluate_preferability_with_weights(&after_move, perspective, scoring_weights);
-        let reply_floor = turn_reply_guard_floor(&after_move, perspective, config, scoring_weights);
-        let combined_score = reply_floor.saturating_mul(4).saturating_add(optimistic);
-
-        if combined_score > best_score {
-            best_score = combined_score;
-            best_inputs = inputs;
-        }
-    }
-
-    if best_score == i32::MIN {
-        candidate_model_runtime_d2_tuned(game, config)
-    } else {
-        best_inputs
-    }
-}
-
-fn push_unique_candidate(candidates: &mut Vec<Vec<Input>>, inputs: Vec<Input>) {
-    if inputs.is_empty() {
-        return;
-    }
-
-    let new_key = Input::fen_from_array(&inputs);
-    let already_present = candidates
-        .iter()
-        .any(|existing| Input::fen_from_array(existing) == new_key);
-    if !already_present {
-        candidates.push(inputs);
-    }
-}
-
-fn turn_reply_guard_floor(
-    state_after_move: &MonsGame,
-    perspective: Color,
-    config: SmartSearchConfig,
-    scoring_weights: &'static ScoringWeights,
-) -> i32 {
-    if let Some(winner) = state_after_move.winner_color() {
-        return if winner == perspective {
-            SMART_TERMINAL_SCORE / 2
-        } else {
-            -SMART_TERMINAL_SCORE / 2
-        };
-    }
-
-    let mut probe = state_after_move.clone_for_simulation();
-    let rollout_steps = if config.depth >= 3 { 2 } else { 1 };
-
-    for _ in 0..rollout_steps {
-        if probe.active_color != perspective {
-            break;
-        }
-
-        let rollout_inputs = MonsGameModel::smart_search_best_inputs(
-            &probe,
-            turn_reply_guard_rollout_config(config, scoring_weights),
-        );
-
-        if rollout_inputs.is_empty() {
-            break;
-        }
-
-        if !matches!(
-            probe.process_input(rollout_inputs, false, false),
-            Output::Events(_)
-        ) {
-            break;
-        }
-
-        if probe.winner_color().is_some() {
-            break;
-        }
-    }
-
-    if let Some(winner) = probe.winner_color() {
-        return if winner == perspective {
-            SMART_TERMINAL_SCORE / 2
-        } else {
-            -SMART_TERMINAL_SCORE / 2
-        };
-    }
-
-    if probe.active_color == perspective {
-        return evaluate_preferability_with_weights(&probe, perspective, scoring_weights);
-    }
-
-    let reply_limit = if config.depth >= 3 {
-        config.node_enum_limit.clamp(8, 28)
-    } else {
-        config.node_enum_limit.clamp(6, 18)
-    };
-    let replies = MonsGameModel::enumerate_legal_inputs(
-        &probe,
-        reply_limit,
-        MonsGameModel::automove_start_input_options(config),
-    );
-    if replies.is_empty() {
-        return SMART_TERMINAL_SCORE / 4;
-    }
-
-    let mut worst_reply_score = i32::MAX;
-    for reply in replies {
-        let Some(after_reply) = MonsGameModel::apply_inputs_for_search(&probe, &reply) else {
-            continue;
-        };
-
-        let score = match after_reply.winner_color() {
-            Some(winner) if winner == perspective => SMART_TERMINAL_SCORE / 2,
-            Some(_) => -SMART_TERMINAL_SCORE / 2,
-            None => evaluate_preferability_with_weights(&after_reply, perspective, scoring_weights),
-        };
-        worst_reply_score = worst_reply_score.min(score);
-    }
-
-    if worst_reply_score == i32::MAX {
-        evaluate_preferability_with_weights(&probe, perspective, scoring_weights)
-    } else {
-        worst_reply_score
-    }
-}
-
-fn turn_reply_guard_rollout_config(
-    config: SmartSearchConfig,
-    scoring_weights: &'static ScoringWeights,
-) -> SmartSearchConfig {
-    let mut tuned = config;
-    tuned.depth = 1;
-    tuned.max_visited_nodes = (config.max_visited_nodes / 4).clamp(96, 900);
-    tuned.root_branch_limit = config.root_branch_limit.saturating_sub(4).clamp(4, 14);
-    tuned.node_branch_limit = config.node_branch_limit.saturating_sub(6).clamp(4, 10);
-    tuned.root_enum_limit = (tuned.root_branch_limit * 4).clamp(tuned.root_branch_limit, 48);
-    tuned.node_enum_limit = (tuned.node_branch_limit * 3).clamp(tuned.node_branch_limit, 30);
-    tuned.scoring_weights = scoring_weights;
-    tuned
-}
-
 // Replace this when introducing a real contender.
 fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     match candidate_profile().as_str() {
@@ -6265,53 +5360,9 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_legacy_phase_adaptive" => model_runtime_legacy_phase_adaptive(game, config),
         "runtime_pre_drainer_context" => model_runtime_pre_drainer_context(game, config),
         "runtime_pre_normal_x15" => model_runtime_pre_normal_x15(game, config),
-        "focus" => candidate_model_focus(game, config),
-        "focus_deep_only" => candidate_model_focus_deep_only(game, config),
-        "focus_mana_d2" => candidate_model_focus_with_mana_race_d2(game, config),
-        "focus_light_mana_d2" => candidate_model_focus_light_with_mana_race_d2(game, config),
-        "focus_light_mana_d2_tactical" => {
-            candidate_model_focus_light_with_mana_race_d2_tactical(game, config)
-        }
-        "focus_light_mana_d2_tactical_aggr" => {
-            candidate_model_focus_light_with_mana_race_d2_tactical_aggressive(game, config)
-        }
-        "focus_light_tactical_d2_only" => {
-            candidate_model_focus_light_with_tactical_d2_only(game, config)
-        }
-        "focus_light_tactical_d2_only_aggr" => {
-            candidate_model_focus_light_with_tactical_d2_only_aggressive(game, config)
-        }
-        "focus_light_finisher_d2" => candidate_model_focus_light_with_finisher_d2(game, config),
-        "focus_light_finisher_d2_aggr" => {
-            candidate_model_focus_light_with_finisher_d2_aggressive(game, config)
-        }
         "runtime_finisher_soft" => candidate_model_runtime_finisher_soft(game, config),
         "runtime_finisher_soft_aggr" => {
             candidate_model_runtime_finisher_soft_aggressive(game, config)
-        }
-        "runtime_d2_tuned" => candidate_model_runtime_d2_tuned(game, config),
-        "runtime_d2_tuned_aggr" => candidate_model_runtime_d2_tuned_aggressive(game, config),
-        "runtime_d2_tuned_d3_tactical" => {
-            candidate_model_runtime_d2_tuned_d3_tactical(game, config)
-        }
-        "runtime_d2_tuned_d3_winloss" => candidate_model_runtime_d2_tuned_d3_winloss(game, config),
-        "runtime_d2_tuned_d3_tactical_phase" => {
-            candidate_model_runtime_d2_tuned_d3_tactical_phase(game, config)
-        }
-        "runtime_d2_tuned_d3_tactical_aggr" => {
-            candidate_model_runtime_d2_tuned_d3_tactical_aggr(game, config)
-        }
-        "runtime_d2_tuned_d3_finisher_soft_aggr" => {
-            candidate_model_runtime_d2_tuned_d3_finisher_soft_aggr(game, config)
-        }
-        "runtime_d2_tuned_d3_mana_neutral" => {
-            candidate_model_runtime_d2_tuned_d3_mana_neutral(game, config)
-        }
-        "runtime_d2_tuned_d3_adaptive_neutral" => {
-            candidate_model_runtime_d2_tuned_d3_adaptive_neutral(game, config)
-        }
-        "runtime_d2_tuned_d3_phase_adaptive" => {
-            candidate_model_runtime_d2_tuned_d3_phase_adaptive(game, config)
         }
         "runtime_fast_phase_normal_tactical" => {
             candidate_model_runtime_fast_phase_normal_tactical(game, config)
@@ -6322,18 +5373,7 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_fast_wideroot_lite_normal_current" => {
             candidate_model_runtime_fast_wideroot_lite_normal_current(game, config)
         }
-        "runtime_drainer_priority" => candidate_model_runtime_drainer_priority(game, config),
-        "runtime_drainer_priority_aggr" => {
-            candidate_model_runtime_drainer_priority_aggr(game, config)
-        }
-        "runtime_drainer_tiebreak" => candidate_model_runtime_drainer_tiebreak(game, config),
         "runtime_drainer_context" => candidate_model_runtime_drainer_context(game, config),
-        "runtime_drainer_priority_fast_only" => {
-            candidate_model_runtime_drainer_priority_fast_only(game, config)
-        }
-        "runtime_fast_wideroot_normal_tactical" => {
-            candidate_model_runtime_fast_wideroot_normal_tactical(game, config)
-        }
         "runtime_fast_reply_guard_normal_current" => {
             candidate_model_runtime_fast_reply_guard_normal_current(game, config)
         }
@@ -6388,27 +5428,7 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_normal_x15_guarded_root_v2" => {
             candidate_model_runtime_normal_x15_guarded_root_v2(game, config)
         }
-        "runtime_root_safety_tiebreak" => {
-            candidate_model_runtime_root_safety_tiebreak(game, config)
-        }
-        "runtime_d2_tuned_normal_reply_guard" => {
-            candidate_model_runtime_d2_tuned_normal_reply_guard(game, config)
-        }
-        "phase_adaptive_d2" => candidate_model_phase_adaptive_d2(game, config),
-        "phase_adaptive_scoring_v2" => candidate_model_phase_adaptive_scoring_v2(game, config),
-        "turn_reply_guard" => candidate_model_turn_reply_guard(game, config),
         "weights_balanced" => candidate_model_weights_balanced(game, config),
-        "weights_guarded" => candidate_model_weights_guarded(game, config),
-        "weights_rush" => candidate_model_weights_rush(game, config),
-        "weights_mana_race" => candidate_model_weights_mana_race(game, config),
-        "weights_mana_race_lite" => candidate_model_weights_mana_race_lite(game, config),
-        "weights_mana_race_neutral" => candidate_model_weights_mana_race_neutral(game, config),
-        "wideroot" => candidate_model_wideroot(game, config),
-        "narrow" => candidate_model_narrow(game, config),
-        "hybrid" => candidate_model_hybrid(game, config),
-        "hybrid_deeper" => candidate_model_hybrid_deeper(game, config),
-        "hybrid_deeper_fast" => candidate_model_hybrid_deeper_fast(game, config),
-        "deeper" => candidate_model_deeper(game, config),
         "runtime_pre_boolean_drainer" => model_runtime_pre_boolean_drainer(game, config),
         "runtime_boolean_drainer_v1" => model_runtime_boolean_drainer_v1(game, config),
         "runtime_drainer_shield_v1" => model_runtime_drainer_shield_v1(game, config),
@@ -6788,37 +5808,6 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
             model_runtime_pre_drainer_context,
         ),
         ("runtime_pre_normal_x15", model_runtime_pre_normal_x15),
-        ("focus", candidate_model_focus),
-        ("focus_deep_only", candidate_model_focus_deep_only),
-        ("focus_mana_d2", candidate_model_focus_with_mana_race_d2),
-        (
-            "focus_light_mana_d2",
-            candidate_model_focus_light_with_mana_race_d2,
-        ),
-        (
-            "focus_light_mana_d2_tactical",
-            candidate_model_focus_light_with_mana_race_d2_tactical,
-        ),
-        (
-            "focus_light_mana_d2_tactical_aggr",
-            candidate_model_focus_light_with_mana_race_d2_tactical_aggressive,
-        ),
-        (
-            "focus_light_tactical_d2_only",
-            candidate_model_focus_light_with_tactical_d2_only,
-        ),
-        (
-            "focus_light_tactical_d2_only_aggr",
-            candidate_model_focus_light_with_tactical_d2_only_aggressive,
-        ),
-        (
-            "focus_light_finisher_d2",
-            candidate_model_focus_light_with_finisher_d2,
-        ),
-        (
-            "focus_light_finisher_d2_aggr",
-            candidate_model_focus_light_with_finisher_d2_aggressive,
-        ),
         (
             "runtime_finisher_soft",
             candidate_model_runtime_finisher_soft,
@@ -6826,43 +5815,6 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_finisher_soft_aggr",
             candidate_model_runtime_finisher_soft_aggressive,
-        ),
-        ("runtime_d2_tuned", candidate_model_runtime_d2_tuned),
-        (
-            "runtime_d2_tuned_aggr",
-            candidate_model_runtime_d2_tuned_aggressive,
-        ),
-        (
-            "runtime_d2_tuned_d3_tactical",
-            candidate_model_runtime_d2_tuned_d3_tactical,
-        ),
-        (
-            "runtime_d2_tuned_d3_winloss",
-            candidate_model_runtime_d2_tuned_d3_winloss,
-        ),
-        (
-            "runtime_d2_tuned_d3_tactical_phase",
-            candidate_model_runtime_d2_tuned_d3_tactical_phase,
-        ),
-        (
-            "runtime_d2_tuned_d3_tactical_aggr",
-            candidate_model_runtime_d2_tuned_d3_tactical_aggr,
-        ),
-        (
-            "runtime_d2_tuned_d3_finisher_soft_aggr",
-            candidate_model_runtime_d2_tuned_d3_finisher_soft_aggr,
-        ),
-        (
-            "runtime_d2_tuned_d3_mana_neutral",
-            candidate_model_runtime_d2_tuned_d3_mana_neutral,
-        ),
-        (
-            "runtime_d2_tuned_d3_adaptive_neutral",
-            candidate_model_runtime_d2_tuned_d3_adaptive_neutral,
-        ),
-        (
-            "runtime_d2_tuned_d3_phase_adaptive",
-            candidate_model_runtime_d2_tuned_d3_phase_adaptive,
         ),
         (
             "runtime_fast_phase_normal_tactical",
@@ -6877,28 +5829,8 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
             candidate_model_runtime_fast_wideroot_lite_normal_current,
         ),
         (
-            "runtime_drainer_priority",
-            candidate_model_runtime_drainer_priority,
-        ),
-        (
-            "runtime_drainer_priority_aggr",
-            candidate_model_runtime_drainer_priority_aggr,
-        ),
-        (
-            "runtime_drainer_tiebreak",
-            candidate_model_runtime_drainer_tiebreak,
-        ),
-        (
             "runtime_drainer_context",
             candidate_model_runtime_drainer_context,
-        ),
-        (
-            "runtime_drainer_priority_fast_only",
-            candidate_model_runtime_drainer_priority_fast_only,
-        ),
-        (
-            "runtime_fast_wideroot_normal_tactical",
-            candidate_model_runtime_fast_wideroot_normal_tactical,
         ),
         (
             "runtime_fast_reply_guard_normal_current",
@@ -6980,38 +5912,7 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
             "runtime_normal_x15_guarded_root_v2",
             candidate_model_runtime_normal_x15_guarded_root_v2,
         ),
-        (
-            "runtime_root_safety_tiebreak",
-            candidate_model_runtime_root_safety_tiebreak,
-        ),
-        (
-            "runtime_d2_tuned_normal_reply_guard",
-            candidate_model_runtime_d2_tuned_normal_reply_guard,
-        ),
-        ("phase_adaptive_d2", candidate_model_phase_adaptive_d2),
-        (
-            "phase_adaptive_scoring_v2",
-            candidate_model_phase_adaptive_scoring_v2,
-        ),
-        ("turn_reply_guard", candidate_model_turn_reply_guard),
         ("weights_balanced", candidate_model_weights_balanced),
-        ("weights_guarded", candidate_model_weights_guarded),
-        ("weights_rush", candidate_model_weights_rush),
-        ("weights_mana_race", candidate_model_weights_mana_race),
-        (
-            "weights_mana_race_lite",
-            candidate_model_weights_mana_race_lite,
-        ),
-        (
-            "weights_mana_race_neutral",
-            candidate_model_weights_mana_race_neutral,
-        ),
-        ("wideroot", candidate_model_wideroot),
-        ("narrow", candidate_model_narrow),
-        ("hybrid", candidate_model_hybrid),
-        ("hybrid_deeper", candidate_model_hybrid_deeper),
-        ("hybrid_deeper_fast", candidate_model_hybrid_deeper_fast),
-        ("deeper", candidate_model_deeper),
         (
             "runtime_pre_boolean_drainer",
             model_runtime_pre_boolean_drainer,
@@ -7376,40 +6277,6 @@ fn profile_selector_from_name(
         .map(|(_, selector)| selector)
 }
 
-fn tuned_candidate_config_focus(config: SmartSearchConfig) -> SmartSearchConfig {
-    let mut tuned = config;
-
-    if config.depth >= 3 {
-        tuned.root_branch_limit = (config.root_branch_limit + 4).clamp(6, 36);
-        tuned.node_branch_limit = config.node_branch_limit.saturating_sub(4).clamp(6, 18);
-    } else {
-        tuned.root_branch_limit = (config.root_branch_limit + 2).clamp(6, 32);
-        tuned.node_branch_limit = config.node_branch_limit.clamp(6, 16);
-    }
-
-    tuned.root_enum_limit = (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 220);
-    tuned.node_enum_limit = (tuned.node_branch_limit * 4).clamp(tuned.node_branch_limit, 108);
-    tuned.scoring_weights = &BALANCED_DISTANCE_SCORING_WEIGHTS;
-    tuned
-}
-
-fn tuned_candidate_config_focus_light(config: SmartSearchConfig) -> SmartSearchConfig {
-    let mut tuned = config;
-
-    if config.depth >= 3 {
-        tuned.root_branch_limit = (config.root_branch_limit + 2).clamp(6, 32);
-        tuned.node_branch_limit = config.node_branch_limit.saturating_sub(3).clamp(6, 18);
-    } else {
-        tuned.root_branch_limit = (config.root_branch_limit + 1).clamp(6, 30);
-        tuned.node_branch_limit = config.node_branch_limit.saturating_sub(1).clamp(6, 16);
-    }
-
-    tuned.root_enum_limit = (tuned.root_branch_limit * 5).clamp(tuned.root_branch_limit, 190);
-    tuned.node_enum_limit = (tuned.node_branch_limit * 4).clamp(tuned.node_branch_limit, 100);
-    tuned.scoring_weights = &BALANCED_DISTANCE_SCORING_WEIGHTS;
-    tuned
-}
-
 fn tuned_candidate_config_weights_balanced(config: SmartSearchConfig) -> SmartSearchConfig {
     with_scoring_weights(config, &BALANCED_DISTANCE_SCORING_WEIGHTS)
 }
@@ -7429,46 +6296,6 @@ fn tuned_candidate_config_wideroot_lite(config: SmartSearchConfig) -> SmartSearc
     tuned.node_branch_limit = config.node_branch_limit.saturating_sub(1).clamp(6, 18);
     tuned.root_enum_limit = (tuned.root_branch_limit * 5).clamp(tuned.root_branch_limit, 210);
     tuned.node_enum_limit = (tuned.node_branch_limit * 4).clamp(tuned.node_branch_limit, 108);
-    tuned
-}
-
-fn tuned_candidate_config_narrow(config: SmartSearchConfig) -> SmartSearchConfig {
-    let mut tuned = config;
-    tuned.root_branch_limit = config.root_branch_limit.saturating_sub(4).clamp(6, 28);
-    tuned.node_branch_limit = config.node_branch_limit.saturating_sub(5).clamp(5, 14);
-    tuned.root_enum_limit = (tuned.root_branch_limit * 5).clamp(tuned.root_branch_limit, 180);
-    tuned.node_enum_limit = (tuned.node_branch_limit * 3).clamp(tuned.node_branch_limit, 84);
-    tuned
-}
-
-fn tuned_candidate_config_deeper(config: SmartSearchConfig) -> SmartSearchConfig {
-    let mut tuned = tuned_candidate_config_focus(config);
-    tuned.depth = (tuned.depth + 1).clamp(MIN_SMART_SEARCH_DEPTH, MAX_SMART_SEARCH_DEPTH);
-    tuned.scoring_weights = &BALANCED_DISTANCE_SCORING_WEIGHTS;
-    tuned
-}
-
-fn tuned_candidate_config_hybrid(config: SmartSearchConfig) -> SmartSearchConfig {
-    if config.depth >= 3 {
-        tuned_candidate_config_narrow(config)
-    } else {
-        config
-    }
-}
-
-fn tuned_candidate_config_hybrid_deeper_fast(config: SmartSearchConfig) -> SmartSearchConfig {
-    if config.depth < 3 {
-        return config;
-    }
-
-    let mut tuned = config;
-    tuned.max_visited_nodes = (tuned.max_visited_nodes * 2 / 3).max(700);
-    tuned.root_branch_limit = tuned.root_branch_limit.saturating_sub(8).clamp(8, 24);
-    tuned.node_branch_limit = tuned.node_branch_limit.saturating_sub(10).clamp(6, 12);
-    tuned.root_enum_limit = (tuned.root_branch_limit * 5).clamp(tuned.root_branch_limit, 160);
-    tuned.node_enum_limit = (tuned.node_branch_limit * 3).clamp(tuned.node_branch_limit, 72);
-    tuned.depth = (tuned.depth + 1).clamp(MIN_SMART_SEARCH_DEPTH, MAX_SMART_SEARCH_DEPTH);
-    tuned.scoring_weights = &BALANCED_DISTANCE_SCORING_WEIGHTS;
     tuned
 }
 
@@ -8186,19 +7013,8 @@ fn primary_mode_delta_min(mode_key: &str) -> f64 {
     }
 }
 
-fn reduced_mode_delta_min(mode_key: &str) -> f64 {
-    match mode_key {
-        "fast" => SMART_REDUCED_IMPROVEMENT_DELTA_MIN_FAST,
-        _ => SMART_REDUCED_IMPROVEMENT_DELTA_MIN_NORMAL,
-    }
-}
-
 fn primary_mode_confidence_min(_mode_key: &str) -> f64 {
     SMART_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN
-}
-
-fn reduced_mode_confidence_min(_mode_key: &str) -> f64 {
-    SMART_REDUCED_IMPROVEMENT_CONFIDENCE_MIN
 }
 
 fn quick_screen_mode_delta_min(mode_key: &str) -> f64 {
@@ -8237,6 +7053,175 @@ fn smart_automove_pool_smoke_runs() {
 
     assert_eq!(evaluation.opponents.len(), pool.len());
     assert_eq!(evaluation.games_per_matchup, 2);
+}
+
+#[test]
+#[ignore = "quick progressive screen: ~10-20 seconds, 2 tiers"]
+fn smart_automove_pool_fast_screen() {
+    let candidate_profile_name = candidate_profile().as_str().to_string();
+    let baseline_profile_name = env::var("SMART_GATE_BASELINE_PROFILE")
+        .ok()
+        .map(|v| v.trim().to_lowercase())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "runtime_current".to_string());
+    let allow_self_baseline = env_bool("SMART_GATE_ALLOW_SELF_BASELINE").unwrap_or(false);
+    if !allow_self_baseline {
+        assert!(
+            candidate_profile_name != baseline_profile_name,
+            "candidate and baseline must differ (set SMART_GATE_ALLOW_SELF_BASELINE=true to override)"
+        );
+    }
+
+    let candidate = AutomoveModel {
+        id: "candidate",
+        select_inputs: CANDIDATE_MODEL.select_inputs,
+    };
+    let baseline = AutomoveModel {
+        id: "baseline",
+        select_inputs: profile_selector_from_name(baseline_profile_name.as_str())
+            .unwrap_or_else(|| panic!("baseline '{}' not found", baseline_profile_name)),
+    };
+    let budgets = client_budgets().to_vec();
+    let config = ProgressiveDuelConfig::from_env_with_defaults("screen");
+    let config = ProgressiveDuelConfig {
+        initial_games: config.initial_games.max(2),
+        max_games_per_seed: config.max_games_per_seed.max(4).min(8),
+        seed_tags: vec!["neutral_v1"],
+        max_plies: 72,
+        early_exit_delta_floor: -0.10,
+        ..config
+    };
+
+    let artifact_path = env::var("SMART_LADDER_ARTIFACT_PATH")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| default_progressive_artifact_path(&candidate_profile_name));
+
+    let result = run_progressive_duel(
+        candidate,
+        baseline,
+        &budgets,
+        &config,
+        Some(artifact_path.as_str()),
+    );
+
+    println!(
+        "\n=== FAST SCREEN RESULT: {} vs {} ===",
+        candidate_profile_name, baseline_profile_name
+    );
+    println!(
+        "total games: {} | δ={:.4} | confidence={:.3} | stop={:?}",
+        result.total_games, result.final_delta, result.final_confidence, result.stop_reason
+    );
+
+    match result.stop_reason {
+        ProgressiveStopReason::EarlyReject | ProgressiveStopReason::MathematicalReject => {
+            println!("VERDICT: FAIL — candidate is not promising, do not proceed to full evaluation");
+            assert!(false, "fast screen rejected candidate");
+        }
+        ProgressiveStopReason::EarlyPromote => {
+            println!("VERDICT: PASS — candidate looks strong, proceed to progressive duel or ladder");
+        }
+        ProgressiveStopReason::MaxGamesReached => {
+            if result.final_delta >= 0.0 {
+                println!("VERDICT: INCONCLUSIVE-POSITIVE — proceed to progressive duel for larger sample");
+            } else {
+                println!("VERDICT: INCONCLUSIVE-NEGATIVE — candidate may not be strong enough");
+                assert!(false, "fast screen: negative delta at max games");
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "progressive evaluation: geometric doubling, 2→4→8→16→32 games"]
+fn smart_automove_pool_progressive_duel() {
+    let candidate_profile_name = candidate_profile().as_str().to_string();
+    let baseline_profile_name = env::var("SMART_GATE_BASELINE_PROFILE")
+        .ok()
+        .map(|v| v.trim().to_lowercase())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "runtime_current".to_string());
+    let allow_self_baseline = env_bool("SMART_GATE_ALLOW_SELF_BASELINE").unwrap_or(false);
+    if !allow_self_baseline {
+        assert!(
+            candidate_profile_name != baseline_profile_name,
+            "candidate and baseline must differ"
+        );
+    }
+
+    let candidate = AutomoveModel {
+        id: "candidate",
+        select_inputs: CANDIDATE_MODEL.select_inputs,
+    };
+    let baseline = AutomoveModel {
+        id: "baseline",
+        select_inputs: profile_selector_from_name(baseline_profile_name.as_str())
+            .unwrap_or_else(|| panic!("baseline '{}' not found", baseline_profile_name)),
+    };
+    let budgets = client_budgets().to_vec();
+
+    let use_primary = env_bool("SMART_PROGRESSIVE_PRIMARY").unwrap_or(false);
+    let config = if use_primary {
+        ProgressiveDuelConfig::from_env_with_defaults("primary")
+    } else {
+        ProgressiveDuelConfig::from_env_with_defaults("duel")
+    };
+
+    let artifact_path = env::var("SMART_LADDER_ARTIFACT_PATH")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| default_progressive_artifact_path(&candidate_profile_name));
+
+    println!(
+        "progressive duel: {} vs {} | initial_games={} | max_games/seed={} | seeds={:?}",
+        candidate_profile_name,
+        baseline_profile_name,
+        config.initial_games,
+        config.max_games_per_seed,
+        config.seed_tags
+    );
+
+    let result = run_progressive_duel(
+        candidate,
+        baseline,
+        &budgets,
+        &config,
+        Some(artifact_path.as_str()),
+    );
+
+    println!(
+        "\n=== PROGRESSIVE DUEL RESULT: {} vs {} ===",
+        candidate_profile_name, baseline_profile_name
+    );
+    println!(
+        "tiers: {} | total games: {} | δ={:.4} | confidence={:.3} | stop={:?}",
+        result.tiers.len(),
+        result.total_games,
+        result.final_delta,
+        result.final_confidence,
+        result.stop_reason
+    );
+    println!("artifact: {}", artifact_path);
+
+    match result.stop_reason {
+        ProgressiveStopReason::EarlyReject | ProgressiveStopReason::MathematicalReject => {
+            assert!(
+                false,
+                "progressive duel rejected: {:?} at {} games, δ={:.4}",
+                result.stop_reason, result.total_games, result.final_delta
+            );
+        }
+        ProgressiveStopReason::EarlyPromote => {
+            println!("PASSED — candidate showed improvement with sufficient confidence");
+        }
+        ProgressiveStopReason::MaxGamesReached => {
+            println!(
+                "MAX GAMES REACHED — delta={:.4}, review per-mode results above",
+                result.final_delta
+            );
+        }
+    }
 }
 
 #[test]
@@ -9009,6 +7994,475 @@ fn run_pool_non_regression_check(
     let candidate_wr = candidate_eval.aggregate_stats.win_rate_points();
     let baseline_wr = baseline_eval.aggregate_stats.win_rate_points();
     (candidate_eval, baseline_eval, candidate_wr, baseline_wr)
+}
+
+// ── Progressive duel infrastructure ─────────────────────────────────────
+//
+// Geometric-doubling evaluation: start with a small batch, double if
+// candidate looks promising, exit early if clearly bad or clearly good.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProgressiveStopReason {
+    /// Candidate clearly worse — aggregate delta dropped below floor.
+    EarlyReject,
+    /// No mode can mathematically reach its improvement threshold.
+    MathematicalReject,
+    /// Both delta and confidence thresholds met before max games.
+    EarlyPromote,
+    /// Reached max total games without early decision.
+    MaxGamesReached,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct ProgressiveTierResult {
+    tier: usize,
+    games_this_tier: usize,
+    cumulative_games: usize,
+    mode_stats: std::collections::HashMap<&'static str, MatchupStats>,
+    aggregate: MatchupStats,
+    aggregate_delta: f64,
+    aggregate_confidence: f64,
+    stop_reason: Option<ProgressiveStopReason>,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct ProgressiveDuelResult {
+    tiers: Vec<ProgressiveTierResult>,
+    final_mode_stats: std::collections::HashMap<&'static str, MatchupStats>,
+    final_aggregate: MatchupStats,
+    final_delta: f64,
+    final_confidence: f64,
+    total_games: usize,
+    stop_reason: ProgressiveStopReason,
+}
+
+struct ProgressiveDuelConfig {
+    /// Games per mode per seed tag in the first tier (default: 2).
+    initial_games: usize,
+    /// Maximum total games per mode per seed tag across all tiers (default: 32).
+    max_games_per_seed: usize,
+    /// Growth factor per tier (default: 2).
+    growth_factor: usize,
+    /// Seed tags to use for generating game openings.
+    seed_tags: Vec<&'static str>,
+    /// Maximum plies per game.
+    max_plies: usize,
+    /// Aggregate delta floor — reject if delta drops below this after any tier.
+    early_exit_delta_floor: f64,
+    /// Per-mode improvement delta thresholds (maps mode key → min delta).
+    mode_improvement_delta: std::collections::HashMap<&'static str, f64>,
+    /// Per-mode improvement confidence thresholds.
+    mode_improvement_confidence: std::collections::HashMap<&'static str, f64>,
+    /// Per-mode non-regression delta floor.
+    mode_non_regression_delta: std::collections::HashMap<&'static str, f64>,
+    /// Number of repeat pairs per seed tag per tier-batch.
+    repeats_per_game: usize,
+    /// Whether to use the opening book for white player.
+    use_white_opening_book: bool,
+}
+
+impl Default for ProgressiveDuelConfig {
+    fn default() -> Self {
+        let mut mode_improvement_delta = std::collections::HashMap::new();
+        mode_improvement_delta.insert("fast", SMART_REDUCED_IMPROVEMENT_DELTA_MIN_FAST);
+        mode_improvement_delta.insert("normal", SMART_REDUCED_IMPROVEMENT_DELTA_MIN_NORMAL);
+
+        let mut mode_improvement_confidence = std::collections::HashMap::new();
+        mode_improvement_confidence.insert("fast", SMART_REDUCED_IMPROVEMENT_CONFIDENCE_MIN);
+        mode_improvement_confidence.insert("normal", SMART_REDUCED_IMPROVEMENT_CONFIDENCE_MIN);
+
+        let mut mode_non_regression_delta = std::collections::HashMap::new();
+        mode_non_regression_delta.insert("fast", SMART_REDUCED_NON_REGRESSION_DELTA_MIN);
+        mode_non_regression_delta.insert("normal", SMART_REDUCED_NON_REGRESSION_DELTA_MIN);
+
+        Self {
+            initial_games: 2,
+            max_games_per_seed: 32,
+            growth_factor: 2,
+            seed_tags: vec!["neutral_v1", "neutral_v2", "neutral_v3"],
+            max_plies: 80,
+            early_exit_delta_floor: -0.08,
+            mode_improvement_delta,
+            mode_improvement_confidence,
+            mode_non_regression_delta,
+            repeats_per_game: 2,
+            use_white_opening_book: false,
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl ProgressiveDuelConfig {
+    fn from_env_with_defaults(stage: &str) -> Self {
+        let mut config = Self::default();
+        let prefix = format!("SMART_PROGRESSIVE_{}", stage.to_uppercase());
+
+        if let Some(v) = env_usize(&format!("{}_INITIAL_GAMES", prefix)) {
+            config.initial_games = v.max(1);
+        }
+        if let Some(v) = env_usize(&format!("{}_MAX_GAMES", prefix)) {
+            config.max_games_per_seed = v.max(config.initial_games);
+        }
+        if let Some(v) = env_usize(&format!("{}_REPEATS", prefix)) {
+            config.repeats_per_game = v.max(1);
+        }
+        if let Some(v) = env_usize(&format!("{}_MAX_PLIES", prefix)) {
+            config.max_plies = v.max(32);
+        }
+        config
+    }
+
+    /// Configuration for fast screening (first 2 tiers only, 2→4 games).
+    fn fast_screen() -> Self {
+        Self {
+            initial_games: 2,
+            max_games_per_seed: 4,
+            growth_factor: 2,
+            seed_tags: vec!["neutral_v1"],
+            max_plies: 72,
+            early_exit_delta_floor: -0.10,
+            repeats_per_game: 2,
+            use_white_opening_book: false,
+            ..Self::default()
+        }
+    }
+
+    /// Configuration for the main progressive evaluation (merged reduced+primary).
+    fn standard() -> Self {
+        Self {
+            initial_games: 2,
+            max_games_per_seed: 32,
+            growth_factor: 2,
+            seed_tags: vec!["neutral_v1", "neutral_v2", "neutral_v3"],
+            max_plies: 80,
+            early_exit_delta_floor: -0.05,
+            repeats_per_game: 2,
+            use_white_opening_book: false,
+            ..Self::default()
+        }
+    }
+
+    /// Configuration with primary-strength thresholds (for final validation).
+    fn primary_strength() -> Self {
+        let mut config = Self::standard();
+        config.max_games_per_seed = 64;
+        config.repeats_per_game = 3;
+
+        config.mode_improvement_delta.insert("fast", SMART_PRIMARY_IMPROVEMENT_DELTA_MIN_FAST);
+        config.mode_improvement_delta.insert("normal", SMART_PRIMARY_IMPROVEMENT_DELTA_MIN_NORMAL);
+        config.mode_improvement_confidence.insert("fast", SMART_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN);
+        config.mode_improvement_confidence.insert("normal", SMART_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN);
+        config.mode_non_regression_delta.insert("fast", SMART_MODE_NON_REGRESSION_DELTA_MIN);
+        config.mode_non_regression_delta.insert("normal", SMART_MODE_NON_REGRESSION_DELTA_MIN);
+        config
+    }
+}
+
+fn run_progressive_duel(
+    candidate: AutomoveModel,
+    baseline: AutomoveModel,
+    budgets: &[SearchBudget],
+    config: &ProgressiveDuelConfig,
+    artifact_path: Option<&str>,
+) -> ProgressiveDuelResult {
+    let mut cumulative_mode_stats =
+        std::collections::HashMap::<&'static str, MatchupStats>::new();
+    let mut tiers = Vec::new();
+    let mut games_per_seed = config.initial_games;
+    let mut total_cumulative_games: usize;
+    let mut tier_index: usize = 0;
+
+    loop {
+        // Run this tier's games across all seed tags
+        for seed_tag in &config.seed_tags {
+            let tier_results = run_mirrored_duel_for_seed_tag(
+                candidate,
+                baseline,
+                budgets,
+                seed_tag,
+                config.repeats_per_game,
+                games_per_seed,
+                config.max_plies,
+                config.use_white_opening_book,
+            );
+            merge_mode_stats(&mut cumulative_mode_stats, tier_results.as_slice());
+        }
+
+        // Compute aggregate stats for this tier
+        let mut aggregate = MatchupStats::default();
+        for budget in budgets {
+            aggregate.merge(
+                cumulative_mode_stats
+                    .get(budget.key())
+                    .copied()
+                    .unwrap_or_default(),
+            );
+        }
+        total_cumulative_games = aggregate.total_games();
+        let aggregate_delta = aggregate.win_rate_points() - 0.5;
+        let aggregate_confidence = aggregate.confidence_better_than_even();
+
+        // Check for stop conditions
+        let stop_reason = evaluate_progressive_stop(
+            budgets,
+            &cumulative_mode_stats,
+            aggregate_delta,
+            aggregate_confidence,
+            games_per_seed,
+            config,
+        );
+
+        let tier_result = ProgressiveTierResult {
+            tier: tier_index,
+            games_this_tier: games_per_seed * config.seed_tags.len() * config.repeats_per_game * budgets.len() * 2,
+            cumulative_games: total_cumulative_games,
+            mode_stats: cumulative_mode_stats.clone(),
+            aggregate,
+            aggregate_delta,
+            aggregate_confidence,
+            stop_reason,
+        };
+
+        // Print tier summary
+        println!(
+            "progressive tier {} | games/seed={} | total={} | δ={:.4} | conf={:.3} | {}",
+            tier_index,
+            games_per_seed,
+            total_cumulative_games,
+            aggregate_delta,
+            aggregate_confidence,
+            match stop_reason {
+                Some(ProgressiveStopReason::EarlyReject) => "EARLY REJECT".to_string(),
+                Some(ProgressiveStopReason::MathematicalReject) => "MATH REJECT".to_string(),
+                Some(ProgressiveStopReason::EarlyPromote) => "EARLY PROMOTE".to_string(),
+                Some(ProgressiveStopReason::MaxGamesReached) => "MAX GAMES".to_string(),
+                None => "continuing…".to_string(),
+            }
+        );
+
+        // Print per-mode breakdown
+        for budget in budgets {
+            if let Some(mode_stats) = cumulative_mode_stats.get(budget.key()) {
+                let mode_delta = mode_stats.win_rate_points() - 0.5;
+                let mode_conf = mode_stats.confidence_better_than_even();
+                println!(
+                    "  mode {} | {}W-{}L-{}D | δ={:.4} | conf={:.3}",
+                    budget.key(),
+                    mode_stats.wins,
+                    mode_stats.losses,
+                    mode_stats.draws,
+                    mode_delta,
+                    mode_conf
+                );
+            }
+        }
+
+        tiers.push(tier_result);
+
+        // Flush artifact after each tier
+        if let Some(path) = artifact_path {
+            flush_progressive_artifact(path, &tiers, budgets);
+        }
+
+        if let Some(reason) = stop_reason {
+            return ProgressiveDuelResult {
+                tiers,
+                final_mode_stats: cumulative_mode_stats,
+                final_aggregate: aggregate,
+                final_delta: aggregate_delta,
+                final_confidence: aggregate_confidence,
+                total_games: total_cumulative_games,
+                stop_reason: reason,
+            };
+        }
+
+        // Grow batch size for next tier
+        games_per_seed = (games_per_seed * config.growth_factor).min(config.max_games_per_seed);
+        tier_index += 1;
+    }
+}
+
+fn evaluate_progressive_stop(
+    budgets: &[SearchBudget],
+    mode_stats: &std::collections::HashMap<&'static str, MatchupStats>,
+    aggregate_delta: f64,
+    _aggregate_confidence: f64,
+    current_games_per_seed: usize,
+    config: &ProgressiveDuelConfig,
+) -> Option<ProgressiveStopReason> {
+    // Check 1: aggregate delta below floor → reject
+    if aggregate_delta < config.early_exit_delta_floor {
+        return Some(ProgressiveStopReason::EarlyReject);
+    }
+
+    // Check 2: can any mode still mathematically reach improvement?
+    let next_games_per_seed = (current_games_per_seed * config.growth_factor).min(config.max_games_per_seed);
+    let at_max = current_games_per_seed >= config.max_games_per_seed;
+
+    if at_max {
+        // At max games — check final gate conditions
+        let mut any_mode_improved = false;
+        for budget in budgets {
+            let stats = mode_stats.get(budget.key()).copied().unwrap_or_default();
+            let mode_delta = stats.win_rate_points() - 0.5;
+            let mode_conf = stats.confidence_better_than_even();
+            let required_delta = config.mode_improvement_delta
+                .get(budget.key())
+                .copied()
+                .unwrap_or(0.02);
+            let required_conf = config.mode_improvement_confidence
+                .get(budget.key())
+                .copied()
+                .unwrap_or(0.60);
+
+            if mode_delta >= required_delta && mode_conf >= required_conf {
+                any_mode_improved = true;
+            }
+        }
+
+        // Check non-regression for all modes
+        let mut non_regression_ok = true;
+        for budget in budgets {
+            let stats = mode_stats.get(budget.key()).copied().unwrap_or_default();
+            let mode_delta = stats.win_rate_points() - 0.5;
+            let floor = config.mode_non_regression_delta
+                .get(budget.key())
+                .copied()
+                .unwrap_or(-0.03);
+            if mode_delta < floor {
+                non_regression_ok = false;
+            }
+        }
+
+        if any_mode_improved && non_regression_ok && aggregate_delta >= 0.0 {
+            return Some(ProgressiveStopReason::EarlyPromote);
+        }
+        return Some(ProgressiveStopReason::MaxGamesReached);
+    }
+
+    // Check 3: mathematical impossibility — compute remaining games and best-case delta
+    let remaining_seeds_factor = config.seed_tags.len() * config.repeats_per_game * 2;
+    // Estimate remaining games per mode: sum of tier batches from next_games to max_games
+    let mut remaining_per_mode = 0usize;
+    let mut g = next_games_per_seed;
+    while g <= config.max_games_per_seed {
+        remaining_per_mode += g * remaining_seeds_factor;
+        if g >= config.max_games_per_seed {
+            break;
+        }
+        g = (g * config.growth_factor).min(config.max_games_per_seed);
+    }
+
+    let mut any_mode_can_improve = false;
+    for budget in budgets {
+        let stats = mode_stats.get(budget.key()).copied().unwrap_or_default();
+        let best_case = max_achievable_delta(stats, remaining_per_mode);
+        let required_delta = config.mode_improvement_delta
+            .get(budget.key())
+            .copied()
+            .unwrap_or(0.02);
+        if best_case >= required_delta {
+            any_mode_can_improve = true;
+        }
+    }
+
+    if !any_mode_can_improve {
+        return Some(ProgressiveStopReason::MathematicalReject);
+    }
+
+    // Check 4: early promote — both conditions already met?
+    let mut any_mode_improved = false;
+    let mut all_modes_non_regressed = true;
+    for budget in budgets {
+        let stats = mode_stats.get(budget.key()).copied().unwrap_or_default();
+        let mode_delta = stats.win_rate_points() - 0.5;
+        let mode_conf = stats.confidence_better_than_even();
+        let required_delta = config.mode_improvement_delta
+            .get(budget.key())
+            .copied()
+            .unwrap_or(0.02);
+        let required_conf = config.mode_improvement_confidence
+            .get(budget.key())
+            .copied()
+            .unwrap_or(0.60);
+        let floor = config.mode_non_regression_delta
+            .get(budget.key())
+            .copied()
+            .unwrap_or(-0.03);
+
+        if mode_delta >= required_delta && mode_conf >= required_conf {
+            any_mode_improved = true;
+        }
+        if mode_delta < floor {
+            all_modes_non_regressed = false;
+        }
+    }
+
+    // Only early-promote if we have enough games for statistical significance
+    let total_games: usize = mode_stats.values().map(|s| s.total_games()).sum();
+    let min_games_for_early_promote = config.initial_games * config.growth_factor * remaining_seeds_factor * budgets.len();
+    if any_mode_improved && all_modes_non_regressed && aggregate_delta >= 0.0 && total_games >= min_games_for_early_promote {
+        return Some(ProgressiveStopReason::EarlyPromote);
+    }
+
+    None // continue to next tier
+}
+
+fn flush_progressive_artifact(
+    path: &str,
+    tiers: &[ProgressiveTierResult],
+    budgets: &[SearchBudget],
+) {
+    let mut lines = Vec::new();
+    for tier in tiers {
+        let mut mode_parts = Vec::new();
+        for budget in budgets {
+            if let Some(stats) = tier.mode_stats.get(budget.key()) {
+                mode_parts.push(format!(
+                    r#""{}": {{"wins":{},"losses":{},"draws":{},"delta":{:.5},"confidence":{:.5}}}"#,
+                    budget.key(),
+                    stats.wins,
+                    stats.losses,
+                    stats.draws,
+                    stats.win_rate_points() - 0.5,
+                    stats.confidence_better_than_even()
+                ));
+            }
+        }
+        let stop_str = match tier.stop_reason {
+            Some(ProgressiveStopReason::EarlyReject) => "\"early_reject\"",
+            Some(ProgressiveStopReason::MathematicalReject) => "\"math_reject\"",
+            Some(ProgressiveStopReason::EarlyPromote) => "\"early_promote\"",
+            Some(ProgressiveStopReason::MaxGamesReached) => "\"max_games\"",
+            None => "null",
+        };
+        lines.push(format!(
+            r#"{{"tier":{},"cumulative_games":{},"aggregate_delta":{:.5},"aggregate_confidence":{:.5},"stop":{},"modes":{{{}}}}}"#,
+            tier.tier,
+            tier.cumulative_games,
+            tier.aggregate_delta,
+            tier.aggregate_confidence,
+            stop_str,
+            mode_parts.join(",")
+        ));
+    }
+    let payload = lines.join("\n") + "\n";
+    if let Err(err) = std::fs::write(path, payload.as_bytes()) {
+        println!("WARNING: failed writing progressive artifact to '{}': {}", path, err);
+    }
+}
+
+fn default_progressive_artifact_path(profile: &str) -> String {
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let log_dir = env::var("SMART_EXPERIMENT_LOG_DIR")
+        .unwrap_or_else(|_| "target/experiment-runs".to_string());
+    let _ = std::fs::create_dir_all(&log_dir);
+    format!("{}/progressive_{}_{}.jsonl", log_dir, profile, timestamp)
 }
 
 fn persist_ladder_artifacts(lines: &[String]) {
@@ -11216,238 +10670,110 @@ fn smart_automove_pool_promotion_ladder() {
         );
     }
 
-    let quick_results = run_mirrored_duel_for_seed_tag(
+    // ── B+C+D Progressive Duel ──────────────────────────────────────────
+    // Replaces the former B_quick, C_reduced, and D_primary fixed-batch
+    // stages with a single geometric-doubling progressive evaluation.
+    // Games per seed grow 2→4→8→16→32→64 with early exit on clear
+    // rejection or early promotion when thresholds are met.
+    let progressive_config = ProgressiveDuelConfig::from_env_with_defaults("ladder");
+    let progressive_artifact = default_progressive_artifact_path(candidate_profile_name.as_str());
+    let progressive_result = run_progressive_duel(
         candidate,
         baseline,
         budgets.as_slice(),
-        "quick_v1",
-        2,
-        2,
-        72,
-        false,
-    );
-    let mut quick_aggregate = MatchupStats::default();
-    for (_budget, stats) in &quick_results {
-        quick_aggregate.merge(*stats);
-    }
-    let quick_delta = quick_aggregate.win_rate_points() - 0.5;
-    artifacts.push(format!(
-        r#"{{"stage":"B_quick","wins":{},"losses":{},"draws":{},"delta":{:.5},"confidence":{:.5}}}"#,
-        quick_aggregate.wins,
-        quick_aggregate.losses,
-        quick_aggregate.draws,
-        quick_delta,
-        quick_aggregate.confidence_better_than_even()
-    ));
-    assert!(
-        quick_delta >= 0.04,
-        "quick keep-going gate failed: delta={:.3} < 0.040",
-        quick_delta
+        &progressive_config,
+        Some(progressive_artifact.as_str()),
     );
 
-    let reduced_games = env_usize("SMART_LADDER_REDUCED_GAMES").unwrap_or(2).max(2);
-    let reduced_repeats = env_usize("SMART_LADDER_REDUCED_REPEATS")
-        .unwrap_or(2)
-        .max(2);
-    let reduced_max_plies = env_usize("SMART_LADDER_REDUCED_MAX_PLIES")
-        .unwrap_or(80)
-        .max(56);
-    let reduced_seed_tags = ["neutral_v1", "neutral_v2", "neutral_v3"];
-    let mut reduced_mode_stats = std::collections::HashMap::<&'static str, MatchupStats>::new();
-    for (seed_index, seed_tag) in reduced_seed_tags.iter().enumerate() {
-        let mode_results = run_mirrored_duel_for_seed_tag(
-            candidate,
-            baseline,
-            budgets.as_slice(),
-            seed_tag,
-            reduced_repeats,
-            reduced_games,
-            reduced_max_plies,
-            false,
-        );
-        merge_mode_stats(&mut reduced_mode_stats, mode_results.as_slice());
-
-        let remaining_seed_count = reduced_seed_tags.len().saturating_sub(seed_index + 1);
-        let remaining_games_per_mode = remaining_seed_count * reduced_repeats * reduced_games * 2;
-
-        let mut reduced_aggregate = MatchupStats::default();
-        for budget in &budgets {
-            reduced_aggregate.merge(
-                reduced_mode_stats
+    match progressive_result.stop_reason {
+        ProgressiveStopReason::EarlyReject => {
+            artifacts.push(format!(
+                r#"{{"stage":"B_progressive","status":"early_reject","total_games":{},"delta":{:.5},"confidence":{:.5}}}"#,
+                progressive_result.total_games,
+                progressive_result.final_delta,
+                progressive_result.final_confidence
+            ));
+            persist_ladder_artifacts(artifacts.as_slice());
+            panic!(
+                "progressive duel early reject: delta={:.3} after {} games",
+                progressive_result.final_delta, progressive_result.total_games
+            );
+        }
+        ProgressiveStopReason::MathematicalReject => {
+            artifacts.push(format!(
+                r#"{{"stage":"B_progressive","status":"math_reject","total_games":{},"delta":{:.5},"confidence":{:.5}}}"#,
+                progressive_result.total_games,
+                progressive_result.final_delta,
+                progressive_result.final_confidence
+            ));
+            persist_ladder_artifacts(artifacts.as_slice());
+            panic!(
+                "progressive duel mathematical reject: no mode can reach improvement threshold after {} games",
+                progressive_result.total_games
+            );
+        }
+        ProgressiveStopReason::EarlyPromote | ProgressiveStopReason::MaxGamesReached => {
+            // Verify per-mode non-regression and at-least-one improvement
+            let mut any_mode_improved = false;
+            for budget in &budgets {
+                let stats = progressive_result
+                    .final_mode_stats
                     .get(budget.key())
                     .copied()
-                    .unwrap_or_default(),
-            );
-        }
-        let remaining_total_games = remaining_games_per_mode * budgets.len();
-        let best_case_aggregate_delta =
-            max_achievable_delta(reduced_aggregate, remaining_total_games);
-        if best_case_aggregate_delta < 0.0 {
-            println!(
-                "reduced gate early-stop NOTE: aggregate best-case delta {:.3} < 0.0",
-                best_case_aggregate_delta
-            );
-        }
-        let mut any_mode_can_improve = false;
-        for budget in &budgets {
-            let mode_stats = reduced_mode_stats
-                .get(budget.key())
-                .copied()
-                .unwrap_or_default();
-            let best_case_mode_delta = max_achievable_delta(mode_stats, remaining_games_per_mode);
-            let mode_delta_min = reduced_mode_delta_min(budget.key());
-            if best_case_mode_delta >= mode_delta_min {
-                any_mode_can_improve = true;
-            }
-        }
-        assert!(
-            any_mode_can_improve,
-            "reduced gate early-stop: no mode can reach its improvement threshold"
-        );
-    }
-    let mut reduced_aggregate = MatchupStats::default();
-    let mut any_reduced_mode_improved = false;
-    for budget in &budgets {
-        let mode_stats = reduced_mode_stats
-            .get(budget.key())
-            .copied()
-            .unwrap_or_default();
-        let mode_delta = mode_stats.win_rate_points() - 0.5;
-        let mode_confidence = mode_stats.confidence_better_than_even();
-        assert!(
-            mode_delta >= SMART_REDUCED_NON_REGRESSION_DELTA_MIN,
-            "reduced stage mode {} non-regression failed: delta {:.3} < {:.3}",
-            budget.key(),
-            mode_delta,
-            SMART_REDUCED_NON_REGRESSION_DELTA_MIN
-        );
-        let improvement_delta = reduced_mode_delta_min(budget.key());
-        let improvement_confidence = reduced_mode_confidence_min(budget.key());
-        if mode_delta >= improvement_delta && mode_confidence >= improvement_confidence {
-            any_reduced_mode_improved = true;
-        }
-        reduced_aggregate.merge(mode_stats);
-    }
-    assert!(
-        any_reduced_mode_improved,
-        "reduced: no mode showed sufficient improvement"
-    );
-    let reduced_delta = reduced_aggregate.win_rate_points() - 0.5;
-    let reduced_confidence = reduced_aggregate.confidence_better_than_even();
-    artifacts.push(format!(
-        r#"{{"stage":"C_reduced","wins":{},"losses":{},"draws":{},"delta":{:.5},"confidence":{:.5}}}"#,
-        reduced_aggregate.wins,
-        reduced_aggregate.losses,
-        reduced_aggregate.draws,
-        reduced_delta,
-        reduced_confidence
-    ));
-    assert!(
-        reduced_delta >= 0.0,
-        "reduced stage aggregate non-regression failed: delta {:.3} < 0.0",
-        reduced_delta
-    );
-
-    let primary_games = env_usize("SMART_GATE_PRIMARY_GAMES").unwrap_or(4).max(2);
-    let primary_repeats = env_usize("SMART_GATE_PRIMARY_REPEATS").unwrap_or(6).max(2);
-    let primary_max_plies = env_usize("SMART_GATE_PRIMARY_MAX_PLIES")
-        .unwrap_or(80)
-        .max(56);
-    let primary_seed_tags = ["neutral_v1", "neutral_v2", "neutral_v3"];
-    let mut primary_mode_stats = std::collections::HashMap::<&'static str, MatchupStats>::new();
-    for (seed_index, seed_tag) in primary_seed_tags.iter().enumerate() {
-        let mode_results = run_mirrored_duel_for_seed_tag(
-            candidate,
-            baseline,
-            budgets.as_slice(),
-            seed_tag,
-            primary_repeats,
-            primary_games,
-            primary_max_plies,
-            false,
-        );
-        merge_mode_stats(&mut primary_mode_stats, mode_results.as_slice());
-
-        let remaining_seed_count = primary_seed_tags.len().saturating_sub(seed_index + 1);
-        let remaining_games_per_mode = remaining_seed_count * primary_repeats * primary_games * 2;
-
-        let mut primary_aggregate = MatchupStats::default();
-        for budget in &budgets {
-            primary_aggregate.merge(
-                primary_mode_stats
+                    .unwrap_or_default();
+                let mode_delta = stats.win_rate_points() - 0.5;
+                let non_regression_floor = progressive_config
+                    .mode_non_regression_delta
                     .get(budget.key())
                     .copied()
-                    .unwrap_or_default(),
-            );
-        }
-        let remaining_total_games = remaining_games_per_mode * budgets.len();
-        let best_case_aggregate_delta =
-            max_achievable_delta(primary_aggregate, remaining_total_games);
-        if best_case_aggregate_delta < 0.0 {
-            println!(
-                "primary early-stop NOTE: aggregate best-case delta {:.3} < 0.0",
-                best_case_aggregate_delta
-            );
-        }
-        let mut any_mode_can_improve = false;
-        for budget in &budgets {
-            let mode_stats = primary_mode_stats
-                .get(budget.key())
-                .copied()
-                .unwrap_or_default();
-            let best_case_mode_delta = max_achievable_delta(mode_stats, remaining_games_per_mode);
-            let mode_delta_min = primary_mode_delta_min(budget.key());
-            if best_case_mode_delta >= mode_delta_min {
-                any_mode_can_improve = true;
+                    .unwrap_or(-0.03);
+                assert!(
+                    mode_delta >= non_regression_floor,
+                    "progressive mode {} non-regression failed: delta {:.3} < {:.3}",
+                    budget.key(),
+                    mode_delta,
+                    non_regression_floor
+                );
+                let improvement_delta = progressive_config
+                    .mode_improvement_delta
+                    .get(budget.key())
+                    .copied()
+                    .unwrap_or(0.02);
+                let improvement_conf = progressive_config
+                    .mode_improvement_confidence
+                    .get(budget.key())
+                    .copied()
+                    .unwrap_or(0.60);
+                let mode_conf = stats.confidence_better_than_even();
+                if mode_delta >= improvement_delta && mode_conf >= improvement_conf {
+                    any_mode_improved = true;
+                }
             }
-        }
-        assert!(
-            any_mode_can_improve,
-            "primary early-stop: no mode can reach its improvement threshold"
-        );
-    }
-    let mut primary_aggregate = MatchupStats::default();
-    let mut any_primary_mode_improved = false;
-    for budget in &budgets {
-        let stats = primary_mode_stats
-            .get(budget.key())
-            .copied()
-            .unwrap_or_default();
-        primary_aggregate.merge(stats);
-        let mode_delta = stats.win_rate_points() - 0.5;
-        let mode_confidence = stats.confidence_better_than_even();
-        assert!(
-            mode_delta >= SMART_MODE_NON_REGRESSION_DELTA_MIN,
-            "primary mode {} non-regression failed: delta {:.3} < {:.3}",
-            budget.key(),
-            mode_delta,
-            SMART_MODE_NON_REGRESSION_DELTA_MIN
-        );
-        let improvement_delta = primary_mode_delta_min(budget.key());
-        let improvement_confidence = primary_mode_confidence_min(budget.key());
-        if mode_delta >= improvement_delta && mode_confidence >= improvement_confidence {
-            any_primary_mode_improved = true;
+            assert!(
+                any_mode_improved,
+                "progressive duel: no mode showed sufficient improvement after {} games",
+                progressive_result.total_games
+            );
+            assert!(
+                progressive_result.final_delta >= 0.0,
+                "progressive aggregate non-regression failed: delta {:.3} < 0.0",
+                progressive_result.final_delta
+            );
+
+            let status = match progressive_result.stop_reason {
+                ProgressiveStopReason::EarlyPromote => "early_promote",
+                _ => "max_games",
+            };
+            artifacts.push(format!(
+                r#"{{"stage":"B_progressive","status":"{}","total_games":{},"tiers":{},"delta":{:.5},"confidence":{:.5}}}"#,
+                status,
+                progressive_result.total_games,
+                progressive_result.tiers.len(),
+                progressive_result.final_delta,
+                progressive_result.final_confidence
+            ));
         }
     }
-    assert!(
-        any_primary_mode_improved,
-        "primary: no mode showed sufficient improvement"
-    );
-    let primary_delta = primary_aggregate.win_rate_points() - 0.5;
-    let primary_confidence = primary_aggregate.confidence_better_than_even();
-    artifacts.push(format!(
-        r#"{{"stage":"D_primary","wins":{},"losses":{},"draws":{},"delta":{:.5},"confidence":{:.5}}}"#,
-        primary_aggregate.wins,
-        primary_aggregate.losses,
-        primary_aggregate.draws,
-        primary_delta,
-        primary_confidence
-    ));
-    assert!(
-        primary_delta >= 0.0,
-        "primary aggregate non-regression failed: delta {:.3} < 0.0",
-        primary_delta
-    );
 
     let confirm_games = env_usize("SMART_GATE_CONFIRM_GAMES").unwrap_or(4).max(2);
     let confirm_repeats = env_usize("SMART_GATE_CONFIRM_REPEATS").unwrap_or(6).max(2);
