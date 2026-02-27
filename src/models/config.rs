@@ -1,16 +1,25 @@
 use crate::*;
+use crate::models::location::BOARD_CELLS;
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
-static SQUARES: LazyLock<HashMap<Location, Square>> = LazyLock::new(Config::build_squares);
-static MONS_BASES: LazyLock<HashSet<Location>> = LazyLock::new(|| {
-    Config::squares_ref()
-        .iter()
-        .filter_map(|(location, square)| match square {
-            Square::MonBase { .. } => Some(*location),
-            _ => None,
-        })
-        .collect()
+static SQUARES_MAP: LazyLock<HashMap<Location, Square>> = LazyLock::new(Config::build_squares);
+static SQUARES_ARRAY: LazyLock<[Square; BOARD_CELLS]> = LazyLock::new(|| {
+    let mut arr = [Square::Regular; BOARD_CELLS];
+    for (&loc, &sq) in SQUARES_MAP.iter() {
+        arr[loc.index()] = sq;
+    }
+    arr
+});
+static MONS_BASES_SET: LazyLock<HashSet<Location>> = LazyLock::new(|| {
+    Config::MONS_BASE_LOCATIONS.iter().copied().collect()
+});
+static IS_MON_BASE: LazyLock<[bool; BOARD_CELLS]> = LazyLock::new(|| {
+    let mut arr = [false; BOARD_CELLS];
+    for loc in &Config::MONS_BASE_LOCATIONS {
+        arr[loc.index()] = true;
+    }
+    arr
 });
 
 pub struct Config;
@@ -192,11 +201,20 @@ impl Config {
     }
 
     pub fn squares_ref() -> &'static HashMap<Location, Square> {
-        &SQUARES
+        &SQUARES_MAP
     }
 
     pub fn squares() -> HashMap<Location, Square> {
         Self::squares_ref().clone()
+    }
+
+    #[inline]
+    pub fn square_at(location: Location) -> Square {
+        SQUARES_ARRAY[location.index()]
+    }
+
+    pub fn squares_array() -> &'static [Square; BOARD_CELLS] {
+        &SQUARES_ARRAY
     }
 
     pub fn initial_items() -> HashMap<Location, Item> {
@@ -232,14 +250,69 @@ impl Config {
             .collect()
     }
 
+    pub fn initial_items_array() -> [Option<Item>; BOARD_CELLS] {
+        let mut arr: [Option<Item>; BOARD_CELLS] = [None; BOARD_CELLS];
+        for (&location, square) in SQUARES_MAP.iter() {
+            let item = match square {
+                Square::MonBase { kind, color } => Some(Item::Mon {
+                    mon: Mon::new(*kind, *color, 0),
+                }),
+                Square::ManaBase { color } => Some(Item::Mana {
+                    mana: Mana::Regular(*color),
+                }),
+                Square::SupermanaBase => Some(Item::Mana {
+                    mana: Mana::Supermana,
+                }),
+                Square::ConsumableBase => Some(Item::Consumable {
+                    consumable: Consumable::BombOrPotion,
+                }),
+                _ => None,
+            };
+            if let Some(item) = item {
+                arr[location.index()] = Some(item);
+            }
+        }
+        arr
+    }
+
     pub const BOARD_CENTER_INDEX: i32 = Self::BOARD_SIZE / 2;
     pub const MAX_LOCATION_INDEX: i32 = Self::BOARD_SIZE - 1;
 
+    pub const SUPERMANA_BASE: Location = Location { i: 5, j: 5 };
+
+    pub const MONS_BASE_LOCATIONS: [Location; 10] = [
+        Location { i: 0, j: 3 },
+        Location { i: 0, j: 4 },
+        Location { i: 0, j: 5 },
+        Location { i: 0, j: 6 },
+        Location { i: 0, j: 7 },
+        Location { i: 10, j: 3 },
+        Location { i: 10, j: 4 },
+        Location { i: 10, j: 5 },
+        Location { i: 10, j: 6 },
+        Location { i: 10, j: 7 },
+    ];
+
+    pub fn mon_base(kind: MonKind, color: Color) -> Location {
+        for &loc in &Self::MONS_BASE_LOCATIONS {
+            if let Square::MonBase { kind: k, color: c } = Self::square_at(loc) {
+                if k == kind && c == color {
+                    return loc;
+                }
+            }
+        }
+        panic!("Expected at least one base for the given mon");
+    }
+
+    pub fn is_mon_base(location: Location) -> bool {
+        IS_MON_BASE[location.index()]
+    }
+
     pub fn mons_bases() -> HashSet<Location> {
-        MONS_BASES.clone()
+        MONS_BASES_SET.clone()
     }
 
     pub fn mons_bases_ref() -> &'static HashSet<Location> {
-        &MONS_BASES
+        &MONS_BASES_SET
     }
 }

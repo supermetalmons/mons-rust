@@ -94,7 +94,7 @@ impl MonsGame {
     }
 
     fn update_with(&mut self, other_game: &MonsGame) {
-        self.board = Board::new_with_items(other_game.board.items.clone());
+        self.board.items = other_game.board.items;
         self.white_score = other_game.white_score;
         self.black_score = other_game.black_score;
         self.active_color = other_game.active_color;

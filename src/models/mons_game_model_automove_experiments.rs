@@ -5095,7 +5095,7 @@ fn runtime_normal_phase_weights_confirmed_850(game: &MonsGame) -> &'static Scori
 
 fn drainer_priority_delta(game: &MonsGame, perspective: Color) -> i32 {
     let mut delta = 0i32;
-    for (&location, item) in &game.board.items {
+    for (location, item) in game.board.occupied() {
         let (mon, carried_mana) = match item {
             Item::Mon { mon } => (mon, None),
             Item::MonWithMana { mon, mana } => (mon, Some(*mana)),
@@ -5149,7 +5149,7 @@ fn drainer_priority_delta(game: &MonsGame, perspective: Color) -> i32 {
 
 fn nearest_mana_distance_for_eval(game: &MonsGame, location: Location) -> i32 {
     let mut best = Config::BOARD_SIZE as i32;
-    for (&item_location, item) in &game.board.items {
+    for (item_location, item) in game.board.occupied() {
         if matches!(item, Item::Mana { .. }) {
             best = best.min(item_location.distance(&location) as i32 + 1);
         }
@@ -5163,7 +5163,7 @@ fn nearest_drainer_threat_distance_for_eval(
     location: Location,
 ) -> i32 {
     let mut best = Config::BOARD_SIZE as i32;
-    for (&item_location, item) in &game.board.items {
+    for (item_location, item) in game.board.occupied() {
         let Some(mon) = item.mon() else {
             continue;
         };
@@ -5185,7 +5185,7 @@ fn friendly_angel_adjacent_for_eval(
     drainer_color: Color,
     location: Location,
 ) -> bool {
-    for (&item_location, item) in &game.board.items {
+    for (item_location, item) in game.board.occupied() {
         let Some(mon) = item.mon() else {
             continue;
         };

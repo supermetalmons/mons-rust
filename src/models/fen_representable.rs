@@ -93,18 +93,22 @@ impl Item {
 
 impl FenRepresentable for Board {
     fn fen(&self) -> String {
-        let mut lines: Vec<String> = Vec::new();
+        let mut result = String::with_capacity(200);
         for i in 0..Config::BOARD_SIZE {
-            let mut line = String::new();
-            let mut empty_space_count = 0;
+            if i > 0 {
+                result.push('/');
+            }
+            let mut empty_space_count = 0u32;
             for j in 0..Config::BOARD_SIZE {
-                match self.items.get(&Location { i, j }) {
+                let idx = (i * 11 + j) as usize;
+                match &self.items[idx] {
                     Some(item) => {
                         if empty_space_count > 0 {
-                            line += &format!("n{:02}", empty_space_count);
+                            use std::fmt::Write;
+                            let _ = write!(result, "n{:02}", empty_space_count);
                             empty_space_count = 0;
                         }
-                        line += &item.fen();
+                        result.push_str(&item.fen());
                     }
                     None => {
                         empty_space_count += 1;
@@ -112,11 +116,11 @@ impl FenRepresentable for Board {
                 }
             }
             if empty_space_count > 0 {
-                line += &format!("n{:02}", empty_space_count);
+                use std::fmt::Write;
+                let _ = write!(result, "n{:02}", empty_space_count);
             }
-            lines.push(line);
         }
-        lines.join("/")
+        result
     }
 }
 
@@ -126,7 +130,7 @@ impl Board {
         if lines.len() != Config::BOARD_SIZE as usize {
             return None;
         }
-        let mut items = std::collections::HashMap::new();
+        let mut items = [None; crate::models::location::BOARD_CELLS];
         for (i, line) in lines.iter().enumerate() {
             let mut j = 0;
             let mut chars = line.chars().peekable();
@@ -143,13 +147,7 @@ impl Board {
                     _ => {
                         let item_fen: String = chars.by_ref().take(3).collect();
                         if let Some(item) = Item::from_fen(&item_fen) {
-                            items.insert(
-                                Location {
-                                    i: i as i32,
-                                    j: j as i32,
-                                },
-                                item,
-                            );
+                            items[i * 11 + j] = Some(item);
                         }
                         j += 1;
                     }

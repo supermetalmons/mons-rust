@@ -7,6 +7,7 @@ pub enum Mana {
 }
 
 impl Mana {
+    #[inline]
     pub fn score(&self, player: Color) -> i32 {
         match self {
             Mana::Regular(color) => {

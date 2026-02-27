@@ -8,6 +8,7 @@ pub enum Color {
 }
 
 impl Color {
+    #[inline]
     pub fn other(&self) -> Self {
         match self {
             Color::Black => Color::White,

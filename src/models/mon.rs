@@ -28,6 +28,7 @@ impl Mon {
         }
     }
 
+    #[inline]
     pub fn is_fainted(&self) -> bool {
         self.cooldown > 0
     }

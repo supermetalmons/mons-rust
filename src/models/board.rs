@@ -1,140 +1,148 @@
 use crate::*;
+use crate::models::location::BOARD_CELLS;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Clone)]
 pub struct Board {
-    pub items: std::collections::HashMap<Location, Item>,
+    pub items: [Option<Item>; BOARD_CELLS],
 }
+
+impl std::fmt::Debug for Board {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let occupied: Vec<(Location, &Item)> = self.items.iter().enumerate()
+            .filter_map(|(idx, opt)| opt.as_ref().map(|item| (Location::from_index(idx), item)))
+            .collect();
+        f.debug_struct("Board").field("items", &occupied).finish()
+    }
+}
+
+impl PartialEq for Board {
+    fn eq(&self, other: &Self) -> bool {
+        self.items == other.items
+    }
+}
+
+impl Eq for Board {}
 
 impl Board {
     pub fn new() -> Self {
         Self {
-            items: Config::initial_items(),
+            items: Config::initial_items_array(),
         }
     }
 
     pub fn new_with_items(items: std::collections::HashMap<Location, Item>) -> Self {
-        Self { items }
+        let mut arr = [None; BOARD_CELLS];
+        for (location, item) in items {
+            arr[location.index()] = Some(item);
+        }
+        Self { items: arr }
     }
 
+    #[inline]
     pub fn remove_item(&mut self, location: Location) {
-        self.items.remove(&location);
+        self.items[location.index()] = None;
     }
 
+    #[inline]
     pub fn put(&mut self, item: Item, location: Location) {
-        self.items.insert(location, item);
+        self.items[location.index()] = Some(item);
     }
 
+    #[inline]
     pub fn item(&self, location: Location) -> Option<&Item> {
-        self.items.get(&location)
+        self.items[location.index()].as_ref()
     }
 
+    #[inline]
     pub fn square(&self, location: Location) -> Square {
-        *Config::squares_ref()
-            .get(&location)
-            .unwrap_or(&Square::Regular)
+        Config::square_at(location)
     }
 
     pub fn all_mons_bases(&self) -> Vec<Location> {
-        let mut locations = Config::squares_ref()
-            .iter()
-            .filter_map(|(location, square)| {
-                if let Square::MonBase { .. } = square {
-                    Some(*location)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
+        let mut locations: Vec<Location> = Config::MONS_BASE_LOCATIONS.to_vec();
         locations.sort();
         locations
     }
 
+    #[inline]
     pub fn supermana_base(&self) -> Location {
-        *Config::squares_ref()
-            .iter()
-            .find(|(_, square)| matches!(square, Square::SupermanaBase))
-            .expect("Expected at least one supermana base")
-            .0
+        Config::SUPERMANA_BASE
     }
 
     pub fn all_mons_locations(&self, color: Color) -> Vec<Location> {
-        let mut locations = self
-            .items
-            .iter()
-            .filter_map(|(location, item)| {
-                if let Some(mon) = item.mon() {
-                    if mon.color == color {
-                        Some(*location)
-                    } else {
-                        None
+        let mut locations: Vec<Location> = self.items.iter().enumerate()
+            .filter_map(|(idx, opt)| {
+                if let Some(item) = opt {
+                    if let Some(mon) = item.mon() {
+                        if mon.color == color {
+                            return Some(Location::from_index(idx));
+                        }
                     }
-                } else {
-                    None
                 }
+                None
             })
-            .collect::<Vec<_>>();
+            .collect();
         locations.sort();
         locations
     }
 
     pub fn all_free_regular_mana_locations(&self, color: Color) -> Vec<Location> {
-        let mut locations = self
-            .items
-            .iter()
-            .filter_map(|(location, item)| match item {
-                Item::Mana { mana } => match mana {
-                    Mana::Regular(mana_color) if *mana_color == color => Some(*location),
-                    _ => None,
-                },
+        let mut locations: Vec<Location> = self.items.iter().enumerate()
+            .filter_map(|(idx, opt)| match opt {
+                Some(Item::Mana { mana: Mana::Regular(mana_color) }) if *mana_color == color => {
+                    Some(Location::from_index(idx))
+                }
                 _ => None,
             })
-            .collect::<Vec<_>>();
+            .collect();
         locations.sort();
         locations
     }
 
     pub fn base(&self, mon: Mon) -> Location {
-        *Config::squares_ref()
-            .iter()
-            .find(|(_, square)| matches!(square, Square::MonBase { kind, color } if kind == &mon.kind && color == &mon.color))
-            .expect("Expected at least one base for the given mon")
-            .0
+        Config::mon_base(mon.kind, mon.color)
     }
 
     pub fn fainted_mons_locations(&self, color: Color) -> Vec<Location> {
-        let mut locations = self
-            .items
-            .iter()
-            .filter_map(|(location, item)| match item {
-                Item::Mon { mon } if mon.color == color && mon.is_fainted() => Some(*location),
+        let mut locations: Vec<Location> = self.items.iter().enumerate()
+            .filter_map(|(idx, opt)| match opt {
+                Some(Item::Mon { mon }) if mon.color == color && mon.is_fainted() => {
+                    Some(Location::from_index(idx))
+                }
                 _ => None,
             })
-            .collect::<Vec<_>>();
+            .collect();
         locations.sort();
         locations
     }
 
     pub fn find_mana(&self, color: Color) -> Option<Location> {
-        self.items.iter().find_map(|(location, item)| match item {
-            Item::Mana { mana } => match mana {
-                Mana::Regular(mana_color) if *mana_color == color => Some(*location),
-                _ => None,
-            },
+        self.items.iter().enumerate().find_map(|(idx, opt)| match opt {
+            Some(Item::Mana { mana: Mana::Regular(mana_color) }) if *mana_color == color => {
+                Some(Location::from_index(idx))
+            }
             _ => None,
         })
     }
 
     pub fn find_awake_angel(&self, color: Color) -> Option<Location> {
-        self.items.iter().find_map(|(location, item)| {
-            if let Some(mon) = item.mon() {
-                if mon.color == color && mon.kind == MonKind::Angel && !mon.is_fainted() {
-                    Some(*location)
-                } else {
-                    None
+        self.items.iter().enumerate().find_map(|(idx, opt)| {
+            if let Some(item) = opt {
+                if let Some(mon) = item.mon() {
+                    if mon.color == color && mon.kind == MonKind::Angel && !mon.is_fainted() {
+                        return Some(Location::from_index(idx));
+                    }
                 }
-            } else {
-                None
             }
+            None
+        })
+    }
+
+    /// Iterate over occupied cells: yields (Location, &Item)
+    #[inline]
+    pub fn occupied(&self) -> impl Iterator<Item = (Location, &Item)> {
+        self.items.iter().enumerate().filter_map(|(idx, opt)| {
+            opt.as_ref().map(|item| (Location::from_index(idx), item))
         })
     }
 }

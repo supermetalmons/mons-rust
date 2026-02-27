@@ -803,7 +803,7 @@ pub fn evaluate_preferability_with_weights(
         score *= weights.confirmed_score;
     }
 
-    for (&location, item) in &game.board.items {
+    for (location, item) in game.board.occupied() {
         match item {
             Item::Mon { mon } => {
                 let my_mon_multiplier = if mon.color == color { 1 } else { -1 };
@@ -1532,7 +1532,7 @@ fn score_path_window_to_any_pool(
 ) -> ScorePathWindow {
     let mut top_steps = [i32::MAX; 3];
 
-    for (&location, item) in &board.items {
+    for (location, item) in board.occupied() {
         let Item::MonWithMana { mon, .. } = item else {
             continue;
         };
@@ -1546,7 +1546,7 @@ fn score_path_window_to_any_pool(
     }
 
     if include_drainer_pickups {
-        for (&location, item) in &board.items {
+        for (location, item) in board.occupied() {
             let Some(mon) = item.mon() else {
                 continue;
             };
@@ -1560,7 +1560,7 @@ fn score_path_window_to_any_pool(
     }
 
     if include_regular_mana_move_windows {
-        for (&location, item) in &board.items {
+        for (location, item) in board.occupied() {
             let Item::Mana { mana } = item else {
                 continue;
             };
@@ -1603,7 +1603,7 @@ fn immediate_score_window_summary(
 
     let mut top_scores = [0i32; 3];
 
-    for (&location, item) in &board.items {
+    for (location, item) in board.occupied() {
         let Item::MonWithMana { mon, mana } = item else {
             continue;
         };
@@ -1617,7 +1617,7 @@ fn immediate_score_window_summary(
     }
 
     if include_drainer_pickups {
-        for (&location, item) in &board.items {
+        for (location, item) in board.occupied() {
             let Some(mon) = item.mon() else {
                 continue;
             };
@@ -1625,7 +1625,7 @@ fn immediate_score_window_summary(
                 continue;
             }
             let mut best_pickup_score = 0;
-            for (&mana_location, mana_item) in &board.items {
+            for (mana_location, mana_item) in board.occupied() {
                 let Item::Mana { mana } = mana_item else {
                     continue;
                 };
@@ -1655,7 +1655,7 @@ fn immediate_score_window_summary(
 }
 
 fn best_regular_mana_move_score_window(board: &Board, color: Color) -> i32 {
-    for (&location, item) in &board.items {
+    for (location, item) in board.occupied() {
         let Item::Mana { mana } = item else {
             continue;
         };
@@ -1719,7 +1719,7 @@ fn drainer_distances(
     let mut min_danger = Config::BOARD_SIZE as i32;
     let mut angel_nearby = false;
 
-    for (&item_location, item) in &board.items {
+    for (item_location, item) in board.occupied() {
         match item {
             Item::Mana { .. } => {
                 let delta = item_location.distance(&location) as i32;
@@ -1790,7 +1790,7 @@ fn drainer_distances(
 
 fn best_drainer_pickup_path(board: &Board, color: Color, from: Location) -> Option<(i32, i32)> {
     let mut best: Option<(i32, i32)> = None;
-    for (&mana_location, item) in &board.items {
+    for (mana_location, item) in board.occupied() {
         let Item::Mana { mana } = item else {
             continue;
         };
@@ -1874,9 +1874,8 @@ mod tests {
     fn mirrored_game_with_swapped_colors(game: &MonsGame) -> MonsGame {
         let mirrored_items = game
             .board
-            .items
-            .iter()
-            .map(|(location, item)| (mirror_location(*location), mirror_item(item)))
+            .occupied()
+            .map(|(location, item)| (mirror_location(location), mirror_item(item)))
             .collect::<std::collections::HashMap<_, _>>();
         let mut mirrored = MonsGame::new(false);
         mirrored.board = Board::new_with_items(mirrored_items);
@@ -2356,7 +2355,7 @@ fn drainer_immediate_threats(
     let mut action_threats = 0;
     let mut bomb_threats = 0;
 
-    for (&threat_location, item) in &board.items {
+    for (threat_location, item) in board.occupied() {
         match item {
             Item::Mon { mon }
             | Item::MonWithMana { mon, .. }
@@ -2416,7 +2415,7 @@ fn is_drainer_under_walk_threat(
     angel_nearby: bool,
 ) -> bool {
     let valid = Location::valid_range();
-    for (&threat_location, item) in &board.items {
+    for (threat_location, item) in board.occupied() {
         match item {
             Item::Mon { mon }
             | Item::MonWithMana { mon, .. }
@@ -2498,7 +2497,7 @@ fn is_drainer_under_immediate_threat(
     location: Location,
     angel_nearby: bool,
 ) -> bool {
-    for (&threat_location, item) in &board.items {
+    for (threat_location, item) in board.occupied() {
         match item {
             Item::Mon { mon }
             | Item::MonWithMana { mon, .. }
@@ -2551,7 +2550,7 @@ fn is_drainer_under_immediate_threat(
 
 fn nearest_enemy_mon_distance(board: &Board, color: Color, location: Location) -> i32 {
     let mut best = Config::BOARD_SIZE as i32;
-    for (&item_location, item) in &board.items {
+    for (item_location, item) in board.occupied() {
         if let Some(mon) = item.mon() {
             if mon.color != color && !mon.is_fainted() {
                 let delta = item_location.distance(&location) as i32;
@@ -2566,7 +2565,7 @@ fn nearest_enemy_mon_distance(board: &Board, color: Color, location: Location) -
 
 fn nearest_friendly_drainer_distance(board: &Board, color: Color, location: Location) -> i32 {
     let mut best = Config::BOARD_SIZE as i32;
-    for (&item_location, item) in &board.items {
+    for (item_location, item) in board.occupied() {
         if let Some(mon) = item.mon() {
             if mon.color == color && mon.kind == MonKind::Drainer && !mon.is_fainted() {
                 let delta = item_location.distance(&location) as i32;

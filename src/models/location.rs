@@ -7,15 +7,32 @@ pub struct Location {
     pub j: i32,
 }
 
+pub const BOARD_CELLS: usize = 121; // 11 * 11
+
 #[wasm_bindgen]
 impl Location {
     #[wasm_bindgen(constructor)]
+    #[inline]
     pub fn new(i: i32, j: i32) -> Self {
         Self { i, j }
     }
 }
 
 impl Location {
+    #[inline]
+    pub fn index(&self) -> usize {
+        (self.i * 11 + self.j) as usize
+    }
+
+    #[inline]
+    pub fn from_index(idx: usize) -> Self {
+        Self {
+            i: (idx / 11) as i32,
+            j: (idx % 11) as i32,
+        }
+    }
+
+    #[inline]
     pub fn valid_range() -> std::ops::Range<i32> {
         0..Config::BOARD_SIZE
     }
@@ -73,10 +90,12 @@ impl Location {
         locations
     }
 
+    #[inline]
     pub fn location_between(&self, another: &Location) -> Location {
         Location::new((self.i + another.i) / 2, (self.j + another.j) / 2)
     }
 
+    #[inline]
     pub fn distance(&self, to: &Location) -> i32 {
         ((to.i - self.i).abs()).max((to.j - self.j).abs())
     }

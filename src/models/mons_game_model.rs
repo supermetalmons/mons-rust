@@ -1827,13 +1827,14 @@ impl MonsGameModel {
     }
 
     pub fn locations_with_content(&self) -> Vec<Location> {
-        let mut locations = self
+        let mut locations: Vec<Location> = self
             .game
             .board
             .items
-            .keys()
-            .cloned()
-            .collect::<Vec<Location>>();
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, opt)| opt.as_ref().map(|_| Location::from_index(idx)))
+            .collect();
         let mons_bases = self.game.board.all_mons_bases();
         locations.extend(mons_bases);
         locations.sort();
@@ -2511,7 +2512,7 @@ impl MonsGameModel {
 
     fn has_awake_spirit_off_base(board: &Board, color: Color) -> bool {
         let base = Self::spirit_base_for_color(board, color);
-        board.items.iter().any(|(&location, item)| {
+        board.occupied().any(|(location, item)| {
             location != base && Self::is_awake_spirit_item_for_color(item, color)
         })
     }
@@ -2706,7 +2707,7 @@ impl MonsGameModel {
     }
 
     fn opponent_awake_drainer_location(board: &Board, perspective: Color) -> Option<Location> {
-        board.items.iter().find_map(|(&location, item)| {
+        board.occupied().find_map(|(location, item)| {
             let mon = item.mon()?;
             if mon.color == perspective.other() && mon.kind == MonKind::Drainer && !mon.is_fainted()
             {
@@ -2759,9 +2760,8 @@ impl MonsGameModel {
         );
         let bomb_pickup_locations = game
             .board
-            .items
-            .iter()
-            .filter_map(|(&location, item)| match item {
+            .occupied()
+            .filter_map(|(location, item)| match item {
                 Item::Consumable {
                     consumable: Consumable::BombOrPotion,
                 } => Some(location),
@@ -2769,7 +2769,7 @@ impl MonsGameModel {
             })
             .collect::<Vec<_>>();
 
-        for (&location, item) in &game.board.items {
+        for (location, item) in game.board.occupied() {
             let Some(mon) = item.mon() else {
                 continue;
             };
@@ -4846,10 +4846,9 @@ impl MonsGameModel {
         let unknown_steps = Config::BOARD_SIZE + 4;
         let mana_locations = game
             .board
-            .items
-            .iter()
+            .occupied()
             .filter_map(|(location, item)| match item {
-                Item::Mana { .. } => Some(*location),
+                Item::Mana { .. } => Some(location),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -4869,7 +4868,7 @@ impl MonsGameModel {
         let my_spirit_base = Self::spirit_base_for_color(&game.board, perspective);
         let opponent_spirit_base = Self::spirit_base_for_color(&game.board, perspective.other());
 
-        for (&location, item) in &game.board.items {
+        for (location, item) in game.board.occupied() {
             match item {
                 Item::MonWithMana { mon, .. } => {
                     if mon.is_fainted() {
@@ -5015,7 +5014,9 @@ impl MonsGameModel {
         use std::hash::{Hash, Hasher};
 
         let mut items_mix = 0u64;
-        for (location, item) in &game.board.items {
+        for (idx, item) in game.board.items.iter().enumerate() {
+            let Some(item) = item else { continue };
+            let location = Location::from_index(idx);
             let mut item_hasher = std::collections::hash_map::DefaultHasher::new();
             location.hash(&mut item_hasher);
             item.hash(&mut item_hasher);
@@ -5144,7 +5145,7 @@ impl MonsGameModel {
         enhanced: bool,
     ) -> bool {
         let mut own_drainer_location = None;
-        for (&location, item) in &game.board.items {
+        for (location, item) in game.board.occupied() {
             let Some(mon) = item.mon() else {
                 continue;
             };
@@ -5171,7 +5172,7 @@ impl MonsGameModel {
             Self::is_location_guarded_by_angel(&game.board, perspective, drainer_location);
         let opponent_can_use_action = game.player_can_use_action();
 
-        for (&threat_location, item) in &game.board.items {
+        for (threat_location, item) in game.board.occupied() {
             if enhanced {
                 let mon = match item {
                     Item::Mon { mon }
@@ -5306,7 +5307,7 @@ impl MonsGameModel {
             return false;
         }
         let mut own_drainer_location = None;
-        for (&location, item) in &probe.board.items {
+        for (location, item) in probe.board.occupied() {
             let Some(mon) = item.mon() else {
                 continue;
             };
@@ -5328,7 +5329,7 @@ impl MonsGameModel {
             drainer_location,
         );
         let valid = Location::valid_range();
-        for (&threat_location, item) in &probe.board.items {
+        for (threat_location, item) in probe.board.occupied() {
             let mon = match item {
                 Item::Mon { mon }
                 | Item::MonWithMana { mon, .. }
