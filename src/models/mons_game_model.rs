@@ -3465,7 +3465,7 @@ impl MonsGameModel {
             return candidates;
         }
 
-        let mut selected_indices = std::collections::HashSet::<usize>::new();
+        let mut selected_mask = vec![false; candidates.len()];
         let best_heuristic = candidates[0].heuristic;
         let min_critical_heuristic =
             best_heuristic.saturating_sub(SMART_MOVE_CLASS_ROOT_SCORE_MARGIN.max(0));
@@ -3485,27 +3485,32 @@ impl MonsGameModel {
                 })
             };
             if let Some((index, _)) = chosen {
-                selected_indices.insert(index);
+                selected_mask[index] = true;
             }
         }
 
-        let mut shortlisted = Vec::with_capacity(limit);
-        for (index, candidate) in candidates.iter().enumerate() {
+        let mut owned_candidates = candidates.into_iter().map(Some).collect::<Vec<_>>();
+        let mut shortlisted = Vec::with_capacity(limit.min(owned_candidates.len()));
+        for index in 0..owned_candidates.len() {
             if shortlisted.len() >= limit {
                 break;
             }
-            if selected_indices.contains(&index) {
-                shortlisted.push(candidate.clone());
+            if selected_mask[index] {
+                if let Some(candidate) = owned_candidates[index].take() {
+                    shortlisted.push(candidate);
+                }
             }
         }
-        for (index, candidate) in candidates.iter().enumerate() {
+        for index in 0..owned_candidates.len() {
             if shortlisted.len() >= limit {
                 break;
             }
-            if selected_indices.contains(&index) {
+            if selected_mask[index] {
                 continue;
             }
-            shortlisted.push(candidate.clone());
+            if let Some(candidate) = owned_candidates[index].take() {
+                shortlisted.push(candidate);
+            }
         }
         shortlisted
     }
@@ -3961,19 +3966,19 @@ impl MonsGameModel {
             }
         }
 
-        let mut selected_indices = std::collections::HashSet::new();
+        let mut selected_mask = vec![false; root_moves.len()];
         for (index, _) in ranked_indices.iter().take(focus_k) {
-            selected_indices.insert(*index);
+            selected_mask[*index] = true;
         }
         for (index, score) in ranked_indices.iter().copied() {
             if score + SMART_TWO_PASS_ROOT_FOCUS_SCORE_MARGIN < best_scout_score {
                 continue;
             }
-            selected_indices.insert(index);
+            selected_mask[index] = true;
         }
         for (index, candidate) in root_moves.iter().enumerate() {
             if candidate.attacks_opponent_drainer {
-                selected_indices.insert(index);
+                selected_mask[index] = true;
             }
         }
         if config.enable_two_pass_volatility_focus {
@@ -4000,7 +4005,7 @@ impl MonsGameModel {
                 .iter()
                 .take(SMART_TWO_PASS_ROOT_VOLATILITY_KEEP.max(1))
             {
-                selected_indices.insert(*index);
+                selected_mask[*index] = true;
             }
 
             if let Some(best_volatility) = volatility_ranked.first().map(|(_, value, _)| *value) {
@@ -4011,18 +4016,22 @@ impl MonsGameModel {
                     if scout_score + SMART_TWO_PASS_ROOT_FOCUS_SCORE_MARGIN < best_scout_score {
                         continue;
                     }
-                    selected_indices.insert(index);
+                    selected_mask[index] = true;
                 }
             }
         }
 
-        if selected_indices.is_empty() {
+        if !selected_mask.iter().any(|is_selected| *is_selected) {
             return (root_moves, 0);
         }
 
-        let mut focused_with_scores = selected_indices
-            .into_iter()
-            .map(|index| {
+        let mut focused_with_scores = selected_mask
+            .iter()
+            .enumerate()
+            .filter_map(|(index, is_selected)| {
+                if !*is_selected {
+                    return None;
+                }
                 let score = if scout_scores[index] == i32::MIN {
                     root_moves[index]
                         .heuristic
@@ -4030,15 +4039,18 @@ impl MonsGameModel {
                 } else {
                     scout_scores[index]
                 };
-                (index, score)
+                Some((index, score))
             })
             .collect::<Vec<_>>();
         focused_with_scores.sort_by(|a, b| b.1.cmp(&a.1));
 
-        let focused_root_moves = focused_with_scores
-            .into_iter()
-            .map(|(index, _)| root_moves[index].clone())
-            .collect::<Vec<_>>();
+        let mut owned_root_moves = root_moves.into_iter().map(Some).collect::<Vec<_>>();
+        let mut focused_root_moves = Vec::with_capacity(focused_with_scores.len());
+        for (index, _) in focused_with_scores {
+            if let Some(candidate) = owned_root_moves[index].take() {
+                focused_root_moves.push(candidate);
+            }
+        }
 
         (
             focused_root_moves,
@@ -4573,8 +4585,10 @@ impl MonsGameModel {
             return Self::enumerate_legal_transitions(game, max_moves, start_options);
         }
 
-        let priority_set: std::collections::HashSet<Location> =
-            priority_locations.iter().copied().collect();
+        let mut priority_mask = [false; BOARD_CELLS];
+        for &location in priority_locations {
+            priority_mask[location.index()] = true;
+        }
         let priority_budget = (max_moves / 2).max(max_moves.saturating_sub(60));
         let remaining_budget = max_moves.saturating_sub(priority_budget);
         let all_transitions = Self::enumerate_legal_transitions(game, max_moves, start_options);
@@ -4584,7 +4598,7 @@ impl MonsGameModel {
         for transition in all_transitions {
             let is_priority = matches!(
                 transition.inputs.first(),
-                Some(Input::Location(loc)) if priority_set.contains(loc)
+                Some(Input::Location(loc)) if priority_mask[loc.index()]
             );
             if is_priority {
                 if priority_transitions.len() < priority_budget {
@@ -4815,8 +4829,8 @@ impl MonsGameModel {
     }
 
     fn has_roundtrip_mon_move(events: &[Event]) -> bool {
-        let mut seen_moves: std::collections::HashSet<(Location, Location, Color, MonKind)> =
-            std::collections::HashSet::new();
+        let mut seen_moves: Vec<(Location, Location, Color, MonKind)> =
+            Vec::with_capacity(events.len().min(8));
         for event in events {
             let Event::MonMove { item, from, to } = event else {
                 continue;
@@ -4825,10 +4839,10 @@ impl MonsGameModel {
                 continue;
             };
             let reverse = (*to, *from, mon.color, mon.kind);
-            if seen_moves.contains(&reverse) {
+            if seen_moves.iter().any(|seen| *seen == reverse) {
                 return true;
             }
-            seen_moves.insert((*from, *to, mon.color, mon.kind));
+            seen_moves.push((*from, *to, mon.color, mon.kind));
         }
         false
     }
@@ -5316,13 +5330,12 @@ impl MonsGameModel {
             })
     }
 
-    fn is_own_drainer_immediately_vulnerable(
-        game: &MonsGame,
+    #[inline]
+    fn own_awake_drainer_location_and_fainted(
+        board: &Board,
         perspective: Color,
-        enhanced: bool,
-    ) -> bool {
-        let mut own_drainer_location = None;
-        for (location, item) in game.board.occupied() {
+    ) -> (Option<Location>, bool) {
+        for (location, item) in board.occupied() {
             let Some(mon) = item.mon() else {
                 continue;
             };
@@ -5330,26 +5343,37 @@ impl MonsGameModel {
                 continue;
             }
             if mon.is_fainted() {
-                return true;
+                return (None, true);
             }
-            own_drainer_location = Some(location);
-            break;
+            return (Some(location), false);
         }
+        (None, false)
+    }
 
-        let Some(drainer_location) = own_drainer_location else {
+    fn is_own_drainer_immediately_vulnerable_on_board(
+        board: &Board,
+        perspective: Color,
+        opponent_to_move: bool,
+        opponent_can_use_action: bool,
+        enhanced: bool,
+    ) -> bool {
+        let (own_drainer_location, own_drainer_fainted) =
+            Self::own_awake_drainer_location_and_fainted(board, perspective);
+        if own_drainer_fainted {
+            return true;
+        }
+        let Some(own_drainer_location) = own_drainer_location else {
             return false;
         };
 
-        let opponent = perspective.other();
-        if game.active_color != opponent {
+        if !opponent_to_move {
             return false;
         }
-
+        let opponent = perspective.other();
         let drainer_action_protected =
-            Self::is_location_guarded_by_angel(&game.board, perspective, drainer_location);
-        let opponent_can_use_action = game.player_can_use_action();
+            Self::is_location_guarded_by_angel(board, perspective, own_drainer_location);
 
-        for (threat_location, item) in game.board.occupied() {
+        for (threat_location, item) in board.occupied() {
             if enhanced {
                 let mon = match item {
                     Item::Mon { mon }
@@ -5360,23 +5384,22 @@ impl MonsGameModel {
                 if mon.color != opponent || mon.is_fainted() {
                     continue;
                 }
-                let on_own_base =
-                    matches!(game.board.square(threat_location), Square::MonBase { .. });
+                let on_own_base = matches!(board.square(threat_location), Square::MonBase { .. });
                 if opponent_can_use_action && !drainer_action_protected && !on_own_base {
                     if mon.kind == MonKind::Mystic
-                        && (threat_location.i - drainer_location.i).abs() == 2
-                        && (threat_location.j - drainer_location.j).abs() == 2
+                        && (threat_location.i - own_drainer_location.i).abs() == 2
+                        && (threat_location.j - own_drainer_location.j).abs() == 2
                     {
                         return true;
                     }
                     if mon.kind == MonKind::Demon {
-                        let di = (threat_location.i - drainer_location.i).abs();
-                        let dj = (threat_location.j - drainer_location.j).abs();
+                        let di = (threat_location.i - own_drainer_location.i).abs();
+                        let dj = (threat_location.j - own_drainer_location.j).abs();
                         if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
-                            let middle = threat_location.location_between(&drainer_location);
-                            if game.board.item(middle).is_none()
+                            let middle = threat_location.location_between(&own_drainer_location);
+                            if board.item(middle).is_none()
                                 && !matches!(
-                                    game.board.square(middle),
+                                    board.square(middle),
                                     Square::SupermanaBase | Square::MonBase { .. }
                                 )
                             {
@@ -5392,7 +5415,7 @@ impl MonsGameModel {
                         ..
                     }
                 ) && !on_own_base
-                    && threat_location.distance(&drainer_location) <= 3
+                    && threat_location.distance(&own_drainer_location) <= 3
                 {
                     return true;
                 }
@@ -5401,24 +5424,24 @@ impl MonsGameModel {
                     Item::Mon { mon } if mon.color == opponent && !mon.is_fainted() => {
                         if opponent_can_use_action
                             && !drainer_action_protected
-                            && !matches!(game.board.square(threat_location), Square::MonBase { .. })
+                            && !matches!(board.square(threat_location), Square::MonBase { .. })
                         {
                             if mon.kind == MonKind::Mystic
-                                && (threat_location.i - drainer_location.i).abs() == 2
-                                && (threat_location.j - drainer_location.j).abs() == 2
+                                && (threat_location.i - own_drainer_location.i).abs() == 2
+                                && (threat_location.j - own_drainer_location.j).abs() == 2
                             {
                                 return true;
                             }
 
                             if mon.kind == MonKind::Demon {
-                                let di = (threat_location.i - drainer_location.i).abs();
-                                let dj = (threat_location.j - drainer_location.j).abs();
+                                let di = (threat_location.i - own_drainer_location.i).abs();
+                                let dj = (threat_location.j - own_drainer_location.j).abs();
                                 if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
                                     let middle =
-                                        threat_location.location_between(&drainer_location);
-                                    if game.board.item(middle).is_none()
+                                        threat_location.location_between(&own_drainer_location);
+                                    if board.item(middle).is_none()
                                         && !matches!(
-                                            game.board.square(middle),
+                                            board.square(middle),
                                             Square::SupermanaBase | Square::MonBase { .. }
                                         )
                                     {
@@ -5432,7 +5455,7 @@ impl MonsGameModel {
                         if mon.color == opponent
                             && !mon.is_fainted()
                             && *consumable == Consumable::Bomb
-                            && threat_location.distance(&drainer_location) <= 3 =>
+                            && threat_location.distance(&own_drainer_location) <= 3 =>
                     {
                         return true;
                     }
@@ -5448,18 +5471,33 @@ impl MonsGameModel {
         false
     }
 
+    #[allow(dead_code)]
+    fn is_own_drainer_immediately_vulnerable(
+        game: &MonsGame,
+        perspective: Color,
+        enhanced: bool,
+    ) -> bool {
+        Self::is_own_drainer_immediately_vulnerable_on_board(
+            &game.board,
+            perspective,
+            game.active_color == perspective.other(),
+            game.player_can_use_action(),
+            enhanced,
+        )
+    }
+
     fn is_own_drainer_vulnerable_next_turn(
         game: &MonsGame,
         perspective: Color,
         enhanced: bool,
     ) -> bool {
-        let opponent = perspective.other();
-        let mut probe = game.clone_for_simulation();
-        probe.active_color = opponent;
-        probe.actions_used_count = 0;
-        probe.mana_moves_count = 0;
-        probe.mons_moves_count = 0;
-        Self::is_own_drainer_immediately_vulnerable(&probe, perspective, enhanced)
+        Self::is_own_drainer_immediately_vulnerable_on_board(
+            &game.board,
+            perspective,
+            true,
+            !game.is_first_turn(),
+            enhanced,
+        )
     }
 
     fn is_own_drainer_walk_vulnerable_next_turn(
@@ -5468,35 +5506,28 @@ impl MonsGameModel {
         enhanced: bool,
     ) -> bool {
         let opponent = perspective.other();
-        let mut probe = game.clone_for_simulation();
-        probe.active_color = opponent;
-        probe.actions_used_count = 0;
-        probe.mana_moves_count = 0;
-        probe.mons_moves_count = 0;
-        if Self::is_own_drainer_immediately_vulnerable(&probe, perspective, enhanced) {
+        let opponent_can_use_action = !game.is_first_turn();
+        if Self::is_own_drainer_immediately_vulnerable_on_board(
+            &game.board,
+            perspective,
+            true,
+            opponent_can_use_action,
+            enhanced,
+        ) {
             return false;
         }
-        let mut own_drainer_location = None;
-        for (location, item) in probe.board.occupied() {
-            let Some(mon) = item.mon() else {
-                continue;
-            };
-            if mon.color != perspective || mon.kind != MonKind::Drainer {
-                continue;
-            }
-            if mon.is_fainted() {
-                return false;
-            }
-            own_drainer_location = Some(location);
-            break;
+        let (drainer_location, own_drainer_fainted) =
+            Self::own_awake_drainer_location_and_fainted(&game.board, perspective);
+        if own_drainer_fainted {
+            return false;
         }
-        let Some(drainer_location) = own_drainer_location else {
+        let Some(drainer_location) = drainer_location else {
             return false;
         };
         let drainer_angel_protected =
-            Self::is_location_guarded_by_angel(&probe.board, perspective, drainer_location);
+            Self::is_location_guarded_by_angel(&game.board, perspective, drainer_location);
         let valid = Location::valid_range();
-        for (threat_location, item) in probe.board.occupied() {
+        for (threat_location, item) in game.board.occupied() {
             let mon = match item {
                 Item::Mon { mon }
                 | Item::MonWithMana { mon, .. }
@@ -5506,7 +5537,7 @@ impl MonsGameModel {
             if mon.color != opponent || mon.is_fainted() {
                 continue;
             }
-            let on_own_base = matches!(probe.board.square(threat_location), Square::MonBase { .. });
+            let on_own_base = matches!(game.board.square(threat_location), Square::MonBase { .. });
             if on_own_base {
                 continue;
             }
@@ -5524,11 +5555,11 @@ impl MonsGameModel {
                             continue;
                         }
                         let neighbor = Location::new(ni, nj);
-                        if probe.board.item(neighbor).is_some() {
+                        if game.board.item(neighbor).is_some() {
                             continue;
                         }
                         if matches!(
-                            probe.board.square(neighbor),
+                            game.board.square(neighbor),
                             Square::MonBase { .. } | Square::SupermanaBase
                         ) {
                             continue;
@@ -5545,9 +5576,9 @@ impl MonsGameModel {
                             let dj = (nj - drainer_location.j).abs();
                             if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
                                 let middle = neighbor.location_between(&drainer_location);
-                                if probe.board.item(middle).is_none()
+                                if game.board.item(middle).is_none()
                                     && !matches!(
-                                        probe.board.square(middle),
+                                        game.board.square(middle),
                                         Square::SupermanaBase | Square::MonBase { .. }
                                     )
                                 {

@@ -458,13 +458,18 @@ impl MonsGame {
         suggested_start_options: SuggestedStartInputOptions,
     ) -> Output {
         let mut suggested_locations: Vec<Location> = Vec::new();
+        let mut seen_locations = [false; BOARD_CELLS];
 
         for location in self.board.all_mons_locations(self.active_color) {
             let start_input = [Input::Location(location)];
             let output =
                 self.process_input_internal(&start_input, true, true, suggested_start_options);
             if matches!(output, Output::NextInputOptions(options) if !options.is_empty()) {
-                suggested_locations.push(location);
+                let index = location.index();
+                if !seen_locations[index] {
+                    seen_locations[index] = true;
+                    suggested_locations.push(location);
+                }
             }
         }
 
@@ -484,10 +489,12 @@ impl MonsGame {
                 let start_input = [Input::Location(location)];
                 let output =
                     self.process_input_internal(&start_input, true, true, suggested_start_options);
-                if matches!(output, Output::NextInputOptions(options) if !options.is_empty())
-                    && !suggested_locations.contains(&location)
-                {
-                    suggested_locations.push(location);
+                if matches!(output, Output::NextInputOptions(options) if !options.is_empty()) {
+                    let index = location.index();
+                    if !seen_locations[index] {
+                        seen_locations[index] = true;
+                        suggested_locations.push(location);
+                    }
                 }
             }
         }
@@ -857,8 +864,8 @@ impl MonsGame {
             _ => None,
         };
 
-        let mut third_input_options = Vec::new();
-        let mut events = Vec::new();
+        let mut third_input_options = Vec::with_capacity(4);
+        let mut events = Vec::with_capacity(6);
         let target_square = self.board.square(target_location);
         let target_item = self.board.item(target_location);
 
@@ -1343,8 +1350,8 @@ impl MonsGame {
         target_location: Location,
     ) -> Option<(Vec<Event>, Vec<NextInput>)> {
         let target_item = self.board.item(target_location);
-        let mut forth_input_options = Vec::new();
-        let mut events = Vec::new();
+        let mut forth_input_options = Vec::with_capacity(2);
+        let mut events = Vec::with_capacity(6);
 
         match third_input.kind {
             NextInputKind::SpiritTargetMove => {

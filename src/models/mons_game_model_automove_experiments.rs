@@ -3898,6 +3898,18 @@ fn candidate_model_runtime_normal_reinvest_search(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+fn candidate_model_runtime_normal_perf_refactor_reinvest_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.max_visited_nodes = (runtime.max_visited_nodes * 108 / 100)
+            .clamp(runtime.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn candidate_model_runtime_normal_confirmed_850(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -5185,6 +5197,9 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_normal_reinvest_search" => {
             candidate_model_runtime_normal_reinvest_search(game, config)
         }
+        "runtime_normal_perf_refactor_reinvest_v1" => {
+            candidate_model_runtime_normal_perf_refactor_reinvest_v1(game, config)
+        }
         "runtime_normal_efficiency_reply_floor" => {
             candidate_model_runtime_normal_efficiency_reply_floor(game, config)
         }
@@ -5619,6 +5634,10 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_normal_reinvest_search",
             candidate_model_runtime_normal_reinvest_search,
+        ),
+        (
+            "runtime_normal_perf_refactor_reinvest_v1",
+            candidate_model_runtime_normal_perf_refactor_reinvest_v1,
         ),
         (
             "runtime_normal_efficiency_reply_floor",

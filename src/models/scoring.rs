@@ -576,14 +576,17 @@ pub fn evaluate_preferability_breakdown_with_weights(
         game.white_score
     };
 
-    let my_score_path_window = score_path_window_to_any_pool(
+    let mana_snapshot = ManaPathSnapshot::from_board(&game.board);
+    let my_score_path_window = score_path_window_to_any_pool_with_snapshot(
         &game.board,
+        &mana_snapshot,
         color,
         !use_legacy_formula,
         include_regular_mana_move_windows,
     );
-    let opponent_score_path_window = score_path_window_to_any_pool(
+    let opponent_score_path_window = score_path_window_to_any_pool_with_snapshot(
         &game.board,
+        &mana_snapshot,
         color.other(),
         !use_legacy_formula,
         include_regular_mana_move_windows,
@@ -619,8 +622,9 @@ pub fn evaluate_preferability_breakdown_with_weights(
     let mut opponent_immediate_window = ImmediateScoreWindow::default();
 
     if game.active_color == color {
-        my_immediate_window = immediate_score_window_summary(
+        my_immediate_window = immediate_score_window_summary_with_snapshot(
             &game.board,
+            &mana_snapshot,
             color,
             remaining_mon_moves_for_active,
             !use_legacy_formula,
@@ -637,8 +641,9 @@ pub fn evaluate_preferability_breakdown_with_weights(
                 offense_scale_bp,
             );
 
-            opponent_immediate_window = immediate_score_window_summary(
+            opponent_immediate_window = immediate_score_window_summary_with_snapshot(
                 &game.board,
+                &mana_snapshot,
                 color.other(),
                 Config::MONS_MOVES_PER_TURN,
                 true,
@@ -671,8 +676,9 @@ pub fn evaluate_preferability_breakdown_with_weights(
             }
         }
     } else {
-        opponent_immediate_window = immediate_score_window_summary(
+        opponent_immediate_window = immediate_score_window_summary_with_snapshot(
             &game.board,
+            &mana_snapshot,
             color.other(),
             remaining_mon_moves_for_active,
             !use_legacy_formula,
@@ -690,8 +696,9 @@ pub fn evaluate_preferability_breakdown_with_weights(
                     / 100,
                 defense_scale_bp,
             );
-            my_immediate_window = immediate_score_window_summary(
+            my_immediate_window = immediate_score_window_summary_with_snapshot(
                 &game.board,
+                &mana_snapshot,
                 color,
                 Config::MONS_MOVES_PER_TURN,
                 true,
@@ -773,6 +780,7 @@ pub fn evaluate_preferability_with_weights(
     let supermana_base = game.board.supermana_base();
     let remaining_mon_moves_for_active =
         (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
+    let mana_snapshot = ManaPathSnapshot::from_board(&game.board);
 
     let mons_bases = Config::mons_bases_ref();
     let my_score_now = if color == Color::White {
@@ -832,7 +840,7 @@ pub fn evaluate_preferability_with_weights(
                     }
 
                     if let Some((path_steps, mana_value)) =
-                        best_drainer_pickup_path(&game.board, mon.color, location)
+                        best_drainer_pickup_path_with_snapshot(&mana_snapshot, mon.color, location)
                     {
                         score += my_mon_multiplier * weights.drainer_best_mana_path * mana_value
                             / (path_steps + 1);
@@ -994,7 +1002,11 @@ pub fn evaluate_preferability_with_weights(
                     }
                     if !use_legacy_formula {
                         if let Some((path_steps, mana_value)) =
-                            best_drainer_pickup_path(&game.board, mon.color, location)
+                            best_drainer_pickup_path_with_snapshot(
+                                &mana_snapshot,
+                                mon.color,
+                                location,
+                            )
                         {
                             score +=
                                 my_mon_multiplier * weights.drainer_best_mana_path * mana_value
@@ -1263,14 +1275,16 @@ pub fn evaluate_preferability_with_weights(
         }
     }
 
-    let my_score_path_window = score_path_window_to_any_pool(
+    let my_score_path_window = score_path_window_to_any_pool_with_snapshot(
         &game.board,
+        &mana_snapshot,
         color,
         !use_legacy_formula,
         include_regular_mana_move_windows,
     );
-    let opponent_score_path_window = score_path_window_to_any_pool(
+    let opponent_score_path_window = score_path_window_to_any_pool_with_snapshot(
         &game.board,
+        &mana_snapshot,
         color.other(),
         !use_legacy_formula,
         include_regular_mana_move_windows,
@@ -1302,8 +1316,9 @@ pub fn evaluate_preferability_with_weights(
     }
 
     if game.active_color == color {
-        let immediate_window = immediate_score_window_summary(
+        let immediate_window = immediate_score_window_summary_with_snapshot(
             &game.board,
+            &mana_snapshot,
             color,
             remaining_mon_moves_for_active,
             !use_legacy_formula,
@@ -1320,8 +1335,9 @@ pub fn evaluate_preferability_with_weights(
                 offense_scale_bp,
             );
 
-            let opponent_next_turn_window = immediate_score_window_summary(
+            let opponent_next_turn_window = immediate_score_window_summary_with_snapshot(
                 &game.board,
+                &mana_snapshot,
                 color.other(),
                 Config::MONS_MOVES_PER_TURN,
                 true,
@@ -1353,8 +1369,9 @@ pub fn evaluate_preferability_with_weights(
             }
         }
     } else {
-        let opponent_immediate_window = immediate_score_window_summary(
+        let opponent_immediate_window = immediate_score_window_summary_with_snapshot(
             &game.board,
+            &mana_snapshot,
             color.other(),
             remaining_mon_moves_for_active,
             !use_legacy_formula,
@@ -1373,8 +1390,9 @@ pub fn evaluate_preferability_with_weights(
                 defense_scale_bp,
             );
 
-            let my_next_turn_window = immediate_score_window_summary(
+            let my_next_turn_window = immediate_score_window_summary_with_snapshot(
                 &game.board,
+                &mana_snapshot,
                 color,
                 Config::MONS_MOVES_PER_TURN,
                 true,
@@ -1514,8 +1532,81 @@ struct ImmediateScoreWindow {
     multi_pressure: i32,
 }
 
+#[derive(Clone, Copy)]
+struct ManaPathCandidate {
+    location: Location,
+    score_steps: i32,
+    mana: Mana,
+}
+
+#[derive(Default)]
+struct ManaPathSnapshot {
+    candidates: Vec<ManaPathCandidate>,
+    regular_mana_move_scores: [i32; 2],
+}
+
+impl ManaPathSnapshot {
+    fn from_board(board: &Board) -> Self {
+        let mut snapshot = Self {
+            candidates: Vec::with_capacity(16),
+            regular_mana_move_scores: [0; 2],
+        };
+        for (location, item) in board.occupied() {
+            let Item::Mana { mana } = item else {
+                continue;
+            };
+            let score_steps = distance(location, Destination::AnyClosestPool) - 1;
+            snapshot.candidates.push(ManaPathCandidate {
+                location,
+                score_steps,
+                mana: *mana,
+            });
+            if score_steps <= 1 {
+                if *mana == Mana::Regular(Color::White) {
+                    snapshot.regular_mana_move_scores[color_slot(Color::White)] = mana.score(Color::White);
+                } else if *mana == Mana::Regular(Color::Black) {
+                    snapshot.regular_mana_move_scores[color_slot(Color::Black)] = mana.score(Color::Black);
+                }
+            }
+        }
+        snapshot
+    }
+
+    #[inline]
+    fn regular_mana_move_score(&self, color: Color) -> i32 {
+        self.regular_mana_move_scores[color_slot(color)]
+    }
+}
+
+#[inline]
+fn color_slot(color: Color) -> usize {
+    if color == Color::White {
+        0
+    } else {
+        1
+    }
+}
+
+#[allow(dead_code)]
 fn score_path_window_to_any_pool(
     board: &Board,
+    color: Color,
+    include_drainer_pickups: bool,
+    include_regular_mana_move_windows: bool,
+) -> ScorePathWindow {
+    let mana_snapshot = ManaPathSnapshot::from_board(board);
+    score_path_window_to_any_pool_with_snapshot(
+        board,
+        &mana_snapshot,
+        color,
+        include_drainer_pickups,
+        include_regular_mana_move_windows,
+    )
+}
+
+fn score_path_window_to_any_pool_with_snapshot(
+    board: &Board,
+    mana_snapshot: &ManaPathSnapshot,
     color: Color,
     include_drainer_pickups: bool,
     include_regular_mana_move_windows: bool,
@@ -1543,24 +1634,19 @@ fn score_path_window_to_any_pool(
             if mon.color != color || mon.kind != MonKind::Drainer || mon.is_fainted() {
                 continue;
             }
-            if let Some((path_steps, _)) = best_drainer_pickup_path(board, color, location) {
+            if let Some((path_steps, _)) =
+                best_drainer_pickup_path_with_snapshot(mana_snapshot, color, location)
+            {
                 insert_lowest_step(&mut top_steps, path_steps + 1);
             }
         }
     }
 
     if include_regular_mana_move_windows {
-        for (location, item) in board.occupied() {
-            let Item::Mana { mana } = item else {
-                continue;
-            };
-            if *mana != Mana::Regular(color) {
-                continue;
+        for candidate in &mana_snapshot.candidates {
+            if candidate.mana == Mana::Regular(color) {
+                insert_lowest_step(&mut top_steps, candidate.score_steps + 1);
             }
-            insert_lowest_step(
-                &mut top_steps,
-                distance(location, Destination::AnyClosestPool),
-            );
         }
     }
 
@@ -1579,8 +1665,30 @@ fn score_path_window_to_any_pool(
     }
 }
 
+#[allow(dead_code)]
 fn immediate_score_window_summary(
     board: &Board,
+    color: Color,
+    remaining_mon_moves: i32,
+    include_drainer_pickups: bool,
+    include_regular_mana_move_windows: bool,
+    allow_mana_move: bool,
+) -> ImmediateScoreWindow {
+    let mana_snapshot = ManaPathSnapshot::from_board(board);
+    immediate_score_window_summary_with_snapshot(
+        board,
+        &mana_snapshot,
+        color,
+        remaining_mon_moves,
+        include_drainer_pickups,
+        include_regular_mana_move_windows,
+        allow_mana_move,
+    )
+}
+
+fn immediate_score_window_summary_with_snapshot(
+    board: &Board,
+    mana_snapshot: &ManaPathSnapshot,
     color: Color,
     remaining_mon_moves: i32,
     include_drainer_pickups: bool,
@@ -1615,14 +1723,10 @@ fn immediate_score_window_summary(
                 continue;
             }
             let mut best_pickup_score = 0;
-            for (mana_location, mana_item) in board.occupied() {
-                let Item::Mana { mana } = mana_item else {
-                    continue;
-                };
-                let pickup_steps = location.distance(&mana_location) as i32;
-                let score_steps = distance(mana_location, Destination::AnyClosestPool) - 1;
-                if pickup_steps + score_steps <= remaining_mon_moves {
-                    best_pickup_score = best_pickup_score.max(mana.score(color));
+            for candidate in &mana_snapshot.candidates {
+                let pickup_steps = location.distance(&candidate.location) as i32;
+                if pickup_steps + candidate.score_steps <= remaining_mon_moves {
+                    best_pickup_score = best_pickup_score.max(candidate.mana.score(color));
                 }
             }
             if best_pickup_score > 0 {
@@ -1632,7 +1736,8 @@ fn immediate_score_window_summary(
     }
 
     if include_regular_mana_move_windows && allow_mana_move {
-        let mana_move_immediate = best_regular_mana_move_score_window(board, color);
+        let mana_move_immediate =
+            best_regular_mana_move_score_window_with_snapshot(mana_snapshot, color);
         if mana_move_immediate > 0 {
             insert_top_score(&mut top_scores, mana_move_immediate);
         }
@@ -1644,19 +1749,17 @@ fn immediate_score_window_summary(
     }
 }
 
+#[allow(dead_code)]
 fn best_regular_mana_move_score_window(board: &Board, color: Color) -> i32 {
-    for (location, item) in board.occupied() {
-        let Item::Mana { mana } = item else {
-            continue;
-        };
-        if *mana != Mana::Regular(color) {
-            continue;
-        }
-        if distance(location, Destination::AnyClosestPool) <= 2 {
-            return mana.score(color);
-        }
-    }
-    0
+    let mana_snapshot = ManaPathSnapshot::from_board(board);
+    best_regular_mana_move_score_window_with_snapshot(&mana_snapshot, color)
+}
+
+fn best_regular_mana_move_score_window_with_snapshot(
+    mana_snapshot: &ManaPathSnapshot,
+    color: Color,
+) -> i32 {
+    mana_snapshot.regular_mana_move_score(color)
 }
 
 fn insert_lowest_step(top_steps: &mut [i32; 3], step: i32) {
@@ -1778,17 +1881,23 @@ fn drainer_distances(
     }
 }
 
+#[allow(dead_code)]
 fn best_drainer_pickup_path(board: &Board, color: Color, from: Location) -> Option<(i32, i32)> {
-    let mut best: Option<(i32, i32)> = None;
-    for (mana_location, item) in board.occupied() {
-        let Item::Mana { mana } = item else {
-            continue;
-        };
+    let mana_snapshot = ManaPathSnapshot::from_board(board);
+    best_drainer_pickup_path_with_snapshot(&mana_snapshot, color, from)
+}
 
-        let pickup_steps = from.distance(&mana_location) as i32;
-        let score_steps = distance(mana_location, Destination::AnyClosestPool) - 1;
+fn best_drainer_pickup_path_with_snapshot(
+    mana_snapshot: &ManaPathSnapshot,
+    color: Color,
+    from: Location,
+) -> Option<(i32, i32)> {
+    let mut best: Option<(i32, i32)> = None;
+    for candidate in &mana_snapshot.candidates {
+        let pickup_steps = from.distance(&candidate.location) as i32;
+        let score_steps = candidate.score_steps;
         let total_steps = pickup_steps + score_steps;
-        let mana_value = mana.score(color);
+        let mana_value = candidate.mana.score(color);
 
         let replace = match best {
             None => true,
