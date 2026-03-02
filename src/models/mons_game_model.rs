@@ -171,6 +171,10 @@ const SMART_AUTOMOVE_FAST_MAX_VISITED_NODES: i32 = 480;
 const SMART_AUTOMOVE_NORMAL_DEPTH: i32 = 3;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_AUTOMOVE_NORMAL_MAX_VISITED_NODES: i32 = 3800;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_AUTOMOVE_PRO_DEPTH: i32 = 4;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_AUTOMOVE_PRO_MAX_VISITED_NODES: i32 = SMART_AUTOMOVE_NORMAL_MAX_VISITED_NODES * 3;
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Default)]
@@ -868,6 +872,7 @@ const RUNTIME_NORMAL_COMBO_PROXIMITY_ATTACK_FINISHER_BALANCED_SOFT_AGGRESSIVE_SP
 enum SmartAutomovePreference {
     Fast,
     Normal,
+    Pro,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -878,6 +883,8 @@ impl SmartAutomovePreference {
             Some(Self::Fast)
         } else if normalized.eq_ignore_ascii_case("normal") {
             Some(Self::Normal)
+        } else if normalized.eq_ignore_ascii_case("pro") {
+            Some(Self::Pro)
         } else {
             None
         }
@@ -887,6 +894,7 @@ impl SmartAutomovePreference {
         match self {
             Self::Fast => "fast",
             Self::Normal => "normal",
+            Self::Pro => "pro",
         }
     }
 
@@ -899,6 +907,10 @@ impl SmartAutomovePreference {
             Self::Normal => (
                 SMART_AUTOMOVE_NORMAL_DEPTH,
                 SMART_AUTOMOVE_NORMAL_MAX_VISITED_NODES,
+            ),
+            Self::Pro => (
+                SMART_AUTOMOVE_PRO_DEPTH,
+                SMART_AUTOMOVE_PRO_MAX_VISITED_NODES,
             ),
         }
     }
@@ -1114,6 +1126,69 @@ impl SmartSearchConfig {
                 tuned.root_backtrack_penalty = 240;
                 tuned.root_efficiency_score_margin = 1_400;
                 tuned.selective_extension_node_share_bp = 1_250;
+                tuned.potion_spend_penalty_fast = SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_FAST;
+                tuned.potion_spend_penalty_normal = 130;
+                tuned.interview_soft_score_margin = 80;
+                tuned.interview_soft_supermana_progress_bonus = 240;
+                tuned.interview_soft_supermana_score_bonus = 300;
+                tuned.interview_soft_opponent_mana_progress_bonus = 220;
+                tuned.interview_soft_opponent_mana_score_bonus = 280;
+                tuned.interview_soft_mana_handoff_penalty = 340;
+                tuned.interview_soft_roundtrip_penalty = 260;
+                tuned
+            }
+            SmartAutomovePreference::Pro => {
+                let mut tuned = Self::with_normal_deeper_shape(config);
+                tuned.max_visited_nodes = SMART_AUTOMOVE_PRO_MAX_VISITED_NODES as usize;
+                tuned.root_branch_limit = tuned.root_branch_limit.clamp(14, 42);
+                tuned.node_branch_limit = (tuned.node_branch_limit + 2).clamp(10, 18);
+                tuned.root_enum_limit =
+                    (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 252);
+                tuned.node_enum_limit =
+                    ((tuned.node_branch_limit + 2) * 6).clamp(tuned.node_branch_limit, 168);
+                tuned.enable_root_efficiency = true;
+                tuned.enable_event_ordering_bonus = false;
+                tuned.enable_backtrack_penalty = true;
+                tuned.enable_tt_best_child_ordering = true;
+                tuned.enable_root_aspiration = false;
+                tuned.enable_two_pass_root_allocation = true;
+                tuned.root_focus_k = 3;
+                tuned.root_focus_budget_share_bp = 7_000;
+                tuned.enable_selective_extensions = true;
+                tuned.enable_quiet_reductions = true;
+                tuned.max_extensions_per_path = 1;
+                tuned.selective_extension_node_share_bp = 1_500;
+                tuned.enable_root_mana_handoff_guard = true;
+                tuned.enable_forced_drainer_attack = true;
+                tuned.enable_forced_drainer_attack_fallback = true;
+                tuned.enable_forced_tactical_prepass = true;
+                tuned.enable_root_drainer_safety_prefilter = true;
+                tuned.enable_root_spirit_development_pref = true;
+                tuned.enable_root_reply_risk_guard = true;
+                tuned.root_reply_risk_score_margin = 155;
+                tuned.root_reply_risk_shortlist_max = 8;
+                tuned.root_reply_risk_reply_limit = 20;
+                tuned.root_reply_risk_node_share_bp = 1_600;
+                tuned.enable_move_class_coverage = true;
+                tuned.enable_child_move_class_coverage = true;
+                tuned.enable_strict_tactical_class_coverage = true;
+                tuned.enable_strict_anti_help_filter = true;
+                tuned.root_anti_help_score_margin = 300;
+                tuned.root_anti_help_reply_limit = 10;
+                tuned.enable_two_pass_volatility_focus = true;
+                tuned.enable_normal_root_safety_rerank = true;
+                tuned.enable_normal_root_safety_deep_floor = true;
+                tuned.enable_interview_hard_spirit_deploy = true;
+                tuned.enable_interview_soft_root_priors = true;
+                tuned.enable_interview_deterministic_tiebreak = false;
+                tuned.enable_mana_start_mix_with_potion_actions = true;
+                tuned.enable_potion_progress_compensation = true;
+                tuned.prefer_clean_reply_risk_roots = true;
+                tuned.root_drainer_safety_score_margin = 4_200;
+                tuned.enable_enhanced_drainer_vulnerability = true;
+                tuned.root_mana_handoff_penalty = 340;
+                tuned.root_backtrack_penalty = 240;
+                tuned.root_efficiency_score_margin = 1_400;
                 tuned.potion_spend_penalty_fast = SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_FAST;
                 tuned.potion_spend_penalty_normal = 130;
                 tuned.interview_soft_score_margin = 80;
@@ -1514,9 +1589,10 @@ impl MonsGameModel {
 
         let Some(preference) = SmartAutomovePreference::from_api_value(preference) else {
             let message = format!(
-                "invalid smart automove mode; expected '{}' or '{}'",
+                "invalid smart automove mode; expected '{}', '{}', or '{}'",
                 SmartAutomovePreference::Fast.as_api_value(),
-                SmartAutomovePreference::Normal.as_api_value()
+                SmartAutomovePreference::Normal.as_api_value(),
+                SmartAutomovePreference::Pro.as_api_value(),
             );
             return js_sys::Promise::reject(&JsValue::from_str(message.as_str()));
         };
@@ -3395,8 +3471,7 @@ impl MonsGameModel {
                     && !m.wins_immediately
                     && !m.attacks_opponent_drainer
             });
-        let has_tactical_prepass_exception =
-            has_supermana_scoring || has_safe_opponent_mana_score;
+        let has_tactical_prepass_exception = has_supermana_scoring || has_safe_opponent_mana_score;
 
         if config.enable_forced_drainer_attack
             && !has_tactical_prepass_exception
@@ -6823,6 +6898,25 @@ mod opening_book_tests {
             Output::Events(_)
         ));
         assert!(MonsGameModel::white_first_turn_opening_next_inputs(&game).is_none());
+    }
+
+    #[test]
+    fn pro_mode_is_accepted_and_produces_legal_inputs() {
+        assert_eq!(
+            SmartAutomovePreference::from_api_value("pro"),
+            Some(SmartAutomovePreference::Pro)
+        );
+        assert_eq!(SmartAutomovePreference::Pro.as_api_value(), "pro");
+
+        let game = MonsGame::new(false);
+        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
+        assert!(
+            !inputs.is_empty(),
+            "pro mode should produce at least one input from initial position"
+        );
+        let _ = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("pro mode selected inputs should be legal");
     }
 
     #[test]

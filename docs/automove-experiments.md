@@ -97,13 +97,16 @@ Public API:
 
 - `smartAutomoveAsync("fast")`
 - `smartAutomoveAsync("normal")`
+- `smartAutomoveAsync("pro")`
 
 Current runtime behavior:
 
 - `fast` is CPU-shaped around `depth=2/max_nodes=480`.
 - `normal` is CPU-shaped around `depth=3/max_nodes=3800`.
+- `pro` is CPU-shaped around `depth=4/max_nodes=11400` and always runs full pro budget (no adaptive fallback to normal).
 - `fast` uses `RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF` (boolean drainer danger, `-400`/`-300`, plus `supermana_race_control: 30`).
 - `normal` uses phase-adaptive boolean drainer weights (`RUNTIME_NORMAL_BOOLEAN_DRAINER_*_SPIRIT_BASE_SCORING_WEIGHTS` family), switching by game phase.
+- `pro` starts from normal runtime guardrails with deeper shape and larger budget: two-pass root allocation, selective extensions (`max_extensions_per_path=1`, node-share `15%`), reply-risk guard (`score_margin=155`, shortlist `8`, reply-limit `20`, node-share `16%`), and normal root safety rerank/deep-floor enabled.
 - Both modes enable `enable_enhanced_drainer_vulnerability` (exact-geometry boolean threat detection for drainer and mana carriers).
 - `fast` enables `enable_supermana_prepass_exception`: when the position has supermana scoring potential, the forced tactical prepass skips drainer attack and drainer safety overrides, allowing the search to find supermana plays.
 - `fast` uses boosted interview supermana bonuses: `interview_soft_supermana_score_bonus = 600` (from 360), `interview_soft_supermana_progress_bonus = 320` (from 240).
@@ -149,6 +152,60 @@ Reference profiles:
 - `swift_2024_style_reference`: simplified legacy-style search (legacy no-TT path, reduced modern root policy stack) with `SWIFT_2024_REFERENCE_SCORING_WEIGHTS`.
 
 These profiles are for calibration and comparison only; they are not shipped runtime behavior.
+
+---
+
+## Pro Mode
+
+Public API contract:
+
+- `smartAutomoveAsync("pro")` is valid and GA-capable once strict pro ladder passes.
+- Existing `fast`/`normal` contracts are unchanged.
+- Pro does not adaptively fall back to normal; it always runs the pro budget.
+
+CPU intent:
+
+- Pro is targeted at roughly `~3x` normal CPU on the fixed-position probe.
+- Promotion ladder target band: `2.70x..3.30x` (hard fail when `>3.30x`).
+
+Strict dual-baseline promotion criteria:
+
+- Baselines are `runtime_current@normal` and `runtime_current@fast`.
+- Fast screen: pro aggregate delta must be `>= 0.0` against both baselines.
+- Progressive duel: both matchups non-negative, with at least one meaningful lift (`delta >= +0.04`, `confidence >= 0.65`).
+- Final strict bar:
+  - `pro vs normal`: `delta >= +0.08`, `confidence >= 0.90`
+  - `pro vs fast`: `delta >= +0.14`, `confidence >= 0.90`
+- Tactical suite and pool non-regression must pass before runtime promotion.
+
+Pro-specific command runbook:
+
+```sh
+./scripts/run-experiment-logged.sh pro_fast_screen_normal_<candidate> -- \
+  env SMART_PRO_CANDIDATE_PROFILE=<candidate> \
+      SMART_PRO_BASELINE_PROFILE=runtime_current \
+  cargo test --release --lib smart_automove_pool_pro_fast_screen_vs_normal -- --ignored --nocapture
+
+./scripts/run-experiment-logged.sh pro_fast_screen_fast_<candidate> -- \
+  env SMART_PRO_CANDIDATE_PROFILE=<candidate> \
+      SMART_PRO_BASELINE_PROFILE=runtime_current \
+  cargo test --release --lib smart_automove_pool_pro_fast_screen_vs_fast -- --ignored --nocapture
+
+./scripts/run-experiment-logged.sh pro_progressive_normal_<candidate> -- \
+  env SMART_PRO_CANDIDATE_PROFILE=<candidate> \
+      SMART_PRO_BASELINE_PROFILE=runtime_current \
+  cargo test --release --lib smart_automove_pool_pro_progressive_vs_normal -- --ignored --nocapture
+
+./scripts/run-experiment-logged.sh pro_progressive_fast_<candidate> -- \
+  env SMART_PRO_CANDIDATE_PROFILE=<candidate> \
+      SMART_PRO_BASELINE_PROFILE=runtime_current \
+  cargo test --release --lib smart_automove_pool_pro_progressive_vs_fast -- --ignored --nocapture
+
+./scripts/run-experiment-logged.sh pro_ladder_<candidate> -- \
+  env SMART_PRO_CANDIDATE_PROFILE=<candidate> \
+      SMART_PRO_BASELINE_PROFILE=runtime_current \
+  cargo test --release --lib smart_automove_pool_pro_promotion_ladder -- --ignored --nocapture
+```
 
 ---
 
@@ -386,6 +443,13 @@ SMART_TUNE_PROFILE=runtime_current \
 ## Candidate Profiles To Know
 
 - `runtime_current`: currently shipped behavior.
+- `runtime_pro_baseline_v1`: pro baseline candidate mirroring runtime pro-v1 shape.
+- `runtime_pro_depth4_stable_v1`: pro search-shape stabilization candidate.
+- `runtime_pro_depth4_extension_v1`: pro selective-extension allocation candidate.
+- `runtime_pro_conversion_guard_v1`: pro reply-risk/safety conversion candidate.
+- `runtime_pro_eval_long_horizon_v1`: pro long-horizon eval enrichment candidate.
+- `runtime_pro_ordering_tt_v1`: pro ordering/TT efficiency candidate.
+- `runtime_pre_pro_promotion_v1`: snapshot profile before pro runtime promotion.
 - `swift_2024_eval_reference`: Swift 2024 weights on top of current runtime search.
 - `swift_2024_style_reference`: Swift 2024 weights with simplified legacy-style search path.
 - `runtime_swift_opponent_mana_exception_v1`: candidate enabling opponent-mana tactical prepass exception.
