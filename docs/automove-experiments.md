@@ -207,6 +207,32 @@ Pro-specific command runbook:
   cargo test --release --lib smart_automove_pool_pro_promotion_ladder -- --ignored --nocapture
 ```
 
+Mode-isolated improvement policy:
+
+- Improve `pro` independently; do not co-mingle fast/normal promotion changes in the same round.
+- Candidate logic remains test-only in `src/models/mons_game_model_automove_experiments.rs` until full pro ladder pass.
+- Runtime `SmartSearchConfig::from_preference(Pro)` is updated only after a pro candidate clears strict ladder.
+
+Round-1 (easiest-first, conversion stability) profiles:
+
+- `runtime_pro_conversion_guard_v2`
+- `runtime_pro_conversion_guard_v3`
+- `runtime_pro_ordering_tt_v2`
+- `runtime_pro_depth4_stable_v2`
+
+Mandatory pro round loop:
+
+1. Fast screen each candidate vs normal and vs fast.
+2. Keep only candidates with both deltas `>= 0.0`.
+3. Run progressive vs both baselines for survivors.
+4. Run full pro ladder for top 1-2 survivors.
+5. If no promotion, classify failure:
+   - beats fast, fails normal → conversion/safety-only next round
+   - beats normal, fails fast → tactical sharpness next round
+   - CPU ratio `>3.30x` → optimization-only next round
+   - tactical guardrail fail → lock pattern as hard constraint
+   - seed instability only → narrow parameter amplitude + increase repeats
+
 ---
 
 ## Newcomer Map
@@ -445,10 +471,16 @@ SMART_TUNE_PROFILE=runtime_current \
 - `runtime_current`: currently shipped behavior.
 - `runtime_pro_baseline_v1`: pro baseline candidate mirroring runtime pro-v1 shape.
 - `runtime_pro_depth4_stable_v1`: pro search-shape stabilization candidate.
+- `runtime_pro_depth4_stable_v2`: lighter depth-4 root-stability variant (`root_focus_k=4`, `focus_share=7600`, `root_branch_limit+=1`).
 - `runtime_pro_depth4_extension_v1`: pro selective-extension allocation candidate.
 - `runtime_pro_conversion_guard_v1`: pro reply-risk/safety conversion candidate.
+- `runtime_pro_conversion_guard_v2`: pro conversion stability candidate (`160/8/22/1750`, drainer safety `4500`, selective extension share `1400`).
+- `runtime_pro_conversion_guard_v3`: pro conversion aggressiveness variant (`150/9/24/1500`, drainer safety `4300`, selective extension share `1700`).
 - `runtime_pro_eval_long_horizon_v1`: pro long-horizon eval enrichment candidate.
+- `runtime_pro_eval_long_horizon_v2`: long-horizon attack-proximity phase family for pro (escalation track).
+- `runtime_pro_eval_long_horizon_v3`: v2 plus mild opponent-mana long-horizon emphasis (escalation track).
 - `runtime_pro_ordering_tt_v1`: pro ordering/TT efficiency candidate.
+- `runtime_pro_ordering_tt_v2`: TT+killer ordering variant with `enable_pvs=false`.
 - `runtime_pre_pro_promotion_v1`: snapshot profile before pro runtime promotion.
 - `swift_2024_eval_reference`: Swift 2024 weights on top of current runtime search.
 - `swift_2024_style_reference`: Swift 2024 weights with simplified legacy-style search path.
@@ -647,6 +679,18 @@ Fast-screen aggregate stayed negative at max games (`δ=-0.0089`). Potion takeba
 ### 24) `runtime_eval_board_v3` and `runtime_eval_board_v3_normal_only`
 
 These profiles showed promising early normal lift but regressed or became unstable on broader progressive seeds; not reliable enough as standalone promotions.
+
+### 25) Pro Round-1 fast-screen snapshot (March 2, 2026)
+
+Baseline and Round-1 pro candidates were non-negative in fast screen against both baselines, but early progressive signals remained seed-volatile; continue with conversion-first rounds before touching eval-family changes.
+
+Observed fast-screen outputs (repeats=2, games=2):
+
+- `runtime_pro_baseline_v1`: vs normal `8W-0L` (`δ=+0.5000`, `conf=0.996`), vs fast `5W-3L` (`δ=+0.1250`, `conf=0.637`)
+- `runtime_pro_conversion_guard_v2`: vs normal `8W-0L` (`δ=+0.5000`, `conf=0.996`), vs fast `5W-3L` (`δ=+0.1250`, `conf=0.637`)
+- `runtime_pro_conversion_guard_v3`: vs normal `8W-0L` (`δ=+0.5000`, `conf=0.996`), vs fast `4W-4L` (`δ=+0.0000`, `conf=0.000`)
+- `runtime_pro_ordering_tt_v2`: vs normal `8W-0L` (`δ=+0.5000`, `conf=0.996`), vs fast `5W-3L` (`δ=+0.1250`, `conf=0.637`)
+- `runtime_pro_depth4_stable_v2`: vs normal `8W-0L` (`δ=+0.5000`, `conf=0.996`), vs fast `5W-3L` (`δ=+0.1250`, `conf=0.637`)
 
 ---
 

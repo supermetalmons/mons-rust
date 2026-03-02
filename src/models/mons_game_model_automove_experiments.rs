@@ -4385,6 +4385,16 @@ fn model_runtime_pro_depth4_stable_v1(game: &MonsGame, config: SmartSearchConfig
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+fn model_runtime_pro_depth4_stable_v2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.root_focus_k = 4;
+        runtime.root_focus_budget_share_bp = 7_600;
+        runtime.root_branch_limit = (runtime.root_branch_limit + 1).min(44);
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn model_runtime_pro_depth4_extension_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
@@ -4410,6 +4420,42 @@ fn model_runtime_pro_conversion_guard_v1(game: &MonsGame, config: SmartSearchCon
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+fn model_runtime_pro_conversion_guard_v2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 160;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 22;
+        runtime.root_reply_risk_node_share_bp = 1_750;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_500;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_400;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_conversion_guard_v3(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 150;
+        runtime.root_reply_risk_shortlist_max = 9;
+        runtime.root_reply_risk_reply_limit = 24;
+        runtime.root_reply_risk_node_share_bp = 1_500;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_300;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_700;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn model_runtime_pro_eval_long_horizon_v1(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -4425,12 +4471,54 @@ fn model_runtime_pro_eval_long_horizon_v1(
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+fn model_runtime_pro_eval_long_horizon_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_eval_long_horizon_v3(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 260;
+        runtime.interview_soft_opponent_mana_score_bonus = 320;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn model_runtime_pro_ordering_tt_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
         runtime.enable_tt_depth_preferred_replacement = true;
         runtime.enable_killer_move_ordering = true;
         runtime.enable_pvs = true;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_ordering_tt_v2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_tt_depth_preferred_replacement = true;
+        runtime.enable_killer_move_ordering = true;
+        runtime.enable_pvs = false;
     }
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
@@ -5480,10 +5568,16 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_pre_pro_promotion_v1" => model_runtime_pre_pro_promotion_v1(game, config),
         "runtime_pro_baseline_v1" => model_runtime_pro_baseline_v1(game, config),
         "runtime_pro_depth4_stable_v1" => model_runtime_pro_depth4_stable_v1(game, config),
+        "runtime_pro_depth4_stable_v2" => model_runtime_pro_depth4_stable_v2(game, config),
         "runtime_pro_depth4_extension_v1" => model_runtime_pro_depth4_extension_v1(game, config),
         "runtime_pro_conversion_guard_v1" => model_runtime_pro_conversion_guard_v1(game, config),
+        "runtime_pro_conversion_guard_v2" => model_runtime_pro_conversion_guard_v2(game, config),
+        "runtime_pro_conversion_guard_v3" => model_runtime_pro_conversion_guard_v3(game, config),
         "runtime_pro_eval_long_horizon_v1" => model_runtime_pro_eval_long_horizon_v1(game, config),
+        "runtime_pro_eval_long_horizon_v2" => model_runtime_pro_eval_long_horizon_v2(game, config),
+        "runtime_pro_eval_long_horizon_v3" => model_runtime_pro_eval_long_horizon_v3(game, config),
         "runtime_pro_ordering_tt_v1" => model_runtime_pro_ordering_tt_v1(game, config),
+        "runtime_pro_ordering_tt_v2" => model_runtime_pro_ordering_tt_v2(game, config),
         "runtime_swift_opponent_mana_exception_v1" => {
             model_runtime_swift_opponent_mana_exception_v1(game, config)
         }
@@ -5870,6 +5964,10 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
             model_runtime_pro_depth4_stable_v1,
         ),
         (
+            "runtime_pro_depth4_stable_v2",
+            model_runtime_pro_depth4_stable_v2,
+        ),
+        (
             "runtime_pro_depth4_extension_v1",
             model_runtime_pro_depth4_extension_v1,
         ),
@@ -5878,12 +5976,32 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
             model_runtime_pro_conversion_guard_v1,
         ),
         (
+            "runtime_pro_conversion_guard_v2",
+            model_runtime_pro_conversion_guard_v2,
+        ),
+        (
+            "runtime_pro_conversion_guard_v3",
+            model_runtime_pro_conversion_guard_v3,
+        ),
+        (
             "runtime_pro_eval_long_horizon_v1",
             model_runtime_pro_eval_long_horizon_v1,
         ),
         (
+            "runtime_pro_eval_long_horizon_v2",
+            model_runtime_pro_eval_long_horizon_v2,
+        ),
+        (
+            "runtime_pro_eval_long_horizon_v3",
+            model_runtime_pro_eval_long_horizon_v3,
+        ),
+        (
             "runtime_pro_ordering_tt_v1",
             model_runtime_pro_ordering_tt_v1,
+        ),
+        (
+            "runtime_pro_ordering_tt_v2",
+            model_runtime_pro_ordering_tt_v2,
         ),
         (
             "runtime_swift_opponent_mana_exception_v1",
