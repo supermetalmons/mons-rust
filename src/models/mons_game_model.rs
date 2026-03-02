@@ -975,6 +975,7 @@ struct SmartSearchConfig {
     interview_soft_roundtrip_penalty: i32,
     enable_enhanced_drainer_vulnerability: bool,
     enable_supermana_prepass_exception: bool,
+    enable_opponent_mana_prepass_exception: bool,
     enable_walk_threat_prefilter: bool,
     root_walk_threat_score_margin: i32,
     enable_killer_move_ordering: bool,
@@ -1018,10 +1019,10 @@ impl SmartSearchConfig {
                 tuned.enable_root_drainer_safety_prefilter = true;
                 tuned.enable_root_spirit_development_pref = true;
                 tuned.enable_root_reply_risk_guard = true;
-                tuned.root_reply_risk_score_margin = SMART_ROOT_REPLY_RISK_SCORE_MARGIN;
-                tuned.root_reply_risk_shortlist_max = SMART_ROOT_REPLY_RISK_SHORTLIST_FAST;
-                tuned.root_reply_risk_reply_limit = SMART_ROOT_REPLY_RISK_REPLY_LIMIT_FAST;
-                tuned.root_reply_risk_node_share_bp = SMART_ROOT_REPLY_RISK_NODE_SHARE_BP_FAST;
+                tuned.root_reply_risk_score_margin = 125;
+                tuned.root_reply_risk_shortlist_max = 4;
+                tuned.root_reply_risk_reply_limit = 10;
+                tuned.root_reply_risk_node_share_bp = 650;
                 tuned.enable_move_class_coverage = true;
                 tuned.enable_child_move_class_coverage = true;
                 tuned.enable_strict_tactical_class_coverage = true;
@@ -1038,9 +1039,9 @@ impl SmartSearchConfig {
                 tuned.enable_potion_progress_compensation = true;
                 tuned.prefer_clean_reply_risk_roots = false;
                 tuned.root_drainer_safety_score_margin = SMART_ROOT_DRAINER_SAFETY_SCORE_MARGIN;
-                tuned.root_mana_handoff_penalty = 260;
-                tuned.root_backtrack_penalty = 180;
-                tuned.root_efficiency_score_margin = 1_900;
+                tuned.root_mana_handoff_penalty = 300;
+                tuned.root_backtrack_penalty = 220;
+                tuned.root_efficiency_score_margin = 1_700;
                 tuned.potion_spend_penalty_fast = 220;
                 tuned.potion_spend_penalty_normal =
                     SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_NORMAL;
@@ -1088,10 +1089,10 @@ impl SmartSearchConfig {
                 tuned.enable_root_drainer_safety_prefilter = true;
                 tuned.enable_root_spirit_development_pref = true;
                 tuned.enable_root_reply_risk_guard = true;
-                tuned.root_reply_risk_score_margin = 170;
-                tuned.root_reply_risk_shortlist_max = 6;
-                tuned.root_reply_risk_reply_limit = 14;
-                tuned.root_reply_risk_node_share_bp = 1_150;
+                tuned.root_reply_risk_score_margin = 145;
+                tuned.root_reply_risk_shortlist_max = 7;
+                tuned.root_reply_risk_reply_limit = 16;
+                tuned.root_reply_risk_node_share_bp = 1_350;
                 tuned.enable_move_class_coverage = true;
                 tuned.enable_child_move_class_coverage = true;
                 tuned.enable_strict_tactical_class_coverage = true;
@@ -1107,11 +1108,12 @@ impl SmartSearchConfig {
                 tuned.enable_mana_start_mix_with_potion_actions = true;
                 tuned.enable_potion_progress_compensation = true;
                 tuned.prefer_clean_reply_risk_roots = true;
-                tuned.root_drainer_safety_score_margin = 4000;
+                tuned.root_drainer_safety_score_margin = 4_200;
                 tuned.enable_enhanced_drainer_vulnerability = true;
                 tuned.root_mana_handoff_penalty = 340;
                 tuned.root_backtrack_penalty = 240;
                 tuned.root_efficiency_score_margin = 1_400;
+                tuned.selective_extension_node_share_bp = 1_250;
                 tuned.potion_spend_penalty_fast = SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_FAST;
                 tuned.potion_spend_penalty_normal = 130;
                 tuned.interview_soft_score_margin = 80;
@@ -1210,6 +1212,7 @@ impl SmartSearchConfig {
             interview_soft_roundtrip_penalty: SMART_INTERVIEW_SOFT_ROUNDTRIP_PENALTY,
             enable_enhanced_drainer_vulnerability: false,
             enable_supermana_prepass_exception: false,
+            enable_opponent_mana_prepass_exception: false,
             enable_walk_threat_prefilter: false,
             root_walk_threat_score_margin: 2000,
             enable_killer_move_ordering: false,
@@ -3384,9 +3387,19 @@ impl MonsGameModel {
 
         let has_supermana_scoring = config.enable_supermana_prepass_exception
             && root_moves.iter().any(|m| m.scores_supermana_this_turn);
+        let has_safe_opponent_mana_score = config.enable_opponent_mana_prepass_exception
+            && root_moves.iter().any(|m| {
+                m.scores_opponent_mana_this_turn
+                    && !m.own_drainer_vulnerable
+                    && !m.mana_handoff_to_opponent
+                    && !m.wins_immediately
+                    && !m.attacks_opponent_drainer
+            });
+        let has_tactical_prepass_exception =
+            has_supermana_scoring || has_safe_opponent_mana_score;
 
         if config.enable_forced_drainer_attack
-            && !has_supermana_scoring
+            && !has_tactical_prepass_exception
             && !config.enable_drainer_attack_minimax_selection
             && !config.enable_drainer_attack_full_pool
         {
@@ -3410,7 +3423,7 @@ impl MonsGameModel {
         }
 
         if config.enable_root_drainer_safety_prefilter
-            && !has_supermana_scoring
+            && !has_tactical_prepass_exception
             && Self::is_own_drainer_vulnerable_next_turn(
                 game,
                 perspective,
@@ -3425,7 +3438,7 @@ impl MonsGameModel {
         }
 
         if config.enable_walk_threat_prefilter
-            && !has_supermana_scoring
+            && !has_tactical_prepass_exception
             && Self::is_own_drainer_walk_vulnerable_next_turn(
                 game,
                 perspective,

@@ -121,6 +121,63 @@ pub const DEFAULT_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     attacker_close_to_opponent_drainer: 0,
 };
 
+pub const SWIFT_2024_REFERENCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
+    use_legacy_formula: true,
+    include_regular_mana_move_windows: false,
+    include_match_point_window: false,
+    next_turn_window_scale_bp: 5_000,
+    double_confirmed_score: true,
+    confirmed_score: 1000,
+    fainted_mon: -500,
+    fainted_drainer: -800,
+    fainted_cooldown_step: 0,
+    drainer_at_risk: -350,
+    mana_close_to_same_pool: 500,
+    mon_with_mana_close_to_any_pool: 800,
+    extra_for_supermana: 120,
+    extra_for_opponents_mana: 100,
+    drainer_close_to_mana: 300,
+    drainer_holding_mana: 350,
+    drainer_close_to_own_pool: 180,
+    drainer_close_to_supermana: 120,
+    mon_close_to_center: 210,
+    spirit_close_to_enemy: 160,
+    spirit_on_own_base_penalty: 180,
+    angel_guarding_drainer: 180,
+    angel_close_to_friendly_drainer: 120,
+    has_consumable: 110,
+    active_mon: 50,
+    regular_mana_to_owner_pool: 0,
+    regular_mana_drainer_control: 0,
+    supermana_drainer_control: 0,
+    supermana_race_control: 0,
+    opponent_mana_denial: 0,
+    mana_carrier_at_risk: 0,
+    mana_carrier_guarded: 0,
+    mana_carrier_one_step_from_pool: 0,
+    supermana_carrier_one_step_from_pool_extra: 0,
+    immediate_winning_carrier: 0,
+    drainer_best_mana_path: 0,
+    drainer_pickup_score_this_turn: 0,
+    mana_carrier_score_this_turn: 0,
+    drainer_immediate_threat: 0,
+    score_race_path_progress: 0,
+    opponent_score_race_path_progress: 0,
+    score_race_multi_path: 0,
+    opponent_score_race_multi_path: 0,
+    immediate_score_window: 0,
+    opponent_immediate_score_window: 0,
+    immediate_score_multi_window: 0,
+    opponent_immediate_score_multi_window: 0,
+    spirit_action_utility: 0,
+    drainer_danger_boolean: 0,
+    mana_carrier_danger_boolean: 0,
+    drainer_walk_threat_boolean: 0,
+    mana_carrier_walk_threat_boolean: 0,
+    opponent_drainer_attack_bonus: 0,
+    attacker_close_to_opponent_drainer: 0,
+};
+
 pub const BALANCED_DISTANCE_SCORING_WEIGHTS: ScoringWeights = ScoringWeights {
     use_legacy_formula: true,
     include_regular_mana_move_windows: false,
@@ -1988,6 +2045,26 @@ mod tests {
         mirrored.white_potions_count = game.black_potions_count;
         mirrored.black_potions_count = game.white_potions_count;
         mirrored
+    }
+
+    #[test]
+    fn swift_2024_reference_weights_match_historical_values() {
+        let weights = SWIFT_2024_REFERENCE_SCORING_WEIGHTS;
+        assert!(weights.use_legacy_formula);
+        assert!(weights.double_confirmed_score);
+        assert_eq!(weights.confirmed_score, 1000);
+        assert_eq!(weights.fainted_mon, -500);
+        assert_eq!(weights.fainted_drainer, -800);
+        assert_eq!(weights.drainer_at_risk, -350);
+        assert_eq!(weights.mana_close_to_same_pool, 500);
+        assert_eq!(weights.mon_with_mana_close_to_any_pool, 800);
+        assert_eq!(weights.extra_for_supermana, 120);
+        assert_eq!(weights.extra_for_opponents_mana, 100);
+        assert_eq!(weights.drainer_close_to_mana, 300);
+        assert_eq!(weights.drainer_holding_mana, 350);
+        assert_eq!(weights.mon_close_to_center, 210);
+        assert_eq!(weights.has_consumable, 110);
+        assert_eq!(weights.active_mon, 50);
     }
 
     #[test]

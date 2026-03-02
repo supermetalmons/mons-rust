@@ -107,16 +107,48 @@ Current runtime behavior:
 - Both modes enable `enable_enhanced_drainer_vulnerability` (exact-geometry boolean threat detection for drainer and mana carriers).
 - `fast` enables `enable_supermana_prepass_exception`: when the position has supermana scoring potential, the forced tactical prepass skips drainer attack and drainer safety overrides, allowing the search to find supermana plays.
 - `fast` uses boosted interview supermana bonuses: `interview_soft_supermana_score_bonus = 600` (from 360), `interview_soft_supermana_progress_bonus = 320` (from 240).
-- `normal` uses `root_drainer_safety_score_margin = 4000` (raised from 900 to make the drainer safety prefilter near-hard).
+- `normal` uses `root_drainer_safety_score_margin = 4200` (raised from 900 to make the drainer safety prefilter near-hard).
 - `fast` and `normal` both use root efficiency tie-breaks (progress-aware, with soft no-effect/low-impact penalties).
-- `normal` keeps root-safety rerank/deep-floor and uses root reply-risk guard (`score_margin=140`, shortlist `5`, reply-limit `12`, node-share cap `10%`).
-- `fast` also uses reply-risk guard with fast limits (`score_margin=140`, shortlist `3`, reply-limit `8`, node-share cap `6%`).
+- `normal` keeps root-safety rerank/deep-floor and uses root reply-risk guard (`score_margin=145`, shortlist `7`, reply-limit `16`, node-share cap `13.5%`).
+- `fast` also uses reply-risk guard with fast limits (`score_margin=125`, shortlist `4`, reply-limit `10`, node-share cap `6.5%`).
+- `fast` root-quality bundle uses `root_efficiency_score_margin=1700`, `root_anti_help_score_margin=280`, `root_mana_handoff_penalty=300`, `root_backtrack_penalty=220`.
 - Root/child tactical class coverage uses strict guarantees for critical tactical classes before truncation.
 - Root anti-help filtering rejects near-best mana-handoff/roundtrip roots when non-losing clean alternatives exist.
 - Automove start suggestions use the automove-specific option that can include mana starts when potion-action starts are available.
-- Selective tactical extension is normal-only, capped to one extension per path with a dedicated node-share budget (`12%`).
+- Selective tactical extension is normal-only, capped to one extension per path with a dedicated node-share budget (`12.5%`).
 - Search uses alpha-beta plus a bounded transposition table (TT). TT writes are skipped for budget-cut partial nodes to avoid polluted cache reuse.
 - On White turn 1, automove follows one random hardcoded opening route (one move per call). If the current position no longer matches any route, it falls back to normal smart search.
+
+---
+
+## Swift 2024 Reference
+
+Historical Swift heuristics are preserved as an immutable baseline in:
+
+- `src/models/scoring.rs` → `SWIFT_2024_REFERENCE_SCORING_WEIGHTS`
+
+Exact preserved multipliers (2024 source):
+
+- `confirmed_score: 1000`
+- `fainted_mon: -500`
+- `fainted_drainer: -800`
+- `drainer_at_risk: -350`
+- `mana_close_to_same_pool: 500`
+- `mon_with_mana_close_to_any_pool: 800`
+- `extra_for_supermana: 120`
+- `extra_for_opponents_mana: 100`
+- `drainer_close_to_mana: 300`
+- `drainer_holding_mana: 350`
+- `mon_close_to_center: 210`
+- `has_consumable: 110`
+- `active_mon: 50`
+
+Reference profiles:
+
+- `swift_2024_eval_reference`: current runtime search with `SWIFT_2024_REFERENCE_SCORING_WEIGHTS`.
+- `swift_2024_style_reference`: simplified legacy-style search (legacy no-TT path, reduced modern root policy stack) with `SWIFT_2024_REFERENCE_SCORING_WEIGHTS`.
+
+These profiles are for calibration and comparison only; they are not shipped runtime behavior.
 
 ---
 
@@ -187,6 +219,24 @@ fn model_my_candidate(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> 
 - If tactical guardrails fail: the change broke a known-good position. Debug which guardrail and why.
 - If pool regression fails: the candidate is weaker against diverse opponents. The improvement was too narrow.
 - If primary strength passes but confirmation/pool fails: could be sample-size-dependent — consider re-running with different seeds before abandoning.
+
+### Balanced Iteration Loop (Mandatory)
+
+Use this when searching for promotable improvements:
+
+1. Run fast screen for all active round candidates.
+2. Keep only candidates with aggregate `delta >= 0.0`.
+3. Run progressive duel for survivors.
+4. Run full promotion ladder for the best 1-2 survivors.
+5. If none promote, run failure analysis and start the next round immediately (do not stop at “no result”).
+
+Failure-analysis rules:
+
+- Fast regresses, normal improves → next round is fast-only tuning.
+- Normal regresses, fast improves → next round is normal-only rollback/tuning.
+- CPU gate fails → optimization-only variants (lighter shape, same logic).
+- Tactical guardrail fails → lock that tactical pattern as a hard candidate constraint in next round.
+- Append failed candidate family notes to Failed Experiments Log before new round.
 
 **Design principles that have worked:**
 - Minimal, additive weight changes beat large restructurings.
@@ -336,6 +386,23 @@ SMART_TUNE_PROFILE=runtime_current \
 ## Candidate Profiles To Know
 
 - `runtime_current`: currently shipped behavior.
+- `swift_2024_eval_reference`: Swift 2024 weights on top of current runtime search.
+- `swift_2024_style_reference`: Swift 2024 weights with simplified legacy-style search path.
+- `runtime_swift_opponent_mana_exception_v1`: candidate enabling opponent-mana tactical prepass exception.
+- `runtime_swift_opponent_mana_exception_v2`: v1 plus mild fast-only opponent-mana soft-priority boost.
+- `runtime_swift_opponent_mana_exception_v3`: fast-only opponent-mana tactical prepass exception (normal kept baseline).
+- `runtime_swift_opponent_mana_exception_v4`: v3 plus lighter fast-only opponent-mana soft-priority boost.
+- `runtime_swift_opponent_mana_exception_v5`: fast-only opponent-mana prepass exception with strict immediate-score gating.
+- `runtime_swift_opponent_mana_exception_v6`: v5 plus moderate fast-only opponent-mana soft-priority boost.
+- `runtime_fast_root_quality_v1`: candidate for fast root filtering/tie-break quality tuning.
+- `runtime_fast_root_quality_v2`: softened fast root filtering/tie-break tuning for better pool non-regression.
+- `runtime_fast_root_quality_v3`: v1-style fast root quality with baseline reply-risk guard settings.
+- `runtime_normal_conversion_v1`: candidate for normal reply-risk/safety/extension conversion tuning.
+- `runtime_normal_conversion_v2`: refined normal conversion tuning (reply-risk/safety/extension shares).
+- `runtime_normal_conversion_v3`: stronger normal conversion allocation (reply-risk/safety/extension shares).
+- `runtime_fast_root_quality_v1_normal_conversion_v3`: promoted synthesis bundle (fast root-quality v1 + normal conversion v3).
+- `runtime_pre_fast_root_quality_v1_normal_conversion_v3`: snapshot of runtime behavior before promoting the synthesis bundle.
+- `runtime_eval_board_v3_normal_only`: board-v3 eval applied only to normal mode (fast kept at runtime baseline).
 - `runtime_pre_efficiency_logic`: runtime budgets/scoring as current, but with fast root-efficiency tie-break disabled.
 - `runtime_pre_fast_efficiency_cleanup`: legacy fast runtime for this cleanup iteration.
 - `runtime_pre_event_ordering`: baseline with event-aware root/child ordering bonus disabled.
@@ -489,6 +556,34 @@ Fast mode-ratio exploded (>2x). Depth bump not viable under current CPU caps.
 
 Interview policy priors are directionally useful but not sufficient for strict promotion under current search shape/caps. Keep as experiment hooks.
 
+### 18) Round-1 Swift opponent-mana exception (`runtime_swift_opponent_mana_exception_v1/v2`)
+
+Cross-mode enablement created fast/normal instability (one mode up, the other down depending on seed). Next rounds should isolate this policy to fast-only variants.
+
+### 19) Round-1 fast root quality push (`runtime_fast_root_quality_v1`)
+
+Passed progressive duel but failed ladder pool non-regression (`candidate_wr=0.550`, `baseline_wr=0.583`). Aggressive fast root-margin tuning overfit narrow duel seeds.
+
+### 20) Round-1 normal conversion tuning (`runtime_normal_conversion_v1`)
+
+Non-negative in fast screen but too weak/unstable in progressive runs to satisfy improvement thresholds. Treat as insufficient signal; iterate with tighter normal-only shape tuning.
+
+### 21) Round-2/3 strict opponent-mana exception variants (`runtime_swift_opponent_mana_exception_v3..v6`)
+
+Fast-only and strict-score-gated exception variants mostly became no-ops (exactly neutral) or seed-unstable in progressive runs. Keep only as reference hooks.
+
+### 22) Round-3 protected-carrier eval variants (including normal-only)
+
+`runtime_eval_protected_carrier_v4` and `runtime_eval_protected_carrier_v3_normal_only` failed fast screen early with clear negative deltas.
+
+### 23) `runtime_potion_takeback_starts_v11`
+
+Fast-screen aggregate stayed negative at max games (`δ=-0.0089`). Potion takeback policy as configured here is not promotion-grade under current search shape.
+
+### 24) `runtime_eval_board_v3` and `runtime_eval_board_v3_normal_only`
+
+These profiles showed promising early normal lift but regressed or became unstable on broader progressive seeds; not reliable enough as standalone promotions.
+
 ---
 
 ## What Worked Best So Far
@@ -501,6 +596,7 @@ Interview policy priors are directionally useful but not sufficient for strict p
 - **Fast prepass exception**: skip forced drainer tactics when supermana scoring is available.
 - **Boosted supermana interview priors**: `supermana_score_bonus=600`, `supermana_progress_bonus=320` in fast mode.
 - **Minimal, additive weight changes**: `supermana_race_control: 30` is the only new scoring weight — no restructuring of existing weight balance. This pattern (small additive signal in an orthogonal evaluation dimension) is the most reliable way to improve fast mode.
+- **Promoted synthesis profile**: `runtime_fast_root_quality_v1_normal_conversion_v3` cleared the full ladder. The key runtime deltas are stronger fast root-quality margins (`root_efficiency=1700`, `anti_help=280`, `handoff=300`, `backtrack=220`, fast reply-risk `125/4/10/650`) plus stronger normal conversion guard allocation (normal reply-risk `145/7/16/1350`, drainer safety `4200`, selective extension share `12.5%`).
 
 ### Key Invariant Discovery
 
