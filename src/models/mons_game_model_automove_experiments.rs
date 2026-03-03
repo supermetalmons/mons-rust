@@ -48,6 +48,13 @@ const SMART_PRO_PRIMARY_IMPROVEMENT_DELTA_MIN_VS_FAST: f64 = 0.14;
 const SMART_PRO_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN: f64 = 0.90;
 const SMART_PRO_CPU_RATIO_TARGET_MIN: f64 = 2.70;
 const SMART_PRO_CPU_RATIO_TARGET_MAX: f64 = 3.69;
+const SMART_ULTRA_FAST_SCREEN_DELTA_MIN: f64 = 0.0;
+const SMART_ULTRA_PROGRESSIVE_MEANINGFUL_DELTA_MIN: f64 = 0.04;
+const SMART_ULTRA_PROGRESSIVE_MEANINGFUL_CONFIDENCE_MIN: f64 = 0.65;
+const SMART_ULTRA_PRIMARY_IMPROVEMENT_DELTA_MIN_VS_PRO: f64 = 0.10;
+const SMART_ULTRA_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN: f64 = 0.90;
+const SMART_ULTRA_CPU_RATIO_TARGET_MIN_VS_PRO: f64 = 3.30;
+const SMART_ULTRA_CPU_RATIO_TARGET_MAX_VS_PRO: f64 = 3.69;
 
 #[derive(Debug, Clone, Copy)]
 struct SearchBudget {
@@ -144,19 +151,16 @@ impl SearchBudget {
 
     fn runtime_config_for_game(self, game: &MonsGame) -> SmartSearchConfig {
         if let Some(preference) = SmartAutomovePreference::from_api_value(self.label) {
-            let hinted_context = if preference == SmartAutomovePreference::Pro
-                && env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false)
+            let hinted_context = if matches!(
+                preference,
+                SmartAutomovePreference::Pro | SmartAutomovePreference::Ultra
+            ) && env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false)
             {
                 ProRuntimeContext::OpeningBookDriven
             } else {
                 ProRuntimeContext::Unknown
             };
-            MonsGameModel::runtime_config_for_game_with_context(
-                game,
-                preference,
-                hinted_context,
-            )
-            .0
+            MonsGameModel::runtime_config_for_game_with_context(game, preference, hinted_context).0
         } else {
             MonsGameModel::with_runtime_scoring_weights(
                 game,
@@ -177,12 +181,26 @@ fn pro_budget() -> SearchBudget {
     SearchBudget::from_preference(SmartAutomovePreference::Pro)
 }
 
+fn ultra_budget() -> SearchBudget {
+    SearchBudget::from_preference(SmartAutomovePreference::Ultra)
+}
+
 #[allow(dead_code)]
 fn client_budgets_with_pro() -> [SearchBudget; 3] {
     [
         SearchBudget::from_preference(SmartAutomovePreference::Fast),
         SearchBudget::from_preference(SmartAutomovePreference::Normal),
         SearchBudget::from_preference(SmartAutomovePreference::Pro),
+    ]
+}
+
+#[allow(dead_code)]
+fn client_budgets_with_pro_ultra() -> [SearchBudget; 4] {
+    [
+        SearchBudget::from_preference(SmartAutomovePreference::Fast),
+        SearchBudget::from_preference(SmartAutomovePreference::Normal),
+        SearchBudget::from_preference(SmartAutomovePreference::Pro),
+        SearchBudget::from_preference(SmartAutomovePreference::Ultra),
     ]
 }
 
@@ -6052,7 +6070,8 @@ fn pro_context_split_target_nodes(
     target_nodes: usize,
 ) -> SmartSearchConfig {
     if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
-        runtime.max_visited_nodes = target_nodes.clamp(runtime.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
+        runtime.max_visited_nodes =
+            target_nodes.clamp(runtime.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
     }
     runtime
 }
@@ -6175,6 +6194,373 @@ fn model_runtime_pro_ordering_tt_v2(game: &MonsGame, config: SmartSearchConfig) 
         runtime.enable_killer_move_ordering = true;
         runtime.enable_pvs = false;
     }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn ultra_context_split_runtime_base(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> (SmartSearchConfig, ProRuntimeContext) {
+    let runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    let hinted_context = if env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false) {
+        ProRuntimeContext::OpeningBookDriven
+    } else {
+        ProRuntimeContext::Unknown
+    };
+    let context = MonsGameModel::resolve_pro_runtime_context(game, hinted_context);
+    (
+        MonsGameModel::apply_ultra_runtime_context_profile(game, runtime, context),
+        context,
+    )
+}
+
+fn ultra_context_split_target_nodes(
+    mut runtime: SmartSearchConfig,
+    context: ProRuntimeContext,
+    primary_nodes: usize,
+    confirmation_nodes: usize,
+) -> SmartSearchConfig {
+    if runtime.depth >= SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        let target = if context == ProRuntimeContext::OpeningBookDriven {
+            confirmation_nodes
+        } else {
+            primary_nodes
+        };
+        runtime.max_visited_nodes =
+            target.clamp(MIN_SMART_MAX_VISITED_NODES, MAX_SMART_MAX_VISITED_NODES);
+    }
+    runtime
+}
+
+fn model_runtime_ultra_d5_split_cal_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    MonsGameModel::smart_search_best_inputs(
+        game,
+        ultra_context_split_target_nodes(runtime, context, 33_660, 33_000),
+    )
+}
+
+fn model_runtime_ultra_d5_split_cal_v2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    MonsGameModel::smart_search_best_inputs(
+        game,
+        ultra_context_split_target_nodes(runtime, context, 35_200, 34_600),
+    )
+}
+
+fn model_runtime_ultra_d5_split_cal_v3(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    MonsGameModel::smart_search_best_inputs(
+        game,
+        ultra_context_split_target_nodes(runtime, context, 36_600, 35_800),
+    )
+}
+
+fn model_runtime_ultra_d5_split_cal_v4(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    MonsGameModel::smart_search_best_inputs(
+        game,
+        ultra_context_split_target_nodes(runtime, context, 38_000, 37_200),
+    )
+}
+
+fn model_runtime_ultra_d5_split_confirm_safety_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (mut runtime, context) = ultra_context_split_runtime_base(game, config);
+    runtime = ultra_context_split_target_nodes(runtime, context, 36_600, 34_800);
+    if runtime.depth >= SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        if context == ProRuntimeContext::OpeningBookDriven {
+            runtime.root_reply_risk_score_margin = 170;
+            runtime.root_reply_risk_shortlist_max = 7;
+            runtime.root_reply_risk_reply_limit = 18;
+            runtime.root_reply_risk_node_share_bp = 1_400;
+            runtime.root_drainer_safety_score_margin = 5_000;
+            runtime.selective_extension_node_share_bp = 900;
+            runtime.enable_normal_root_safety_deep_floor = false;
+        } else {
+            runtime.root_reply_risk_score_margin = 172;
+            runtime.root_reply_risk_shortlist_max = 9;
+            runtime.root_reply_risk_reply_limit = 26;
+            runtime.root_reply_risk_node_share_bp = 2_100;
+            runtime.root_drainer_safety_score_margin = 5_200;
+            runtime.selective_extension_node_share_bp = 1_600;
+            runtime.interview_soft_opponent_mana_progress_bonus = 300;
+            runtime.interview_soft_opponent_mana_score_bonus = 360;
+        }
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_ultra_d5_split_primary_conversion_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (mut runtime, context) = ultra_context_split_runtime_base(game, config);
+    runtime = ultra_context_split_target_nodes(runtime, context, 37_200, 35_000);
+    if runtime.depth >= SMART_AUTOMOVE_ULTRA_DEPTH as usize
+        && context != ProRuntimeContext::OpeningBookDriven
+    {
+        runtime.root_reply_risk_reply_limit = 32;
+        runtime.root_reply_risk_node_share_bp = 2_600;
+        runtime.root_reply_risk_shortlist_max = 11;
+        runtime.selective_extension_node_share_bp = 2_000;
+        runtime.interview_soft_opponent_mana_progress_bonus = 340;
+        runtime.interview_soft_opponent_mana_score_bonus = 420;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_ultra_d5_split_normalized_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (_, context) = ultra_context_split_runtime_base(game, config);
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+    runtime.depth = SMART_AUTOMOVE_ULTRA_DEPTH as usize;
+    runtime.max_visited_nodes = if context == ProRuntimeContext::OpeningBookDriven {
+        34_000
+    } else {
+        35_600
+    };
+    runtime.enable_forced_tactical_prepass = false;
+    runtime.enable_two_pass_root_allocation = true;
+    runtime.root_focus_k = 4;
+    runtime.root_focus_budget_share_bp = 7_300;
+    runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 44);
+    runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 18);
+    runtime.root_enum_limit = (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 264);
+    runtime.node_enum_limit =
+        ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 156);
+    runtime.enable_selective_extensions = true;
+    runtime.max_extensions_per_path = 1;
+    runtime.selective_extension_node_share_bp = if context == ProRuntimeContext::OpeningBookDriven {
+        1_050
+    } else {
+        1_300
+    };
+    runtime.enable_futility_pruning = true;
+    runtime.futility_margin = if context == ProRuntimeContext::OpeningBookDriven {
+        2_800
+    } else {
+        2_500
+    };
+    runtime.enable_quiet_reductions = true;
+    runtime.quiet_reduction_depth_threshold = 2;
+    runtime.enable_root_reply_risk_guard = true;
+    runtime.root_reply_risk_score_margin = if context == ProRuntimeContext::OpeningBookDriven {
+        150
+    } else {
+        155
+    };
+    runtime.root_reply_risk_shortlist_max = if context == ProRuntimeContext::OpeningBookDriven {
+        7
+    } else {
+        8
+    };
+    runtime.root_reply_risk_reply_limit = if context == ProRuntimeContext::OpeningBookDriven {
+        18
+    } else {
+        22
+    };
+    runtime.root_reply_risk_node_share_bp = if context == ProRuntimeContext::OpeningBookDriven {
+        1_300
+    } else {
+        1_600
+    };
+    runtime.enable_normal_root_safety_rerank = true;
+    runtime.enable_normal_root_safety_deep_floor = context != ProRuntimeContext::OpeningBookDriven;
+    runtime.root_drainer_safety_score_margin = if context == ProRuntimeContext::OpeningBookDriven {
+        4_500
+    } else {
+        4_700
+    };
+    runtime.interview_soft_opponent_mana_progress_bonus = 260;
+    runtime.interview_soft_opponent_mana_score_bonus = 320;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_ultra_d5_split_hybrid_balance_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (mut runtime, context) = ultra_context_split_runtime_base(game, config);
+    runtime = ultra_context_split_target_nodes(runtime, context, 36_800, 35_000);
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let score_gap = my_score - opponent_score;
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let balanced_midgame =
+        score_gap.abs() <= 1 && my_distance_to_win > 2 && opponent_distance_to_win > 2;
+
+    if runtime.depth >= SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        if balanced_midgame {
+            runtime.root_reply_risk_score_margin = 160;
+            runtime.root_reply_risk_shortlist_max = 8;
+            runtime.root_reply_risk_reply_limit = 22;
+            runtime.root_reply_risk_node_share_bp = 1_800;
+            runtime.root_drainer_safety_score_margin = 5_200;
+            runtime.selective_extension_node_share_bp = 1_300;
+            runtime.interview_soft_opponent_mana_progress_bonus = 300;
+            runtime.interview_soft_opponent_mana_score_bonus = 360;
+            runtime.scoring_weights =
+                MonsGameModel::runtime_phase_adaptive_scoring_weights(game, runtime.depth);
+        }
+        if context == ProRuntimeContext::OpeningBookDriven {
+            runtime.root_reply_risk_score_margin = runtime.root_reply_risk_score_margin.max(168);
+            runtime.root_reply_risk_shortlist_max = runtime.root_reply_risk_shortlist_max.min(8);
+            runtime.root_reply_risk_reply_limit = runtime.root_reply_risk_reply_limit.min(20);
+            runtime.root_reply_risk_node_share_bp =
+                runtime.root_reply_risk_node_share_bp.min(1_550);
+            runtime.root_drainer_safety_score_margin =
+                runtime.root_drainer_safety_score_margin.max(5_000);
+            runtime.selective_extension_node_share_bp =
+                runtime.selective_extension_node_share_bp.min(1_000);
+            runtime.enable_normal_root_safety_deep_floor = false;
+        }
+    }
+
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_ultra_d5_split_normal_guard_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (mut runtime, context) = ultra_context_split_runtime_base(game, config);
+    runtime = ultra_context_split_target_nodes(runtime, context, 36_800, 35_200);
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let under_pressure = my_score <= opponent_score || opponent_distance_to_win <= 2;
+
+    if runtime.depth >= SMART_AUTOMOVE_ULTRA_DEPTH as usize && under_pressure {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_scoring_weights(game, runtime.depth);
+        runtime.root_reply_risk_score_margin = runtime.root_reply_risk_score_margin.max(170);
+        runtime.root_reply_risk_shortlist_max = runtime.root_reply_risk_shortlist_max.min(9);
+        runtime.root_reply_risk_reply_limit = runtime.root_reply_risk_reply_limit.min(22);
+        runtime.root_reply_risk_node_share_bp = runtime.root_reply_risk_node_share_bp.min(1_900);
+        runtime.root_drainer_safety_score_margin =
+            runtime.root_drainer_safety_score_margin.max(5_200);
+        runtime.selective_extension_node_share_bp =
+            runtime.selective_extension_node_share_bp.min(1_300);
+        runtime.interview_soft_opponent_mana_progress_bonus = 300;
+        runtime.interview_soft_opponent_mana_score_bonus = 360;
+        if my_distance_to_win > 2 && opponent_distance_to_win <= 2 {
+            runtime.enable_normal_root_safety_deep_floor = false;
+        }
+    }
+
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_ultra_d5_split_normalized_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (_, context) = ultra_context_split_runtime_base(game, config);
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+    runtime.depth = SMART_AUTOMOVE_ULTRA_DEPTH as usize;
+    runtime.max_visited_nodes = if context == ProRuntimeContext::OpeningBookDriven {
+        34_800
+    } else {
+        36_200
+    };
+    runtime.enable_forced_tactical_prepass = false;
+    runtime.enable_two_pass_root_allocation = true;
+    runtime.root_focus_k = 4;
+    runtime.root_focus_budget_share_bp = 7_400;
+    runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 46);
+    runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 18);
+    runtime.root_enum_limit = (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 276);
+    runtime.node_enum_limit =
+        ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 156);
+    runtime.enable_selective_extensions = true;
+    runtime.max_extensions_per_path = 1;
+    runtime.selective_extension_node_share_bp = if context == ProRuntimeContext::OpeningBookDriven {
+        1_100
+    } else {
+        1_450
+    };
+    runtime.enable_futility_pruning = true;
+    runtime.futility_margin = if context == ProRuntimeContext::OpeningBookDriven {
+        2_800
+    } else {
+        2_500
+    };
+    runtime.enable_quiet_reductions = true;
+    runtime.quiet_reduction_depth_threshold = 2;
+    runtime.enable_root_reply_risk_guard = true;
+    runtime.root_reply_risk_score_margin = if context == ProRuntimeContext::OpeningBookDriven {
+        152
+    } else {
+        158
+    };
+    runtime.root_reply_risk_shortlist_max = if context == ProRuntimeContext::OpeningBookDriven {
+        7
+    } else {
+        8
+    };
+    runtime.root_reply_risk_reply_limit = if context == ProRuntimeContext::OpeningBookDriven {
+        18
+    } else {
+        22
+    };
+    runtime.root_reply_risk_node_share_bp = if context == ProRuntimeContext::OpeningBookDriven {
+        1_350
+    } else {
+        1_700
+    };
+    runtime.enable_normal_root_safety_rerank = true;
+    runtime.enable_normal_root_safety_deep_floor = context != ProRuntimeContext::OpeningBookDriven;
+    runtime.root_drainer_safety_score_margin = if context == ProRuntimeContext::OpeningBookDriven {
+        4_600
+    } else {
+        4_900
+    };
+    runtime.interview_soft_opponent_mana_progress_bonus = 270;
+    runtime.interview_soft_opponent_mana_score_bonus = 330;
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let score_gap = my_score - opponent_score;
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    if context != ProRuntimeContext::OpeningBookDriven
+        && (my_distance_to_win <= 2 || score_gap >= 1)
+    {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.root_reply_risk_reply_limit = 26;
+        runtime.root_reply_risk_node_share_bp = 2_000;
+        runtime.selective_extension_node_share_bp = 1_700;
+        runtime.interview_soft_opponent_mana_progress_bonus = 310;
+        runtime.interview_soft_opponent_mana_score_bonus = 380;
+    }
+
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
@@ -7246,7 +7632,9 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_pro_cpu_prune_v2_long_horizon_v2" => {
             model_runtime_pro_cpu_prune_v2_long_horizon_v2(game, config)
         }
-        "runtime_pro_cpu_prune_v2_cpucap_v1" => model_runtime_pro_cpu_prune_v2_cpucap_v1(game, config),
+        "runtime_pro_cpu_prune_v2_cpucap_v1" => {
+            model_runtime_pro_cpu_prune_v2_cpucap_v1(game, config)
+        }
         "runtime_pro_cpu_prune_v2_cpucap_ordering_v1" => {
             model_runtime_pro_cpu_prune_v2_cpucap_ordering_v1(game, config)
         }
@@ -7359,6 +7747,28 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         }
         "runtime_pro_ordering_tt_v1" => model_runtime_pro_ordering_tt_v1(game, config),
         "runtime_pro_ordering_tt_v2" => model_runtime_pro_ordering_tt_v2(game, config),
+        "runtime_ultra_d5_split_cal_v1" => model_runtime_ultra_d5_split_cal_v1(game, config),
+        "runtime_ultra_d5_split_cal_v2" => model_runtime_ultra_d5_split_cal_v2(game, config),
+        "runtime_ultra_d5_split_cal_v3" => model_runtime_ultra_d5_split_cal_v3(game, config),
+        "runtime_ultra_d5_split_cal_v4" => model_runtime_ultra_d5_split_cal_v4(game, config),
+        "runtime_ultra_d5_split_confirm_safety_v1" => {
+            model_runtime_ultra_d5_split_confirm_safety_v1(game, config)
+        }
+        "runtime_ultra_d5_split_primary_conversion_v1" => {
+            model_runtime_ultra_d5_split_primary_conversion_v1(game, config)
+        }
+        "runtime_ultra_d5_split_normalized_v1" => {
+            model_runtime_ultra_d5_split_normalized_v1(game, config)
+        }
+        "runtime_ultra_d5_split_hybrid_balance_v1" => {
+            model_runtime_ultra_d5_split_hybrid_balance_v1(game, config)
+        }
+        "runtime_ultra_d5_split_normal_guard_v1" => {
+            model_runtime_ultra_d5_split_normal_guard_v1(game, config)
+        }
+        "runtime_ultra_d5_split_normalized_v2" => {
+            model_runtime_ultra_d5_split_normalized_v2(game, config)
+        }
         "runtime_swift_opponent_mana_exception_v1" => {
             model_runtime_swift_opponent_mana_exception_v1(game, config)
         }
@@ -7965,6 +8375,46 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_pro_ordering_tt_v2",
             model_runtime_pro_ordering_tt_v2,
+        ),
+        (
+            "runtime_ultra_d5_split_cal_v1",
+            model_runtime_ultra_d5_split_cal_v1,
+        ),
+        (
+            "runtime_ultra_d5_split_cal_v2",
+            model_runtime_ultra_d5_split_cal_v2,
+        ),
+        (
+            "runtime_ultra_d5_split_cal_v3",
+            model_runtime_ultra_d5_split_cal_v3,
+        ),
+        (
+            "runtime_ultra_d5_split_cal_v4",
+            model_runtime_ultra_d5_split_cal_v4,
+        ),
+        (
+            "runtime_ultra_d5_split_confirm_safety_v1",
+            model_runtime_ultra_d5_split_confirm_safety_v1,
+        ),
+        (
+            "runtime_ultra_d5_split_primary_conversion_v1",
+            model_runtime_ultra_d5_split_primary_conversion_v1,
+        ),
+        (
+            "runtime_ultra_d5_split_normalized_v1",
+            model_runtime_ultra_d5_split_normalized_v1,
+        ),
+        (
+            "runtime_ultra_d5_split_hybrid_balance_v1",
+            model_runtime_ultra_d5_split_hybrid_balance_v1,
+        ),
+        (
+            "runtime_ultra_d5_split_normal_guard_v1",
+            model_runtime_ultra_d5_split_normal_guard_v1,
+        ),
+        (
+            "runtime_ultra_d5_split_normalized_v2",
+            model_runtime_ultra_d5_split_normalized_v2,
         ),
         (
             "runtime_swift_opponent_mana_exception_v1",
@@ -9533,6 +9983,18 @@ fn pro_baseline_profile_name() -> String {
         .unwrap_or_else(|| "runtime_current".to_string())
 }
 
+fn ultra_candidate_profile_name() -> String {
+    env_profile_name("SMART_ULTRA_CANDIDATE_PROFILE")
+        .or_else(|| env_profile_name("SMART_CANDIDATE_PROFILE"))
+        .unwrap_or_else(|| "runtime_ultra_d5_split_cal_v2".to_string())
+}
+
+fn ultra_baseline_profile_name() -> String {
+    env_profile_name("SMART_ULTRA_BASELINE_PROFILE")
+        .or_else(|| env_profile_name("SMART_GATE_BASELINE_PROFILE"))
+        .unwrap_or_else(|| "runtime_current".to_string())
+}
+
 fn stats_delta_confidence(stats: MatchupStats) -> (f64, f64) {
     (
         stats.win_rate_points() - 0.5,
@@ -9557,6 +10019,36 @@ fn run_pro_matchup_across_seeds(
         let stats = run_cross_budget_duel(
             candidate_profile,
             SmartAutomovePreference::Pro,
+            baseline_profile,
+            baseline_mode,
+            tagged.as_str(),
+            repeats,
+            games_per_seed,
+            max_plies,
+            use_white_opening_book,
+        );
+        aggregate.merge(stats);
+    }
+    aggregate
+}
+
+fn run_ultra_matchup_across_seeds(
+    candidate_profile: &str,
+    baseline_profile: &str,
+    baseline_mode: SmartAutomovePreference,
+    seed_tag_prefix: &str,
+    seed_tags: &[&str],
+    repeats: usize,
+    games_per_seed: usize,
+    max_plies: usize,
+    use_white_opening_book: bool,
+) -> MatchupStats {
+    let mut aggregate = MatchupStats::default();
+    for seed_tag in seed_tags {
+        let tagged = format!("{}:{}", seed_tag_prefix, seed_tag);
+        let stats = run_cross_budget_duel(
+            candidate_profile,
+            SmartAutomovePreference::Ultra,
             baseline_profile,
             baseline_mode,
             tagged.as_str(),
@@ -9625,6 +10117,73 @@ fn run_pro_progressive_matchup(
 
         if delta >= SMART_PRO_PROGRESSIVE_MEANINGFUL_DELTA_MIN
             && confidence >= SMART_PRO_PROGRESSIVE_MEANINGFUL_CONFIDENCE_MIN
+        {
+            meaningful_lift = true;
+        }
+        if delta < -0.05 || games_per_seed >= max_games {
+            break;
+        }
+        games_per_seed = (games_per_seed * 2).min(max_games);
+    }
+
+    (cumulative, meaningful_lift)
+}
+
+fn run_ultra_progressive_matchup(
+    candidate_profile: &str,
+    baseline_profile: &str,
+    baseline_mode: SmartAutomovePreference,
+    stage_tag: &str,
+) -> (MatchupStats, bool) {
+    let initial_games = env_usize("SMART_ULTRA_PROGRESSIVE_INITIAL_GAMES")
+        .unwrap_or(2)
+        .max(1);
+    let max_games = env_usize("SMART_ULTRA_PROGRESSIVE_MAX_GAMES")
+        .unwrap_or(32)
+        .max(initial_games);
+    let repeats = env_usize("SMART_ULTRA_PROGRESSIVE_REPEATS")
+        .unwrap_or(2)
+        .max(1);
+    let max_plies = env_usize("SMART_ULTRA_PROGRESSIVE_MAX_PLIES")
+        .unwrap_or(80)
+        .max(56);
+    let seed_tags = ["neutral_v1", "neutral_v2", "neutral_v3"];
+
+    let mut cumulative = MatchupStats::default();
+    let mut games_per_seed = initial_games;
+    let mut meaningful_lift = false;
+
+    loop {
+        for seed_tag in seed_tags {
+            let tagged_seed = format!("{}:{}:{}", stage_tag, seed_tag, games_per_seed);
+            let stats = run_cross_budget_duel(
+                candidate_profile,
+                SmartAutomovePreference::Ultra,
+                baseline_profile,
+                baseline_mode,
+                tagged_seed.as_str(),
+                repeats,
+                games_per_seed,
+                max_plies,
+                false,
+            );
+            cumulative.merge(stats);
+        }
+
+        let (delta, confidence) = stats_delta_confidence(cumulative);
+        println!(
+            "ultra progressive {} vs {}({}): games/seed={} cumulative={} delta={:.4} confidence={:.3}",
+            candidate_profile,
+            baseline_profile,
+            baseline_mode.as_api_value(),
+            games_per_seed,
+            cumulative.total_games(),
+            delta,
+            confidence,
+        );
+
+        if delta >= SMART_ULTRA_PROGRESSIVE_MEANINGFUL_DELTA_MIN
+            && confidence >= SMART_ULTRA_PROGRESSIVE_MEANINGFUL_CONFIDENCE_MIN
         {
             meaningful_lift = true;
         }
@@ -9864,7 +10423,9 @@ fn smart_automove_pool_pro_confirmation_probe_vs_normal() {
     let repeats = env_usize("SMART_PRO_CONFIRM_PROBE_REPEATS")
         .unwrap_or(4)
         .max(1);
-    let games = env_usize("SMART_PRO_CONFIRM_PROBE_GAMES").unwrap_or(4).max(1);
+    let games = env_usize("SMART_PRO_CONFIRM_PROBE_GAMES")
+        .unwrap_or(4)
+        .max(1);
     let max_plies = env_usize("SMART_PRO_CONFIRM_PROBE_MAX_PLIES")
         .unwrap_or(96)
         .max(56);
@@ -9903,7 +10464,9 @@ fn smart_automove_pool_pro_confirmation_probe_vs_fast() {
     let repeats = env_usize("SMART_PRO_CONFIRM_PROBE_REPEATS")
         .unwrap_or(4)
         .max(1);
-    let games = env_usize("SMART_PRO_CONFIRM_PROBE_GAMES").unwrap_or(4).max(1);
+    let games = env_usize("SMART_PRO_CONFIRM_PROBE_GAMES")
+        .unwrap_or(4)
+        .max(1);
     let max_plies = env_usize("SMART_PRO_CONFIRM_PROBE_MAX_PLIES")
         .unwrap_or(96)
         .max(56);
@@ -10033,7 +10596,11 @@ fn smart_automove_pool_pro_seed_turn_distribution_probe() {
             let game = MonsGame::from_fen(fen, false).expect("valid primary fen");
             let key = (
                 game.turn_number,
-                if game.active_color == Color::White { 0 } else { 1 },
+                if game.active_color == Color::White {
+                    0
+                } else {
+                    1
+                },
             );
             *primary_hist.entry(key).or_insert(0) += 1;
         }
@@ -10048,7 +10615,11 @@ fn smart_automove_pool_pro_seed_turn_distribution_probe() {
             let game = MonsGame::from_fen(fen, false).expect("valid confirm fen");
             let key = (
                 game.turn_number,
-                if game.active_color == Color::White { 0 } else { 1 },
+                if game.active_color == Color::White {
+                    0
+                } else {
+                    1
+                },
             );
             *confirm_hist.entry(key).or_insert(0) += 1;
         }
@@ -10301,6 +10872,774 @@ fn smart_automove_pool_pro_promotion_ladder() {
     assert!(
         candidate_pool_fast_delta + 0.01 >= baseline_pool_fast_delta,
         "pro pool non-regression vs fast-opponents failed: candidate {:.4} baseline {:.4}",
+        candidate_pool_fast_delta,
+        baseline_pool_fast_delta
+    );
+}
+
+#[test]
+#[ignore = "ultra fast screen against runtime pro baseline"]
+fn smart_automove_pool_ultra_fast_screen_vs_pro() {
+    let candidate_profile = ultra_candidate_profile_name();
+    let baseline_profile = ultra_baseline_profile_name();
+    let seed_tag = env_profile_name("SMART_ULTRA_FAST_SCREEN_SEED_TAG")
+        .unwrap_or_else(|| "ultra_fast_screen_vs_pro_v1".to_string());
+    let repeats = env_usize("SMART_ULTRA_FAST_SCREEN_REPEATS")
+        .unwrap_or(2)
+        .max(1);
+    let games = env_usize("SMART_ULTRA_FAST_SCREEN_GAMES")
+        .unwrap_or(2)
+        .max(1);
+    let max_plies = env_usize("SMART_ULTRA_FAST_SCREEN_MAX_PLIES")
+        .unwrap_or(72)
+        .max(56);
+
+    let stats = run_cross_budget_duel(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Ultra,
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Pro,
+        seed_tag.as_str(),
+        repeats,
+        games,
+        max_plies,
+        false,
+    );
+    let (delta, confidence) = stats_delta_confidence(stats);
+    println!(
+        "ultra fast screen vs pro: profile={} baseline={} wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+        candidate_profile,
+        baseline_profile,
+        stats.wins,
+        stats.losses,
+        stats.draws,
+        delta,
+        confidence
+    );
+    assert!(
+        delta >= SMART_ULTRA_FAST_SCREEN_DELTA_MIN,
+        "ultra fast screen vs pro failed: delta {:.4} < {:.4}",
+        delta,
+        SMART_ULTRA_FAST_SCREEN_DELTA_MIN
+    );
+}
+
+#[test]
+#[ignore = "ultra fast screen against runtime normal baseline"]
+fn smart_automove_pool_ultra_fast_screen_vs_normal() {
+    let candidate_profile = ultra_candidate_profile_name();
+    let baseline_profile = ultra_baseline_profile_name();
+    let seed_tag = env_profile_name("SMART_ULTRA_FAST_SCREEN_SEED_TAG")
+        .unwrap_or_else(|| "ultra_fast_screen_vs_normal_v1".to_string());
+    let repeats = env_usize("SMART_ULTRA_FAST_SCREEN_REPEATS")
+        .unwrap_or(2)
+        .max(1);
+    let games = env_usize("SMART_ULTRA_FAST_SCREEN_GAMES")
+        .unwrap_or(2)
+        .max(1);
+    let max_plies = env_usize("SMART_ULTRA_FAST_SCREEN_MAX_PLIES")
+        .unwrap_or(72)
+        .max(56);
+
+    let stats = run_cross_budget_duel(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Ultra,
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Normal,
+        seed_tag.as_str(),
+        repeats,
+        games,
+        max_plies,
+        false,
+    );
+    let (delta, confidence) = stats_delta_confidence(stats);
+    println!(
+        "ultra fast screen vs normal: profile={} baseline={} wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+        candidate_profile,
+        baseline_profile,
+        stats.wins,
+        stats.losses,
+        stats.draws,
+        delta,
+        confidence
+    );
+    assert!(
+        delta >= SMART_ULTRA_FAST_SCREEN_DELTA_MIN,
+        "ultra fast screen vs normal failed: delta {:.4} < {:.4}",
+        delta,
+        SMART_ULTRA_FAST_SCREEN_DELTA_MIN
+    );
+}
+
+#[test]
+#[ignore = "ultra fast screen against runtime fast baseline"]
+fn smart_automove_pool_ultra_fast_screen_vs_fast() {
+    let candidate_profile = ultra_candidate_profile_name();
+    let baseline_profile = ultra_baseline_profile_name();
+    let seed_tag = env_profile_name("SMART_ULTRA_FAST_SCREEN_SEED_TAG")
+        .unwrap_or_else(|| "ultra_fast_screen_vs_fast_v1".to_string());
+    let repeats = env_usize("SMART_ULTRA_FAST_SCREEN_REPEATS")
+        .unwrap_or(2)
+        .max(1);
+    let games = env_usize("SMART_ULTRA_FAST_SCREEN_GAMES")
+        .unwrap_or(2)
+        .max(1);
+    let max_plies = env_usize("SMART_ULTRA_FAST_SCREEN_MAX_PLIES")
+        .unwrap_or(72)
+        .max(56);
+
+    let stats = run_cross_budget_duel(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Ultra,
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Fast,
+        seed_tag.as_str(),
+        repeats,
+        games,
+        max_plies,
+        false,
+    );
+    let (delta, confidence) = stats_delta_confidence(stats);
+    println!(
+        "ultra fast screen vs fast: profile={} baseline={} wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+        candidate_profile,
+        baseline_profile,
+        stats.wins,
+        stats.losses,
+        stats.draws,
+        delta,
+        confidence
+    );
+    assert!(
+        delta >= SMART_ULTRA_FAST_SCREEN_DELTA_MIN,
+        "ultra fast screen vs fast failed: delta {:.4} < {:.4}",
+        delta,
+        SMART_ULTRA_FAST_SCREEN_DELTA_MIN
+    );
+}
+
+#[test]
+#[ignore = "ultra progressive duel against runtime pro baseline"]
+fn smart_automove_pool_ultra_progressive_vs_pro() {
+    let candidate_profile = ultra_candidate_profile_name();
+    let baseline_profile = ultra_baseline_profile_name();
+    let (stats, _meaningful_lift) = run_ultra_progressive_matchup(
+        candidate_profile.as_str(),
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Pro,
+        "ultra_progressive_vs_pro",
+    );
+    let (delta, confidence) = stats_delta_confidence(stats);
+    println!(
+        "ultra progressive vs pro: profile={} baseline={} wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+        candidate_profile,
+        baseline_profile,
+        stats.wins,
+        stats.losses,
+        stats.draws,
+        delta,
+        confidence
+    );
+    assert!(
+        delta >= 0.0,
+        "ultra progressive vs pro failed aggregate non-regression: delta {:.4} < 0.0",
+        delta
+    );
+}
+
+#[test]
+#[ignore = "ultra progressive duel against runtime normal baseline"]
+fn smart_automove_pool_ultra_progressive_vs_normal() {
+    let candidate_profile = ultra_candidate_profile_name();
+    let baseline_profile = ultra_baseline_profile_name();
+    let (stats, _meaningful_lift) = run_ultra_progressive_matchup(
+        candidate_profile.as_str(),
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Normal,
+        "ultra_progressive_vs_normal",
+    );
+    let (delta, confidence) = stats_delta_confidence(stats);
+    println!(
+        "ultra progressive vs normal: profile={} baseline={} wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+        candidate_profile,
+        baseline_profile,
+        stats.wins,
+        stats.losses,
+        stats.draws,
+        delta,
+        confidence
+    );
+    assert!(
+        delta >= 0.0,
+        "ultra progressive vs normal failed aggregate non-regression: delta {:.4} < 0.0",
+        delta
+    );
+}
+
+#[test]
+#[ignore = "ultra progressive duel against runtime fast baseline"]
+fn smart_automove_pool_ultra_progressive_vs_fast() {
+    let candidate_profile = ultra_candidate_profile_name();
+    let baseline_profile = ultra_baseline_profile_name();
+    let (stats, _meaningful_lift) = run_ultra_progressive_matchup(
+        candidate_profile.as_str(),
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Fast,
+        "ultra_progressive_vs_fast",
+    );
+    let (delta, confidence) = stats_delta_confidence(stats);
+    println!(
+        "ultra progressive vs fast: profile={} baseline={} wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+        candidate_profile,
+        baseline_profile,
+        stats.wins,
+        stats.losses,
+        stats.draws,
+        delta,
+        confidence
+    );
+    assert!(
+        delta >= 0.0,
+        "ultra progressive vs fast failed aggregate non-regression: delta {:.4} < 0.0",
+        delta
+    );
+}
+
+#[test]
+#[ignore = "ultra strict-primary probe against runtime pro baseline"]
+fn smart_automove_pool_ultra_primary_probe_vs_pro() {
+    let candidate_profile = ultra_candidate_profile_name();
+    let baseline_profile = ultra_baseline_profile_name();
+    let primary_games = env_usize("SMART_ULTRA_GATE_PRIMARY_GAMES")
+        .unwrap_or(6)
+        .max(2);
+    let primary_repeats = env_usize("SMART_ULTRA_GATE_PRIMARY_REPEATS")
+        .unwrap_or(6)
+        .max(2);
+    let primary_max_plies = env_usize("SMART_ULTRA_GATE_PRIMARY_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let primary_seed_tags = ["neutral_v1", "neutral_v2", "neutral_v3"];
+    let stats = run_ultra_matchup_across_seeds(
+        candidate_profile.as_str(),
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Pro,
+        "ultra_primary_vs_pro",
+        &primary_seed_tags,
+        primary_repeats,
+        primary_games,
+        primary_max_plies,
+        false,
+    );
+    let (delta, confidence) = stats_delta_confidence(stats);
+    println!(
+        "ultra primary probe vs pro: profile={} baseline={} wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+        candidate_profile,
+        baseline_profile,
+        stats.wins,
+        stats.losses,
+        stats.draws,
+        delta,
+        confidence
+    );
+}
+
+#[test]
+#[ignore = "ultra strict-primary probe against runtime normal baseline"]
+fn smart_automove_pool_ultra_primary_probe_vs_normal() {
+    let candidate_profile = ultra_candidate_profile_name();
+    let baseline_profile = ultra_baseline_profile_name();
+    let primary_games = env_usize("SMART_ULTRA_GATE_PRIMARY_GAMES")
+        .unwrap_or(6)
+        .max(2);
+    let primary_repeats = env_usize("SMART_ULTRA_GATE_PRIMARY_REPEATS")
+        .unwrap_or(6)
+        .max(2);
+    let primary_max_plies = env_usize("SMART_ULTRA_GATE_PRIMARY_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let primary_seed_tags = ["neutral_v1", "neutral_v2", "neutral_v3"];
+    let stats = run_ultra_matchup_across_seeds(
+        candidate_profile.as_str(),
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Normal,
+        "ultra_primary_vs_normal",
+        &primary_seed_tags,
+        primary_repeats,
+        primary_games,
+        primary_max_plies,
+        false,
+    );
+    let (delta, confidence) = stats_delta_confidence(stats);
+    println!(
+        "ultra primary probe vs normal: profile={} baseline={} wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+        candidate_profile,
+        baseline_profile,
+        stats.wins,
+        stats.losses,
+        stats.draws,
+        delta,
+        confidence
+    );
+}
+
+#[test]
+#[ignore = "ultra strict-primary probe against runtime fast baseline"]
+fn smart_automove_pool_ultra_primary_probe_vs_fast() {
+    let candidate_profile = ultra_candidate_profile_name();
+    let baseline_profile = ultra_baseline_profile_name();
+    let primary_games = env_usize("SMART_ULTRA_GATE_PRIMARY_GAMES")
+        .unwrap_or(6)
+        .max(2);
+    let primary_repeats = env_usize("SMART_ULTRA_GATE_PRIMARY_REPEATS")
+        .unwrap_or(6)
+        .max(2);
+    let primary_max_plies = env_usize("SMART_ULTRA_GATE_PRIMARY_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let primary_seed_tags = ["neutral_v1", "neutral_v2", "neutral_v3"];
+    let stats = run_ultra_matchup_across_seeds(
+        candidate_profile.as_str(),
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Fast,
+        "ultra_primary_vs_fast",
+        &primary_seed_tags,
+        primary_repeats,
+        primary_games,
+        primary_max_plies,
+        false,
+    );
+    let (delta, confidence) = stats_delta_confidence(stats);
+    println!(
+        "ultra primary probe vs fast: profile={} baseline={} wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+        candidate_profile,
+        baseline_profile,
+        stats.wins,
+        stats.losses,
+        stats.draws,
+        delta,
+        confidence
+    );
+}
+
+#[test]
+#[ignore = "ultra confirmation probe against runtime pro baseline (opening-book enabled)"]
+fn smart_automove_pool_ultra_confirmation_probe_vs_pro() {
+    let candidate_profile = ultra_candidate_profile_name();
+    let baseline_profile = ultra_baseline_profile_name();
+    let repeats = env_usize("SMART_ULTRA_CONFIRM_PROBE_REPEATS")
+        .unwrap_or(4)
+        .max(1);
+    let games = env_usize("SMART_ULTRA_CONFIRM_PROBE_GAMES")
+        .unwrap_or(4)
+        .max(1);
+    let max_plies = env_usize("SMART_ULTRA_CONFIRM_PROBE_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let seed_tag = env_profile_name("SMART_ULTRA_CONFIRM_PROBE_SEED_TAG")
+        .unwrap_or_else(|| "ultra_confirm_vs_pro_v1".to_string());
+
+    let stats = run_cross_budget_duel(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Ultra,
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Pro,
+        seed_tag.as_str(),
+        repeats,
+        games,
+        max_plies,
+        true,
+    );
+    let (delta, confidence) = stats_delta_confidence(stats);
+    println!(
+        "ultra confirmation probe vs pro: profile={} baseline={} wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+        candidate_profile,
+        baseline_profile,
+        stats.wins,
+        stats.losses,
+        stats.draws,
+        delta,
+        confidence
+    );
+}
+
+#[test]
+#[ignore = "ultra confirmation probe against runtime normal baseline (opening-book enabled)"]
+fn smart_automove_pool_ultra_confirmation_probe_vs_normal() {
+    let candidate_profile = ultra_candidate_profile_name();
+    let baseline_profile = ultra_baseline_profile_name();
+    let repeats = env_usize("SMART_ULTRA_CONFIRM_PROBE_REPEATS")
+        .unwrap_or(4)
+        .max(1);
+    let games = env_usize("SMART_ULTRA_CONFIRM_PROBE_GAMES")
+        .unwrap_or(4)
+        .max(1);
+    let max_plies = env_usize("SMART_ULTRA_CONFIRM_PROBE_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let seed_tag = env_profile_name("SMART_ULTRA_CONFIRM_PROBE_SEED_TAG")
+        .unwrap_or_else(|| "ultra_confirm_vs_normal_v1".to_string());
+
+    let stats = run_cross_budget_duel(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Ultra,
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Normal,
+        seed_tag.as_str(),
+        repeats,
+        games,
+        max_plies,
+        true,
+    );
+    let (delta, confidence) = stats_delta_confidence(stats);
+    println!(
+        "ultra confirmation probe vs normal: profile={} baseline={} wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+        candidate_profile,
+        baseline_profile,
+        stats.wins,
+        stats.losses,
+        stats.draws,
+        delta,
+        confidence
+    );
+}
+
+#[test]
+#[ignore = "ultra confirmation probe against runtime fast baseline (opening-book enabled)"]
+fn smart_automove_pool_ultra_confirmation_probe_vs_fast() {
+    let candidate_profile = ultra_candidate_profile_name();
+    let baseline_profile = ultra_baseline_profile_name();
+    let repeats = env_usize("SMART_ULTRA_CONFIRM_PROBE_REPEATS")
+        .unwrap_or(4)
+        .max(1);
+    let games = env_usize("SMART_ULTRA_CONFIRM_PROBE_GAMES")
+        .unwrap_or(4)
+        .max(1);
+    let max_plies = env_usize("SMART_ULTRA_CONFIRM_PROBE_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let seed_tag = env_profile_name("SMART_ULTRA_CONFIRM_PROBE_SEED_TAG")
+        .unwrap_or_else(|| "ultra_confirm_vs_fast_v1".to_string());
+
+    let stats = run_cross_budget_duel(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Ultra,
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Fast,
+        seed_tag.as_str(),
+        repeats,
+        games,
+        max_plies,
+        true,
+    );
+    let (delta, confidence) = stats_delta_confidence(stats);
+    println!(
+        "ultra confirmation probe vs fast: profile={} baseline={} wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+        candidate_profile,
+        baseline_profile,
+        stats.wins,
+        stats.losses,
+        stats.draws,
+        delta,
+        confidence
+    );
+}
+
+#[test]
+#[ignore = "strict ultra promotion ladder against pro, fast, and normal baselines"]
+fn smart_automove_pool_ultra_promotion_ladder() {
+    let candidate_profile = ultra_candidate_profile_name();
+    let baseline_profile = ultra_baseline_profile_name();
+    let candidate_selector = profile_selector_from_name(candidate_profile.as_str())
+        .unwrap_or_else(|| panic!("candidate selector '{}' should exist", candidate_profile));
+    let baseline_selector = profile_selector_from_name(baseline_profile.as_str())
+        .unwrap_or_else(|| panic!("baseline selector '{}' should exist", baseline_profile));
+
+    assert_tactical_guardrails(candidate_selector, candidate_profile.as_str());
+    assert_interview_policy_regressions(candidate_selector, candidate_profile.as_str());
+
+    let speed_positions = env_usize("SMART_ULTRA_GATE_SPEED_POSITIONS")
+        .unwrap_or(12)
+        .max(4);
+    let speed_seed = seed_for_pairing("ultra_promotion_ladder", "speed");
+    let speed_openings = generate_opening_fens_cached(speed_seed, speed_positions);
+    let ultra_speed_stats = profile_speed_by_mode_ms(
+        candidate_selector,
+        speed_openings.as_slice(),
+        &[ultra_budget()],
+    );
+    let pro_speed_stats = profile_speed_by_mode_ms(
+        baseline_selector,
+        speed_openings.as_slice(),
+        &[pro_budget()],
+    );
+    let ultra_ms = ultra_speed_stats
+        .first()
+        .map(|stat| stat.avg_ms)
+        .unwrap_or(0.0);
+    let pro_ms = pro_speed_stats
+        .first()
+        .map(|stat| stat.avg_ms)
+        .unwrap_or(1.0)
+        .max(0.001);
+    let speed_ratio = ultra_ms / pro_ms;
+    println!(
+        "ultra ladder cpu gate: profile={} baseline={} ultra_ms={:.2} pro_ms={:.2} ratio={:.3}",
+        candidate_profile, baseline_profile, ultra_ms, pro_ms, speed_ratio
+    );
+    assert!(
+        speed_ratio >= SMART_ULTRA_CPU_RATIO_TARGET_MIN_VS_PRO,
+        "ultra cpu gate below target: ratio {:.3} < {:.3}",
+        speed_ratio,
+        SMART_ULTRA_CPU_RATIO_TARGET_MIN_VS_PRO
+    );
+    assert!(
+        speed_ratio <= SMART_ULTRA_CPU_RATIO_TARGET_MAX_VS_PRO,
+        "ultra cpu gate above hard cap: ratio {:.3} > {:.3}",
+        speed_ratio,
+        SMART_ULTRA_CPU_RATIO_TARGET_MAX_VS_PRO
+    );
+
+    let primary_games = env_usize("SMART_ULTRA_GATE_PRIMARY_GAMES")
+        .unwrap_or(6)
+        .max(2);
+    let primary_repeats = env_usize("SMART_ULTRA_GATE_PRIMARY_REPEATS")
+        .unwrap_or(6)
+        .max(2);
+    let primary_max_plies = env_usize("SMART_ULTRA_GATE_PRIMARY_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let primary_seed_tags = ["neutral_v1", "neutral_v2", "neutral_v3"];
+
+    let vs_pro_stats = run_ultra_matchup_across_seeds(
+        candidate_profile.as_str(),
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Pro,
+        "ultra_primary_vs_pro",
+        &primary_seed_tags,
+        primary_repeats,
+        primary_games,
+        primary_max_plies,
+        false,
+    );
+    let vs_normal_stats = run_ultra_matchup_across_seeds(
+        candidate_profile.as_str(),
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Normal,
+        "ultra_primary_vs_normal",
+        &primary_seed_tags,
+        primary_repeats,
+        primary_games,
+        primary_max_plies,
+        false,
+    );
+    let vs_fast_stats = run_ultra_matchup_across_seeds(
+        candidate_profile.as_str(),
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Fast,
+        "ultra_primary_vs_fast",
+        &primary_seed_tags,
+        primary_repeats,
+        primary_games,
+        primary_max_plies,
+        false,
+    );
+    let (vs_pro_delta, vs_pro_confidence) = stats_delta_confidence(vs_pro_stats);
+    let (vs_normal_delta, _vs_normal_confidence) = stats_delta_confidence(vs_normal_stats);
+    let (vs_fast_delta, _vs_fast_confidence) = stats_delta_confidence(vs_fast_stats);
+    println!(
+        "ultra ladder primary vs pro: wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+        vs_pro_stats.wins, vs_pro_stats.losses, vs_pro_stats.draws, vs_pro_delta, vs_pro_confidence
+    );
+    println!(
+        "ultra ladder primary vs normal: wins={} losses={} draws={} delta={:.4}",
+        vs_normal_stats.wins, vs_normal_stats.losses, vs_normal_stats.draws, vs_normal_delta
+    );
+    println!(
+        "ultra ladder primary vs fast: wins={} losses={} draws={} delta={:.4}",
+        vs_fast_stats.wins, vs_fast_stats.losses, vs_fast_stats.draws, vs_fast_delta
+    );
+    assert!(
+        vs_pro_delta >= SMART_ULTRA_PRIMARY_IMPROVEMENT_DELTA_MIN_VS_PRO,
+        "ultra primary vs pro failed: delta {:.4} < {:.4}",
+        vs_pro_delta,
+        SMART_ULTRA_PRIMARY_IMPROVEMENT_DELTA_MIN_VS_PRO
+    );
+    assert!(
+        vs_pro_confidence >= SMART_ULTRA_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN,
+        "ultra primary vs pro confidence failed: {:.3} < {:.3}",
+        vs_pro_confidence,
+        SMART_ULTRA_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN
+    );
+    assert!(
+        vs_normal_delta >= 0.0,
+        "ultra primary vs normal failed non-regression: delta {:.4} < 0.0",
+        vs_normal_delta
+    );
+    assert!(
+        vs_fast_delta >= 0.0,
+        "ultra primary vs fast failed non-regression: delta {:.4} < 0.0",
+        vs_fast_delta
+    );
+
+    let confirm_games = env_usize("SMART_ULTRA_GATE_CONFIRM_GAMES")
+        .unwrap_or(4)
+        .max(2);
+    let confirm_repeats = env_usize("SMART_ULTRA_GATE_CONFIRM_REPEATS")
+        .unwrap_or(4)
+        .max(2);
+    let confirm_max_plies = env_usize("SMART_ULTRA_GATE_CONFIRM_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let confirm_vs_pro = run_cross_budget_duel(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Ultra,
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Pro,
+        "ultra_confirm_vs_pro_v1",
+        confirm_repeats,
+        confirm_games,
+        confirm_max_plies,
+        true,
+    );
+    let confirm_vs_normal = run_cross_budget_duel(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Ultra,
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Normal,
+        "ultra_confirm_vs_normal_v1",
+        confirm_repeats,
+        confirm_games,
+        confirm_max_plies,
+        true,
+    );
+    let confirm_vs_fast = run_cross_budget_duel(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Ultra,
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Fast,
+        "ultra_confirm_vs_fast_v1",
+        confirm_repeats,
+        confirm_games,
+        confirm_max_plies,
+        true,
+    );
+    let (confirm_pro_delta, _) = stats_delta_confidence(confirm_vs_pro);
+    let (confirm_normal_delta, _) = stats_delta_confidence(confirm_vs_normal);
+    let (confirm_fast_delta, _) = stats_delta_confidence(confirm_vs_fast);
+    println!(
+        "ultra ladder confirm vs pro: delta={:.4}",
+        confirm_pro_delta
+    );
+    println!(
+        "ultra ladder confirm vs normal: delta={:.4}",
+        confirm_normal_delta
+    );
+    println!(
+        "ultra ladder confirm vs fast: delta={:.4}",
+        confirm_fast_delta
+    );
+    assert!(
+        confirm_pro_delta >= 0.0,
+        "ultra confirmation vs pro failed non-regression: delta {:.4} < 0.0",
+        confirm_pro_delta
+    );
+    assert!(
+        confirm_normal_delta >= 0.0,
+        "ultra confirmation vs normal failed non-regression: delta {:.4} < 0.0",
+        confirm_normal_delta
+    );
+    assert!(
+        confirm_fast_delta >= 0.0,
+        "ultra confirmation vs fast failed non-regression: delta {:.4} < 0.0",
+        confirm_fast_delta
+    );
+
+    let pool_games = env_usize("SMART_ULTRA_GATE_POOL_GAMES").unwrap_or(1).max(1);
+    let pool_max_plies = env_usize("SMART_ULTRA_GATE_POOL_MAX_PLIES")
+        .unwrap_or(80)
+        .max(56);
+    let candidate_pool_vs_pro = run_profile_vs_pool_cross_budget(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Ultra,
+        SmartAutomovePreference::Pro,
+        pool_games,
+        pool_max_plies,
+        "ultra_pool_vs_pro",
+    );
+    let baseline_pool_vs_pro = run_profile_vs_pool_cross_budget(
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Pro,
+        SmartAutomovePreference::Pro,
+        pool_games,
+        pool_max_plies,
+        "baseline_pool_vs_pro",
+    );
+    let candidate_pool_vs_normal = run_profile_vs_pool_cross_budget(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Ultra,
+        SmartAutomovePreference::Normal,
+        pool_games,
+        pool_max_plies,
+        "ultra_pool_vs_normal",
+    );
+    let baseline_pool_vs_normal = run_profile_vs_pool_cross_budget(
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Normal,
+        SmartAutomovePreference::Normal,
+        pool_games,
+        pool_max_plies,
+        "baseline_pool_vs_normal",
+    );
+    let candidate_pool_vs_fast = run_profile_vs_pool_cross_budget(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Ultra,
+        SmartAutomovePreference::Fast,
+        pool_games,
+        pool_max_plies,
+        "ultra_pool_vs_fast",
+    );
+    let baseline_pool_vs_fast = run_profile_vs_pool_cross_budget(
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Fast,
+        SmartAutomovePreference::Fast,
+        pool_games,
+        pool_max_plies,
+        "baseline_pool_vs_fast",
+    );
+    let (candidate_pool_pro_delta, _) = stats_delta_confidence(candidate_pool_vs_pro);
+    let (baseline_pool_pro_delta, _) = stats_delta_confidence(baseline_pool_vs_pro);
+    let (candidate_pool_normal_delta, _) = stats_delta_confidence(candidate_pool_vs_normal);
+    let (baseline_pool_normal_delta, _) = stats_delta_confidence(baseline_pool_vs_normal);
+    let (candidate_pool_fast_delta, _) = stats_delta_confidence(candidate_pool_vs_fast);
+    let (baseline_pool_fast_delta, _) = stats_delta_confidence(baseline_pool_vs_fast);
+    println!(
+        "ultra ladder pool vs pro-opponents: candidate_delta={:.4} baseline_delta={:.4}",
+        candidate_pool_pro_delta, baseline_pool_pro_delta
+    );
+    println!(
+        "ultra ladder pool vs normal-opponents: candidate_delta={:.4} baseline_delta={:.4}",
+        candidate_pool_normal_delta, baseline_pool_normal_delta
+    );
+    println!(
+        "ultra ladder pool vs fast-opponents: candidate_delta={:.4} baseline_delta={:.4}",
+        candidate_pool_fast_delta, baseline_pool_fast_delta
+    );
+    assert!(
+        candidate_pool_pro_delta + 0.01 >= baseline_pool_pro_delta,
+        "ultra pool non-regression vs pro-opponents failed: candidate {:.4} baseline {:.4}",
+        candidate_pool_pro_delta,
+        baseline_pool_pro_delta
+    );
+    assert!(
+        candidate_pool_normal_delta + 0.01 >= baseline_pool_normal_delta,
+        "ultra pool non-regression vs normal-opponents failed: candidate {:.4} baseline {:.4}",
+        candidate_pool_normal_delta,
+        baseline_pool_normal_delta
+    );
+    assert!(
+        candidate_pool_fast_delta + 0.01 >= baseline_pool_fast_delta,
+        "ultra pool non-regression vs fast-opponents failed: candidate {:.4} baseline {:.4}",
         candidate_pool_fast_delta,
         baseline_pool_fast_delta
     );

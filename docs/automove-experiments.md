@@ -98,18 +98,23 @@ Public API:
 - `smartAutomoveAsync("fast")`
 - `smartAutomoveAsync("normal")`
 - `smartAutomoveAsync("pro")`
+- `smartAutomoveAsync("ultra")`
 
 Current runtime behavior:
 
 - `fast` is CPU-shaped around `depth=2/max_nodes=480`.
 - `normal` is CPU-shaped around `depth=3/max_nodes=3800`.
 - `pro` is CPU-shaped around `depth=4/max_nodes=11400` and always runs full pro budget (no adaptive fallback to normal).
+- `ultra` is CPU-shaped around `depth=5/max_nodes=42066` and uses runtime context split (independent primary branch + opening confirmation branch).
 - `fast` uses `RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF` (boolean drainer danger, `-400`/`-300`, plus `supermana_race_control: 30`).
 - `normal` uses phase-adaptive boolean drainer weights (`RUNTIME_NORMAL_BOOLEAN_DRAINER_*_SPIRIT_BASE_SCORING_WEIGHTS` family), switching by game phase.
 - `pro` uses runtime context split with model-local hinting (no FEN schema change):
   - `Independent` context (default search): `max_visited_nodes=10200`, forced tactical prepass off, reply-risk `165/9/24/2000`, drainer safety `4800`, selective-extension share `1500`, and attacker-proximity phase-adaptive scoring.
   - `OpeningBookDriven` context (production opening confirmation path): `max_visited_nodes=10200`, forced tactical prepass off, reply-risk `155/7/18/1400`, drainer safety `4300`, selective-extension share `1200`, and deep-floor off for safer conversion.
   - Context hint is persisted on the model and set when opening-book move selection is used; unknown states fall back to deterministic opening-context detection.
+- `ultra` uses the same model-local context hinting and deterministic opening detection:
+  - `Independent` context: `max_visited_nodes=36800`, forced tactical prepass off, two-pass root allocation on, reply-risk `175/10/30/2400`, drainer safety `5000`, selective-extension share `1900`, and attacker-proximity phase-adaptive scoring.
+  - `OpeningBookDriven` context: `max_visited_nodes=35200`, safer reply-risk `165/8/22/1700`, drainer safety `4600`, selective-extension share `1200`, and deep-floor off.
 - Both modes enable `enable_enhanced_drainer_vulnerability` (exact-geometry boolean threat detection for drainer and mana carriers).
 - `fast` enables `enable_supermana_prepass_exception`: when the position has supermana scoring potential, the forced tactical prepass skips drainer attack and drainer safety overrides, allowing the search to find supermana plays.
 - `fast` uses boosted interview supermana bonuses: `interview_soft_supermana_score_bonus = 600` (from 360), `interview_soft_supermana_progress_bonus = 320` (from 240).
@@ -235,6 +240,72 @@ Mandatory pro round loop:
    - CPU ratio `>3.69x` → optimization-only next round
    - tactical guardrail fail → lock pattern as hard constraint
    - seed instability only → narrow parameter amplitude + increase repeats
+
+---
+
+## Ultra Mode
+
+Public API contract:
+
+- `smartAutomoveAsync("ultra")` is valid and GA-capable once strict ultra ladder passes.
+- Existing `fast`/`normal`/`pro` contracts are unchanged.
+
+CPU intent:
+
+- Ultra targets `3.30x..3.69x` CPU vs `runtime_current@pro` on the fixed-position probe.
+- Hard fail outside that band.
+
+Strict ultra promotion criteria:
+
+- Primary strict bar vs pro:
+  - `ultra vs pro`: `delta >= +0.10`, `confidence >= 0.90`
+- Primary non-regression:
+  - `ultra vs normal`: `delta >= 0.0`
+  - `ultra vs fast`: `delta >= 0.0`
+- Confirmation non-regression (opening-book enabled):
+  - `ultra vs pro`: `delta >= 0.0`
+  - `ultra vs normal`: `delta >= 0.0`
+  - `ultra vs fast`: `delta >= 0.0`
+- Tactical suite, CPU gate, and pool non-regression must pass before promotion.
+
+Ultra-specific command runbook:
+
+```sh
+./scripts/run-experiment-logged.sh ultra_fast_screen_pro_<candidate> -- \
+  env SMART_ULTRA_CANDIDATE_PROFILE=<candidate> \
+      SMART_ULTRA_BASELINE_PROFILE=runtime_current \
+  cargo test --release --lib smart_automove_pool_ultra_fast_screen_vs_pro -- --ignored --nocapture
+
+./scripts/run-experiment-logged.sh ultra_fast_screen_normal_<candidate> -- \
+  env SMART_ULTRA_CANDIDATE_PROFILE=<candidate> \
+      SMART_ULTRA_BASELINE_PROFILE=runtime_current \
+  cargo test --release --lib smart_automove_pool_ultra_fast_screen_vs_normal -- --ignored --nocapture
+
+./scripts/run-experiment-logged.sh ultra_fast_screen_fast_<candidate> -- \
+  env SMART_ULTRA_CANDIDATE_PROFILE=<candidate> \
+      SMART_ULTRA_BASELINE_PROFILE=runtime_current \
+  cargo test --release --lib smart_automove_pool_ultra_fast_screen_vs_fast -- --ignored --nocapture
+
+./scripts/run-experiment-logged.sh ultra_progressive_pro_<candidate> -- \
+  env SMART_ULTRA_CANDIDATE_PROFILE=<candidate> \
+      SMART_ULTRA_BASELINE_PROFILE=runtime_current \
+  cargo test --release --lib smart_automove_pool_ultra_progressive_vs_pro -- --ignored --nocapture
+
+./scripts/run-experiment-logged.sh ultra_progressive_normal_<candidate> -- \
+  env SMART_ULTRA_CANDIDATE_PROFILE=<candidate> \
+      SMART_ULTRA_BASELINE_PROFILE=runtime_current \
+  cargo test --release --lib smart_automove_pool_ultra_progressive_vs_normal -- --ignored --nocapture
+
+./scripts/run-experiment-logged.sh ultra_progressive_fast_<candidate> -- \
+  env SMART_ULTRA_CANDIDATE_PROFILE=<candidate> \
+      SMART_ULTRA_BASELINE_PROFILE=runtime_current \
+  cargo test --release --lib smart_automove_pool_ultra_progressive_vs_fast -- --ignored --nocapture
+
+./scripts/run-experiment-logged.sh ultra_ladder_<candidate> -- \
+  env SMART_ULTRA_CANDIDATE_PROFILE=<candidate> \
+      SMART_ULTRA_BASELINE_PROFILE=runtime_current \
+  cargo test --release --lib smart_automove_pool_ultra_promotion_ladder -- --ignored --nocapture
+```
 
 ---
 
@@ -500,6 +571,16 @@ SMART_TUNE_PROFILE=runtime_current \
 - `runtime_pro_context_split_runtime_v5`: v2 plus stronger confirmation safety hardening.
 - `runtime_pro_context_split_runtime_v6`: opening confirmation uses runtime-normal profile, independent context uses high-utilization pro.
 - `runtime_pro_context_split_runtime_v7`: context split with pro nominal node target (`11400`) for utilization stress testing.
+- `runtime_ultra_d5_split_cal_v1`: ultra depth-5 context-split calibration (low node target).
+- `runtime_ultra_d5_split_cal_v2`: ultra depth-5 context-split calibration (mid-low node target).
+- `runtime_ultra_d5_split_cal_v3`: ultra depth-5 context-split calibration (mid-high node target).
+- `runtime_ultra_d5_split_cal_v4`: ultra depth-5 context-split calibration (high node target).
+- `runtime_ultra_d5_split_confirm_safety_v1`: ultra context-split with confirmation and pressure safety tightening.
+- `runtime_ultra_d5_split_primary_conversion_v1`: ultra context-split with primary conversion lift (reply window and extension share).
+- `runtime_ultra_d5_split_normalized_v1`: normal-style depth-5 ultra backbone to reduce normal-regression risk.
+- `runtime_ultra_d5_split_hybrid_balance_v1`: aggressive/safe hybrid split by score-race state.
+- `runtime_ultra_d5_split_normal_guard_v1`: v4-style ultra with pressure-triggered normal-safety guard.
+- `runtime_ultra_d5_split_normalized_v2`: normalized backbone with conditional aggressive finisher conversion.
 - `runtime_pro_cpu_prepass_off_v2_phase_budget_v1` / `v2` / `v3`: phase-conditioned pro budget-expansion attempts.
 - `runtime_pre_pro_promotion_v1`: snapshot profile before pro runtime promotion.
 - `swift_2024_eval_reference`: Swift 2024 weights on top of current runtime search.
@@ -863,6 +944,42 @@ Promotion action:
 
 - Runtime `pro` context profiles in `mons_game_model.rs` updated from `9800` to `10200` nodes for both independent and opening-book-driven branches.
 - Fast/normal runtime branches unchanged.
+
+### 33) Ultra pro-positive context-split family regressed vs normal (March 3, 2026)
+
+Profiles:
+
+- `runtime_ultra_d5_split_cal_v1..v4`
+- `runtime_ultra_d5_split_confirm_safety_v1`
+- `runtime_ultra_d5_split_primary_conversion_v1`
+
+Observed pattern:
+
+- Fast-screen stayed non-negative vs pro/normal/fast in tiny probes.
+- Progressive and strict ladder seeds exposed normal regression (`ultra vs normal delta < 0`) while pro/fast stayed directionally strong.
+- Ultra CPU utilization was in-band (`ratio=3.421` vs pro on ladder speed gate for `runtime_ultra_d5_split_primary_conversion_v1`), so this failure is quality allocation, not CPU budget.
+
+Takeaway:
+
+- For ultra, pro-targeting conversion pressure alone is insufficient; normal-baseline stability needs stronger primary-path balancing, not only confirmation-path tightening.
+
+### 34) Ultra normal-safe families lost pro head-to-head (March 3, 2026)
+
+Profiles:
+
+- `runtime_ultra_d5_split_normalized_v1`
+- `runtime_ultra_d5_split_hybrid_balance_v1`
+- `runtime_ultra_d5_split_normal_guard_v1`
+- `runtime_ultra_d5_split_normalized_v2`
+
+Observed pattern:
+
+- These variants improved or stabilized normal-side probes.
+- They failed fast-screen vs pro (`delta < 0.0`), so they cannot enter ultra progressive/ladder under strict gates.
+
+Takeaway:
+
+- Ultra requires a narrower hybridization: preserve pro-pressure signal in more states, and inject normal-safety only at clearly identified loss patterns.
 
 ---
 
