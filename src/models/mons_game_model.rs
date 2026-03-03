@@ -15,13 +15,28 @@ use crate::*;
 #[derive(Debug)]
 pub struct MonsGameModel {
     game: MonsGame,
+    #[cfg(any(target_arch = "wasm32", test))]
+    pro_runtime_context_hint: std::cell::Cell<ProRuntimeContext>,
     #[cfg(target_arch = "wasm32")]
     smart_search_in_progress: std::rc::Rc<std::cell::Cell<bool>>,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ProRuntimeContext {
+    Unknown,
+    OpeningBookDriven,
+    Independent,
+}
+
 impl Clone for MonsGameModel {
     fn clone(&self) -> Self {
-        Self::with_game(self.game.clone())
+        let cloned = Self::with_game(self.game.clone());
+        #[cfg(any(target_arch = "wasm32", test))]
+        cloned
+            .pro_runtime_context_hint
+            .set(self.pro_runtime_context_hint.get());
+        cloned
     }
 }
 
@@ -1139,13 +1154,13 @@ impl SmartSearchConfig {
             }
             SmartAutomovePreference::Pro => {
                 let mut tuned = Self::with_normal_deeper_shape(config);
-                tuned.max_visited_nodes = SMART_AUTOMOVE_PRO_MAX_VISITED_NODES as usize;
-                tuned.root_branch_limit = tuned.root_branch_limit.clamp(14, 42);
-                tuned.node_branch_limit = (tuned.node_branch_limit + 2).clamp(10, 18);
+                tuned.max_visited_nodes = 9_800;
+                tuned.root_branch_limit = tuned.root_branch_limit.clamp(14, 34);
+                tuned.node_branch_limit = tuned.node_branch_limit.clamp(9, 15);
                 tuned.root_enum_limit =
-                    (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 252);
+                    (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 204);
                 tuned.node_enum_limit =
-                    ((tuned.node_branch_limit + 2) * 6).clamp(tuned.node_branch_limit, 168);
+                    ((tuned.node_branch_limit + 2) * 6).clamp(tuned.node_branch_limit, 132);
                 tuned.enable_root_efficiency = true;
                 tuned.enable_event_ordering_bonus = false;
                 tuned.enable_backtrack_penalty = true;
@@ -1161,14 +1176,14 @@ impl SmartSearchConfig {
                 tuned.enable_root_mana_handoff_guard = true;
                 tuned.enable_forced_drainer_attack = true;
                 tuned.enable_forced_drainer_attack_fallback = true;
-                tuned.enable_forced_tactical_prepass = true;
+                tuned.enable_forced_tactical_prepass = false;
                 tuned.enable_root_drainer_safety_prefilter = true;
                 tuned.enable_root_spirit_development_pref = true;
                 tuned.enable_root_reply_risk_guard = true;
-                tuned.root_reply_risk_score_margin = 155;
-                tuned.root_reply_risk_shortlist_max = 8;
-                tuned.root_reply_risk_reply_limit = 20;
-                tuned.root_reply_risk_node_share_bp = 1_600;
+                tuned.root_reply_risk_score_margin = 165;
+                tuned.root_reply_risk_shortlist_max = 9;
+                tuned.root_reply_risk_reply_limit = 24;
+                tuned.root_reply_risk_node_share_bp = 2_000;
                 tuned.enable_move_class_coverage = true;
                 tuned.enable_child_move_class_coverage = true;
                 tuned.enable_strict_tactical_class_coverage = true;
@@ -1184,18 +1199,21 @@ impl SmartSearchConfig {
                 tuned.enable_mana_start_mix_with_potion_actions = true;
                 tuned.enable_potion_progress_compensation = true;
                 tuned.prefer_clean_reply_risk_roots = true;
-                tuned.root_drainer_safety_score_margin = 4_200;
+                tuned.root_drainer_safety_score_margin = 4_800;
                 tuned.enable_enhanced_drainer_vulnerability = true;
                 tuned.root_mana_handoff_penalty = 340;
                 tuned.root_backtrack_penalty = 240;
                 tuned.root_efficiency_score_margin = 1_400;
+                tuned.enable_futility_pruning = true;
+                tuned.futility_margin = 2_300;
+                tuned.quiet_reduction_depth_threshold = 2;
                 tuned.potion_spend_penalty_fast = SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_FAST;
                 tuned.potion_spend_penalty_normal = 130;
                 tuned.interview_soft_score_margin = 80;
                 tuned.interview_soft_supermana_progress_bonus = 240;
                 tuned.interview_soft_supermana_score_bonus = 300;
-                tuned.interview_soft_opponent_mana_progress_bonus = 220;
-                tuned.interview_soft_opponent_mana_score_bonus = 280;
+                tuned.interview_soft_opponent_mana_progress_bonus = 280;
+                tuned.interview_soft_opponent_mana_score_bonus = 340;
                 tuned.interview_soft_mana_handoff_penalty = 340;
                 tuned.interview_soft_roundtrip_penalty = 260;
                 tuned
@@ -1518,6 +1536,8 @@ impl MonsGameModel {
     fn with_game(game: MonsGame) -> Self {
         Self {
             game,
+            #[cfg(any(target_arch = "wasm32", test))]
+            pro_runtime_context_hint: std::cell::Cell::new(ProRuntimeContext::Unknown),
             #[cfg(target_arch = "wasm32")]
             smart_search_in_progress: std::rc::Rc::new(std::cell::Cell::new(false)),
         }
@@ -1608,6 +1628,7 @@ impl MonsGameModel {
             let input_fen = Input::fen_from_array(&opening_inputs);
             let output = game.process_input(opening_inputs, false, false);
             if matches!(output, Output::Events(_)) {
+                self.mark_opening_book_driven_context();
                 return js_sys::Promise::resolve(&JsValue::from(OutputModel::new(
                     output,
                     input_fen.as_str(),
@@ -1618,10 +1639,7 @@ impl MonsGameModel {
         self.smart_search_in_progress.set(true);
         let in_progress = self.smart_search_in_progress.clone();
 
-        let config = Self::with_runtime_scoring_weights(
-            &self.game,
-            SmartSearchConfig::from_preference(preference),
-        );
+        let config = self.runtime_config_for_preference(preference);
         let perspective = self.game.active_color;
         let game = self.game.clone_for_simulation();
         let root_moves = Self::ranked_root_moves(&game, perspective, config);
@@ -2042,6 +2060,169 @@ impl MonsGameModel {
 
 #[cfg(any(target_arch = "wasm32", test))]
 impl MonsGameModel {
+    fn mark_opening_book_driven_context(&self) {
+        self.pro_runtime_context_hint
+            .set(ProRuntimeContext::OpeningBookDriven);
+    }
+
+    fn runtime_config_for_preference(
+        &self,
+        preference: SmartAutomovePreference,
+    ) -> SmartSearchConfig {
+        let hinted = self.pro_runtime_context_hint.get();
+        let (config, resolved_context) =
+            Self::runtime_config_for_game_with_context(&self.game, preference, hinted);
+        self.pro_runtime_context_hint.set(resolved_context);
+        config
+    }
+
+    fn runtime_config_for_game_with_context(
+        game: &MonsGame,
+        preference: SmartAutomovePreference,
+        hinted_context: ProRuntimeContext,
+    ) -> (SmartSearchConfig, ProRuntimeContext) {
+        let mut config = Self::with_runtime_scoring_weights(
+            game,
+            SmartSearchConfig::from_preference(preference),
+        );
+        let resolved_context = if preference == SmartAutomovePreference::Pro {
+            let resolved = Self::resolve_pro_runtime_context(game, hinted_context);
+            config = Self::apply_pro_runtime_context_profile(game, config, resolved);
+            resolved
+        } else {
+            hinted_context
+        };
+        (config, resolved_context)
+    }
+
+    fn resolve_pro_runtime_context(
+        game: &MonsGame,
+        hinted_context: ProRuntimeContext,
+    ) -> ProRuntimeContext {
+        if hinted_context == ProRuntimeContext::OpeningBookDriven {
+            return ProRuntimeContext::OpeningBookDriven;
+        }
+        if Self::detect_opening_book_context(game) {
+            ProRuntimeContext::OpeningBookDriven
+        } else {
+            ProRuntimeContext::Independent
+        }
+    }
+
+    fn detect_opening_book_context(game: &MonsGame) -> bool {
+        if game.turn_number != 2 || game.active_color != Color::Black {
+            return false;
+        }
+        let current_fen = game.fen();
+        for sequence in PARSED_WHITE_OPENING_BOOK.iter() {
+            if sequence.is_empty() {
+                continue;
+            }
+            let mut simulated = MonsGame::new(false);
+            let mut valid = true;
+            for step_inputs in sequence.iter() {
+                if !matches!(
+                    simulated.process_input(step_inputs.clone(), false, false),
+                    Output::Events(_)
+                ) {
+                    valid = false;
+                    break;
+                }
+                if simulated.turn_number == 2 && simulated.active_color == Color::Black {
+                    break;
+                }
+            }
+            if valid
+                && simulated.turn_number == 2
+                && simulated.active_color == Color::Black
+                && simulated.fen() == current_fen
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn apply_pro_runtime_context_profile(
+        game: &MonsGame,
+        config: SmartSearchConfig,
+        context: ProRuntimeContext,
+    ) -> SmartSearchConfig {
+        match context {
+            ProRuntimeContext::OpeningBookDriven => Self::apply_pro_confirmation_profile(config),
+            ProRuntimeContext::Unknown | ProRuntimeContext::Independent => {
+                Self::apply_pro_primary_profile(game, config)
+            }
+        }
+    }
+
+    fn apply_pro_primary_profile(game: &MonsGame, mut config: SmartSearchConfig) -> SmartSearchConfig {
+        if config.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
+            return config;
+        }
+        config.max_visited_nodes = 10_200;
+        config.enable_forced_tactical_prepass = false;
+        config.root_branch_limit = config.root_branch_limit.clamp(14, 34);
+        config.node_branch_limit = config.node_branch_limit.clamp(9, 15);
+        config.root_enum_limit = (config.root_branch_limit * 6).clamp(config.root_branch_limit, 204);
+        config.node_enum_limit =
+            ((config.node_branch_limit + 2) * 6).clamp(config.node_branch_limit, 132);
+        config.enable_futility_pruning = true;
+        config.futility_margin = 2_300;
+        config.enable_quiet_reductions = true;
+        config.quiet_reduction_depth_threshold = 2;
+        config.enable_root_reply_risk_guard = true;
+        config.root_reply_risk_score_margin = 165;
+        config.root_reply_risk_shortlist_max = 9;
+        config.root_reply_risk_reply_limit = 24;
+        config.root_reply_risk_node_share_bp = 2_000;
+        config.enable_normal_root_safety_rerank = true;
+        config.enable_normal_root_safety_deep_floor = true;
+        config.root_drainer_safety_score_margin = 4_800;
+        config.enable_selective_extensions = true;
+        config.max_extensions_per_path = 1;
+        config.selective_extension_node_share_bp = 1_500;
+        config.scoring_weights =
+            Self::runtime_phase_adaptive_attacker_proximity_scoring_weights(game, config.depth);
+        config.interview_soft_opponent_mana_progress_bonus = 280;
+        config.interview_soft_opponent_mana_score_bonus = 340;
+        config
+    }
+
+    fn apply_pro_confirmation_profile(mut config: SmartSearchConfig) -> SmartSearchConfig {
+        if config.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
+            return config;
+        }
+        config.max_visited_nodes = 10_200;
+        config.enable_forced_tactical_prepass = false;
+        config.root_branch_limit = config.root_branch_limit.clamp(14, 34);
+        config.node_branch_limit = config.node_branch_limit.clamp(9, 15);
+        config.root_enum_limit = (config.root_branch_limit * 6).clamp(config.root_branch_limit, 204);
+        config.node_enum_limit =
+            ((config.node_branch_limit + 2) * 6).clamp(config.node_branch_limit, 132);
+        config.enable_futility_pruning = true;
+        config.futility_margin = 2_500;
+        config.enable_quiet_reductions = true;
+        config.quiet_reduction_depth_threshold = 2;
+        config.enable_root_reply_risk_guard = true;
+        config.root_reply_risk_score_margin = 155;
+        config.root_reply_risk_shortlist_max = 7;
+        config.root_reply_risk_reply_limit = 18;
+        config.root_reply_risk_node_share_bp = 1_400;
+        config.enable_normal_root_safety_rerank = true;
+        config.enable_normal_root_safety_deep_floor = false;
+        config.root_drainer_safety_score_margin = 4_300;
+        config.enable_selective_extensions = true;
+        config.max_extensions_per_path = 1;
+        config.selective_extension_node_share_bp = 1_200;
+        config
+    }
+
+    #[cfg(test)]
+    fn pro_runtime_context_hint_for_tests(&self) -> ProRuntimeContext {
+        self.pro_runtime_context_hint.get()
+    }
+
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     fn with_runtime_scoring_weights(
         game: &MonsGame,
@@ -6858,6 +7039,21 @@ mod opening_book_tests {
         game
     }
 
+    fn advance_opening_book_until_black_turn(game: &mut MonsGame) {
+        let mut applied_steps = 0;
+        while game.turn_number == 1 && applied_steps < 8 {
+            let inputs = MonsGameModel::white_first_turn_opening_next_inputs(game)
+                .expect("expected opening-book continuation during white first turn");
+            assert!(matches!(
+                game.process_input(inputs, false, false),
+                Output::Events(_)
+            ));
+            applied_steps += 1;
+        }
+        assert_eq!(game.turn_number, 2, "opening book should finish white first turn");
+        assert_eq!(game.active_color, Color::Black);
+    }
+
     #[test]
     fn white_opening_book_selects_a_valid_first_move() {
         let game = MonsGame::new(false);
@@ -6917,6 +7113,82 @@ mod opening_book_tests {
         );
         let _ = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
             .expect("pro mode selected inputs should be legal");
+    }
+
+    #[test]
+    fn opening_book_move_marks_pro_runtime_context_hint() {
+        let model = MonsGameModel::new();
+        assert_eq!(
+            model.pro_runtime_context_hint_for_tests(),
+            ProRuntimeContext::Unknown
+        );
+        model.mark_opening_book_driven_context();
+        assert_eq!(
+            model.pro_runtime_context_hint_for_tests(),
+            ProRuntimeContext::OpeningBookDriven
+        );
+    }
+
+    #[test]
+    fn pro_runtime_context_resolver_handles_unknown_opening_and_independent() {
+        let mut opening_game = MonsGame::new(false);
+        advance_opening_book_until_black_turn(&mut opening_game);
+        assert_eq!(
+            MonsGameModel::resolve_pro_runtime_context(&opening_game, ProRuntimeContext::Unknown),
+            ProRuntimeContext::OpeningBookDriven
+        );
+        assert_eq!(
+            MonsGameModel::resolve_pro_runtime_context(
+                &opening_game,
+                ProRuntimeContext::OpeningBookDriven
+            ),
+            ProRuntimeContext::OpeningBookDriven
+        );
+
+        let mut independent_game = MonsGame::new(false);
+        let diverged_inputs = Input::array_from_fen("l10,3;l9,4");
+        assert!(matches!(
+            independent_game.process_input(diverged_inputs, false, false),
+            Output::Events(_)
+        ));
+        assert_eq!(
+            MonsGameModel::resolve_pro_runtime_context(
+                &independent_game,
+                ProRuntimeContext::Unknown
+            ),
+            ProRuntimeContext::Independent
+        );
+    }
+
+    #[test]
+    fn pro_runtime_context_profile_applies_expected_tuning() {
+        let base_game = MonsGame::new(false);
+        let independent_model = MonsGameModel::with_game(base_game);
+        let independent_config =
+            independent_model.runtime_config_for_preference(SmartAutomovePreference::Pro);
+        assert_eq!(independent_config.max_visited_nodes, 10_200);
+        assert_eq!(independent_config.root_reply_risk_score_margin, 165);
+        assert_eq!(independent_config.root_reply_risk_shortlist_max, 9);
+        assert_eq!(independent_config.root_reply_risk_reply_limit, 24);
+        assert_eq!(independent_config.root_reply_risk_node_share_bp, 2_000);
+        assert!(independent_config.enable_normal_root_safety_deep_floor);
+        assert_eq!(independent_config.root_drainer_safety_score_margin, 4_800);
+        assert_eq!(independent_config.selective_extension_node_share_bp, 1_500);
+        assert_eq!(independent_config.interview_soft_opponent_mana_progress_bonus, 280);
+        assert_eq!(independent_config.interview_soft_opponent_mana_score_bonus, 340);
+
+        let mut opening_game = MonsGame::new(false);
+        advance_opening_book_until_black_turn(&mut opening_game);
+        let opening_model = MonsGameModel::with_game(opening_game);
+        let opening_config = opening_model.runtime_config_for_preference(SmartAutomovePreference::Pro);
+        assert_eq!(opening_config.max_visited_nodes, 10_200);
+        assert_eq!(opening_config.root_reply_risk_score_margin, 155);
+        assert_eq!(opening_config.root_reply_risk_shortlist_max, 7);
+        assert_eq!(opening_config.root_reply_risk_reply_limit, 18);
+        assert_eq!(opening_config.root_reply_risk_node_share_bp, 1_400);
+        assert!(!opening_config.enable_normal_root_safety_deep_floor);
+        assert_eq!(opening_config.root_drainer_safety_score_margin, 4_300);
+        assert_eq!(opening_config.selective_extension_node_share_bp, 1_200);
     }
 
     #[test]

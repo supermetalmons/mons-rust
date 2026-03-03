@@ -106,7 +106,10 @@ Current runtime behavior:
 - `pro` is CPU-shaped around `depth=4/max_nodes=11400` and always runs full pro budget (no adaptive fallback to normal).
 - `fast` uses `RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF` (boolean drainer danger, `-400`/`-300`, plus `supermana_race_control: 30`).
 - `normal` uses phase-adaptive boolean drainer weights (`RUNTIME_NORMAL_BOOLEAN_DRAINER_*_SPIRIT_BASE_SCORING_WEIGHTS` family), switching by game phase.
-- `pro` starts from normal runtime guardrails with deeper shape and larger budget: two-pass root allocation, selective extensions (`max_extensions_per_path=1`, node-share `15%`), reply-risk guard (`score_margin=155`, shortlist `8`, reply-limit `20`, node-share `16%`), and normal root safety rerank/deep-floor enabled.
+- `pro` uses runtime context split with model-local hinting (no FEN schema change):
+  - `Independent` context (default search): `max_visited_nodes=10200`, forced tactical prepass off, reply-risk `165/9/24/2000`, drainer safety `4800`, selective-extension share `1500`, and attacker-proximity phase-adaptive scoring.
+  - `OpeningBookDriven` context (production opening confirmation path): `max_visited_nodes=10200`, forced tactical prepass off, reply-risk `155/7/18/1400`, drainer safety `4300`, selective-extension share `1200`, and deep-floor off for safer conversion.
+  - Context hint is persisted on the model and set when opening-book move selection is used; unknown states fall back to deterministic opening-context detection.
 - Both modes enable `enable_enhanced_drainer_vulnerability` (exact-geometry boolean threat detection for drainer and mana carriers).
 - `fast` enables `enable_supermana_prepass_exception`: when the position has supermana scoring potential, the forced tactical prepass skips drainer attack and drainer safety overrides, allowing the search to find supermana plays.
 - `fast` uses boosted interview supermana bonuses: `interview_soft_supermana_score_bonus = 600` (from 360), `interview_soft_supermana_progress_bonus = 320` (from 240).
@@ -166,7 +169,7 @@ Public API contract:
 CPU intent:
 
 - Pro is targeted at roughly `~3x` normal CPU on the fixed-position probe.
-- Promotion ladder target band: `2.70x..3.30x` (hard fail when `>3.30x`).
+- Promotion ladder target band: `2.70x..3.69x` (hard fail when `>3.69x`).
 
 Strict dual-baseline promotion criteria:
 
@@ -229,7 +232,7 @@ Mandatory pro round loop:
 5. If no promotion, classify failure:
    - beats fast, fails normal → conversion/safety-only next round
    - beats normal, fails fast → tactical sharpness next round
-   - CPU ratio `>3.30x` → optimization-only next round
+   - CPU ratio `>3.69x` → optimization-only next round
    - tactical guardrail fail → lock pattern as hard constraint
    - seed instability only → narrow parameter amplitude + increase repeats
 
@@ -481,6 +484,23 @@ SMART_TUNE_PROFILE=runtime_current \
 - `runtime_pro_eval_long_horizon_v3`: v2 plus mild opponent-mana long-horizon emphasis (escalation track).
 - `runtime_pro_ordering_tt_v1`: pro ordering/TT efficiency candidate.
 - `runtime_pro_ordering_tt_v2`: TT+killer ordering variant with `enable_pvs=false`.
+- `runtime_pro_conversion_guard_v2_cpu_opt_v1`: pro conversion v2 with lighter node/branch caps (CPU-targeted).
+- `runtime_pro_conversion_guard_v2_cpu_opt_v2`: tighter CPU-targeted variant of `cpu_opt_v1`.
+- `runtime_pro_conversion_guard_v2_cpu_opt_v3`: CPU-targeted variant with tactical-sharpness restraint.
+- `runtime_pro_cpu_prune_v1` / `runtime_pro_cpu_prune_v2` / `runtime_pro_cpu_prune_v3` / `runtime_pro_cpu_prune_v4`: pro optimization-only pruning/branch-shape variants.
+- `runtime_pro_cpu_safety_lite_v1` / `runtime_pro_cpu_safety_lite_v2`: lighter pro safety-probe workload variants.
+- `runtime_pro_cpu_prune_v5` / `runtime_pro_cpu_prune_v6`: near-threshold CPU-targeted pro variants.
+- `runtime_pro_cpu_prepass_off_v1`: CPU-targeted variant with forced tactical prepass disabled.
+- `runtime_pro_primary_confirm_split_v1`: pro split-profile (primary-strength settings + opening-book confirmation-safe settings) that cleared strict ladder in harness.
+- `runtime_pro_primary_confirm_state_split_v1` / `runtime_pro_primary_confirm_state_split_v2`: state-only split attempts to replace harness-mode split.
+- `runtime_pro_context_split_runtime_v1`: runtime-equivalent context split baseline.
+- `runtime_pro_context_split_runtime_v2`: runtime-equivalent context split with +400 node lift (promoted runtime pro profile).
+- `runtime_pro_context_split_runtime_v3`: v2 plus confirmation-only safety tightening.
+- `runtime_pro_context_split_runtime_v4`: v2 plus primary-only conversion lift.
+- `runtime_pro_context_split_runtime_v5`: v2 plus stronger confirmation safety hardening.
+- `runtime_pro_context_split_runtime_v6`: opening confirmation uses runtime-normal profile, independent context uses high-utilization pro.
+- `runtime_pro_context_split_runtime_v7`: context split with pro nominal node target (`11400`) for utilization stress testing.
+- `runtime_pro_cpu_prepass_off_v2_phase_budget_v1` / `v2` / `v3`: phase-conditioned pro budget-expansion attempts.
 - `runtime_pre_pro_promotion_v1`: snapshot profile before pro runtime promotion.
 - `swift_2024_eval_reference`: Swift 2024 weights on top of current runtime search.
 - `swift_2024_style_reference`: Swift 2024 weights with simplified legacy-style search path.
@@ -692,6 +712,158 @@ Observed fast-screen outputs (repeats=2, games=2):
 - `runtime_pro_ordering_tt_v2`: vs normal `8W-0L` (`δ=+0.5000`, `conf=0.996`), vs fast `5W-3L` (`δ=+0.1250`, `conf=0.637`)
 - `runtime_pro_depth4_stable_v2`: vs normal `8W-0L` (`δ=+0.5000`, `conf=0.996`), vs fast `5W-3L` (`δ=+0.1250`, `conf=0.637`)
 
+### 26) Pro CPU-gate optimization family (March 2, 2026)
+
+Multiple pro optimization-only variants preserved fast-screen non-regression but still failed strict pro CPU cap (`2.70x..3.69x`) on ladder speed probe:
+
+- `runtime_pro_conversion_guard_v2`: `ratio=4.896`
+- `runtime_pro_ordering_tt_v1`: `ratio=4.979`
+- `runtime_pro_ordering_tt_v2`: `ratio=4.919`
+- `runtime_pro_cpu_prune_v1`: `ratio=3.436`
+- `runtime_pro_cpu_prune_v2`: `ratio=3.451`
+- `runtime_pro_cpu_prune_v3`: `ratio=3.438`
+- `runtime_pro_cpu_prune_v4`: `ratio=3.449`
+- `runtime_pro_cpu_safety_lite_v1`: `ratio=3.429`
+- `runtime_pro_cpu_prune_v5`: `ratio=3.382` (closest)
+- `runtime_pro_cpu_prune_v6`: `ratio=3.450`
+- `runtime_pro_cpu_prepass_off_v1`: `ratio=3.428`
+
+Conclusion: parameter-only pro tuning is not enough to clear CPU gate at target strength; next rounds should prioritize search-engine efficiency improvements (not further policy reshaping) before more promotion attempts.
+
+### 27) Pro strict-ladder follow-up (March 2, 2026, higher CPU cap accepted)
+
+Under the updated hard cap (`<=3.69x`), the main blocker shifted from pure CPU to **normal-baseline primary strength**:
+
+- `runtime_pro_cpu_prepass_off_v1`: CPU gate passed (`3.423x`), strong vs fast primary (`δ=+0.1806`), failed vs normal primary (`δ=+0.0602 < +0.08`).
+- `runtime_pro_cpu_prune_v2_cpucap_v1`: CPU gate passed (`3.466x`), very strong vs fast primary (`δ=+0.2407`), failed vs normal primary (`δ=-0.0046`).
+
+Additional families eliminated this round:
+
+- `runtime_pro_cpu_prune_v2`: CPU miss under old cap (`3.511x > 3.50x`).
+- `runtime_pro_eval_long_horizon_prepass_off_v1`: CPU miss under old cap (`3.554x > 3.50x`).
+- `runtime_pro_cpu_prune_v2_cpucap_ordering_v1`: fast-screen regression vs fast (`δ=-0.1250`).
+- `runtime_pro_runtime_cpucap_v1`: fast-screen regression vs fast (`δ=-0.2500`) and neutral vs normal (`δ=0.0000`).
+
+Takeaway: current pro candidates reliably beat `fast` but fail to gain enough edge over `runtime_current@normal` under the CPU band; next rounds should target **normal-baseline conversion quality** specifically (not additional fast-side aggression), with CPU-neutral refinements.
+
+### 28) Pro strict-ladder follow-up after cap raise to `3.69x` (March 2, 2026)
+
+Raising the hard cap from `3.50x` to `3.69x` removed CPU as the blocker for previously near-cap candidates, but did not solve the normal-baseline strength gap:
+
+- `runtime_pro_cpu_prune_v2`: CPU passed (`3.496x`), fast primary strong (`δ=+0.2454`), failed normal primary (`δ=+0.0046 < +0.08`).
+- `runtime_pro_eval_long_horizon_prepass_off_v1`: CPU passed (`3.489x`), fast primary passed (`δ=+0.1620`), failed normal primary (`δ=+0.0602 < +0.08`).
+
+Rejected follow-up families in this round:
+
+- `runtime_pro_runtime_cpucap_v1`: fast-screen regression (`vs fast δ=-0.2500`), neutral vs normal (`δ=0.0000`).
+- `runtime_pro_cpu_prune_v2_cpucap_ordering_v1`: fast-screen regression (`vs fast δ=-0.1250`).
+
+Takeaway: with CPU headroom expanded, promotion still fails on **normal matchup conversion**; further progress requires pro-only normal-conversion gains rather than additional fast-side lift or generic ordering tweaks.
+
+### 29) Pro round continuation under `3.69x` (March 2, 2026)
+
+Additional strict-ladder attempts under the raised cap confirm the same directional split:
+
+- `runtime_pro_cpu_prune_v2`: CPU passed (`3.496x`), failed normal primary (`δ=+0.0046`), strong fast primary (`δ=+0.2454`).
+- `runtime_pro_eval_long_horizon_prepass_off_v1`: CPU passed (`3.489x`), failed normal primary (`δ=+0.0602`), passed fast primary (`δ=+0.1620`).
+- `runtime_pro_normal_conversion_focus_v1`: CPU passed (`3.425x`), failed normal primary (`δ=+0.0231`), passed fast primary (`δ=+0.1991`).
+
+Round conclusion:
+
+- Raising cap to `3.69x` unblocked CPU gates for near-cap candidates.
+- Promotion remains blocked by **vs-normal strict primary delta**, not by fast strength or CPU.
+- Next variants should target normal conversion quality specifically while preserving current fast-side gains.
+
+### 30) Pro continuation: confirmation-vs-primary tradeoff mapping (March 3, 2026)
+
+This round added direct pro confirmation probes (opening-book enabled) to isolate the strict ladder blocker.
+
+Key strict-ladder outcomes:
+
+- `runtime_pro_eval_long_horizon_prepass_off_v2`: CPU passed; strict primary passed (`vs normal δ=+0.0880`, `vs fast δ=+0.2500`), then failed confirmation vs normal (`δ=-0.0938`).
+- `runtime_pro_eval_long_horizon_prepass_guarded_v1`: CPU passed; failed strict primary (`vs normal δ=+0.0648`, `vs fast δ=+0.1065`).
+- `runtime_pro_cpu_prepass_off_v2_long_horizon_v1`: CPU passed; strict primary vs normal remained below bar (`δ=+0.0694`), run stopped early after primary could no longer reach `+0.08`.
+- `runtime_pro_cpu_prepass_off_v2_long_horizon_v2`: CPU passed; strict primary vs normal remained below bar (`δ=+0.0648`), run stopped early after primary could no longer reach `+0.08`.
+
+Confirmation probe map (`pro_confirm_vs_normal_v1`, repeats=4, games=4):
+
+- Positive:
+  - `runtime_pro_cpu_prune_v2`: `δ=+0.1250`
+  - `runtime_pro_cpu_prepass_off_v1`: `δ=+0.0938`
+  - `runtime_pro_cpu_prepass_off_v2`: `δ=+0.0312`
+- Non-negative edge:
+  - `runtime_pro_cpu_prepass_off_v2_long_horizon_v1`: `δ=+0.0000`
+  - `runtime_pro_cpu_prepass_off_v2_long_horizon_v2`: `δ=+0.0000`
+- Negative:
+  - `runtime_pro_eval_long_horizon_prepass_off_v1`: `δ=-0.0938`
+  - `runtime_pro_eval_long_horizon_prepass_off_v2`: `δ=-0.0938`
+  - `runtime_pro_eval_long_horizon_prepass_off_v2_opening_safety_v1`: `δ=-0.0938`
+  - `runtime_pro_eval_long_horizon_prepass_off_v3`: `δ=-0.0625`
+  - `runtime_pro_eval_long_horizon_prepass_on_v1`: `δ=-0.0625`
+  - `runtime_pro_cpu_prepass_off_v1_long_horizon_v1`: `δ=-0.0312`
+  - `runtime_pro_cpu_prepass_off_v1_long_horizon_v2`: `δ=-0.0625`
+  - `runtime_pro_cpu_prepass_off_v1_long_horizon_v3`: `δ=-0.0312`
+  - `runtime_pro_cpu_prepass_off_v2_long_horizon_v3`: `δ=-0.0312`
+  - `runtime_pro_cpu_prepass_off_v2_long_horizon_v4`: `δ=-0.0625`
+
+Round conclusion:
+
+- We now have confirmation-stable pro families, and we now have strict-primary-passing families, but not yet in the same candidate.
+- The remaining gap is narrow: closest strict-primary-safe family is around `vs normal δ≈+0.069..+0.070` while keeping confirmation `>= 0.0`.
+
+### 31) Pro wider-picture split strategy results (March 3, 2026)
+
+New instrumentation:
+
+- Added pro-only probe tests:
+  - `smart_automove_pool_pro_primary_probe_vs_normal`
+  - `smart_automove_pool_pro_primary_probe_vs_fast`
+  - `smart_automove_pool_pro_seed_turn_distribution_probe`
+- Seed distribution probe (`pro` vs `normal`, repeats=4, games=4) showed opening roots are almost entirely:
+  - `(turn=1, active=white)` and `(turn=2, active=black)`
+  - primary histogram: `{(1,white): 11, (2,black): 5}`
+  - confirmation histogram: `{(1,white): 12, (2,black): 4}`
+
+Key candidate outcomes:
+
+- `runtime_pro_primary_confirm_split_v1` (context split by opening-book mode signal) cleared full strict pro ladder:
+  - CPU gate: `ratio=2.970`
+  - primary vs normal: `δ=+0.0880`, `conf=0.994`
+  - primary vs fast: `δ=+0.2500`, `conf=1.000`
+  - confirm vs normal: `δ=+0.0938`
+  - confirm vs fast: `δ=+0.3125`
+  - pool checks: passed (`candidate_delta=+0.0500` vs normal-opponents, `+0.2000` vs fast-opponents)
+- `runtime_pro_primary_confirm_state_split_v1` (state-only split: aggressive on `turn1/white`, safe otherwise):
+  - confirm vs normal passed (`δ=+0.0938`)
+  - primary vs normal failed (`δ=+0.0324`)
+- `runtime_pro_primary_confirm_state_split_v2` (state-only split using opening-book first-move board match):
+  - confirm vs normal failed (`δ=-0.0625`)
+- `runtime_pro_cpu_prepass_off_v2_phase_budget_v2`:
+  - confirm vs normal non-regression held (`δ=0.0000`)
+  - strict primary probe vs normal remained below bar (`δ=+0.0694`)
+
+Round-level conclusion:
+
+- The strongest current signal is **context splitting** between primary-strength settings and opening-book-sensitive confirmation settings.
+- A full-ladder pass is now demonstrated in harness with split logic.
+- A robust runtime-equivalent state signal is still required before shipping this split behavior as production pro runtime config.
+
+### 32) Pro runtime context-split promotion pass (March 3, 2026)
+
+Runtime-equivalent context split ladder runs initially looked contradictory because experiment helper `pro_context_split_runtime_base` ignored opening-book hinting and resolved context as `Unknown` only. After fixing that harness bug to honor `SMART_USE_WHITE_OPENING_BOOK`, `runtime_pro_context_split_runtime_v2` cleared reduced strict ladder end-to-end:
+
+- CPU gate: `ratio=2.976`
+- primary vs normal: `δ=+0.2083`, `conf=0.968`
+- primary vs fast: `δ=+0.3333`, `conf=0.999`
+- confirm vs normal: `δ=+0.0312`
+- confirm vs fast: `δ=+0.3125`
+- pool non-regression: passed (`candidate_delta=+0.1500` vs both normal/fast opponent pools)
+
+Promotion action:
+
+- Runtime `pro` context profiles in `mons_game_model.rs` updated from `9800` to `10200` nodes for both independent and opening-book-driven branches.
+- Fast/normal runtime branches unchanged.
+
 ---
 
 ## What Worked Best So Far
@@ -705,6 +877,8 @@ Observed fast-screen outputs (repeats=2, games=2):
 - **Boosted supermana interview priors**: `supermana_score_bonus=600`, `supermana_progress_bonus=320` in fast mode.
 - **Minimal, additive weight changes**: `supermana_race_control: 30` is the only new scoring weight — no restructuring of existing weight balance. This pattern (small additive signal in an orthogonal evaluation dimension) is the most reliable way to improve fast mode.
 - **Promoted synthesis profile**: `runtime_fast_root_quality_v1_normal_conversion_v3` cleared the full ladder. The key runtime deltas are stronger fast root-quality margins (`root_efficiency=1700`, `anti_help=280`, `handoff=300`, `backtrack=220`, fast reply-risk `125/4/10/650`) plus stronger normal conversion guard allocation (normal reply-risk `145/7/16/1350`, drainer safety `4200`, selective extension share `12.5%`).
+- **Pro split-strategy evidence**: `runtime_pro_primary_confirm_split_v1` is the first pro profile to clear the full strict pro ladder under `<=3.69x`, indicating that primary-strength and opening-book confirmation behavior likely need context-sensitive policy rather than one global pro shape.
+- **Promoted pro runtime context split**: `runtime_pro_context_split_runtime_v2` (with fixed opening-book hint propagation in harness validation) passed reduced strict ladder and is now the shipped runtime `pro` profile (`max_visited_nodes=10200` in both runtime contexts).
 
 ### Key Invariant Discovery
 

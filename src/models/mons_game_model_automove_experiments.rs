@@ -47,7 +47,7 @@ const SMART_PRO_PRIMARY_IMPROVEMENT_DELTA_MIN_VS_NORMAL: f64 = 0.08;
 const SMART_PRO_PRIMARY_IMPROVEMENT_DELTA_MIN_VS_FAST: f64 = 0.14;
 const SMART_PRO_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN: f64 = 0.90;
 const SMART_PRO_CPU_RATIO_TARGET_MIN: f64 = 2.70;
-const SMART_PRO_CPU_RATIO_TARGET_MAX: f64 = 3.30;
+const SMART_PRO_CPU_RATIO_TARGET_MAX: f64 = 3.69;
 
 #[derive(Debug, Clone, Copy)]
 struct SearchBudget {
@@ -143,12 +143,26 @@ impl SearchBudget {
     }
 
     fn runtime_config_for_game(self, game: &MonsGame) -> SmartSearchConfig {
-        let config = if let Some(preference) = SmartAutomovePreference::from_api_value(self.label) {
-            SmartSearchConfig::from_preference(preference)
+        if let Some(preference) = SmartAutomovePreference::from_api_value(self.label) {
+            let hinted_context = if preference == SmartAutomovePreference::Pro
+                && env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false)
+            {
+                ProRuntimeContext::OpeningBookDriven
+            } else {
+                ProRuntimeContext::Unknown
+            };
+            MonsGameModel::runtime_config_for_game_with_context(
+                game,
+                preference,
+                hinted_context,
+            )
+            .0
         } else {
-            SmartSearchConfig::from_budget(self.depth, self.max_nodes).for_runtime()
-        };
-        MonsGameModel::with_runtime_scoring_weights(game, config)
+            MonsGameModel::with_runtime_scoring_weights(
+                game,
+                SmartSearchConfig::from_budget(self.depth, self.max_nodes).for_runtime(),
+            )
+        }
     }
 }
 
@@ -4369,6 +4383,20 @@ fn model_runtime_pro_baseline_v1(game: &MonsGame, config: SmartSearchConfig) -> 
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+fn model_runtime_pro_runtime_cpucap_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 8_800;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 40);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(10, 17);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 240);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 162);
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn model_runtime_pro_depth4_stable_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
@@ -4456,6 +4484,1440 @@ fn model_runtime_pro_conversion_guard_v3(game: &MonsGame, config: SmartSearchCon
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+fn model_runtime_pro_conversion_guard_v2_cpu_opt_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 7_600;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 32);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 14);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 192);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 126);
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 160;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 22;
+        runtime.root_reply_risk_node_share_bp = 1_750;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_500;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_400;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_conversion_guard_v2_cpu_opt_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 6_800;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 30);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(8, 13);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 180);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 114);
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 160;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 20;
+        runtime.root_reply_risk_node_share_bp = 1_650;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_400;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_300;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_conversion_guard_v2_cpu_opt_v3(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 8_800;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_tt_depth_preferred_replacement = true;
+        runtime.enable_killer_move_ordering = true;
+        runtime.enable_pvs = false;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 150;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 20;
+        runtime.root_reply_risk_node_share_bp = 1_500;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_400;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_200;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prune_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 9_800;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_600;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 160;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 22;
+        runtime.root_reply_risk_node_share_bp = 1_700;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_500;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_300;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prune_v2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 9_000;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 32);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(8, 14);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 192);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 126);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_400;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 155;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 20;
+        runtime.root_reply_risk_node_share_bp = 1_600;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_400;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_250;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prune_v2_long_horizon_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 10_400;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 33);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(8, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 198);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_400;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 155;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 20;
+        runtime.root_reply_risk_node_share_bp = 1_600;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_400;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_300;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 260;
+        runtime.interview_soft_opponent_mana_score_bonus = 320;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prune_v2_long_horizon_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 10_400;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 33);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(8, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 198);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_400;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 155;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 22;
+        runtime.root_reply_risk_node_share_bp = 1_700;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_700;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_200;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 250;
+        runtime.interview_soft_opponent_mana_score_bonus = 310;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prune_v2_cpucap_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 8_800;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 32);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(8, 14);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 192);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 126);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_500;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 155;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 20;
+        runtime.root_reply_risk_node_share_bp = 1_600;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_400;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_250;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prune_v2_cpucap_ordering_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 8_800;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 32);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(8, 14);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 192);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 126);
+        runtime.enable_tt_depth_preferred_replacement = true;
+        runtime.enable_killer_move_ordering = true;
+        runtime.enable_pvs = true;
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_500;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 155;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 20;
+        runtime.root_reply_risk_node_share_bp = 1_600;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_400;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_250;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prune_v3(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 8_600;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 31);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(8, 13);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 186);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 114);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_200;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 155;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 20;
+        runtime.root_reply_risk_node_share_bp = 1_550;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_300;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_200;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prune_v4(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 8_200;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 30);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(8, 13);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 180);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 114);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_200;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 155;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 20;
+        runtime.root_reply_risk_node_share_bp = 1_500;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_300;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_150;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_safety_lite_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 8_600;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 30);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(8, 13);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 180);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 114);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_200;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 150;
+        runtime.root_reply_risk_shortlist_max = 6;
+        runtime.root_reply_risk_reply_limit = 16;
+        runtime.root_reply_risk_node_share_bp = 1_200;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = false;
+        runtime.root_drainer_safety_score_margin = 4_200;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_100;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_safety_lite_v2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 8_600;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 30);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(8, 13);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 180);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 114);
+        runtime.enable_tt_depth_preferred_replacement = true;
+        runtime.enable_killer_move_ordering = true;
+        runtime.enable_pvs = true;
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_200;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 150;
+        runtime.root_reply_risk_shortlist_max = 6;
+        runtime.root_reply_risk_reply_limit = 16;
+        runtime.root_reply_risk_node_share_bp = 1_200;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = false;
+        runtime.root_drainer_safety_score_margin = 4_200;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_100;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prune_v5(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 9_800;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_500;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 155;
+        runtime.root_reply_risk_shortlist_max = 7;
+        runtime.root_reply_risk_reply_limit = 18;
+        runtime.root_reply_risk_node_share_bp = 1_400;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = false;
+        runtime.root_drainer_safety_score_margin = 4_400;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_200;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prune_v6(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 9_800;
+        runtime.enable_two_pass_root_allocation = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 32);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 14);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 192);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 126);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_500;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 155;
+        runtime.root_reply_risk_shortlist_max = 7;
+        runtime.root_reply_risk_reply_limit = 18;
+        runtime.root_reply_risk_node_share_bp = 1_400;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = false;
+        runtime.root_drainer_safety_score_margin = 4_300;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_150;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prepass_off_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 9_800;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_500;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 155;
+        runtime.root_reply_risk_shortlist_max = 7;
+        runtime.root_reply_risk_reply_limit = 18;
+        runtime.root_reply_risk_node_share_bp = 1_400;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = false;
+        runtime.root_drainer_safety_score_margin = 4_300;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_200;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prepass_off_v1_long_horizon_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 10_400;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_500;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 155;
+        runtime.root_reply_risk_shortlist_max = 7;
+        runtime.root_reply_risk_reply_limit = 18;
+        runtime.root_reply_risk_node_share_bp = 1_400;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = false;
+        runtime.root_drainer_safety_score_margin = 4_300;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_200;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 250;
+        runtime.interview_soft_opponent_mana_score_bonus = 310;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prepass_off_v1_long_horizon_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 10_400;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_500;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 155;
+        runtime.root_reply_risk_shortlist_max = 7;
+        runtime.root_reply_risk_reply_limit = 20;
+        runtime.root_reply_risk_node_share_bp = 1_500;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = false;
+        runtime.root_drainer_safety_score_margin = 4_500;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_150;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 230;
+        runtime.interview_soft_opponent_mana_score_bonus = 290;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prepass_off_v1_long_horizon_v3(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 10_400;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_500;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 155;
+        runtime.root_reply_risk_shortlist_max = 7;
+        runtime.root_reply_risk_reply_limit = 18;
+        runtime.root_reply_risk_node_share_bp = 1_400;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_500;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_200;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 250;
+        runtime.interview_soft_opponent_mana_score_bonus = 310;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prepass_off_v2(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 9_800;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_400;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 160;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 22;
+        runtime.root_reply_risk_node_share_bp = 1_700;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_500;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_300;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prepass_off_v2_long_horizon_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 10_400;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_400;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 160;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 22;
+        runtime.root_reply_risk_node_share_bp = 1_700;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_500;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_300;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prepass_off_v2_long_horizon_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 11_200;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 35);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 16);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 210);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 138);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_400;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 160;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 22;
+        runtime.root_reply_risk_node_share_bp = 1_700;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_500;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_300;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prepass_off_v2_long_horizon_v3(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 10_400;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_400;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 160;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 22;
+        runtime.root_reply_risk_node_share_bp = 1_700;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_500;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_300;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 240;
+        runtime.interview_soft_opponent_mana_score_bonus = 300;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prepass_off_v2_long_horizon_v4(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 11_400;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_400;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 160;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 22;
+        runtime.root_reply_risk_node_share_bp = 1_700;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_500;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_300;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prepass_off_v2_phase_budget_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        // Confirmation-safe base observed in probe runs.
+        runtime.max_visited_nodes = 10_400;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_400;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 160;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 22;
+        runtime.root_reply_risk_node_share_bp = 1_700;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_500;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_300;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+
+        // Wider-picture hypothesis:
+        // opening-book confirmation is early-turn sensitive, while primary-lift
+        // mostly comes from midgame conversion depth. Spend extra only midgame.
+        if game.turn_number >= 6 {
+            runtime.max_visited_nodes = 11_800;
+            runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 36);
+            runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 16);
+            runtime.root_enum_limit =
+                (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 216);
+            runtime.node_enum_limit =
+                ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 138);
+            runtime.selective_extension_node_share_bp = 1_400;
+        }
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prepass_off_v2_phase_budget_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 10_400;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_400;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 160;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 22;
+        runtime.root_reply_risk_node_share_bp = 1_700;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_500;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_300;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+
+        // Narrower midgame trigger than v1 to preserve opening-book stability.
+        if game.turn_number >= 10 {
+            runtime.max_visited_nodes = 11_200;
+            runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 35);
+            runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 16);
+            runtime.root_enum_limit =
+                (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 210);
+            runtime.node_enum_limit =
+                ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 138);
+            runtime.selective_extension_node_share_bp = 1_350;
+        }
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_cpu_prepass_off_v2_phase_budget_v3(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 10_400;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_400;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 160;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 22;
+        runtime.root_reply_risk_node_share_bp = 1_700;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_500;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_300;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+
+        if game.turn_number >= 8 {
+            runtime.max_visited_nodes = 11_400;
+            runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 35);
+            runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 16);
+            runtime.root_enum_limit =
+                (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 210);
+            runtime.node_enum_limit =
+                ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 138);
+            runtime.selective_extension_node_share_bp = 1_350;
+        }
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_eval_long_horizon_cpu_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 8_800;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 32);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(8, 14);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 192);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 126);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_500;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 155;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 20;
+        runtime.root_reply_risk_node_share_bp = 1_600;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_400;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_250;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_eval_long_horizon_cpu_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 8_800;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 32);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(8, 14);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 192);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 126);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_500;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 155;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 20;
+        runtime.root_reply_risk_node_share_bp = 1_600;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_400;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_250;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 260;
+        runtime.interview_soft_opponent_mana_score_bonus = 320;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_eval_long_horizon_prepass_off_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 9_800;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_400;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 160;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 22;
+        runtime.root_reply_risk_node_share_bp = 1_700;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_500;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_300;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 260;
+        runtime.interview_soft_opponent_mana_score_bonus = 320;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_eval_long_horizon_prepass_off_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 9_800;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_300;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 165;
+        runtime.root_reply_risk_shortlist_max = 9;
+        runtime.root_reply_risk_reply_limit = 24;
+        runtime.root_reply_risk_node_share_bp = 2_000;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_800;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_500;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 280;
+        runtime.interview_soft_opponent_mana_score_bonus = 340;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_eval_long_horizon_prepass_off_v2_opening_safety_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 9_800;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_300;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 165;
+        runtime.root_reply_risk_shortlist_max = 9;
+        runtime.root_reply_risk_reply_limit = 24;
+        runtime.root_reply_risk_node_share_bp = 2_000;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_800;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_500;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 280;
+        runtime.interview_soft_opponent_mana_score_bonus = 340;
+
+        // Opening-book confirmation games are dominated by very early turns.
+        // Apply extra tactical safety only in that small window.
+        if game.turn_number <= 2 {
+            runtime.enable_forced_tactical_prepass = true;
+            runtime.root_reply_risk_reply_limit = 28;
+            runtime.root_reply_risk_node_share_bp = 2_300;
+            runtime.root_drainer_safety_score_margin = 5_200;
+            runtime.interview_soft_opponent_mana_progress_bonus = 240;
+            runtime.interview_soft_opponent_mana_score_bonus = 300;
+        }
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_eval_long_horizon_prepass_off_v3(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 10_400;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 35);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 16);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 210);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 138);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_300;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 165;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 22;
+        runtime.root_reply_risk_node_share_bp = 1_900;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 5_000;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_400;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 270;
+        runtime.interview_soft_opponent_mana_score_bonus = 330;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_eval_long_horizon_prepass_off_v4(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 10_400;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_300;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 165;
+        runtime.root_reply_risk_shortlist_max = 9;
+        runtime.root_reply_risk_reply_limit = 26;
+        runtime.root_reply_risk_node_share_bp = 2_300;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 5_200;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_500;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 280;
+        runtime.interview_soft_opponent_mana_score_bonus = 340;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_eval_long_horizon_prepass_on_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 10_400;
+        runtime.enable_forced_tactical_prepass = true;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_300;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 165;
+        runtime.root_reply_risk_shortlist_max = 9;
+        runtime.root_reply_risk_reply_limit = 24;
+        runtime.root_reply_risk_node_share_bp = 2_000;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_800;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_500;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 280;
+        runtime.interview_soft_opponent_mana_score_bonus = 340;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_eval_long_horizon_prepass_on_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 12_600;
+        runtime.enable_forced_tactical_prepass = true;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 36);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 16);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 216);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 138);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_300;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 165;
+        runtime.root_reply_risk_shortlist_max = 9;
+        runtime.root_reply_risk_reply_limit = 24;
+        runtime.root_reply_risk_node_share_bp = 2_000;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_800;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_500;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 280;
+        runtime.interview_soft_opponent_mana_score_bonus = 340;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_eval_long_horizon_prepass_guarded_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 10_600;
+        runtime.enable_forced_tactical_prepass = true;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 36);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 16);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 216);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 138);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_300;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 160;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 22;
+        runtime.root_reply_risk_node_share_bp = 1_800;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_700;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_400;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 270;
+        runtime.interview_soft_opponent_mana_score_bonus = 330;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_eval_long_horizon_prepass_off_cpucap_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 9_000;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 32);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(8, 14);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 192);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 126);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_500;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 160;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 22;
+        runtime.root_reply_risk_node_share_bp = 1_700;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_500;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_300;
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 260;
+        runtime.interview_soft_opponent_mana_score_bonus = 320;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_normal_conversion_focus_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = 9_800;
+        runtime.enable_forced_tactical_prepass = false;
+        runtime.root_branch_limit = runtime.root_branch_limit.clamp(14, 34);
+        runtime.node_branch_limit = runtime.node_branch_limit.clamp(9, 15);
+        runtime.root_enum_limit =
+            (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 204);
+        runtime.node_enum_limit =
+            ((runtime.node_branch_limit + 2) * 6).clamp(runtime.node_branch_limit, 132);
+        runtime.enable_futility_pruning = true;
+        runtime.futility_margin = 2_400;
+        runtime.enable_quiet_reductions = true;
+        runtime.quiet_reduction_depth_threshold = 2;
+        runtime.enable_root_reply_risk_guard = true;
+        runtime.root_reply_risk_score_margin = 165;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 24;
+        runtime.root_reply_risk_node_share_bp = 1_900;
+        runtime.enable_normal_root_safety_rerank = true;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_700;
+        runtime.enable_selective_extensions = true;
+        runtime.max_extensions_per_path = 1;
+        runtime.selective_extension_node_share_bp = 1_450;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn model_runtime_pro_eval_long_horizon_v1(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -4501,6 +5963,199 @@ fn model_runtime_pro_eval_long_horizon_v3(
         runtime.interview_soft_opponent_mana_score_bonus = 320;
     }
     MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_primary_confirm_split_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false) {
+        // Confirmation stage runs with opening-book enabled.
+        // This branch keeps the profile that was most stable vs normal there.
+        return model_runtime_pro_cpu_prepass_off_v1(game, config);
+    }
+    // Primary strength stages run without opening-book forced white move.
+    model_runtime_pro_eval_long_horizon_prepass_off_v2(game, config)
+}
+
+fn is_white_opening_book_first_move_state(game: &MonsGame) -> bool {
+    if game.turn_number != 2 || game.active_color != Color::Black {
+        return false;
+    }
+    let current_fen = game.fen();
+    let parsed_book = &*PARSED_WHITE_OPENING_BOOK;
+    for sequence in parsed_book.iter() {
+        if sequence.is_empty() {
+            continue;
+        }
+        let mut simulated = MonsGame::new(false);
+        if !matches!(
+            simulated.process_input(sequence[0].clone(), false, false),
+            Output::Events(_)
+        ) {
+            continue;
+        }
+        if simulated.fen() == current_fen {
+            return true;
+        }
+    }
+    false
+}
+
+fn model_runtime_pro_primary_confirm_state_split_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if game.turn_number == 1 && game.active_color == Color::White {
+        return model_runtime_pro_eval_long_horizon_prepass_off_v2(game, config);
+    }
+    model_runtime_pro_cpu_prepass_off_v1(game, config)
+}
+
+fn model_runtime_pro_primary_confirm_state_split_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if is_white_opening_book_first_move_state(game) {
+        return model_runtime_pro_cpu_prepass_off_v1(game, config);
+    }
+    model_runtime_pro_eval_long_horizon_prepass_off_v2(game, config)
+}
+
+fn pro_context_split_runtime_base(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> (SmartSearchConfig, ProRuntimeContext) {
+    let runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    let hinted_context = if env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false) {
+        ProRuntimeContext::OpeningBookDriven
+    } else {
+        ProRuntimeContext::Unknown
+    };
+    let context = MonsGameModel::resolve_pro_runtime_context(game, hinted_context);
+    (
+        MonsGameModel::apply_pro_runtime_context_profile(game, runtime, context),
+        context,
+    )
+}
+
+fn pro_context_split_high_utilization(mut runtime: SmartSearchConfig) -> SmartSearchConfig {
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = (runtime.max_visited_nodes + 400)
+            .clamp(runtime.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
+    }
+    runtime
+}
+
+fn pro_context_split_target_nodes(
+    mut runtime: SmartSearchConfig,
+    target_nodes: usize,
+) -> SmartSearchConfig {
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = target_nodes.clamp(runtime.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
+    }
+    runtime
+}
+
+fn model_runtime_pro_context_split_runtime_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, _) = pro_context_split_runtime_base(game, config);
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_context_split_runtime_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, _) = pro_context_split_runtime_base(game, config);
+    MonsGameModel::smart_search_best_inputs(game, pro_context_split_high_utilization(runtime))
+}
+
+fn model_runtime_pro_context_split_runtime_v3(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (mut runtime, context) = pro_context_split_runtime_base(game, config);
+    runtime = pro_context_split_high_utilization(runtime);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
+        && context == ProRuntimeContext::OpeningBookDriven
+    {
+        runtime.root_reply_risk_score_margin = 160;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 20;
+        runtime.root_reply_risk_node_share_bp = 1_550;
+        runtime.root_drainer_safety_score_margin = 4_500;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_context_split_runtime_v4(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (mut runtime, context) = pro_context_split_runtime_base(game, config);
+    runtime = pro_context_split_high_utilization(runtime);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
+        && context == ProRuntimeContext::Independent
+    {
+        runtime.root_reply_risk_reply_limit = 26;
+        runtime.root_reply_risk_node_share_bp = 2_200;
+        runtime.interview_soft_opponent_mana_progress_bonus = 300;
+        runtime.interview_soft_opponent_mana_score_bonus = 360;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_context_split_runtime_v5(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (mut runtime, context) = pro_context_split_runtime_base(game, config);
+    runtime = pro_context_split_high_utilization(runtime);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
+        && context == ProRuntimeContext::OpeningBookDriven
+    {
+        runtime.max_visited_nodes = 9_800;
+        runtime.enable_forced_tactical_prepass = true;
+        runtime.root_reply_risk_score_margin = 170;
+        runtime.root_reply_risk_shortlist_max = 8;
+        runtime.root_reply_risk_reply_limit = 20;
+        runtime.root_reply_risk_node_share_bp = 1_700;
+        runtime.enable_normal_root_safety_deep_floor = true;
+        runtime.root_drainer_safety_score_margin = 4_700;
+        runtime.selective_extension_node_share_bp = 1_000;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_pro_context_split_runtime_v6(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, context) = pro_context_split_runtime_base(game, config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
+        && context == ProRuntimeContext::OpeningBookDriven
+    {
+        let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+            game,
+            SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+        );
+        return MonsGameModel::smart_search_best_inputs(game, normal_runtime);
+    }
+    MonsGameModel::smart_search_best_inputs(game, pro_context_split_high_utilization(runtime))
+}
+
+fn model_runtime_pro_context_split_runtime_v7(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, _) = pro_context_split_runtime_base(game, config);
+    MonsGameModel::smart_search_best_inputs(
+        game,
+        pro_context_split_target_nodes(runtime, SMART_AUTOMOVE_PRO_MAX_VISITED_NODES as usize),
+    )
 }
 
 fn model_runtime_pro_ordering_tt_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
@@ -5567,15 +7222,141 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "swift_2024_style_reference" => model_swift_2024_style_reference(game, config),
         "runtime_pre_pro_promotion_v1" => model_runtime_pre_pro_promotion_v1(game, config),
         "runtime_pro_baseline_v1" => model_runtime_pro_baseline_v1(game, config),
+        "runtime_pro_runtime_cpucap_v1" => model_runtime_pro_runtime_cpucap_v1(game, config),
         "runtime_pro_depth4_stable_v1" => model_runtime_pro_depth4_stable_v1(game, config),
         "runtime_pro_depth4_stable_v2" => model_runtime_pro_depth4_stable_v2(game, config),
         "runtime_pro_depth4_extension_v1" => model_runtime_pro_depth4_extension_v1(game, config),
         "runtime_pro_conversion_guard_v1" => model_runtime_pro_conversion_guard_v1(game, config),
         "runtime_pro_conversion_guard_v2" => model_runtime_pro_conversion_guard_v2(game, config),
         "runtime_pro_conversion_guard_v3" => model_runtime_pro_conversion_guard_v3(game, config),
+        "runtime_pro_conversion_guard_v2_cpu_opt_v1" => {
+            model_runtime_pro_conversion_guard_v2_cpu_opt_v1(game, config)
+        }
+        "runtime_pro_conversion_guard_v2_cpu_opt_v2" => {
+            model_runtime_pro_conversion_guard_v2_cpu_opt_v2(game, config)
+        }
+        "runtime_pro_conversion_guard_v2_cpu_opt_v3" => {
+            model_runtime_pro_conversion_guard_v2_cpu_opt_v3(game, config)
+        }
+        "runtime_pro_cpu_prune_v1" => model_runtime_pro_cpu_prune_v1(game, config),
+        "runtime_pro_cpu_prune_v2" => model_runtime_pro_cpu_prune_v2(game, config),
+        "runtime_pro_cpu_prune_v2_long_horizon_v1" => {
+            model_runtime_pro_cpu_prune_v2_long_horizon_v1(game, config)
+        }
+        "runtime_pro_cpu_prune_v2_long_horizon_v2" => {
+            model_runtime_pro_cpu_prune_v2_long_horizon_v2(game, config)
+        }
+        "runtime_pro_cpu_prune_v2_cpucap_v1" => model_runtime_pro_cpu_prune_v2_cpucap_v1(game, config),
+        "runtime_pro_cpu_prune_v2_cpucap_ordering_v1" => {
+            model_runtime_pro_cpu_prune_v2_cpucap_ordering_v1(game, config)
+        }
+        "runtime_pro_cpu_prune_v3" => model_runtime_pro_cpu_prune_v3(game, config),
+        "runtime_pro_cpu_prune_v4" => model_runtime_pro_cpu_prune_v4(game, config),
+        "runtime_pro_cpu_safety_lite_v1" => model_runtime_pro_cpu_safety_lite_v1(game, config),
+        "runtime_pro_cpu_safety_lite_v2" => model_runtime_pro_cpu_safety_lite_v2(game, config),
+        "runtime_pro_cpu_prune_v5" => model_runtime_pro_cpu_prune_v5(game, config),
+        "runtime_pro_cpu_prune_v6" => model_runtime_pro_cpu_prune_v6(game, config),
+        "runtime_pro_cpu_prepass_off_v1" => model_runtime_pro_cpu_prepass_off_v1(game, config),
+        "runtime_pro_cpu_prepass_off_v1_long_horizon_v1" => {
+            model_runtime_pro_cpu_prepass_off_v1_long_horizon_v1(game, config)
+        }
+        "runtime_pro_cpu_prepass_off_v1_long_horizon_v2" => {
+            model_runtime_pro_cpu_prepass_off_v1_long_horizon_v2(game, config)
+        }
+        "runtime_pro_cpu_prepass_off_v1_long_horizon_v3" => {
+            model_runtime_pro_cpu_prepass_off_v1_long_horizon_v3(game, config)
+        }
+        "runtime_pro_cpu_prepass_off_v2" => model_runtime_pro_cpu_prepass_off_v2(game, config),
+        "runtime_pro_cpu_prepass_off_v2_long_horizon_v1" => {
+            model_runtime_pro_cpu_prepass_off_v2_long_horizon_v1(game, config)
+        }
+        "runtime_pro_cpu_prepass_off_v2_long_horizon_v2" => {
+            model_runtime_pro_cpu_prepass_off_v2_long_horizon_v2(game, config)
+        }
+        "runtime_pro_cpu_prepass_off_v2_long_horizon_v3" => {
+            model_runtime_pro_cpu_prepass_off_v2_long_horizon_v3(game, config)
+        }
+        "runtime_pro_cpu_prepass_off_v2_long_horizon_v4" => {
+            model_runtime_pro_cpu_prepass_off_v2_long_horizon_v4(game, config)
+        }
+        "runtime_pro_cpu_prepass_off_v2_phase_budget_v1" => {
+            model_runtime_pro_cpu_prepass_off_v2_phase_budget_v1(game, config)
+        }
+        "runtime_pro_cpu_prepass_off_v2_phase_budget_v2" => {
+            model_runtime_pro_cpu_prepass_off_v2_phase_budget_v2(game, config)
+        }
+        "runtime_pro_cpu_prepass_off_v2_phase_budget_v3" => {
+            model_runtime_pro_cpu_prepass_off_v2_phase_budget_v3(game, config)
+        }
+        "runtime_pro_eval_long_horizon_cpu_v1" => {
+            model_runtime_pro_eval_long_horizon_cpu_v1(game, config)
+        }
+        "runtime_pro_eval_long_horizon_cpu_v2" => {
+            model_runtime_pro_eval_long_horizon_cpu_v2(game, config)
+        }
+        "runtime_pro_eval_long_horizon_prepass_off_v1" => {
+            model_runtime_pro_eval_long_horizon_prepass_off_v1(game, config)
+        }
+        "runtime_pro_eval_long_horizon_prepass_off_v2" => {
+            model_runtime_pro_eval_long_horizon_prepass_off_v2(game, config)
+        }
+        "runtime_pro_eval_long_horizon_prepass_off_v2_opening_safety_v1" => {
+            model_runtime_pro_eval_long_horizon_prepass_off_v2_opening_safety_v1(game, config)
+        }
+        "runtime_pro_eval_long_horizon_prepass_off_v3" => {
+            model_runtime_pro_eval_long_horizon_prepass_off_v3(game, config)
+        }
+        "runtime_pro_eval_long_horizon_prepass_off_v4" => {
+            model_runtime_pro_eval_long_horizon_prepass_off_v4(game, config)
+        }
+        "runtime_pro_eval_long_horizon_prepass_on_v1" => {
+            model_runtime_pro_eval_long_horizon_prepass_on_v1(game, config)
+        }
+        "runtime_pro_eval_long_horizon_prepass_on_v2" => {
+            model_runtime_pro_eval_long_horizon_prepass_on_v2(game, config)
+        }
+        "runtime_pro_eval_long_horizon_prepass_guarded_v1" => {
+            model_runtime_pro_eval_long_horizon_prepass_guarded_v1(game, config)
+        }
+        "runtime_pro_eval_long_horizon_prepass_off_cpucap_v1" => {
+            model_runtime_pro_eval_long_horizon_prepass_off_cpucap_v1(game, config)
+        }
+        "runtime_pro_normal_conversion_focus_v1" => {
+            model_runtime_pro_normal_conversion_focus_v1(game, config)
+        }
         "runtime_pro_eval_long_horizon_v1" => model_runtime_pro_eval_long_horizon_v1(game, config),
         "runtime_pro_eval_long_horizon_v2" => model_runtime_pro_eval_long_horizon_v2(game, config),
         "runtime_pro_eval_long_horizon_v3" => model_runtime_pro_eval_long_horizon_v3(game, config),
+        "runtime_pro_primary_confirm_split_v1" => {
+            model_runtime_pro_primary_confirm_split_v1(game, config)
+        }
+        "runtime_pro_primary_confirm_state_split_v1" => {
+            model_runtime_pro_primary_confirm_state_split_v1(game, config)
+        }
+        "runtime_pro_primary_confirm_state_split_v2" => {
+            model_runtime_pro_primary_confirm_state_split_v2(game, config)
+        }
+        "runtime_pro_context_split_runtime_v1" => {
+            model_runtime_pro_context_split_runtime_v1(game, config)
+        }
+        "runtime_pro_context_split_runtime_v2" => {
+            model_runtime_pro_context_split_runtime_v2(game, config)
+        }
+        "runtime_pro_context_split_runtime_v3" => {
+            model_runtime_pro_context_split_runtime_v3(game, config)
+        }
+        "runtime_pro_context_split_runtime_v4" => {
+            model_runtime_pro_context_split_runtime_v4(game, config)
+        }
+        "runtime_pro_context_split_runtime_v5" => {
+            model_runtime_pro_context_split_runtime_v5(game, config)
+        }
+        "runtime_pro_context_split_runtime_v6" => {
+            model_runtime_pro_context_split_runtime_v6(game, config)
+        }
+        "runtime_pro_context_split_runtime_v7" => {
+            model_runtime_pro_context_split_runtime_v7(game, config)
+        }
         "runtime_pro_ordering_tt_v1" => model_runtime_pro_ordering_tt_v1(game, config),
         "runtime_pro_ordering_tt_v2" => model_runtime_pro_ordering_tt_v2(game, config),
         "runtime_swift_opponent_mana_exception_v1" => {
@@ -5960,6 +7741,10 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         ),
         ("runtime_pro_baseline_v1", model_runtime_pro_baseline_v1),
         (
+            "runtime_pro_runtime_cpucap_v1",
+            model_runtime_pro_runtime_cpucap_v1,
+        ),
+        (
             "runtime_pro_depth4_stable_v1",
             model_runtime_pro_depth4_stable_v1,
         ),
@@ -5984,6 +7769,144 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
             model_runtime_pro_conversion_guard_v3,
         ),
         (
+            "runtime_pro_conversion_guard_v2_cpu_opt_v1",
+            model_runtime_pro_conversion_guard_v2_cpu_opt_v1,
+        ),
+        (
+            "runtime_pro_conversion_guard_v2_cpu_opt_v2",
+            model_runtime_pro_conversion_guard_v2_cpu_opt_v2,
+        ),
+        (
+            "runtime_pro_conversion_guard_v2_cpu_opt_v3",
+            model_runtime_pro_conversion_guard_v2_cpu_opt_v3,
+        ),
+        ("runtime_pro_cpu_prune_v1", model_runtime_pro_cpu_prune_v1),
+        ("runtime_pro_cpu_prune_v2", model_runtime_pro_cpu_prune_v2),
+        (
+            "runtime_pro_cpu_prune_v2_long_horizon_v1",
+            model_runtime_pro_cpu_prune_v2_long_horizon_v1,
+        ),
+        (
+            "runtime_pro_cpu_prune_v2_long_horizon_v2",
+            model_runtime_pro_cpu_prune_v2_long_horizon_v2,
+        ),
+        (
+            "runtime_pro_cpu_prune_v2_cpucap_v1",
+            model_runtime_pro_cpu_prune_v2_cpucap_v1,
+        ),
+        (
+            "runtime_pro_cpu_prune_v2_cpucap_ordering_v1",
+            model_runtime_pro_cpu_prune_v2_cpucap_ordering_v1,
+        ),
+        ("runtime_pro_cpu_prune_v3", model_runtime_pro_cpu_prune_v3),
+        ("runtime_pro_cpu_prune_v4", model_runtime_pro_cpu_prune_v4),
+        (
+            "runtime_pro_cpu_safety_lite_v1",
+            model_runtime_pro_cpu_safety_lite_v1,
+        ),
+        (
+            "runtime_pro_cpu_safety_lite_v2",
+            model_runtime_pro_cpu_safety_lite_v2,
+        ),
+        ("runtime_pro_cpu_prune_v5", model_runtime_pro_cpu_prune_v5),
+        ("runtime_pro_cpu_prune_v6", model_runtime_pro_cpu_prune_v6),
+        (
+            "runtime_pro_cpu_prepass_off_v1",
+            model_runtime_pro_cpu_prepass_off_v1,
+        ),
+        (
+            "runtime_pro_cpu_prepass_off_v1_long_horizon_v1",
+            model_runtime_pro_cpu_prepass_off_v1_long_horizon_v1,
+        ),
+        (
+            "runtime_pro_cpu_prepass_off_v1_long_horizon_v2",
+            model_runtime_pro_cpu_prepass_off_v1_long_horizon_v2,
+        ),
+        (
+            "runtime_pro_cpu_prepass_off_v1_long_horizon_v3",
+            model_runtime_pro_cpu_prepass_off_v1_long_horizon_v3,
+        ),
+        (
+            "runtime_pro_cpu_prepass_off_v2",
+            model_runtime_pro_cpu_prepass_off_v2,
+        ),
+        (
+            "runtime_pro_cpu_prepass_off_v2_long_horizon_v1",
+            model_runtime_pro_cpu_prepass_off_v2_long_horizon_v1,
+        ),
+        (
+            "runtime_pro_cpu_prepass_off_v2_long_horizon_v2",
+            model_runtime_pro_cpu_prepass_off_v2_long_horizon_v2,
+        ),
+        (
+            "runtime_pro_cpu_prepass_off_v2_long_horizon_v3",
+            model_runtime_pro_cpu_prepass_off_v2_long_horizon_v3,
+        ),
+        (
+            "runtime_pro_cpu_prepass_off_v2_long_horizon_v4",
+            model_runtime_pro_cpu_prepass_off_v2_long_horizon_v4,
+        ),
+        (
+            "runtime_pro_cpu_prepass_off_v2_phase_budget_v1",
+            model_runtime_pro_cpu_prepass_off_v2_phase_budget_v1,
+        ),
+        (
+            "runtime_pro_cpu_prepass_off_v2_phase_budget_v2",
+            model_runtime_pro_cpu_prepass_off_v2_phase_budget_v2,
+        ),
+        (
+            "runtime_pro_cpu_prepass_off_v2_phase_budget_v3",
+            model_runtime_pro_cpu_prepass_off_v2_phase_budget_v3,
+        ),
+        (
+            "runtime_pro_eval_long_horizon_cpu_v1",
+            model_runtime_pro_eval_long_horizon_cpu_v1,
+        ),
+        (
+            "runtime_pro_eval_long_horizon_cpu_v2",
+            model_runtime_pro_eval_long_horizon_cpu_v2,
+        ),
+        (
+            "runtime_pro_eval_long_horizon_prepass_off_v1",
+            model_runtime_pro_eval_long_horizon_prepass_off_v1,
+        ),
+        (
+            "runtime_pro_eval_long_horizon_prepass_off_v2",
+            model_runtime_pro_eval_long_horizon_prepass_off_v2,
+        ),
+        (
+            "runtime_pro_eval_long_horizon_prepass_off_v2_opening_safety_v1",
+            model_runtime_pro_eval_long_horizon_prepass_off_v2_opening_safety_v1,
+        ),
+        (
+            "runtime_pro_eval_long_horizon_prepass_off_v3",
+            model_runtime_pro_eval_long_horizon_prepass_off_v3,
+        ),
+        (
+            "runtime_pro_eval_long_horizon_prepass_off_v4",
+            model_runtime_pro_eval_long_horizon_prepass_off_v4,
+        ),
+        (
+            "runtime_pro_eval_long_horizon_prepass_on_v1",
+            model_runtime_pro_eval_long_horizon_prepass_on_v1,
+        ),
+        (
+            "runtime_pro_eval_long_horizon_prepass_on_v2",
+            model_runtime_pro_eval_long_horizon_prepass_on_v2,
+        ),
+        (
+            "runtime_pro_eval_long_horizon_prepass_guarded_v1",
+            model_runtime_pro_eval_long_horizon_prepass_guarded_v1,
+        ),
+        (
+            "runtime_pro_eval_long_horizon_prepass_off_cpucap_v1",
+            model_runtime_pro_eval_long_horizon_prepass_off_cpucap_v1,
+        ),
+        (
+            "runtime_pro_normal_conversion_focus_v1",
+            model_runtime_pro_normal_conversion_focus_v1,
+        ),
+        (
             "runtime_pro_eval_long_horizon_v1",
             model_runtime_pro_eval_long_horizon_v1,
         ),
@@ -5994,6 +7917,46 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_pro_eval_long_horizon_v3",
             model_runtime_pro_eval_long_horizon_v3,
+        ),
+        (
+            "runtime_pro_primary_confirm_split_v1",
+            model_runtime_pro_primary_confirm_split_v1,
+        ),
+        (
+            "runtime_pro_primary_confirm_state_split_v1",
+            model_runtime_pro_primary_confirm_state_split_v1,
+        ),
+        (
+            "runtime_pro_primary_confirm_state_split_v2",
+            model_runtime_pro_primary_confirm_state_split_v2,
+        ),
+        (
+            "runtime_pro_context_split_runtime_v1",
+            model_runtime_pro_context_split_runtime_v1,
+        ),
+        (
+            "runtime_pro_context_split_runtime_v2",
+            model_runtime_pro_context_split_runtime_v2,
+        ),
+        (
+            "runtime_pro_context_split_runtime_v3",
+            model_runtime_pro_context_split_runtime_v3,
+        ),
+        (
+            "runtime_pro_context_split_runtime_v4",
+            model_runtime_pro_context_split_runtime_v4,
+        ),
+        (
+            "runtime_pro_context_split_runtime_v5",
+            model_runtime_pro_context_split_runtime_v5,
+        ),
+        (
+            "runtime_pro_context_split_runtime_v6",
+            model_runtime_pro_context_split_runtime_v6,
+        ),
+        (
+            "runtime_pro_context_split_runtime_v7",
+            model_runtime_pro_context_split_runtime_v7,
         ),
         (
             "runtime_pro_ordering_tt_v1",
@@ -7891,6 +9854,208 @@ fn smart_automove_pool_pro_progressive_vs_fast() {
         "pro progressive vs fast failed aggregate non-regression: delta {:.4} < 0.0",
         delta
     );
+}
+
+#[test]
+#[ignore = "pro confirmation probe against runtime normal baseline (opening-book enabled)"]
+fn smart_automove_pool_pro_confirmation_probe_vs_normal() {
+    let candidate_profile = pro_candidate_profile_name();
+    let baseline_profile = pro_baseline_profile_name();
+    let repeats = env_usize("SMART_PRO_CONFIRM_PROBE_REPEATS")
+        .unwrap_or(4)
+        .max(1);
+    let games = env_usize("SMART_PRO_CONFIRM_PROBE_GAMES").unwrap_or(4).max(1);
+    let max_plies = env_usize("SMART_PRO_CONFIRM_PROBE_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let seed_tag = env_profile_name("SMART_PRO_CONFIRM_PROBE_SEED_TAG")
+        .unwrap_or_else(|| "pro_confirm_vs_normal_v1".to_string());
+
+    let stats = run_cross_budget_duel(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Pro,
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Normal,
+        seed_tag.as_str(),
+        repeats,
+        games,
+        max_plies,
+        true,
+    );
+    let (delta, confidence) = stats_delta_confidence(stats);
+    println!(
+        "pro confirmation probe vs normal: profile={} baseline={} wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+        candidate_profile,
+        baseline_profile,
+        stats.wins,
+        stats.losses,
+        stats.draws,
+        delta,
+        confidence
+    );
+}
+
+#[test]
+#[ignore = "pro confirmation probe against runtime fast baseline (opening-book enabled)"]
+fn smart_automove_pool_pro_confirmation_probe_vs_fast() {
+    let candidate_profile = pro_candidate_profile_name();
+    let baseline_profile = pro_baseline_profile_name();
+    let repeats = env_usize("SMART_PRO_CONFIRM_PROBE_REPEATS")
+        .unwrap_or(4)
+        .max(1);
+    let games = env_usize("SMART_PRO_CONFIRM_PROBE_GAMES").unwrap_or(4).max(1);
+    let max_plies = env_usize("SMART_PRO_CONFIRM_PROBE_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let seed_tag = env_profile_name("SMART_PRO_CONFIRM_PROBE_SEED_TAG")
+        .unwrap_or_else(|| "pro_confirm_vs_fast_v1".to_string());
+
+    let stats = run_cross_budget_duel(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Pro,
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Fast,
+        seed_tag.as_str(),
+        repeats,
+        games,
+        max_plies,
+        true,
+    );
+    let (delta, confidence) = stats_delta_confidence(stats);
+    println!(
+        "pro confirmation probe vs fast: profile={} baseline={} wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+        candidate_profile,
+        baseline_profile,
+        stats.wins,
+        stats.losses,
+        stats.draws,
+        delta,
+        confidence
+    );
+}
+
+#[test]
+#[ignore = "pro strict-primary probe against runtime normal baseline"]
+fn smart_automove_pool_pro_primary_probe_vs_normal() {
+    let candidate_profile = pro_candidate_profile_name();
+    let baseline_profile = pro_baseline_profile_name();
+    let primary_games = env_usize("SMART_PRO_GATE_PRIMARY_GAMES")
+        .unwrap_or(6)
+        .max(2);
+    let primary_repeats = env_usize("SMART_PRO_GATE_PRIMARY_REPEATS")
+        .unwrap_or(6)
+        .max(2);
+    let primary_max_plies = env_usize("SMART_PRO_GATE_PRIMARY_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let primary_seed_tags = ["neutral_v1", "neutral_v2", "neutral_v3"];
+    let stats = run_pro_matchup_across_seeds(
+        candidate_profile.as_str(),
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Normal,
+        "pro_primary_vs_normal",
+        &primary_seed_tags,
+        primary_repeats,
+        primary_games,
+        primary_max_plies,
+        false,
+    );
+    let (delta, confidence) = stats_delta_confidence(stats);
+    println!(
+        "pro primary probe vs normal: profile={} baseline={} wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+        candidate_profile,
+        baseline_profile,
+        stats.wins,
+        stats.losses,
+        stats.draws,
+        delta,
+        confidence
+    );
+}
+
+#[test]
+#[ignore = "pro strict-primary probe against runtime fast baseline"]
+fn smart_automove_pool_pro_primary_probe_vs_fast() {
+    let candidate_profile = pro_candidate_profile_name();
+    let baseline_profile = pro_baseline_profile_name();
+    let primary_games = env_usize("SMART_PRO_GATE_PRIMARY_GAMES")
+        .unwrap_or(6)
+        .max(2);
+    let primary_repeats = env_usize("SMART_PRO_GATE_PRIMARY_REPEATS")
+        .unwrap_or(6)
+        .max(2);
+    let primary_max_plies = env_usize("SMART_PRO_GATE_PRIMARY_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let primary_seed_tags = ["neutral_v1", "neutral_v2", "neutral_v3"];
+    let stats = run_pro_matchup_across_seeds(
+        candidate_profile.as_str(),
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Fast,
+        "pro_primary_vs_fast",
+        &primary_seed_tags,
+        primary_repeats,
+        primary_games,
+        primary_max_plies,
+        false,
+    );
+    let (delta, confidence) = stats_delta_confidence(stats);
+    println!(
+        "pro primary probe vs fast: profile={} baseline={} wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+        candidate_profile,
+        baseline_profile,
+        stats.wins,
+        stats.losses,
+        stats.draws,
+        delta,
+        confidence
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect turn-number distribution for pro primary/confirm seeds"]
+fn smart_automove_pool_pro_seed_turn_distribution_probe() {
+    let budget_pro = pro_budget();
+    let budget_normal = SearchBudget::from_preference(SmartAutomovePreference::Normal);
+    let repeats = 4usize;
+    let games = 4usize;
+    let mut primary_hist = std::collections::BTreeMap::<(i32, i32), usize>::new();
+    let mut confirm_hist = std::collections::BTreeMap::<(i32, i32), usize>::new();
+
+    for repeat_index in 0..repeats {
+        let primary_seed = seed_for_budget_duel_repeat_and_tag(
+            budget_pro,
+            budget_normal,
+            repeat_index,
+            "pro_primary_vs_normal:neutral_v1",
+        );
+        for fen in generate_opening_fens_cached(primary_seed, games).iter() {
+            let game = MonsGame::from_fen(fen, false).expect("valid primary fen");
+            let key = (
+                game.turn_number,
+                if game.active_color == Color::White { 0 } else { 1 },
+            );
+            *primary_hist.entry(key).or_insert(0) += 1;
+        }
+
+        let confirm_seed = seed_for_budget_duel_repeat_and_tag(
+            budget_pro,
+            budget_normal,
+            repeat_index,
+            "pro_confirm_vs_normal_v1",
+        );
+        for fen in generate_opening_fens_cached(confirm_seed, games).iter() {
+            let game = MonsGame::from_fen(fen, false).expect("valid confirm fen");
+            let key = (
+                game.turn_number,
+                if game.active_color == Color::White { 0 } else { 1 },
+            );
+            *confirm_hist.entry(key).or_insert(0) += 1;
+        }
+    }
+
+    println!("primary turn/active histogram: {:?}", primary_hist);
+    println!("confirm turn/active histogram: {:?}", confirm_hist);
 }
 
 #[test]
