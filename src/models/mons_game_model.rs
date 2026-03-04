@@ -47,7 +47,7 @@ const MAX_SMART_SEARCH_DEPTH: usize = 5;
 #[cfg(any(target_arch = "wasm32", test))]
 const MIN_SMART_MAX_VISITED_NODES: usize = 32;
 #[cfg(any(target_arch = "wasm32", test))]
-const MAX_SMART_MAX_VISITED_NODES: usize = 50_000;
+const MAX_SMART_MAX_VISITED_NODES: usize = 180_000;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_TERMINAL_SCORE: i32 = i32::MAX / 8;
 #[cfg(any(target_arch = "wasm32", test))]
@@ -189,11 +189,13 @@ const SMART_AUTOMOVE_NORMAL_MAX_VISITED_NODES: i32 = 3800;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_AUTOMOVE_PRO_DEPTH: i32 = 4;
 #[cfg(any(target_arch = "wasm32", test))]
-const SMART_AUTOMOVE_PRO_MAX_VISITED_NODES: i32 = SMART_AUTOMOVE_NORMAL_MAX_VISITED_NODES * 3;
+const SMART_AUTOMOVE_PRO_MAX_VISITED_NODES: i32 =
+    SMART_AUTOMOVE_NORMAL_MAX_VISITED_NODES * 369 / 100;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_AUTOMOVE_ULTRA_DEPTH: i32 = 5;
 #[cfg(any(target_arch = "wasm32", test))]
-const SMART_AUTOMOVE_ULTRA_MAX_VISITED_NODES: i32 = 42_066;
+const SMART_AUTOMOVE_ULTRA_MAX_VISITED_NODES: i32 =
+    SMART_AUTOMOVE_PRO_MAX_VISITED_NODES * 10;
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Default)]
@@ -2279,7 +2281,7 @@ impl MonsGameModel {
         if config.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
             return config;
         }
-        config.max_visited_nodes = 10_200;
+        config.max_visited_nodes = SMART_AUTOMOVE_PRO_MAX_VISITED_NODES as usize;
         config.enable_forced_tactical_prepass = false;
         config.root_branch_limit = config.root_branch_limit.clamp(14, 34);
         config.node_branch_limit = config.node_branch_limit.clamp(9, 15);
@@ -2313,7 +2315,7 @@ impl MonsGameModel {
         if config.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
             return config;
         }
-        config.max_visited_nodes = 10_200;
+        config.max_visited_nodes = SMART_AUTOMOVE_PRO_MAX_VISITED_NODES as usize;
         config.enable_forced_tactical_prepass = false;
         config.root_branch_limit = config.root_branch_limit.clamp(14, 34);
         config.node_branch_limit = config.node_branch_limit.clamp(9, 15);
@@ -2346,7 +2348,7 @@ impl MonsGameModel {
         if config.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
             return config;
         }
-        config.max_visited_nodes = 36_800;
+        config.max_visited_nodes = SMART_AUTOMOVE_ULTRA_MAX_VISITED_NODES as usize;
         config.enable_forced_tactical_prepass = false;
         config.enable_two_pass_root_allocation = true;
         config.root_focus_k = 4;
@@ -2383,7 +2385,7 @@ impl MonsGameModel {
         if config.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
             return config;
         }
-        config.max_visited_nodes = 35_200;
+        config.max_visited_nodes = SMART_AUTOMOVE_ULTRA_MAX_VISITED_NODES as usize;
         config.enable_forced_tactical_prepass = false;
         config.enable_two_pass_root_allocation = true;
         config.root_focus_k = 4;
@@ -7378,7 +7380,10 @@ mod opening_book_tests {
         let independent_model = MonsGameModel::with_game(base_game);
         let independent_config =
             independent_model.runtime_config_for_preference(SmartAutomovePreference::Pro);
-        assert_eq!(independent_config.max_visited_nodes, 10_200);
+        assert_eq!(
+            independent_config.max_visited_nodes,
+            SMART_AUTOMOVE_PRO_MAX_VISITED_NODES as usize
+        );
         assert_eq!(independent_config.root_reply_risk_score_margin, 165);
         assert_eq!(independent_config.root_reply_risk_shortlist_max, 9);
         assert_eq!(independent_config.root_reply_risk_reply_limit, 24);
@@ -7400,7 +7405,10 @@ mod opening_book_tests {
         let opening_model = MonsGameModel::with_game(opening_game);
         let opening_config =
             opening_model.runtime_config_for_preference(SmartAutomovePreference::Pro);
-        assert_eq!(opening_config.max_visited_nodes, 10_200);
+        assert_eq!(
+            opening_config.max_visited_nodes,
+            SMART_AUTOMOVE_PRO_MAX_VISITED_NODES as usize
+        );
         assert_eq!(opening_config.root_reply_risk_score_margin, 155);
         assert_eq!(opening_config.root_reply_risk_shortlist_max, 7);
         assert_eq!(opening_config.root_reply_risk_reply_limit, 18);
@@ -7416,7 +7424,10 @@ mod opening_book_tests {
         let independent_model = MonsGameModel::with_game(base_game);
         let independent_config =
             independent_model.runtime_config_for_preference(SmartAutomovePreference::Ultra);
-        assert_eq!(independent_config.max_visited_nodes, 36_800);
+        assert_eq!(
+            independent_config.max_visited_nodes,
+            SMART_AUTOMOVE_ULTRA_MAX_VISITED_NODES as usize
+        );
         assert_eq!(independent_config.root_reply_risk_score_margin, 175);
         assert_eq!(independent_config.root_reply_risk_shortlist_max, 10);
         assert_eq!(independent_config.root_reply_risk_reply_limit, 30);
@@ -7438,7 +7449,10 @@ mod opening_book_tests {
         let opening_model = MonsGameModel::with_game(opening_game);
         let opening_config =
             opening_model.runtime_config_for_preference(SmartAutomovePreference::Ultra);
-        assert_eq!(opening_config.max_visited_nodes, 35_200);
+        assert_eq!(
+            opening_config.max_visited_nodes,
+            SMART_AUTOMOVE_ULTRA_MAX_VISITED_NODES as usize
+        );
         assert_eq!(opening_config.root_reply_risk_score_margin, 165);
         assert_eq!(opening_config.root_reply_risk_shortlist_max, 8);
         assert_eq!(opening_config.root_reply_risk_reply_limit, 22);

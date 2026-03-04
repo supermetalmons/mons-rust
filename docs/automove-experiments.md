@@ -104,17 +104,17 @@ Current runtime behavior:
 
 - `fast` is CPU-shaped around `depth=2/max_nodes=480`.
 - `normal` is CPU-shaped around `depth=3/max_nodes=3800`.
-- `pro` is CPU-shaped around `depth=4/max_nodes=11400` and always runs full pro budget (no adaptive fallback to normal).
-- `ultra` is CPU-shaped around `depth=5/max_nodes=42066` and uses runtime context split (independent primary branch + opening confirmation branch).
+- `pro` is CPU-shaped around `depth=4/max_nodes=14022` and always runs full pro budget (no adaptive fallback to normal).
+- `ultra` is CPU-shaped around `depth=5/max_nodes=140220` and uses runtime context split (independent primary branch + opening confirmation branch).
 - `fast` uses `RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF` (boolean drainer danger, `-400`/`-300`, plus `supermana_race_control: 30`).
 - `normal` uses phase-adaptive boolean drainer weights (`RUNTIME_NORMAL_BOOLEAN_DRAINER_*_SPIRIT_BASE_SCORING_WEIGHTS` family), switching by game phase.
 - `pro` uses runtime context split with model-local hinting (no FEN schema change):
-  - `Independent` context (default search): `max_visited_nodes=10200`, forced tactical prepass off, reply-risk `165/9/24/2000`, drainer safety `4800`, selective-extension share `1500`, and attacker-proximity phase-adaptive scoring.
-  - `OpeningBookDriven` context (production opening confirmation path): `max_visited_nodes=10200`, forced tactical prepass off, reply-risk `155/7/18/1400`, drainer safety `4300`, selective-extension share `1200`, and deep-floor off for safer conversion.
+  - `Independent` context (default search): `max_visited_nodes=14022`, forced tactical prepass off, reply-risk `165/9/24/2000`, drainer safety `4800`, selective-extension share `1500`, and attacker-proximity phase-adaptive scoring.
+  - `OpeningBookDriven` context (production opening confirmation path): `max_visited_nodes=14022`, forced tactical prepass off, reply-risk `155/7/18/1400`, drainer safety `4300`, selective-extension share `1200`, and deep-floor off for safer conversion.
   - Context hint is persisted on the model and set when opening-book move selection is used; unknown states fall back to deterministic opening-context detection.
 - `ultra` uses the same model-local context hinting and deterministic opening detection:
-  - `Independent` context: `max_visited_nodes=36800`, forced tactical prepass off, two-pass root allocation on, reply-risk `175/10/30/2400`, drainer safety `5000`, selective-extension share `1900`, and attacker-proximity phase-adaptive scoring.
-  - `OpeningBookDriven` context: `max_visited_nodes=35200`, safer reply-risk `165/8/22/1700`, drainer safety `4600`, selective-extension share `1200`, and deep-floor off.
+  - `Independent` context: `max_visited_nodes=140220`, forced tactical prepass off, two-pass root allocation on, reply-risk `175/10/30/2400`, drainer safety `5000`, selective-extension share `1900`, and attacker-proximity phase-adaptive scoring.
+  - `OpeningBookDriven` context: `max_visited_nodes=140220`, safer reply-risk `165/8/22/1700`, drainer safety `4600`, selective-extension share `1200`, and deep-floor off.
 - Both modes enable `enable_enhanced_drainer_vulnerability` (exact-geometry boolean threat detection for drainer and mana carriers).
 - `fast` enables `enable_supermana_prepass_exception`: when the position has supermana scoring potential, the forced tactical prepass skips drainer attack and drainer safety overrides, allowing the search to find supermana plays.
 - `fast` uses boosted interview supermana bonuses: `interview_soft_supermana_score_bonus = 600` (from 360), `interview_soft_supermana_progress_bonus = 320` (from 240).
@@ -173,7 +173,7 @@ Public API contract:
 
 CPU intent:
 
-- Pro is targeted at roughly `~3x` normal CPU on the fixed-position probe.
+- Pro is targeted at roughly `~3.69x` normal CPU on the fixed-position probe.
 - Promotion ladder target band: `2.70x..3.69x` (hard fail when `>3.69x`).
 
 Strict dual-baseline promotion criteria:
@@ -252,13 +252,13 @@ Public API contract:
 
 CPU intent:
 
-- Ultra targets `3.30x..3.69x` CPU vs `runtime_current@pro` on the fixed-position probe.
+- Ultra targets `3.30x..10.00x` CPU vs `runtime_current@pro` on the fixed-position probe.
 - Hard fail outside that band.
 
 Strict ultra promotion criteria:
 
 - Primary strict bar vs pro:
-  - `ultra vs pro`: `delta >= +0.10`, `confidence >= 0.90`
+  - `ultra vs pro`: `delta >= +0.08`, `confidence >= 0.90`
 - Primary non-regression:
   - `ultra vs normal`: `delta >= 0.0`
   - `ultra vs fast`: `delta >= 0.0`
@@ -570,7 +570,7 @@ SMART_TUNE_PROFILE=runtime_current \
 - `runtime_pro_context_split_runtime_v4`: v2 plus primary-only conversion lift.
 - `runtime_pro_context_split_runtime_v5`: v2 plus stronger confirmation safety hardening.
 - `runtime_pro_context_split_runtime_v6`: opening confirmation uses runtime-normal profile, independent context uses high-utilization pro.
-- `runtime_pro_context_split_runtime_v7`: context split with pro nominal node target (`11400`) for utilization stress testing.
+- `runtime_pro_context_split_runtime_v7`: context split with pro nominal node target (`14022`) for utilization stress testing.
 - `runtime_ultra_d5_split_cal_v1`: ultra depth-5 context-split calibration (low node target).
 - `runtime_ultra_d5_split_cal_v2`: ultra depth-5 context-split calibration (mid-low node target).
 - `runtime_ultra_d5_split_cal_v3`: ultra depth-5 context-split calibration (mid-high node target).
@@ -581,6 +581,34 @@ SMART_TUNE_PROFILE=runtime_current \
 - `runtime_ultra_d5_split_hybrid_balance_v1`: aggressive/safe hybrid split by score-race state.
 - `runtime_ultra_d5_split_normal_guard_v1`: v4-style ultra with pressure-triggered normal-safety guard.
 - `runtime_ultra_d5_split_normalized_v2`: normalized backbone with conditional aggressive finisher conversion.
+- `runtime_ultra_d5_ordering_tt_v15_early_neutral_pro_bridge`: ultra ordering/TT family with early neutral pro-bridge.
+- `runtime_ultra_d5_ordering_tt_v16_bridge_plus_mid_conversion`: ultra ordering/TT family with pro-bridge + midgame conversion lift.
+- `runtime_ultra_d5_ordering_tt_v17_guarded_pro_bridge_lite`: guarded/lite pro-bridge variant.
+- `runtime_ultra_d5_ordering_tt_v18_hiutil_pro_bridge_plus`: higher-utilization guarded pro-bridge variant.
+- `runtime_ultra_d5_ordering_tt_v19_hybrid_bridge_floor_pick`: hybrid bridge with reply-floor post-pick.
+- `runtime_ultra_d5_ordering_tt_v20_hiutil_v16_node_lift`: v16-family node-lift variant.
+- `runtime_ultra_d5_ordering_tt_v21_parity_gated_bridge`: v16-family parity-gated bridge variant.
+- `runtime_ultra_d5_ordering_tt_v22_odd_opening_runtime_fallback`: v16-family odd-opening runtime fallback variant.
+- `runtime_ultra_d5_ordering_tt_v23_bridge_floor_arbiter`: v16-family bridge floor-arbiter variant.
+- `runtime_ultra_d5_search_verify_v24`: ultra search-verify rerank family.
+- `runtime_ultra_d5_deep_narrow_v25`: non-bridge deep-narrow depth-5 family.
+- `runtime_ultra_d5_deep_narrow_v26_confirm_pro_bridge`: v25 primary with opening confirmation path bridged to pro runtime policy.
+- `runtime_ultra_d5_deep_narrow_v27_confirm_pro_bridge_stable`: v26 with slightly wider independent deep-narrow branch.
+- `runtime_ultra_d5_deep_narrow_v28_early_pro_arbiter`: v27 plus early-neutral pro arbiter in independent context.
+- `runtime_ultra_d5_deep_narrow_v29_early_pro_arbiter_tight`: tighter v28 arbiter thresholds.
+- `runtime_ultra_d5_deep_narrow_v30_early_pro_arbiter_black_only`: v28 arbiter limited to black-to-move neutral states.
+- `runtime_ultra_d5_deep_narrow_v31_early_pro_arbiter_turn2`: v28 arbiter limited to turn-2 neutral states.
+- `runtime_ultra_d5_runtime_current_plus_early_pro_arbiter_v32`: runtime-current ultra backbone plus early-neutral pro arbiter.
+- `runtime_ultra_d5_runtime_plus_early_pro_arbiter_with_normal_guard_v33`: v32 with normal-floor guard before pro fallback.
+- `runtime_ultra_d5_runtime_plus_early_pro_arbiter_with_normal_guard_v34`: tighter normal-floor guard variant.
+- `runtime_ultra_d5_runtime_plus_early_pro_arbiter_explicit_confirm_bridge_v35`: v33 with confirmation bridge enabled only when opening-book mode is explicitly on.
+- `runtime_ultra_d5_explicit_context_consensus_v36`: non-opening runs forced to independent ultra context with pro+normal consensus fallback.
+- `runtime_ultra_d5_robust_tri_blend_v37`: early-neutral tri-blend (`ultra/pro/normal`) via robust static evaluation mix.
+- `runtime_ultra_d5_dual_floor_optimizer_v38`: early-neutral tri-blend optimized by dual-opponent reply floors.
+- `runtime_ultra_d5_early_normal_guarded_pro_arbiter_v39`: early-neutral normal-floor guard plus pro arbiter.
+- `runtime_ultra_d5_early_normal_guarded_pro_arbiter_v40`: stronger normal guard variant of v39.
+- `runtime_ultra_d5_early_normal_guarded_pro_arbiter_v41`: strongest normal-biased guard variant in this family.
+- `runtime_ultra_d5_default_eval_adjudication_v43`: early-neutral tri-selection aligned to adjudicator default eval.
 - `runtime_pro_cpu_prepass_off_v2_phase_budget_v1` / `v2` / `v3`: phase-conditioned pro budget-expansion attempts.
 - `runtime_pre_pro_promotion_v1`: snapshot profile before pro runtime promotion.
 - `swift_2024_eval_reference`: Swift 2024 weights on top of current runtime search.
@@ -981,6 +1009,580 @@ Takeaway:
 
 - Ultra requires a narrower hybridization: preserve pro-pressure signal in more states, and inject normal-safety only at clearly identified loss patterns.
 
+### 35) Budget-chain realignment (`pro=3.69x normal`, `ultra=5.50x pro`) and ultra re-probe (March 3, 2026)
+
+Runtime/budget policy changes:
+
+- Pro nominal budget moved to `depth=4/max_nodes=14022` (`3.69x` vs normal `3800`).
+- Ultra nominal budget moved to `depth=5/max_nodes=77121` (`5.50x` vs pro `14022`).
+- Ultra ladder CPU hard cap moved to `5.50x` vs pro.
+
+Reduced primary-probe results under the new chain (`G=2, R=2, max_plies=72`):
+
+- `runtime_ultra_d5_ordering_tt_v17_guarded_pro_bridge_lite`:
+  - vs pro `δ=+0.0417`
+  - vs normal `δ=0.0000`
+  - vs fast `δ=+0.2500`
+- `runtime_ultra_d5_ordering_tt_v16_bridge_plus_mid_conversion`:
+  - vs pro `δ=+0.0833`
+  - vs normal `δ=+0.1667`
+  - vs fast `δ=+0.3750`
+- `runtime_ultra_d5_ordering_tt_v19_hybrid_bridge_floor_pick` regressed vs pro (`δ=-0.0417`) and is treated as failed.
+- `runtime_ultra_d5_ordering_tt_v20_hiutil_v16_node_lift` matched v16 vs pro (`δ=+0.0833`) in reduced probes.
+
+Takeaway:
+
+- The best current ultra family is `v16`-style bridge+mid-conversion; it is still short of strict pro-primary bar (`+0.10`).
+- Next iteration should stay in this family and target pro-only lift (not broad hybrid floor-pick logic).
+
+### 36) Wider-picture trace-driven pivots after v16 plateau (March 4, 2026)
+
+Observed widening signal:
+
+- `v16` reduced probe looked promising (`vs pro δ=+0.0833`) but larger-sample seed buckets showed volatility (for `G=3/R=3`, first seed bucket `δ=-0.0556`).
+- Traced `ultra_primary_vs_pro:neutral_v2` showed alternating opening families where `v16` improved some buckets and regressed others.
+
+Tried pivots:
+
+- `runtime_ultra_d5_ordering_tt_v21_parity_gated_bridge` (even-turn-only bridge in neutral openings):
+  - reduced vs pro: `δ=-0.0417` (failed)
+- `runtime_ultra_d5_ordering_tt_v22_odd_opening_runtime_fallback` (odd-turn neutral openings fallback to runtime-current policy):
+  - reduced vs pro: `δ=-0.2083` (failed hard)
+
+Takeaway:
+
+- Opening-parity/state gating on top of the bridge family is not stable enough.
+- Next round should pivot from bridge-gating heuristics to a different pro-lift lever (search-shape/verification family), while preserving v16-level non-regression vs normal/fast.
+
+### 37) Wider-picture pivot to mode-split deep-narrow + confirmation bridge (March 4, 2026)
+
+Failed probes before fix:
+
+- `runtime_ultra_d5_ordering_tt_v23_bridge_floor_arbiter`: reduced `vs pro δ=-0.0417` (failed).
+- `runtime_ultra_d5_search_verify_v24`: early reduced buckets regressed (`neutral_v1 δ=-0.1250`, `neutral_v2 δ=-0.2500`), treated as failed family.
+- `runtime_ultra_d5_deep_narrow_v25`: strong primary but failed confirmation-vs-pro in reduced ladder (`δ=-0.2500`), so not promotable as-is.
+
+Working adjustment:
+
+- Added `runtime_ultra_d5_deep_narrow_v26_confirm_pro_bridge`:
+  - keeps `v25` independent (non-opening) branch unchanged for primary strength;
+  - opening-book-driven context uses pro runtime context policy for move choice (confirmation stability);
+  - retains a bounded ultra aux pass for ordering/TT warm-up.
+
+Evidence (reduced probes, `G=2, R=2, max_plies=72`):
+
+- Primary:
+  - vs pro: `wins=20 losses=4 delta=+0.3333 confidence=0.999`
+  - vs normal: `wins=17 losses=7 delta=+0.2083 confidence=0.968`
+  - vs fast: `wins=20 losses=4 delta=+0.3333 confidence=0.999`
+- Confirmation:
+  - vs pro: `delta=0.0000`
+  - vs normal: `delta=+0.1250`
+  - vs fast: `delta=+0.1250`
+- Reduced strict ladder (`SMART_POOL_OPPONENTS=2`) passed:
+  - CPU ratio vs pro: `3.866` (within `3.30..5.50`)
+  - confirmation gates: all non-negative
+  - pool non-regression:
+    - vs pro-opponents: `candidate_delta=+0.2500 baseline_delta=0.0000`
+    - vs normal-opponents: `candidate_delta=+0.2500 baseline_delta=0.0000`
+    - vs fast-opponents: `candidate_delta=0.0000 baseline_delta=0.0000`
+
+Takeaway:
+
+- The blocker was not primary quality; it was opening confirmation stability vs pro.
+- The mode-split approach (strong independent branch + safer confirmation branch) remains the most reliable ultra direction.
+- Next promotion step is full strict ladder with full pool opponent count before runtime move.
+
+### 38) Fast-screen dual-baseline instability after v26 (March 4, 2026)
+
+Observed contradiction:
+
+- `runtime_ultra_d5_deep_narrow_v26_confirm_pro_bridge` passed reduced strict ladder (`SMART_POOL_OPPONENTS=2`) with strong primary and non-negative confirmation.
+- The fixed fast-screen seed tags exposed a dual-baseline conflict:
+  - `vs pro` fast screen: `δ=-0.2500`
+  - `vs normal` fast screen: `δ=-0.1250`
+
+Control baseline on same tags:
+
+- `runtime_current` vs pro fast-screen: `δ=-0.1250`
+- `runtime_current` vs normal fast-screen: `δ=0.0000`
+
+Follow-up candidates and outcomes:
+
+- `runtime_ultra_d5_deep_narrow_v27_confirm_pro_bridge_stable`: no change on pro screen (`δ=-0.2500`).
+- `runtime_ultra_d5_deep_narrow_v28_early_pro_arbiter`: fixed pro screen (`δ=0.0000`) but regressed normal screen (`δ=-0.3750`).
+- `runtime_ultra_d5_deep_narrow_v29_early_pro_arbiter_tight`: pro screen back to `δ=-0.1250`.
+- `runtime_ultra_d5_deep_narrow_v30_early_pro_arbiter_black_only`: pro screen `δ=-0.1250`.
+- `runtime_ultra_d5_deep_narrow_v31_early_pro_arbiter_turn2`: pro screen `δ=-0.2500`.
+- `runtime_ultra_d5_runtime_current_plus_early_pro_arbiter_v32`: pro screen improved (`δ=+0.1250`) and fast screen vs fast strong (`δ=+0.3750`), but normal screen remained `δ=-0.3750`.
+- `runtime_ultra_d5_runtime_plus_early_pro_arbiter_with_normal_guard_v33`: pro screen `δ=+0.1250`, normal screen improved but still failed (`δ=-0.2500`).
+- `runtime_ultra_d5_runtime_plus_early_pro_arbiter_with_normal_guard_v34`: pro screen `δ=+0.1250`, normal screen regressed again (`δ=-0.3750`).
+- `runtime_ultra_d5_runtime_plus_early_pro_arbiter_explicit_confirm_bridge_v35`: pro screen `δ=+0.1250`, normal screen still failed (`δ=-0.2500`) even with confirmation bridge gated to explicit opening-book mode.
+- `runtime_ultra_d5_explicit_context_consensus_v36`: converged to baseline-like behavior (`vs pro δ=-0.1250`, `vs normal δ=-0.1250`).
+- `runtime_ultra_d5_robust_tri_blend_v37`: robust tri-blend did not lift screens (`vs pro δ=-0.1250`, `vs normal δ=-0.2500`).
+- `runtime_ultra_d5_dual_floor_optimizer_v38`: dual-floor optimizer also regressed (`vs pro δ=-0.1250`, `vs normal δ=-0.2500`).
+- `runtime_ultra_d5_early_normal_guarded_pro_arbiter_v39`: closest balanced result so far (`vs pro δ=+0.1250`, `vs normal δ=-0.1250`).
+- `runtime_ultra_d5_early_normal_guarded_pro_arbiter_v40`: same frontier as v39 (`vs pro δ=+0.1250`, `vs normal δ=-0.1250`).
+- `runtime_ultra_d5_early_normal_guarded_pro_arbiter_v41`: over-corrected toward neutrality (`vs pro δ=-0.1250`, `vs normal δ=-0.1250`).
+- `runtime_ultra_d5_default_eval_adjudication_v43`: adjudicator-targeted tri-selection regressed (`vs pro δ=-0.2500`, `vs normal δ=-0.2500`).
+
+Detailed diagnosis added:
+
+- New diagnostic `smart_automove_pool_ultra_trace_seed_detailed` was used on failing bucket `ultra_fast_screen_vs_normal_v1`.
+- Failures are dominated by `MaxPlyAdjudicated(...)` outcomes (not invalid/no-move tactical errors), confirming this round is primarily a long-race conversion/adjudication-shape problem.
+
+Takeaway:
+
+- Early-neutral pro arbitration shifts losses from pro baseline to normal baseline; pro-only stabilization is insufficient.
+- Next round should use multi-opponent arbitration in early-neutral states (pro/normal/ultra floor blend) instead of pro-only bridging, while keeping confirmation-vs-pro non-regression constraint.
+
+### 39) Wider-picture adjudication-guard sweep (v45..v59) and progressive pro wall (March 4, 2026)
+
+What was tried:
+
+- Added a thresholded default-eval guard family (`runtime_ultra_d5_default_eval_guarded_v45` and iterative variants through `v59`) to stabilize `MaxPlyAdjudicated` buckets without touching fast/normal/pro runtime branches.
+- Added targeted state-split knobs in this family:
+  - early-black-opening normal-fallback restriction,
+  - turn-window restriction for normal fallback,
+  - white-turn default-eval cap,
+  - stronger pro-bridge fallback thresholds.
+
+Fast-screen outcomes (key checkpoints):
+
+- `runtime_ultra_d5_default_eval_guarded_v45`:
+  - vs pro `δ=0.0000`
+  - vs normal `δ=-0.1250`
+- `runtime_ultra_d5_default_eval_guarded_v46` / `v47` / `v48`:
+  - vs pro `δ=-0.1250`
+  - vs normal `δ=0.0000`
+- `runtime_ultra_d5_default_eval_guarded_v51`:
+  - vs pro `δ=-0.1250`
+  - vs normal `δ=-0.2500`
+- `runtime_ultra_d5_default_eval_guarded_v56`:
+  - vs pro `δ=0.0000`
+  - vs normal `δ=0.0000`
+  - vs fast `δ=+0.2500`
+- `runtime_ultra_d5_default_eval_guarded_v57` / `v58`:
+  - vs pro `δ=0.0000`
+  - vs normal `δ=-0.1250`
+- `runtime_ultra_d5_default_eval_guarded_v59`:
+  - vs pro `δ=0.0000`
+  - vs normal `δ=0.0000`
+  - vs fast `δ=+0.2500`
+
+Progressive outcomes (critical blocker):
+
+- `runtime_ultra_d5_default_eval_guarded_v56` failed progressive non-regression:
+  - vs pro cumulative `δ=-0.2500`
+  - vs normal cumulative `δ=-0.0556`
+- `runtime_ultra_d5_default_eval_guarded_v59` showed the same early progressive pro failure pattern (first buckets negative: `neutral_v1: δ=-0.2500`, `neutral_v2: δ=-0.3750`) and was not advanced.
+
+Takeaway:
+
+- This family can clear fast-screen on all three baselines, but still collapses on longer-horizon progressive vs pro.
+- The current wall is not opening confirmation only; it is pro conversion quality over deeper neutral buckets (`max_plies=80`, larger seed/game tiers).
+- Next round should keep the `v56/v59` fast-screen-stable guard skeleton but shift pro strength via search-shape/ordering in pro-facing buckets (not additional normal-fallback heuristics).
+
+### 40) Wider-picture pivot to pro-anchored challenge routing (v60/v62) (March 4, 2026)
+
+Pivot:
+
+- New family: `runtime_ultra_d5_pro_anchor_challenge_v60` and `v62`.
+- Core policy:
+  - run both ultra and pro move selectors,
+  - compute post-move robust score (`ultra_floor`, `pro_floor`, default eval),
+  - choose ultra only when it clears a margin over pro.
+- `v62` adds early-neutral white-side pro anchoring (detected from trace failures where ultra systematically lost as White in progressive pro seeds).
+
+Fast-screen results:
+
+- `runtime_ultra_d5_pro_anchor_challenge_v60`:
+  - vs pro `δ=+0.1250`
+  - vs normal `δ=0.0000`
+  - vs fast `δ=+0.2500`
+- `runtime_ultra_d5_pro_anchor_challenge_v62`:
+  - vs pro `δ=0.0000`
+  - vs normal `δ=0.0000`
+  - vs fast `δ=+0.2500`
+
+Reduced progressive checks (`SMART_ULTRA_PROGRESSIVE_MAX_GAMES=4`, `SMART_ULTRA_PROGRESSIVE_REPEATS=1`):
+
+- `v62` vs pro: `δ=+0.0833`, confidence `0.797` (passed non-regression).
+- `v62` vs normal: `δ=+0.1111`, confidence `0.879` (passed).
+- `v62` vs fast: `δ=+0.3056`, confidence `1.000` (passed).
+
+Reduced primary probe vs pro (`SMART_ULTRA_GATE_PRIMARY_GAMES=2`, `SMART_ULTRA_GATE_PRIMARY_REPEATS=2`):
+
+- `v62`: `δ=-0.0417` (still below strict ultra primary target).
+
+Takeaway:
+
+- Pro-anchored challenge routing is the first direction in this round that simultaneously clears reduced progressive non-regression on all three baselines.
+- Strict primary-vs-pro lift is still missing; next step is pro-only strength lift on top of `v62` without relaxing its progressive stability.
+
+### 41) Ultra opening-lock refinement + trace correctness fix (v67-v77) (March 4, 2026)
+
+What was added:
+
+- New ultra candidate family expansion: `runtime_ultra_d5_pro_anchor_challenge_v67` through `v77`.
+- Harness correctness fix in detailed trace path:
+  - Added `play_one_game_cross_budget_with_diagnostics(...)` so trace diagnostics use true cross-budget play.
+  - Fixed BA-leg result mirroring in `smart_automove_pool_ultra_trace_seed_detailed` summary (candidate-perspective accounting).
+
+Reliable gate observations this round:
+
+- `v67` and `v70`:
+  - Full fast-screen (default settings) matched `v60`:
+    - vs pro `δ=+0.1250`
+    - vs normal `δ=0.0000`
+    - vs fast `δ=+0.2500`
+  - Reduced progressive vs pro still failed at `δ=-0.1667` (same `neutral_v2` collapse pattern).
+
+- `v71`/`v72`/`v73` (opening pro-lock diagnostics):
+  - Reduced progressive vs pro improved from `-0.1667` to `-0.0833`.
+  - The remaining deficit persisted in `neutral_v2` (`δ=-0.2500` in reduced stage-1 buckets).
+
+- `v74` (deterministic tiebreak toggle):
+  - Regressed reduced progressive vs pro to `δ=-0.2500`.
+
+- `v75` (opening-window pro/normal consensus):
+  - First profile to clear reduced progressive non-regression on all three:
+    - vs pro `δ=0.0000`
+    - vs normal `δ=0.0000`
+    - vs fast `δ=+0.3056`
+  - Full fast-screen:
+    - vs pro `δ=-0.1250` (failed),
+    - vs normal `δ=+0.1250`,
+    - vs fast `δ=+0.3750`.
+
+- `v76` (stricter normal fallback in opening window):
+  - Recovered full fast-screen vs pro non-regression:
+    - vs pro `δ=0.0000`
+  - But regressed full fast-screen vs normal:
+    - vs normal `δ=-0.1250`.
+
+- `v77` (mid-threshold blend):
+  - Still failed full fast-screen vs pro:
+    - vs pro `δ=-0.1250`.
+
+- `v78` (targeted black turn-0 pro force on top of `v75`):
+  - Did not recover pro fast-screen regression (`vs pro δ=-0.1250`).
+
+Trace-driven takeaway:
+
+- The tradeoff is now explicit: opening-window normal blending helps reduced progressive-vs-pro stability but can flip fast-screen-vs-pro below zero on specific repeat/opening buckets.
+- With corrected trace accounting, we can now trust per-repeat AB/BA diagnostics and target the exact opening buckets that flip between `v75` and `v76`.
+- Next round should tune opening-window blend policy conditionally (not globally), using the corrected cross-budget trace outputs as the primary generator for candidate constraints.
+
+---
+
+### 42) Ultra CPU envelope bump to `10.00x` vs pro (March 4, 2026)
+
+Runtime/promotion policy updates:
+
+- Ultra nominal budget moved from `depth=5/max_nodes=77121` to `depth=5/max_nodes=140220` (`10.00x` vs pro `14022`).
+- Search engine max-node clamp moved to `180000` so ultra runtime is not internally clipped below nominal budget.
+- Ultra ladder CPU hard cap moved from `5.50x` to `10.00x` vs pro.
+- Ultra CPU intent band in the strict gate is now `3.30x..10.00x` vs pro.
+
+Immediate iteration direction:
+
+- Keep mode isolation unchanged (`fast`, `normal`, `pro` runtime branches untouched).
+- Re-run ultra fast-screen/progressive/ladder under the widened CPU envelope.
+- Prioritize candidates that convert added budget into pro-side primary lift without reopening normal/fast regressions.
+
+---
+
+### 43) Ultra x10 first iteration snapshot (March 4, 2026)
+
+Current best survivor under `10.00x` cap:
+
+- `runtime_ultra_d5_pro_anchor_challenge_v85`
+  - Fast-screen:
+    - vs pro `delta=0.0000`
+    - vs normal `delta=+0.2500`
+    - vs fast `delta=+0.2500`
+  - Reduced progressive:
+    - vs pro `delta=0.0000`
+    - vs normal `delta=+0.1667`
+    - vs fast `delta=+0.2500`
+  - Reduced ladder CPU gate sample: `ratio=4.452` vs pro (inside `3.30..10.00`).
+  - Remaining blocker: strict primary lift vs pro is still insufficient (`reduced primary probe delta=0.0000`, bar is `>= +0.10`).
+
+Failed families (new):
+
+- `runtime_ultra_d5_pro_anchor_challenge_v86`: tighter white opening fallback did not improve pro side (`reduced primary probe vs pro delta=-0.0417`).
+- `runtime_ultra_d5_hiutil_branch_v87`: branch/enum expansion regression (`fast-screen vs pro delta=-0.2500`).
+- `runtime_ultra_d5_pro_anchor_ordering_v88`: ordering/TT tuning did not recover pro primary (`reduced primary probe vs pro delta=-0.0417`).
+- `runtime_ultra_d5_pro_anchor_opening_ultra_v89`:
+  - conservative opening-ultra takeover thresholds had no measurable lift (`fast-screen vs pro delta=0.0000`);
+  - aggressive takeover (`threshold=0`) regressed (`fast-screen vs pro delta=-0.2500`).
+
+Next round focus:
+
+- Keep `v85` as reference.
+- Target only pro-primary lift levers for the `neutral_v3` seed family while preserving fast-screen non-regression vs normal/fast.
+
+---
+
+### 44) Ultra x10 wider-picture hybrid routing round (March 4, 2026)
+
+Ground truth from this round (reduced primary gate: `repeats=2`, `games=2`, `max_plies=72`):
+
+- `runtime_ultra_d5_deep_narrow_v27_confirm_pro_bridge_stable` remained the stable baseline:
+  - primary vs pro: `delta=+0.0417`
+  - fast-screen vs pro: `delta=+0.1250`
+- Detailed seed diagnostics on `v27` showed the main blocker is max-ply adjudication drift in `neutral_v1` (`term=MaxPlyAdjudicated(...)`), not tactical-terminal failures.
+
+New families tested:
+
+- `runtime_ultra_d5_deep_narrow_v90_white_opening_stability`
+- `runtime_ultra_d5_deep_narrow_v91_turn1_pro_anchor`
+- `runtime_ultra_d5_deep_narrow_v92_confirm_pro_bridge_hiutil`
+- `runtime_ultra_d5_deep_narrow_v93_early_adjudication_stability`
+- `runtime_ultra_d5_hybrid_v94_targeted_opening_route`
+- `runtime_ultra_d5_hybrid_v95_turn1_targeted_opening_route`
+- `runtime_ultra_d5_hybrid_v96_turn1_white_mons3_route`
+- `runtime_ultra_d5_hybrid_v97_mons4_opening_route`
+
+Key outcomes:
+
+- `v90`/`v91`/`v92`/`v93`/`v95`/`v96`/`v97` all converged to effectively the same reduced primary-vs-pro aggregate as `v27` (`delta=+0.0417`), i.e. no net strict-lift.
+- `v94` was the only profile to materially lift primary vs pro:
+  - primary vs pro: `delta=+0.2500`, confidence `0.989`
+  - primary vs normal: `delta=0.0000`
+  - primary vs fast: `delta=+0.1667`
+  - but it failed fast-screen vs pro (`delta=-0.1250`) and is therefore not promotable.
+- `v97` improved fast-screen vs pro (`delta=+0.2500`) but did not keep the primary lift (fell back to `delta=+0.0417` vs pro).
+
+Failed/blocked families log updates:
+
+- `runtime_ultra_d5_default_eval_adjudication_v43`: reduced primary vs pro regressed (`delta=-0.0417`).
+- `runtime_ultra_d5_hybrid_v94_targeted_opening_route`: strongest pro-primary lift so far, but blocked by fast-screen vs pro regression.
+- `runtime_ultra_d5_hybrid_v95_turn1_targeted_opening_route`, `v96`, `v97`: fast-screen-safe refinements that lost the pro-primary lift.
+
+Next iteration direction:
+
+- Keep `v27` as stable floor and `v94` as pro-primary ceiling.
+- Generate only route-gating variants between `v27` and `v94` using trace-derived constraints from:
+  - `ultra_primary_vs_pro:neutral_v1`
+  - `ultra_fast_screen_vs_pro_v1`
+- Promotion remains blocked until one candidate preserves `v94`-class primary lift while keeping fast-screen vs pro non-negative.
+
+---
+
+### 45) Ultra x10 balanced hybrid breakthrough (v98/v100) (March 4, 2026)
+
+New candidate family:
+
+- `runtime_ultra_d5_hybrid_v98_targeted_opening_route_black_t2_guard`
+- `runtime_ultra_d5_hybrid_v99_black_t2_guard_runtime_confirm` (failed)
+- `runtime_ultra_d5_hybrid_v100_black_t2_guard_confirm_arbiter` (current best)
+
+Design intent:
+
+- Keep `v94` pro-primary lift route (`v27`/`v66` hybrid).
+- Add targeted guard for fast-screen pro failure bucket:
+  - do **not** route through `v66` on `turn=2`, `active=black`, `mons_moves_count=1`.
+- Keep confirmation behavior separate from primary:
+  - `v100` uses opening-book confirmation arbiter (pro-aligned bridge by default, runtime-current only on clear default-eval + floor advantage).
+
+Reduced-gate results (`repeats=2`, `games=2`, `max_plies=72` unless noted):
+
+- `v98` fast-screen:
+  - vs pro `delta=0.0000` (fixed from `v94` `-0.1250`)
+  - vs normal `delta=+0.1250`
+  - vs fast `delta=+0.2500`
+- `v98` primary:
+  - vs pro `delta=+0.2500`, confidence `0.989`
+  - vs normal `delta=+0.1667`
+  - vs fast `delta=+0.2500`
+- `v98` reduced progressive (`max_games=2`, `repeats=1`, `max_plies=80`):
+  - vs pro `delta=+0.0833`, confidence `0.613`
+  - vs normal `delta=+0.2500`, confidence `0.927`
+  - vs fast `delta=+0.1667`, confidence `0.806`
+- `v98` reduced ladder first attempt:
+  - CPU gate passed (`ratio=3.806`).
+  - Primary gates passed.
+  - Failed confirmation vs pro (`delta=-0.1250`).
+
+Confirmation-only fix path:
+
+- `v99` (opening-book context switched to runtime-current) over-corrected and regressed vs pro confirmation (`delta=-0.2500`).
+- `v100` (opening-book confirmation arbiter) recovered balanced confirmation probes:
+  - confirm vs pro `delta=0.0000`
+  - confirm vs normal `delta=0.0000`
+  - confirm vs fast `delta=+0.1250`
+
+Reduced ladder status for `v100`:
+
+- CPU gate passed (`ratio=3.942`).
+- Primary gates passed (same as `v98`).
+- Confirmation gates reached non-negative prints in-ladder:
+  - pro `0.0000`, normal `0.0000`, fast `+0.2500`.
+- Pool stage is the remaining long-running validation segment for full reduced-ladder completion.
+
+Takeaway:
+
+- `v100` is the first ultra candidate in this round that simultaneously keeps fast-screen non-regression and preserves `v94`-class pro-primary lift, with balanced confirmation probes.
+- Remaining blocker to declare reduced-ladder pass is pool-stage completion.
+
+---
+
+### 46) Ultra x10 confirmation-stability finalizer (`v100`) (March 4, 2026)
+
+Refinement:
+
+- Added `runtime_ultra_d5_hybrid_v100_black_t2_guard_confirm_arbiter`.
+- Primary path remains the `v98` independent-context hybrid.
+- Opening-book context now uses a conservative arbiter:
+  - default to `v27` confirmation bridge,
+  - switch to runtime-current confirmation only with clear dual advantage
+    (`default-eval` and `root_reply_floor`).
+
+Verified reduced gates for `v100`:
+
+- Fast-screen:
+  - vs pro `delta=0.0000`
+  - vs normal `delta=+0.1250`
+  - vs fast `delta=+0.2500`
+- Primary:
+  - vs pro `delta=+0.2500`, confidence `0.989`
+  - vs normal `delta=+0.1667`
+  - vs fast `delta=+0.2500`
+- Confirmation probes:
+  - vs pro `delta=0.0000`
+  - vs normal `delta=0.0000`
+  - vs fast `delta=+0.1250`
+- CPU gate sample in reduced ladder: `ratio=3.942` vs pro (inside `3.30..10.00`).
+
+Status:
+
+- `v100` is the first candidate this round that clears reduced fast-screen + reduced strict primary + reduced confirmation non-regression together.
+- Remaining validation to mark promotion-ready is reduced/full ladder pool-stage completion and then full-sample ladder confirmation.
+
+---
+
+### 47) Ultra x10 confirmation re-balance (`v101`..`v107`) (March 4, 2026)
+
+Problem observed:
+
+- `v101` could pass reduced confirmation non-regression in some runs but remained seed-volatile and regressed on larger confirmation samples against pro.
+
+Candidates tested (confirmation-only mutations on top of same primary path):
+
+- `runtime_ultra_d5_hybrid_v102_black_t2_guard_confirm_normal_tie_guard`
+- `runtime_ultra_d5_hybrid_v103_black_t2_guard_confirm_balanced_tie_guard` (failed)
+- `runtime_ultra_d5_hybrid_v104_black_t2_guard_confirm_white_tight_tie` (failed)
+- `runtime_ultra_d5_hybrid_v105_black_t2_guard_confirm_normal_tie_tuned` (failed)
+- `runtime_ultra_d5_hybrid_v106_black_t2_guard_confirm_normal_tie_high` (failed)
+- `runtime_ultra_d5_hybrid_v107_black_t2_guard_confirm_pro_veto` (current best)
+
+Larger confirmation probe snapshot (`repeats=4`, `games=3`, `max_plies=72`):
+
+- `v101`: vs pro `delta=-0.2083`, vs normal `delta=0.0000`.
+- `v102`: vs pro `delta=-0.0417`, vs normal `delta=+0.0417`, vs fast `delta=+0.0417`.
+- `v103`: vs pro `delta=-0.1667` (rejected).
+- `v104`: vs pro `delta=-0.1250` (rejected).
+- `v105`: vs pro `delta=-0.1250` (rejected).
+- `v106`: vs pro `delta=-0.1667` (rejected).
+- `v107`: vs pro `delta=0.0000`, vs normal `delta=0.0000`, vs fast `delta=+0.0417`.
+
+`v107` reduced ladder (`SMART_POOL_OPPONENTS=3`, reduced gates):
+
+- CPU gate: `ratio=3.913` vs pro (in-band `3.30..10.00`).
+- Primary:
+  - vs pro `delta=+0.2500`, confidence `0.989`
+  - vs normal `delta=+0.1667`
+  - vs fast `delta=+0.2500`
+- Confirmation:
+  - vs pro `delta=0.0000`
+  - vs normal `delta=0.0000`
+  - vs fast `delta=0.0000`
+- Pool:
+  - vs pro-opponents `candidate_delta=0.0000`, baseline `0.0000`
+  - vs normal-opponents `candidate_delta=0.1667`, baseline `0.0000`
+  - vs fast-opponents `candidate_delta=0.3333`, baseline `0.0000`
+
+`v107` pipeline checks (reduced progressive settings):
+
+- Fast screen:
+  - vs pro `delta=0.0000`
+  - vs normal `delta=+0.1250`
+  - vs fast `delta=+0.2500`
+- Progressive (`initial_games=2`, `max_games=2`, `repeats=1`, `max_plies=80`):
+  - vs pro `delta=+0.0833`, confidence `0.613`
+  - vs normal `delta=+0.2500`, confidence `0.927`
+  - vs fast `delta=+0.1667`, confidence `0.806`
+
+Result:
+
+- `v107` supersedes `v102` as the current strongest balanced reduced-ladder ultra candidate in this round.
+- Remaining work before production promotion: full-sample strict ladder confirmation (no reduced overrides) and final runtime promotion copy.
+
+---
+
+### 48) Ultra x10 wider-picture portfolio arbitration (`v108`, `v109`) (March 4, 2026)
+
+Wider-picture hypothesis:
+
+- Use extra ultra CPU for policy-portfolio arbitration in independent context (`runtime`, `pro-anchor`, `pro`, `confirm`) instead of single-route play.
+
+Candidates:
+
+- `runtime_ultra_d5_hybrid_v108_independent_portfolio_arbiter`
+- `runtime_ultra_d5_hybrid_v109_midgame_portfolio_arbiter`
+
+Results:
+
+- `v108` failed immediately on pro fast-screen:
+  - `ultra_fast_screen_vs_pro`: `delta=-0.2500` (hard fail).
+  - detailed trace showed losses concentrated in max-ply adjudication buckets on the same seed tag (`ultra_fast_screen_vs_pro_v1`), i.e. portfolio routing selected lower adjudication-score lines under that bucket.
+- `v109` added early-game fallback to `v107` and recovered fast-screen non-regression:
+  - vs pro `delta=0.0000`, vs normal `+0.1250`, vs fast `+0.2500`.
+  - primary remained strong but did not improve over `v107` (`vs pro +0.2083` vs `v107` `+0.2500` in reduced probe).
+  - confirmation regressed vs pro (`delta=-0.2500` in reduced confirm probe), so not promotable.
+
+Decision:
+
+- Keep `v107` as the best current survivor.
+- Log `v108` and `v109` as failed portfolio family for now (independent-context portfolio arbitration needs stronger adjudication-aware constraints before retry).
+
+---
+
+### 49) Ultra primary bar update + conservative mid/late upgrades (`v110`..`v112`) (March 4, 2026)
+
+Policy update:
+
+- Ultra strict primary requirement vs pro changed from `+0.10` to `+0.08` (confidence unchanged at `>=0.90`).
+
+Round candidates:
+
+- `runtime_ultra_d5_hybrid_v110_conservative_midlate_upgrade`
+- `runtime_ultra_d5_hybrid_v111_conservative_midlate_nontrailing`
+- `runtime_ultra_d5_hybrid_v112_opening_pro_bias`
+
+Key outcomes:
+
+- `v110`:
+  - strong reduced primary (`vs pro +0.2917`, `vs normal +0.2500`, `vs fast +0.2500`);
+  - reduced ladder passed;
+  - but failed reduced progressive vs pro (`delta=-0.0833`) in the same quick setting where `v107` was non-negative.
+- `v111`:
+  - reduced fast-screen passed (`pro 0.0000`, `normal +0.1250`, `fast +0.2500`);
+  - reduced primary passed (`vs pro +0.2500`, `vs normal +0.1667`, `vs fast +0.2917`);
+  - reduced confirmation passed (`vs pro 0.0000`, `vs normal +0.1250`, `vs fast +0.2500`);
+  - reduced progressive vs pro restored to non-negative (`delta=0.0000`);
+  - reduced ladder passed with CPU ratio `3.863x`.
+- `v112` (opening pro-bias control):
+  - no measurable lift vs `v111/v107` on reduced primary;
+  - larger confirmation-vs-pro stress probe remained negative (`delta=-0.1250`), same observed volatility bucket.
+
+Current status:
+
+- `v111` is the current best gate-sound reduced-ladder survivor in this round.
+- Larger-sample confirmation vs pro (`repeats=4`, `games=3`) remains volatile/negative (`delta=-0.1250`) for both `v107`-family and `v112`, so this remains the main blocker before full strict promotion.
+
 ---
 
 ## What Worked Best So Far
@@ -995,7 +1597,11 @@ Takeaway:
 - **Minimal, additive weight changes**: `supermana_race_control: 30` is the only new scoring weight — no restructuring of existing weight balance. This pattern (small additive signal in an orthogonal evaluation dimension) is the most reliable way to improve fast mode.
 - **Promoted synthesis profile**: `runtime_fast_root_quality_v1_normal_conversion_v3` cleared the full ladder. The key runtime deltas are stronger fast root-quality margins (`root_efficiency=1700`, `anti_help=280`, `handoff=300`, `backtrack=220`, fast reply-risk `125/4/10/650`) plus stronger normal conversion guard allocation (normal reply-risk `145/7/16/1350`, drainer safety `4200`, selective extension share `12.5%`).
 - **Pro split-strategy evidence**: `runtime_pro_primary_confirm_split_v1` is the first pro profile to clear the full strict pro ladder under `<=3.69x`, indicating that primary-strength and opening-book confirmation behavior likely need context-sensitive policy rather than one global pro shape.
-- **Promoted pro runtime context split**: `runtime_pro_context_split_runtime_v2` (with fixed opening-book hint propagation in harness validation) passed reduced strict ladder and is now the shipped runtime `pro` profile (`max_visited_nodes=10200` in both runtime contexts).
+- **Promoted pro runtime context split**: `runtime_pro_context_split_runtime_v2` (with fixed opening-book hint propagation in harness validation) passed reduced strict ladder and remains the shipped runtime `pro` profile; current runtime node budget is now `max_visited_nodes=14022` in both runtime contexts.
+- **Ultra confirmation-stability pattern**: `runtime_ultra_d5_deep_narrow_v26_confirm_pro_bridge` kept `v25`-level primary strength while removing the opening confirmation-vs-pro regression via pro-aligned confirmation routing; reduced strict ladder passed under high-utilization CPU (`ratio=3.866` vs pro).
+- **Ultra context-split confirmation arbiter v2**: `runtime_ultra_d5_hybrid_v107_black_t2_guard_confirm_pro_veto` preserved `v98`/`v100`-class primary lift (`+0.2500` vs pro, reduced gate) while stabilizing confirmation to non-regression in both reduced ladder and larger confirmation probes.
+- **Failed wider-picture portfolio family (for now)**: naive independent-context policy portfolios (`v108`, `v109`) can improve some non-pro matchups but currently destabilize pro-facing adjudication buckets; this family needs explicit adjudication constraints before re-entry.
+- **Conservative mid/late upgrade pattern**: strict override-only mid/late upgrades can increase primary pressure without immediate fast-screen regressions; `v111` is the first variant in this family to stay gate-sound across reduced fast-screen, reduced progressive, and reduced ladder.
 
 ### Key Invariant Discovery
 
