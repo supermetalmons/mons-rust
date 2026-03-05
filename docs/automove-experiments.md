@@ -109,7 +109,7 @@ Current runtime behavior:
 - `fast` uses `RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF` (boolean drainer danger, `-400`/`-300`, plus `supermana_race_control: 30`).
 - `normal` uses phase-adaptive boolean drainer weights (`RUNTIME_NORMAL_BOOLEAN_DRAINER_*_SPIRIT_BASE_SCORING_WEIGHTS` family), switching by game phase.
 - `pro` uses runtime context split with model-local hinting (no FEN schema change):
-  - `Independent` context (default search): `max_visited_nodes=14022`, forced tactical prepass off, reply-risk `165/9/24/2000`, drainer safety `4800`, selective-extension share `1500`, and attacker-proximity phase-adaptive scoring.
+  - `Independent` context (default search): `max_visited_nodes=14022`, forced tactical prepass off, reply-risk `165/9/24/2000`, drainer safety `4800`, selective-extension share `1500`, attacker-proximity phase-adaptive scoring, and opponent-mana soft bonuses `progress=320` / `score=400`.
   - `OpeningBookDriven` context (production opening confirmation path): `max_visited_nodes=14022`, forced tactical prepass off, reply-risk `155/7/18/1400`, drainer safety `4300`, selective-extension share `1200`, and deep-floor off for safer conversion.
   - Context hint is persisted on the model and set when opening-book move selection is used; unknown states fall back to deterministic opening-context detection.
 - `ultra` uses the same model-local context hinting and deterministic opening detection:
@@ -571,6 +571,9 @@ SMART_TUNE_PROFILE=runtime_current \
 - `runtime_pro_context_split_runtime_v5`: v2 plus stronger confirmation safety hardening.
 - `runtime_pro_context_split_runtime_v6`: opening confirmation uses runtime-normal profile, independent context uses high-utilization pro.
 - `runtime_pro_context_split_runtime_v7`: context split with pro nominal node target (`14022`) for utilization stress testing.
+- `runtime_pro_scoring_v27_global_opponent_mana_bonus_mid_primary_only`: first promoted pro scoring candidate (primary-only opponent-mana soft-bonus lift guarded away from opening-book confirmation).
+- `runtime_pro_scoring_v28_global_opponent_mana_bonus_plus_primary_only`: current promoted pro scoring candidate (`+10/+15` over v27 runtime pro opponent-mana soft bonuses).
+- `runtime_pro_scoring_v29_global_opponent_mana_bonus_adaptive_primary_only`: adaptive variant (matched `v28` metrics on sampled progressive seeds; retained for reference).
 - `runtime_ultra_d5_split_cal_v1`: ultra depth-5 context-split calibration (low node target).
 - `runtime_ultra_d5_split_cal_v2`: ultra depth-5 context-split calibration (mid-low node target).
 - `runtime_ultra_d5_split_cal_v3`: ultra depth-5 context-split calibration (mid-high node target).
@@ -1585,6 +1588,134 @@ Current status:
 
 ---
 
+### 50) Dedicated ultra scoring-only pass (`v113`..`v120`) (March 5, 2026)
+
+Goal:
+
+- Isolate ultra improvement to evaluation/scoring changes only (no deep search-shape edits) and test whether ultra can gain strength safely vs pro.
+
+Candidates and outcomes:
+
+- `runtime_ultra_scoring_v113_strong_attacker_proximity`:
+  - tiny fast-screen looked acceptable;
+  - stronger fast-screen failed vs pro (`delta=-0.1250`), so rejected.
+- `runtime_ultra_scoring_v114_combo_proximity_attack`:
+  - failed fast-screen vs pro immediately (`delta=-0.5000`), rejected.
+- `runtime_ultra_scoring_v115_phase_blend_interview`:
+  - stronger fast-screen passed all three baselines:
+    - vs pro `+0.1250`
+    - vs normal `+0.2500`
+    - vs fast `+0.1250`
+  - but failed progressive vs pro (`delta=-0.1250`), rejected.
+- `runtime_ultra_scoring_v116_midlate_protected_carrier`:
+  - stronger fast-screen failed vs pro (`delta=-0.1250`), rejected.
+- `runtime_ultra_scoring_v117_late_lead_only`:
+  - stricter activation gating still failed stronger fast-screen vs pro (`delta=-0.1250`), rejected.
+- `runtime_ultra_scoring_v118_late_lead_protected_carrier`:
+  - same pro regression on stronger fast-screen (`delta=-0.1250`), rejected.
+- `runtime_ultra_scoring_v119_protected_carrier_light`:
+  - failed stronger fast-screen vs pro (`delta=-0.5000`), rejected.
+- `runtime_ultra_scoring_v120_trailing_only_strong_attacker`:
+  - failed stronger fast-screen vs pro (`delta=-0.2500`), rejected.
+
+Takeaway:
+
+- Current ultra baseline appears locally robust against scoring-family perturbations: scoring-only changes either regress pro-facing buckets immediately or pass fast-screen but collapse in progressive pro.
+- Next ultra round should keep scoring close to runtime baseline and shift lift into scoring-aware selection/confirmation arbitration rather than direct scoring-family swaps.
+
+---
+
+### 51) Ultra scoring micro-deltas + close-root score tie-break pass (`v121`..`v124`) (March 5, 2026)
+
+Goal:
+
+- Try the safest remaining scoring levers:
+  - micro additive eval deltas on top of attacker-proximity phase weights;
+  - score-only tie-break among near-equal ultra roots (no base search-shape change).
+
+Candidates and outcomes:
+
+- `runtime_ultra_scoring_v121_attacker_micro_plus`:
+  - strong fast-screen vs pro failed: `delta=-0.3750`.
+- `runtime_ultra_scoring_v122_attacker_micro_plus_trailing_only`:
+  - strong fast-screen vs pro failed: `delta=-0.3750`.
+- `runtime_ultra_scoring_v123_close_root_tiebreak_interview`:
+  - strong fast-screen vs pro failed: `delta=-0.1250`.
+- `runtime_ultra_scoring_v124_close_root_tiebreak_protected`:
+  - strong fast-screen vs pro failed: `delta=-0.1250`.
+
+Takeaway:
+
+- Even minimal ultra scoring perturbations and near-equal score tie-break reranking remain pro-regressive in the current seed bucket.
+- For now, ultra scoring appears to be at a local optimum relative to the pro baseline under this gate.
+- Next iteration should pivot away from eval/scoring edits and target pro-facing conversion stability through non-scoring arbitration policy or selective search-allocation controls.
+
+---
+
+### 52) Pro dedicated scoring pass (`v15`..`v27`) and promotion (March 5, 2026)
+
+Goal:
+
+- Find a pro-only scoring change that clears strict primary vs normal without regressing confirmation-vs-normal.
+
+Key outcomes:
+
+- `runtime_pro_scoring_v15_phase_switch_trailing_attacker`:
+  - reduced strict ladder nearly passed primary vs normal (`delta=+0.0729`) but missed `+0.08`.
+- `runtime_pro_scoring_v16` / `v17` / `v18` / `v19` / `v20` / `v23` / `v24`:
+  - rejected due normal fast-screen regression or strict primary instability.
+- `runtime_pro_scoring_v21` / `v22`:
+  - matched `v15` exactly on strict normal primary (`delta=+0.0729`), no net gain.
+- `runtime_pro_scoring_v26_global_opponent_mana_bonus_mid`:
+  - first candidate to clear strict primary probes vs both baselines:
+    - vs normal: `delta=+0.0833`, `confidence=0.937`
+    - vs fast: `delta=+0.2500`, `confidence=1.000`
+  - failed confirmation vs normal (`delta=-0.1111`) under opening-book-enabled probe.
+- `runtime_pro_scoring_v27_global_opponent_mana_bonus_mid_primary_only`:
+  - kept primary gains and fixed confirmation by explicitly disabling the bonus path when opening-book mode is enabled in experiment context.
+  - full reduced strict ladder passed end-to-end:
+    - CPU gate: `ratio=2.993` (within `2.70..3.69`)
+    - primary vs normal: `delta=+0.0833`, `confidence=0.937`
+    - primary vs fast: `delta=+0.2500`, `confidence=1.000`
+    - confirmation vs normal: `delta=+0.0556`
+    - confirmation vs fast: `delta=+0.4444`
+    - pool non-regression: passed (`normal-opponents +0.1500`, `fast-opponents +0.3000`)
+
+Promotion action:
+
+- Runtime pro primary scoring was promoted by increasing opponent-mana soft bonuses from `280/340` to `310/385` in `apply_pro_primary_profile` (fast/normal/confirmation branches unchanged).
+
+---
+
+### 53) Pro scoring uplift follow-up (`v28`..`v29`) and re-promotion (March 5, 2026)
+
+Goal:
+
+- Push dedicated pro scoring further while keeping fast/normal/runtime confirmation behavior unchanged.
+
+Key outcomes:
+
+- `runtime_pro_scoring_v28_global_opponent_mana_bonus_plus_primary_only`:
+  - fast-screen: passed (`vs normal delta=0.0000`, `vs fast delta=+0.3750`).
+  - progressive (capped): passed with strong lift:
+    - vs normal: `delta=+0.1944`, `confidence=0.999`
+    - vs fast: `delta=+0.3194`, `confidence=1.000`
+  - full reduced strict ladder passed end-to-end:
+    - CPU gate: `ratio=2.979` (within `2.70..3.69`)
+    - primary vs normal: `delta=+0.0833`, `confidence=0.937`
+    - primary vs fast: `delta=+0.2500`, `confidence=1.000`
+    - confirmation vs normal: `delta=+0.1667`
+    - confirmation vs fast: `delta=+0.4444`
+    - pool non-regression: passed (`normal-opponents +0.1500`, `fast-opponents +0.3000`)
+- `runtime_pro_scoring_v29_global_opponent_mana_bonus_adaptive_primary_only`:
+  - matched `v28` on sampled progressive gates; no measured gain over `v28`.
+
+Promotion action:
+
+- Runtime pro primary scoring was re-promoted by increasing opponent-mana soft bonuses from `310/385` to `320/400` in `apply_pro_primary_profile` (fast/normal/opening-book confirmation branches unchanged).
+
+---
+
 ## What Worked Best So Far
 
 - Keep modestly larger runtime node budgets (`fast=480`, `normal=3800`).
@@ -1598,6 +1729,7 @@ Current status:
 - **Promoted synthesis profile**: `runtime_fast_root_quality_v1_normal_conversion_v3` cleared the full ladder. The key runtime deltas are stronger fast root-quality margins (`root_efficiency=1700`, `anti_help=280`, `handoff=300`, `backtrack=220`, fast reply-risk `125/4/10/650`) plus stronger normal conversion guard allocation (normal reply-risk `145/7/16/1350`, drainer safety `4200`, selective extension share `12.5%`).
 - **Pro split-strategy evidence**: `runtime_pro_primary_confirm_split_v1` is the first pro profile to clear the full strict pro ladder under `<=3.69x`, indicating that primary-strength and opening-book confirmation behavior likely need context-sensitive policy rather than one global pro shape.
 - **Promoted pro runtime context split**: `runtime_pro_context_split_runtime_v2` (with fixed opening-book hint propagation in harness validation) passed reduced strict ladder and remains the shipped runtime `pro` profile; current runtime node budget is now `max_visited_nodes=14022` in both runtime contexts.
+- **Promoted pro scoring refinement (v2)**: `runtime_pro_scoring_v28_global_opponent_mana_bonus_plus_primary_only` re-cleared reduced strict ladder and raised runtime pro primary opponent-mana soft bonuses to `progress=320` / `score=400` with opening confirmation non-regression.
 - **Ultra confirmation-stability pattern**: `runtime_ultra_d5_deep_narrow_v26_confirm_pro_bridge` kept `v25`-level primary strength while removing the opening confirmation-vs-pro regression via pro-aligned confirmation routing; reduced strict ladder passed under high-utilization CPU (`ratio=3.866` vs pro).
 - **Ultra context-split confirmation arbiter v2**: `runtime_ultra_d5_hybrid_v107_black_t2_guard_confirm_pro_veto` preserved `v98`/`v100`-class primary lift (`+0.2500` vs pro, reduced gate) while stabilizing confirmation to non-regression in both reduced ladder and larger confirmation probes.
 - **Failed wider-picture portfolio family (for now)**: naive independent-context policy portfolios (`v108`, `v109`) can improve some non-pro matchups but currently destabilize pro-facing adjudication buckets; this family needs explicit adjudication constraints before re-entry.

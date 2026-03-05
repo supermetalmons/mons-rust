@@ -2306,8 +2306,8 @@ impl MonsGameModel {
         config.selective_extension_node_share_bp = 1_500;
         config.scoring_weights =
             Self::runtime_phase_adaptive_attacker_proximity_scoring_weights(game, config.depth);
-        config.interview_soft_opponent_mana_progress_bonus = 280;
-        config.interview_soft_opponent_mana_score_bonus = 340;
+        config.interview_soft_opponent_mana_progress_bonus = 320;
+        config.interview_soft_opponent_mana_score_bonus = 400;
         config
     }
 
@@ -7393,11 +7393,11 @@ mod opening_book_tests {
         assert_eq!(independent_config.selective_extension_node_share_bp, 1_500);
         assert_eq!(
             independent_config.interview_soft_opponent_mana_progress_bonus,
-            280
+            320
         );
         assert_eq!(
             independent_config.interview_soft_opponent_mana_score_bonus,
-            340
+            400
         );
 
         let mut opening_game = MonsGame::new(false);
