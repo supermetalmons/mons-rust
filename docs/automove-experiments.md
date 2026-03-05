@@ -625,6 +625,9 @@ SMART_TUNE_PROFILE=runtime_current \
 - `runtime_fast_root_quality_v1`: candidate for fast root filtering/tie-break quality tuning.
 - `runtime_fast_root_quality_v2`: softened fast root filtering/tie-break tuning for better pool non-regression.
 - `runtime_fast_root_quality_v3`: v1-style fast root quality with baseline reply-risk guard settings.
+- `runtime_fast_scoring_v1_mana_race_plus` / `runtime_fast_scoring_v2_mana_race_sharp` / `runtime_fast_scoring_v3_phase_gated` / `runtime_fast_scoring_v4_defense_denial`: dedicated fast-only scoring pass (round 1).
+- `runtime_fast_scoring_v5_opening_supermana` / `runtime_fast_scoring_v6_trailing_defense_denial` / `runtime_fast_scoring_v7_opening_trailing_blend` / `runtime_fast_scoring_v8_micro_stable`: dedicated fast-only scoring pass (round 2).
+- `runtime_fast_scoring_v9_interview_balanced` / `runtime_fast_scoring_v10_counterplay_pressure` / `runtime_fast_scoring_v11_opening_interview_gate` / `runtime_fast_scoring_v12_blended_counterplay`: dedicated fast-only scoring pass (round 3).
 - `runtime_normal_conversion_v1`: candidate for normal reply-risk/safety/extension conversion tuning.
 - `runtime_normal_conversion_v2`: refined normal conversion tuning (reply-risk/safety/extension shares).
 - `runtime_normal_conversion_v3`: stronger normal conversion allocation (reply-risk/safety/extension shares).
@@ -1713,6 +1716,75 @@ Key outcomes:
 Promotion action:
 
 - Runtime pro primary scoring was re-promoted by increasing opponent-mana soft bonuses from `310/385` to `320/400` in `apply_pro_primary_profile` (fast/normal/opening-book confirmation branches unchanged).
+
+---
+
+### 54) Dedicated normal scoring pass (`runtime_normal_scoring_v1`..`v24`) (March 5, 2026)
+
+Goal:
+
+- Find a normal-only scoring family that is stronger than `runtime_current` and promotable through the full ladder (including pool non-regression).
+
+Key outcomes:
+
+- `runtime_normal_scoring_v1`..`v2` (opponent-mana soft bonus only): effectively neutral in fast-screen.
+- `runtime_normal_scoring_v3`..`v4` (attacker-proximity): early fast-screen lift, then instability/regression on broader progressive seeds.
+- `runtime_normal_drainer_focus_v26` and close derivatives `runtime_normal_scoring_v13`..`v16`:
+  - stable progressive lift (`normal delta ~ +0.0833`, fast non-regression),
+  - but repeatedly failed full ladder pool gate with the same result:
+    - `candidate_wr=0.533`, `baseline_wr=0.550`.
+- `runtime_normal_scoring_v19` and `v21` (drainer-shield / hybrid families):
+  - strong fast-screen spikes in small seed bucket,
+  - collapsed by progressive tier-1 on broader seeds.
+- `runtime_normal_scoring_v20` (strong attacker proximity): fast-screen regression.
+- `runtime_normal_scoring_v22`..`v24` (carrier/ threat-gated moderate variants): neutral or weak in progressive.
+
+New diagnostics added:
+
+- Added `smart_automove_pool_pool_regression_diagnostic` (test-only) to print candidate vs baseline pool deltas by mode/opponent.
+- For `runtime_normal_drainer_focus_v26` vs `runtime_current` (pool games=3), diagnostic showed:
+  - fast mode delta `+0.067`,
+  - normal mode delta `-0.100`,
+  - largest normal regressions concentrated on `pool_04`, `pool_07`, `pool_09`.
+
+Takeaway:
+
+- Current normal scoring candidates either:
+  - improve progressive but overfit and fail pool non-regression, or
+  - remove overfit but become neutral and fail improvement gates.
+- Next round should target **normal-side pool weak buckets (`pool_04/07/09`) explicitly** using matchup-conditioned evaluation traces, instead of additional global walk-threat amplitude tuning.
+
+---
+
+### 55) Dedicated fast scoring pass (`runtime_fast_scoring_v1`..`v12`) (March 5, 2026)
+
+Goal:
+
+- Find a fast-only scoring family that survives progressive cross-seed evaluation and is promotable without changing normal/pro/ultra behavior.
+
+Key outcomes:
+
+- Round 1 (`v1`..`v4`) fast-screen:
+  - `v1`, `v3`, `v4` passed single-seed fast-screen (`fast delta=+0.0833`, normal neutral).
+  - `v2` regressed fast (`tier-1 fast delta=-0.1667`) and was discarded.
+- Cross-seed progressive checks:
+  - `v1` did not hold under larger progressive sampling (fast turned negative by tier-1 in full progressive run before termination).
+  - `v8` was the strongest screen candidate:
+    - fast-screen aggregate `delta=+0.1042`, confidence `0.903`
+    - fast mode `delta=+0.2083`
+    - normal remained neutral.
+  - but `v8` collapsed to parity in cross-seed progressive (`tier-1 aggregate delta=0.0000`, fast delta `0.0000`), so it did not meet improvement criteria.
+- Round 2 (`v5`..`v8`) and Round 3 (`v9`..`v12`) broader-context variants:
+  - `v5`, `v6`, `v7`, `v9`, `v10`, `v11`, `v12` regressed in cross-seed progressive tier-0/1 (fast deltas negative; normal neutral).
+
+Takeaway:
+
+- Fast scoring remains highly seed-fragile at depth-2: aggressive or context-gated scoring deltas can pass the single-seed screen but flatten or regress in 3-seed progressive.
+- No candidate in this pass is promotion-grade; all new fast-scoring profiles remain experiment-only.
+
+Next fast-only direction:
+
+- Keep scoring deltas minimal and pair them with score-aware **root arbitration among near-equal roots** (not broad weight-family replacement), then re-run full fast-screen -> progressive -> ladder.
 
 ---
 

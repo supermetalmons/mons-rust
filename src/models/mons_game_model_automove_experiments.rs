@@ -4264,6 +4264,295 @@ fn model_runtime_fast_root_quality_v3(game: &MonsGame, config: SmartSearchConfig
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
 
+const RUNTIME_FAST_SCORING_V1_MANA_RACE_PLUS: ScoringWeights = ScoringWeights {
+    supermana_race_control: 34,
+    opponent_mana_denial: 14,
+    score_race_path_progress: 175,
+    opponent_score_race_path_progress: 162,
+    immediate_score_window: 250,
+    opponent_immediate_score_window: 230,
+    ..RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
+};
+
+const RUNTIME_FAST_SCORING_V2_MANA_RACE_SHARP: ScoringWeights = ScoringWeights {
+    supermana_race_control: 40,
+    opponent_mana_denial: 22,
+    score_race_path_progress: 182,
+    opponent_score_race_path_progress: 172,
+    immediate_score_window: 268,
+    opponent_immediate_score_window: 248,
+    drainer_best_mana_path: 270,
+    mana_carrier_one_step_from_pool: 350,
+    immediate_winning_carrier: 580,
+    ..RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
+};
+
+const RUNTIME_FAST_SCORING_V4_DEFENSE_DENIAL: ScoringWeights = ScoringWeights {
+    supermana_race_control: 32,
+    opponent_mana_denial: 26,
+    opponent_score_race_path_progress: 178,
+    opponent_immediate_score_window: 250,
+    opponent_immediate_score_multi_window: 132,
+    mana_carrier_at_risk: -320,
+    mana_carrier_guarded: 170,
+    ..RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
+};
+
+const RUNTIME_FAST_SCORING_V5_OPENING_SUPERMANA: ScoringWeights = ScoringWeights {
+    supermana_race_control: 42,
+    opponent_mana_denial: 18,
+    score_race_path_progress: 178,
+    immediate_score_window: 258,
+    opponent_immediate_score_window: 236,
+    drainer_best_mana_path: 266,
+    ..RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
+};
+
+const RUNTIME_FAST_SCORING_V8_MICRO_STABLE: ScoringWeights = ScoringWeights {
+    supermana_race_control: 32,
+    opponent_mana_denial: 8,
+    opponent_immediate_score_window: 232,
+    opponent_immediate_score_multi_window: 126,
+    mana_carrier_at_risk: -300,
+    mana_carrier_guarded: 155,
+    ..RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
+};
+
+const RUNTIME_FAST_SCORING_V9_INTERVIEW_BALANCED: ScoringWeights = ScoringWeights {
+    drainer_danger_boolean: -400,
+    mana_carrier_danger_boolean: -300,
+    has_consumable: 320,
+    spirit_action_utility: 72,
+    supermana_race_control: 28,
+    opponent_mana_denial: 18,
+    opponent_immediate_score_window: 245,
+    opponent_immediate_score_multi_window: 130,
+    ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+};
+
+const RUNTIME_FAST_SCORING_V10_COUNTERPLAY_PRESSURE: ScoringWeights = ScoringWeights {
+    drainer_danger_boolean: -400,
+    mana_carrier_danger_boolean: -300,
+    has_consumable: 320,
+    spirit_action_utility: 72,
+    supermana_race_control: 30,
+    opponent_mana_denial: 20,
+    opponent_score_race_path_progress: 176,
+    opponent_immediate_score_window: 255,
+    opponent_immediate_score_multi_window: 138,
+    drainer_immediate_threat: -240,
+    mana_carrier_at_risk: -320,
+    mana_carrier_guarded: 165,
+    ..RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS
+};
+
+fn runtime_fast_scoring_v3_weights(game: &MonsGame) -> &'static ScoringWeights {
+    let score_gap = score_gap_for_perspective(game, game.active_color);
+    let opponent_score = if game.active_color == Color::White {
+        game.black_score
+    } else {
+        game.white_score
+    };
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+
+    if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_FAST_SCORING_V2_MANA_RACE_SHARP
+    } else if score_gap >= 2 {
+        &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
+    } else {
+        &RUNTIME_FAST_SCORING_V1_MANA_RACE_PLUS
+    }
+}
+
+fn runtime_fast_scoring_v4_weights(game: &MonsGame) -> &'static ScoringWeights {
+    let score_gap = score_gap_for_perspective(game, game.active_color);
+    let opponent_score = if game.active_color == Color::White {
+        game.black_score
+    } else {
+        game.white_score
+    };
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+
+    if opponent_distance_to_win <= 1 || score_gap <= -1 {
+        &RUNTIME_FAST_SCORING_V4_DEFENSE_DENIAL
+    } else if score_gap >= 2 && game.turn_number >= 4 {
+        &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
+    } else {
+        &RUNTIME_FAST_SCORING_V1_MANA_RACE_PLUS
+    }
+}
+
+fn model_runtime_fast_scoring_v1_mana_race_plus(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        runtime.scoring_weights = &RUNTIME_FAST_SCORING_V1_MANA_RACE_PLUS;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_fast_scoring_v2_mana_race_sharp(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        runtime.scoring_weights = &RUNTIME_FAST_SCORING_V2_MANA_RACE_SHARP;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_fast_scoring_v3_phase_gated(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        runtime.scoring_weights = runtime_fast_scoring_v3_weights(game);
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_fast_scoring_v4_defense_denial(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        runtime.scoring_weights = runtime_fast_scoring_v4_weights(game);
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_fast_scoring_v5_opening_supermana(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        runtime.scoring_weights = if game.turn_number <= 4 {
+            &RUNTIME_FAST_SCORING_V5_OPENING_SUPERMANA
+        } else {
+            &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
+        };
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_fast_scoring_v6_trailing_defense_denial(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        let score_gap = score_gap_for_perspective(game, game.active_color);
+        let opponent_score = if game.active_color == Color::White {
+            game.black_score
+        } else {
+            game.white_score
+        };
+        let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+        runtime.scoring_weights = if score_gap <= 0 || opponent_distance_to_win <= 2 {
+            &RUNTIME_FAST_SCORING_V4_DEFENSE_DENIAL
+        } else {
+            &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
+        };
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_fast_scoring_v7_opening_trailing_blend(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        let score_gap = score_gap_for_perspective(game, game.active_color);
+        let opponent_score = if game.active_color == Color::White {
+            game.black_score
+        } else {
+            game.white_score
+        };
+        let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+        runtime.scoring_weights = if game.turn_number <= 3 {
+            &RUNTIME_FAST_SCORING_V5_OPENING_SUPERMANA
+        } else if score_gap <= -1 || opponent_distance_to_win <= 2 {
+            &RUNTIME_FAST_SCORING_V4_DEFENSE_DENIAL
+        } else {
+            &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
+        };
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_fast_scoring_v8_micro_stable(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        runtime.scoring_weights = &RUNTIME_FAST_SCORING_V8_MICRO_STABLE;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_fast_scoring_v9_interview_balanced(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        runtime.scoring_weights = &RUNTIME_FAST_SCORING_V9_INTERVIEW_BALANCED;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_fast_scoring_v10_counterplay_pressure(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        runtime.scoring_weights = &RUNTIME_FAST_SCORING_V10_COUNTERPLAY_PRESSURE;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_fast_scoring_v11_opening_interview_gate(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        runtime.scoring_weights = if game.turn_number <= 5 {
+            &RUNTIME_FAST_SCORING_V9_INTERVIEW_BALANCED
+        } else {
+            &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
+        };
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_fast_scoring_v12_blended_counterplay(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        let score_gap = score_gap_for_perspective(game, game.active_color);
+        runtime.scoring_weights = if score_gap <= 0 {
+            &RUNTIME_FAST_SCORING_V10_COUNTERPLAY_PRESSURE
+        } else if game.turn_number <= 4 {
+            &RUNTIME_FAST_SCORING_V9_INTERVIEW_BALANCED
+        } else {
+            &RUNTIME_FAST_SCORING_V8_MICRO_STABLE
+        };
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn model_runtime_normal_conversion_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     if runtime.depth >= 3 {
@@ -4302,6 +4591,647 @@ fn model_runtime_normal_conversion_v3(game: &MonsGame, config: SmartSearchConfig
         runtime.root_drainer_safety_score_margin = 4_200;
         runtime.selective_extension_node_share_bp = 1_250;
         runtime.root_efficiency_score_margin = 1_400;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v1_opponent_mana_soft_plus(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.interview_soft_opponent_mana_progress_bonus = 240;
+        runtime.interview_soft_opponent_mana_score_bonus = 310;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v2_opponent_mana_soft_plus_plus(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.interview_soft_opponent_mana_progress_bonus = 260;
+        runtime.interview_soft_opponent_mana_score_bonus = 340;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v3_attacker_proximity_with_soft_plus(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 240;
+        runtime.interview_soft_opponent_mana_score_bonus = 310;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v4_adaptive_attacker_proximity(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        let score_gap = score_gap_for_perspective(game, game.active_color);
+        if score_gap <= 0 {
+            runtime.scoring_weights =
+                MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                    game,
+                    runtime.depth,
+                );
+            runtime.interview_soft_opponent_mana_progress_bonus = 255;
+            runtime.interview_soft_opponent_mana_score_bonus = 330;
+        } else {
+            runtime.interview_soft_opponent_mana_progress_bonus = 235;
+            runtime.interview_soft_opponent_mana_score_bonus = 295;
+        }
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v5_contextual_walk_threat(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        let score_gap = score_gap_for_perspective(game, game.active_color);
+        runtime.scoring_weights = if score_gap <= 0 {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_moderate_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        } else {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        };
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v6_pressure_window_walk_threat(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        let (my_score, opponent_score) = if game.active_color == Color::White {
+            (game.white_score, game.black_score)
+        } else {
+            (game.black_score, game.white_score)
+        };
+        let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+        let score_gap = my_score - opponent_score;
+        let use_moderate = score_gap <= -1 || opponent_distance_to_win <= 2;
+        runtime.scoring_weights = if use_moderate {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_moderate_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        } else {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        };
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v7_contextual_walk_threat_with_mana_soft(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        let score_gap = score_gap_for_perspective(game, game.active_color);
+        runtime.scoring_weights = if score_gap <= 0 {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_moderate_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        } else {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        };
+        if score_gap <= 0 {
+            runtime.interview_soft_opponent_mana_progress_bonus = 240;
+            runtime.interview_soft_opponent_mana_score_bonus = 305;
+        }
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v8_contextual_boolean_drainer(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        let score_gap = score_gap_for_perspective(game, game.active_color);
+        runtime.scoring_weights = if score_gap <= 0 {
+            MonsGameModel::runtime_phase_adaptive_boolean_drainer_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        } else {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        };
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+const RUNTIME_NORMAL_WALK_THREAT_MIDPLUS_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+        drainer_walk_threat_boolean: -350,
+        mana_carrier_walk_threat_boolean: -175,
+        ..RUNTIME_NORMAL_BOOLEAN_DRAINER_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+const RUNTIME_NORMAL_WALK_THREAT_MIDPLUS_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+        drainer_walk_threat_boolean: -350,
+        mana_carrier_walk_threat_boolean: -175,
+        ..RUNTIME_NORMAL_BOOLEAN_DRAINER_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+const RUNTIME_NORMAL_WALK_THREAT_MIDPLUS_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+        drainer_walk_threat_boolean: -350,
+        mana_carrier_walk_threat_boolean: -175,
+        ..RUNTIME_NORMAL_BOOLEAN_DRAINER_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+const RUNTIME_NORMAL_WALK_THREAT_MIDPLUS_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+        drainer_walk_threat_boolean: -350,
+        mana_carrier_walk_threat_boolean: -175,
+        ..RUNTIME_NORMAL_BOOLEAN_DRAINER_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+const RUNTIME_NORMAL_WALK_THREAT_MIDPLUS_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+        drainer_walk_threat_boolean: -350,
+        mana_carrier_walk_threat_boolean: -175,
+        ..RUNTIME_NORMAL_BOOLEAN_DRAINER_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+
+fn runtime_phase_adaptive_walk_threat_midplus_scoring_weights(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_WALK_THREAT_MIDPLUS_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_WALK_THREAT_MIDPLUS_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_WALK_THREAT_MIDPLUS_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_WALK_THREAT_MIDPLUS_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+    } else {
+        &RUNTIME_NORMAL_WALK_THREAT_MIDPLUS_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+    }
+}
+
+fn model_runtime_normal_scoring_v9_walk_threat_midplus(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            runtime_phase_adaptive_walk_threat_midplus_scoring_weights(game, runtime.depth);
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v10_walk_threat_midplus_mana_soft(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        let score_gap = score_gap_for_perspective(game, game.active_color);
+        runtime.scoring_weights =
+            runtime_phase_adaptive_walk_threat_midplus_scoring_weights(game, runtime.depth);
+        if score_gap <= 0 {
+            runtime.interview_soft_opponent_mana_progress_bonus = 235;
+            runtime.interview_soft_opponent_mana_score_bonus = 295;
+        }
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn runtime_phase_adaptive_walk_threat_tactical_moderate_scoring_weights(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_WALK_THREAT_MODERATE_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_WALK_THREAT_MODERATE_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_WALK_THREAT_MODERATE_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_WALK_THREAT_MODERATE_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+    } else {
+        &RUNTIME_NORMAL_WALK_THREAT_MEDIUM_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+    }
+}
+
+fn model_runtime_normal_scoring_v11_tactical_moderate_walk_threat(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.scoring_weights = runtime_phase_adaptive_walk_threat_tactical_moderate_scoring_weights(
+            game,
+            runtime.depth,
+        );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v12_tactical_moderate_with_mana_soft(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.scoring_weights = runtime_phase_adaptive_walk_threat_tactical_moderate_scoring_weights(
+            game,
+            runtime.depth,
+        );
+        let score_gap = score_gap_for_perspective(game, game.active_color);
+        if score_gap <= 0 {
+            runtime.interview_soft_opponent_mana_progress_bonus = 240;
+            runtime.interview_soft_opponent_mana_score_bonus = 300;
+        }
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v13_moderate_with_opponent_mana_soft(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_moderate_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_opponent_mana_progress_bonus = 240;
+        runtime.interview_soft_opponent_mana_score_bonus = 310;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v14_moderate_with_mana_race_soft(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_walk_threat_moderate_scoring_weights(
+                game,
+                runtime.depth,
+            );
+        runtime.interview_soft_supermana_progress_bonus = 260;
+        runtime.interview_soft_supermana_score_bonus = 340;
+        runtime.interview_soft_opponent_mana_progress_bonus = 245;
+        runtime.interview_soft_opponent_mana_score_bonus = 315;
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v15_moderate_if_not_ahead_plus_one(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        let score_gap = score_gap_for_perspective(game, game.active_color);
+        runtime.scoring_weights = if score_gap <= 1 {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_moderate_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        } else {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        };
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v16_moderate_if_not_ahead_plus_two(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        let score_gap = score_gap_for_perspective(game, game.active_color);
+        runtime.scoring_weights = if score_gap <= 2 {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_moderate_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        } else {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        };
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v17_turn_gated_moderate_walk_threat(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.scoring_weights = if game.turn_number <= 3 {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        } else {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_moderate_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        };
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v18_turn_gated_moderate_with_mana_soft(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        let early_phase = game.turn_number <= 3;
+        runtime.scoring_weights = if early_phase {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        } else {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_moderate_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        };
+        if !early_phase {
+            runtime.interview_soft_opponent_mana_progress_bonus = 240;
+            runtime.interview_soft_opponent_mana_score_bonus = 305;
+        }
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v19_drainer_shield(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_drainer_shield_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v20_strong_attacker_proximity(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_strong_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v21_hybrid_shield_attacker(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        let score_gap = score_gap_for_perspective(game, game.active_color);
+        runtime.scoring_weights = if score_gap <= 0 {
+            MonsGameModel::runtime_phase_adaptive_drainer_shield_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        } else {
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        };
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+const RUNTIME_NORMAL_WALK_THREAT_MODERATE_CARRIER_BALANCED_DISTANCE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+        supermana_race_control: 3,
+        opponent_mana_denial: 3,
+        ..RUNTIME_NORMAL_WALK_THREAT_MODERATE_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+const RUNTIME_NORMAL_WALK_THREAT_MODERATE_CARRIER_TACTICAL_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        supermana_race_control: 3,
+        opponent_mana_denial: 3,
+        ..RUNTIME_NORMAL_WALK_THREAT_MODERATE_TACTICAL_BALANCED_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+const RUNTIME_NORMAL_WALK_THREAT_MODERATE_CARRIER_TACTICAL_AGGRESSIVE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 4,
+    opponent_mana_denial: 4,
+    ..RUNTIME_NORMAL_WALK_THREAT_MODERATE_TACTICAL_BALANCED_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+const RUNTIME_NORMAL_WALK_THREAT_MODERATE_CARRIER_FINISHER_SCORING_WEIGHTS: ScoringWeights =
+    ScoringWeights {
+        supermana_race_control: 3,
+        opponent_mana_denial: 3,
+        ..RUNTIME_NORMAL_WALK_THREAT_MODERATE_FINISHER_BALANCED_SOFT_SPIRIT_BASE_SCORING_WEIGHTS
+    };
+const RUNTIME_NORMAL_WALK_THREAT_MODERATE_CARRIER_FINISHER_AGGRESSIVE_SCORING_WEIGHTS:
+    ScoringWeights = ScoringWeights {
+    supermana_race_control: 4,
+    opponent_mana_denial: 4,
+    ..RUNTIME_NORMAL_WALK_THREAT_MODERATE_FINISHER_BALANCED_SOFT_AGGRESSIVE_SPIRIT_BASE_SCORING_WEIGHTS
+};
+
+fn runtime_phase_adaptive_walk_threat_moderate_carrier_scoring_weights(
+    game: &MonsGame,
+    depth: usize,
+) -> &'static ScoringWeights {
+    if depth < 3 {
+        return &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let my_distance_to_win = Config::TARGET_SCORE - my_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    let score_gap = my_score - opponent_score;
+
+    if my_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_WALK_THREAT_MODERATE_CARRIER_FINISHER_AGGRESSIVE_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 1 {
+        &RUNTIME_NORMAL_WALK_THREAT_MODERATE_CARRIER_TACTICAL_AGGRESSIVE_SCORING_WEIGHTS
+    } else if my_distance_to_win <= 2 {
+        &RUNTIME_NORMAL_WALK_THREAT_MODERATE_CARRIER_FINISHER_SCORING_WEIGHTS
+    } else if opponent_distance_to_win <= 2 || score_gap <= -1 {
+        &RUNTIME_NORMAL_WALK_THREAT_MODERATE_CARRIER_TACTICAL_SCORING_WEIGHTS
+    } else {
+        &RUNTIME_NORMAL_WALK_THREAT_MODERATE_CARRIER_BALANCED_DISTANCE_SCORING_WEIGHTS
+    }
+}
+
+fn model_runtime_normal_scoring_v22_moderate_carrier_balance(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            runtime_phase_adaptive_walk_threat_moderate_carrier_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn has_nearby_drainer_or_carrier_threat(game: &MonsGame, perspective: Color) -> bool {
+    for (location, item) in game.board.occupied() {
+        let (mon, carries_mana) = match item {
+            Item::Mon { mon } => (mon, false),
+            Item::MonWithMana { mon, .. } => (mon, true),
+            Item::MonWithConsumable { mon, .. } => (mon, false),
+            Item::Mana { .. } | Item::Consumable { .. } => continue,
+        };
+        if mon.color != perspective || mon.is_fainted() {
+            continue;
+        }
+        if mon.kind != MonKind::Drainer && !carries_mana {
+            continue;
+        }
+        let nearest_threat = nearest_drainer_threat_distance_for_eval(game, perspective, location);
+        let angel_guarded = friendly_angel_adjacent_for_eval(game, perspective, location);
+        if nearest_threat <= 2 && !angel_guarded {
+            return true;
+        }
+    }
+    false
+}
+
+fn model_runtime_normal_scoring_v23_threat_gated_moderate_walk_threat(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        runtime.scoring_weights = if has_nearby_drainer_or_carrier_threat(game, game.active_color) {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_moderate_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        } else {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        };
+    }
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
+fn model_runtime_normal_scoring_v24_threat_gated_moderate_with_mana_soft(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth >= 3 {
+        let threatened = has_nearby_drainer_or_carrier_threat(game, game.active_color);
+        runtime.scoring_weights = if threatened {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_moderate_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        } else {
+            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
+                game,
+                runtime.depth,
+            )
+        };
+        if threatened {
+            runtime.interview_soft_opponent_mana_progress_bonus = 235;
+            runtime.interview_soft_opponent_mana_score_bonus = 295;
+        }
     }
     MonsGameModel::smart_search_best_inputs(game, runtime)
 }
@@ -16715,6 +17645,1767 @@ fn model_runtime_ultra_scoring_v124_close_root_tiebreak_protected(
     best_inputs
 }
 
+#[derive(Clone, Copy, Debug)]
+struct UltraTieStats {
+    ultra_floor: i64,
+    pro_floor: i64,
+    normal_floor: i64,
+    default_eval: i64,
+    composite: i64,
+}
+
+fn ultra_tie_stats_for_inputs(
+    game: &MonsGame,
+    inputs: &[Input],
+    perspective: Color,
+    root_score_hint: i32,
+    runtime_weights: &'static ScoringWeights,
+    pro_weights: &'static ScoringWeights,
+    normal_weights: &'static ScoringWeights,
+    reply_limit: usize,
+    start_options: SuggestedStartInputOptions,
+) -> Option<UltraTieStats> {
+    let after = MonsGameModel::apply_inputs_for_search(game, inputs)?;
+    let ultra_floor = i64::from(root_reply_floor(
+        &after,
+        perspective,
+        runtime_weights,
+        reply_limit,
+        start_options,
+    ));
+    let pro_floor = i64::from(root_reply_floor(
+        &after,
+        perspective,
+        pro_weights,
+        reply_limit,
+        start_options,
+    ));
+    let normal_floor = i64::from(root_reply_floor(
+        &after,
+        perspective,
+        normal_weights,
+        reply_limit,
+        start_options,
+    ));
+    let default_eval = i64::from(evaluate_preferability_with_weights(
+        &after,
+        perspective,
+        &DEFAULT_SCORING_WEIGHTS,
+    ));
+    let ultra_eval = i64::from(evaluate_preferability_with_weights(
+        &after,
+        perspective,
+        runtime_weights,
+    ));
+    let pro_eval = i64::from(evaluate_preferability_with_weights(&after, perspective, pro_weights));
+    let normal_eval =
+        i64::from(evaluate_preferability_with_weights(&after, perspective, normal_weights));
+    let root_score = i64::from(root_score_hint);
+    let composite = root_score * 5
+        + ultra_floor * 4
+        + pro_floor * 3
+        + normal_floor * 2
+        + default_eval * 2
+        + ultra_eval
+        + pro_eval / 2
+        + normal_eval / 2;
+    let _ = (root_score, ultra_eval, pro_eval, normal_eval);
+    Some(UltraTieStats {
+        ultra_floor,
+        pro_floor,
+        normal_floor,
+        default_eval,
+        composite,
+    })
+}
+
+fn model_runtime_ultra_hybrid_v125_tie_verify_pro_floor(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+    if context == ProRuntimeContext::OpeningBookDriven {
+        return model_runtime_ultra_d5_hybrid_v107_black_t2_guard_confirm_pro_veto(game, config);
+    }
+
+    let base_inputs = model_runtime_ultra_d5_hybrid_v111_conservative_midlate_nontrailing(game, config);
+    if base_inputs.is_empty() {
+        return base_inputs;
+    }
+
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(12, 18);
+    let mut scored_roots = search_scored_roots_with_states(game, runtime, perspective);
+    if scored_roots.is_empty() {
+        return base_inputs;
+    }
+    scored_roots.sort_by(|a, b| b.score.cmp(&a.score));
+    let best_root_score = scored_roots[0].score;
+    let root_score_slack = 520;
+
+    let pro_base = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
+    );
+    let pro_runtime = MonsGameModel::apply_pro_runtime_context_profile(
+        game,
+        pro_base,
+        ProRuntimeContext::Independent,
+    );
+    let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+
+    let pro_anchor_inputs = model_runtime_ultra_d5_pro_anchor_long_horizon_v66(game, config);
+    let runtime_inputs = model_current_best(game, config);
+    let pro_inputs = MonsGameModel::smart_search_best_inputs(game, pro_runtime);
+    let confirm_inputs = model_runtime_ultra_d5_deep_narrow_v27_confirm_pro_bridge_stable(game, config);
+
+    let mut candidates: Vec<(&'static str, Vec<Input>, i32)> = Vec::new();
+    let mut push_candidate = |label: &'static str, inputs: Vec<Input>, root_hint: i32| {
+        if inputs.is_empty() {
+            return;
+        }
+        if candidates.iter().any(|(_, existing, _)| *existing == inputs) {
+            return;
+        }
+        candidates.push((label, inputs, root_hint));
+    };
+
+    for root in scored_roots.iter().take(6) {
+        if root.score + root_score_slack < best_root_score {
+            break;
+        }
+        push_candidate("root", root.inputs.clone(), root.score);
+    }
+    push_candidate("base", base_inputs.clone(), best_root_score - 120);
+    push_candidate("confirm", confirm_inputs, best_root_score - 150);
+    push_candidate("pro_anchor", pro_anchor_inputs, best_root_score - 180);
+    push_candidate("runtime", runtime_inputs, best_root_score - 180);
+    push_candidate("pro", pro_inputs, best_root_score - 200);
+
+    let mut base_stats = None;
+    let mut best_inputs = base_inputs.clone();
+    let mut best_stats = UltraTieStats {
+        ultra_floor: i64::MIN / 4,
+        pro_floor: i64::MIN / 4,
+        normal_floor: i64::MIN / 4,
+        default_eval: i64::MIN / 4,
+        composite: i64::MIN / 4,
+    };
+
+    for (label, inputs, root_hint) in candidates {
+        let Some(stats) = ultra_tie_stats_for_inputs(
+            game,
+            inputs.as_slice(),
+            perspective,
+            root_hint,
+            runtime.scoring_weights,
+            pro_runtime.scoring_weights,
+            normal_runtime.scoring_weights,
+            reply_limit,
+            start_options,
+        ) else {
+            continue;
+        };
+        if label == "base" {
+            base_stats = Some(stats);
+        }
+        if stats.composite > best_stats.composite
+            || (stats.composite == best_stats.composite && stats.ultra_floor > best_stats.ultra_floor)
+            || (stats.composite == best_stats.composite
+                && stats.ultra_floor == best_stats.ultra_floor
+                && stats.pro_floor > best_stats.pro_floor)
+            || (stats.composite == best_stats.composite
+                && stats.ultra_floor == best_stats.ultra_floor
+                && stats.pro_floor == best_stats.pro_floor
+                && stats.default_eval > best_stats.default_eval)
+        {
+            best_stats = stats;
+            best_inputs = inputs;
+        }
+    }
+
+    let Some(base_stats) = base_stats else {
+        return base_inputs;
+    };
+    let clear_upgrade = best_stats.composite >= base_stats.composite + 14
+        && best_stats.pro_floor + 6 >= base_stats.pro_floor
+        && best_stats.ultra_floor + 4 >= base_stats.ultra_floor;
+    if clear_upgrade {
+        best_inputs
+    } else {
+        base_inputs
+    }
+}
+
+fn model_runtime_ultra_hybrid_v126_tie_verify_pro_normal_dual_floor(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+    if context == ProRuntimeContext::OpeningBookDriven {
+        return model_runtime_ultra_d5_hybrid_v107_black_t2_guard_confirm_pro_veto(game, config);
+    }
+
+    let candidate_inputs = model_runtime_ultra_hybrid_v125_tie_verify_pro_floor(game, config);
+    if candidate_inputs.is_empty() {
+        return candidate_inputs;
+    }
+    let base_inputs = model_runtime_ultra_d5_hybrid_v111_conservative_midlate_nontrailing(game, config);
+    if base_inputs.is_empty() {
+        return candidate_inputs;
+    }
+    let normal_inputs = MonsGameModel::smart_search_best_inputs(
+        game,
+        MonsGameModel::with_runtime_scoring_weights(
+            game,
+            SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+        ),
+    );
+
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(12, 20);
+    let pro_base = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
+    );
+    let pro_runtime = MonsGameModel::apply_pro_runtime_context_profile(
+        game,
+        pro_base,
+        ProRuntimeContext::Independent,
+    );
+    let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+
+    let candidate_stats = ultra_tie_stats_for_inputs(
+        game,
+        candidate_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+    let base_stats = ultra_tie_stats_for_inputs(
+        game,
+        base_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+    let normal_stats = ultra_tie_stats_for_inputs(
+        game,
+        normal_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+
+    match (candidate_stats, base_stats, normal_stats) {
+        (Some(candidate), Some(base), Some(normal))
+            if candidate.pro_floor + 8 >= base.pro_floor
+                && candidate.normal_floor + 4 >= base.normal_floor
+                && (candidate.composite >= base.composite + 8
+                    || (candidate.composite >= base.composite
+                        && candidate.default_eval >= base.default_eval + 6))
+                && !((normal.pro_floor >= candidate.pro_floor + 6
+                    && normal.normal_floor >= candidate.normal_floor + 8)
+                    || (normal.default_eval >= candidate.default_eval + 18
+                        && normal.pro_floor + 2 >= candidate.pro_floor)) =>
+        {
+            candidate_inputs
+        }
+        _ => base_inputs,
+    }
+}
+
+fn model_runtime_ultra_hybrid_v127_confirmation_guard_strict(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+
+    if context != ProRuntimeContext::OpeningBookDriven {
+        return model_runtime_ultra_hybrid_v126_tie_verify_pro_normal_dual_floor(game, config);
+    }
+
+    let confirm_inputs = model_runtime_ultra_d5_deep_narrow_v27_confirm_pro_bridge_stable(game, config);
+    let runtime_inputs = model_current_best(game, config);
+    let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+    let normal_inputs = MonsGameModel::smart_search_best_inputs(game, normal_runtime);
+
+    let pro_base = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
+    );
+    let pro_runtime = MonsGameModel::apply_pro_runtime_context_profile(game, pro_base, context);
+    let pro_inputs = MonsGameModel::smart_search_best_inputs(game, pro_runtime);
+
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(8, 14);
+    let stats = |inputs: &[Input]| {
+        ultra_tie_stats_for_inputs(
+            game,
+            inputs,
+            perspective,
+            0,
+            runtime.scoring_weights,
+            pro_runtime.scoring_weights,
+            normal_runtime.scoring_weights,
+            reply_limit,
+            start_options,
+        )
+    };
+
+    let Some(confirm_stats) = stats(confirm_inputs.as_slice()) else {
+        return confirm_inputs;
+    };
+    let pro_stats = stats(pro_inputs.as_slice());
+    let runtime_stats = stats(runtime_inputs.as_slice());
+    let normal_stats = stats(normal_inputs.as_slice());
+
+    if let Some(pro) = pro_stats {
+        let pro_clear = pro.pro_floor >= confirm_stats.pro_floor + 8
+            && pro.default_eval >= confirm_stats.default_eval + 14
+            && pro.composite >= confirm_stats.composite + 16;
+        if pro_clear {
+            return pro_inputs;
+        }
+    }
+
+    if let Some(normal) = normal_stats {
+        let normal_clear = normal.normal_floor >= confirm_stats.normal_floor + 10
+            && normal.pro_floor + 4 >= confirm_stats.pro_floor
+            && normal.default_eval >= confirm_stats.default_eval + 10;
+        if normal_clear {
+            return normal_inputs;
+        }
+    }
+
+    if let Some(runtime_stats) = runtime_stats {
+        let runtime_clear = runtime_stats.pro_floor >= confirm_stats.pro_floor + 6
+            && runtime_stats.default_eval >= confirm_stats.default_eval + 12
+            && runtime_stats.composite >= confirm_stats.composite + 10;
+        if runtime_clear {
+            return runtime_inputs;
+        }
+    }
+
+    confirm_inputs
+}
+
+fn model_runtime_ultra_hybrid_v128_hiutil_tie_verify(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+    if context == ProRuntimeContext::OpeningBookDriven {
+        return model_runtime_ultra_hybrid_v127_confirmation_guard_strict(game, config);
+    }
+
+    let base_inputs = model_runtime_ultra_hybrid_v126_tie_verify_pro_normal_dual_floor(game, config);
+    if base_inputs.is_empty() {
+        return base_inputs;
+    }
+
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(14, 22);
+    let mut scored_roots = search_scored_roots_with_states(game, runtime, perspective);
+    if scored_roots.is_empty() {
+        return base_inputs;
+    }
+    scored_roots.sort_by(|a, b| b.score.cmp(&a.score));
+    let best_root_score = scored_roots[0].score;
+    let root_score_slack = 650;
+
+    let pro_base = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
+    );
+    let pro_runtime = MonsGameModel::apply_pro_runtime_context_profile(
+        game,
+        pro_base,
+        ProRuntimeContext::Independent,
+    );
+    let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+
+    let mut best_inputs = base_inputs.clone();
+    let mut best_stats = ultra_tie_stats_for_inputs(
+        game,
+        base_inputs.as_slice(),
+        perspective,
+        best_root_score - 150,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+
+    for root in scored_roots.iter().take(8) {
+        if root.score + root_score_slack < best_root_score {
+            break;
+        }
+        let Some(stats) = ultra_tie_stats_for_inputs(
+            game,
+            root.inputs.as_slice(),
+            perspective,
+            root.score,
+            runtime.scoring_weights,
+            pro_runtime.scoring_weights,
+            normal_runtime.scoring_weights,
+            reply_limit,
+            start_options,
+        ) else {
+            continue;
+        };
+        let should_take = match best_stats {
+            None => true,
+            Some(best) => {
+                stats.composite > best.composite + 10
+                    || (stats.composite > best.composite
+                        && stats.pro_floor >= best.pro_floor + 4
+                        && stats.normal_floor >= best.normal_floor + 2)
+            }
+        };
+        if should_take {
+            best_inputs = root.inputs.clone();
+            best_stats = Some(stats);
+        }
+    }
+
+    if let (Some(chosen), Some(base)) = (best_stats, ultra_tie_stats_for_inputs(
+        game,
+        base_inputs.as_slice(),
+        perspective,
+        best_root_score - 150,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    )) {
+        let clear = chosen.composite >= base.composite + 12
+            && chosen.pro_floor + 6 >= base.pro_floor
+            && chosen.ultra_floor + 4 >= base.ultra_floor;
+        if clear {
+            return best_inputs;
+        }
+    }
+
+    base_inputs
+}
+
+fn model_runtime_ultra_hybrid_v129_stability_gated_tie_verify(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+    if context == ProRuntimeContext::OpeningBookDriven {
+        return model_runtime_ultra_hybrid_v127_confirmation_guard_strict(game, config);
+    }
+
+    let base_inputs = model_runtime_ultra_hybrid_v126_tie_verify_pro_normal_dual_floor(game, config);
+    if base_inputs.is_empty() {
+        return base_inputs;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let score_gap = my_score - opponent_score;
+    if game.turn_number <= 6 && score_gap.abs() <= 1 {
+        return base_inputs;
+    }
+
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(12, 20);
+    let mut scored_roots = search_scored_roots_with_states(game, runtime, perspective);
+    if scored_roots.is_empty() {
+        return base_inputs;
+    }
+    scored_roots.sort_by(|a, b| b.score.cmp(&a.score));
+    let best_root_score = scored_roots[0].score;
+    let root_score_slack = 420;
+
+    let pro_base = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
+    );
+    let pro_runtime = MonsGameModel::apply_pro_runtime_context_profile(
+        game,
+        pro_base,
+        ProRuntimeContext::Independent,
+    );
+    let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+
+    let Some(base_stats) = ultra_tie_stats_for_inputs(
+        game,
+        base_inputs.as_slice(),
+        perspective,
+        best_root_score - 120,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    ) else {
+        return base_inputs;
+    };
+
+    let mut chosen_inputs = base_inputs.clone();
+    let mut chosen_stats = base_stats;
+    for root in scored_roots.iter().take(6) {
+        if root.score + root_score_slack < best_root_score {
+            break;
+        }
+        let Some(stats) = ultra_tie_stats_for_inputs(
+            game,
+            root.inputs.as_slice(),
+            perspective,
+            root.score,
+            runtime.scoring_weights,
+            pro_runtime.scoring_weights,
+            normal_runtime.scoring_weights,
+            reply_limit,
+            start_options,
+        ) else {
+            continue;
+        };
+        let strict_upgrade = stats.composite >= chosen_stats.composite + 14
+            && stats.pro_floor + 2 >= chosen_stats.pro_floor
+            && stats.normal_floor >= chosen_stats.normal_floor
+            && stats.default_eval + 4 >= chosen_stats.default_eval;
+        let floor_dominant_upgrade = stats.composite >= chosen_stats.composite + 6
+            && stats.pro_floor >= chosen_stats.pro_floor + 6
+            && stats.normal_floor >= chosen_stats.normal_floor + 2
+            && stats.default_eval >= chosen_stats.default_eval;
+        if strict_upgrade || floor_dominant_upgrade {
+            chosen_inputs = root.inputs.clone();
+            chosen_stats = stats;
+        }
+    }
+
+    let clear_upgrade = chosen_stats.composite >= base_stats.composite + 16
+        && chosen_stats.pro_floor + 4 >= base_stats.pro_floor
+        && chosen_stats.normal_floor >= base_stats.normal_floor
+        && chosen_stats.default_eval + 2 >= base_stats.default_eval;
+    if clear_upgrade {
+        chosen_inputs
+    } else {
+        base_inputs
+    }
+}
+
+fn model_runtime_ultra_hybrid_v130_normal_floor_veto(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+    if context == ProRuntimeContext::OpeningBookDriven {
+        return model_runtime_ultra_hybrid_v127_confirmation_guard_strict(game, config);
+    }
+
+    let candidate_inputs = model_runtime_ultra_hybrid_v129_stability_gated_tie_verify(game, config);
+    if candidate_inputs.is_empty() {
+        return candidate_inputs;
+    }
+    let base_inputs = model_runtime_ultra_hybrid_v126_tie_verify_pro_normal_dual_floor(game, config);
+    if base_inputs.is_empty() {
+        return candidate_inputs;
+    }
+
+    let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+    let normal_inputs = MonsGameModel::smart_search_best_inputs(game, normal_runtime);
+
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(12, 18);
+    let pro_base = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
+    );
+    let pro_runtime = MonsGameModel::apply_pro_runtime_context_profile(
+        game,
+        pro_base,
+        ProRuntimeContext::Independent,
+    );
+    let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+
+    let candidate_stats = ultra_tie_stats_for_inputs(
+        game,
+        candidate_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+    let base_stats = ultra_tie_stats_for_inputs(
+        game,
+        base_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+    let normal_stats = ultra_tie_stats_for_inputs(
+        game,
+        normal_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+
+    match (candidate_stats, base_stats, normal_stats) {
+        (Some(candidate), Some(base), Some(normal)) => {
+            if candidate.normal_floor + 2 < base.normal_floor
+                || candidate.default_eval + 6 < base.default_eval
+            {
+                return base_inputs;
+            }
+
+            let normal_clear = normal.normal_floor >= candidate.normal_floor + 8
+                && normal.default_eval >= candidate.default_eval + 10
+                && normal.pro_floor + 4 >= candidate.pro_floor;
+            if normal_clear {
+                return normal_inputs;
+            }
+
+            if candidate.composite >= base.composite + 6
+                && candidate.pro_floor + 3 >= base.pro_floor
+                && candidate.normal_floor >= base.normal_floor
+            {
+                candidate_inputs
+            } else {
+                base_inputs
+            }
+        }
+        _ => base_inputs,
+    }
+}
+
+fn model_runtime_ultra_hybrid_v131_trailing_conversion_boost(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+    if context == ProRuntimeContext::OpeningBookDriven {
+        return model_runtime_ultra_hybrid_v130_normal_floor_veto(game, config);
+    }
+
+    let base_inputs = model_runtime_ultra_hybrid_v130_normal_floor_veto(game, config);
+    if base_inputs.is_empty() {
+        return base_inputs;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let score_gap = my_score - opponent_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+    if score_gap > -1 && opponent_distance_to_win > 2 {
+        return base_inputs;
+    }
+
+    let aggressive_inputs = model_runtime_ultra_scoring_v113_strong_attacker_proximity(game, config);
+    if aggressive_inputs.is_empty() || aggressive_inputs == base_inputs {
+        return base_inputs;
+    }
+
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(12, 20);
+    let pro_base = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
+    );
+    let pro_runtime = MonsGameModel::apply_pro_runtime_context_profile(
+        game,
+        pro_base,
+        ProRuntimeContext::Independent,
+    );
+    let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+
+    let base_stats = ultra_tie_stats_for_inputs(
+        game,
+        base_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+    let aggressive_stats = ultra_tie_stats_for_inputs(
+        game,
+        aggressive_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+
+    match (base_stats, aggressive_stats) {
+        (Some(base), Some(aggressive))
+            if aggressive.composite >= base.composite + 4
+                && aggressive.pro_floor + 2 >= base.pro_floor
+                && aggressive.normal_floor + 1 >= base.normal_floor
+                && aggressive.default_eval + 2 >= base.default_eval =>
+        {
+            aggressive_inputs
+        }
+        _ => base_inputs,
+    }
+}
+
+fn model_runtime_ultra_hybrid_v132_portfolio_guarded(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+    if context == ProRuntimeContext::OpeningBookDriven {
+        return model_runtime_ultra_hybrid_v130_normal_floor_veto(game, config);
+    }
+
+    let base_inputs = model_runtime_ultra_hybrid_v130_normal_floor_veto(game, config);
+    if base_inputs.is_empty() {
+        return base_inputs;
+    }
+    let candidate_inputs = model_runtime_ultra_hybrid_v131_trailing_conversion_boost(game, config);
+    let pro_anchor_inputs = model_runtime_ultra_d5_pro_anchor_long_horizon_v66(game, config);
+
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(12, 20);
+    let pro_base = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
+    );
+    let pro_runtime = MonsGameModel::apply_pro_runtime_context_profile(
+        game,
+        pro_base,
+        ProRuntimeContext::Independent,
+    );
+    let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+
+    let Some(base_stats) = ultra_tie_stats_for_inputs(
+        game,
+        base_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    ) else {
+        return base_inputs;
+    };
+
+    let mut best_inputs = base_inputs.clone();
+    let mut best_stats = base_stats;
+    for candidate in [candidate_inputs, pro_anchor_inputs] {
+        if candidate.is_empty() || candidate == best_inputs {
+            continue;
+        }
+        let Some(stats) = ultra_tie_stats_for_inputs(
+            game,
+            candidate.as_slice(),
+            perspective,
+            0,
+            runtime.scoring_weights,
+            pro_runtime.scoring_weights,
+            normal_runtime.scoring_weights,
+            reply_limit,
+            start_options,
+        ) else {
+            continue;
+        };
+        let safe = stats.normal_floor >= base_stats.normal_floor
+            && stats.default_eval + 2 >= base_stats.default_eval;
+        let stronger = stats.composite >= best_stats.composite + 6
+            && (stats.pro_floor + 2 >= best_stats.pro_floor
+                || stats.normal_floor >= best_stats.normal_floor + 4);
+        if safe && stronger {
+            best_inputs = candidate;
+            best_stats = stats;
+        }
+    }
+
+    if best_stats.composite >= base_stats.composite + 6
+        && best_stats.pro_floor + 2 >= base_stats.pro_floor
+        && best_stats.normal_floor >= base_stats.normal_floor
+    {
+        best_inputs
+    } else {
+        base_inputs
+    }
+}
+
+fn model_runtime_ultra_hybrid_v133_pro_anchor_gate(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+    if context == ProRuntimeContext::OpeningBookDriven {
+        return model_runtime_ultra_hybrid_v129_stability_gated_tie_verify(game, config);
+    }
+
+    let base_inputs = model_runtime_ultra_hybrid_v129_stability_gated_tie_verify(game, config);
+    if base_inputs.is_empty() {
+        return base_inputs;
+    }
+    let pro_anchor_inputs = model_runtime_ultra_d5_pro_anchor_long_horizon_v66(game, config);
+    if pro_anchor_inputs.is_empty() || pro_anchor_inputs == base_inputs {
+        return base_inputs;
+    }
+
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(12, 20);
+    let pro_base = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
+    );
+    let pro_runtime = MonsGameModel::apply_pro_runtime_context_profile(
+        game,
+        pro_base,
+        ProRuntimeContext::Independent,
+    );
+    let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+
+    let base_stats = ultra_tie_stats_for_inputs(
+        game,
+        base_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+    let anchor_stats = ultra_tie_stats_for_inputs(
+        game,
+        pro_anchor_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let score_gap = my_score - opponent_score;
+    let opponent_distance_to_win = Config::TARGET_SCORE - opponent_score;
+
+    match (base_stats, anchor_stats) {
+        (Some(base), Some(anchor)) => {
+            let standard_upgrade = anchor.pro_floor >= base.pro_floor + 6
+                && anchor.composite >= base.composite + 4
+                && anchor.normal_floor + 2 >= base.normal_floor
+                && anchor.default_eval + 4 >= base.default_eval;
+            let pressure_upgrade = (score_gap <= 0 || opponent_distance_to_win <= 2)
+                && anchor.pro_floor >= base.pro_floor + 3
+                && anchor.normal_floor >= base.normal_floor
+                && anchor.composite >= base.composite;
+            if standard_upgrade || pressure_upgrade {
+                pro_anchor_inputs
+            } else {
+                base_inputs
+            }
+        }
+        _ => base_inputs,
+    }
+}
+
+fn model_runtime_ultra_hybrid_v134_root_pro_floor_pick(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+    if context == ProRuntimeContext::OpeningBookDriven {
+        return model_runtime_ultra_hybrid_v133_pro_anchor_gate(game, config);
+    }
+
+    let base_inputs = model_runtime_ultra_hybrid_v133_pro_anchor_gate(game, config);
+    if base_inputs.is_empty() {
+        return base_inputs;
+    }
+
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(12, 18);
+    let pro_base = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
+    );
+    let pro_runtime = MonsGameModel::apply_pro_runtime_context_profile(
+        game,
+        pro_base,
+        ProRuntimeContext::Independent,
+    );
+    let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+
+    let Some(base_stats) = ultra_tie_stats_for_inputs(
+        game,
+        base_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    ) else {
+        return base_inputs;
+    };
+
+    let mut scored_roots = search_scored_roots_with_states(game, runtime, perspective);
+    if scored_roots.is_empty() {
+        return base_inputs;
+    }
+    scored_roots.sort_by(|a, b| b.score.cmp(&a.score));
+    let best_root_score = scored_roots[0].score;
+    let root_score_slack = 480;
+
+    let mut best_inputs = base_inputs.clone();
+    let mut best_stats = base_stats;
+    for root in scored_roots.iter().take(5) {
+        if root.score + root_score_slack < best_root_score {
+            break;
+        }
+        let Some(stats) = ultra_tie_stats_for_inputs(
+            game,
+            root.inputs.as_slice(),
+            perspective,
+            root.score,
+            runtime.scoring_weights,
+            pro_runtime.scoring_weights,
+            normal_runtime.scoring_weights,
+            reply_limit,
+            start_options,
+        ) else {
+            continue;
+        };
+        let pro_floor_upgrade = stats.pro_floor >= base_stats.pro_floor + 8
+            && stats.normal_floor + 1 >= base_stats.normal_floor
+            && stats.default_eval + 2 >= base_stats.default_eval
+            && stats.composite >= base_stats.composite + 6;
+        let stronger_than_current = stats.composite >= best_stats.composite + 8
+            && stats.pro_floor >= best_stats.pro_floor + 3
+            && stats.normal_floor >= best_stats.normal_floor;
+        if pro_floor_upgrade && stronger_than_current {
+            best_inputs = root.inputs.clone();
+            best_stats = stats;
+        }
+    }
+
+    if best_stats.composite >= base_stats.composite + 6
+        && best_stats.pro_floor >= base_stats.pro_floor + 6
+        && best_stats.normal_floor >= base_stats.normal_floor
+    {
+        best_inputs
+    } else {
+        base_inputs
+    }
+}
+
+fn model_runtime_ultra_hybrid_v135_selective_pro_bridge(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+    if context == ProRuntimeContext::OpeningBookDriven {
+        return model_runtime_ultra_d5_hybrid_v107_black_t2_guard_confirm_pro_veto(game, config);
+    }
+
+    let ultra_inputs = model_runtime_ultra_d5_hybrid_v107_black_t2_guard_confirm_pro_veto(game, config);
+    if ultra_inputs.is_empty() {
+        return ultra_inputs;
+    }
+
+    let pro_base = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
+    );
+    let pro_runtime = MonsGameModel::apply_pro_runtime_context_profile(
+        game,
+        pro_base,
+        ProRuntimeContext::Independent,
+    );
+    let pro_inputs = MonsGameModel::smart_search_best_inputs(game, pro_runtime);
+    if pro_inputs.is_empty() {
+        return ultra_inputs;
+    }
+    if pro_inputs == ultra_inputs {
+        return ultra_inputs;
+    }
+
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(12, 18);
+    let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+    let ultra_stats = ultra_tie_stats_for_inputs(
+        game,
+        ultra_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+    let pro_stats = ultra_tie_stats_for_inputs(
+        game,
+        pro_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let score_gap = my_score - opponent_score;
+
+    match (ultra_stats, pro_stats) {
+        (Some(ultra), Some(pro)) => {
+            let ultra_clear = ultra.composite >= pro.composite + 10
+                && ultra.pro_floor + 2 >= pro.pro_floor
+                && ultra.normal_floor + 2 >= pro.normal_floor
+                && ultra.default_eval + 4 >= pro.default_eval;
+            let ultra_floor_clear = ultra.pro_floor >= pro.pro_floor + 8
+                && ultra.normal_floor >= pro.normal_floor
+                && ultra.default_eval >= pro.default_eval;
+            let pro_clear = pro.composite >= ultra.composite + 14
+                && pro.pro_floor >= ultra.pro_floor + 4
+                && pro.normal_floor + 2 >= ultra.normal_floor;
+            if ultra_clear || ultra_floor_clear {
+                ultra_inputs
+            } else if pro_clear || score_gap >= 0 {
+                pro_inputs
+            } else {
+                ultra_inputs
+            }
+        }
+        _ => pro_inputs,
+    }
+}
+
+fn model_runtime_ultra_hybrid_v136_selective_pro_bridge_aggressive(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+    if context == ProRuntimeContext::OpeningBookDriven {
+        return model_runtime_ultra_hybrid_v135_selective_pro_bridge(game, config);
+    }
+
+    let base_inputs = model_runtime_ultra_hybrid_v135_selective_pro_bridge(game, config);
+    if base_inputs.is_empty() {
+        return base_inputs;
+    }
+    let candidate_inputs = model_runtime_ultra_hybrid_v133_pro_anchor_gate(game, config);
+    if candidate_inputs.is_empty() || candidate_inputs == base_inputs {
+        return base_inputs;
+    }
+
+    let pro_base = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
+    );
+    let pro_runtime = MonsGameModel::apply_pro_runtime_context_profile(
+        game,
+        pro_base,
+        ProRuntimeContext::Independent,
+    );
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(12, 18);
+    let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+    let base_stats = ultra_tie_stats_for_inputs(
+        game,
+        base_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+    let candidate_stats = ultra_tie_stats_for_inputs(
+        game,
+        candidate_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+
+    match (base_stats, candidate_stats) {
+        (Some(base), Some(candidate))
+            if candidate.composite >= base.composite + 6
+                && candidate.pro_floor >= base.pro_floor + 4
+                && candidate.normal_floor + 1 >= base.normal_floor
+                && candidate.default_eval + 2 >= base.default_eval =>
+        {
+            candidate_inputs
+        }
+        _ => base_inputs,
+    }
+}
+
+fn model_runtime_ultra_hybrid_v137_v17_selective_boost(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+    if context == ProRuntimeContext::OpeningBookDriven {
+        return model_runtime_ultra_d5_hybrid_v107_black_t2_guard_confirm_pro_veto(game, config);
+    }
+
+    let base_inputs = model_runtime_ultra_d5_hybrid_v107_black_t2_guard_confirm_pro_veto(game, config);
+    if base_inputs.is_empty() {
+        return base_inputs;
+    }
+    let boost_inputs = model_runtime_ultra_d5_ordering_tt_v17_guarded_pro_bridge_lite(game, config);
+    if boost_inputs.is_empty() || boost_inputs == base_inputs {
+        return base_inputs;
+    }
+
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(12, 20);
+    let pro_base = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
+    );
+    let pro_runtime = MonsGameModel::apply_pro_runtime_context_profile(
+        game,
+        pro_base,
+        ProRuntimeContext::Independent,
+    );
+    let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+
+    let base_stats = ultra_tie_stats_for_inputs(
+        game,
+        base_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+    let boost_stats = ultra_tie_stats_for_inputs(
+        game,
+        boost_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let score_gap = my_score - opponent_score;
+
+    match (base_stats, boost_stats) {
+        (Some(base), Some(boost)) => {
+            let strict_upgrade = boost.pro_floor >= base.pro_floor + 6
+                && boost.normal_floor + 1 >= base.normal_floor
+                && boost.default_eval + 2 >= base.default_eval
+                && boost.composite >= base.composite + 6;
+            let pressure_upgrade = score_gap <= 0
+                && boost.pro_floor >= base.pro_floor + 4
+                && boost.normal_floor >= base.normal_floor
+                && boost.composite >= base.composite;
+            if strict_upgrade || pressure_upgrade {
+                boost_inputs
+            } else {
+                base_inputs
+            }
+        }
+        _ => base_inputs,
+    }
+}
+
+fn model_runtime_ultra_hybrid_v138_v17_selective_boost_aggressive(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+    if context == ProRuntimeContext::OpeningBookDriven {
+        return model_runtime_ultra_hybrid_v137_v17_selective_boost(game, config);
+    }
+
+    let base_inputs = model_runtime_ultra_hybrid_v137_v17_selective_boost(game, config);
+    if base_inputs.is_empty() {
+        return base_inputs;
+    }
+    let boost_inputs = model_runtime_ultra_d5_ordering_tt_v17_guarded_pro_bridge_lite(game, config);
+    if boost_inputs.is_empty() || boost_inputs == base_inputs {
+        return base_inputs;
+    }
+
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(12, 20);
+    let pro_base = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
+    );
+    let pro_runtime = MonsGameModel::apply_pro_runtime_context_profile(
+        game,
+        pro_base,
+        ProRuntimeContext::Independent,
+    );
+    let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+
+    let base_stats = ultra_tie_stats_for_inputs(
+        game,
+        base_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+    let boost_stats = ultra_tie_stats_for_inputs(
+        game,
+        boost_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+
+    match (base_stats, boost_stats) {
+        (Some(base), Some(boost))
+            if boost.pro_floor >= base.pro_floor + 3
+                && boost.normal_floor >= base.normal_floor
+                && boost.composite >= base.composite + 3 =>
+        {
+            boost_inputs
+        }
+        _ => base_inputs,
+    }
+}
+
+fn model_runtime_ultra_hybrid_v139_v17_selective_boost_strict(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+    if env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false) {
+        let pro_runtime = SearchBudget::from_preference(SmartAutomovePreference::Pro)
+            .runtime_config_for_game(game);
+        return model_current_best(game, pro_runtime);
+    }
+    if context == ProRuntimeContext::OpeningBookDriven {
+        let pro_runtime = SearchBudget::from_preference(SmartAutomovePreference::Pro)
+            .runtime_config_for_game(game);
+        return model_current_best(game, pro_runtime);
+    }
+
+    let base_inputs = model_runtime_ultra_d5_hybrid_v107_black_t2_guard_confirm_pro_veto(game, config);
+    if base_inputs.is_empty() {
+        return base_inputs;
+    }
+    let boost_inputs = model_runtime_ultra_d5_ordering_tt_v17_guarded_pro_bridge_lite(game, config);
+    if boost_inputs.is_empty() || boost_inputs == base_inputs {
+        return base_inputs;
+    }
+
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(12, 20);
+    let pro_base = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
+    );
+    let pro_runtime = MonsGameModel::apply_pro_runtime_context_profile(
+        game,
+        pro_base,
+        ProRuntimeContext::Independent,
+    );
+    let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+
+    let base_stats = ultra_tie_stats_for_inputs(
+        game,
+        base_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+    let boost_stats = ultra_tie_stats_for_inputs(
+        game,
+        boost_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+
+    match (base_stats, boost_stats) {
+        (Some(base), Some(boost))
+            if boost.pro_floor >= base.pro_floor + 8
+                && boost.normal_floor >= base.normal_floor + 2
+                && boost.default_eval >= base.default_eval + 4
+                && boost.composite >= base.composite + 8 =>
+        {
+            boost_inputs
+        }
+        _ => base_inputs,
+    }
+}
+
+fn model_runtime_ultra_hybrid_v140_v17_selective_boost_strict_pressure(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let (runtime, context) = ultra_context_split_runtime_base(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+    if context == ProRuntimeContext::OpeningBookDriven {
+        return model_runtime_ultra_hybrid_v139_v17_selective_boost_strict(game, config);
+    }
+
+    let base_inputs = model_runtime_ultra_hybrid_v139_v17_selective_boost_strict(game, config);
+    if base_inputs.is_empty() {
+        return base_inputs;
+    }
+    let boost_inputs = model_runtime_ultra_d5_ordering_tt_v17_guarded_pro_bridge_lite(game, config);
+    if boost_inputs.is_empty() || boost_inputs == base_inputs {
+        return base_inputs;
+    }
+
+    let (my_score, opponent_score) = if game.active_color == Color::White {
+        (game.white_score, game.black_score)
+    } else {
+        (game.black_score, game.white_score)
+    };
+    let score_gap = my_score - opponent_score;
+    if score_gap > -1 {
+        return base_inputs;
+    }
+
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(12, 20);
+    let pro_base = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
+    );
+    let pro_runtime = MonsGameModel::apply_pro_runtime_context_profile(
+        game,
+        pro_base,
+        ProRuntimeContext::Independent,
+    );
+    let normal_runtime = MonsGameModel::with_runtime_scoring_weights(
+        game,
+        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
+    );
+
+    let base_stats = ultra_tie_stats_for_inputs(
+        game,
+        base_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+    let boost_stats = ultra_tie_stats_for_inputs(
+        game,
+        boost_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+
+    match (base_stats, boost_stats) {
+        (Some(base), Some(boost))
+            if boost.pro_floor >= base.pro_floor + 6
+                && boost.normal_floor >= base.normal_floor + 1
+                && boost.default_eval >= base.default_eval + 2
+                && boost.composite >= base.composite + 5 =>
+        {
+            boost_inputs
+        }
+        _ => base_inputs,
+    }
+}
+
+fn model_runtime_ultra_hybrid_v141_v17_window6(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let unsafe_opening_pattern =
+        (game.turn_number == 2 && game.active_color == Color::Black && game.mons_moves_count == 0)
+            || (game.turn_number == 1
+                && game.active_color == Color::White
+                && game.mons_moves_count >= 3);
+    if env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false) {
+        return model_runtime_ultra_hybrid_v139_v17_selective_boost_strict(game, config);
+    }
+    if unsafe_opening_pattern {
+        return model_current_best(game, config);
+    }
+    if game.turn_number <= 6 {
+        return model_runtime_ultra_hybrid_v139_v17_selective_boost_strict(game, config);
+    }
+    model_runtime_ultra_d5_hybrid_v107_black_t2_guard_confirm_pro_veto(game, config)
+}
+
+fn model_runtime_ultra_hybrid_v142_v17_window4(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false) {
+        return model_runtime_ultra_hybrid_v139_v17_selective_boost_strict(game, config);
+    }
+    if game.turn_number <= 4 {
+        return model_runtime_ultra_hybrid_v139_v17_selective_boost_strict(game, config);
+    }
+    model_runtime_ultra_d5_hybrid_v107_black_t2_guard_confirm_pro_veto(game, config)
+}
+
+fn model_runtime_ultra_hybrid_v144_v17_window5(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let unsafe_opening_pattern =
+        (game.turn_number == 2 && game.active_color == Color::Black && game.mons_moves_count == 0)
+            || (game.turn_number == 1
+                && game.active_color == Color::White
+                && game.mons_moves_count >= 3);
+    if env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false) {
+        return model_runtime_ultra_hybrid_v139_v17_selective_boost_strict(game, config);
+    }
+    if unsafe_opening_pattern {
+        return model_current_best(game, config);
+    }
+    if game.turn_number <= 5 {
+        return model_runtime_ultra_hybrid_v139_v17_selective_boost_strict(game, config);
+    }
+    model_runtime_ultra_d5_hybrid_v107_black_t2_guard_confirm_pro_veto(game, config)
+}
+
+fn model_runtime_ultra_hybrid_v143_runtime_base_v17_boost(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+    if env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false) {
+        let pro_runtime = SearchBudget::from_preference(SmartAutomovePreference::Pro)
+            .runtime_config_for_game(game);
+        return model_current_best(game, pro_runtime);
+    }
+
+    let base_inputs = model_current_best(game, config);
+    if base_inputs.is_empty() {
+        return base_inputs;
+    }
+    if game.turn_number > 6 {
+        return base_inputs;
+    }
+
+    let boost_inputs = model_runtime_ultra_d5_ordering_tt_v17_guarded_pro_bridge_lite(game, config);
+    if boost_inputs.is_empty() || boost_inputs == base_inputs {
+        return base_inputs;
+    }
+
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(12, 18);
+    let pro_runtime = SearchBudget::from_preference(SmartAutomovePreference::Pro)
+        .runtime_config_for_game(game);
+    let normal_runtime = SearchBudget::from_preference(SmartAutomovePreference::Normal)
+        .runtime_config_for_game(game);
+
+    let base_stats = ultra_tie_stats_for_inputs(
+        game,
+        base_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+    let boost_stats = ultra_tie_stats_for_inputs(
+        game,
+        boost_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+
+    match (base_stats, boost_stats) {
+        (Some(base), Some(boost))
+            if boost.pro_floor >= base.pro_floor + 6
+                && boost.normal_floor >= base.normal_floor
+                && boost.default_eval >= base.default_eval + 2
+                && boost.composite >= base.composite + 6 =>
+        {
+            boost_inputs
+        }
+        _ => base_inputs,
+    }
+}
+
+fn model_runtime_ultra_hybrid_v146_runtime_base_v139_strict(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < SMART_AUTOMOVE_ULTRA_DEPTH as usize {
+        return MonsGameModel::smart_search_best_inputs(game, runtime);
+    }
+
+    let base_inputs = model_current_best(game, config);
+    if base_inputs.is_empty() {
+        return base_inputs;
+    }
+
+    let alt_inputs = model_runtime_ultra_hybrid_v139_v17_selective_boost_strict(game, config);
+    if alt_inputs.is_empty() || alt_inputs == base_inputs {
+        return base_inputs;
+    }
+
+    let perspective = game.active_color;
+    let start_options = MonsGameModel::automove_start_input_options(runtime);
+    let reply_limit = runtime.node_enum_limit.clamp(12, 18);
+    let pro_runtime = SearchBudget::from_preference(SmartAutomovePreference::Pro)
+        .runtime_config_for_game(game);
+    let normal_runtime = SearchBudget::from_preference(SmartAutomovePreference::Normal)
+        .runtime_config_for_game(game);
+
+    let base_stats = ultra_tie_stats_for_inputs(
+        game,
+        base_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+    let alt_stats = ultra_tie_stats_for_inputs(
+        game,
+        alt_inputs.as_slice(),
+        perspective,
+        0,
+        runtime.scoring_weights,
+        pro_runtime.scoring_weights,
+        normal_runtime.scoring_weights,
+        reply_limit,
+        start_options,
+    );
+
+    match (base_stats, alt_stats) {
+        (Some(base), Some(alt))
+            if alt.pro_floor >= base.pro_floor + 10
+                && alt.normal_floor >= base.normal_floor + 2
+                && alt.default_eval >= base.default_eval + 4
+                && alt.composite >= base.composite + 10 =>
+        {
+            alt_inputs
+        }
+        _ => base_inputs,
+    }
+}
+
+fn model_runtime_ultra_hybrid_v147_early_neutral_runtime_guard(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if game.white_score == 0 && game.black_score == 0 && game.turn_number <= 4 {
+        let pro_runtime = SearchBudget::from_preference(SmartAutomovePreference::Pro)
+            .runtime_config_for_game(game);
+        return model_current_best(game, pro_runtime);
+    }
+    model_runtime_ultra_hybrid_v141_v17_window6(game, config)
+}
+
 fn model_runtime_ultra_d5_default_eval_guarded_thresholded(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -18613,6 +21304,72 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_ultra_scoring_v124_close_root_tiebreak_protected" => {
             model_runtime_ultra_scoring_v124_close_root_tiebreak_protected(game, config)
         }
+        "runtime_ultra_hybrid_v125_tie_verify_pro_floor" => {
+            model_runtime_ultra_hybrid_v125_tie_verify_pro_floor(game, config)
+        }
+        "runtime_ultra_hybrid_v126_tie_verify_pro_normal_dual_floor" => {
+            model_runtime_ultra_hybrid_v126_tie_verify_pro_normal_dual_floor(game, config)
+        }
+        "runtime_ultra_hybrid_v127_confirmation_guard_strict" => {
+            model_runtime_ultra_hybrid_v127_confirmation_guard_strict(game, config)
+        }
+        "runtime_ultra_hybrid_v128_hiutil_tie_verify" => {
+            model_runtime_ultra_hybrid_v128_hiutil_tie_verify(game, config)
+        }
+        "runtime_ultra_hybrid_v129_stability_gated_tie_verify" => {
+            model_runtime_ultra_hybrid_v129_stability_gated_tie_verify(game, config)
+        }
+        "runtime_ultra_hybrid_v130_normal_floor_veto" => {
+            model_runtime_ultra_hybrid_v130_normal_floor_veto(game, config)
+        }
+        "runtime_ultra_hybrid_v131_trailing_conversion_boost" => {
+            model_runtime_ultra_hybrid_v131_trailing_conversion_boost(game, config)
+        }
+        "runtime_ultra_hybrid_v132_portfolio_guarded" => {
+            model_runtime_ultra_hybrid_v132_portfolio_guarded(game, config)
+        }
+        "runtime_ultra_hybrid_v133_pro_anchor_gate" => {
+            model_runtime_ultra_hybrid_v133_pro_anchor_gate(game, config)
+        }
+        "runtime_ultra_hybrid_v134_root_pro_floor_pick" => {
+            model_runtime_ultra_hybrid_v134_root_pro_floor_pick(game, config)
+        }
+        "runtime_ultra_hybrid_v135_selective_pro_bridge" => {
+            model_runtime_ultra_hybrid_v135_selective_pro_bridge(game, config)
+        }
+        "runtime_ultra_hybrid_v136_selective_pro_bridge_aggressive" => {
+            model_runtime_ultra_hybrid_v136_selective_pro_bridge_aggressive(game, config)
+        }
+        "runtime_ultra_hybrid_v137_v17_selective_boost" => {
+            model_runtime_ultra_hybrid_v137_v17_selective_boost(game, config)
+        }
+        "runtime_ultra_hybrid_v138_v17_selective_boost_aggressive" => {
+            model_runtime_ultra_hybrid_v138_v17_selective_boost_aggressive(game, config)
+        }
+        "runtime_ultra_hybrid_v139_v17_selective_boost_strict" => {
+            model_runtime_ultra_hybrid_v139_v17_selective_boost_strict(game, config)
+        }
+        "runtime_ultra_hybrid_v140_v17_selective_boost_strict_pressure" => {
+            model_runtime_ultra_hybrid_v140_v17_selective_boost_strict_pressure(game, config)
+        }
+        "runtime_ultra_hybrid_v141_v17_window6" => {
+            model_runtime_ultra_hybrid_v141_v17_window6(game, config)
+        }
+        "runtime_ultra_hybrid_v142_v17_window4" => {
+            model_runtime_ultra_hybrid_v142_v17_window4(game, config)
+        }
+        "runtime_ultra_hybrid_v144_v17_window5" => {
+            model_runtime_ultra_hybrid_v144_v17_window5(game, config)
+        }
+        "runtime_ultra_hybrid_v143_runtime_base_v17_boost" => {
+            model_runtime_ultra_hybrid_v143_runtime_base_v17_boost(game, config)
+        }
+        "runtime_ultra_hybrid_v146_runtime_base_v139_strict" => {
+            model_runtime_ultra_hybrid_v146_runtime_base_v139_strict(game, config)
+        }
+        "runtime_ultra_hybrid_v147_early_neutral_runtime_guard" => {
+            model_runtime_ultra_hybrid_v147_early_neutral_runtime_guard(game, config)
+        }
         "runtime_ultra_d5_pro_anchor_challenge_v82" => {
             model_runtime_ultra_d5_pro_anchor_challenge_v82(game, config)
         }
@@ -18637,9 +21394,117 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         "runtime_fast_root_quality_v1" => model_runtime_fast_root_quality_v1(game, config),
         "runtime_fast_root_quality_v2" => model_runtime_fast_root_quality_v2(game, config),
         "runtime_fast_root_quality_v3" => model_runtime_fast_root_quality_v3(game, config),
+        "runtime_fast_scoring_v1_mana_race_plus" => {
+            model_runtime_fast_scoring_v1_mana_race_plus(game, config)
+        }
+        "runtime_fast_scoring_v2_mana_race_sharp" => {
+            model_runtime_fast_scoring_v2_mana_race_sharp(game, config)
+        }
+        "runtime_fast_scoring_v3_phase_gated" => {
+            model_runtime_fast_scoring_v3_phase_gated(game, config)
+        }
+        "runtime_fast_scoring_v4_defense_denial" => {
+            model_runtime_fast_scoring_v4_defense_denial(game, config)
+        }
+        "runtime_fast_scoring_v5_opening_supermana" => {
+            model_runtime_fast_scoring_v5_opening_supermana(game, config)
+        }
+        "runtime_fast_scoring_v6_trailing_defense_denial" => {
+            model_runtime_fast_scoring_v6_trailing_defense_denial(game, config)
+        }
+        "runtime_fast_scoring_v7_opening_trailing_blend" => {
+            model_runtime_fast_scoring_v7_opening_trailing_blend(game, config)
+        }
+        "runtime_fast_scoring_v8_micro_stable" => {
+            model_runtime_fast_scoring_v8_micro_stable(game, config)
+        }
+        "runtime_fast_scoring_v9_interview_balanced" => {
+            model_runtime_fast_scoring_v9_interview_balanced(game, config)
+        }
+        "runtime_fast_scoring_v10_counterplay_pressure" => {
+            model_runtime_fast_scoring_v10_counterplay_pressure(game, config)
+        }
+        "runtime_fast_scoring_v11_opening_interview_gate" => {
+            model_runtime_fast_scoring_v11_opening_interview_gate(game, config)
+        }
+        "runtime_fast_scoring_v12_blended_counterplay" => {
+            model_runtime_fast_scoring_v12_blended_counterplay(game, config)
+        }
         "runtime_normal_conversion_v1" => model_runtime_normal_conversion_v1(game, config),
         "runtime_normal_conversion_v2" => model_runtime_normal_conversion_v2(game, config),
         "runtime_normal_conversion_v3" => model_runtime_normal_conversion_v3(game, config),
+        "runtime_normal_scoring_v1_opponent_mana_soft_plus" => {
+            model_runtime_normal_scoring_v1_opponent_mana_soft_plus(game, config)
+        }
+        "runtime_normal_scoring_v2_opponent_mana_soft_plus_plus" => {
+            model_runtime_normal_scoring_v2_opponent_mana_soft_plus_plus(game, config)
+        }
+        "runtime_normal_scoring_v3_attacker_proximity_with_soft_plus" => {
+            model_runtime_normal_scoring_v3_attacker_proximity_with_soft_plus(game, config)
+        }
+        "runtime_normal_scoring_v4_adaptive_attacker_proximity" => {
+            model_runtime_normal_scoring_v4_adaptive_attacker_proximity(game, config)
+        }
+        "runtime_normal_scoring_v5_contextual_walk_threat" => {
+            model_runtime_normal_scoring_v5_contextual_walk_threat(game, config)
+        }
+        "runtime_normal_scoring_v6_pressure_window_walk_threat" => {
+            model_runtime_normal_scoring_v6_pressure_window_walk_threat(game, config)
+        }
+        "runtime_normal_scoring_v7_contextual_walk_threat_with_mana_soft" => {
+            model_runtime_normal_scoring_v7_contextual_walk_threat_with_mana_soft(game, config)
+        }
+        "runtime_normal_scoring_v8_contextual_boolean_drainer" => {
+            model_runtime_normal_scoring_v8_contextual_boolean_drainer(game, config)
+        }
+        "runtime_normal_scoring_v9_walk_threat_midplus" => {
+            model_runtime_normal_scoring_v9_walk_threat_midplus(game, config)
+        }
+        "runtime_normal_scoring_v10_walk_threat_midplus_mana_soft" => {
+            model_runtime_normal_scoring_v10_walk_threat_midplus_mana_soft(game, config)
+        }
+        "runtime_normal_scoring_v11_tactical_moderate_walk_threat" => {
+            model_runtime_normal_scoring_v11_tactical_moderate_walk_threat(game, config)
+        }
+        "runtime_normal_scoring_v12_tactical_moderate_with_mana_soft" => {
+            model_runtime_normal_scoring_v12_tactical_moderate_with_mana_soft(game, config)
+        }
+        "runtime_normal_scoring_v13_moderate_with_opponent_mana_soft" => {
+            model_runtime_normal_scoring_v13_moderate_with_opponent_mana_soft(game, config)
+        }
+        "runtime_normal_scoring_v14_moderate_with_mana_race_soft" => {
+            model_runtime_normal_scoring_v14_moderate_with_mana_race_soft(game, config)
+        }
+        "runtime_normal_scoring_v15_moderate_if_not_ahead_plus_one" => {
+            model_runtime_normal_scoring_v15_moderate_if_not_ahead_plus_one(game, config)
+        }
+        "runtime_normal_scoring_v16_moderate_if_not_ahead_plus_two" => {
+            model_runtime_normal_scoring_v16_moderate_if_not_ahead_plus_two(game, config)
+        }
+        "runtime_normal_scoring_v17_turn_gated_moderate_walk_threat" => {
+            model_runtime_normal_scoring_v17_turn_gated_moderate_walk_threat(game, config)
+        }
+        "runtime_normal_scoring_v18_turn_gated_moderate_with_mana_soft" => {
+            model_runtime_normal_scoring_v18_turn_gated_moderate_with_mana_soft(game, config)
+        }
+        "runtime_normal_scoring_v19_drainer_shield" => {
+            model_runtime_normal_scoring_v19_drainer_shield(game, config)
+        }
+        "runtime_normal_scoring_v20_strong_attacker_proximity" => {
+            model_runtime_normal_scoring_v20_strong_attacker_proximity(game, config)
+        }
+        "runtime_normal_scoring_v21_hybrid_shield_attacker" => {
+            model_runtime_normal_scoring_v21_hybrid_shield_attacker(game, config)
+        }
+        "runtime_normal_scoring_v22_moderate_carrier_balance" => {
+            model_runtime_normal_scoring_v22_moderate_carrier_balance(game, config)
+        }
+        "runtime_normal_scoring_v23_threat_gated_moderate_walk_threat" => {
+            model_runtime_normal_scoring_v23_threat_gated_moderate_walk_threat(game, config)
+        }
+        "runtime_normal_scoring_v24_threat_gated_moderate_with_mana_soft" => {
+            model_runtime_normal_scoring_v24_threat_gated_moderate_with_mana_soft(game, config)
+        }
         "runtime_fast_root_quality_v1_normal_conversion_v3" => {
             model_runtime_fast_root_quality_v1_normal_conversion_v3(game, config)
         }
@@ -19848,6 +22713,94 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
             model_runtime_ultra_scoring_v124_close_root_tiebreak_protected,
         ),
         (
+            "runtime_ultra_hybrid_v125_tie_verify_pro_floor",
+            model_runtime_ultra_hybrid_v125_tie_verify_pro_floor,
+        ),
+        (
+            "runtime_ultra_hybrid_v126_tie_verify_pro_normal_dual_floor",
+            model_runtime_ultra_hybrid_v126_tie_verify_pro_normal_dual_floor,
+        ),
+        (
+            "runtime_ultra_hybrid_v127_confirmation_guard_strict",
+            model_runtime_ultra_hybrid_v127_confirmation_guard_strict,
+        ),
+        (
+            "runtime_ultra_hybrid_v128_hiutil_tie_verify",
+            model_runtime_ultra_hybrid_v128_hiutil_tie_verify,
+        ),
+        (
+            "runtime_ultra_hybrid_v129_stability_gated_tie_verify",
+            model_runtime_ultra_hybrid_v129_stability_gated_tie_verify,
+        ),
+        (
+            "runtime_ultra_hybrid_v130_normal_floor_veto",
+            model_runtime_ultra_hybrid_v130_normal_floor_veto,
+        ),
+        (
+            "runtime_ultra_hybrid_v131_trailing_conversion_boost",
+            model_runtime_ultra_hybrid_v131_trailing_conversion_boost,
+        ),
+        (
+            "runtime_ultra_hybrid_v132_portfolio_guarded",
+            model_runtime_ultra_hybrid_v132_portfolio_guarded,
+        ),
+        (
+            "runtime_ultra_hybrid_v133_pro_anchor_gate",
+            model_runtime_ultra_hybrid_v133_pro_anchor_gate,
+        ),
+        (
+            "runtime_ultra_hybrid_v134_root_pro_floor_pick",
+            model_runtime_ultra_hybrid_v134_root_pro_floor_pick,
+        ),
+        (
+            "runtime_ultra_hybrid_v135_selective_pro_bridge",
+            model_runtime_ultra_hybrid_v135_selective_pro_bridge,
+        ),
+        (
+            "runtime_ultra_hybrid_v136_selective_pro_bridge_aggressive",
+            model_runtime_ultra_hybrid_v136_selective_pro_bridge_aggressive,
+        ),
+        (
+            "runtime_ultra_hybrid_v137_v17_selective_boost",
+            model_runtime_ultra_hybrid_v137_v17_selective_boost,
+        ),
+        (
+            "runtime_ultra_hybrid_v138_v17_selective_boost_aggressive",
+            model_runtime_ultra_hybrid_v138_v17_selective_boost_aggressive,
+        ),
+        (
+            "runtime_ultra_hybrid_v139_v17_selective_boost_strict",
+            model_runtime_ultra_hybrid_v139_v17_selective_boost_strict,
+        ),
+        (
+            "runtime_ultra_hybrid_v140_v17_selective_boost_strict_pressure",
+            model_runtime_ultra_hybrid_v140_v17_selective_boost_strict_pressure,
+        ),
+        (
+            "runtime_ultra_hybrid_v141_v17_window6",
+            model_runtime_ultra_hybrid_v141_v17_window6,
+        ),
+        (
+            "runtime_ultra_hybrid_v142_v17_window4",
+            model_runtime_ultra_hybrid_v142_v17_window4,
+        ),
+        (
+            "runtime_ultra_hybrid_v144_v17_window5",
+            model_runtime_ultra_hybrid_v144_v17_window5,
+        ),
+        (
+            "runtime_ultra_hybrid_v143_runtime_base_v17_boost",
+            model_runtime_ultra_hybrid_v143_runtime_base_v17_boost,
+        ),
+        (
+            "runtime_ultra_hybrid_v146_runtime_base_v139_strict",
+            model_runtime_ultra_hybrid_v146_runtime_base_v139_strict,
+        ),
+        (
+            "runtime_ultra_hybrid_v147_early_neutral_runtime_guard",
+            model_runtime_ultra_hybrid_v147_early_neutral_runtime_guard,
+        ),
+        (
             "runtime_ultra_d5_pro_anchor_challenge_v82",
             model_runtime_ultra_d5_pro_anchor_challenge_v82,
         ),
@@ -19888,6 +22841,54 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
             model_runtime_fast_root_quality_v3,
         ),
         (
+            "runtime_fast_scoring_v1_mana_race_plus",
+            model_runtime_fast_scoring_v1_mana_race_plus,
+        ),
+        (
+            "runtime_fast_scoring_v2_mana_race_sharp",
+            model_runtime_fast_scoring_v2_mana_race_sharp,
+        ),
+        (
+            "runtime_fast_scoring_v3_phase_gated",
+            model_runtime_fast_scoring_v3_phase_gated,
+        ),
+        (
+            "runtime_fast_scoring_v4_defense_denial",
+            model_runtime_fast_scoring_v4_defense_denial,
+        ),
+        (
+            "runtime_fast_scoring_v5_opening_supermana",
+            model_runtime_fast_scoring_v5_opening_supermana,
+        ),
+        (
+            "runtime_fast_scoring_v6_trailing_defense_denial",
+            model_runtime_fast_scoring_v6_trailing_defense_denial,
+        ),
+        (
+            "runtime_fast_scoring_v7_opening_trailing_blend",
+            model_runtime_fast_scoring_v7_opening_trailing_blend,
+        ),
+        (
+            "runtime_fast_scoring_v8_micro_stable",
+            model_runtime_fast_scoring_v8_micro_stable,
+        ),
+        (
+            "runtime_fast_scoring_v9_interview_balanced",
+            model_runtime_fast_scoring_v9_interview_balanced,
+        ),
+        (
+            "runtime_fast_scoring_v10_counterplay_pressure",
+            model_runtime_fast_scoring_v10_counterplay_pressure,
+        ),
+        (
+            "runtime_fast_scoring_v11_opening_interview_gate",
+            model_runtime_fast_scoring_v11_opening_interview_gate,
+        ),
+        (
+            "runtime_fast_scoring_v12_blended_counterplay",
+            model_runtime_fast_scoring_v12_blended_counterplay,
+        ),
+        (
             "runtime_normal_conversion_v1",
             model_runtime_normal_conversion_v1,
         ),
@@ -19898,6 +22899,102 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
         (
             "runtime_normal_conversion_v3",
             model_runtime_normal_conversion_v3,
+        ),
+        (
+            "runtime_normal_scoring_v1_opponent_mana_soft_plus",
+            model_runtime_normal_scoring_v1_opponent_mana_soft_plus,
+        ),
+        (
+            "runtime_normal_scoring_v2_opponent_mana_soft_plus_plus",
+            model_runtime_normal_scoring_v2_opponent_mana_soft_plus_plus,
+        ),
+        (
+            "runtime_normal_scoring_v3_attacker_proximity_with_soft_plus",
+            model_runtime_normal_scoring_v3_attacker_proximity_with_soft_plus,
+        ),
+        (
+            "runtime_normal_scoring_v4_adaptive_attacker_proximity",
+            model_runtime_normal_scoring_v4_adaptive_attacker_proximity,
+        ),
+        (
+            "runtime_normal_scoring_v5_contextual_walk_threat",
+            model_runtime_normal_scoring_v5_contextual_walk_threat,
+        ),
+        (
+            "runtime_normal_scoring_v6_pressure_window_walk_threat",
+            model_runtime_normal_scoring_v6_pressure_window_walk_threat,
+        ),
+        (
+            "runtime_normal_scoring_v7_contextual_walk_threat_with_mana_soft",
+            model_runtime_normal_scoring_v7_contextual_walk_threat_with_mana_soft,
+        ),
+        (
+            "runtime_normal_scoring_v8_contextual_boolean_drainer",
+            model_runtime_normal_scoring_v8_contextual_boolean_drainer,
+        ),
+        (
+            "runtime_normal_scoring_v9_walk_threat_midplus",
+            model_runtime_normal_scoring_v9_walk_threat_midplus,
+        ),
+        (
+            "runtime_normal_scoring_v10_walk_threat_midplus_mana_soft",
+            model_runtime_normal_scoring_v10_walk_threat_midplus_mana_soft,
+        ),
+        (
+            "runtime_normal_scoring_v11_tactical_moderate_walk_threat",
+            model_runtime_normal_scoring_v11_tactical_moderate_walk_threat,
+        ),
+        (
+            "runtime_normal_scoring_v12_tactical_moderate_with_mana_soft",
+            model_runtime_normal_scoring_v12_tactical_moderate_with_mana_soft,
+        ),
+        (
+            "runtime_normal_scoring_v13_moderate_with_opponent_mana_soft",
+            model_runtime_normal_scoring_v13_moderate_with_opponent_mana_soft,
+        ),
+        (
+            "runtime_normal_scoring_v14_moderate_with_mana_race_soft",
+            model_runtime_normal_scoring_v14_moderate_with_mana_race_soft,
+        ),
+        (
+            "runtime_normal_scoring_v15_moderate_if_not_ahead_plus_one",
+            model_runtime_normal_scoring_v15_moderate_if_not_ahead_plus_one,
+        ),
+        (
+            "runtime_normal_scoring_v16_moderate_if_not_ahead_plus_two",
+            model_runtime_normal_scoring_v16_moderate_if_not_ahead_plus_two,
+        ),
+        (
+            "runtime_normal_scoring_v17_turn_gated_moderate_walk_threat",
+            model_runtime_normal_scoring_v17_turn_gated_moderate_walk_threat,
+        ),
+        (
+            "runtime_normal_scoring_v18_turn_gated_moderate_with_mana_soft",
+            model_runtime_normal_scoring_v18_turn_gated_moderate_with_mana_soft,
+        ),
+        (
+            "runtime_normal_scoring_v19_drainer_shield",
+            model_runtime_normal_scoring_v19_drainer_shield,
+        ),
+        (
+            "runtime_normal_scoring_v20_strong_attacker_proximity",
+            model_runtime_normal_scoring_v20_strong_attacker_proximity,
+        ),
+        (
+            "runtime_normal_scoring_v21_hybrid_shield_attacker",
+            model_runtime_normal_scoring_v21_hybrid_shield_attacker,
+        ),
+        (
+            "runtime_normal_scoring_v22_moderate_carrier_balance",
+            model_runtime_normal_scoring_v22_moderate_carrier_balance,
+        ),
+        (
+            "runtime_normal_scoring_v23_threat_gated_moderate_walk_threat",
+            model_runtime_normal_scoring_v23_threat_gated_moderate_walk_threat,
+        ),
+        (
+            "runtime_normal_scoring_v24_threat_gated_moderate_with_mana_soft",
+            model_runtime_normal_scoring_v24_threat_gated_moderate_with_mana_soft,
         ),
         (
             "runtime_fast_root_quality_v1_normal_conversion_v3",
@@ -21742,6 +24839,7 @@ fn run_profile_vs_pool_cross_budget(
     env::set_var("SMART_USE_WHITE_OPENING_BOOK", "false");
 
     let mut aggregate = MatchupStats::default();
+    let debug_pool = env_bool("SMART_POOL_DEBUG").unwrap_or(false);
     for (opponent_index, opponent) in opponents.iter().copied().enumerate() {
         let duel_tag = format!("{}:pool_{}", seed_tag, opponent_index);
         let seed = seed_for_budget_duel_repeat_and_tag(
@@ -21768,7 +24866,25 @@ fn run_profile_vs_pool_cross_budget(
             seed,
             max_plies,
         );
-        aggregate.merge(mirrored_candidate_stats(ab, ba));
+        let mirrored = mirrored_candidate_stats(ab, ba);
+        if debug_pool {
+            let (delta, confidence) = stats_delta_confidence(mirrored);
+            println!(
+                "pool debug: profile={}({}) opponent={}({}) idx={} seed={} wins={} losses={} draws={} delta={:.4} confidence={:.3}",
+                profile_name,
+                profile_mode.as_api_value(),
+                opponent.id,
+                opponent_mode.as_api_value(),
+                opponent_index,
+                seed,
+                mirrored.wins,
+                mirrored.losses,
+                mirrored.draws,
+                delta,
+                confidence,
+            );
+        }
+        aggregate.merge(mirrored);
     }
 
     if let Some(previous) = original_max_plies {
@@ -23164,6 +26280,148 @@ fn smart_automove_pool_ultra_promotion_ladder() {
 }
 
 #[test]
+#[ignore = "diagnostic: ultra pool-only probe against pro/normal/fast baselines"]
+fn smart_automove_pool_ultra_pool_probe_only() {
+    let candidate_profile = ultra_candidate_profile_name();
+    let baseline_profile = ultra_baseline_profile_name();
+    let pool_games = env_usize("SMART_ULTRA_GATE_POOL_GAMES").unwrap_or(1).max(1);
+    let pool_max_plies = env_usize("SMART_ULTRA_GATE_POOL_MAX_PLIES")
+        .unwrap_or(80)
+        .max(56);
+
+    let candidate_pool_vs_pro = run_profile_vs_pool_cross_budget(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Ultra,
+        SmartAutomovePreference::Pro,
+        pool_games,
+        pool_max_plies,
+        "ultra_pool_vs_pro",
+    );
+    let baseline_pool_vs_pro = run_profile_vs_pool_cross_budget(
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Pro,
+        SmartAutomovePreference::Pro,
+        pool_games,
+        pool_max_plies,
+        "baseline_pool_vs_pro",
+    );
+    let candidate_pool_vs_normal = run_profile_vs_pool_cross_budget(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Ultra,
+        SmartAutomovePreference::Normal,
+        pool_games,
+        pool_max_plies,
+        "ultra_pool_vs_normal",
+    );
+    let baseline_pool_vs_normal = run_profile_vs_pool_cross_budget(
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Normal,
+        SmartAutomovePreference::Normal,
+        pool_games,
+        pool_max_plies,
+        "baseline_pool_vs_normal",
+    );
+    let candidate_pool_vs_fast = run_profile_vs_pool_cross_budget(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Ultra,
+        SmartAutomovePreference::Fast,
+        pool_games,
+        pool_max_plies,
+        "ultra_pool_vs_fast",
+    );
+    let baseline_pool_vs_fast = run_profile_vs_pool_cross_budget(
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Fast,
+        SmartAutomovePreference::Fast,
+        pool_games,
+        pool_max_plies,
+        "baseline_pool_vs_fast",
+    );
+
+    let (candidate_pool_pro_delta, candidate_pool_pro_confidence) =
+        stats_delta_confidence(candidate_pool_vs_pro);
+    let (baseline_pool_pro_delta, baseline_pool_pro_confidence) =
+        stats_delta_confidence(baseline_pool_vs_pro);
+    let (candidate_pool_normal_delta, candidate_pool_normal_confidence) =
+        stats_delta_confidence(candidate_pool_vs_normal);
+    let (baseline_pool_normal_delta, baseline_pool_normal_confidence) =
+        stats_delta_confidence(baseline_pool_vs_normal);
+    let (candidate_pool_fast_delta, candidate_pool_fast_confidence) =
+        stats_delta_confidence(candidate_pool_vs_fast);
+    let (baseline_pool_fast_delta, baseline_pool_fast_confidence) =
+        stats_delta_confidence(baseline_pool_vs_fast);
+
+    println!(
+        "ultra pool-only vs pro-opponents: candidate_delta={:.4} candidate_conf={:.3} baseline_delta={:.4} baseline_conf={:.3}",
+        candidate_pool_pro_delta,
+        candidate_pool_pro_confidence,
+        baseline_pool_pro_delta,
+        baseline_pool_pro_confidence
+    );
+    println!(
+        "ultra pool-only vs normal-opponents: candidate_delta={:.4} candidate_conf={:.3} baseline_delta={:.4} baseline_conf={:.3}",
+        candidate_pool_normal_delta,
+        candidate_pool_normal_confidence,
+        baseline_pool_normal_delta,
+        baseline_pool_normal_confidence
+    );
+    println!(
+        "ultra pool-only vs fast-opponents: candidate_delta={:.4} candidate_conf={:.3} baseline_delta={:.4} baseline_conf={:.3}",
+        candidate_pool_fast_delta,
+        candidate_pool_fast_confidence,
+        baseline_pool_fast_delta,
+        baseline_pool_fast_confidence
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: print opening FENs for selected seed values"]
+fn smart_automove_pool_ultra_seed_fen_probe() {
+    let seeds_env = env::var("SMART_ULTRA_DIAG_SEEDS").ok();
+    let seeds = seeds_env
+        .as_deref()
+        .map(|raw| {
+            raw.split(',')
+                .filter_map(|part| part.trim().parse::<u64>().ok())
+                .collect::<Vec<_>>()
+        })
+        .filter(|values| !values.is_empty())
+        .unwrap_or_else(|| {
+            vec![
+                7088049537311476035,
+                6562567015485628331,
+                8049063576431925735,
+            ]
+        });
+
+    for seed in seeds {
+        let openings = generate_opening_fens_cached(seed, 1);
+        let fen = openings
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "<none>".to_string());
+        if fen == "<none>" {
+            println!("seed_fen: seed={} fen=<none>", seed);
+            continue;
+        }
+        let game = MonsGame::from_fen(fen.as_str(), false)
+            .unwrap_or_else(|| panic!("seed {} should parse generated fen", seed));
+        println!(
+            "seed_fen: seed={} active={:?} turn={} mons_moves={} mana_moves={} actions_used={} white_score={} black_score={} fen={}",
+            seed,
+            game.active_color,
+            game.turn_number,
+            game.mons_moves_count,
+            game.mana_moves_count,
+            game.actions_used_count,
+            game.white_score,
+            game.black_score,
+            fen
+        );
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: ultra candidate matrix quick probe"]
 fn smart_automove_pool_ultra_candidate_matrix_probe() {
     let candidates = [
@@ -23286,6 +26544,28 @@ fn smart_automove_pool_ultra_candidate_matrix_probe() {
         "runtime_ultra_scoring_v122_attacker_micro_plus_trailing_only",
         "runtime_ultra_scoring_v123_close_root_tiebreak_interview",
         "runtime_ultra_scoring_v124_close_root_tiebreak_protected",
+        "runtime_ultra_hybrid_v125_tie_verify_pro_floor",
+        "runtime_ultra_hybrid_v126_tie_verify_pro_normal_dual_floor",
+        "runtime_ultra_hybrid_v127_confirmation_guard_strict",
+        "runtime_ultra_hybrid_v128_hiutil_tie_verify",
+        "runtime_ultra_hybrid_v129_stability_gated_tie_verify",
+        "runtime_ultra_hybrid_v130_normal_floor_veto",
+        "runtime_ultra_hybrid_v131_trailing_conversion_boost",
+        "runtime_ultra_hybrid_v132_portfolio_guarded",
+        "runtime_ultra_hybrid_v133_pro_anchor_gate",
+        "runtime_ultra_hybrid_v134_root_pro_floor_pick",
+        "runtime_ultra_hybrid_v135_selective_pro_bridge",
+        "runtime_ultra_hybrid_v136_selective_pro_bridge_aggressive",
+        "runtime_ultra_hybrid_v137_v17_selective_boost",
+        "runtime_ultra_hybrid_v138_v17_selective_boost_aggressive",
+        "runtime_ultra_hybrid_v139_v17_selective_boost_strict",
+        "runtime_ultra_hybrid_v140_v17_selective_boost_strict_pressure",
+        "runtime_ultra_hybrid_v141_v17_window6",
+        "runtime_ultra_hybrid_v142_v17_window4",
+        "runtime_ultra_hybrid_v144_v17_window5",
+        "runtime_ultra_hybrid_v143_runtime_base_v17_boost",
+        "runtime_ultra_hybrid_v146_runtime_base_v139_strict",
+        "runtime_ultra_hybrid_v147_early_neutral_runtime_guard",
         "runtime_ultra_d5_pro_anchor_challenge_v82",
     ];
     let repeats = env_usize("SMART_ULTRA_MATRIX_REPEATS").unwrap_or(1).max(1);
@@ -23828,6 +27108,115 @@ fn smart_automove_pool_candidate_promotion_with_client_budgets() {
         assert!(evaluation.removed_model_id.is_some());
     } else {
         assert!(evaluation.removed_model_id.is_none());
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: compare candidate vs baseline pool deltas per mode/opponent"]
+fn smart_automove_pool_pool_regression_diagnostic() {
+    let candidate_profile_name = candidate_profile().as_str().to_string();
+    let baseline_profile_name = env::var("SMART_GATE_BASELINE_PROFILE")
+        .ok()
+        .map(|value| value.trim().to_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "runtime_current".to_string());
+    let candidate = AutomoveModel {
+        id: "candidate",
+        select_inputs: CANDIDATE_MODEL.select_inputs,
+    };
+    let baseline = AutomoveModel {
+        id: "baseline",
+        select_inputs: profile_selector_from_name(baseline_profile_name.as_str())
+            .unwrap_or_else(|| panic!("baseline '{}' not found", baseline_profile_name)),
+    };
+    let budgets = client_budgets().to_vec();
+    let pool_games = env_usize("SMART_GATE_POOL_GAMES").unwrap_or(3).max(1);
+    let (candidate_eval, baseline_eval, candidate_wr, baseline_wr) =
+        run_pool_non_regression_check(candidate, baseline, budgets.as_slice(), pool_games);
+
+    println!(
+        "pool regression diagnostic: candidate={} baseline={} games={} candidate_wr={:.3} baseline_wr={:.3} delta={:+.3}",
+        candidate_profile_name,
+        baseline_profile_name,
+        pool_games,
+        candidate_wr,
+        baseline_wr,
+        candidate_wr - baseline_wr
+    );
+    println!(
+        "candidate beaten={}/{} | baseline beaten={}/{}",
+        candidate_eval.beaten_opponents,
+        candidate_eval.opponents.len(),
+        baseline_eval.beaten_opponents,
+        baseline_eval.opponents.len()
+    );
+
+    for budget in budgets {
+        let Some(candidate_mode) = candidate_eval
+            .mode_results
+            .iter()
+            .find(|mode| mode.budget.key() == budget.key())
+        else {
+            continue;
+        };
+        let Some(baseline_mode) = baseline_eval
+            .mode_results
+            .iter()
+            .find(|mode| mode.budget.key() == budget.key())
+        else {
+            continue;
+        };
+
+        let candidate_mode_wr = candidate_mode.aggregate_stats.win_rate_points();
+        let baseline_mode_wr = baseline_mode.aggregate_stats.win_rate_points();
+        println!(
+            "mode {}: candidate_wr={:.3} baseline_wr={:.3} delta={:+.3}",
+            budget.key(),
+            candidate_mode_wr,
+            baseline_mode_wr,
+            candidate_mode_wr - baseline_mode_wr
+        );
+
+        let mut opponent_ids = std::collections::BTreeSet::new();
+        for opponent in &candidate_mode.opponents {
+            opponent_ids.insert(opponent.opponent_id);
+        }
+        for opponent in &baseline_mode.opponents {
+            opponent_ids.insert(opponent.opponent_id);
+        }
+
+        for opponent_id in opponent_ids {
+            let candidate_stats = candidate_mode
+                .opponents
+                .iter()
+                .find(|entry| entry.opponent_id == opponent_id)
+                .map(|entry| entry.stats)
+                .unwrap_or_default();
+            let baseline_stats = baseline_mode
+                .opponents
+                .iter()
+                .find(|entry| entry.opponent_id == opponent_id)
+                .map(|entry| entry.stats)
+                .unwrap_or_default();
+            let candidate_opponent_wr = candidate_stats.win_rate_points();
+            let baseline_opponent_wr = baseline_stats.win_rate_points();
+            let delta = candidate_opponent_wr - baseline_opponent_wr;
+            if delta.abs() >= 0.05 {
+                println!(
+                    "  {}: candidate={:.3} ({}/{}/{}) baseline={:.3} ({}/{}/{}) delta={:+.3}",
+                    opponent_id,
+                    candidate_opponent_wr,
+                    candidate_stats.wins,
+                    candidate_stats.losses,
+                    candidate_stats.draws,
+                    baseline_opponent_wr,
+                    baseline_stats.wins,
+                    baseline_stats.losses,
+                    baseline_stats.draws,
+                    delta
+                );
+            }
+        }
     }
 }
 
