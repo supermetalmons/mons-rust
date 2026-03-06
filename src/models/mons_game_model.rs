@@ -194,8 +194,7 @@ const SMART_AUTOMOVE_PRO_MAX_VISITED_NODES: i32 =
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_AUTOMOVE_ULTRA_DEPTH: i32 = 5;
 #[cfg(any(target_arch = "wasm32", test))]
-const SMART_AUTOMOVE_ULTRA_MAX_VISITED_NODES: i32 =
-    SMART_AUTOMOVE_PRO_MAX_VISITED_NODES * 10;
+const SMART_AUTOMOVE_ULTRA_MAX_VISITED_NODES: i32 = SMART_AUTOMOVE_PRO_MAX_VISITED_NODES * 10;
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Default)]
@@ -1455,6 +1454,8 @@ struct ScoredRootMove {
     has_roundtrip: bool,
     scores_supermana_this_turn: bool,
     scores_opponent_mana_this_turn: bool,
+    safe_supermana_pickup_now: bool,
+    safe_opponent_mana_pickup_now: bool,
     supermana_progress: bool,
     opponent_mana_progress: bool,
     interview_soft_priority: i32,
@@ -1477,6 +1478,8 @@ struct RootEvaluation {
     has_roundtrip: bool,
     scores_supermana_this_turn: bool,
     scores_opponent_mana_this_turn: bool,
+    safe_supermana_pickup_now: bool,
+    safe_opponent_mana_pickup_now: bool,
     supermana_progress: bool,
     opponent_mana_progress: bool,
     interview_soft_priority: i32,
@@ -2935,6 +2938,18 @@ impl MonsGameModel {
                 ..ExactTurnSummary::default()
             }
         };
+        let safe_supermana_pickup_now = Self::events_pickup_supermana(&events)
+            && Self::own_drainer_carries_specific_mana_safely(
+                &simulated_game.board,
+                perspective,
+                Mana::Supermana,
+            );
+        let safe_opponent_mana_pickup_now = Self::events_pickup_opponent_mana(&events, perspective)
+            && Self::own_drainer_carries_specific_mana_safely(
+                &simulated_game.board,
+                perspective,
+                Mana::Regular(perspective.other()),
+            );
         let supermana_progress = scores_supermana_this_turn
             || Self::events_pickup_supermana(&events)
             || Self::events_move_supermana_toward_color(&events, perspective)
@@ -3048,6 +3063,8 @@ impl MonsGameModel {
             has_roundtrip,
             scores_supermana_this_turn,
             scores_opponent_mana_this_turn,
+            safe_supermana_pickup_now,
+            safe_opponent_mana_pickup_now,
             supermana_progress,
             opponent_mana_progress,
             interview_soft_priority,
@@ -3756,6 +3773,12 @@ impl MonsGameModel {
         if candidate.scores_opponent_mana_this_turn != incumbent.scores_opponent_mana_this_turn {
             return candidate.scores_opponent_mana_this_turn;
         }
+        if candidate.safe_supermana_pickup_now != incumbent.safe_supermana_pickup_now {
+            return candidate.safe_supermana_pickup_now;
+        }
+        if candidate.safe_opponent_mana_pickup_now != incumbent.safe_opponent_mana_pickup_now {
+            return candidate.safe_opponent_mana_pickup_now;
+        }
         if candidate.supermana_progress != incumbent.supermana_progress {
             return candidate.supermana_progress;
         }
@@ -4228,6 +4251,8 @@ impl MonsGameModel {
                 has_roundtrip: candidate.has_roundtrip,
                 scores_supermana_this_turn: candidate.scores_supermana_this_turn,
                 scores_opponent_mana_this_turn: candidate.scores_opponent_mana_this_turn,
+                safe_supermana_pickup_now: candidate.safe_supermana_pickup_now,
+                safe_opponent_mana_pickup_now: candidate.safe_opponent_mana_pickup_now,
                 supermana_progress: candidate.supermana_progress,
                 opponent_mana_progress: candidate.opponent_mana_progress,
                 interview_soft_priority: candidate.interview_soft_priority,
@@ -5350,7 +5375,8 @@ impl MonsGameModel {
         delta -= (after.opponent_spirit_action_targets - before.opponent_spirit_action_targets)
             * (SMART_SPIRIT_ACTION_TARGET_DELTA_WEIGHT / 2);
         delta += (after.my_same_turn_score_value - before.my_same_turn_score_value) * 55;
-        delta -= (after.opponent_same_turn_score_value - before.opponent_same_turn_score_value) * 45;
+        delta -=
+            (after.opponent_same_turn_score_value - before.opponent_same_turn_score_value) * 45;
         delta += (after.my_same_turn_opponent_mana_score_value
             - before.my_same_turn_opponent_mana_score_value)
             * 90;
@@ -5366,7 +5392,8 @@ impl MonsGameModel {
         if !before.my_safe_opponent_mana_progress && after.my_safe_opponent_mana_progress {
             delta += 120;
         }
-        if !before.opponent_safe_opponent_mana_progress && after.opponent_safe_opponent_mana_progress
+        if !before.opponent_safe_opponent_mana_progress
+            && after.opponent_safe_opponent_mana_progress
         {
             delta -= 110;
         }
@@ -5464,7 +5491,9 @@ impl MonsGameModel {
 
         let mut snapshot = MoveEfficiencySnapshot {
             my_best_carrier_steps: my_summary.best_carrier_steps.unwrap_or(unknown_steps),
-            opponent_best_carrier_steps: opponent_summary.best_carrier_steps.unwrap_or(unknown_steps),
+            opponent_best_carrier_steps: opponent_summary
+                .best_carrier_steps
+                .unwrap_or(unknown_steps),
             my_best_drainer_to_mana_steps: my_summary
                 .best_drainer_to_mana_steps
                 .unwrap_or(unknown_steps),
@@ -5492,7 +5521,8 @@ impl MonsGameModel {
             } else {
                 0
             },
-            opponent_same_turn_opponent_mana_score_value: if game.active_color == perspective.other()
+            opponent_same_turn_opponent_mana_score_value: if game.active_color
+                == perspective.other()
             {
                 opponent_summary.spirit.same_turn_opponent_mana_score_value
             } else {
@@ -5744,6 +5774,8 @@ impl MonsGameModel {
             has_roundtrip: candidate.has_roundtrip,
             scores_supermana_this_turn: candidate.scores_supermana_this_turn,
             scores_opponent_mana_this_turn: candidate.scores_opponent_mana_this_turn,
+            safe_supermana_pickup_now: candidate.safe_supermana_pickup_now,
+            safe_opponent_mana_pickup_now: candidate.safe_opponent_mana_pickup_now,
             supermana_progress: candidate.supermana_progress,
             opponent_mana_progress: candidate.opponent_mana_progress,
             interview_soft_priority: candidate.interview_soft_priority,
@@ -5825,6 +5857,35 @@ impl MonsGameModel {
             return (Some(location), false);
         }
         (None, false)
+    }
+
+    fn own_drainer_carries_specific_mana_safely(
+        board: &Board,
+        perspective: Color,
+        wanted_mana: Mana,
+    ) -> bool {
+        board.occupied().any(|(location, item)| {
+            matches!(
+                item,
+                Item::MonWithMana { mon, mana }
+                    if mon.color == perspective
+                        && mon.kind == MonKind::Drainer
+                        && !mon.is_fainted()
+                        && *mana == wanted_mana
+                        && !is_drainer_under_immediate_threat(
+                            board,
+                            perspective,
+                            location,
+                            Self::is_location_guarded_by_angel(board, perspective, location),
+                        )
+                        && !is_drainer_under_walk_threat(
+                            board,
+                            perspective,
+                            location,
+                            Self::is_location_guarded_by_angel(board, perspective, location),
+                        )
+            )
+        })
     }
 
     fn is_own_drainer_immediately_vulnerable_on_board(
@@ -6033,43 +6094,75 @@ impl MonsGameModel {
             forced_attack_applied = true;
         }
 
+        if !forced_attack_applied
+            && candidate_indices
+                .iter()
+                .any(|index| scored_roots[*index].safe_supermana_pickup_now)
+        {
+            candidate_indices.retain(|index| {
+                let root = &scored_roots[*index];
+                root.scores_supermana_this_turn || root.safe_supermana_pickup_now
+            });
+        } else if !forced_attack_applied
+            && candidate_indices
+                .iter()
+                .any(|index| scored_roots[*index].safe_opponent_mana_pickup_now)
+        {
+            candidate_indices.retain(|index| {
+                let root = &scored_roots[*index];
+                root.scores_opponent_mana_this_turn || root.safe_opponent_mana_pickup_now
+            });
+        }
+
         if config.enable_interview_hard_spirit_deploy
             && !forced_attack_applied
             && Self::should_prefer_spirit_development(game, perspective)
         {
-            let my_score_before = Self::score_for_color(game, perspective);
-            let spirit_ready_indices = candidate_indices
-                .iter()
-                .copied()
-                .filter(|index| !scored_roots[*index].keeps_awake_spirit_on_base)
-                .collect::<Vec<_>>();
-            if !spirit_ready_indices.is_empty() {
-                let safe_spirit_ready_indices = spirit_ready_indices
+            let has_safe_high_value_pickup = candidate_indices.iter().any(|index| {
+                let root = &scored_roots[*index];
+                root.scores_supermana_this_turn
+                    || root.scores_opponent_mana_this_turn
+                    || root.safe_supermana_pickup_now
+                    || root.safe_opponent_mana_pickup_now
+            });
+            if has_safe_high_value_pickup {
+                // Interview priority puts safe supermana/opponent-mana conversion above
+                // default spirit deployment.
+            } else {
+                let my_score_before = Self::score_for_color(game, perspective);
+                let spirit_ready_indices = candidate_indices
                     .iter()
                     .copied()
-                    .filter(|index| {
-                        let root = &scored_roots[*index];
-                        !root.own_drainer_vulnerable && !root.mana_handoff_to_opponent
-                    })
+                    .filter(|index| !scored_roots[*index].keeps_awake_spirit_on_base)
                     .collect::<Vec<_>>();
-                let preferred_spirit_indices = if !safe_spirit_ready_indices.is_empty() {
-                    safe_spirit_ready_indices
-                } else {
-                    spirit_ready_indices
-                };
+                if !spirit_ready_indices.is_empty() {
+                    let safe_spirit_ready_indices = spirit_ready_indices
+                        .iter()
+                        .copied()
+                        .filter(|index| {
+                            let root = &scored_roots[*index];
+                            !root.own_drainer_vulnerable && !root.mana_handoff_to_opponent
+                        })
+                        .collect::<Vec<_>>();
+                    let preferred_spirit_indices = if !safe_spirit_ready_indices.is_empty() {
+                        safe_spirit_ready_indices
+                    } else {
+                        spirit_ready_indices
+                    };
 
-                let keeps_spirit_and_scores = candidate_indices.iter().any(|index| {
-                    let root = &scored_roots[*index];
-                    root.keeps_awake_spirit_on_base
-                        && Self::score_for_color(&root.game, perspective) > my_score_before
-                });
-                let spirit_line_scores = preferred_spirit_indices.iter().any(|index| {
-                    let root = &scored_roots[*index];
-                    Self::score_for_color(&root.game, perspective) > my_score_before
-                });
+                    let keeps_spirit_and_scores = candidate_indices.iter().any(|index| {
+                        let root = &scored_roots[*index];
+                        root.keeps_awake_spirit_on_base
+                            && Self::score_for_color(&root.game, perspective) > my_score_before
+                    });
+                    let spirit_line_scores = preferred_spirit_indices.iter().any(|index| {
+                        let root = &scored_roots[*index];
+                        Self::score_for_color(&root.game, perspective) > my_score_before
+                    });
 
-                if !keeps_spirit_and_scores || spirit_line_scores {
-                    candidate_indices = preferred_spirit_indices;
+                    if !keeps_spirit_and_scores || spirit_line_scores {
+                        candidate_indices = preferred_spirit_indices;
+                    }
                 }
             }
         }
@@ -6123,22 +6216,33 @@ impl MonsGameModel {
                 .iter()
                 .any(|index| scored_roots[*index].spirit_development)
         {
-            let best_score = candidate_indices
-                .iter()
-                .map(|index| scored_roots[*index].score)
-                .max()
-                .unwrap_or(i32::MIN);
-            let margin = SMART_ROOT_SPIRIT_DEVELOPMENT_SCORE_MARGIN.max(0);
-            let spirit_indices = candidate_indices
-                .iter()
-                .copied()
-                .filter(|index| {
-                    let root = &scored_roots[*index];
-                    root.spirit_development && root.score + margin >= best_score
-                })
-                .collect::<Vec<_>>();
-            if !spirit_indices.is_empty() {
-                candidate_indices = spirit_indices;
+            let has_safe_high_value_pickup = candidate_indices.iter().any(|index| {
+                let root = &scored_roots[*index];
+                root.scores_supermana_this_turn
+                    || root.scores_opponent_mana_this_turn
+                    || root.safe_supermana_pickup_now
+                    || root.safe_opponent_mana_pickup_now
+            });
+            if has_safe_high_value_pickup {
+                // Keep the safe high-value pickup candidates instead of forcing spirit deploy.
+            } else {
+                let best_score = candidate_indices
+                    .iter()
+                    .map(|index| scored_roots[*index].score)
+                    .max()
+                    .unwrap_or(i32::MIN);
+                let margin = SMART_ROOT_SPIRIT_DEVELOPMENT_SCORE_MARGIN.max(0);
+                let spirit_indices = candidate_indices
+                    .iter()
+                    .copied()
+                    .filter(|index| {
+                        let root = &scored_roots[*index];
+                        root.spirit_development && root.score + margin >= best_score
+                    })
+                    .collect::<Vec<_>>();
+                if !spirit_indices.is_empty() {
+                    candidate_indices = spirit_indices;
+                }
             }
         }
 
@@ -7111,12 +7215,7 @@ mod opening_book_tests {
     where
         F: Fn(&MonsGame, &[Event]) -> bool,
     {
-        fn visit<F>(
-            game: &MonsGame,
-            color: Color,
-            seen: &mut HashSet<u64>,
-            predicate: &F,
-        ) -> bool
+        fn visit<F>(game: &MonsGame, color: Color, seen: &mut HashSet<u64>, predicate: &F) -> bool
         where
             F: Fn(&MonsGame, &[Event]) -> bool,
         {
@@ -7573,6 +7672,62 @@ mod opening_book_tests {
     }
 
     #[test]
+    fn safe_supermana_pickup_is_preferred_when_available() {
+        let white_spirit = Mon::new(MonKind::Spirit, Color::White, 0);
+        let white_spirit_base = Board::new().base(white_spirit);
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (white_spirit_base, Item::Mon { mon: white_spirit }),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let inputs = MonsGameModel::smart_search_best_inputs(
+            &game,
+            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+        );
+        let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected supermana inputs should be legal");
+        assert!(
+            matches!(
+                after.board.item(Location::new(5, 5)),
+                Some(Item::MonWithMana {
+                    mon,
+                    mana: Mana::Supermana,
+                }) if mon.color == Color::White && mon.kind == MonKind::Drainer
+            ),
+            "selected line should pick up safe supermana, inputs={:?}, events={:?}",
+            inputs,
+            events
+        );
+    }
+
+    #[test]
     fn selected_line_preserves_same_turn_opponent_mana_threat_when_available() {
         let game = game_with_items(
             vec![
@@ -7607,7 +7762,8 @@ mod opening_book_tests {
         let exact_turn_before =
             crate::models::automove_exact::exact_turn_summary(&game, Color::White);
         assert!(
-            exact_turn_before.safe_opponent_mana_progress || exact_turn_before.spirit_assisted_denial,
+            exact_turn_before.safe_opponent_mana_progress
+                || exact_turn_before.spirit_assisted_denial,
             "scenario should start with an exact same-turn opponent-mana threat"
         );
 
@@ -7702,7 +7858,9 @@ mod opening_book_tests {
         let exact = crate::models::automove_exact::exact_state_analysis(&game)
             .white
             .best_drainer_pickup
-            .map_or(false, |path| path.total_moves <= Config::MONS_MOVES_PER_TURN);
+            .map_or(false, |path| {
+                path.total_moves <= Config::MONS_MOVES_PER_TURN
+            });
         let exhaustive = exhaustive_same_turn_reachable(&game, Color::White, |state, _| {
             state.white_score > game.white_score
         });
