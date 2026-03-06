@@ -3298,6 +3298,14 @@ impl MonsGameModel {
         }
     }
 
+    fn safe_drainer_pickup_fallback_candidates_limit(config: SmartSearchConfig) -> usize {
+        if config.depth >= 3 {
+            8
+        } else {
+            4
+        }
+    }
+
     fn automove_start_input_options(config: SmartSearchConfig) -> SuggestedStartInputOptions {
         SuggestedStartInputOptions {
             include_mana_starts_with_potion_action: config
@@ -3439,6 +3447,17 @@ impl MonsGameModel {
             .collect()
     }
 
+    fn find_awake_drainer_locations(game: &MonsGame, perspective: Color) -> Vec<Location> {
+        game.board
+            .occupied()
+            .filter_map(|(location, item)| {
+                let mon = item.mon()?;
+                (mon.color == perspective && mon.kind == MonKind::Drainer && !mon.is_fainted())
+                    .then_some(location)
+            })
+            .collect()
+    }
+
     fn collect_targeted_spirit_setup_inputs(
         game: &MonsGame,
         perspective: Color,
@@ -3484,6 +3503,71 @@ impl MonsGameModel {
         }
 
         setup_inputs
+    }
+
+    fn collect_targeted_safe_drainer_pickup_inputs(
+        game: &MonsGame,
+        perspective: Color,
+        max_candidates: usize,
+        wanted_mana: Mana,
+    ) -> Vec<LegalInputTransition> {
+        let drainer_locations = Self::find_awake_drainer_locations(game, perspective);
+        if drainer_locations.is_empty() || !game.player_can_move_mon() {
+            return Vec::new();
+        }
+
+        let mut pickup_inputs = Vec::new();
+
+        for drainer_loc in drainer_locations {
+            if pickup_inputs.len() >= max_candidates.max(1) {
+                break;
+            }
+
+            for &target in drainer_loc.nearby_locations_ref() {
+                if pickup_inputs.len() >= max_candidates.max(1) {
+                    break;
+                }
+                let Some(Item::Mana { mana }) = game.board.item(target).copied() else {
+                    continue;
+                };
+                let picked_wanted_mana = match wanted_mana {
+                    Mana::Supermana => mana == Mana::Supermana,
+                    Mana::Regular(owner) if owner == perspective.other() => {
+                        mana == Mana::Regular(owner)
+                    }
+                    _ => false,
+                };
+                if !picked_wanted_mana {
+                    continue;
+                }
+                let inputs = vec![Input::Location(drainer_loc), Input::Location(target)];
+                let Some((after_game, events)) =
+                    Self::apply_inputs_for_search_with_events(game, &inputs)
+                else {
+                    continue;
+                };
+                if (match wanted_mana {
+                    Mana::Supermana => Self::events_pickup_supermana(&events),
+                    Mana::Regular(owner) if owner == perspective.other() => {
+                        Self::events_pickup_opponent_mana(&events, perspective)
+                    }
+                    _ => false,
+                }) && Self::own_drainer_carries_specific_mana_safely(
+                    &after_game.board,
+                    perspective,
+                    wanted_mana,
+                ) {
+                    pickup_inputs.push(LegalInputTransition {
+                        inputs,
+                        game: after_game,
+                        events,
+                    });
+                }
+            }
+        }
+
+        pickup_inputs.sort_by(|a, b| a.inputs.cmp(&b.inputs));
+        pickup_inputs
     }
 
     fn collect_targeted_drainer_attack_inputs(
@@ -3720,6 +3804,65 @@ impl MonsGameModel {
             Self::enumerate_legal_transitions(game, effective_enum_limit, start_options)
         };
 
+        let exact_turn_before = exact_turn_summary(game, perspective);
+        if exact_turn_before.safe_supermana_progress
+            && !root_transitions.iter().any(|transition| {
+                Self::events_pickup_supermana(&transition.events)
+                    && Self::own_drainer_carries_specific_mana_safely(
+                        &transition.game.board,
+                        perspective,
+                        Mana::Supermana,
+                    )
+            })
+        {
+            let fallback_limit = Self::safe_drainer_pickup_fallback_candidates_limit(config);
+            let fallback_inputs = Self::collect_targeted_safe_drainer_pickup_inputs(
+                game,
+                perspective,
+                fallback_limit,
+                Mana::Supermana,
+            );
+            if !fallback_inputs.is_empty() {
+                let mut seen_inputs = root_transitions
+                    .iter()
+                    .map(|transition| transition.inputs.clone())
+                    .collect::<std::collections::HashSet<_>>();
+                for transition in fallback_inputs {
+                    if seen_inputs.insert(transition.inputs.clone()) {
+                        root_transitions.push(transition);
+                    }
+                }
+            }
+        }
+        if exact_turn_before.safe_opponent_mana_progress
+            && !root_transitions.iter().any(|transition| {
+                Self::events_pickup_opponent_mana(&transition.events, perspective)
+                    && Self::own_drainer_carries_specific_mana_safely(
+                        &transition.game.board,
+                        perspective,
+                        Mana::Regular(perspective.other()),
+                    )
+            })
+        {
+            let fallback_limit = Self::safe_drainer_pickup_fallback_candidates_limit(config);
+            let fallback_inputs = Self::collect_targeted_safe_drainer_pickup_inputs(
+                game,
+                perspective,
+                fallback_limit,
+                Mana::Regular(perspective.other()),
+            );
+            if !fallback_inputs.is_empty() {
+                let mut seen_inputs = root_transitions
+                    .iter()
+                    .map(|transition| transition.inputs.clone())
+                    .collect::<std::collections::HashSet<_>>();
+                for transition in fallback_inputs {
+                    if seen_inputs.insert(transition.inputs.clone()) {
+                        root_transitions.push(transition);
+                    }
+                }
+            }
+        }
         if (config.enable_interview_hard_spirit_deploy
             || config.enable_root_spirit_development_pref)
             && Self::should_prefer_spirit_development(game, perspective)
@@ -4078,6 +4221,19 @@ impl MonsGameModel {
                 })
             };
             if let Some((index, _)) = chosen {
+                selected_mask[index] = true;
+            }
+        }
+        for (index, candidate) in candidates.iter().enumerate() {
+            let keep_direct_high_value = candidate.scores_supermana_this_turn
+                || candidate.scores_opponent_mana_this_turn
+                || candidate.safe_supermana_pickup_now
+                || candidate.safe_opponent_mana_pickup_now
+                || candidate.spirit_own_mana_setup_now;
+            if !keep_direct_high_value {
+                continue;
+            }
+            if strict_guarantees || candidate.heuristic >= min_critical_heuristic {
                 selected_mask[index] = true;
             }
         }
@@ -4575,6 +4731,14 @@ impl MonsGameModel {
         }
         for (index, candidate) in root_moves.iter().enumerate() {
             if candidate.attacks_opponent_drainer {
+                selected_mask[index] = true;
+            }
+            if candidate.scores_supermana_this_turn
+                || candidate.scores_opponent_mana_this_turn
+                || candidate.safe_supermana_pickup_now
+                || candidate.safe_opponent_mana_pickup_now
+                || candidate.spirit_own_mana_setup_now
+            {
                 selected_mask[index] = true;
             }
         }
@@ -7854,6 +8018,59 @@ mod opening_book_tests {
     }
 
     #[test]
+    fn spirit_scores_own_mana_when_immediately_available() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(9, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 5),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let inputs = MonsGameModel::smart_search_best_inputs(
+            &game,
+            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+        );
+        let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected spirit-score inputs should be legal");
+        assert!(
+            after.white_score >= game.white_score + 1,
+            "selected line should score own mana immediately, inputs={:?}, events={:?}",
+            inputs,
+            events
+        );
+    }
+
+    #[test]
     fn safe_supermana_pickup_is_preferred_when_available() {
         let white_spirit = Mon::new(MonKind::Spirit, Color::White, 0);
         let white_spirit_base = Board::new().base(white_spirit);
@@ -7906,6 +8123,114 @@ mod opening_book_tests {
             "selected line should pick up safe supermana, inputs={:?}, events={:?}",
             inputs,
             events
+        );
+    }
+
+    #[test]
+    fn safe_opponent_mana_pickup_is_preferred_when_available() {
+        let white_spirit = Mon::new(MonKind::Spirit, Color::White, 0);
+        let white_spirit_base = Board::new().base(white_spirit);
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 4),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (white_spirit_base, Item::Mon { mon: white_spirit }),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let inputs = MonsGameModel::smart_search_best_inputs(
+            &game,
+            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+        );
+        let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected opponent-mana inputs should be legal");
+        assert!(
+            matches!(
+                after.board.item(Location::new(5, 4)),
+                Some(Item::MonWithMana {
+                    mon,
+                    mana: Mana::Regular(Color::Black),
+                }) if mon.color == Color::White && mon.kind == MonKind::Drainer
+            ),
+            "selected line should pick up safe opponent mana, inputs={:?}, events={:?}",
+            inputs,
+            events
+        );
+    }
+
+    #[test]
+    fn ranked_root_moves_surface_safe_opponent_mana_pickup_when_available() {
+        let white_spirit = Mon::new(MonKind::Spirit, Color::White, 0);
+        let white_spirit_base = Board::new().base(white_spirit);
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 4),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (white_spirit_base, Item::Mon { mon: white_spirit }),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let roots = MonsGameModel::ranked_root_moves(
+            &game,
+            Color::White,
+            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+        );
+
+        assert!(
+            roots.iter().any(|root| root.safe_opponent_mana_pickup_now),
+            "expected a surfaced safe opponent-mana pickup root, got inputs={:?}",
+            roots
+                .iter()
+                .map(|root| root.inputs.clone())
+                .collect::<Vec<_>>()
         );
     }
 
