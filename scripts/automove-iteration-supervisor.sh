@@ -35,6 +35,8 @@ done
 
 heartbeat_stale_seconds="${AUTOMOVE_ITERATION_STALE_SECONDS:-5400}"
 failure_pause_seconds="${AUTOMOVE_ITERATION_FAILURE_PAUSE_SECONDS:-30}"
+infra_failure_pause_seconds="${AUTOMOVE_ITERATION_INFRA_FAILURE_PAUSE_SECONDS:-300}"
+infra_failure_limit="${AUTOMOVE_ITERATION_INFRA_FAILURE_LIMIT:-3}"
 
 lock_file="${state_dir}/lock"
 heartbeat_file="${state_dir}/heartbeat.json"
@@ -71,6 +73,12 @@ heartbeat_age_seconds() {
     return 0
   fi
   echo $(( $(epoch_now) - last_epoch ))
+}
+
+last_result_failure_kind() {
+  [ -f "${state_dir}/last-result.json" ] || return 1
+  sed -n 's/.*"failure_kind":[[:space:]]*"\([^"]*\)".*/\1/p' \
+    "${state_dir}/last-result.json" | head -n 1
 }
 
 pid_alive() {
@@ -197,6 +205,7 @@ run_supervisor() {
   write_supervisor_heartbeat "idle" "idle"
 
   local batch_counter=0
+  local infra_failures=0
   while true; do
     if [ -f "${stop_file}" ]; then
       write_idle_status "stopped" "stop_file_present"
@@ -213,14 +222,31 @@ run_supervisor() {
     if AUTOMOVE_ITERATION_SUPERVISOR_PID="$$" \
       AUTOMOVE_ITERATION_BATCH_ID="${batch_id}" \
       "${once_script}" --state-dir "${state_dir}" --batch-id "${batch_id}"; then
+      infra_failures=0
       write_idle_status "running" "between_batches"
       write_supervisor_heartbeat "between_batches" "${batch_id}"
     else
       exit_code=$?
+      failure_kind="$(last_result_failure_kind 2>/dev/null || true)"
       write_idle_status "running" "batch_failed"
       write_supervisor_heartbeat "batch_failed" "${batch_id}"
-      printf 'batch %s failed with exit_code=%s\n' "${batch_id}" "${exit_code}" >>"${supervisor_log}"
-      sleep "${failure_pause_seconds}"
+      printf 'batch %s failed with exit_code=%s failure_kind=%s\n' \
+        "${batch_id}" "${exit_code}" "${failure_kind:-unknown}" >>"${supervisor_log}"
+
+      if [ "${failure_kind:-}" = "infra" ]; then
+        infra_failures=$((infra_failures + 1))
+        if [ "${infra_failures}" -ge "${infra_failure_limit}" ]; then
+          write_idle_status "stopped" "infra_failure_limit"
+          write_supervisor_heartbeat "infra_failure_limit" "${batch_id}"
+          printf 'stopping supervisor after %s consecutive infra failures\n' \
+            "${infra_failures}" >>"${supervisor_log}"
+          break
+        fi
+        sleep "${infra_failure_pause_seconds}"
+      else
+        infra_failures=0
+        sleep "${failure_pause_seconds}"
+      fi
     fi
   done
 }

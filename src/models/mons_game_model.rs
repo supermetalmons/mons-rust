@@ -7456,6 +7456,108 @@ mod opening_book_tests {
     }
 
     #[test]
+    fn spirit_scores_opponent_mana_when_immediately_available() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let inputs = MonsGameModel::smart_search_best_inputs(
+            &game,
+            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+        );
+        let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected spirit-score inputs should be legal");
+        assert!(
+            after.white_score >= game.white_score + 2,
+            "selected line should score opponent mana immediately, inputs={:?}, events={:?}",
+            inputs,
+            events
+        );
+    }
+
+    #[test]
+    fn selected_line_preserves_same_turn_opponent_mana_threat_when_available() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(5, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 3),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        let exact_turn_before =
+            crate::models::automove_exact::exact_turn_summary(&game, Color::White);
+        assert!(
+            exact_turn_before.safe_opponent_mana_progress || exact_turn_before.spirit_assisted_denial,
+            "scenario should start with an exact same-turn opponent-mana threat"
+        );
+
+        let inputs = MonsGameModel::smart_search_best_inputs(
+            &game,
+            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+        );
+        let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected spirit-setup inputs should be legal");
+        let exact_turn_after =
+            crate::models::automove_exact::exact_turn_summary(&after, Color::White);
+        assert!(
+            exact_turn_after.safe_opponent_mana_progress || exact_turn_after.spirit_assisted_denial,
+            "selected line should preserve the exact same-turn opponent-mana threat, inputs={:?}, events={:?}",
+            inputs,
+            events
+        );
+    }
+
+    #[test]
     fn legal_transition_enumeration_matches_apply_helper() {
         let game = MonsGame::new(false);
         let transitions = MonsGameModel::enumerate_legal_transitions(

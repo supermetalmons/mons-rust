@@ -35,6 +35,11 @@ done
 codex_bin="${CODEX_BIN:-/Applications/Codex.app/Contents/Resources/codex}"
 heartbeat_interval="${AUTOMOVE_ITERATION_HEARTBEAT_SECONDS:-60}"
 supervisor_pid="${AUTOMOVE_ITERATION_SUPERVISOR_PID:-$$}"
+runner_command="${AUTOMOVE_ITERATION_RUNNER_COMMAND:-}"
+runner_mode="codex"
+if [ -n "${runner_command}" ]; then
+  runner_mode="command"
+fi
 
 batches_dir="${state_dir}/batches"
 heartbeat_file="${state_dir}/heartbeat.json"
@@ -100,11 +105,14 @@ write_last_result() {
   local started_at="$3"
   local finished_at="$4"
   local duration_seconds="$5"
+  local failure_kind="$6"
   cat >"${last_result_file}" <<EOF
 {
   "batch_id": "${batch_id}",
   "status": "${status}",
   "exit_code": ${exit_code},
+  "failure_kind": "${failure_kind}",
+  "runner_mode": "${runner_mode}",
   "started_at": "${started_at}",
   "finished_at": "${finished_at}",
   "duration_seconds": ${duration_seconds},
@@ -160,6 +168,25 @@ heartbeat_loop() {
   done
 }
 
+detect_failure_kind() {
+  if [ "${runner_mode}" = "command" ] && [ -n "${runner_command}" ]; then
+    if grep -Eiq 'failed to lookup address information|error sending request for url|readonly database|operation not permitted|timed out|connection refused|channel closed' "${log_path}"; then
+      printf 'infra\n'
+      return 0
+    fi
+    printf 'task\n'
+    return 0
+  fi
+
+  if grep -Eiq 'failed to lookup address information|error sending request for url|readonly database|operation not permitted|timed out|connection refused|channel closed' "${log_path}"; then
+    printf 'infra\n'
+  elif grep -Eiq 'codex binary not found|not executable' "${log_path}"; then
+    printf 'infra\n'
+  else
+    printf 'task\n'
+  fi
+}
+
 started_at="$(iso_now)"
 start_epoch="$(epoch_now)"
 
@@ -170,7 +197,7 @@ write_heartbeat "preflight"
 if [ ! -x "${codex_bin}" ]; then
   printf 'codex binary not found or not executable: %s\n' "${codex_bin}" >"${last_error_log}"
   write_current_batch "failed" "missing_codex"
-  write_last_result "failed" 127 "${started_at}" "$(iso_now)" 0
+  write_last_result "failed" 127 "${started_at}" "$(iso_now)" 0 "infra"
   exit 127
 fi
 
@@ -182,8 +209,12 @@ write_current_batch "running" "codex_exec"
 write_heartbeat "codex_exec"
 
 set +e
-"${codex_bin}" exec --full-auto -C "${repo_root}" -o "${summary_path}" - <"${prompt_path}" \
-  >"${log_path}" 2>&1 &
+if [ "${runner_mode}" = "command" ]; then
+  /bin/sh -lc "${runner_command}" >"${log_path}" 2>&1 &
+else
+  "${codex_bin}" exec --full-auto -C "${repo_root}" -o "${summary_path}" - <"${prompt_path}" \
+    >"${log_path}" 2>&1 &
+fi
 child_pid=$!
 heartbeat_loop "${child_pid}" &
 heartbeat_pid=$!
@@ -202,12 +233,13 @@ if [ "${exit_code}" -eq 0 ]; then
   write_current_batch "completed" "done"
   write_heartbeat "done"
   : >"${last_error_log}"
-  write_last_result "completed" "${exit_code}" "${started_at}" "${finished_at}" "${duration_seconds}"
+  write_last_result "completed" "${exit_code}" "${started_at}" "${finished_at}" "${duration_seconds}" "none"
 else
+  failure_kind="$(detect_failure_kind)"
   write_current_batch "failed" "done"
   write_heartbeat "failed"
   tail -n 200 "${log_path}" >"${last_error_log}" || true
-  write_last_result "failed" "${exit_code}" "${started_at}" "${finished_at}" "${duration_seconds}"
+  write_last_result "failed" "${exit_code}" "${started_at}" "${finished_at}" "${duration_seconds}" "${failure_kind}"
 fi
 
 printf 'batch_id=%s exit_code=%s log=%s summary=%s\n' \
