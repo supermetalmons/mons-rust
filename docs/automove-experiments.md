@@ -719,6 +719,18 @@ After a candidate passes the full promotion ladder:
 
 Use this section as an anti-pattern memory so future iterations skip known dead ends faster.
 
+### 0) Ultra scoring hi-util family (`runtime_ultra_scoring_v175..v182`)
+
+- Best pure scoring profile this round was still `runtime_eval_mana_window`:
+  - strict primary probe vs pro (reduced strict setting: games=4, repeats=3) reached `delta=+0.0972`, `confidence=0.938`.
+  - failed full ladder CPU floor (`ratio=3.054 < 3.300`).
+- Hi-util attempts to raise CPU while preserving that strength:
+  - under-CPU variants: `v175`, `v176`, `v180`, `v181` (ratios ~`2.97..3.09`).
+  - over-CPU / unstable variants: `v177` (`11.865x`, cap fail), `v179` (`9.723x`, too slow for practical primary churn), `v178` (`5.428x` but pro-primary collapsed in reduced ladder), `v182` (`4.080x` but pro-primary opened negative).
+- Takeaway:
+  - the current blocker is **utilization shaping that keeps pro-primary conversion quality**.
+  - avoid pure utilization toggles (LMR/futility/PVS flips) without conversion-stability compensation.
+
 ### 1) `runtime_drainer_priority` (weights-only drainer emphasis)
 
 Pure weight inflation without better tactical context was too blunt. CPU near baseline, strength at 0.500.
@@ -1785,6 +1797,74 @@ Takeaway:
 Next fast-only direction:
 
 - Keep scoring deltas minimal and pair them with score-aware **root arbitration among near-equal roots** (not broad weight-family replacement), then re-run full fast-screen -> progressive -> ladder.
+
+---
+
+### 56) Ultra scoring arbiter follow-up (`runtime_ultra_scoring_v193`..`v197`) (March 6, 2026)
+
+Goal:
+
+- Improve ultra via **scoring-only arbitration changes** on top of the proven context-split family, without touching fast/normal/pro runtime logic.
+
+Key outcomes:
+
+- `runtime_ultra_scoring_v193_v107_mana_window_arbiter`:
+  - kept strong primary-vs-pro probe shape,
+  - but **broke confirmation** (`confirm vs pro delta=-0.2500` in reduced probe).
+- `runtime_ultra_scoring_v194_v107_mana_window_delta_arbiter`:
+  - less severe than v193 but still confirmation-negative (`-0.1250`).
+- `runtime_ultra_scoring_v195_v107_independent_early_score_arbiter`:
+  - passed reduced fast-screen (`vs pro/normal/fast` all `+0.2500`),
+  - passed reduced progressive:
+    - `vs pro delta=+0.1111 (conf=0.879)`,
+    - `vs normal delta=+0.1667 (conf=0.967)`,
+    - `vs fast delta=+0.1944 (conf=0.986)`,
+  - but failed reduced strict ladder on **primary confidence vs pro**:
+    - `delta=+0.0833`, `confidence=0.729` (< required `0.900`).
+- `runtime_ultra_scoring_v196` (tight independent switch):
+  - did not recover confidence and regressed confirmation probe.
+- `runtime_ultra_scoring_v197` (t3-only independent switch):
+  - weakened primary-vs-pro further (`delta=+0.0417`, `confidence=0.581`).
+
+Takeaway:
+
+- Opening-context scoring arbiter changes are high-risk for confirmation stability.
+- Independent-context scoring arbiters can improve broad non-regression metrics, but current variants do not meet strict pro-confidence bar.
+- Best known ultra strict-primary confidence remains in the **v107 family**; scoring follow-ups should be constrained to avoid reducing pro-facing decisiveness.
+
+---
+
+### 57) Ultra wider-picture scoring pass (`runtime_ultra_scoring_v198`..`v206`) (March 6, 2026)
+
+Goal:
+
+- Find a stronger ultra scoring policy that improves pro-facing primary stability without regressing normal/fast, while keeping all changes test-only until strict ladder pass.
+
+Key outcomes:
+
+- `runtime_ultra_scoring_v198`..`v202`:
+  - opening/independent pro-anchor families were directionally positive on tiny probes,
+  - but repeatedly unstable on broader checks (most often normal non-regression or confirmation-vs-pro flips).
+- `runtime_ultra_scoring_v203`:
+  - effectively matched `runtime_ultra_hybrid_v158_v107_root_margin_guard` with no measurable gain.
+- `runtime_ultra_scoring_v204`:
+  - over-constrained portfolio selection; lost pro lift (flat vs pro in smoke matrix).
+- `runtime_ultra_scoring_v205`:
+  - kept pro lift but regressed normal at 2x2 (`delta=-0.1250`), so rejected.
+- `runtime_ultra_scoring_v206`:
+  - best of this batch: matched v158 vs pro and fast, and improved vs normal at 2x2 (`delta=+0.1250`) in matrix probe.
+  - still not promoted (needs strict ladder pass and confirmation/pool validation at promotion settings).
+
+Additional diagnostics:
+
+- Reduced strict-ladder check on `runtime_ultra_hybrid_v158_v107_root_margin_guard` showed primary-vs-pro instability under promotion tag (`ultra_primary_vs_pro:neutral_v1`) with a failing sample (`delta=-0.0417` in one reduced run).
+- Seed trace on that tag showed concentrated opening-bucket failures (`L/L` buckets), confirming opening-state volatility remains the main blocker.
+
+Release impact:
+
+- No runtime promotion from this pass.
+- Production code for fast/normal/pro/ultra remains unchanged.
+- All new ultra variants remain in `smart_automove_pool_tests` (`#[cfg(test)]`) only.
 
 ---
 
