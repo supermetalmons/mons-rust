@@ -1720,6 +1720,7 @@ impl MonsGameModel {
         self.smart_search_in_progress.set(true);
         let in_progress = self.smart_search_in_progress.clone();
 
+        clear_exact_state_analysis_cache();
         let config = self.runtime_config_for_preference(preference);
         let perspective = self.game.active_color;
         let game = self.game.clone_for_simulation();
@@ -2918,12 +2919,24 @@ impl MonsGameModel {
             && Self::has_awake_spirit_on_base(&simulated_game.board, perspective);
         let scores_supermana_this_turn = Self::events_score_supermana(&events);
         let scores_opponent_mana_this_turn = Self::events_score_opponent_mana(&events, perspective);
+        let exact_turn = if simulated_game.active_color == perspective {
+            exact_turn_summary(&simulated_game, perspective)
+        } else {
+            ExactTurnSummary {
+                color: Some(perspective),
+                ..ExactTurnSummary::default()
+            }
+        };
         let supermana_progress = scores_supermana_this_turn
             || Self::events_pickup_supermana(&events)
-            || Self::events_move_supermana_toward_color(&events, perspective);
+            || Self::events_move_supermana_toward_color(&events, perspective)
+            || exact_turn.safe_supermana_progress;
         let opponent_mana_progress = scores_opponent_mana_this_turn
             || Self::events_pickup_opponent_mana(&events, perspective)
-            || Self::events_move_opponent_mana_toward_color(&events, perspective);
+            || Self::events_move_opponent_mana_toward_color(&events, perspective)
+            || exact_turn.safe_opponent_mana_progress
+            || exact_turn.spirit_assisted_denial;
+        let spirit_assisted_score = exact_turn.spirit_assisted_score;
         let own_drainer_vulnerable = if config.enable_root_drainer_safety_prefilter {
             Self::is_own_drainer_vulnerable_next_turn(
                 &simulated_game,
@@ -2952,6 +2965,7 @@ impl MonsGameModel {
             || scored_two_or_more
             || scores_supermana_this_turn
             || scores_opponent_mana_this_turn
+            || spirit_assisted_score
             || (config.enable_potion_progress_compensation
                 && !own_drainer_vulnerable
                 && (supermana_progress || opponent_mana_progress));
@@ -2970,7 +2984,8 @@ impl MonsGameModel {
         let root_compensates_handoff = wins_immediately
             || attacks_opponent_drainer
             || scores_supermana_this_turn
-            || scores_opponent_mana_this_turn;
+            || scores_opponent_mana_this_turn
+            || spirit_assisted_score;
         let mana_handoff_to_opponent = !root_compensates_handoff
             && Self::mana_handoff_penalty(
                 &events,
@@ -3055,24 +3070,6 @@ impl MonsGameModel {
         board.occupied().any(|(location, item)| {
             location != base && Self::is_awake_spirit_item_for_color(item, color)
         })
-    }
-
-    fn spirit_action_target_count(board: &Board, location: Location) -> i32 {
-        location
-            .reachable_by_spirit_action_ref()
-            .iter()
-            .filter(|target| {
-                let Some(item) = board.item(**target) else {
-                    return false;
-                };
-                match item {
-                    Item::Mon { mon }
-                    | Item::MonWithMana { mon, .. }
-                    | Item::MonWithConsumable { mon, .. } => !mon.is_fainted(),
-                    Item::Mana { .. } | Item::Consumable { .. } => true,
-                }
-            })
-            .count() as i32
     }
 
     fn has_spirit_development_turn(
@@ -3541,8 +3538,8 @@ impl MonsGameModel {
     fn can_attack_opponent_drainer_before_turn_ends(
         game: &MonsGame,
         perspective: Color,
-        enum_limit: usize,
-        start_options: SuggestedStartInputOptions,
+        _enum_limit: usize,
+        _start_options: SuggestedStartInputOptions,
         continuation_budget: &mut usize,
         memo_true: &mut U64HashSet,
     ) -> bool {
@@ -3553,37 +3550,12 @@ impl MonsGameModel {
         if memo_true.contains(&state_hash) {
             return true;
         }
-
-        let mut legal_transitions =
-            Self::enumerate_legal_transitions(game, usize::MAX, start_options);
-        if legal_transitions.len() > enum_limit {
-            legal_transitions.truncate(enum_limit);
+        *continuation_budget = continuation_budget.saturating_sub(1);
+        let can_attack = can_attack_opponent_drainer_this_turn(game, perspective);
+        if can_attack {
+            memo_true.insert(state_hash);
         }
-        for transition in legal_transitions {
-            if *continuation_budget == 0 {
-                break;
-            }
-            *continuation_budget = continuation_budget.saturating_sub(1);
-            if Self::events_include_opponent_drainer_fainted(&transition.events, perspective) {
-                memo_true.insert(state_hash);
-                return true;
-            }
-            if transition.game.active_color == perspective
-                && Self::can_attack_opponent_drainer_before_turn_ends(
-                    &transition.game,
-                    perspective,
-                    enum_limit,
-                    start_options,
-                    continuation_budget,
-                    memo_true,
-                )
-            {
-                memo_true.insert(state_hash);
-                return true;
-            }
-        }
-
-        false
+        can_attack
     }
 
     fn ranked_root_moves(
@@ -4125,6 +4097,7 @@ impl MonsGameModel {
         config: SmartSearchConfig,
         use_transposition_table: bool,
     ) -> Vec<Input> {
+        clear_exact_state_analysis_cache();
         let perspective = game.active_color;
         let root_moves = Self::ranked_root_moves(game, perspective, config);
         if root_moves.is_empty() {
@@ -5440,26 +5413,25 @@ impl MonsGameModel {
 
     fn move_efficiency_snapshot(game: &MonsGame, perspective: Color) -> MoveEfficiencySnapshot {
         let unknown_steps = Config::BOARD_SIZE + 4;
-        let mana_locations = game
-            .board
-            .occupied()
-            .filter_map(|(location, item)| match item {
-                Item::Mana { .. } => Some(location),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
+        let analysis = exact_state_analysis(game);
+        let my_summary = analysis.color_summary(perspective);
+        let opponent_summary = analysis.color_summary(perspective.other());
 
         let mut snapshot = MoveEfficiencySnapshot {
-            my_best_carrier_steps: unknown_steps,
-            opponent_best_carrier_steps: unknown_steps,
-            my_best_drainer_to_mana_steps: unknown_steps,
-            opponent_best_drainer_to_mana_steps: unknown_steps,
+            my_best_carrier_steps: my_summary.best_carrier_steps.unwrap_or(unknown_steps),
+            opponent_best_carrier_steps: opponent_summary.best_carrier_steps.unwrap_or(unknown_steps),
+            my_best_drainer_to_mana_steps: my_summary
+                .best_drainer_to_mana_steps
+                .unwrap_or(unknown_steps),
+            opponent_best_drainer_to_mana_steps: opponent_summary
+                .best_drainer_to_mana_steps
+                .unwrap_or(unknown_steps),
             my_carrier_count: 0,
             opponent_carrier_count: 0,
             my_spirit_on_base: false,
             opponent_spirit_on_base: false,
-            my_spirit_action_targets: 0,
-            opponent_spirit_action_targets: 0,
+            my_spirit_action_targets: my_summary.spirit.utility,
+            opponent_spirit_action_targets: opponent_summary.spirit.utility,
         };
         let my_spirit_base = Self::spirit_base_for_color(&game.board, perspective);
         let opponent_spirit_base = Self::spirit_base_for_color(&game.board, perspective.other());
@@ -5487,35 +5459,11 @@ impl MonsGameModel {
                         continue;
                     }
                     if mon.kind == MonKind::Spirit {
-                        let spirit_targets =
-                            Self::spirit_action_target_count(&game.board, location);
                         if mon.color == perspective {
                             snapshot.my_spirit_on_base = location == my_spirit_base;
-                            snapshot.my_spirit_action_targets =
-                                snapshot.my_spirit_action_targets.max(spirit_targets);
                         } else {
                             snapshot.opponent_spirit_on_base = location == opponent_spirit_base;
-                            snapshot.opponent_spirit_action_targets =
-                                snapshot.opponent_spirit_action_targets.max(spirit_targets);
                         }
-                    }
-                    if mon.kind != MonKind::Drainer {
-                        continue;
-                    }
-                    let Some(nearest_mana_steps) =
-                        Self::nearest_mana_steps_for_efficiency(location, &mana_locations)
-                    else {
-                        continue;
-                    };
-
-                    if mon.color == perspective {
-                        snapshot.my_best_drainer_to_mana_steps = snapshot
-                            .my_best_drainer_to_mana_steps
-                            .min(nearest_mana_steps);
-                    } else {
-                        snapshot.opponent_best_drainer_to_mana_steps = snapshot
-                            .opponent_best_drainer_to_mana_steps
-                            .min(nearest_mana_steps);
                     }
                 }
                 Item::Mana { .. } | Item::Consumable { .. } => {}
@@ -5523,16 +5471,6 @@ impl MonsGameModel {
         }
 
         snapshot
-    }
-
-    fn nearest_mana_steps_for_efficiency(
-        from: Location,
-        mana_locations: &[Location],
-    ) -> Option<i32> {
-        mana_locations
-            .iter()
-            .map(|location| from.distance(location) as i32)
-            .min()
     }
 
     fn distance_to_any_pool_steps_for_efficiency(location: Location) -> i32 {
@@ -5606,7 +5544,7 @@ impl MonsGameModel {
         })
     }
 
-    fn search_state_hash(game: &MonsGame) -> u64 {
+    pub(crate) fn search_state_hash(game: &MonsGame) -> u64 {
         let mut state = 0x6a09e667f3bcc909u64;
         for (idx, item) in game.board.items.iter().enumerate() {
             let Some(item) = item else { continue };
@@ -5787,7 +5725,11 @@ impl MonsGameModel {
         })
     }
 
-    fn is_location_guarded_by_angel(board: &Board, color: Color, location: Location) -> bool {
+    pub(crate) fn is_location_guarded_by_angel(
+        board: &Board,
+        color: Color,
+        location: Location,
+    ) -> bool {
         board
             .find_awake_angel(color)
             .map_or(false, |angel_location| {
@@ -5820,7 +5762,7 @@ impl MonsGameModel {
         perspective: Color,
         opponent_to_move: bool,
         opponent_can_use_action: bool,
-        enhanced: bool,
+        _enhanced: bool,
     ) -> bool {
         let (own_drainer_location, own_drainer_fainted) =
             Self::own_awake_drainer_location_and_fainted(board, perspective);
@@ -5831,109 +5773,17 @@ impl MonsGameModel {
             return false;
         };
 
-        if !opponent_to_move {
+        if !opponent_to_move || !opponent_can_use_action {
             return false;
         }
-        let opponent = perspective.other();
         let drainer_action_protected =
             Self::is_location_guarded_by_angel(board, perspective, own_drainer_location);
-
-        for (threat_location, item) in board.occupied() {
-            if enhanced {
-                let mon = match item {
-                    Item::Mon { mon }
-                    | Item::MonWithMana { mon, .. }
-                    | Item::MonWithConsumable { mon, .. } => mon,
-                    _ => continue,
-                };
-                if mon.color != opponent || mon.is_fainted() {
-                    continue;
-                }
-                let on_own_base = matches!(board.square(threat_location), Square::MonBase { .. });
-                if opponent_can_use_action && !drainer_action_protected && !on_own_base {
-                    if mon.kind == MonKind::Mystic
-                        && (threat_location.i - own_drainer_location.i).abs() == 2
-                        && (threat_location.j - own_drainer_location.j).abs() == 2
-                    {
-                        return true;
-                    }
-                    if mon.kind == MonKind::Demon {
-                        let di = (threat_location.i - own_drainer_location.i).abs();
-                        let dj = (threat_location.j - own_drainer_location.j).abs();
-                        if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
-                            let middle = threat_location.location_between(&own_drainer_location);
-                            if board.item(middle).is_none()
-                                && !matches!(
-                                    board.square(middle),
-                                    Square::SupermanaBase | Square::MonBase { .. }
-                                )
-                            {
-                                return true;
-                            }
-                        }
-                    }
-                }
-                if matches!(
-                    item,
-                    Item::MonWithConsumable {
-                        consumable: Consumable::Bomb,
-                        ..
-                    }
-                ) && !on_own_base
-                    && threat_location.distance(&own_drainer_location) <= 3
-                {
-                    return true;
-                }
-            } else {
-                match item {
-                    Item::Mon { mon } if mon.color == opponent && !mon.is_fainted() => {
-                        if opponent_can_use_action
-                            && !drainer_action_protected
-                            && !matches!(board.square(threat_location), Square::MonBase { .. })
-                        {
-                            if mon.kind == MonKind::Mystic
-                                && (threat_location.i - own_drainer_location.i).abs() == 2
-                                && (threat_location.j - own_drainer_location.j).abs() == 2
-                            {
-                                return true;
-                            }
-
-                            if mon.kind == MonKind::Demon {
-                                let di = (threat_location.i - own_drainer_location.i).abs();
-                                let dj = (threat_location.j - own_drainer_location.j).abs();
-                                if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
-                                    let middle =
-                                        threat_location.location_between(&own_drainer_location);
-                                    if board.item(middle).is_none()
-                                        && !matches!(
-                                            board.square(middle),
-                                            Square::SupermanaBase | Square::MonBase { .. }
-                                        )
-                                    {
-                                        return true;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Item::MonWithConsumable { mon, consumable }
-                        if mon.color == opponent
-                            && !mon.is_fainted()
-                            && *consumable == Consumable::Bomb
-                            && threat_location.distance(&own_drainer_location) <= 3 =>
-                    {
-                        return true;
-                    }
-                    Item::MonWithConsumable { .. }
-                    | Item::MonWithMana { .. }
-                    | Item::Mana { .. }
-                    | Item::Consumable { .. } => {}
-                    Item::Mon { .. } => {}
-                }
-            }
-        }
-
-        false
+        is_drainer_under_immediate_threat(
+            board,
+            perspective,
+            own_drainer_location,
+            drainer_action_protected,
+        )
     }
 
     #[allow(dead_code)]
@@ -5991,81 +5841,14 @@ impl MonsGameModel {
         };
         let drainer_angel_protected =
             Self::is_location_guarded_by_angel(&game.board, perspective, drainer_location);
-        let valid = Location::valid_range();
-        for (threat_location, item) in game.board.occupied() {
-            let mon = match item {
-                Item::Mon { mon }
-                | Item::MonWithMana { mon, .. }
-                | Item::MonWithConsumable { mon, .. } => mon,
-                _ => continue,
-            };
-            if mon.color != opponent || mon.is_fainted() {
-                continue;
-            }
-            let on_own_base = matches!(game.board.square(threat_location), Square::MonBase { .. });
-            if on_own_base {
-                continue;
-            }
-            if !drainer_angel_protected
-                && (mon.kind == MonKind::Mystic || mon.kind == MonKind::Demon)
-            {
-                for dx in -1i32..=1 {
-                    for dy in -1i32..=1 {
-                        if dx == 0 && dy == 0 {
-                            continue;
-                        }
-                        let ni = threat_location.i + dx;
-                        let nj = threat_location.j + dy;
-                        if !valid.contains(&ni) || !valid.contains(&nj) {
-                            continue;
-                        }
-                        let neighbor = Location::new(ni, nj);
-                        if game.board.item(neighbor).is_some() {
-                            continue;
-                        }
-                        if matches!(
-                            game.board.square(neighbor),
-                            Square::MonBase { .. } | Square::SupermanaBase
-                        ) {
-                            continue;
-                        }
-                        if mon.kind == MonKind::Mystic {
-                            let di = (ni - drainer_location.i).abs();
-                            let dj = (nj - drainer_location.j).abs();
-                            if di == 2 && dj == 2 {
-                                return true;
-                            }
-                        }
-                        if mon.kind == MonKind::Demon {
-                            let di = (ni - drainer_location.i).abs();
-                            let dj = (nj - drainer_location.j).abs();
-                            if (di == 2 && dj == 0) || (di == 0 && dj == 2) {
-                                let middle = neighbor.location_between(&drainer_location);
-                                if game.board.item(middle).is_none()
-                                    && !matches!(
-                                        game.board.square(middle),
-                                        Square::SupermanaBase | Square::MonBase { .. }
-                                    )
-                                {
-                                    return true;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if matches!(
-                item,
-                Item::MonWithConsumable {
-                    consumable: Consumable::Bomb,
-                    ..
-                }
-            ) && threat_location.distance(&drainer_location) <= 4
-            {
-                return true;
-            }
-        }
-        false
+        let _ = opponent;
+        let _ = enhanced;
+        is_drainer_under_walk_threat(
+            &game.board,
+            perspective,
+            drainer_location,
+            drainer_angel_protected,
+        )
     }
 
     fn should_prefer_spirit_development(game: &MonsGame, perspective: Color) -> bool {
@@ -7215,6 +6998,7 @@ mod smart_automove_pool_tests;
 mod opening_book_tests {
     use super::*;
     use std::collections::HashMap;
+    use std::collections::HashSet;
 
     fn game_with_items(
         items: Vec<(Location, Item)>,
@@ -7251,6 +7035,54 @@ mod opening_book_tests {
             "opening book should finish white first turn"
         );
         assert_eq!(game.active_color, Color::Black);
+    }
+
+    fn exhaustive_same_turn_reachable<F>(game: &MonsGame, color: Color, predicate: F) -> bool
+    where
+        F: Fn(&MonsGame, &[Event]) -> bool,
+    {
+        fn visit<F>(
+            game: &MonsGame,
+            color: Color,
+            seen: &mut HashSet<u64>,
+            predicate: &F,
+        ) -> bool
+        where
+            F: Fn(&MonsGame, &[Event]) -> bool,
+        {
+            if game.active_color != color {
+                return false;
+            }
+
+            let state_hash = MonsGameModel::search_state_hash(game);
+            if !seen.insert(state_hash) {
+                return false;
+            }
+
+            for transition in MonsGameModel::enumerate_legal_transitions(
+                game,
+                usize::MAX,
+                SuggestedStartInputOptions::for_automove(),
+            ) {
+                if predicate(&transition.game, &transition.events) {
+                    return true;
+                }
+                if transition.game.active_color == color
+                    && visit(&transition.game, color, seen, predicate)
+                {
+                    return true;
+                }
+            }
+
+            false
+        }
+
+        if predicate(game, &[]) {
+            return true;
+        }
+
+        let mut seen = HashSet::new();
+        visit(game, color, &mut seen, &predicate)
     }
 
     #[test]
@@ -7642,6 +7474,165 @@ mod opening_book_tests {
             assert_eq!(after.fen(), transition.game.fen());
             assert_eq!(events, transition.events);
         }
+    }
+
+    #[test]
+    fn exact_drainer_attack_oracle_matches_exhaustive_same_turn_search() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(5, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let exact = crate::models::automove_exact::exact_turn_summary(&game, Color::White)
+            .can_attack_opponent_drainer;
+        let exhaustive = exhaustive_same_turn_reachable(&game, Color::White, |_, events| {
+            MonsGameModel::events_include_opponent_drainer_fainted(events, Color::White)
+        });
+
+        assert_eq!(exact, exhaustive);
+    }
+
+    #[test]
+    fn exact_drainer_pickup_score_oracle_matches_exhaustive_same_turn_search() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(8, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let exact = crate::models::automove_exact::exact_state_analysis(&game)
+            .white
+            .best_drainer_pickup
+            .map_or(false, |path| path.total_moves <= Config::MONS_MOVES_PER_TURN);
+        let exhaustive = exhaustive_same_turn_reachable(&game, Color::White, |state, _| {
+            state.white_score > game.white_score
+        });
+
+        assert_eq!(exact, exhaustive);
+    }
+
+    #[test]
+    fn exact_safe_supermana_progress_oracle_matches_reachable_state_search() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let exact = crate::models::automove_exact::exact_turn_summary(&game, Color::White)
+            .safe_supermana_progress;
+        let exhaustive = exhaustive_same_turn_reachable(&game, Color::White, |state, _| {
+            state.board.occupied().any(|(location, item)| {
+                matches!(
+                    item,
+                    Item::MonWithMana {
+                        mon,
+                        mana: Mana::Supermana,
+                    } if mon.color == Color::White
+                        && mon.kind == MonKind::Drainer
+                        && !crate::models::automove_exact::is_drainer_under_immediate_threat(
+                            &state.board,
+                            Color::White,
+                            location,
+                            MonsGameModel::is_location_guarded_by_angel(
+                                &state.board,
+                                Color::White,
+                                location,
+                            ),
+                        )
+                        && !crate::models::automove_exact::is_drainer_under_walk_threat(
+                            &state.board,
+                            Color::White,
+                            location,
+                            MonsGameModel::is_location_guarded_by_angel(
+                                &state.board,
+                                Color::White,
+                                location,
+                            ),
+                        )
+                )
+            })
+        });
+
+        assert_eq!(exact, exhaustive);
+    }
+
+    #[test]
+    fn exact_spirit_opponent_mana_score_oracle_matches_exhaustive_same_turn_search() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let exact = crate::models::automove_exact::exact_state_analysis(&game)
+            .white
+            .spirit
+            .same_turn_opponent_mana_score;
+        let exhaustive = exhaustive_same_turn_reachable(&game, Color::White, |state, _| {
+            state.white_score > game.white_score
+        });
+
+        assert_eq!(exact, exhaustive);
     }
 
     #[test]

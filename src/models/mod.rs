@@ -1,3 +1,4 @@
+pub(crate) mod automove_exact;
 pub mod available_move_kind;
 pub mod board;
 pub mod color;
@@ -16,6 +17,7 @@ pub mod next_input;
 pub mod output;
 pub mod scoring;
 pub mod square;
+pub(crate) use automove_exact::*;
 pub use available_move_kind::*;
 pub use board::*;
 pub use color::*;
