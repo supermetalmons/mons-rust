@@ -103,7 +103,8 @@ pub(crate) fn exact_state_analysis(game: &MonsGame) -> ExactStateAnalysis {
             return cached;
         }
         let built = build_exact_state_analysis(game);
-        if cache.entries.len() >= EXACT_ANALYSIS_CACHE_MAX_ENTRIES && !cache.entries.contains_key(&key)
+        if cache.entries.len() >= EXACT_ANALYSIS_CACHE_MAX_ENTRIES
+            && !cache.entries.contains_key(&key)
         {
             cache.entries.clear();
         }
@@ -250,7 +251,8 @@ pub(crate) fn is_drainer_under_walk_threat(
                     {
                         return true;
                     }
-                    if mon.kind == MonKind::Demon && demon_has_line_attack(board, neighbor, location)
+                    if mon.kind == MonKind::Demon
+                        && demon_has_line_attack(board, neighbor, location)
                     {
                         return true;
                     }
@@ -312,20 +314,19 @@ fn build_color_summary(game: &MonsGame, color: Color) -> ExactColorSummary {
 
     let best_drainer_pickup = find_awake_drainer(&game.board, color)
         .and_then(|location| exact_best_drainer_pickup_path(&game.board, color, location));
-    let best_drainer_to_mana_steps =
-        find_awake_drainer(&game.board, color).and_then(|location| {
-            exact_shortest_payload_state(
-                &game.board,
-                location,
-                MonKind::Drainer,
-                color,
-                ExactActorPayload::None,
-                false,
-                None,
-                |_, payload| matches!(payload, ExactActorPayload::Mana(_)),
-            )
-            .map(|result| result.steps)
-        });
+    let best_drainer_to_mana_steps = find_awake_drainer(&game.board, color).and_then(|location| {
+        exact_shortest_payload_state(
+            &game.board,
+            location,
+            MonKind::Drainer,
+            color,
+            ExactActorPayload::None,
+            false,
+            None,
+            |_, payload| matches!(payload, ExactActorPayload::Mana(_)),
+        )
+        .map(|result| result.steps)
+    });
 
     if let Some(path) = best_drainer_pickup {
         carrier_steps.push(path.total_moves);
@@ -652,14 +653,9 @@ where
         }
 
         for &next in location.nearby_locations_ref() {
-            if let Some(next_payload) = actor_payload_after_move(
-                board,
-                MonKind::Drainer,
-                color,
-                payload,
-                next,
-                false,
-            ) {
+            if let Some(next_payload) =
+                actor_payload_after_move(board, MonKind::Drainer, color, payload, next, false)
+            {
                 if seen.insert((next, next_payload)) {
                     queue.push_back((next, next_payload, steps + 1));
                 }
@@ -701,7 +697,8 @@ fn can_secure_specific_mana_this_turn(game: &MonsGame, color: Color, wanted: Man
                 if matches!(game.board.square(location), Square::ManaPool { .. }) {
                     return true;
                 }
-                let angel_nearby = MonsGameModel::is_location_guarded_by_angel(&game.board, color, location);
+                let angel_nearby =
+                    MonsGameModel::is_location_guarded_by_angel(&game.board, color, location);
                 if !is_drainer_under_immediate_threat(&game.board, color, location, angel_nearby)
                     && !is_drainer_under_walk_threat(&game.board, color, location, angel_nearby)
                 {
@@ -713,14 +710,9 @@ fn can_secure_specific_mana_this_turn(game: &MonsGame, color: Color, wanted: Man
             continue;
         }
         for &next in location.nearby_locations_ref() {
-            if let Some(next_payload) = actor_payload_after_move(
-                &game.board,
-                MonKind::Drainer,
-                color,
-                payload,
-                next,
-                false,
-            ) {
+            if let Some(next_payload) =
+                actor_payload_after_move(&game.board, MonKind::Drainer, color, payload, next, false)
+            {
                 if seen.insert((next, next_payload)) {
                     queue.push_back((next, next_payload, steps + 1));
                 }
@@ -766,7 +758,8 @@ fn can_attack_opponent_drainer_exact(game: &MonsGame, color: Color) -> bool {
     if !can_use_action {
         return false;
     }
-    let target_guarded = MonsGameModel::is_location_guarded_by_angel(&game.board, color.other(), target);
+    let target_guarded =
+        MonsGameModel::is_location_guarded_by_angel(&game.board, color.other(), target);
 
     for (start, item) in game.board.occupied() {
         let mon = match item {
@@ -808,7 +801,9 @@ fn can_attack_opponent_drainer_exact(game: &MonsGame, color: Color) -> bool {
                 {
                     return true;
                 }
-                if mon.kind == MonKind::Demon && demon_has_line_attack(&game.board, location, target) {
+                if mon.kind == MonKind::Demon
+                    && demon_has_line_attack(&game.board, location, target)
+                {
                     return true;
                 }
             }
@@ -842,7 +837,10 @@ fn demon_has_line_attack(board: &Board, from: Location, target: Location) -> boo
     }
     let middle = from.location_between(&target);
     board.item(middle).is_none()
-        && !matches!(board.square(middle), Square::SupermanaBase | Square::MonBase { .. })
+        && !matches!(
+            board.square(middle),
+            Square::SupermanaBase | Square::MonBase { .. }
+        )
 }
 
 fn exact_spirit_summary(
@@ -893,11 +891,12 @@ fn exact_spirit_summary(
                     let after_best_steps = exact_best_score_steps_on_board(&after_board, color);
                     let after_opponent_steps =
                         exact_best_score_steps_on_board(&after_board, color.other());
-                    let after_same_turn_score = score_delta.max(exact_best_immediate_score_on_board(
-                        &after_board,
-                        color,
-                        remaining_after_action,
-                    ));
+                    let after_same_turn_score =
+                        score_delta.max(exact_best_immediate_score_on_board(
+                            &after_board,
+                            color,
+                            remaining_after_action,
+                        ));
                     let after_same_turn_opponent_score = opponent_mana_score_delta.max(
                         exact_best_immediate_opponent_mana_score_on_board(
                             &after_board,
@@ -1030,9 +1029,9 @@ fn reachable_spirit_positions(
 
 fn spirit_target_allowed(item: Item) -> bool {
     match item {
-        Item::Mon { mon }
-        | Item::MonWithMana { mon, .. }
-        | Item::MonWithConsumable { mon, .. } => !mon.is_fainted(),
+        Item::Mon { mon } | Item::MonWithMana { mon, .. } | Item::MonWithConsumable { mon, .. } => {
+            !mon.is_fainted()
+        }
         Item::Mana { .. } | Item::Consumable { .. } => true,
     }
 }
@@ -1053,13 +1052,17 @@ fn spirit_destination_allowed(
             mon: destination_mon,
         }) => match target_item {
             Item::Mon { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => false,
-            Item::Mana { .. } => destination_mon.kind == MonKind::Drainer && !destination_mon.is_fainted(),
+            Item::Mana { .. } => {
+                destination_mon.kind == MonKind::Drainer && !destination_mon.is_fainted()
+            }
             Item::Consumable {
                 consumable: Consumable::BombOrPotion,
             } => true,
             Item::Consumable { .. } => false,
         },
-        Some(Item::Mana { .. }) => matches!(target_mon, Some(mon) if mon.kind == MonKind::Drainer && !mon.is_fainted()),
+        Some(Item::Mana { .. }) => {
+            matches!(target_mon, Some(mon) if mon.kind == MonKind::Drainer && !mon.is_fainted())
+        }
         Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => {
             matches!(
                 target_item,
@@ -1236,9 +1239,13 @@ fn exact_best_immediate_score_on_board(board: &Board, color: Color, move_budget:
             Item::Mon { mon } | Item::MonWithConsumable { mon, .. }
                 if mon.color == color && mon.kind == MonKind::Drainer && !mon.is_fainted() =>
             {
-                if let Some(path) =
-                    exact_best_drainer_pickup_path_filtered(board, color, location, Some(move_budget), |_| true)
-                {
+                if let Some(path) = exact_best_drainer_pickup_path_filtered(
+                    board,
+                    color,
+                    location,
+                    Some(move_budget),
+                    |_| true,
+                ) {
                     best = best.max(path.mana_value);
                 }
             }
@@ -1415,6 +1422,51 @@ mod tests {
         let spirit = exact_state_analysis(&game).white.spirit;
         assert!(spirit.same_turn_score);
         assert!(spirit.same_turn_opponent_mana_score);
+    }
+
+    #[test]
+    fn exact_spirit_summary_detects_bridge_move_into_drainer_score() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(4, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 0),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        assert_eq!(
+            exact_best_immediate_score_on_board(
+                &game.board,
+                Color::White,
+                Config::MONS_MOVES_PER_TURN,
+            ),
+            0
+        );
+
+        clear_exact_state_analysis_cache();
+        assert!(exact_turn_summary(&game, Color::White).spirit_assisted_score);
+        let spirit =
+            exact_spirit_summary(&game.board, Color::White, Config::MONS_MOVES_PER_TURN, true);
+        assert!(spirit.same_turn_score);
+        assert_eq!(spirit.same_turn_score_value, 2);
+        assert!(spirit.same_turn_opponent_mana_score);
+        assert_eq!(spirit.same_turn_opponent_mana_score_value, 2);
     }
 
     #[test]

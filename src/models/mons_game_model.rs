@@ -1456,6 +1456,8 @@ struct ScoredRootMove {
     scores_opponent_mana_this_turn: bool,
     safe_supermana_pickup_now: bool,
     safe_opponent_mana_pickup_now: bool,
+    same_turn_score_window_value: i32,
+    spirit_same_turn_score_setup_now: bool,
     spirit_own_mana_setup_now: bool,
     supermana_progress: bool,
     opponent_mana_progress: bool,
@@ -1481,6 +1483,8 @@ struct RootEvaluation {
     scores_opponent_mana_this_turn: bool,
     safe_supermana_pickup_now: bool,
     safe_opponent_mana_pickup_now: bool,
+    same_turn_score_window_value: i32,
+    spirit_same_turn_score_setup_now: bool,
     spirit_own_mana_setup_now: bool,
     supermana_progress: bool,
     opponent_mana_progress: bool,
@@ -2932,14 +2936,30 @@ impl MonsGameModel {
             && Self::has_awake_spirit_on_base(&simulated_game.board, perspective);
         let scores_supermana_this_turn = Self::events_score_supermana(&events);
         let scores_opponent_mana_this_turn = Self::events_score_opponent_mana(&events, perspective);
-        let exact_turn = if simulated_game.active_color == perspective {
-            exact_turn_summary(&simulated_game, perspective)
+        let exact_analysis = if simulated_game.active_color == perspective {
+            Some(exact_state_analysis(&simulated_game))
         } else {
+            None
+        };
+        let exact_turn = exact_analysis.map_or(
             ExactTurnSummary {
                 color: Some(perspective),
                 ..ExactTurnSummary::default()
-            }
-        };
+            },
+            |analysis| analysis.active_turn,
+        );
+        let same_turn_score_window_value = exact_analysis
+            .map(|analysis| {
+                analysis
+                    .color_summary(perspective)
+                    .immediate_window
+                    .best_score
+                    .max(0)
+            })
+            .unwrap_or(0);
+        let spirit_same_turn_score_setup_now = Self::events_include_spirit_target_move(&events)
+            && simulated_game.active_color == perspective
+            && same_turn_score_window_value > 0;
         let safe_supermana_pickup_now = Self::events_pickup_supermana(&events)
             && Self::own_drainer_carries_specific_mana_safely(
                 &simulated_game.board,
@@ -3069,6 +3089,8 @@ impl MonsGameModel {
             scores_opponent_mana_this_turn,
             safe_supermana_pickup_now,
             safe_opponent_mana_pickup_now,
+            same_turn_score_window_value,
+            spirit_same_turn_score_setup_now,
             spirit_own_mana_setup_now,
             supermana_progress,
             opponent_mana_progress,
@@ -3313,6 +3335,14 @@ impl MonsGameModel {
     }
 
     fn spirit_score_fallback_candidates_limit(config: SmartSearchConfig) -> usize {
+        if config.depth >= 3 {
+            8
+        } else {
+            4
+        }
+    }
+
+    fn same_turn_score_window_fallback_candidates_limit(config: SmartSearchConfig) -> usize {
         if config.depth >= 3 {
             8
         } else {
@@ -3576,10 +3606,24 @@ impl MonsGameModel {
                     if !Self::events_include_spirit_target_move(&events) {
                         continue;
                     }
+                    let after_same_turn_score_window_value =
+                        if after_game.active_color == perspective {
+                            exact_state_analysis(&after_game)
+                                .color_summary(perspective)
+                                .immediate_window
+                                .best_score
+                                .max(0)
+                        } else {
+                            0
+                        };
                     let scores_now = if opponent_mana_only {
                         Self::events_score_opponent_mana(&events, perspective)
+                            || (after_game.active_color == perspective
+                                && exact_turn_summary(&after_game, perspective)
+                                    .safe_opponent_mana_progress)
                     } else {
                         Self::score_for_color(&after_game, perspective) > score_before
+                            || after_same_turn_score_window_value > 0
                     };
                     if scores_now {
                         score_inputs.push(LegalInputTransition {
@@ -3594,6 +3638,69 @@ impl MonsGameModel {
 
         score_inputs.sort_by(|a, b| a.inputs.cmp(&b.inputs));
         score_inputs
+    }
+
+    fn collect_targeted_same_turn_score_window_inputs(
+        game: &MonsGame,
+        perspective: Color,
+        config: SmartSearchConfig,
+        max_candidates: usize,
+    ) -> Vec<LegalInputTransition> {
+        if !game.player_can_move_mon() && !game.player_can_use_action() {
+            return Vec::new();
+        }
+
+        let mut actor_locations = Self::find_awake_drainer_locations(game, perspective);
+        actor_locations.extend(Self::find_awake_spirit_locations(game, perspective));
+        if actor_locations.is_empty() {
+            return Vec::new();
+        }
+
+        let start_options = Self::automove_start_input_options(config);
+        let per_actor_enum_limit = Self::spirit_setup_fallback_enum_limit(config);
+        let mut score_window_inputs = Vec::new();
+        let mut seen_inputs = std::collections::HashSet::new();
+
+        for actor_loc in actor_locations {
+            if score_window_inputs.len() >= max_candidates.max(1) {
+                break;
+            }
+
+            let mut actor_transitions = Vec::new();
+            let mut partial_inputs = vec![Input::Location(actor_loc)];
+            let mut simulated_game = game.clone_for_simulation();
+            Self::collect_legal_transitions(
+                &mut simulated_game,
+                &mut partial_inputs,
+                &mut actor_transitions,
+                per_actor_enum_limit,
+                start_options,
+            );
+            actor_transitions.sort_by(|a, b| a.inputs.cmp(&b.inputs));
+
+            for transition in actor_transitions {
+                if score_window_inputs.len() >= max_candidates.max(1) {
+                    break;
+                }
+                if transition.game.active_color != perspective {
+                    continue;
+                }
+                if exact_state_analysis(&transition.game)
+                    .color_summary(perspective)
+                    .immediate_window
+                    .best_score
+                    <= 0
+                {
+                    continue;
+                }
+                if seen_inputs.insert(transition.inputs.clone()) {
+                    score_window_inputs.push(transition);
+                }
+            }
+        }
+
+        score_window_inputs.sort_by(|a, b| a.inputs.cmp(&b.inputs));
+        score_window_inputs
     }
 
     fn spirit_target_allowed_for_root_fallback(item: Item) -> bool {
@@ -4033,17 +4140,20 @@ impl MonsGameModel {
         }
         if exact_turn_before.spirit_assisted_score
             && !root_transitions.iter().any(|transition| {
-                Self::events_include_spirit_target_move(&transition.events)
-                    && Self::score_for_color(&transition.game, perspective)
-                        > Self::score_for_color(game, perspective)
+                transition.game.active_color == perspective
+                    && exact_state_analysis(&transition.game)
+                        .color_summary(perspective)
+                        .immediate_window
+                        .best_score
+                        > 0
             })
         {
-            let fallback_limit = Self::spirit_score_fallback_candidates_limit(config);
-            let fallback_inputs = Self::collect_targeted_spirit_score_inputs(
+            let fallback_limit = Self::same_turn_score_window_fallback_candidates_limit(config);
+            let fallback_inputs = Self::collect_targeted_same_turn_score_window_inputs(
                 game,
                 perspective,
+                config,
                 fallback_limit,
-                false,
             );
             if !fallback_inputs.is_empty() {
                 let mut seen_inputs = root_transitions
@@ -4259,6 +4369,13 @@ impl MonsGameModel {
         if candidate.safe_opponent_mana_pickup_now != incumbent.safe_opponent_mana_pickup_now {
             return candidate.safe_opponent_mana_pickup_now;
         }
+        if candidate.same_turn_score_window_value != incumbent.same_turn_score_window_value {
+            return candidate.same_turn_score_window_value > incumbent.same_turn_score_window_value;
+        }
+        if candidate.spirit_same_turn_score_setup_now != incumbent.spirit_same_turn_score_setup_now
+        {
+            return candidate.spirit_same_turn_score_setup_now;
+        }
         if candidate.spirit_own_mana_setup_now != incumbent.spirit_own_mana_setup_now {
             return candidate.spirit_own_mana_setup_now;
         }
@@ -4444,6 +4561,8 @@ impl MonsGameModel {
                 || candidate.scores_opponent_mana_this_turn
                 || candidate.safe_supermana_pickup_now
                 || candidate.safe_opponent_mana_pickup_now
+                || candidate.spirit_same_turn_score_setup_now
+                || candidate.same_turn_score_window_value > 0
                 || candidate.spirit_own_mana_setup_now;
             if !keep_direct_high_value {
                 continue;
@@ -4749,6 +4868,8 @@ impl MonsGameModel {
                 scores_opponent_mana_this_turn: candidate.scores_opponent_mana_this_turn,
                 safe_supermana_pickup_now: candidate.safe_supermana_pickup_now,
                 safe_opponent_mana_pickup_now: candidate.safe_opponent_mana_pickup_now,
+                same_turn_score_window_value: candidate.same_turn_score_window_value,
+                spirit_same_turn_score_setup_now: candidate.spirit_same_turn_score_setup_now,
                 spirit_own_mana_setup_now: candidate.spirit_own_mana_setup_now,
                 supermana_progress: candidate.supermana_progress,
                 opponent_mana_progress: candidate.opponent_mana_progress,
@@ -4952,6 +5073,8 @@ impl MonsGameModel {
                 || candidate.scores_opponent_mana_this_turn
                 || candidate.safe_supermana_pickup_now
                 || candidate.safe_opponent_mana_pickup_now
+                || candidate.spirit_same_turn_score_setup_now
+                || candidate.same_turn_score_window_value > 0
                 || candidate.spirit_own_mana_setup_now
             {
                 selected_mask[index] = true;
@@ -6281,6 +6404,8 @@ impl MonsGameModel {
             scores_opponent_mana_this_turn: candidate.scores_opponent_mana_this_turn,
             safe_supermana_pickup_now: candidate.safe_supermana_pickup_now,
             safe_opponent_mana_pickup_now: candidate.safe_opponent_mana_pickup_now,
+            same_turn_score_window_value: candidate.same_turn_score_window_value,
+            spirit_same_turn_score_setup_now: candidate.spirit_same_turn_score_setup_now,
             spirit_own_mana_setup_now: candidate.spirit_own_mana_setup_now,
             supermana_progress: candidate.supermana_progress,
             opponent_mana_progress: candidate.opponent_mana_progress,
@@ -6601,6 +6726,37 @@ impl MonsGameModel {
         }
 
         if !forced_attack_applied
+            && !candidate_indices
+                .iter()
+                .any(|index| scored_roots[*index].classes.immediate_score)
+        {
+            let best_score_window = candidate_indices
+                .iter()
+                .filter_map(|index| {
+                    let root = &scored_roots[*index];
+                    (!root.own_drainer_vulnerable && !root.mana_handoff_to_opponent)
+                        .then_some(root.same_turn_score_window_value)
+                })
+                .max()
+                .unwrap_or(0);
+            if best_score_window > 0 {
+                let window_indices = candidate_indices
+                    .iter()
+                    .copied()
+                    .filter(|index| {
+                        let root = &scored_roots[*index];
+                        root.same_turn_score_window_value == best_score_window
+                            && !root.own_drainer_vulnerable
+                            && !root.mana_handoff_to_opponent
+                    })
+                    .collect::<Vec<_>>();
+                if !window_indices.is_empty() {
+                    candidate_indices = window_indices;
+                }
+            }
+        }
+
+        if !forced_attack_applied
             && candidate_indices
                 .iter()
                 .any(|index| scored_roots[*index].safe_supermana_pickup_now)
@@ -6618,6 +6774,77 @@ impl MonsGameModel {
                 let root = &scored_roots[*index];
                 root.scores_opponent_mana_this_turn || root.safe_opponent_mana_pickup_now
             });
+        }
+
+        if !forced_attack_applied
+            && !candidate_indices
+                .iter()
+                .any(|index| scored_roots[*index].classes.immediate_score)
+        {
+            let best_spirit_score_window = candidate_indices
+                .iter()
+                .filter_map(|index| {
+                    let root = &scored_roots[*index];
+                    (root.spirit_same_turn_score_setup_now
+                        && !root.own_drainer_vulnerable
+                        && !root.mana_handoff_to_opponent)
+                        .then_some(root.same_turn_score_window_value)
+                })
+                .max()
+                .unwrap_or(0);
+            let best_non_spirit_score_window = candidate_indices
+                .iter()
+                .filter_map(|index| {
+                    let root = &scored_roots[*index];
+                    (!root.spirit_same_turn_score_setup_now
+                        && !root.own_drainer_vulnerable
+                        && !root.mana_handoff_to_opponent)
+                        .then_some(root.same_turn_score_window_value)
+                })
+                .max()
+                .unwrap_or(0);
+            if best_spirit_score_window > best_non_spirit_score_window {
+                candidate_indices.retain(|index| {
+                    let root = &scored_roots[*index];
+                    root.spirit_same_turn_score_setup_now
+                        && root.same_turn_score_window_value == best_spirit_score_window
+                        && !root.own_drainer_vulnerable
+                        && !root.mana_handoff_to_opponent
+                });
+            }
+        }
+
+        if !forced_attack_applied
+            && !candidate_indices
+                .iter()
+                .any(|index| scored_roots[*index].classes.immediate_score)
+            && candidate_indices.iter().any(|index| {
+                let root = &scored_roots[*index];
+                root.same_turn_score_window_value > 0
+                    && !root.own_drainer_vulnerable
+                    && !root.mana_handoff_to_opponent
+            })
+        {
+            let best_score_window = candidate_indices
+                .iter()
+                .map(|index| scored_roots[*index].same_turn_score_window_value)
+                .max()
+                .unwrap_or(0);
+            if best_score_window > 0 {
+                let window_indices = candidate_indices
+                    .iter()
+                    .copied()
+                    .filter(|index| {
+                        let root = &scored_roots[*index];
+                        root.same_turn_score_window_value == best_score_window
+                            && !root.own_drainer_vulnerable
+                            && !root.mana_handoff_to_opponent
+                    })
+                    .collect::<Vec<_>>();
+                if !window_indices.is_empty() {
+                    candidate_indices = window_indices;
+                }
+            }
         }
 
         if !forced_attack_applied
@@ -6988,7 +7215,11 @@ impl MonsGameModel {
         let prefer_spirit_development = config.enable_root_spirit_development_pref
             && Self::should_prefer_spirit_development(game, perspective);
         let mut best_spirit_development = scored_roots[best_index].spirit_development;
+        let mut best_spirit_same_turn_score_setup =
+            scored_roots[best_index].spirit_same_turn_score_setup_now;
         let mut best_spirit_own_mana_setup = scored_roots[best_index].spirit_own_mana_setup_now;
+        let mut best_same_turn_score_window_value =
+            scored_roots[best_index].same_turn_score_window_value;
         let mut best_mana_handoff = scored_roots[best_index].mana_handoff_to_opponent;
         let mut best_has_roundtrip = scored_roots[best_index].has_roundtrip;
         let mut best_soft_priority = scored_roots[best_index].interview_soft_priority;
@@ -7003,10 +7234,18 @@ impl MonsGameModel {
                 && !best_spirit_development;
             let equal_spirit_preference = !prefer_spirit_development
                 || evaluation.spirit_development == best_spirit_development;
+            let spirit_same_turn_score_setup_better =
+                evaluation.spirit_same_turn_score_setup_now && !best_spirit_same_turn_score_setup;
+            let equal_spirit_same_turn_score_setup =
+                evaluation.spirit_same_turn_score_setup_now == best_spirit_same_turn_score_setup;
             let spirit_setup_better =
                 evaluation.spirit_own_mana_setup_now && !best_spirit_own_mana_setup;
             let equal_spirit_setup =
                 evaluation.spirit_own_mana_setup_now == best_spirit_own_mana_setup;
+            let same_turn_score_window_better =
+                evaluation.same_turn_score_window_value > best_same_turn_score_window_value;
+            let equal_same_turn_score_window =
+                evaluation.same_turn_score_window_value == best_same_turn_score_window_value;
             let handoff_better = !evaluation.mana_handoff_to_opponent && best_mana_handoff;
             let equal_handoff = evaluation.mana_handoff_to_opponent == best_mana_handoff;
             let roundtrip_better = !evaluation.has_roundtrip && best_has_roundtrip;
@@ -7024,18 +7263,25 @@ impl MonsGameModel {
                     && evaluation.score > best_shortlisted_score);
             let tie_break_better = soft_better
                 || (soft_equal_or_disabled
-                    && (spirit_setup_better
-                        || (equal_spirit_setup
-                            && (handoff_better
-                                || (equal_handoff
-                                    && (roundtrip_better
-                                        || (equal_roundtrip && efficiency_or_score_better)))))));
+                    && (same_turn_score_window_better
+                        || (equal_same_turn_score_window
+                            && (spirit_same_turn_score_setup_better
+                                || (equal_spirit_same_turn_score_setup
+                                    && (spirit_setup_better
+                                        || (equal_spirit_setup
+                                            && (handoff_better
+                                                || (equal_handoff
+                                                    && (roundtrip_better
+                                                        || (equal_roundtrip
+                                                            && efficiency_or_score_better)))))))))));
             if spirit_better || (equal_spirit_preference && tie_break_better) {
                 best_index = index;
                 best_efficiency = evaluation.efficiency;
                 best_shortlisted_score = evaluation.score;
                 best_spirit_development = evaluation.spirit_development;
+                best_spirit_same_turn_score_setup = evaluation.spirit_same_turn_score_setup_now;
                 best_spirit_own_mana_setup = evaluation.spirit_own_mana_setup_now;
+                best_same_turn_score_window_value = evaluation.same_turn_score_window_value;
                 best_mana_handoff = evaluation.mana_handoff_to_opponent;
                 best_has_roundtrip = evaluation.has_roundtrip;
                 best_soft_priority = evaluation.interview_soft_priority;
@@ -8503,6 +8749,246 @@ mod opening_book_tests {
                 .iter()
                 .map(|root| root.inputs.clone())
                 .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn ranked_root_moves_surface_spirit_setup_into_same_turn_score_when_available() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(4, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 0),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        assert!(
+            crate::models::automove_exact::exact_turn_summary(&game, Color::White)
+                .spirit_assisted_score
+        );
+        let roots = MonsGameModel::ranked_root_moves(
+            &game,
+            Color::White,
+            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+        );
+
+        assert!(
+            roots.iter().any(|root| {
+                MonsGameModel::apply_inputs_for_search_with_events(&game, &root.inputs)
+                    .map(|(after, _)| {
+                        crate::models::automove_exact::exact_state_analysis(&after)
+                            .color_summary(Color::White)
+                            .immediate_window
+                            .best_score
+                            > 0
+                    })
+                    .unwrap_or(false)
+            }),
+            "expected a surfaced root that preserves the spirit-assisted same-turn score window, got inputs={:?}",
+            roots
+                .iter()
+                .map(|root| root.inputs.clone())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn spirit_setup_into_same_turn_score_is_preferred_when_available() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(4, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 0),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        assert!(
+            crate::models::automove_exact::exact_turn_summary(&game, Color::White)
+                .spirit_assisted_score
+        );
+        let inputs = MonsGameModel::smart_search_best_inputs(
+            &game,
+            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+        );
+        let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected spirit-setup inputs should be legal");
+        let after_best_score = crate::models::automove_exact::exact_state_analysis(&after)
+            .color_summary(Color::White)
+            .immediate_window
+            .best_score;
+
+        assert!(
+            after_best_score > 0,
+            "selected line should preserve the spirit-assisted same-turn scoring window, inputs={:?}, events={:?}",
+            inputs,
+            events
+        );
+    }
+
+    #[test]
+    fn spirit_setup_into_same_turn_score_survives_root_enumeration_cutoff() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(4, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 0),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        assert!(
+            crate::models::automove_exact::exact_turn_summary(&game, Color::White)
+                .spirit_assisted_score
+        );
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.root_enum_limit = 0;
+        let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
+        let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected spirit-setup inputs should be legal");
+        let after_best_score = crate::models::automove_exact::exact_state_analysis(&after)
+            .color_summary(Color::White)
+            .immediate_window
+            .best_score;
+
+        assert!(
+            after_best_score > 0,
+            "selected line should still preserve the spirit-assisted same-turn scoring window with capped root enumeration, inputs={:?}, events={:?}",
+            inputs,
+            events
+        );
+    }
+
+    #[test]
+    fn selected_line_preserves_same_turn_supermana_threat_when_available() {
+        let white_spirit = Mon::new(MonKind::Spirit, Color::White, 0);
+        let white_spirit_base = Board::new().base(white_spirit);
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (white_spirit_base, Item::Mon { mon: white_spirit }),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let exact_turn_before =
+            crate::models::automove_exact::exact_turn_summary(&game, Color::White);
+        assert!(
+            exact_turn_before.safe_supermana_progress,
+            "scenario should start with an exact same-turn supermana threat"
+        );
+
+        let inputs = MonsGameModel::smart_search_best_inputs(
+            &game,
+            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+        );
+        let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected supermana-threat inputs should be legal");
+        let exact_turn_after =
+            crate::models::automove_exact::exact_turn_summary(&after, Color::White);
+        assert!(
+            exact_turn_after.safe_supermana_progress
+                || matches!(
+                    after.board.occupied().find(|(_, item)| matches!(
+                        item,
+                        Item::MonWithMana {
+                            mon,
+                            mana: Mana::Supermana,
+                        } if mon.color == Color::White && mon.kind == MonKind::Drainer
+                    )),
+                    Some(_)
+                ),
+            "selected line should preserve the exact same-turn supermana threat, inputs={:?}, events={:?}",
+            inputs,
+            events
         );
     }
 
