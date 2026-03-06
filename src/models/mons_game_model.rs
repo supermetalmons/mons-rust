@@ -8839,6 +8839,62 @@ mod opening_book_tests {
     }
 
     #[test]
+    fn spirit_scores_own_mana_with_root_cutoff_when_immediately_available() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(9, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 5),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        assert!(
+            crate::models::automove_exact::exact_turn_summary(&game, Color::White)
+                .spirit_assisted_score
+        );
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.root_enum_limit = 0;
+        let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
+        let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected spirit-score inputs should be legal");
+        assert!(
+            after.white_score >= game.white_score + 1,
+            "selected line should still score own mana immediately under capped root enumeration, inputs={:?}, events={:?}",
+            inputs,
+            events
+        );
+    }
+
+    #[test]
     fn safe_supermana_pickup_is_preferred_when_available() {
         let white_spirit = Mon::new(MonKind::Spirit, Color::White, 0);
         let white_spirit_base = Board::new().base(white_spirit);
