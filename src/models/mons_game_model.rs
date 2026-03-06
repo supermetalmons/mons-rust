@@ -3350,6 +3350,30 @@ impl MonsGameModel {
         }
     }
 
+    fn drainer_safety_fallback_candidates_limit(config: SmartSearchConfig) -> usize {
+        if config.depth >= 3 {
+            8
+        } else {
+            4
+        }
+    }
+
+    fn drainer_safety_fallback_enum_limit(config: SmartSearchConfig) -> usize {
+        if config.depth >= 3 {
+            192
+        } else {
+            96
+        }
+    }
+
+    fn generic_root_fallback_enum_limit(config: SmartSearchConfig) -> usize {
+        if config.depth >= 3 {
+            24
+        } else {
+            12
+        }
+    }
+
     fn automove_start_input_options(config: SmartSearchConfig) -> SuggestedStartInputOptions {
         SuggestedStartInputOptions {
             include_mana_starts_with_potion_action: config
@@ -3498,6 +3522,16 @@ impl MonsGameModel {
                 let mon = item.mon()?;
                 (mon.color == perspective && mon.kind == MonKind::Drainer && !mon.is_fainted())
                     .then_some(location)
+            })
+            .collect()
+    }
+
+    fn find_awake_mon_locations(game: &MonsGame, perspective: Color) -> Vec<Location> {
+        game.board
+            .occupied()
+            .filter_map(|(location, item)| {
+                let mon = item.mon()?;
+                (mon.color == perspective && !mon.is_fainted()).then_some(location)
             })
             .collect()
     }
@@ -3701,6 +3735,70 @@ impl MonsGameModel {
 
         score_window_inputs.sort_by(|a, b| a.inputs.cmp(&b.inputs));
         score_window_inputs
+    }
+
+    fn collect_targeted_drainer_safety_inputs(
+        game: &MonsGame,
+        perspective: Color,
+        config: SmartSearchConfig,
+        max_candidates: usize,
+        require_walk_safe: bool,
+    ) -> Vec<LegalInputTransition> {
+        let actor_locations = Self::find_awake_mon_locations(game, perspective);
+        if actor_locations.is_empty() {
+            return Vec::new();
+        }
+
+        let start_options = Self::automove_start_input_options(config);
+        let per_actor_enum_limit = Self::drainer_safety_fallback_enum_limit(config);
+        let mut safety_inputs = Vec::new();
+        let mut seen_inputs = std::collections::HashSet::new();
+
+        for actor_loc in actor_locations {
+            if safety_inputs.len() >= max_candidates.max(1) {
+                break;
+            }
+
+            let mut actor_transitions = Vec::new();
+            let mut partial_inputs = vec![Input::Location(actor_loc)];
+            let mut simulated_game = game.clone_for_simulation();
+            Self::collect_legal_transitions(
+                &mut simulated_game,
+                &mut partial_inputs,
+                &mut actor_transitions,
+                per_actor_enum_limit,
+                start_options,
+            );
+            actor_transitions.sort_by(|a, b| a.inputs.cmp(&b.inputs));
+
+            for transition in actor_transitions {
+                if safety_inputs.len() >= max_candidates.max(1) {
+                    break;
+                }
+                if Self::is_own_drainer_vulnerable_next_turn(
+                    &transition.game,
+                    perspective,
+                    config.enable_enhanced_drainer_vulnerability,
+                ) {
+                    continue;
+                }
+                if require_walk_safe
+                    && Self::is_own_drainer_walk_vulnerable_next_turn(
+                        &transition.game,
+                        perspective,
+                        config.enable_enhanced_drainer_vulnerability,
+                    )
+                {
+                    continue;
+                }
+                if seen_inputs.insert(transition.inputs.clone()) {
+                    safety_inputs.push(transition);
+                }
+            }
+        }
+
+        safety_inputs.sort_by(|a, b| a.inputs.cmp(&b.inputs));
+        safety_inputs
     }
 
     fn spirit_target_allowed_for_root_fallback(item: Item) -> bool {
@@ -4079,6 +4177,84 @@ impl MonsGameModel {
             Self::enumerate_legal_transitions(game, effective_enum_limit, start_options)
         };
 
+        let own_drainer_walk_vulnerable_before = if config.enable_move_class_coverage
+            && config.enable_walk_threat_prefilter
+            && !own_drainer_vulnerable_before
+        {
+            Self::is_own_drainer_walk_vulnerable_next_turn(
+                game,
+                perspective,
+                config.enable_enhanced_drainer_vulnerability,
+            )
+        } else {
+            false
+        };
+
+        if config.enable_root_drainer_safety_prefilter
+            && own_drainer_vulnerable_before
+            && !root_transitions.iter().any(|transition| {
+                !Self::is_own_drainer_vulnerable_next_turn(
+                    &transition.game,
+                    perspective,
+                    config.enable_enhanced_drainer_vulnerability,
+                )
+            })
+        {
+            let fallback_limit = Self::drainer_safety_fallback_candidates_limit(config);
+            let fallback_inputs = Self::collect_targeted_drainer_safety_inputs(
+                game,
+                perspective,
+                config,
+                fallback_limit,
+                false,
+            );
+            if !fallback_inputs.is_empty() {
+                let mut seen_inputs = root_transitions
+                    .iter()
+                    .map(|transition| transition.inputs.clone())
+                    .collect::<std::collections::HashSet<_>>();
+                for transition in fallback_inputs {
+                    if seen_inputs.insert(transition.inputs.clone()) {
+                        root_transitions.push(transition);
+                    }
+                }
+            }
+        }
+        if config.enable_walk_threat_prefilter
+            && own_drainer_walk_vulnerable_before
+            && !root_transitions.iter().any(|transition| {
+                !Self::is_own_drainer_vulnerable_next_turn(
+                    &transition.game,
+                    perspective,
+                    config.enable_enhanced_drainer_vulnerability,
+                ) && !Self::is_own_drainer_walk_vulnerable_next_turn(
+                    &transition.game,
+                    perspective,
+                    config.enable_enhanced_drainer_vulnerability,
+                )
+            })
+        {
+            let fallback_limit = Self::drainer_safety_fallback_candidates_limit(config);
+            let fallback_inputs = Self::collect_targeted_drainer_safety_inputs(
+                game,
+                perspective,
+                config,
+                fallback_limit,
+                true,
+            );
+            if !fallback_inputs.is_empty() {
+                let mut seen_inputs = root_transitions
+                    .iter()
+                    .map(|transition| transition.inputs.clone())
+                    .collect::<std::collections::HashSet<_>>();
+                for transition in fallback_inputs {
+                    if seen_inputs.insert(transition.inputs.clone()) {
+                        root_transitions.push(transition);
+                    }
+                }
+            }
+        }
+
         let exact_turn_before = exact_turn_summary(game, perspective);
         if exact_turn_before.safe_supermana_progress
             && !root_transitions.iter().any(|transition| {
@@ -4226,6 +4402,25 @@ impl MonsGameModel {
                 transition.events,
             ) {
                 candidates.push(candidate);
+            }
+        }
+
+        if candidates.is_empty() {
+            let fallback_limit = Self::generic_root_fallback_enum_limit(config);
+            let fallback_transitions =
+                Self::enumerate_legal_transitions(game, fallback_limit, start_options);
+            for transition in fallback_transitions {
+                if let Some(candidate) = Self::build_scored_root_move_from_transition(
+                    game,
+                    perspective,
+                    config,
+                    own_drainer_vulnerable_before,
+                    transition.inputs,
+                    transition.game,
+                    transition.events,
+                ) {
+                    candidates.push(candidate);
+                }
             }
         }
 
@@ -8390,6 +8585,105 @@ mod opening_book_tests {
     }
 
     #[test]
+    fn selected_line_avoids_drainer_vulnerability_when_safe_root_exists() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(8, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let roots = MonsGameModel::ranked_root_moves(&game, Color::White, config);
+        assert!(
+            roots.iter().any(|root| !root.own_drainer_vulnerable),
+            "scenario should offer at least one safe root"
+        );
+
+        let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
+        let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected drainer-safety inputs should be legal");
+        assert!(
+            !MonsGameModel::is_own_drainer_vulnerable_next_turn(
+                &after,
+                Color::White,
+                config.enable_enhanced_drainer_vulnerability,
+            ),
+            "selected line should keep drainer safe when a safe root exists, inputs={:?}, events={:?}",
+            inputs,
+            events
+        );
+    }
+
+    #[test]
+    fn selected_line_avoids_drainer_vulnerability_with_root_cutoff() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(8, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let roots = MonsGameModel::ranked_root_moves(&game, Color::White, config);
+        assert!(
+            roots.iter().any(|root| !root.own_drainer_vulnerable),
+            "scenario should offer at least one safe root"
+        );
+
+        config.root_enum_limit = 0;
+        let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
+        let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected drainer-safety inputs should be legal");
+        assert!(
+            !MonsGameModel::is_own_drainer_vulnerable_next_turn(
+                &after,
+                Color::White,
+                config.enable_enhanced_drainer_vulnerability,
+            ),
+            "selected line should keep drainer safe under capped root enumeration when a safe root exists, inputs={:?}, events={:?}",
+            inputs,
+            events
+        );
+    }
+
+    #[test]
     fn spirit_development_is_preferred_when_drainer_progress_is_still_available() {
         let spirit = Mon::new(MonKind::Spirit, Color::White, 0);
         let spirit_base = Board::new().base(spirit);
@@ -8987,6 +9281,74 @@ mod opening_book_tests {
                     Some(_)
                 ),
             "selected line should preserve the exact same-turn supermana threat, inputs={:?}, events={:?}",
+            inputs,
+            events
+        );
+    }
+
+    #[test]
+    fn selected_line_preserves_same_turn_supermana_threat_with_root_cutoff() {
+        let white_spirit = Mon::new(MonKind::Spirit, Color::White, 0);
+        let white_spirit_base = Board::new().base(white_spirit);
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (white_spirit_base, Item::Mon { mon: white_spirit }),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let exact_turn_before =
+            crate::models::automove_exact::exact_turn_summary(&game, Color::White);
+        assert!(
+            exact_turn_before.safe_supermana_progress,
+            "scenario should start with an exact same-turn supermana threat"
+        );
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.root_enum_limit = 0;
+        let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
+        let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected supermana-threat inputs should be legal");
+        let exact_turn_after =
+            crate::models::automove_exact::exact_turn_summary(&after, Color::White);
+        assert!(
+            exact_turn_after.safe_supermana_progress
+                || matches!(
+                    after.board.occupied().find(|(_, item)| matches!(
+                        item,
+                        Item::MonWithMana {
+                            mon,
+                            mana: Mana::Supermana,
+                        } if mon.color == Color::White && mon.kind == MonKind::Drainer
+                    )),
+                    Some(_)
+                ),
+            "selected line should preserve the exact same-turn supermana threat under capped root enumeration, inputs={:?}, events={:?}",
             inputs,
             events
         );
