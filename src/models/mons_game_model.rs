@@ -1496,6 +1496,14 @@ struct MoveEfficiencySnapshot {
     opponent_spirit_on_base: bool,
     my_spirit_action_targets: i32,
     opponent_spirit_action_targets: i32,
+    my_same_turn_score_value: i32,
+    opponent_same_turn_score_value: i32,
+    my_same_turn_opponent_mana_score_value: i32,
+    opponent_same_turn_opponent_mana_score_value: i32,
+    my_safe_supermana_progress: bool,
+    opponent_safe_supermana_progress: bool,
+    my_safe_opponent_mana_progress: bool,
+    opponent_safe_opponent_mana_progress: bool,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -5341,6 +5349,27 @@ impl MonsGameModel {
             * SMART_SPIRIT_ACTION_TARGET_DELTA_WEIGHT;
         delta -= (after.opponent_spirit_action_targets - before.opponent_spirit_action_targets)
             * (SMART_SPIRIT_ACTION_TARGET_DELTA_WEIGHT / 2);
+        delta += (after.my_same_turn_score_value - before.my_same_turn_score_value) * 55;
+        delta -= (after.opponent_same_turn_score_value - before.opponent_same_turn_score_value) * 45;
+        delta += (after.my_same_turn_opponent_mana_score_value
+            - before.my_same_turn_opponent_mana_score_value)
+            * 90;
+        delta -= (after.opponent_same_turn_opponent_mana_score_value
+            - before.opponent_same_turn_opponent_mana_score_value)
+            * 75;
+        if !before.my_safe_supermana_progress && after.my_safe_supermana_progress {
+            delta += 140;
+        }
+        if !before.opponent_safe_supermana_progress && after.opponent_safe_supermana_progress {
+            delta -= 120;
+        }
+        if !before.my_safe_opponent_mana_progress && after.my_safe_opponent_mana_progress {
+            delta += 120;
+        }
+        if !before.opponent_safe_opponent_mana_progress && after.opponent_safe_opponent_mana_progress
+        {
+            delta -= 110;
+        }
 
         if is_root {
             let root_compensates_handoff = events
@@ -5416,6 +5445,22 @@ impl MonsGameModel {
         let analysis = exact_state_analysis(game);
         let my_summary = analysis.color_summary(perspective);
         let opponent_summary = analysis.color_summary(perspective.other());
+        let my_turn_summary = if game.active_color == perspective {
+            exact_turn_summary(game, perspective)
+        } else {
+            ExactTurnSummary {
+                color: Some(perspective),
+                ..ExactTurnSummary::default()
+            }
+        };
+        let opponent_turn_summary = if game.active_color == perspective.other() {
+            exact_turn_summary(game, perspective.other())
+        } else {
+            ExactTurnSummary {
+                color: Some(perspective.other()),
+                ..ExactTurnSummary::default()
+            }
+        };
 
         let mut snapshot = MoveEfficiencySnapshot {
             my_best_carrier_steps: my_summary.best_carrier_steps.unwrap_or(unknown_steps),
@@ -5432,6 +5477,31 @@ impl MonsGameModel {
             opponent_spirit_on_base: false,
             my_spirit_action_targets: my_summary.spirit.utility,
             opponent_spirit_action_targets: opponent_summary.spirit.utility,
+            my_same_turn_score_value: if game.active_color == perspective {
+                my_summary.spirit.same_turn_score_value
+            } else {
+                0
+            },
+            opponent_same_turn_score_value: if game.active_color == perspective.other() {
+                opponent_summary.spirit.same_turn_score_value
+            } else {
+                0
+            },
+            my_same_turn_opponent_mana_score_value: if game.active_color == perspective {
+                my_summary.spirit.same_turn_opponent_mana_score_value
+            } else {
+                0
+            },
+            opponent_same_turn_opponent_mana_score_value: if game.active_color == perspective.other()
+            {
+                opponent_summary.spirit.same_turn_opponent_mana_score_value
+            } else {
+                0
+            },
+            my_safe_supermana_progress: my_turn_summary.safe_supermana_progress,
+            opponent_safe_supermana_progress: opponent_turn_summary.safe_supermana_progress,
+            my_safe_opponent_mana_progress: my_turn_summary.safe_opponent_mana_progress,
+            opponent_safe_opponent_mana_progress: opponent_turn_summary.safe_opponent_mana_progress,
         };
         let my_spirit_base = Self::spirit_base_for_color(&game.board, perspective);
         let opponent_spirit_base = Self::spirit_base_for_color(&game.board, perspective.other());
