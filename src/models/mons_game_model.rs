@@ -4255,7 +4255,19 @@ impl MonsGameModel {
             }
         }
 
-        let exact_turn_before = exact_turn_summary(game, perspective);
+        let exact_analysis_before = exact_state_analysis(game);
+        let exact_turn_before = if exact_analysis_before.active_turn.color == Some(perspective) {
+            exact_analysis_before.active_turn
+        } else {
+            ExactTurnSummary {
+                color: Some(perspective),
+                ..ExactTurnSummary::default()
+            }
+        };
+        let exact_spirit_setup_gain_before = exact_analysis_before
+            .color_summary(perspective)
+            .spirit
+            .next_turn_setup_gain;
         if exact_turn_before.safe_supermana_progress
             && !root_transitions.iter().any(|transition| {
                 Self::events_pickup_supermana(&transition.events)
@@ -4366,7 +4378,8 @@ impl MonsGameModel {
         }
         if (config.enable_interview_hard_spirit_deploy
             || config.enable_root_spirit_development_pref)
-            && Self::should_prefer_spirit_development(game, perspective)
+            && (Self::should_prefer_spirit_development(game, perspective)
+                || exact_spirit_setup_gain_before > 0)
             && !root_transitions.iter().any(|transition| {
                 Self::events_spirit_move_own_mana_toward_color(&transition.events, perspective)
             })
@@ -9419,6 +9432,69 @@ mod opening_book_tests {
     }
 
     #[test]
+    fn spirit_moves_own_mana_closer_to_pool_with_root_cutoff_when_setup_is_strongest() {
+        let white_spirit = Mon::new(MonKind::Spirit, Color::White, 0);
+        let game = game_with_items(
+            vec![
+                (Location::new(9, 7), Item::Mon { mon: white_spirit }),
+                (
+                    Location::new(9, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 8),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.root_enum_limit = 0;
+        let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
+        let (_, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected spirit-setup inputs should be legal");
+        let spirit_moved_own_mana_closer = events.iter().any(|event| {
+            let Event::SpiritTargetMove {
+                item:
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                from,
+                to,
+                ..
+            } = event
+            else {
+                return false;
+            };
+            let from_pool_steps = from
+                .distance(&Location::new(10, 0))
+                .min(from.distance(&Location::new(10, 10)));
+            let to_pool_steps = to
+                .distance(&Location::new(10, 0))
+                .min(to.distance(&Location::new(10, 10)));
+            to_pool_steps < from_pool_steps
+        });
+        assert!(
+            spirit_moved_own_mana_closer,
+            "selected line should still use spirit to move own mana closer to a pool under capped root enumeration, inputs={:?}, events={:?}",
+            inputs,
+            events
+        );
+    }
+
+    #[test]
     fn selected_line_preserves_same_turn_opponent_mana_threat_when_available() {
         let game = game_with_items(
             vec![
@@ -9469,6 +9545,61 @@ mod opening_book_tests {
         assert!(
             exact_turn_after.safe_opponent_mana_progress || exact_turn_after.spirit_assisted_denial,
             "selected line should preserve the exact same-turn opponent-mana threat, inputs={:?}, events={:?}",
+            inputs,
+            events
+        );
+    }
+
+    #[test]
+    fn selected_line_preserves_same_turn_opponent_mana_threat_with_root_cutoff() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(5, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 3),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        let exact_turn_before =
+            crate::models::automove_exact::exact_turn_summary(&game, Color::White);
+        assert!(
+            exact_turn_before.safe_opponent_mana_progress
+                || exact_turn_before.spirit_assisted_denial,
+            "scenario should start with an exact same-turn opponent-mana threat"
+        );
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.root_enum_limit = 0;
+        let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
+        let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected opponent-mana-threat inputs should be legal");
+        let exact_turn_after =
+            crate::models::automove_exact::exact_turn_summary(&after, Color::White);
+        assert!(
+            exact_turn_after.safe_opponent_mana_progress || exact_turn_after.spirit_assisted_denial,
+            "selected line should preserve the exact same-turn opponent-mana threat under capped root enumeration, inputs={:?}, events={:?}",
             inputs,
             events
         );
