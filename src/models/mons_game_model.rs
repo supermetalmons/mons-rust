@@ -3143,6 +3143,12 @@ impl MonsGameModel {
         })
     }
 
+    fn events_include_spirit_target_move(events: &[Event]) -> bool {
+        events
+            .iter()
+            .any(|event| matches!(event, Event::SpiritTargetMove { .. }))
+    }
+
     fn events_use_potion(events: &[Event]) -> bool {
         events
             .iter()
@@ -3299,6 +3305,14 @@ impl MonsGameModel {
     }
 
     fn safe_drainer_pickup_fallback_candidates_limit(config: SmartSearchConfig) -> usize {
+        if config.depth >= 3 {
+            8
+        } else {
+            4
+        }
+    }
+
+    fn spirit_score_fallback_candidates_limit(config: SmartSearchConfig) -> usize {
         if config.depth >= 3 {
             8
         } else {
@@ -3503,6 +3517,160 @@ impl MonsGameModel {
         }
 
         setup_inputs
+    }
+
+    fn collect_targeted_spirit_score_inputs(
+        game: &MonsGame,
+        perspective: Color,
+        max_candidates: usize,
+        opponent_mana_only: bool,
+    ) -> Vec<LegalInputTransition> {
+        let spirit_locations = Self::find_awake_spirit_locations(game, perspective);
+        if spirit_locations.is_empty() || !game.player_can_use_action() {
+            return Vec::new();
+        }
+
+        let score_before = Self::score_for_color(game, perspective);
+        let mut score_inputs = Vec::new();
+
+        for spirit_loc in spirit_locations {
+            if score_inputs.len() >= max_candidates.max(1) {
+                break;
+            }
+            if matches!(game.board.square(spirit_loc), Square::MonBase { .. }) {
+                continue;
+            }
+
+            for &target in spirit_loc.reachable_by_spirit_action_ref() {
+                if score_inputs.len() >= max_candidates.max(1) {
+                    break;
+                }
+                let Some(target_item) = game.board.item(target).copied() else {
+                    continue;
+                };
+                if !Self::spirit_target_allowed_for_root_fallback(target_item) {
+                    continue;
+                }
+
+                for &dest in target.nearby_locations_ref() {
+                    if score_inputs.len() >= max_candidates.max(1) {
+                        break;
+                    }
+                    if !Self::spirit_destination_allowed_for_root_fallback(
+                        &game.board,
+                        target_item,
+                        dest,
+                    ) {
+                        continue;
+                    }
+                    let inputs = vec![
+                        Input::Location(spirit_loc),
+                        Input::Location(target),
+                        Input::Location(dest),
+                    ];
+                    let Some((after_game, events)) =
+                        Self::apply_inputs_for_search_with_events(game, &inputs)
+                    else {
+                        continue;
+                    };
+                    if !Self::events_include_spirit_target_move(&events) {
+                        continue;
+                    }
+                    let scores_now = if opponent_mana_only {
+                        Self::events_score_opponent_mana(&events, perspective)
+                    } else {
+                        Self::score_for_color(&after_game, perspective) > score_before
+                    };
+                    if scores_now {
+                        score_inputs.push(LegalInputTransition {
+                            inputs,
+                            game: after_game,
+                            events,
+                        });
+                    }
+                }
+            }
+        }
+
+        score_inputs.sort_by(|a, b| a.inputs.cmp(&b.inputs));
+        score_inputs
+    }
+
+    fn spirit_target_allowed_for_root_fallback(item: Item) -> bool {
+        match item {
+            Item::Mon { mon }
+            | Item::MonWithMana { mon, .. }
+            | Item::MonWithConsumable { mon, .. } => !mon.is_fainted(),
+            Item::Mana { .. } | Item::Consumable { .. } => true,
+        }
+    }
+
+    fn spirit_destination_allowed_for_root_fallback(
+        board: &Board,
+        target_item: Item,
+        destination: Location,
+    ) -> bool {
+        let destination_item = board.item(destination).copied();
+        let destination_square = board.square(destination);
+        let target_mon = target_item.mon().copied();
+        let target_mana = target_item.mana().copied();
+
+        let valid_destination = match destination_item {
+            Some(Item::Mon {
+                mon: destination_mon,
+            }) => match target_item {
+                Item::Mon { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. } => {
+                    false
+                }
+                Item::Mana { .. } => {
+                    destination_mon.kind == MonKind::Drainer && !destination_mon.is_fainted()
+                }
+                Item::Consumable {
+                    consumable: Consumable::BombOrPotion,
+                } => true,
+                Item::Consumable { .. } => false,
+            },
+            Some(Item::Mana { .. }) => {
+                matches!(target_mon, Some(mon) if mon.kind == MonKind::Drainer && !mon.is_fainted())
+            }
+            Some(Item::MonWithMana { .. }) | Some(Item::MonWithConsumable { .. }) => {
+                matches!(
+                    target_item,
+                    Item::Consumable {
+                        consumable: Consumable::BombOrPotion,
+                    }
+                )
+            }
+            Some(Item::Consumable {
+                consumable: Consumable::BombOrPotion,
+            }) => matches!(
+                target_item,
+                Item::Mon { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. }
+            ),
+            Some(Item::Consumable { .. }) => false,
+            None => true,
+        };
+
+        if !valid_destination {
+            return false;
+        }
+
+        match destination_square {
+            Square::Regular
+            | Square::ConsumableBase
+            | Square::ManaBase { .. }
+            | Square::ManaPool { .. } => true,
+            Square::SupermanaBase => {
+                target_mana == Some(Mana::Supermana)
+                    || (target_mana.is_none()
+                        && matches!(target_mon.map(|mon| mon.kind), Some(MonKind::Drainer)))
+            }
+            Square::MonBase { kind, color } => {
+                matches!(target_mon, Some(mon) if mon.kind == kind && mon.color == color)
+                    && target_mana.is_none()
+                    && target_item.consumable().is_none()
+            }
+        }
     }
 
     fn collect_targeted_safe_drainer_pickup_inputs(
@@ -3851,6 +4019,53 @@ impl MonsGameModel {
                 fallback_limit,
                 Mana::Regular(perspective.other()),
             );
+            if !fallback_inputs.is_empty() {
+                let mut seen_inputs = root_transitions
+                    .iter()
+                    .map(|transition| transition.inputs.clone())
+                    .collect::<std::collections::HashSet<_>>();
+                for transition in fallback_inputs {
+                    if seen_inputs.insert(transition.inputs.clone()) {
+                        root_transitions.push(transition);
+                    }
+                }
+            }
+        }
+        if exact_turn_before.spirit_assisted_score
+            && !root_transitions.iter().any(|transition| {
+                Self::events_include_spirit_target_move(&transition.events)
+                    && Self::score_for_color(&transition.game, perspective)
+                        > Self::score_for_color(game, perspective)
+            })
+        {
+            let fallback_limit = Self::spirit_score_fallback_candidates_limit(config);
+            let fallback_inputs = Self::collect_targeted_spirit_score_inputs(
+                game,
+                perspective,
+                fallback_limit,
+                false,
+            );
+            if !fallback_inputs.is_empty() {
+                let mut seen_inputs = root_transitions
+                    .iter()
+                    .map(|transition| transition.inputs.clone())
+                    .collect::<std::collections::HashSet<_>>();
+                for transition in fallback_inputs {
+                    if seen_inputs.insert(transition.inputs.clone()) {
+                        root_transitions.push(transition);
+                    }
+                }
+            }
+        }
+        if exact_turn_before.spirit_assisted_denial
+            && !root_transitions.iter().any(|transition| {
+                Self::events_include_spirit_target_move(&transition.events)
+                    && Self::events_score_opponent_mana(&transition.events, perspective)
+            })
+        {
+            let fallback_limit = Self::spirit_score_fallback_candidates_limit(config);
+            let fallback_inputs =
+                Self::collect_targeted_spirit_score_inputs(game, perspective, fallback_limit, true);
             if !fallback_inputs.is_empty() {
                 let mut seen_inputs = root_transitions
                     .iter()
@@ -8227,6 +8442,63 @@ mod opening_book_tests {
         assert!(
             roots.iter().any(|root| root.safe_opponent_mana_pickup_now),
             "expected a surfaced safe opponent-mana pickup root, got inputs={:?}",
+            roots
+                .iter()
+                .map(|root| root.inputs.clone())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn ranked_root_moves_surface_spirit_opponent_mana_score_when_available() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let roots = MonsGameModel::ranked_root_moves(
+            &game,
+            Color::White,
+            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+        );
+
+        assert!(
+            roots.iter().any(|root| {
+                MonsGameModel::apply_inputs_for_search_with_events(&game, &root.inputs)
+                    .map(|(after, events)| {
+                        MonsGameModel::events_include_spirit_target_move(&events)
+                            && MonsGameModel::events_score_opponent_mana(&events, Color::White)
+                            && after.white_score >= game.white_score + 2
+                    })
+                    .unwrap_or(false)
+            }),
+            "expected a surfaced spirit opponent-mana score root, got inputs={:?}",
             roots
                 .iter()
                 .map(|root| root.inputs.clone())
