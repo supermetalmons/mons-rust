@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 const EXACT_ANALYSIS_CACHE_MAX_ENTRIES: usize = 512;
+const EXACT_ATTACK_REACH_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_SECURE_MANA_CACHE_MAX_ENTRIES: usize = 4096;
 const EXACT_SPIRIT_UTILITY_CAP: i32 = 6;
 
@@ -90,6 +91,21 @@ pub(crate) struct ExactStateAnalysisCache {
     entries: HashMap<u64, ExactStateAnalysis>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ExactAttackQueryKey {
+    board_hash: u64,
+    attacker_color: Color,
+    target_color: Color,
+    target: Location,
+    remaining_moves: i32,
+    can_use_action: bool,
+}
+
+#[derive(Default)]
+struct ExactAttackReachCache {
+    entries: HashMap<ExactAttackQueryKey, bool>,
+}
+
 #[derive(Default)]
 struct ExactSecureManaCache {
     entries: HashMap<(u64, Mana), bool>,
@@ -99,6 +115,8 @@ struct ExactSecureManaCache {
 thread_local! {
     static EXACT_STATE_ANALYSIS_CACHE: RefCell<ExactStateAnalysisCache> =
         RefCell::new(ExactStateAnalysisCache::default());
+    static EXACT_ATTACK_REACH_CACHE: RefCell<ExactAttackReachCache> =
+        RefCell::new(ExactAttackReachCache::default());
     static EXACT_SECURE_MANA_CACHE: RefCell<ExactSecureManaCache> =
         RefCell::new(ExactSecureManaCache::default());
 }
@@ -106,6 +124,7 @@ thread_local! {
 #[inline]
 pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_STATE_ANALYSIS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
+    EXACT_ATTACK_REACH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_SECURE_MANA_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         cache.entries.clear();
@@ -160,6 +179,48 @@ pub(crate) fn can_attack_target_on_board(
         return false;
     }
 
+    let key = ExactAttackQueryKey {
+        board_hash: exact_board_hash(board),
+        attacker_color,
+        target_color,
+        target,
+        remaining_moves,
+        can_use_action,
+    };
+    if let Some(cached) =
+        EXACT_ATTACK_REACH_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
+    {
+        return cached;
+    }
+
+    let result = can_attack_target_on_board_uncached(
+        board,
+        attacker_color,
+        target_color,
+        target,
+        remaining_moves,
+        can_use_action,
+    );
+    EXACT_ATTACK_REACH_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.entries.len() >= EXACT_ATTACK_REACH_CACHE_MAX_ENTRIES
+            && !cache.entries.contains_key(&key)
+        {
+            cache.entries.clear();
+        }
+        cache.entries.insert(key, result);
+    });
+    result
+}
+
+fn can_attack_target_on_board_uncached(
+    board: &Board,
+    attacker_color: Color,
+    target_color: Color,
+    target: Location,
+    remaining_moves: i32,
+    _can_use_action: bool,
+) -> bool {
     let target_guarded = MonsGameModel::is_location_guarded_by_angel(board, target_color, target);
 
     for (start, item) in board.occupied() {
@@ -221,6 +282,89 @@ pub(crate) fn can_attack_target_on_board(
         }
     }
     false
+}
+
+fn exact_board_hash(board: &Board) -> u64 {
+    let mut state = 0x6a09e667f3bcc909u64;
+    for (idx, item) in board.items.iter().enumerate() {
+        let Some(item) = item else { continue };
+        let entry = ((idx as u64)
+            .wrapping_add(1)
+            .wrapping_mul(0x9e3779b185ebca87))
+            ^ exact_hash_item(*item);
+        state ^= exact_mix_u64(entry);
+        state = state.rotate_left(17).wrapping_mul(0x94d049bb133111eb);
+    }
+    exact_mix_u64(state)
+}
+
+#[inline]
+fn exact_hash_item(item: Item) -> u64 {
+    match item {
+        Item::Mon { mon } => 0x100 | exact_hash_mon(mon),
+        Item::Mana { mana } => 0x200 | exact_hash_mana(mana),
+        Item::MonWithMana { mon, mana } => {
+            0x300 | exact_hash_mon(mon) | (exact_hash_mana(mana) << 16)
+        }
+        Item::MonWithConsumable { mon, consumable } => {
+            0x400 | exact_hash_mon(mon) | (exact_hash_consumable(consumable) << 16)
+        }
+        Item::Consumable { consumable } => 0x500 | exact_hash_consumable(consumable),
+    }
+}
+
+#[inline]
+fn exact_hash_mon(mon: Mon) -> u64 {
+    exact_hash_mon_kind(mon.kind)
+        | (exact_hash_color(mon.color) << 4)
+        | (((mon.cooldown as i64 as u64) & 0xff) << 8)
+}
+
+#[inline]
+fn exact_hash_mon_kind(kind: MonKind) -> u64 {
+    match kind {
+        MonKind::Demon => 1,
+        MonKind::Drainer => 2,
+        MonKind::Angel => 3,
+        MonKind::Spirit => 4,
+        MonKind::Mystic => 5,
+    }
+}
+
+#[inline]
+fn exact_hash_color(color: Color) -> u64 {
+    match color {
+        Color::White => 1,
+        Color::Black => 2,
+    }
+}
+
+#[inline]
+fn exact_hash_mana(mana: Mana) -> u64 {
+    match mana {
+        Mana::Regular(color) => 1 | (exact_hash_color(color) << 4),
+        Mana::Supermana => 2,
+    }
+}
+
+#[inline]
+fn exact_hash_consumable(consumable: Consumable) -> u64 {
+    match consumable {
+        Consumable::Bomb => 1,
+        Consumable::Potion => 2,
+        Consumable::BombOrPotion => 3,
+    }
+}
+
+#[inline]
+fn exact_mix_u64(value: u64) -> u64 {
+    let mut mixed = value;
+    mixed ^= mixed >> 30;
+    mixed = mixed.wrapping_mul(0xbf58476d1ce4e5b9);
+    mixed ^= mixed >> 27;
+    mixed = mixed.wrapping_mul(0x94d049bb133111eb);
+    mixed ^= mixed >> 31;
+    mixed
 }
 
 pub(crate) fn drainer_immediate_threats(
@@ -1493,6 +1637,40 @@ mod tests {
             Color::White,
         );
         assert!(exact_turn_summary(&game, Color::White).safe_supermana_progress);
+    }
+
+    #[test]
+    fn exact_attack_cache_preserves_repeated_mystic_reach_result() {
+        clear_exact_state_analysis_cache();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(2, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let first =
+            can_attack_target_on_board(&board, Color::Black, Color::White, Location::new(6, 5), 2, true);
+        let second =
+            can_attack_target_on_board(&board, Color::Black, Color::White, Location::new(6, 5), 2, true);
+        clear_exact_state_analysis_cache();
+        let third =
+            can_attack_target_on_board(&board, Color::Black, Color::White, Location::new(6, 5), 2, true);
+
+        assert!(first);
+        assert_eq!(first, second);
+        assert_eq!(first, third);
     }
 
     #[test]
