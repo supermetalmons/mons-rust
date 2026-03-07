@@ -2986,6 +2986,7 @@ impl MonsGameModel {
         let opponent_mana_progress = scores_opponent_mana_this_turn
             || Self::events_pickup_opponent_mana(&events, perspective)
             || Self::events_move_opponent_mana_toward_color(&events, perspective)
+            || Self::events_spirit_opponent_mana_setup(&events, &simulated_game.board, perspective)
             || exact_turn.safe_opponent_mana_progress
             || exact_turn.spirit_assisted_denial;
         let spirit_assisted_score = exact_turn.spirit_assisted_score;
@@ -3254,6 +3255,48 @@ impl MonsGameModel {
         })
     }
 
+    fn events_spirit_move_opponent_mana_toward_color(
+        events: &[Event],
+        perspective: Color,
+    ) -> bool {
+        events.iter().any(|event| {
+            matches!(
+                event,
+                Event::SpiritTargetMove {
+                    item: Item::Mana {
+                        mana: Mana::Regular(owner),
+                    },
+                    from,
+                    to,
+                    ..
+                } if *owner == perspective.other()
+                    && Self::mana_move_toward_color(*from, *to, perspective)
+            )
+        })
+    }
+
+    fn events_spirit_move_opponent_mana_onto_safe_drainer(
+        events: &[Event],
+        board_after: &Board,
+        perspective: Color,
+    ) -> bool {
+        events.iter().any(|event| {
+            matches!(
+                event,
+                Event::SpiritTargetMove {
+                    item: Item::Mana {
+                        mana: Mana::Regular(owner),
+                    },
+                    ..
+                } if *owner == perspective.other()
+            )
+        }) && Self::own_drainer_carries_specific_mana_safely(
+            board_after,
+            perspective,
+            Mana::Regular(perspective.other()),
+        )
+    }
+
     fn events_spirit_move_supermana_toward_color(events: &[Event], perspective: Color) -> bool {
         events.iter().any(|event| {
             matches!(
@@ -3305,6 +3348,19 @@ impl MonsGameModel {
             )
     }
 
+    fn events_spirit_opponent_mana_setup(
+        events: &[Event],
+        board_after: &Board,
+        perspective: Color,
+    ) -> bool {
+        Self::events_spirit_move_opponent_mana_toward_color(events, perspective)
+            || Self::events_spirit_move_opponent_mana_onto_safe_drainer(
+                events,
+                board_after,
+                perspective,
+            )
+    }
+
     fn events_spirit_scoring_mana_setup(
         events: &[Event],
         board_after: &Board,
@@ -3312,6 +3368,7 @@ impl MonsGameModel {
     ) -> bool {
         Self::events_spirit_move_own_mana_toward_color(events, perspective)
             || Self::events_spirit_supermana_setup(events, board_after, perspective)
+            || Self::events_spirit_opponent_mana_setup(events, board_after, perspective)
     }
 
     fn interview_root_soft_priority(
@@ -9698,6 +9755,133 @@ mod opening_book_tests {
         assert!(
             spirit_moved_own_mana_closer,
             "selected line should still use spirit to move own mana closer to a pool under capped root enumeration, inputs={:?}, events={:?}",
+            inputs,
+            events
+        );
+    }
+
+    #[test]
+    fn spirit_moves_opponent_mana_closer_to_pool_when_setup_is_strongest() {
+        let white_spirit = Mon::new(MonKind::Spirit, Color::White, 0);
+        let game = game_with_items(
+            vec![
+                (Location::new(9, 7), Item::Mon { mon: white_spirit }),
+                (
+                    Location::new(9, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 8),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let inputs = MonsGameModel::smart_search_best_inputs(
+            &game,
+            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+        );
+        let (_, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected spirit-opponent-setup inputs should be legal");
+        let spirit_moved_opponent_mana_closer = events.iter().any(|event| {
+            let Event::SpiritTargetMove {
+                item:
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                from,
+                to,
+                ..
+            } = event
+            else {
+                return false;
+            };
+            let from_pool_steps = from
+                .distance(&Location::new(10, 0))
+                .min(from.distance(&Location::new(10, 10)));
+            let to_pool_steps = to
+                .distance(&Location::new(10, 0))
+                .min(to.distance(&Location::new(10, 10)));
+            to_pool_steps < from_pool_steps
+        });
+        assert!(
+            spirit_moved_opponent_mana_closer,
+            "selected line should use spirit to move opponent mana closer to a pool, inputs={:?}, events={:?}",
+            inputs,
+            events
+        );
+    }
+
+    #[test]
+    fn spirit_moves_opponent_mana_closer_to_pool_with_root_cutoff_when_setup_is_strongest() {
+        let white_spirit = Mon::new(MonKind::Spirit, Color::White, 0);
+        let game = game_with_items(
+            vec![
+                (Location::new(9, 7), Item::Mon { mon: white_spirit }),
+                (
+                    Location::new(9, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 8),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.root_enum_limit = 0;
+        let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
+        let (_, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected spirit-opponent-setup inputs should be legal");
+        let spirit_moved_opponent_mana_closer = events.iter().any(|event| {
+            let Event::SpiritTargetMove {
+                item:
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                from,
+                to,
+                ..
+            } = event
+            else {
+                return false;
+            };
+            let from_pool_steps = from
+                .distance(&Location::new(10, 0))
+                .min(from.distance(&Location::new(10, 10)));
+            let to_pool_steps = to
+                .distance(&Location::new(10, 0))
+                .min(to.distance(&Location::new(10, 10)));
+            to_pool_steps < from_pool_steps
+        });
+        assert!(
+            spirit_moved_opponent_mana_closer,
+            "selected line should use spirit to move opponent mana closer to a pool under capped root enumeration, inputs={:?}, events={:?}",
             inputs,
             events
         );
