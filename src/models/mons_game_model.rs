@@ -4930,6 +4930,21 @@ impl MonsGameModel {
         classes.is_tactical_priority() || classes.carrier_progress
     }
 
+    fn is_exact_child_continuation_candidate(
+        ordering_efficiency: i32,
+        classes: MoveClassFlags,
+    ) -> bool {
+        ordering_efficiency > 0 && !classes.material
+    }
+
+    fn is_child_search_priority_candidate(state: &RankedChildState) -> bool {
+        Self::is_child_search_priority_class(state.classes)
+            || Self::is_exact_child_continuation_candidate(
+                state.ordering_efficiency,
+                state.classes,
+            )
+    }
+
     fn is_quiet_reduction_candidate(
         ordering_efficiency: i32,
         tactical_extension_trigger: bool,
@@ -4948,6 +4963,72 @@ impl MonsGameModel {
         classes: MoveClassFlags,
     ) -> bool {
         tactical_extension_trigger || (ordering_efficiency > 0 && !classes.quiet && !classes.material)
+    }
+
+    fn child_score_within_coverage_margin(
+        score: i32,
+        reference_score: i32,
+        maximizing: bool,
+    ) -> bool {
+        let margin = SMART_MOVE_CLASS_CHILD_SCORE_MARGIN.max(0);
+        if maximizing {
+            score.saturating_add(margin) >= reference_score
+        } else {
+            score <= reference_score.saturating_add(margin)
+        }
+    }
+
+    fn truncate_child_states_with_coverage(
+        scored_states: Vec<(i32, RankedChildState)>,
+        limit: usize,
+        maximizing: bool,
+        strict_guarantees: bool,
+    ) -> Vec<(i32, RankedChildState)> {
+        if scored_states.len() <= limit || limit == 0 {
+            return scored_states;
+        }
+
+        let cutoff_score = scored_states[limit - 1].0;
+        let preserve_index = scored_states
+            .iter()
+            .enumerate()
+            .skip(limit)
+            .find_map(|(index, (score, state))| {
+                if !Self::is_child_search_priority_candidate(state) {
+                    return None;
+                }
+                if strict_guarantees
+                    || Self::child_score_within_coverage_margin(*score, cutoff_score, maximizing)
+                {
+                    Some(index)
+                } else {
+                    None
+                }
+            });
+
+        let Some(preserve_index) = preserve_index else {
+            return scored_states.into_iter().take(limit).collect();
+        };
+
+        let mut selected = vec![false; scored_states.len()];
+        selected[preserve_index] = true;
+        let mut selected_count = 1usize;
+        for index in 0..scored_states.len() {
+            if selected_count >= limit {
+                break;
+            }
+            if selected[index] {
+                continue;
+            }
+            selected[index] = true;
+            selected_count += 1;
+        }
+
+        scored_states
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, entry)| selected[index].then_some(entry))
+            .collect()
     }
 
     fn has_exact_frontier_tactical_potential(game: &MonsGame) -> bool {
@@ -5545,7 +5626,7 @@ impl MonsGameModel {
         let top_has_tactical = scored_states
             .iter()
             .take(2)
-            .any(|(_, state)| Self::is_child_search_priority_class(state.classes));
+            .any(|(_, state)| Self::is_child_search_priority_candidate(state));
         if top_has_tactical {
             return;
         }
@@ -5557,7 +5638,7 @@ impl MonsGameModel {
                 .enumerate()
                 .skip(2)
                 .find_map(|(index, (score, state))| {
-                    if !Self::is_child_search_priority_class(state.classes) {
+                    if !Self::is_child_search_priority_candidate(state) {
                         return None;
                     }
                     if strict_guarantees {
@@ -6514,7 +6595,12 @@ impl MonsGameModel {
         }
 
         if scored_states.len() > config.node_branch_limit {
-            scored_states.truncate(config.node_branch_limit);
+            scored_states = Self::truncate_child_states_with_coverage(
+                scored_states,
+                config.node_branch_limit,
+                maximizing,
+                config.enable_strict_tactical_class_coverage,
+            );
         }
 
         scored_states.into_iter().map(|(_, state)| state).collect()
@@ -10240,6 +10326,35 @@ mod opening_book_tests {
     }
 
     #[test]
+    fn child_search_priority_candidate_includes_positive_exact_continuation() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            1,
+        );
+
+        let quiet = MoveClassFlags {
+            quiet: true,
+            ..MoveClassFlags::default()
+        };
+        let child = ranked_child_state_for_test(&game, 1, 20, quiet);
+        assert!(MonsGameModel::is_child_search_priority_candidate(&child));
+    }
+
+    #[test]
     fn selective_extension_candidate_preserves_existing_tactical_trigger() {
         let classes = MoveClassFlags {
             quiet: true,
@@ -10459,6 +10574,117 @@ mod opening_book_tests {
                 > MonsGameModel::root_focus_scout_score(&filler),
             "exact safe supermana progress should improve scout fallback score"
         );
+    }
+
+    #[test]
+    fn tactical_child_top2_promotes_close_exact_continuation_child() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            1,
+        );
+
+        let quiet = MoveClassFlags {
+            quiet: true,
+            ..MoveClassFlags::default()
+        };
+        let mut scored_states = vec![
+            (1_000, ranked_child_state_for_test(&game, 1, 0, quiet)),
+            (995, ranked_child_state_for_test(&game, 2, 0, quiet)),
+            (986, ranked_child_state_for_test(&game, 3, 20, quiet)),
+        ];
+
+        MonsGameModel::enforce_tactical_child_top2(&mut scored_states, true, false);
+        assert_eq!(scored_states[1].1.hash, 3);
+    }
+
+    #[test]
+    fn truncate_child_states_keeps_exact_continuation_within_margin() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            1,
+        );
+
+        let quiet = MoveClassFlags {
+            quiet: true,
+            ..MoveClassFlags::default()
+        };
+        let truncated = MonsGameModel::truncate_child_states_with_coverage(
+            vec![
+                (1_000, ranked_child_state_for_test(&game, 1, 0, quiet)),
+                (950, ranked_child_state_for_test(&game, 2, 20, quiet)),
+            ],
+            1,
+            true,
+            false,
+        );
+        assert_eq!(truncated.len(), 1);
+        assert_eq!(truncated[0].1.hash, 2);
+    }
+
+    #[test]
+    fn truncate_child_states_drops_distant_exact_continuation_outside_margin() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            1,
+        );
+
+        let quiet = MoveClassFlags {
+            quiet: true,
+            ..MoveClassFlags::default()
+        };
+        let truncated = MonsGameModel::truncate_child_states_with_coverage(
+            vec![
+                (1_000, ranked_child_state_for_test(&game, 1, 0, quiet)),
+                (800, ranked_child_state_for_test(&game, 2, 20, quiet)),
+            ],
+            1,
+            true,
+            false,
+        );
+        assert_eq!(truncated.len(), 1);
+        assert_eq!(truncated[0].1.hash, 1);
     }
 
     #[test]
