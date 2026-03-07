@@ -6837,7 +6837,6 @@ impl MonsGameModel {
         wanted_mana: Mana,
     ) -> bool {
         board.occupied().any(|(location, item)| {
-            let angel_nearby = Self::is_location_guarded_by_angel(board, perspective, location);
             matches!(
                 item,
                 Item::MonWithMana { mon, mana }
@@ -6845,19 +6844,10 @@ impl MonsGameModel {
                         && mon.kind == MonKind::Drainer
                         && !mon.is_fainted()
                         && *mana == wanted_mana
-                        && !can_attack_target_on_board(
-                            board,
-                            perspective.other(),
-                            perspective,
-                            location,
-                            Config::MONS_MOVES_PER_TURN,
-                            true,
-                        )
-                        && !is_drainer_under_walk_threat(
+                        && crate::models::automove_exact::is_drainer_exactly_safe_next_turn_on_board(
                             board,
                             perspective,
                             location,
-                            angel_nearby,
                         )
             )
         })
@@ -8419,8 +8409,6 @@ mod opening_book_tests {
         wanted_mana: Mana,
     ) -> bool {
         board.occupied().any(|(location, item)| {
-            let angel_nearby =
-                MonsGameModel::is_location_guarded_by_angel(board, color, location);
             matches!(
                 item,
                 Item::MonWithMana { mon, mana }
@@ -8428,19 +8416,10 @@ mod opening_book_tests {
                         && mon.kind == MonKind::Drainer
                         && !mon.is_fainted()
                         && *mana == wanted_mana
-                        && !crate::models::automove_exact::can_attack_target_on_board(
-                            board,
-                            color.other(),
-                            color,
-                            location,
-                            Config::MONS_MOVES_PER_TURN,
-                            true,
-                        )
-                        && !crate::models::automove_exact::is_drainer_under_walk_threat(
+                        && crate::models::automove_exact::is_drainer_exactly_safe_next_turn_on_board(
                             board,
                             color,
                             location,
-                            angel_nearby,
                         )
             )
         })

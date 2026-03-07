@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 const EXACT_ANALYSIS_CACHE_MAX_ENTRIES: usize = 512;
 const EXACT_ATTACK_REACH_CACHE_MAX_ENTRIES: usize = 8192;
+const EXACT_WALK_THREAT_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_SECURE_MANA_CACHE_MAX_ENTRIES: usize = 4096;
 const EXACT_SPIRIT_UTILITY_CAP: i32 = 6;
 
@@ -106,6 +107,19 @@ struct ExactAttackReachCache {
     entries: HashMap<ExactAttackQueryKey, bool>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ExactWalkThreatQueryKey {
+    board_hash: u64,
+    color: Color,
+    location: Location,
+    angel_nearby: bool,
+}
+
+#[derive(Default)]
+struct ExactWalkThreatCache {
+    entries: HashMap<ExactWalkThreatQueryKey, bool>,
+}
+
 #[derive(Default)]
 struct ExactSecureManaCache {
     entries: HashMap<(u64, Mana), bool>,
@@ -117,6 +131,8 @@ thread_local! {
         RefCell::new(ExactStateAnalysisCache::default());
     static EXACT_ATTACK_REACH_CACHE: RefCell<ExactAttackReachCache> =
         RefCell::new(ExactAttackReachCache::default());
+    static EXACT_WALK_THREAT_CACHE: RefCell<ExactWalkThreatCache> =
+        RefCell::new(ExactWalkThreatCache::default());
     static EXACT_SECURE_MANA_CACHE: RefCell<ExactSecureManaCache> =
         RefCell::new(ExactSecureManaCache::default());
 }
@@ -125,6 +141,7 @@ thread_local! {
 pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_STATE_ANALYSIS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_ATTACK_REACH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
+    EXACT_WALK_THREAT_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_SECURE_MANA_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         cache.entries.clear();
@@ -432,6 +449,37 @@ pub(crate) fn is_drainer_under_walk_threat(
     location: Location,
     angel_nearby: bool,
 ) -> bool {
+    let key = ExactWalkThreatQueryKey {
+        board_hash: exact_board_hash(board),
+        color,
+        location,
+        angel_nearby,
+    };
+    if let Some(cached) =
+        EXACT_WALK_THREAT_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
+    {
+        return cached;
+    }
+
+    let result = is_drainer_under_walk_threat_uncached(board, color, location, angel_nearby);
+    EXACT_WALK_THREAT_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.entries.len() >= EXACT_WALK_THREAT_CACHE_MAX_ENTRIES
+            && !cache.entries.contains_key(&key)
+        {
+            cache.entries.clear();
+        }
+        cache.entries.insert(key, result);
+    });
+    result
+}
+
+fn is_drainer_under_walk_threat_uncached(
+    board: &Board,
+    color: Color,
+    location: Location,
+    angel_nearby: bool,
+) -> bool {
     if angel_nearby {
         return board.occupied().any(|(threat_location, item)| {
             matches!(
@@ -508,6 +556,22 @@ pub(crate) fn is_drainer_under_walk_threat(
         }
     }
     false
+}
+
+pub(crate) fn is_drainer_exactly_safe_next_turn_on_board(
+    board: &Board,
+    color: Color,
+    location: Location,
+) -> bool {
+    let angel_nearby = MonsGameModel::is_location_guarded_by_angel(board, color, location);
+    !can_attack_target_on_board(
+        board,
+        color.other(),
+        color,
+        location,
+        Config::MONS_MOVES_PER_TURN,
+        true,
+    ) && !is_drainer_under_walk_threat(board, color, location, angel_nearby)
 }
 
 fn build_exact_state_analysis(game: &MonsGame) -> ExactStateAnalysis {
@@ -989,17 +1053,7 @@ fn can_secure_specific_mana_in_game_uncached(
         game.board.item(drainer_location),
         Some(Item::MonWithMana { mana, .. }) if *mana == wanted
     ) {
-        let angel_nearby =
-            MonsGameModel::is_location_guarded_by_angel(&game.board, color, drainer_location);
-        if !can_attack_target_on_board(
-            &game.board,
-            color.other(),
-            color,
-            drainer_location,
-            Config::MONS_MOVES_PER_TURN,
-            true,
-        ) && !is_drainer_under_walk_threat(&game.board, color, drainer_location, angel_nearby)
-        {
+        if is_drainer_exactly_safe_next_turn_on_board(&game.board, color, drainer_location) {
             return true;
         }
     }
@@ -1671,6 +1725,78 @@ mod tests {
         assert!(first);
         assert_eq!(first, second);
         assert_eq!(first, third);
+    }
+
+    #[test]
+    fn exact_walk_threat_cache_preserves_repeated_bomb_walk_threat_result() {
+        clear_exact_state_analysis_cache();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(2, 5),
+                    Item::MonWithConsumable {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                        consumable: Consumable::Bomb,
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let first = is_drainer_under_walk_threat(&board, Color::White, Location::new(6, 5), false);
+        let second =
+            is_drainer_under_walk_threat(&board, Color::White, Location::new(6, 5), false);
+        clear_exact_state_analysis_cache();
+        let third = is_drainer_under_walk_threat(&board, Color::White, Location::new(6, 5), false);
+
+        assert!(first);
+        assert_eq!(first, second);
+        assert_eq!(first, third);
+    }
+
+    #[test]
+    fn exact_drainer_safety_helper_matches_cached_components() {
+        clear_exact_state_analysis_cache();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let angel_nearby =
+            MonsGameModel::is_location_guarded_by_angel(&board, Color::White, Location::new(6, 5));
+        let expected = !can_attack_target_on_board(
+            &board,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            Config::MONS_MOVES_PER_TURN,
+            true,
+        ) && !is_drainer_under_walk_threat(&board, Color::White, Location::new(6, 5), angel_nearby);
+
+        assert_eq!(
+            is_drainer_exactly_safe_next_turn_on_board(&board, Color::White, Location::new(6, 5)),
+            expected
+        );
     }
 
     #[test]
