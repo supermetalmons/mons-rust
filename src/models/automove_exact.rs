@@ -68,7 +68,9 @@ pub(crate) struct ExactTurnSummary {
     pub color: Option<Color>,
     pub can_attack_opponent_drainer: bool,
     pub safe_supermana_progress: bool,
+    pub safe_supermana_progress_steps: Option<i32>,
     pub safe_opponent_mana_progress: bool,
+    pub safe_opponent_mana_progress_steps: Option<i32>,
     pub spirit_assisted_supermana_progress: bool,
     pub spirit_assisted_opponent_mana_progress: bool,
     pub spirit_assisted_score: bool,
@@ -230,7 +232,7 @@ struct ExactWalkThreatCache {
 
 #[derive(Default)]
 struct ExactSecureManaCache {
-    entries: HashMap<(u64, Mana), bool>,
+    entries: HashMap<(u64, Mana), Option<i32>>,
     visiting: HashSet<(u64, Mana)>,
 }
 
@@ -807,11 +809,18 @@ fn build_turn_summary(game: &MonsGame) -> ExactTurnSummary {
     let remaining_mon_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
     let can_use_action = game.player_can_use_action();
     let spirit = exact_spirit_summary(&game.board, color, remaining_mon_moves, can_use_action);
+    let safe_supermana_progress_steps =
+        exact_secure_specific_mana_steps_this_turn(game, color, Mana::Supermana);
+    let safe_opponent_mana_progress_steps =
+        exact_secure_specific_mana_steps_this_turn(game, color, Mana::Regular(color.other()));
     ExactTurnSummary {
         color: Some(color),
         can_attack_opponent_drainer: can_attack_opponent_drainer_exact(game, color),
-        safe_supermana_progress: can_secure_specific_mana_this_turn(game, color, Mana::Supermana),
-        safe_opponent_mana_progress: can_secure_opponent_mana_this_turn(game, color, spirit),
+        safe_supermana_progress: safe_supermana_progress_steps.is_some(),
+        safe_supermana_progress_steps,
+        safe_opponent_mana_progress: safe_opponent_mana_progress_steps.is_some()
+            || spirit.same_turn_opponent_mana_score,
+        safe_opponent_mana_progress_steps,
         spirit_assisted_supermana_progress: spirit.supermana_progress,
         spirit_assisted_opponent_mana_progress: spirit.opponent_mana_progress,
         spirit_assisted_score: spirit.same_turn_score,
@@ -1169,13 +1178,17 @@ fn exact_drainer_to_any_mana_steps(board: &Board, color: Color, start: Location)
     result
 }
 
-fn can_secure_specific_mana_this_turn(game: &MonsGame, color: Color, wanted: Mana) -> bool {
+fn exact_secure_specific_mana_steps_this_turn(
+    game: &MonsGame,
+    color: Color,
+    wanted: Mana,
+) -> Option<i32> {
     let remaining_moves = if game.active_color == color {
         (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0)
     } else {
         Config::MONS_MOVES_PER_TURN
     };
-    can_secure_specific_mana_on_board(&game.board, color, wanted, remaining_moves)
+    exact_secure_specific_mana_steps_on_board(&game.board, color, wanted, remaining_moves)
 }
 
 fn can_secure_specific_mana_on_board(
@@ -1184,8 +1197,17 @@ fn can_secure_specific_mana_on_board(
     wanted: Mana,
     remaining_moves: i32,
 ) -> bool {
+    exact_secure_specific_mana_steps_on_board(board, color, wanted, remaining_moves).is_some()
+}
+
+fn exact_secure_specific_mana_steps_on_board(
+    board: &Board,
+    color: Color,
+    wanted: Mana,
+    remaining_moves: i32,
+) -> Option<i32> {
     if remaining_moves < 0 {
-        return false;
+        return None;
     }
 
     let mut game = MonsGame::new(false);
@@ -1201,10 +1223,14 @@ fn can_secure_specific_mana_on_board(
     game.white_potions_count = 0;
     game.black_potions_count = 0;
 
-    can_secure_specific_mana_in_game(&game, color, wanted)
+    exact_secure_specific_mana_steps_in_game(&game, color, wanted)
 }
 
-fn can_secure_specific_mana_in_game(game: &MonsGame, color: Color, wanted: Mana) -> bool {
+fn exact_secure_specific_mana_steps_in_game(
+    game: &MonsGame,
+    color: Color,
+    wanted: Mana,
+) -> Option<i32> {
     let state_hash = MonsGameModel::search_state_hash(game);
     let key = (state_hash, wanted);
     if let Some(cached) =
@@ -1215,10 +1241,10 @@ fn can_secure_specific_mana_in_game(game: &MonsGame, color: Color, wanted: Mana)
 
     let can_visit = EXACT_SECURE_MANA_CACHE.with(|cache| cache.borrow_mut().visiting.insert(key));
     if !can_visit {
-        return false;
+        return None;
     }
 
-    let result = can_secure_specific_mana_in_game_uncached(game, color, wanted);
+    let result = exact_secure_specific_mana_steps_in_game_uncached(game, color, wanted);
     EXACT_SECURE_MANA_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         cache.visiting.remove(&key);
@@ -1233,9 +1259,13 @@ fn can_secure_specific_mana_in_game(game: &MonsGame, color: Color, wanted: Mana)
     result
 }
 
-fn can_secure_specific_mana_in_game_uncached(game: &MonsGame, color: Color, wanted: Mana) -> bool {
+fn exact_secure_specific_mana_steps_in_game_uncached(
+    game: &MonsGame,
+    color: Color,
+    wanted: Mana,
+) -> Option<i32> {
     let Some(drainer_location) = find_awake_drainer(&game.board, color) else {
-        return false;
+        return None;
     };
 
     if matches!(
@@ -1243,14 +1273,15 @@ fn can_secure_specific_mana_in_game_uncached(game: &MonsGame, color: Color, want
         Some(Item::MonWithMana { mana, .. }) if *mana == wanted
     ) {
         if is_drainer_exactly_safe_next_turn_on_board(&game.board, color, drainer_location) {
-            return true;
+            return Some(0);
         }
     }
 
     if game.active_color != color || !game.player_can_move_mon() {
-        return false;
+        return None;
     }
 
+    let mut best = None;
     for &next in drainer_location.nearby_locations_ref() {
         let mut after = game.clone_for_simulation();
         let Output::Events(events) = after.process_input(
@@ -1266,24 +1297,16 @@ fn can_secure_specific_mana_in_game_uncached(game: &MonsGame, color: Color, want
                 Event::ManaScored { mana, .. } if *mana == wanted
             )
         }) {
-            return true;
+            best = Some(best.map_or(1, |current: i32| current.min(1)));
+            continue;
         }
-        if can_secure_specific_mana_in_game(&after, color, wanted) {
-            return true;
+        if let Some(next_steps) = exact_secure_specific_mana_steps_in_game(&after, color, wanted) {
+            let candidate = next_steps.saturating_add(1);
+            best = Some(best.map_or(candidate, |current: i32| current.min(candidate)));
         }
     }
 
-    false
-}
-
-fn can_secure_opponent_mana_this_turn(
-    game: &MonsGame,
-    color: Color,
-    spirit_summary: ExactSpiritSummary,
-) -> bool {
-    let opponent_mana = Mana::Regular(color.other());
-    can_secure_specific_mana_this_turn(game, color, opponent_mana)
-        || spirit_summary.same_turn_opponent_mana_score
+    best
 }
 
 fn can_attack_opponent_drainer_exact(game: &MonsGame, color: Color) -> bool {
@@ -1952,7 +1975,9 @@ mod tests {
             ],
             Color::White,
         );
-        assert!(exact_turn_summary(&game, Color::White).safe_supermana_progress);
+        let turn = exact_turn_summary(&game, Color::White);
+        assert!(turn.safe_supermana_progress);
+        assert_eq!(turn.safe_supermana_progress_steps, Some(1));
     }
 
     #[test]
@@ -2361,16 +2386,62 @@ mod tests {
             ],
             Color::White,
         );
-        let first =
-            can_secure_specific_mana_on_board(&game.board, Color::White, Mana::Supermana, 5);
-        let second =
-            can_secure_specific_mana_on_board(&game.board, Color::White, Mana::Supermana, 5);
+        let first = exact_secure_specific_mana_steps_on_board(
+            &game.board,
+            Color::White,
+            Mana::Supermana,
+            5,
+        );
+        let second = exact_secure_specific_mana_steps_on_board(
+            &game.board,
+            Color::White,
+            Mana::Supermana,
+            5,
+        );
         clear_exact_state_analysis_cache();
-        let third =
-            can_secure_specific_mana_on_board(&game.board, Color::White, Mana::Supermana, 5);
+        let third = exact_secure_specific_mana_steps_on_board(
+            &game.board,
+            Color::White,
+            Mana::Supermana,
+            5,
+        );
 
         assert_eq!(first, second);
         assert_eq!(first, third);
+    }
+
+    #[test]
+    fn exact_secure_mana_steps_find_shortest_supermana_score_path() {
+        clear_exact_state_analysis_cache();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(8, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+
+        assert_eq!(
+            exact_secure_specific_mana_steps_on_board(&board, Color::White, Mana::Supermana, 5),
+            Some(1)
+        );
     }
 
     #[test]

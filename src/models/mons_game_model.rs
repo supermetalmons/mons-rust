@@ -1513,6 +1513,10 @@ struct MoveEfficiencySnapshot {
     opponent_safe_supermana_progress: bool,
     my_safe_opponent_mana_progress: bool,
     opponent_safe_opponent_mana_progress: bool,
+    my_safe_supermana_progress_steps: i32,
+    opponent_safe_supermana_progress_steps: i32,
+    my_safe_opponent_mana_progress_steps: i32,
+    opponent_safe_opponent_mana_progress_steps: i32,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -6366,6 +6370,34 @@ impl MonsGameModel {
         {
             delta -= 110;
         }
+        delta += Self::step_progress_delta(
+            before.my_safe_supermana_progress_steps,
+            after.my_safe_supermana_progress_steps,
+            26,
+            40,
+            unknown_steps,
+        );
+        delta -= Self::step_progress_delta(
+            before.opponent_safe_supermana_progress_steps,
+            after.opponent_safe_supermana_progress_steps,
+            22,
+            36,
+            unknown_steps,
+        );
+        delta += Self::step_progress_delta(
+            before.my_safe_opponent_mana_progress_steps,
+            after.my_safe_opponent_mana_progress_steps,
+            22,
+            34,
+            unknown_steps,
+        );
+        delta -= Self::step_progress_delta(
+            before.opponent_safe_opponent_mana_progress_steps,
+            after.opponent_safe_opponent_mana_progress_steps,
+            18,
+            30,
+            unknown_steps,
+        );
 
         if is_root {
             let root_compensates_handoff = events
@@ -6501,6 +6533,18 @@ impl MonsGameModel {
             opponent_safe_supermana_progress: opponent_turn_summary.safe_supermana_progress,
             my_safe_opponent_mana_progress: my_turn_summary.safe_opponent_mana_progress,
             opponent_safe_opponent_mana_progress: opponent_turn_summary.safe_opponent_mana_progress,
+            my_safe_supermana_progress_steps: my_turn_summary
+                .safe_supermana_progress_steps
+                .unwrap_or(unknown_steps),
+            opponent_safe_supermana_progress_steps: opponent_turn_summary
+                .safe_supermana_progress_steps
+                .unwrap_or(unknown_steps),
+            my_safe_opponent_mana_progress_steps: my_turn_summary
+                .safe_opponent_mana_progress_steps
+                .unwrap_or(unknown_steps),
+            opponent_safe_opponent_mana_progress_steps: opponent_turn_summary
+                .safe_opponent_mana_progress_steps
+                .unwrap_or(unknown_steps),
         };
         let my_spirit_base = Self::spirit_base_for_color(&game.board, perspective);
         let opponent_spirit_base = Self::spirit_base_for_color(&game.board, perspective.other());
@@ -9824,6 +9868,63 @@ mod opening_book_tests {
             inputs,
             events
         );
+    }
+
+    #[test]
+    fn move_efficiency_rewards_faster_exact_safe_supermana_progress() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let exact_turn_before =
+            crate::models::automove_exact::exact_turn_summary(&game, Color::White);
+        assert_eq!(exact_turn_before.safe_supermana_progress_steps, Some(1));
+
+        let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(
+            &game,
+            &[
+                Input::Location(Location::new(6, 5)),
+                Input::Location(Location::new(5, 5)),
+            ],
+        )
+        .expect("shortening supermana path inputs should be legal");
+        let exact_turn_after =
+            crate::models::automove_exact::exact_turn_summary(&after, Color::White);
+        assert_eq!(exact_turn_after.safe_supermana_progress_steps, Some(0));
+
+        let delta = MonsGameModel::move_efficiency_delta(
+            &game,
+            &after,
+            Color::White,
+            &events,
+            false,
+            false,
+            false,
+            0,
+            0,
+        );
+        assert!(delta > 0);
     }
 
     #[test]
