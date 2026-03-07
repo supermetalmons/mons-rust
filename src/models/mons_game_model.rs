@@ -5647,9 +5647,16 @@ impl MonsGameModel {
         }
 
         let mut selected_mask = vec![false; candidates.len()];
+        let mut priority_indices = Vec::new();
         let best_heuristic = candidates[0].heuristic;
         let min_critical_heuristic =
             best_heuristic.saturating_sub(SMART_MOVE_CLASS_ROOT_SCORE_MARGIN.max(0));
+        let mut mark_priority = |index: usize| {
+            selected_mask[index] = true;
+            if !priority_indices.contains(&index) {
+                priority_indices.push(index);
+            }
+        };
         for class in [
             MoveClass::ImmediateScore,
             MoveClass::DrainerAttack,
@@ -5666,8 +5673,14 @@ impl MonsGameModel {
                 })
             };
             if let Some((index, _)) = chosen {
-                selected_mask[index] = true;
+                mark_priority(index);
             }
+        }
+        if let Some(index) = Self::best_tactical_root_index(candidates.as_slice(), |candidate| {
+            candidate.same_turn_score_window_value > 0
+                && (strict_guarantees || candidate.heuristic >= min_critical_heuristic)
+        }) {
+            mark_priority(index);
         }
         let unknown_progress_steps = Config::BOARD_SIZE + 4;
         for (index, candidate) in candidates.iter().enumerate() {
@@ -5692,6 +5705,14 @@ impl MonsGameModel {
 
         let mut owned_candidates = candidates.into_iter().map(Some).collect::<Vec<_>>();
         let mut shortlisted = Vec::with_capacity(limit.min(owned_candidates.len()));
+        for index in priority_indices {
+            if shortlisted.len() >= limit {
+                break;
+            }
+            if let Some(candidate) = owned_candidates[index].take() {
+                shortlisted.push(candidate);
+            }
+        }
         for index in 0..owned_candidates.len() {
             if shortlisted.len() >= limit {
                 break;
@@ -11065,6 +11086,76 @@ mod opening_book_tests {
                 .iter()
                 .any(|candidate| candidate.inputs == progress.inputs),
             "exact safe opponent-mana progress root should survive root branch truncation"
+        );
+    }
+
+    #[test]
+    fn truncate_root_candidates_prefers_stronger_exact_same_turn_score_window() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            &game,
+            Color::White,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        let mut stronger = MonsGameModel::build_scored_root_move(
+            &game,
+            Color::White,
+            config,
+            own_drainer_vulnerable_before,
+            &[
+                Input::Location(Location::new(7, 5)),
+                Input::Location(Location::new(6, 5)),
+            ],
+        )
+        .expect("drainer advance should build a scored root");
+        stronger.inputs = vec![Input::Location(Location::new(1, 1))];
+        stronger.heuristic = 1_900;
+        stronger.efficiency = 0;
+        stronger.same_turn_score_window_value = 2;
+        stronger.spirit_same_turn_score_setup_now = true;
+        stronger.own_drainer_vulnerable = false;
+        stronger.mana_handoff_to_opponent = false;
+
+        let mut weaker = stronger.clone();
+        weaker.inputs = vec![Input::Location(Location::new(0, 0))];
+        weaker.heuristic = 2_000;
+        weaker.same_turn_score_window_value = 1;
+        weaker.spirit_same_turn_score_setup_now = false;
+
+        let truncated = MonsGameModel::truncate_root_candidates_with_class_coverage(
+            vec![weaker, stronger.clone()],
+            1,
+            false,
+        );
+        assert_eq!(truncated.len(), 1);
+        assert_eq!(
+            truncated[0].inputs, stronger.inputs,
+            "stronger exact same-turn score window root should survive branch truncation even when a weaker window root has higher heuristic"
         );
     }
 
