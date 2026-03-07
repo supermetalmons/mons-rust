@@ -763,48 +763,89 @@ fn can_secure_specific_mana_on_board(
     wanted: Mana,
     remaining_moves: i32,
 ) -> bool {
-    let Some(start) = find_awake_drainer(board, color) else {
+    if remaining_moves < 0 {
+        return false;
+    }
+
+    let mut game = MonsGame::new(false);
+    game.board = board.clone();
+    game.active_color = color;
+    game.turn_number = 2;
+    game.actions_used_count = Config::ACTIONS_PER_TURN;
+    game.mana_moves_count = Config::MANA_MOVES_PER_TURN;
+    game.mons_moves_count = (Config::MONS_MOVES_PER_TURN - remaining_moves).clamp(
+        0,
+        Config::MONS_MOVES_PER_TURN,
+    );
+    game.white_score = 0;
+    game.black_score = 0;
+    game.white_potions_count = 0;
+    game.black_potions_count = 0;
+
+    let mut seen = HashSet::new();
+    can_secure_specific_mana_in_game(&game, color, wanted, &mut seen)
+}
+
+fn can_secure_specific_mana_in_game(
+    game: &MonsGame,
+    color: Color,
+    wanted: Mana,
+    seen: &mut HashSet<u64>,
+) -> bool {
+    let Some(drainer_location) = find_awake_drainer(&game.board, color) else {
         return false;
     };
-    let start_payload = match board.item(start).copied() {
-        Some(Item::MonWithMana { mana, .. }) => ExactActorPayload::Mana(mana),
-        _ => ExactActorPayload::None,
-    };
-    let mut queue = VecDeque::new();
-    let mut seen = HashSet::new();
-    queue.push_back((start, start_payload, 0));
-    seen.insert((start, start_payload));
 
-    while let Some((location, payload, steps)) = queue.pop_front() {
-        if steps > remaining_moves {
-            continue;
-        }
-        if let ExactActorPayload::Mana(mana) = payload {
-            if mana == wanted {
-                if matches!(board.square(location), Square::ManaPool { .. }) {
-                    return true;
-                }
-                let angel_nearby = MonsGameModel::is_location_guarded_by_angel(board, color, location);
-                if !is_drainer_under_immediate_threat(board, color, location, angel_nearby)
-                    && !is_drainer_under_walk_threat(board, color, location, angel_nearby)
-                {
-                    return true;
-                }
-            }
-        }
-        if steps == remaining_moves {
-            continue;
-        }
-        for &next in location.nearby_locations_ref() {
-            if let Some(next_payload) =
-                actor_payload_after_move(board, MonKind::Drainer, color, payload, next, false)
-            {
-                if seen.insert((next, next_payload)) {
-                    queue.push_back((next, next_payload, steps + 1));
-                }
-            }
+    if matches!(
+        game.board.item(drainer_location),
+        Some(Item::MonWithMana { mana, .. }) if *mana == wanted
+    ) {
+        let angel_nearby =
+            MonsGameModel::is_location_guarded_by_angel(&game.board, color, drainer_location);
+        if !can_attack_target_on_board(
+            &game.board,
+            color.other(),
+            color,
+            drainer_location,
+            Config::MONS_MOVES_PER_TURN,
+            true,
+        ) && !is_drainer_under_walk_threat(&game.board, color, drainer_location, angel_nearby)
+        {
+            return true;
         }
     }
+
+    if game.active_color != color || !game.player_can_move_mon() {
+        return false;
+    }
+
+    let state_hash = MonsGameModel::search_state_hash(game);
+    if !seen.insert(state_hash) {
+        return false;
+    }
+
+    for &next in drainer_location.nearby_locations_ref() {
+        let mut after = game.clone_for_simulation();
+        let Output::Events(events) = after.process_input(
+            vec![Input::Location(drainer_location), Input::Location(next)],
+            false,
+            false,
+        ) else {
+            continue;
+        };
+        if events.iter().any(|event| {
+            matches!(
+                event,
+                Event::ManaScored { mana, .. } if *mana == wanted
+            )
+        }) {
+            return true;
+        }
+        if can_secure_specific_mana_in_game(&after, color, wanted, seen) {
+            return true;
+        }
+    }
+
     false
 }
 
@@ -895,20 +936,28 @@ fn exact_spirit_summary(
             if matches!(board.square(spirit_pos), Square::MonBase { .. }) {
                 continue;
             }
+            let action_board = if spirit_pos == location {
+                board.clone()
+            } else {
+                let mut moved = board.clone();
+                moved.remove_item(location);
+                moved.put(*item, spirit_pos);
+                moved
+            };
             let remaining_after_action = remaining_mon_moves.saturating_sub(spirit_steps);
             for &target in spirit_pos.reachable_by_spirit_action_ref() {
-                let Some(target_item) = board.item(target).copied() else {
+                let Some(target_item) = action_board.item(target).copied() else {
                     continue;
                 };
                 if !spirit_target_allowed(target_item) {
                     continue;
                 }
                 for &dest in target.nearby_locations_ref() {
-                    if !spirit_destination_allowed(board, target, target_item, dest) {
+                    if !spirit_destination_allowed(&action_board, target, target_item, dest) {
                         continue;
                     }
                     let (after_board, score_delta, opponent_mana_score_delta) =
-                        apply_spirit_move_preview(board, target, target_item, dest, color);
+                        apply_spirit_move_preview(&action_board, target, target_item, dest, color);
                     let after_best_steps = exact_best_score_steps_on_board(&after_board, color);
                     let after_opponent_steps =
                         exact_best_score_steps_on_board(&after_board, color.other());
@@ -1407,7 +1456,79 @@ mod tests {
     }
 
     #[test]
-    fn exact_turn_summary_detects_spirit_assisted_supermana_progress() {
+    fn exact_turn_summary_rejects_exact_vulnerable_supermana_progress() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(9, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(4, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        assert!(!exact_turn_summary(&game, Color::White).safe_supermana_progress);
+    }
+
+    #[test]
+    fn exact_turn_summary_rejects_exact_vulnerable_opponent_mana_progress() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(9, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 5),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(4, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        assert!(!exact_turn_summary(&game, Color::White).safe_opponent_mana_progress);
+    }
+
+    #[test]
+    fn exact_turn_summary_rejects_spirit_assisted_supermana_progress_without_safe_followup() {
         let mut game = game_with_items(
             vec![
                 (
@@ -1441,12 +1562,12 @@ mod tests {
 
         let turn = exact_turn_summary(&game, Color::White);
         assert!(!turn.safe_supermana_progress);
-        assert!(turn.spirit_assisted_supermana_progress);
+        assert!(!turn.spirit_assisted_supermana_progress);
         assert!(!turn.spirit_assisted_score);
     }
 
     #[test]
-    fn exact_turn_summary_detects_spirit_assisted_opponent_mana_progress() {
+    fn exact_turn_summary_rejects_spirit_assisted_opponent_mana_progress_without_safe_followup() {
         let mut game = game_with_items(
             vec![
                 (
@@ -1480,7 +1601,7 @@ mod tests {
 
         let turn = exact_turn_summary(&game, Color::White);
         assert!(!turn.safe_opponent_mana_progress);
-        assert!(turn.spirit_assisted_opponent_mana_progress);
+        assert!(!turn.spirit_assisted_opponent_mana_progress);
         assert!(!turn.spirit_assisted_denial);
     }
 

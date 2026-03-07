@@ -6837,6 +6837,7 @@ impl MonsGameModel {
         wanted_mana: Mana,
     ) -> bool {
         board.occupied().any(|(location, item)| {
+            let angel_nearby = Self::is_location_guarded_by_angel(board, perspective, location);
             matches!(
                 item,
                 Item::MonWithMana { mon, mana }
@@ -6844,17 +6845,19 @@ impl MonsGameModel {
                         && mon.kind == MonKind::Drainer
                         && !mon.is_fainted()
                         && *mana == wanted_mana
-                        && !is_drainer_under_immediate_threat(
+                        && !can_attack_target_on_board(
                             board,
+                            perspective.other(),
                             perspective,
                             location,
-                            Self::is_location_guarded_by_angel(board, perspective, location),
+                            Config::MONS_MOVES_PER_TURN,
+                            true,
                         )
                         && !is_drainer_under_walk_threat(
                             board,
                             perspective,
                             location,
-                            Self::is_location_guarded_by_angel(board, perspective, location),
+                            angel_nearby,
                         )
             )
         })
@@ -8410,6 +8413,39 @@ mod opening_book_tests {
         visit(game, color, &mut seen, &predicate)
     }
 
+    fn drainer_carries_exact_safe_mana(
+        board: &Board,
+        color: Color,
+        wanted_mana: Mana,
+    ) -> bool {
+        board.occupied().any(|(location, item)| {
+            let angel_nearby =
+                MonsGameModel::is_location_guarded_by_angel(board, color, location);
+            matches!(
+                item,
+                Item::MonWithMana { mon, mana }
+                    if mon.color == color
+                        && mon.kind == MonKind::Drainer
+                        && !mon.is_fainted()
+                        && *mana == wanted_mana
+                        && !crate::models::automove_exact::can_attack_target_on_board(
+                            board,
+                            color.other(),
+                            color,
+                            location,
+                            Config::MONS_MOVES_PER_TURN,
+                            true,
+                        )
+                        && !crate::models::automove_exact::is_drainer_under_walk_threat(
+                            board,
+                            color,
+                            location,
+                            angel_nearby,
+                        )
+            )
+        })
+    }
+
     #[test]
     fn white_opening_book_selects_a_valid_first_move() {
         let game = MonsGame::new(false);
@@ -9190,6 +9226,126 @@ mod opening_book_tests {
             "selected line should pick up safe opponent mana, inputs={:?}, events={:?}",
             inputs,
             events
+        );
+    }
+
+    #[test]
+    fn unsafe_multi_step_attack_supermana_pickup_is_not_flagged_safe() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(9, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(4, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let candidate = MonsGameModel::build_scored_root_move(
+            &game,
+            Color::White,
+            config,
+            MonsGameModel::is_own_drainer_vulnerable_next_turn(
+                &game,
+                Color::White,
+                config.enable_enhanced_drainer_vulnerability,
+            ),
+            &[
+                Input::Location(Location::new(9, 5)),
+                Input::Location(Location::new(8, 5)),
+            ],
+        )
+        .expect("supermana pickup inputs should build a scored root");
+
+        assert!(
+            candidate.own_drainer_vulnerable,
+            "pickup square should be exactly vulnerable to the black mystic"
+        );
+        assert!(
+            !candidate.safe_supermana_pickup_now,
+            "unsafe exact-vulnerable supermana pickup must not be flagged safe"
+        );
+    }
+
+    #[test]
+    fn unsafe_multi_step_attack_opponent_mana_pickup_is_not_flagged_safe() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(9, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 5),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(4, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let candidate = MonsGameModel::build_scored_root_move(
+            &game,
+            Color::White,
+            config,
+            MonsGameModel::is_own_drainer_vulnerable_next_turn(
+                &game,
+                Color::White,
+                config.enable_enhanced_drainer_vulnerability,
+            ),
+            &[
+                Input::Location(Location::new(9, 5)),
+                Input::Location(Location::new(8, 5)),
+            ],
+        )
+        .expect("opponent-mana pickup inputs should build a scored root");
+
+        assert!(
+            candidate.own_drainer_vulnerable,
+            "pickup square should be exactly vulnerable to the black mystic"
+        );
+        assert!(
+            !candidate.safe_opponent_mana_pickup_now,
+            "unsafe exact-vulnerable opponent-mana pickup must not be flagged safe"
         );
     }
 
@@ -10204,36 +10360,7 @@ mod opening_book_tests {
         let exact = crate::models::automove_exact::exact_turn_summary(&game, Color::White)
             .safe_supermana_progress;
         let exhaustive = exhaustive_same_turn_reachable(&game, Color::White, |state, _| {
-            state.board.occupied().any(|(location, item)| {
-                matches!(
-                    item,
-                    Item::MonWithMana {
-                        mon,
-                        mana: Mana::Supermana,
-                    } if mon.color == Color::White
-                        && mon.kind == MonKind::Drainer
-                        && !crate::models::automove_exact::is_drainer_under_immediate_threat(
-                            &state.board,
-                            Color::White,
-                            location,
-                            MonsGameModel::is_location_guarded_by_angel(
-                                &state.board,
-                                Color::White,
-                                location,
-                            ),
-                        )
-                        && !crate::models::automove_exact::is_drainer_under_walk_threat(
-                            &state.board,
-                            Color::White,
-                            location,
-                            MonsGameModel::is_location_guarded_by_angel(
-                                &state.board,
-                                Color::White,
-                                location,
-                            ),
-                        )
-                )
-            })
+            drainer_carries_exact_safe_mana(&state.board, Color::White, Mana::Supermana)
         });
 
         assert_eq!(exact, exhaustive);
@@ -10277,36 +10404,7 @@ mod opening_book_tests {
             .spirit_assisted_supermana_progress;
         let exhaustive = exhaustive_same_turn_reachable(&game, Color::White, |state, _| {
             state.white_score > game.white_score
-                || state.board.occupied().any(|(location, item)| {
-                    matches!(
-                        item,
-                        Item::MonWithMana {
-                            mon,
-                            mana: Mana::Supermana,
-                        } if mon.color == Color::White
-                            && mon.kind == MonKind::Drainer
-                            && !crate::models::automove_exact::is_drainer_under_immediate_threat(
-                                &state.board,
-                                Color::White,
-                                location,
-                                MonsGameModel::is_location_guarded_by_angel(
-                                    &state.board,
-                                    Color::White,
-                                    location,
-                                ),
-                            )
-                            && !crate::models::automove_exact::is_drainer_under_walk_threat(
-                                &state.board,
-                                Color::White,
-                                location,
-                                MonsGameModel::is_location_guarded_by_angel(
-                                    &state.board,
-                                    Color::White,
-                                    location,
-                                ),
-                            )
-                    )
-                })
+                || drainer_carries_exact_safe_mana(&state.board, Color::White, Mana::Supermana)
         });
 
         assert_eq!(exact, exhaustive);
@@ -10350,36 +10448,11 @@ mod opening_book_tests {
             .spirit_assisted_opponent_mana_progress;
         let exhaustive = exhaustive_same_turn_reachable(&game, Color::White, |state, _| {
             state.white_score > game.white_score
-                || state.board.occupied().any(|(location, item)| {
-                    matches!(
-                        item,
-                        Item::MonWithMana {
-                            mon,
-                            mana: Mana::Regular(Color::Black),
-                        } if mon.color == Color::White
-                            && mon.kind == MonKind::Drainer
-                            && !crate::models::automove_exact::is_drainer_under_immediate_threat(
-                                &state.board,
-                                Color::White,
-                                location,
-                                MonsGameModel::is_location_guarded_by_angel(
-                                    &state.board,
-                                    Color::White,
-                                    location,
-                                ),
-                            )
-                            && !crate::models::automove_exact::is_drainer_under_walk_threat(
-                                &state.board,
-                                Color::White,
-                                location,
-                                MonsGameModel::is_location_guarded_by_angel(
-                                    &state.board,
-                                    Color::White,
-                                    location,
-                                ),
-                            )
-                    )
-                })
+                || drainer_carries_exact_safe_mana(
+                    &state.board,
+                    Color::White,
+                    Mana::Regular(Color::Black),
+                )
         });
 
         assert_eq!(exact, exhaustive);
