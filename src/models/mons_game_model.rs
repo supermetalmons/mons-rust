@@ -3909,10 +3909,6 @@ impl MonsGameModel {
         let mut seen_inputs = std::collections::HashSet::new();
 
         for actor_loc in actor_locations {
-            if score_window_inputs.len() >= max_candidates.max(1) {
-                break;
-            }
-
             let mut actor_transitions = Vec::new();
             let mut partial_inputs = vec![Input::Location(actor_loc)];
             let mut simulated_game = game.clone_for_simulation();
@@ -3926,9 +3922,6 @@ impl MonsGameModel {
             actor_transitions.sort_by(|a, b| a.inputs.cmp(&b.inputs));
 
             for transition in actor_transitions {
-                if score_window_inputs.len() >= max_candidates.max(1) {
-                    break;
-                }
                 if transition.game.active_color != perspective {
                     continue;
                 }
@@ -3946,8 +3939,39 @@ impl MonsGameModel {
             }
         }
 
-        score_window_inputs.sort_by(|a, b| a.inputs.cmp(&b.inputs));
         score_window_inputs
+            .sort_by(|a, b| Self::compare_same_turn_score_window_transitions(a, b, perspective));
+        if score_window_inputs.len() > max_candidates.max(1) {
+            score_window_inputs.truncate(max_candidates.max(1));
+        }
+        score_window_inputs
+    }
+
+    fn compare_same_turn_score_window_transitions(
+        a: &LegalInputTransition,
+        b: &LegalInputTransition,
+        perspective: Color,
+    ) -> std::cmp::Ordering {
+        let a_analysis = exact_state_analysis(&a.game);
+        let b_analysis = exact_state_analysis(&b.game);
+        let a_summary = a_analysis.color_summary(perspective);
+        let b_summary = b_analysis.color_summary(perspective);
+
+        b_summary
+            .immediate_window
+            .best_score
+            .cmp(&a_summary.immediate_window.best_score)
+            .then_with(|| {
+                b_summary
+                    .spirit
+                    .same_turn_opponent_mana_score_value
+                    .cmp(&a_summary.spirit.same_turn_opponent_mana_score_value)
+            })
+            .then_with(|| {
+                Self::events_include_spirit_target_move(&b.events)
+                    .cmp(&Self::events_include_spirit_target_move(&a.events))
+            })
+            .then_with(|| a.inputs.cmp(&b.inputs))
     }
 
     fn collect_targeted_drainer_safety_inputs(
@@ -10479,6 +10503,61 @@ mod opening_book_tests {
             quiet_reduction_candidate: false,
             classes,
         }
+    }
+
+    #[test]
+    fn same_turn_score_window_transition_sort_prefers_stronger_exact_window() {
+        let weaker = LegalInputTransition {
+            inputs: vec![Input::Location(Location::new(0, 0))],
+            game: game_with_items(
+                vec![
+                    (
+                        Location::new(9, 0),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(9, 1),
+                        Item::Mana {
+                            mana: Mana::Regular(Color::White),
+                        },
+                    ),
+                ],
+                Color::White,
+                2,
+            ),
+            events: Vec::new(),
+        };
+        let stronger = LegalInputTransition {
+            inputs: vec![Input::Location(Location::new(1, 1))],
+            game: game_with_items(
+                vec![
+                    (
+                        Location::new(9, 0),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(9, 1),
+                        Item::Mana {
+                            mana: Mana::Regular(Color::Black),
+                        },
+                    ),
+                ],
+                Color::White,
+                2,
+            ),
+            events: Vec::new(),
+        };
+
+        let mut transitions = vec![weaker, stronger.clone()];
+        transitions.sort_by(|a, b| {
+            MonsGameModel::compare_same_turn_score_window_transitions(a, b, Color::White)
+        });
+
+        assert_eq!(transitions[0].inputs, stronger.inputs);
     }
 
     #[test]
