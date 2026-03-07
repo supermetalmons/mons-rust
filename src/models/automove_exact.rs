@@ -1,6 +1,7 @@
 use crate::*;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::hash::{BuildHasherDefault, Hasher};
 
 const EXACT_ANALYSIS_CACHE_MAX_ENTRIES: usize = 512;
 const EXACT_ATTACK_REACH_CACHE_MAX_ENTRIES: usize = 8192;
@@ -13,6 +14,37 @@ const EXACT_SPIRIT_SUMMARY_CACHE_MAX_ENTRIES: usize = 2048;
 const EXACT_WALK_THREAT_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_SECURE_MANA_CACHE_MAX_ENTRIES: usize = 4096;
 const EXACT_SPIRIT_UTILITY_CAP: i32 = 6;
+const EXACT_BFS_CAPACITY: usize = 128;
+
+#[derive(Default)]
+struct ExactFastHasher(u64);
+
+impl Hasher for ExactFastHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        let mut hash = if self.0 == 0 {
+            0xcbf29ce484222325u64
+        } else {
+            self.0
+        };
+        for byte in bytes {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+        self.0 = hash;
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.write(&value.to_le_bytes());
+    }
+}
+
+type ExactBuildHasher = BuildHasherDefault<ExactFastHasher>;
+type ExactHashMap<K, V> = HashMap<K, V, ExactBuildHasher>;
+type ExactHashSet<K> = HashSet<K, ExactBuildHasher>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum ExactActorPayload {
@@ -74,7 +106,18 @@ pub(crate) struct ExactTurnSummary {
     pub spirit_assisted_supermana_progress: bool,
     pub spirit_assisted_opponent_mana_progress: bool,
     pub spirit_assisted_score: bool,
+    pub spirit_assisted_score_value: i32,
     pub spirit_assisted_denial: bool,
+    pub spirit_assisted_denial_value: i32,
+    pub same_turn_score_window_value: i32,
+    pub score_path_best_steps: Option<i32>,
+    pub spirit_next_turn_setup_gain: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExactColorSummaryMode {
+    ActiveTactical,
+    PassiveStrategic,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -121,9 +164,36 @@ impl ExactStateAnalysis {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ExactStrategicAnalysis {
+    pub white: ExactColorSummary,
+    pub black: ExactColorSummary,
+}
+
+impl ExactStrategicAnalysis {
+    #[inline]
+    pub(crate) fn color_summary(self, color: Color) -> ExactColorSummary {
+        if color == Color::White {
+            self.white
+        } else {
+            self.black
+        }
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct ExactStateAnalysisCache {
-    entries: HashMap<u64, ExactStateAnalysis>,
+    entries: ExactHashMap<u64, ExactStateAnalysis>,
+}
+
+#[derive(Default)]
+struct ExactTurnSummaryCache {
+    entries: ExactHashMap<u64, ExactTurnSummary>,
+}
+
+#[derive(Default)]
+pub(crate) struct ExactStrategicAnalysisCache {
+    entries: ExactHashMap<u64, ExactStrategicAnalysis>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -138,7 +208,7 @@ struct ExactAttackQueryKey {
 
 #[derive(Default)]
 struct ExactAttackReachCache {
-    entries: HashMap<ExactAttackQueryKey, bool>,
+    entries: ExactHashMap<ExactAttackQueryKey, bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -150,7 +220,7 @@ struct ExactCarrierStepsQueryKey {
 
 #[derive(Default)]
 struct ExactCarrierStepsCache {
-    entries: HashMap<ExactCarrierStepsQueryKey, Option<i32>>,
+    entries: ExactHashMap<ExactCarrierStepsQueryKey, Option<i32>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -162,7 +232,7 @@ struct ExactDrainerToManaQueryKey {
 
 #[derive(Default)]
 struct ExactDrainerToManaCache {
-    entries: HashMap<ExactDrainerToManaQueryKey, Option<i32>>,
+    entries: ExactHashMap<ExactDrainerToManaQueryKey, Option<i32>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -174,7 +244,7 @@ struct ExactFollowupSummaryKey {
 
 #[derive(Default)]
 struct ExactFollowupSummaryCache {
-    entries: HashMap<ExactFollowupSummaryKey, ExactFollowupSummary>,
+    entries: ExactHashMap<ExactFollowupSummaryKey, ExactFollowupSummary>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -188,7 +258,7 @@ struct ExactPickupPathQueryKey {
 
 #[derive(Default)]
 struct ExactPickupPathCache {
-    entries: HashMap<ExactPickupPathQueryKey, Option<ExactDrainerPickupPath>>,
+    entries: ExactHashMap<ExactPickupPathQueryKey, Option<ExactDrainerPickupPath>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -201,7 +271,12 @@ struct ExactSpiritSummaryKey {
 
 #[derive(Default)]
 struct ExactSpiritSummaryCache {
-    entries: HashMap<ExactSpiritSummaryKey, ExactSpiritSummary>,
+    entries: ExactHashMap<ExactSpiritSummaryKey, ExactSpiritSummary>,
+}
+
+#[derive(Default)]
+struct ExactSpiritTacticalSummaryCache {
+    entries: ExactHashMap<ExactSpiritSummaryKey, ExactSpiritSummary>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -214,7 +289,7 @@ struct ExactSpiritReachQueryKey {
 
 #[derive(Default)]
 struct ExactSpiritReachCache {
-    entries: HashMap<ExactSpiritReachQueryKey, Vec<(Location, i32)>>,
+    entries: ExactHashMap<ExactSpiritReachQueryKey, Vec<(Location, i32)>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -227,18 +302,41 @@ struct ExactWalkThreatQueryKey {
 
 #[derive(Default)]
 struct ExactWalkThreatCache {
-    entries: HashMap<ExactWalkThreatQueryKey, bool>,
+    entries: ExactHashMap<ExactWalkThreatQueryKey, bool>,
 }
 
 #[derive(Default)]
 struct ExactSecureManaCache {
-    entries: HashMap<(u64, Mana), Option<i32>>,
-    visiting: HashSet<(u64, Mana)>,
+    entries: ExactHashMap<(u64, Mana), Option<i32>>,
+    visiting: ExactHashSet<(u64, Mana)>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ExactQueryDiagnostics {
+    pub exact_turn_summary_builds: u32,
+    pub active_tactical_summary_builds: u32,
+    pub passive_strategic_summary_builds: u32,
+    pub exact_spirit_summary_calls: u32,
+    pub exact_spirit_summary_cache_hits: u32,
+    pub tactical_spirit_summary_calls: u32,
+    pub tactical_spirit_summary_cache_hits: u32,
+    pub passive_spirit_summary_calls: u32,
+    pub exact_followup_summary_calls: u32,
+    pub exact_followup_summary_cache_hits: u32,
+    pub exact_secure_mana_calls: u32,
+    pub exact_secure_mana_cache_hits: u32,
+    pub pickup_path_calls: u32,
+    pub pickup_path_cache_hits: u32,
+    pub pickup_path_cache_misses: u32,
 }
 
 thread_local! {
     static EXACT_STATE_ANALYSIS_CACHE: RefCell<ExactStateAnalysisCache> =
         RefCell::new(ExactStateAnalysisCache::default());
+    static EXACT_TURN_SUMMARY_CACHE: RefCell<ExactTurnSummaryCache> =
+        RefCell::new(ExactTurnSummaryCache::default());
+    static EXACT_STRATEGIC_ANALYSIS_CACHE: RefCell<ExactStrategicAnalysisCache> =
+        RefCell::new(ExactStrategicAnalysisCache::default());
     static EXACT_ATTACK_REACH_CACHE: RefCell<ExactAttackReachCache> =
         RefCell::new(ExactAttackReachCache::default());
     static EXACT_CARRIER_STEPS_CACHE: RefCell<ExactCarrierStepsCache> =
@@ -253,15 +351,48 @@ thread_local! {
         RefCell::new(ExactSpiritReachCache::default());
     static EXACT_SPIRIT_SUMMARY_CACHE: RefCell<ExactSpiritSummaryCache> =
         RefCell::new(ExactSpiritSummaryCache::default());
+    static EXACT_SPIRIT_TACTICAL_SUMMARY_CACHE: RefCell<ExactSpiritTacticalSummaryCache> =
+        RefCell::new(ExactSpiritTacticalSummaryCache::default());
     static EXACT_WALK_THREAT_CACHE: RefCell<ExactWalkThreatCache> =
         RefCell::new(ExactWalkThreatCache::default());
     static EXACT_SECURE_MANA_CACHE: RefCell<ExactSecureManaCache> =
         RefCell::new(ExactSecureManaCache::default());
+    #[cfg(test)]
+    static EXACT_QUERY_DIAGNOSTICS: RefCell<ExactQueryDiagnostics> =
+        RefCell::new(ExactQueryDiagnostics::default());
+}
+
+#[cfg(test)]
+#[inline]
+fn update_exact_query_diagnostics(
+    update: impl FnOnce(&mut ExactQueryDiagnostics),
+) {
+    EXACT_QUERY_DIAGNOSTICS.with(|diagnostics| update(&mut diagnostics.borrow_mut()));
+}
+
+#[cfg(not(test))]
+#[inline]
+fn update_exact_query_diagnostics(_: impl FnOnce(&mut ExactQueryDiagnostics)) {}
+
+#[cfg(test)]
+#[inline]
+pub(crate) fn clear_exact_query_diagnostics() {
+    EXACT_QUERY_DIAGNOSTICS.with(|diagnostics| {
+        *diagnostics.borrow_mut() = ExactQueryDiagnostics::default();
+    });
+}
+
+#[cfg(test)]
+#[inline]
+pub(crate) fn exact_query_diagnostics_snapshot() -> ExactQueryDiagnostics {
+    EXACT_QUERY_DIAGNOSTICS.with(|diagnostics| *diagnostics.borrow())
 }
 
 #[inline]
 pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_STATE_ANALYSIS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
+    EXACT_TURN_SUMMARY_CACHE.with(|cache| cache.borrow_mut().entries.clear());
+    EXACT_STRATEGIC_ANALYSIS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_ATTACK_REACH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_CARRIER_STEPS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_DRAINER_TO_MANA_CACHE.with(|cache| cache.borrow_mut().entries.clear());
@@ -269,6 +400,7 @@ pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_PICKUP_PATH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_SPIRIT_REACH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_SPIRIT_SUMMARY_CACHE.with(|cache| cache.borrow_mut().entries.clear());
+    EXACT_SPIRIT_TACTICAL_SUMMARY_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_WALK_THREAT_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_SECURE_MANA_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
@@ -295,16 +427,47 @@ pub(crate) fn exact_state_analysis(game: &MonsGame) -> ExactStateAnalysis {
     })
 }
 
+pub(crate) fn exact_strategic_analysis(game: &MonsGame) -> ExactStrategicAnalysis {
+    let key = exact_search_state_hash(game);
+    EXACT_STRATEGIC_ANALYSIS_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(cached) = cache.entries.get(&key).copied() {
+            return cached;
+        }
+        let built = build_exact_strategic_analysis(game);
+        if cache.entries.len() >= EXACT_ANALYSIS_CACHE_MAX_ENTRIES
+            && !cache.entries.contains_key(&key)
+        {
+            cache.entries.clear();
+        }
+        cache.entries.insert(key, built);
+        built
+    })
+}
+
 #[inline]
 pub(crate) fn exact_turn_summary(game: &MonsGame, color: Color) -> ExactTurnSummary {
-    let analysis = exact_state_analysis(game);
-    if analysis.active_turn.color == Some(color) {
-        analysis.active_turn
-    } else {
+    if game.active_color != color {
         ExactTurnSummary {
             color: Some(color),
             ..ExactTurnSummary::default()
         }
+    } else {
+        let key = exact_search_state_hash(game);
+        EXACT_TURN_SUMMARY_CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            if let Some(cached) = cache.entries.get(&key).copied() {
+                return cached;
+            }
+            let built = build_exact_turn_summary(game);
+            if cache.entries.len() >= EXACT_ANALYSIS_CACHE_MAX_ENTRIES
+                && !cache.entries.contains_key(&key)
+            {
+                cache.entries.clear();
+            }
+            cache.entries.insert(key, built);
+            built
+        })
     }
 }
 
@@ -386,8 +549,9 @@ fn can_attack_target_on_board_uncached(
             } => ExactActorPayload::Bomb,
             _ => ExactActorPayload::None,
         };
-        let mut queue = VecDeque::new();
-        let mut seen = HashSet::new();
+        let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
+        let mut seen =
+            ExactHashSet::with_capacity_and_hasher(EXACT_BFS_CAPACITY, ExactBuildHasher::default());
         queue.push_back((start, start_payload, 0));
         seen.insert((start, start_payload));
 
@@ -806,26 +970,51 @@ fn exact_is_location_guarded_by_angel(board: &Board, color: Color, location: Loc
 }
 
 fn build_exact_state_analysis(game: &MonsGame) -> ExactStateAnalysis {
-    let white = build_color_summary(game, Color::White);
-    let black = build_color_summary(game, Color::Black);
-    let active_turn = build_turn_summary(game);
-    ExactStateAnalysis {
-        white,
-        black,
-        active_turn,
+    let active_color = game.active_color;
+    let active_summary = build_color_summary(game, active_color, ExactColorSummaryMode::ActiveTactical);
+    let passive_summary =
+        build_color_summary(game, active_color.other(), ExactColorSummaryMode::PassiveStrategic);
+    let active_turn = build_turn_summary(game, active_summary);
+
+    if active_color == Color::White {
+        ExactStateAnalysis {
+            white: active_summary,
+            black: passive_summary,
+            active_turn,
+        }
+    } else {
+        ExactStateAnalysis {
+            white: passive_summary,
+            black: active_summary,
+            active_turn,
+        }
     }
 }
 
-fn build_color_summary(game: &MonsGame, color: Color) -> ExactColorSummary {
-    let full_turn_moves = if game.active_color == color {
-        (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0)
+fn build_exact_strategic_analysis(game: &MonsGame) -> ExactStrategicAnalysis {
+    ExactStrategicAnalysis {
+        white: build_color_summary(game, Color::White, ExactColorSummaryMode::PassiveStrategic),
+        black: build_color_summary(game, Color::Black, ExactColorSummaryMode::PassiveStrategic),
+    }
+}
+
+fn build_color_summary(
+    game: &MonsGame,
+    color: Color,
+    mode: ExactColorSummaryMode,
+) -> ExactColorSummary {
+    update_exact_query_diagnostics(|diagnostics| match mode {
+        ExactColorSummaryMode::ActiveTactical => diagnostics.active_tactical_summary_builds += 1,
+        ExactColorSummaryMode::PassiveStrategic => diagnostics.passive_strategic_summary_builds += 1,
+    });
+
+    let (full_turn_moves, can_use_action) = if game.active_color == color {
+        (
+            (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0),
+            game.player_can_use_action(),
+        )
     } else {
-        Config::MONS_MOVES_PER_TURN
-    };
-    let can_use_action = if game.active_color == color {
-        game.player_can_use_action()
-    } else {
-        true
+        (Config::MONS_MOVES_PER_TURN, true)
     };
 
     let mut carrier_steps = Vec::new();
@@ -879,13 +1068,21 @@ fn build_color_summary(game: &MonsGame, color: Color) -> ExactColorSummary {
             immediate_scores.push(path.mana_value);
         }
     }
-    let spirit = exact_spirit_summary(&game.board, color, full_turn_moves, can_use_action);
-    if spirit.same_turn_score {
-        immediate_scores.push(spirit.same_turn_score_value.max(1));
-    }
-    if spirit.same_turn_opponent_mana_score {
-        immediate_scores.push(spirit.same_turn_opponent_mana_score_value.max(1));
-    }
+    let spirit = match mode {
+        ExactColorSummaryMode::ActiveTactical => {
+            let spirit = exact_spirit_summary(&game.board, color, full_turn_moves, can_use_action);
+            if spirit.same_turn_score {
+                immediate_scores.push(spirit.same_turn_score_value.max(1));
+            }
+            if spirit.same_turn_opponent_mana_score {
+                immediate_scores.push(spirit.same_turn_opponent_mana_score_value.max(1));
+            }
+            spirit
+        }
+        ExactColorSummaryMode::PassiveStrategic => {
+            exact_passive_spirit_summary(&game.board, color, full_turn_moves, can_use_action)
+        }
+    };
     immediate_scores.sort_unstable_by(|a, b| b.cmp(a));
     let immediate_window = ExactImmediateScoreWindow {
         best_score: immediate_scores.first().copied().unwrap_or(0),
@@ -902,11 +1099,9 @@ fn build_color_summary(game: &MonsGame, color: Color) -> ExactColorSummary {
     }
 }
 
-fn build_turn_summary(game: &MonsGame) -> ExactTurnSummary {
+fn build_turn_summary(game: &MonsGame, active_summary: ExactColorSummary) -> ExactTurnSummary {
     let color = game.active_color;
-    let remaining_mon_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
-    let can_use_action = game.player_can_use_action();
-    let spirit = exact_spirit_summary(&game.board, color, remaining_mon_moves, can_use_action);
+    let spirit = active_summary.spirit;
     let safe_supermana_progress_steps =
         exact_secure_specific_mana_steps_this_turn(game, color, Mana::Supermana);
     let safe_opponent_mana_progress_steps =
@@ -922,7 +1117,52 @@ fn build_turn_summary(game: &MonsGame) -> ExactTurnSummary {
         spirit_assisted_supermana_progress: spirit.supermana_progress,
         spirit_assisted_opponent_mana_progress: spirit.opponent_mana_progress,
         spirit_assisted_score: spirit.same_turn_score,
+        spirit_assisted_score_value: spirit.same_turn_score_value,
         spirit_assisted_denial: spirit.same_turn_opponent_mana_score,
+        spirit_assisted_denial_value: spirit.same_turn_opponent_mana_score_value,
+        same_turn_score_window_value: active_summary.immediate_window.best_score.max(0),
+        score_path_best_steps: active_summary.score_path_window.best_steps,
+        spirit_next_turn_setup_gain: spirit.next_turn_setup_gain,
+    }
+}
+
+fn build_exact_turn_summary(game: &MonsGame) -> ExactTurnSummary {
+    update_exact_query_diagnostics(|diagnostics| diagnostics.exact_turn_summary_builds += 1);
+
+    let color = game.active_color;
+    let remaining_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
+    let can_use_action = game.player_can_use_action();
+    let tactical_spirit =
+        exact_tactical_spirit_summary(&game.board, color, remaining_moves, can_use_action);
+    let safe_supermana_progress_steps =
+        exact_secure_specific_mana_steps_this_turn(game, color, Mana::Supermana);
+    let safe_opponent_mana_progress_steps =
+        exact_secure_specific_mana_steps_this_turn(game, color, Mana::Regular(color.other()));
+    let same_turn_score_window_value = exact_best_immediate_score_on_board(
+        &game.board,
+        color,
+        remaining_moves,
+    )
+    .max(tactical_spirit.same_turn_score_value)
+    .max(tactical_spirit.same_turn_opponent_mana_score_value);
+
+    ExactTurnSummary {
+        color: Some(color),
+        can_attack_opponent_drainer: can_attack_opponent_drainer_exact(game, color),
+        safe_supermana_progress: safe_supermana_progress_steps.is_some(),
+        safe_supermana_progress_steps,
+        safe_opponent_mana_progress: safe_opponent_mana_progress_steps.is_some()
+            || tactical_spirit.same_turn_opponent_mana_score,
+        safe_opponent_mana_progress_steps,
+        spirit_assisted_supermana_progress: tactical_spirit.supermana_progress,
+        spirit_assisted_opponent_mana_progress: tactical_spirit.opponent_mana_progress,
+        spirit_assisted_score: tactical_spirit.same_turn_score,
+        spirit_assisted_score_value: tactical_spirit.same_turn_score_value,
+        spirit_assisted_denial: tactical_spirit.same_turn_opponent_mana_score,
+        spirit_assisted_denial_value: tactical_spirit.same_turn_opponent_mana_score_value,
+        same_turn_score_window_value,
+        score_path_best_steps: exact_best_score_steps_on_board(&game.board, color),
+        spirit_next_turn_setup_gain: 0,
     }
 }
 
@@ -961,8 +1201,9 @@ fn exact_shortest_payload_state<F>(
 where
     F: FnMut(Location, ExactActorPayload) -> bool,
 {
-    let mut queue = VecDeque::new();
-    let mut seen = HashSet::new();
+    let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
+    let mut seen =
+        ExactHashSet::with_capacity_and_hasher(EXACT_BFS_CAPACITY, ExactBuildHasher::default());
     queue.push_back((start, start_payload, 0));
     seen.insert((start, start_payload));
 
@@ -1158,6 +1399,7 @@ fn exact_best_drainer_pickup_path_filtered(
     max_steps: Option<i32>,
     mana_filter: ExactPickupFilter,
 ) -> Option<ExactDrainerPickupPath> {
+    update_exact_query_diagnostics(|diagnostics| diagnostics.pickup_path_calls += 1);
     let key = ExactPickupPathQueryKey {
         board_hash: exact_board_hash(board),
         color,
@@ -1168,11 +1410,14 @@ fn exact_best_drainer_pickup_path_filtered(
     if let Some(cached) =
         EXACT_PICKUP_PATH_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
     {
+        update_exact_query_diagnostics(|diagnostics| diagnostics.pickup_path_cache_hits += 1);
         return cached;
     }
+    update_exact_query_diagnostics(|diagnostics| diagnostics.pickup_path_cache_misses += 1);
 
-    let mut queue = VecDeque::new();
-    let mut seen = HashSet::new();
+    let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
+    let mut seen =
+        ExactHashSet::with_capacity_and_hasher(EXACT_BFS_CAPACITY, ExactBuildHasher::default());
     let start_state = (start, ExactActorPayload::None, 0);
     queue.push_back(start_state);
     seen.insert((start, ExactActorPayload::None));
@@ -1298,7 +1543,7 @@ fn can_secure_specific_mana_on_board(
     exact_secure_specific_mana_steps_on_board(board, color, wanted, remaining_moves).is_some()
 }
 
-fn exact_secure_specific_mana_steps_on_board(
+pub(crate) fn exact_secure_specific_mana_steps_on_board(
     board: &Board,
     color: Color,
     wanted: Mana,
@@ -1331,11 +1576,13 @@ fn exact_secure_specific_mana_steps_in_game(
     color: Color,
     wanted: Mana,
 ) -> Option<i32> {
+    update_exact_query_diagnostics(|diagnostics| diagnostics.exact_secure_mana_calls += 1);
     let state_hash = exact_search_state_hash(game);
     let key = (state_hash, wanted);
     if let Some(cached) =
         EXACT_SECURE_MANA_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
     {
+        update_exact_query_diagnostics(|diagnostics| diagnostics.exact_secure_mana_cache_hits += 1);
         return cached;
     }
 
@@ -1415,7 +1662,8 @@ pub(crate) fn exact_secure_specific_mana_path_from(
     start: Location,
     wanted: Mana,
 ) -> Option<Vec<Location>> {
-    let mut visiting = HashSet::new();
+    let mut visiting =
+        ExactHashSet::with_capacity_and_hasher(EXACT_BFS_CAPACITY, ExactBuildHasher::default());
     exact_secure_specific_mana_path_from_uncached(game, color, start, wanted, &mut visiting)
 }
 
@@ -1424,7 +1672,7 @@ fn exact_secure_specific_mana_path_from_uncached(
     color: Color,
     start: Location,
     wanted: Mana,
-    visiting: &mut HashSet<(u64, Mana)>,
+    visiting: &mut ExactHashSet<(u64, Mana)>,
 ) -> Option<Vec<Location>> {
     let state_hash = exact_search_state_hash(game);
     let key = (state_hash, wanted);
@@ -1542,6 +1790,7 @@ fn exact_spirit_summary(
     remaining_mon_moves: i32,
     can_use_action: bool,
 ) -> ExactSpiritSummary {
+    update_exact_query_diagnostics(|diagnostics| diagnostics.exact_spirit_summary_calls += 1);
     if remaining_mon_moves < 0 {
         return ExactSpiritSummary::default();
     }
@@ -1554,6 +1803,7 @@ fn exact_spirit_summary(
     if let Some(cached) =
         EXACT_SPIRIT_SUMMARY_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
     {
+        update_exact_query_diagnostics(|diagnostics| diagnostics.exact_spirit_summary_cache_hits += 1);
         return cached;
     }
 
@@ -1568,6 +1818,280 @@ fn exact_spirit_summary(
         cache.entries.insert(key, summary);
     });
     summary
+}
+
+fn exact_tactical_spirit_summary(
+    board: &Board,
+    color: Color,
+    remaining_mon_moves: i32,
+    can_use_action: bool,
+) -> ExactSpiritSummary {
+    update_exact_query_diagnostics(|diagnostics| diagnostics.tactical_spirit_summary_calls += 1);
+    if remaining_mon_moves < 0 {
+        return ExactSpiritSummary::default();
+    }
+    let key = ExactSpiritSummaryKey {
+        board_hash: exact_board_hash(board),
+        color,
+        remaining_mon_moves,
+        can_use_action,
+    };
+    if let Some(cached) = EXACT_SPIRIT_TACTICAL_SUMMARY_CACHE
+        .with(|cache| cache.borrow().entries.get(&key).copied())
+    {
+        update_exact_query_diagnostics(|diagnostics| {
+            diagnostics.tactical_spirit_summary_cache_hits += 1;
+        });
+        return cached;
+    }
+
+    let summary =
+        exact_tactical_spirit_summary_uncached(board, color, remaining_mon_moves, can_use_action);
+    EXACT_SPIRIT_TACTICAL_SUMMARY_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.entries.len() >= EXACT_SPIRIT_SUMMARY_CACHE_MAX_ENTRIES
+            && !cache.entries.contains_key(&key)
+        {
+            cache.entries.clear();
+        }
+        cache.entries.insert(key, summary);
+    });
+    summary
+}
+
+fn exact_passive_spirit_summary(
+    board: &Board,
+    color: Color,
+    remaining_mon_moves: i32,
+    can_use_action: bool,
+) -> ExactSpiritSummary {
+    update_exact_query_diagnostics(|diagnostics| diagnostics.passive_spirit_summary_calls += 1);
+    if remaining_mon_moves < 0 || !can_use_action {
+        return ExactSpiritSummary::default();
+    }
+
+    let mut best = ExactSpiritSummary::default();
+
+    for (location, item) in board.occupied() {
+        let Some(mon) = item.mon() else {
+            continue;
+        };
+        if mon.color != color || mon.kind != MonKind::Spirit || mon.is_fainted() {
+            continue;
+        }
+
+        for (spirit_pos, _) in reachable_spirit_positions(board, location, color, remaining_mon_moves)
+        {
+            if matches!(board.square(spirit_pos), Square::MonBase { .. }) {
+                continue;
+            }
+
+            let mut reachable_targets = 0;
+            let mut setup_gain = 0;
+            let mut supermana_progress = false;
+            let mut opponent_mana_progress = false;
+
+            for &target in spirit_pos.reachable_by_spirit_action_ref() {
+                let Some(target_item) = board.item(target).copied() else {
+                    continue;
+                };
+                if !spirit_target_allowed(target_item) {
+                    continue;
+                }
+                if !target
+                    .nearby_locations_ref()
+                    .iter()
+                    .copied()
+                    .any(|destination| {
+                        spirit_destination_allowed(board, target, target_item, destination)
+                    })
+                {
+                    continue;
+                }
+
+                reachable_targets += 1;
+                match target_item {
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    } => {
+                        supermana_progress = true;
+                        setup_gain = setup_gain.max(2);
+                    }
+                    Item::Mana { mana: Mana::Regular(mana_color) }
+                        if mana_color == color.other() =>
+                    {
+                        opponent_mana_progress = true;
+                        setup_gain = setup_gain.max(2);
+                    }
+                    Item::Mon { mon }
+                    | Item::MonWithMana { mon, .. }
+                    | Item::MonWithConsumable { mon, .. } => {
+                        if mon.color == color && mon.kind == MonKind::Drainer && !mon.is_fainted() {
+                            setup_gain = setup_gain.max(2);
+                        } else if mon.color != color && !mon.is_fainted() {
+                            setup_gain = setup_gain.max(1);
+                        }
+                    }
+                    Item::Mana { .. } | Item::Consumable { .. } => {}
+                }
+            }
+
+            if supermana_progress {
+                best.supermana_progress = true;
+            }
+            if opponent_mana_progress {
+                best.opponent_mana_progress = true;
+            }
+
+            let utility = reachable_targets
+                .min(EXACT_SPIRIT_UTILITY_CAP)
+                .max((1 + setup_gain).min(EXACT_SPIRIT_UTILITY_CAP));
+            if utility > best.utility {
+                best.utility = utility;
+                best.next_turn_setup_gain = setup_gain;
+            } else if utility == best.utility {
+                best.next_turn_setup_gain = best.next_turn_setup_gain.max(setup_gain);
+            }
+        }
+    }
+
+    best
+}
+
+fn exact_tactical_spirit_summary_uncached(
+    board: &Board,
+    color: Color,
+    remaining_mon_moves: i32,
+    can_use_action: bool,
+) -> ExactSpiritSummary {
+    if !can_use_action {
+        return ExactSpiritSummary::default();
+    }
+
+    let before_same_turn_score =
+        exact_best_immediate_score_on_board(board, color, remaining_mon_moves);
+    let before_same_turn_opponent_score =
+        exact_best_immediate_opponent_mana_score_on_board(board, color, remaining_mon_moves);
+    let max_same_turn_score = Mana::Supermana.score(color);
+    let max_same_turn_opponent_score = Mana::Regular(color.other()).score(color);
+    let mut best = ExactSpiritSummary::default();
+
+    for (location, item) in board.occupied() {
+        let Some(mon) = item.mon() else {
+            continue;
+        };
+        if mon.color != color || mon.kind != MonKind::Spirit || mon.is_fainted() {
+            continue;
+        }
+
+        for (spirit_pos, spirit_steps) in
+            reachable_spirit_positions(board, location, color, remaining_mon_moves)
+        {
+            if matches!(board.square(spirit_pos), Square::MonBase { .. }) {
+                continue;
+            }
+            let action_board_storage = (spirit_pos != location).then(|| {
+                let mut moved = board.clone();
+                moved.remove_item(location);
+                moved.put(*item, spirit_pos);
+                moved
+            });
+            let action_board = action_board_storage.as_ref().unwrap_or(board);
+            let remaining_after_action = remaining_mon_moves.saturating_sub(spirit_steps);
+
+            for &target in spirit_pos.reachable_by_spirit_action_ref() {
+                let Some(target_item) = action_board.item(target).copied() else {
+                    continue;
+                };
+                if !spirit_target_allowed(target_item) {
+                    continue;
+                }
+                for &dest in target.nearby_locations_ref() {
+                    if !spirit_destination_allowed(action_board, target, target_item, dest) {
+                        continue;
+                    }
+                    let (after_board, score_delta, opponent_mana_score_delta) =
+                        apply_spirit_move_preview(action_board, target, target_item, dest, color);
+                    let after_same_turn_score = if best.same_turn_score_value < max_same_turn_score
+                    {
+                        score_delta.max(exact_best_immediate_score_on_board(
+                            &after_board,
+                            color,
+                            remaining_after_action,
+                        ))
+                    } else {
+                        best.same_turn_score_value
+                    };
+                    let after_same_turn_opponent_score = if best.same_turn_opponent_mana_score_value
+                        < max_same_turn_opponent_score
+                    {
+                        opponent_mana_score_delta.max(
+                            exact_best_immediate_opponent_mana_score_on_board(
+                                &after_board,
+                                color,
+                                remaining_after_action,
+                            ),
+                        )
+                    } else {
+                        best.same_turn_opponent_mana_score_value
+                    };
+
+                    if best.same_turn_score_value < max_same_turn_score
+                        && (score_delta > 0 || after_same_turn_score > before_same_turn_score)
+                    {
+                        best.same_turn_score = true;
+                        best.same_turn_score_value =
+                            best.same_turn_score_value.max(after_same_turn_score);
+                    }
+                    if best.same_turn_opponent_mana_score_value < max_same_turn_opponent_score
+                        && (opponent_mana_score_delta > 0
+                            || after_same_turn_opponent_score > before_same_turn_opponent_score)
+                    {
+                        best.same_turn_opponent_mana_score = true;
+                        best.same_turn_opponent_mana_score_value = best
+                            .same_turn_opponent_mana_score_value
+                            .max(after_same_turn_opponent_score);
+                    }
+                    if !best.supermana_progress
+                        && ((matches!(
+                            target_item,
+                            Item::Mana {
+                                mana: Mana::Supermana,
+                            }
+                        ) && score_delta > 0)
+                            || can_secure_specific_mana_on_board(
+                                &after_board,
+                                color,
+                                Mana::Supermana,
+                                remaining_after_action,
+                            ))
+                    {
+                        best.supermana_progress = true;
+                    }
+                    if !best.opponent_mana_progress
+                        && (opponent_mana_score_delta > 0
+                            || can_secure_specific_mana_on_board(
+                                &after_board,
+                                color,
+                                Mana::Regular(color.other()),
+                                remaining_after_action,
+                            ))
+                    {
+                        best.opponent_mana_progress = true;
+                    }
+                    if best.same_turn_score_value >= max_same_turn_score
+                        && best.same_turn_opponent_mana_score_value >= max_same_turn_opponent_score
+                        && best.supermana_progress
+                        && best.opponent_mana_progress
+                    {
+                        return best;
+                    }
+                }
+            }
+        }
+    }
+
+    best
 }
 
 fn exact_spirit_summary_uncached(
@@ -1698,6 +2222,7 @@ fn exact_followup_summary(
     color: Color,
     remaining_moves: i32,
 ) -> ExactFollowupSummary {
+    update_exact_query_diagnostics(|diagnostics| diagnostics.exact_followup_summary_calls += 1);
     if remaining_moves < 0 {
         return ExactFollowupSummary::default();
     }
@@ -1710,6 +2235,7 @@ fn exact_followup_summary(
     if let Some(cached) =
         EXACT_FOLLOWUP_SUMMARY_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
     {
+        update_exact_query_diagnostics(|diagnostics| diagnostics.exact_followup_summary_cache_hits += 1);
         return cached;
     }
 
@@ -1770,8 +2296,9 @@ fn reachable_spirit_positions(
         return cached;
     }
 
-    let mut queue = VecDeque::new();
-    let mut seen = HashSet::new();
+    let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
+    let mut seen =
+        ExactHashSet::with_capacity_and_hasher(EXACT_BFS_CAPACITY, ExactBuildHasher::default());
     queue.push_back((start, 0));
     seen.insert(start);
     let mut positions = Vec::new();
@@ -3594,6 +4121,69 @@ mod tests {
         let turn = exact_turn_summary(&game, Color::White);
         assert!(turn.safe_opponent_mana_progress);
         assert!(turn.spirit_assisted_denial);
+    }
+
+    #[test]
+    fn exact_state_analysis_uses_full_spirit_only_for_active_color_on_opening_black_turn() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+
+        let mut game = MonsGame::new(false);
+        for step in [
+            "l10,3;l9,2",
+            "l9,2;l8,1",
+            "l8,1;l7,0",
+            "l7,0;l6,0",
+            "l6,0;l5,0;mp",
+        ] {
+            assert!(matches!(
+                game.process_input(Input::array_from_fen(step), false, false),
+                Output::Events(_)
+            ));
+        }
+        assert_eq!(game.active_color, Color::Black);
+        assert_eq!(game.turn_number, 2);
+
+        let _ = exact_state_analysis(&game);
+        let diagnostics = exact_query_diagnostics_snapshot();
+        assert_eq!(diagnostics.active_tactical_summary_builds, 1);
+        assert_eq!(diagnostics.passive_strategic_summary_builds, 1);
+        assert_eq!(diagnostics.exact_spirit_summary_calls, 1);
+        assert_eq!(diagnostics.passive_spirit_summary_calls, 1);
+        assert!(
+            diagnostics.exact_followup_summary_calls > 0,
+            "active tactical summary should still use full exact followup analysis"
+        );
+    }
+
+    #[test]
+    fn exact_turn_summary_avoids_full_followup_on_opening_black_turn() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+
+        let mut game = MonsGame::new(false);
+        for step in [
+            "l10,3;l9,2",
+            "l9,2;l8,1",
+            "l8,1;l7,0",
+            "l7,0;l6,0",
+            "l6,0;l5,0;mp",
+        ] {
+            assert!(matches!(
+                game.process_input(Input::array_from_fen(step), false, false),
+                Output::Events(_)
+            ));
+        }
+        assert_eq!(game.active_color, Color::Black);
+        assert_eq!(game.turn_number, 2);
+
+        let _ = exact_turn_summary(&game, Color::Black);
+        let diagnostics = exact_query_diagnostics_snapshot();
+        assert_eq!(diagnostics.exact_turn_summary_builds, 1);
+        assert_eq!(diagnostics.exact_spirit_summary_calls, 0);
+        assert!(diagnostics.tactical_spirit_summary_calls > 0);
+        assert_eq!(diagnostics.exact_followup_summary_calls, 0);
+        assert_eq!(diagnostics.passive_spirit_summary_calls, 0);
     }
 
     #[test]

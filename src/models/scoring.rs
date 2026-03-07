@@ -908,7 +908,7 @@ pub fn evaluate_preferability_with_weights(
     let remaining_mon_moves_for_active =
         (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
     let mana_snapshot = ManaPathSnapshot::from_board(&game.board);
-    let exact_analysis = exact_state_analysis(game);
+    let exact_analysis = exact_strategic_analysis(game);
 
     let mons_bases = Config::mons_bases_ref();
     let my_score_now = if color == Color::White {
@@ -1038,7 +1038,7 @@ pub fn evaluate_preferability_with_weights(
                             0,
                         )
                     } else {
-                        let spirit = exact_analysis.color_summary(mon.color).spirit;
+                        let spirit = spirit_summary_for_scoring(exact_analysis, mon.color);
                         (
                             spirit.utility,
                             exact_spirit_pressure_bonus(spirit, weights),
@@ -1161,7 +1161,7 @@ pub fn evaluate_preferability_with_weights(
                             0,
                         )
                     } else {
-                        let spirit = exact_analysis.color_summary(mon.color).spirit;
+                        let spirit = spirit_summary_for_scoring(exact_analysis, mon.color);
                         (
                             spirit.utility,
                             exact_spirit_pressure_bonus(spirit, weights),
@@ -1620,6 +1620,13 @@ fn scale_by_bp(value: i32, basis_points: i32) -> i32 {
     ((value as i64 * basis_points as i64) / 10_000) as i32
 }
 
+fn spirit_summary_for_scoring(
+    exact_analysis: ExactStrategicAnalysis,
+    color: Color,
+) -> ExactSpiritSummary {
+    exact_analysis.color_summary(color).spirit
+}
+
 fn spirit_on_own_base_penalty(board: &Board, mon: Mon, location: Location, penalty: i32) -> i32 {
     if mon.kind == MonKind::Spirit && !mon.is_fainted() && location == board.base(mon) {
         penalty
@@ -1634,7 +1641,7 @@ fn exact_score_path_window_for_game(
     color: Color,
     include_regular_mana_move_windows: bool,
 ) -> ScorePathWindow {
-    let exact = exact_state_analysis(game).color_summary(color).score_path_window;
+    let exact = exact_strategic_analysis(game).color_summary(color).score_path_window;
     let mut best_steps = exact.best_steps;
     if include_regular_mana_move_windows {
         for candidate in &mana_snapshot.candidates {
@@ -1656,7 +1663,7 @@ fn exact_immediate_score_window_for_game(
     color: Color,
     allow_mana_move: bool,
 ) -> ImmediateScoreWindow {
-    let exact = exact_state_analysis(game).color_summary(color).immediate_window;
+    let exact = exact_strategic_analysis(game).color_summary(color).immediate_window;
     let mut best_score = exact.best_score;
     if allow_mana_move {
         best_score = best_score.max(best_regular_mana_move_score_window_with_snapshot(
@@ -1753,7 +1760,10 @@ fn spirit_action_utility(
             game.board = board.clone();
             game.active_color = spirit_color;
             game.turn_number = 2;
-            exact_state_analysis(&game).color_summary(spirit_color).spirit.utility
+            exact_strategic_analysis(&game)
+                .color_summary(spirit_color)
+                .spirit
+                .utility
         })
         .unwrap_or(0);
     utility.max(
