@@ -984,14 +984,15 @@ pub fn evaluate_preferability_with_weights(
 
                     let evaluate_drainer_danger = weights.drainer_danger_boolean != 0
                         || weights.drainer_walk_threat_boolean != 0;
-                    let drainer_under_immediate_threat = evaluate_drainer_danger
-                        && is_drainer_under_immediate_threat(
+                    let drainer_under_danger_threat = evaluate_drainer_danger
+                        && is_drainer_under_danger_threat(
                             &game.board,
                             mon.color,
                             location,
                             angel_nearby,
+                            use_legacy_formula,
                         );
-                    if weights.drainer_danger_boolean != 0 && drainer_under_immediate_threat {
+                    if weights.drainer_danger_boolean != 0 && drainer_under_danger_threat {
                         score += my_mon_multiplier * weights.drainer_danger_boolean;
                         if my_mon_multiplier == -1 {
                             score += weights.opponent_drainer_attack_bonus;
@@ -999,7 +1000,7 @@ pub fn evaluate_preferability_with_weights(
                     }
 
                     if weights.drainer_walk_threat_boolean != 0
-                        && !drainer_under_immediate_threat
+                        && !drainer_under_danger_threat
                         && is_drainer_under_walk_threat(
                             &game.board,
                             mon.color,
@@ -1090,14 +1091,15 @@ pub fn evaluate_preferability_with_weights(
 
                     let evaluate_drainer_danger = weights.drainer_danger_boolean != 0
                         || weights.drainer_walk_threat_boolean != 0;
-                    let drainer_under_immediate_threat = evaluate_drainer_danger
-                        && is_drainer_under_immediate_threat(
+                    let drainer_under_danger_threat = evaluate_drainer_danger
+                        && is_drainer_under_danger_threat(
                             &game.board,
                             mon.color,
                             location,
                             angel_nearby,
+                            use_legacy_formula,
                         );
-                    if weights.drainer_danger_boolean != 0 && drainer_under_immediate_threat {
+                    if weights.drainer_danger_boolean != 0 && drainer_under_danger_threat {
                         score += my_mon_multiplier * weights.drainer_danger_boolean;
                         if my_mon_multiplier == -1 {
                             score += weights.opponent_drainer_attack_bonus;
@@ -1105,7 +1107,7 @@ pub fn evaluate_preferability_with_weights(
                     }
 
                     if weights.drainer_walk_threat_boolean != 0
-                        && !drainer_under_immediate_threat
+                        && !drainer_under_danger_threat
                         && is_drainer_under_walk_threat(
                             &game.board,
                             mon.color,
@@ -1344,14 +1346,15 @@ pub fn evaluate_preferability_with_weights(
 
                     let evaluate_carrier_danger = weights.mana_carrier_danger_boolean != 0
                         || weights.mana_carrier_walk_threat_boolean != 0;
-                    let drainer_under_immediate_threat = evaluate_carrier_danger
-                        && is_drainer_under_immediate_threat(
+                    let drainer_under_danger_threat = evaluate_carrier_danger
+                        && is_drainer_under_danger_threat(
                             &game.board,
                             mon.color,
                             location,
                             angel_nearby,
+                            use_legacy_formula,
                         );
-                    if weights.mana_carrier_danger_boolean != 0 && drainer_under_immediate_threat {
+                    if weights.mana_carrier_danger_boolean != 0 && drainer_under_danger_threat {
                         score += my_mon_multiplier * weights.mana_carrier_danger_boolean;
                         if my_mon_multiplier == -1 {
                             score += weights.opponent_drainer_attack_bonus;
@@ -1359,7 +1362,7 @@ pub fn evaluate_preferability_with_weights(
                     }
 
                     if weights.mana_carrier_walk_threat_boolean != 0
-                        && !drainer_under_immediate_threat
+                        && !drainer_under_danger_threat
                         && is_drainer_under_walk_threat(
                             &game.board,
                             mon.color,
@@ -2117,6 +2120,65 @@ mod tests {
         game
     }
 
+    fn exact_danger_only_weights() -> ScoringWeights {
+        ScoringWeights {
+            use_legacy_formula: false,
+            include_regular_mana_move_windows: false,
+            include_match_point_window: false,
+            next_turn_window_scale_bp: 0,
+            double_confirmed_score: false,
+            confirmed_score: 0,
+            fainted_mon: 0,
+            fainted_drainer: 0,
+            fainted_cooldown_step: 0,
+            drainer_at_risk: 0,
+            mana_close_to_same_pool: 0,
+            mon_with_mana_close_to_any_pool: 0,
+            extra_for_supermana: 0,
+            extra_for_opponents_mana: 0,
+            drainer_close_to_mana: 0,
+            drainer_holding_mana: 0,
+            drainer_close_to_own_pool: 0,
+            drainer_close_to_supermana: 0,
+            mon_close_to_center: 0,
+            spirit_close_to_enemy: 0,
+            spirit_on_own_base_penalty: 0,
+            angel_guarding_drainer: 0,
+            angel_close_to_friendly_drainer: 0,
+            has_consumable: 0,
+            active_mon: 0,
+            regular_mana_to_owner_pool: 0,
+            regular_mana_drainer_control: 0,
+            supermana_drainer_control: 0,
+            supermana_race_control: 0,
+            opponent_mana_denial: 0,
+            mana_carrier_at_risk: 0,
+            mana_carrier_guarded: 0,
+            mana_carrier_one_step_from_pool: 0,
+            supermana_carrier_one_step_from_pool_extra: 0,
+            immediate_winning_carrier: 0,
+            drainer_best_mana_path: 0,
+            drainer_pickup_score_this_turn: 0,
+            mana_carrier_score_this_turn: 0,
+            drainer_immediate_threat: 0,
+            score_race_path_progress: 0,
+            opponent_score_race_path_progress: 0,
+            score_race_multi_path: 0,
+            opponent_score_race_multi_path: 0,
+            immediate_score_window: 0,
+            opponent_immediate_score_window: 0,
+            immediate_score_multi_window: 0,
+            opponent_immediate_score_multi_window: 0,
+            spirit_action_utility: 0,
+            drainer_danger_boolean: 0,
+            mana_carrier_danger_boolean: 0,
+            drainer_walk_threat_boolean: 0,
+            mana_carrier_walk_threat_boolean: 0,
+            opponent_drainer_attack_bonus: 0,
+            attacker_close_to_opponent_drainer: 0,
+        }
+    }
+
     fn swapped_color(color: Color) -> Color {
         color.other()
     }
@@ -2313,6 +2375,122 @@ mod tests {
         assert!(
             score_threat < score_zero,
             "opponent immediate threat should lower preferability"
+        );
+    }
+
+    #[test]
+    fn exact_multi_step_drainer_danger_penalty_reduces_preferability() {
+        let threatened = game_with_items(
+            vec![
+                (
+                    Location::new(8, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let safe = game_with_items(
+            vec![(
+                Location::new(8, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            )],
+            Color::White,
+        );
+
+        assert!(!crate::models::automove_exact::is_drainer_under_immediate_threat(
+            &threatened.board,
+            Color::White,
+            Location::new(8, 5),
+            false,
+        ));
+        assert!(!crate::models::automove_exact::is_drainer_under_walk_threat(
+            &threatened.board,
+            Color::White,
+            Location::new(8, 5),
+            false,
+        ));
+
+        let mut weights = exact_danger_only_weights();
+        weights.drainer_danger_boolean = -500;
+
+        let threatened_score =
+            evaluate_preferability_with_weights(&threatened, Color::White, &weights);
+        let safe_score = evaluate_preferability_with_weights(&safe, Color::White, &weights);
+
+        assert!(
+            threatened_score < safe_score,
+            "exact multi-step drainer attack should reduce preferability (threatened={}, safe={})",
+            threatened_score,
+            safe_score
+        );
+    }
+
+    #[test]
+    fn exact_multi_step_mana_carrier_danger_penalty_reduces_preferability() {
+        let threatened = game_with_items(
+            vec![
+                (
+                    Location::new(8, 5),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(4, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let safe = game_with_items(
+            vec![(
+                Location::new(8, 5),
+                Item::MonWithMana {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    mana: Mana::Supermana,
+                },
+            )],
+            Color::White,
+        );
+
+        assert!(!crate::models::automove_exact::is_drainer_under_immediate_threat(
+            &threatened.board,
+            Color::White,
+            Location::new(8, 5),
+            false,
+        ));
+        assert!(!crate::models::automove_exact::is_drainer_under_walk_threat(
+            &threatened.board,
+            Color::White,
+            Location::new(8, 5),
+            false,
+        ));
+
+        let mut weights = exact_danger_only_weights();
+        weights.mana_carrier_danger_boolean = -700;
+
+        let threatened_score =
+            evaluate_preferability_with_weights(&threatened, Color::White, &weights);
+        let safe_score = evaluate_preferability_with_weights(&safe, Color::White, &weights);
+
+        assert!(
+            threatened_score < safe_score,
+            "exact multi-step carrier attack should reduce preferability (threatened={}, safe={})",
+            threatened_score,
+            safe_score
         );
     }
 
@@ -2668,6 +2846,27 @@ fn is_drainer_under_walk_threat(
         color,
         location,
         angel_nearby,
+    )
+}
+
+fn is_drainer_under_danger_threat(
+    board: &Board,
+    color: Color,
+    location: Location,
+    angel_nearby: bool,
+    use_legacy_formula: bool,
+) -> bool {
+    if use_legacy_formula {
+        return is_drainer_under_immediate_threat(board, color, location, angel_nearby);
+    }
+
+    crate::models::automove_exact::can_attack_target_on_board(
+        board,
+        color.other(),
+        color,
+        location,
+        Config::MONS_MOVES_PER_TURN,
+        true,
     )
 }
 
