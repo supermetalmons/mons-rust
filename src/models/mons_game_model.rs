@@ -2982,12 +2982,14 @@ impl MonsGameModel {
             || Self::events_pickup_supermana(&events)
             || Self::events_move_supermana_toward_color(&events, perspective)
             || Self::events_spirit_supermana_setup(&events, &simulated_game.board, perspective)
-            || exact_turn.safe_supermana_progress;
+            || exact_turn.safe_supermana_progress
+            || exact_turn.spirit_assisted_supermana_progress;
         let opponent_mana_progress = scores_opponent_mana_this_turn
             || Self::events_pickup_opponent_mana(&events, perspective)
             || Self::events_move_opponent_mana_toward_color(&events, perspective)
             || Self::events_spirit_opponent_mana_setup(&events, &simulated_game.board, perspective)
             || exact_turn.safe_opponent_mana_progress
+            || exact_turn.spirit_assisted_opponent_mana_progress
             || exact_turn.spirit_assisted_denial;
         let spirit_assisted_score = exact_turn.spirit_assisted_score;
         let own_drainer_vulnerable = if config.enable_root_drainer_safety_prefilter {
@@ -4504,7 +4506,9 @@ impl MonsGameModel {
         if (config.enable_interview_hard_spirit_deploy
             || config.enable_root_spirit_development_pref)
             && (Self::should_prefer_spirit_development(game, perspective)
-                || exact_spirit_setup_gain_before > 0)
+                || exact_spirit_setup_gain_before > 0
+                || exact_turn_before.spirit_assisted_supermana_progress
+                || exact_turn_before.spirit_assisted_opponent_mana_progress)
             && !root_transitions.iter().any(|transition| {
                 Self::events_spirit_scoring_mana_setup(
                     &transition.events,
@@ -10143,6 +10147,152 @@ mod opening_book_tests {
                         )
                 )
             })
+        });
+
+        assert_eq!(exact, exhaustive);
+    }
+
+    #[test]
+    fn exact_spirit_supermana_progress_oracle_matches_exhaustive_same_turn_search() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(5, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 2),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 1),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(5, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        let exact = crate::models::automove_exact::exact_turn_summary(&game, Color::White)
+            .spirit_assisted_supermana_progress;
+        let exhaustive = exhaustive_same_turn_reachable(&game, Color::White, |state, _| {
+            state.white_score > game.white_score
+                || state.board.occupied().any(|(location, item)| {
+                    matches!(
+                        item,
+                        Item::MonWithMana {
+                            mon,
+                            mana: Mana::Supermana,
+                        } if mon.color == Color::White
+                            && mon.kind == MonKind::Drainer
+                            && !crate::models::automove_exact::is_drainer_under_immediate_threat(
+                                &state.board,
+                                Color::White,
+                                location,
+                                MonsGameModel::is_location_guarded_by_angel(
+                                    &state.board,
+                                    Color::White,
+                                    location,
+                                ),
+                            )
+                            && !crate::models::automove_exact::is_drainer_under_walk_threat(
+                                &state.board,
+                                Color::White,
+                                location,
+                                MonsGameModel::is_location_guarded_by_angel(
+                                    &state.board,
+                                    Color::White,
+                                    location,
+                                ),
+                            )
+                    )
+                })
+        });
+
+        assert_eq!(exact, exhaustive);
+    }
+
+    #[test]
+    fn exact_spirit_opponent_mana_progress_oracle_matches_exhaustive_same_turn_search() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(5, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 2),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(5, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        let exact = crate::models::automove_exact::exact_turn_summary(&game, Color::White)
+            .spirit_assisted_opponent_mana_progress;
+        let exhaustive = exhaustive_same_turn_reachable(&game, Color::White, |state, _| {
+            state.white_score > game.white_score
+                || state.board.occupied().any(|(location, item)| {
+                    matches!(
+                        item,
+                        Item::MonWithMana {
+                            mon,
+                            mana: Mana::Regular(Color::Black),
+                        } if mon.color == Color::White
+                            && mon.kind == MonKind::Drainer
+                            && !crate::models::automove_exact::is_drainer_under_immediate_threat(
+                                &state.board,
+                                Color::White,
+                                location,
+                                MonsGameModel::is_location_guarded_by_angel(
+                                    &state.board,
+                                    Color::White,
+                                    location,
+                                ),
+                            )
+                            && !crate::models::automove_exact::is_drainer_under_walk_threat(
+                                &state.board,
+                                Color::White,
+                                location,
+                                MonsGameModel::is_location_guarded_by_angel(
+                                    &state.board,
+                                    Color::White,
+                                    location,
+                                ),
+                            )
+                    )
+                })
         });
 
         assert_eq!(exact, exhaustive);

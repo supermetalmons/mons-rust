@@ -39,6 +39,8 @@ pub(crate) struct ExactSpiritSummary {
     pub same_turn_score_value: i32,
     pub same_turn_opponent_mana_score: bool,
     pub same_turn_opponent_mana_score_value: i32,
+    pub supermana_progress: bool,
+    pub opponent_mana_progress: bool,
     pub next_turn_setup_gain: i32,
 }
 
@@ -58,6 +60,8 @@ pub(crate) struct ExactTurnSummary {
     pub can_attack_opponent_drainer: bool,
     pub safe_supermana_progress: bool,
     pub safe_opponent_mana_progress: bool,
+    pub spirit_assisted_supermana_progress: bool,
+    pub spirit_assisted_opponent_mana_progress: bool,
     pub spirit_assisted_score: bool,
     pub spirit_assisted_denial: bool,
 }
@@ -383,23 +387,18 @@ fn build_color_summary(game: &MonsGame, color: Color) -> ExactColorSummary {
 
 fn build_turn_summary(game: &MonsGame) -> ExactTurnSummary {
     let color = game.active_color;
+    let remaining_mon_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
+    let can_use_action = game.player_can_use_action();
+    let spirit = exact_spirit_summary(&game.board, color, remaining_mon_moves, can_use_action);
     ExactTurnSummary {
         color: Some(color),
         can_attack_opponent_drainer: can_attack_opponent_drainer_exact(game, color),
         safe_supermana_progress: can_secure_specific_mana_this_turn(game, color, Mana::Supermana),
         safe_opponent_mana_progress: can_secure_opponent_mana_this_turn(game, color),
-        spirit_assisted_score: spirit_can_score_this_turn(
-            &game.board,
-            color,
-            (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0),
-            game.player_can_use_action(),
-        ),
-        spirit_assisted_denial: spirit_can_score_opponent_mana_this_turn(
-            &game.board,
-            color,
-            (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0),
-            game.player_can_use_action(),
-        ),
+        spirit_assisted_supermana_progress: spirit.supermana_progress,
+        spirit_assisted_opponent_mana_progress: spirit.opponent_mana_progress,
+        spirit_assisted_score: spirit.same_turn_score,
+        spirit_assisted_denial: spirit.same_turn_opponent_mana_score,
     }
 }
 
@@ -675,18 +674,31 @@ fn find_awake_drainer(board: &Board, color: Color) -> Option<Location> {
 }
 
 fn can_secure_specific_mana_this_turn(game: &MonsGame, color: Color, wanted: Mana) -> bool {
-    let Some(start) = find_awake_drainer(&game.board, color) else {
-        return false;
-    };
     let remaining_moves = if game.active_color == color {
         (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0)
     } else {
         Config::MONS_MOVES_PER_TURN
     };
+    can_secure_specific_mana_on_board(&game.board, color, wanted, remaining_moves)
+}
+
+fn can_secure_specific_mana_on_board(
+    board: &Board,
+    color: Color,
+    wanted: Mana,
+    remaining_moves: i32,
+) -> bool {
+    let Some(start) = find_awake_drainer(board, color) else {
+        return false;
+    };
+    let start_payload = match board.item(start).copied() {
+        Some(Item::MonWithMana { mana, .. }) => ExactActorPayload::Mana(mana),
+        _ => ExactActorPayload::None,
+    };
     let mut queue = VecDeque::new();
     let mut seen = HashSet::new();
-    queue.push_back((start, ExactActorPayload::None, 0));
-    seen.insert((start, ExactActorPayload::None));
+    queue.push_back((start, start_payload, 0));
+    seen.insert((start, start_payload));
 
     while let Some((location, payload, steps)) = queue.pop_front() {
         if steps > remaining_moves {
@@ -694,13 +706,12 @@ fn can_secure_specific_mana_this_turn(game: &MonsGame, color: Color, wanted: Man
         }
         if let ExactActorPayload::Mana(mana) = payload {
             if mana == wanted {
-                if matches!(game.board.square(location), Square::ManaPool { .. }) {
+                if matches!(board.square(location), Square::ManaPool { .. }) {
                     return true;
                 }
-                let angel_nearby =
-                    MonsGameModel::is_location_guarded_by_angel(&game.board, color, location);
-                if !is_drainer_under_immediate_threat(&game.board, color, location, angel_nearby)
-                    && !is_drainer_under_walk_threat(&game.board, color, location, angel_nearby)
+                let angel_nearby = MonsGameModel::is_location_guarded_by_angel(board, color, location);
+                if !is_drainer_under_immediate_threat(board, color, location, angel_nearby)
+                    && !is_drainer_under_walk_threat(board, color, location, angel_nearby)
                 {
                     return true;
                 }
@@ -711,7 +722,7 @@ fn can_secure_specific_mana_this_turn(game: &MonsGame, color: Color, wanted: Man
         }
         for &next in location.nearby_locations_ref() {
             if let Some(next_payload) =
-                actor_payload_after_move(&game.board, MonKind::Drainer, color, payload, next, false)
+                actor_payload_after_move(board, MonKind::Drainer, color, payload, next, false)
             {
                 if seen.insert((next, next_payload)) {
                     queue.push_back((next, next_payload, steps + 1));
@@ -858,6 +869,7 @@ fn exact_spirit_summary(
         exact_best_immediate_score_on_board(board, color, remaining_mon_moves);
     let before_same_turn_opponent_score =
         exact_best_immediate_opponent_mana_score_on_board(board, color, remaining_mon_moves);
+    let opponent_mana = Mana::Regular(color.other());
     let mut best = ExactSpiritSummary::default();
 
     for (location, item) in board.occupied() {
@@ -904,6 +916,25 @@ fn exact_spirit_summary(
                             remaining_after_action,
                         ),
                     );
+                    let supermana_progress_enabled =
+                        can_secure_specific_mana_on_board(
+                            &after_board,
+                            color,
+                            Mana::Supermana,
+                            remaining_after_action,
+                        ) || matches!(
+                            target_item,
+                            Item::Mana {
+                                mana: Mana::Supermana,
+                            }
+                        ) && score_delta > 0;
+                    let opponent_progress_enabled =
+                        can_secure_specific_mana_on_board(
+                            &after_board,
+                            color,
+                            opponent_mana,
+                            remaining_after_action,
+                        ) || opponent_mana_score_delta > 0;
                     let own_gain = best_step_improvement(before_best_steps, after_best_steps);
                     let deny_gain = best_step_worsening(opponent_before, after_opponent_steps);
                     let same_turn_score_enabled =
@@ -933,11 +964,17 @@ fn exact_spirit_summary(
                         best.same_turn_score_value =
                             best.same_turn_score_value.max(after_same_turn_score);
                     }
+                    if supermana_progress_enabled {
+                        best.supermana_progress = true;
+                    }
                     if same_turn_opponent_score_enabled {
                         best.same_turn_opponent_mana_score = true;
                         best.same_turn_opponent_mana_score_value = best
                             .same_turn_opponent_mana_score_value
                             .max(after_same_turn_opponent_score);
+                    }
+                    if opponent_progress_enabled {
+                        best.opponent_mana_progress = true;
                     }
 
                     if utility > best.utility {
@@ -952,15 +989,6 @@ fn exact_spirit_summary(
     }
 
     best
-}
-
-fn spirit_can_score_this_turn(
-    board: &Board,
-    color: Color,
-    remaining_mon_moves: i32,
-    can_use_action: bool,
-) -> bool {
-    exact_spirit_summary(board, color, remaining_mon_moves, can_use_action).same_turn_score
 }
 
 fn spirit_can_score_opponent_mana_this_turn(
@@ -1367,6 +1395,84 @@ mod tests {
             Color::White,
         );
         assert!(exact_turn_summary(&game, Color::White).safe_supermana_progress);
+    }
+
+    #[test]
+    fn exact_turn_summary_detects_spirit_assisted_supermana_progress() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(5, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 2),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 1),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(5, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        let turn = exact_turn_summary(&game, Color::White);
+        assert!(!turn.safe_supermana_progress);
+        assert!(turn.spirit_assisted_supermana_progress);
+        assert!(!turn.spirit_assisted_score);
+    }
+
+    #[test]
+    fn exact_turn_summary_detects_spirit_assisted_opponent_mana_progress() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(5, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 2),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(5, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        let turn = exact_turn_summary(&game, Color::White);
+        assert!(!turn.safe_opponent_mana_progress);
+        assert!(turn.spirit_assisted_opponent_mana_progress);
+        assert!(!turn.spirit_assisted_denial);
     }
 
     #[test]
