@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 const EXACT_ANALYSIS_CACHE_MAX_ENTRIES: usize = 512;
 const EXACT_ATTACK_REACH_CACHE_MAX_ENTRIES: usize = 8192;
+const EXACT_FOLLOWUP_SUMMARY_CACHE_MAX_ENTRIES: usize = 4096;
 const EXACT_WALK_THREAT_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_SECURE_MANA_CACHE_MAX_ENTRIES: usize = 4096;
 const EXACT_SPIRIT_UTILITY_CAP: i32 = 6;
@@ -70,6 +71,16 @@ pub(crate) struct ExactTurnSummary {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
+struct ExactFollowupSummary {
+    best_score_steps: Option<i32>,
+    opponent_best_score_steps: Option<i32>,
+    immediate_score: i32,
+    immediate_opponent_mana_score: i32,
+    secure_supermana: bool,
+    secure_opponent_mana: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct ExactStateAnalysis {
     pub white: ExactColorSummary,
     pub black: ExactColorSummary,
@@ -108,6 +119,18 @@ struct ExactAttackReachCache {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ExactFollowupSummaryKey {
+    board_hash: u64,
+    color: Color,
+    remaining_moves: i32,
+}
+
+#[derive(Default)]
+struct ExactFollowupSummaryCache {
+    entries: HashMap<ExactFollowupSummaryKey, ExactFollowupSummary>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ExactWalkThreatQueryKey {
     board_hash: u64,
     color: Color,
@@ -131,6 +154,8 @@ thread_local! {
         RefCell::new(ExactStateAnalysisCache::default());
     static EXACT_ATTACK_REACH_CACHE: RefCell<ExactAttackReachCache> =
         RefCell::new(ExactAttackReachCache::default());
+    static EXACT_FOLLOWUP_SUMMARY_CACHE: RefCell<ExactFollowupSummaryCache> =
+        RefCell::new(ExactFollowupSummaryCache::default());
     static EXACT_WALK_THREAT_CACHE: RefCell<ExactWalkThreatCache> =
         RefCell::new(ExactWalkThreatCache::default());
     static EXACT_SECURE_MANA_CACHE: RefCell<ExactSecureManaCache> =
@@ -141,6 +166,7 @@ thread_local! {
 pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_STATE_ANALYSIS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_ATTACK_REACH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
+    EXACT_FOLLOWUP_SUMMARY_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_WALK_THREAT_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_SECURE_MANA_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
@@ -1151,13 +1177,11 @@ fn exact_spirit_summary(
     if !can_use_action {
         return ExactSpiritSummary::default();
     }
-    let before_best_steps = exact_best_score_steps_on_board(board, color);
-    let opponent_before = exact_best_score_steps_on_board(board, color.other());
-    let before_same_turn_score =
-        exact_best_immediate_score_on_board(board, color, remaining_mon_moves);
-    let before_same_turn_opponent_score =
-        exact_best_immediate_opponent_mana_score_on_board(board, color, remaining_mon_moves);
-    let opponent_mana = Mana::Regular(color.other());
+    let before_summary = exact_followup_summary(board, color, remaining_mon_moves);
+    let before_best_steps = before_summary.best_score_steps;
+    let opponent_before = before_summary.opponent_best_score_steps;
+    let before_same_turn_score = before_summary.immediate_score;
+    let before_same_turn_opponent_score = before_summary.immediate_opponent_mana_score;
     let mut best = ExactSpiritSummary::default();
 
     for (location, item) in board.occupied() {
@@ -1196,41 +1220,22 @@ fn exact_spirit_summary(
                     }
                     let (after_board, score_delta, opponent_mana_score_delta) =
                         apply_spirit_move_preview(&action_board, target, target_item, dest, color);
-                    let after_best_steps = exact_best_score_steps_on_board(&after_board, color);
-                    let after_opponent_steps =
-                        exact_best_score_steps_on_board(&after_board, color.other());
+                    let after_summary =
+                        exact_followup_summary(&after_board, color, remaining_after_action);
+                    let after_best_steps = after_summary.best_score_steps;
+                    let after_opponent_steps = after_summary.opponent_best_score_steps;
                     let after_same_turn_score =
-                        score_delta.max(exact_best_immediate_score_on_board(
-                            &after_board,
-                            color,
-                            remaining_after_action,
-                        ));
-                    let after_same_turn_opponent_score = opponent_mana_score_delta.max(
-                        exact_best_immediate_opponent_mana_score_on_board(
-                            &after_board,
-                            color,
-                            remaining_after_action,
-                        ),
-                    );
-                    let supermana_progress_enabled =
-                        can_secure_specific_mana_on_board(
-                            &after_board,
-                            color,
-                            Mana::Supermana,
-                            remaining_after_action,
-                        ) || matches!(
+                        score_delta.max(after_summary.immediate_score);
+                    let after_same_turn_opponent_score =
+                        opponent_mana_score_delta.max(after_summary.immediate_opponent_mana_score);
+                    let supermana_progress_enabled = after_summary.secure_supermana || matches!(
                             target_item,
                             Item::Mana {
                                 mana: Mana::Supermana,
                             }
                         ) && score_delta > 0;
                     let opponent_progress_enabled =
-                        can_secure_specific_mana_on_board(
-                            &after_board,
-                            color,
-                            opponent_mana,
-                            remaining_after_action,
-                        ) || opponent_mana_score_delta > 0;
+                        after_summary.secure_opponent_mana || opponent_mana_score_delta > 0;
                     let own_gain = best_step_improvement(before_best_steps, after_best_steps);
                     let deny_gain = best_step_worsening(opponent_before, after_opponent_steps);
                     let same_turn_score_enabled =
@@ -1285,6 +1290,61 @@ fn exact_spirit_summary(
     }
 
     best
+}
+
+fn exact_followup_summary(
+    board: &Board,
+    color: Color,
+    remaining_moves: i32,
+) -> ExactFollowupSummary {
+    if remaining_moves < 0 {
+        return ExactFollowupSummary::default();
+    }
+
+    let key = ExactFollowupSummaryKey {
+        board_hash: exact_board_hash(board),
+        color,
+        remaining_moves,
+    };
+    if let Some(cached) =
+        EXACT_FOLLOWUP_SUMMARY_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
+    {
+        return cached;
+    }
+
+    let summary = ExactFollowupSummary {
+        best_score_steps: exact_best_score_steps_on_board(board, color),
+        opponent_best_score_steps: exact_best_score_steps_on_board(board, color.other()),
+        immediate_score: exact_best_immediate_score_on_board(board, color, remaining_moves),
+        immediate_opponent_mana_score: exact_best_immediate_opponent_mana_score_on_board(
+            board,
+            color,
+            remaining_moves,
+        ),
+        secure_supermana: can_secure_specific_mana_on_board(
+            board,
+            color,
+            Mana::Supermana,
+            remaining_moves,
+        ),
+        secure_opponent_mana: can_secure_specific_mana_on_board(
+            board,
+            color,
+            Mana::Regular(color.other()),
+            remaining_moves,
+        ),
+    };
+
+    EXACT_FOLLOWUP_SUMMARY_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.entries.len() >= EXACT_FOLLOWUP_SUMMARY_CACHE_MAX_ENTRIES
+            && !cache.entries.contains_key(&key)
+        {
+            cache.entries.clear();
+        }
+        cache.entries.insert(key, summary);
+    });
+    summary
 }
 
 fn spirit_can_score_opponent_mana_this_turn(
@@ -1797,6 +1857,119 @@ mod tests {
             is_drainer_exactly_safe_next_turn_on_board(&board, Color::White, Location::new(6, 5)),
             expected
         );
+    }
+
+    #[test]
+    fn exact_followup_summary_matches_component_queries() {
+        clear_exact_state_analysis_cache();
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(5, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 2),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 1),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        let summary = exact_followup_summary(&game.board, Color::White, 1);
+        assert_eq!(
+            summary.best_score_steps,
+            exact_best_score_steps_on_board(&game.board, Color::White)
+        );
+        assert_eq!(
+            summary.opponent_best_score_steps,
+            exact_best_score_steps_on_board(&game.board, Color::Black)
+        );
+        assert_eq!(
+            summary.immediate_score,
+            exact_best_immediate_score_on_board(&game.board, Color::White, 1)
+        );
+        assert_eq!(
+            summary.immediate_opponent_mana_score,
+            exact_best_immediate_opponent_mana_score_on_board(&game.board, Color::White, 1)
+        );
+        assert_eq!(
+            summary.secure_supermana,
+            can_secure_specific_mana_on_board(&game.board, Color::White, Mana::Supermana, 1)
+        );
+        assert_eq!(
+            summary.secure_opponent_mana,
+            can_secure_specific_mana_on_board(
+                &game.board,
+                Color::White,
+                Mana::Regular(Color::Black),
+                1,
+            )
+        );
+    }
+
+    #[test]
+    fn exact_followup_summary_cache_preserves_repeated_result() {
+        clear_exact_state_analysis_cache();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(9, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 5),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+
+        let first = exact_followup_summary(&board, Color::White, 2);
+        let second = exact_followup_summary(&board, Color::White, 2);
+        clear_exact_state_analysis_cache();
+        let third = exact_followup_summary(&board, Color::White, 2);
+
+        assert_eq!(first.best_score_steps, second.best_score_steps);
+        assert_eq!(first.opponent_best_score_steps, second.opponent_best_score_steps);
+        assert_eq!(first.immediate_score, second.immediate_score);
+        assert_eq!(
+            first.immediate_opponent_mana_score,
+            second.immediate_opponent_mana_score
+        );
+        assert_eq!(first.secure_supermana, second.secure_supermana);
+        assert_eq!(first.secure_opponent_mana, second.secure_opponent_mana);
+        assert_eq!(first.best_score_steps, third.best_score_steps);
+        assert_eq!(first.immediate_score, third.immediate_score);
+        assert_eq!(first.secure_opponent_mana, third.secure_opponent_mana);
     }
 
     #[test]
