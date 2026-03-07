@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 const EXACT_ANALYSIS_CACHE_MAX_ENTRIES: usize = 512;
 const EXACT_ATTACK_REACH_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_CARRIER_STEPS_CACHE_MAX_ENTRIES: usize = 8192;
+const EXACT_DRAINER_TO_MANA_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_FOLLOWUP_SUMMARY_CACHE_MAX_ENTRIES: usize = 4096;
 const EXACT_PICKUP_PATH_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_WALK_THREAT_CACHE_MAX_ENTRIES: usize = 8192;
@@ -149,6 +150,18 @@ struct ExactCarrierStepsCache {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ExactDrainerToManaQueryKey {
+    board_hash: u64,
+    color: Color,
+    start: Location,
+}
+
+#[derive(Default)]
+struct ExactDrainerToManaCache {
+    entries: HashMap<ExactDrainerToManaQueryKey, Option<i32>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ExactFollowupSummaryKey {
     board_hash: u64,
     color: Color,
@@ -200,6 +213,8 @@ thread_local! {
         RefCell::new(ExactAttackReachCache::default());
     static EXACT_CARRIER_STEPS_CACHE: RefCell<ExactCarrierStepsCache> =
         RefCell::new(ExactCarrierStepsCache::default());
+    static EXACT_DRAINER_TO_MANA_CACHE: RefCell<ExactDrainerToManaCache> =
+        RefCell::new(ExactDrainerToManaCache::default());
     static EXACT_FOLLOWUP_SUMMARY_CACHE: RefCell<ExactFollowupSummaryCache> =
         RefCell::new(ExactFollowupSummaryCache::default());
     static EXACT_PICKUP_PATH_CACHE: RefCell<ExactPickupPathCache> =
@@ -215,6 +230,7 @@ pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_STATE_ANALYSIS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_ATTACK_REACH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_CARRIER_STEPS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
+    EXACT_DRAINER_TO_MANA_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_FOLLOWUP_SUMMARY_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_PICKUP_PATH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_WALK_THREAT_CACHE.with(|cache| cache.borrow_mut().entries.clear());
@@ -696,19 +712,8 @@ fn build_color_summary(game: &MonsGame, color: Color) -> ExactColorSummary {
 
     let best_drainer_pickup = find_awake_drainer(&game.board, color)
         .and_then(|location| exact_best_drainer_pickup_path(&game.board, color, location));
-    let best_drainer_to_mana_steps = find_awake_drainer(&game.board, color).and_then(|location| {
-        exact_shortest_payload_state(
-            &game.board,
-            location,
-            MonKind::Drainer,
-            color,
-            ExactActorPayload::None,
-            false,
-            None,
-            |_, payload| matches!(payload, ExactActorPayload::Mana(_)),
-        )
-        .map(|result| result.steps)
-    });
+    let best_drainer_to_mana_steps = find_awake_drainer(&game.board, color)
+        .and_then(|location| exact_drainer_to_any_mana_steps(&game.board, color, location));
 
     if let Some(path) = best_drainer_pickup {
         carrier_steps.push(path.total_moves);
@@ -1092,6 +1097,42 @@ fn find_awake_drainer(board: &Board, color: Color) -> Option<Location> {
         (mon.color == color && mon.kind == MonKind::Drainer && !mon.is_fainted())
             .then_some(location)
     })
+}
+
+fn exact_drainer_to_any_mana_steps(board: &Board, color: Color, start: Location) -> Option<i32> {
+    let key = ExactDrainerToManaQueryKey {
+        board_hash: exact_board_hash(board),
+        color,
+        start,
+    };
+    if let Some(cached) =
+        EXACT_DRAINER_TO_MANA_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
+    {
+        return cached;
+    }
+
+    let result = exact_shortest_payload_state(
+        board,
+        start,
+        MonKind::Drainer,
+        color,
+        ExactActorPayload::None,
+        false,
+        None,
+        |_, payload| matches!(payload, ExactActorPayload::Mana(_)),
+    )
+    .map(|result| result.steps);
+
+    EXACT_DRAINER_TO_MANA_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.entries.len() >= EXACT_DRAINER_TO_MANA_CACHE_MAX_ENTRIES
+            && !cache.entries.contains_key(&key)
+        {
+            cache.entries.clear();
+        }
+        cache.entries.insert(key, result);
+    });
+    result
 }
 
 fn can_secure_specific_mana_this_turn(game: &MonsGame, color: Color, wanted: Mana) -> bool {
@@ -1920,6 +1961,43 @@ mod tests {
         let second = exact_carrier_steps_to_any_pool(&board, Location::new(8, 5), Mana::Supermana);
         clear_exact_state_analysis_cache();
         let third = exact_carrier_steps_to_any_pool(&board, Location::new(8, 5), Mana::Supermana);
+
+        assert_eq!(first, second);
+        assert_eq!(first, third);
+    }
+
+    #[test]
+    fn exact_drainer_to_mana_cache_preserves_repeated_result() {
+        clear_exact_state_analysis_cache();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(8, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+
+        let first = exact_drainer_to_any_mana_steps(&board, Color::White, Location::new(8, 5));
+        let second = exact_drainer_to_any_mana_steps(&board, Color::White, Location::new(8, 5));
+        clear_exact_state_analysis_cache();
+        let third = exact_drainer_to_any_mana_steps(&board, Color::White, Location::new(8, 5));
 
         assert_eq!(first, second);
         assert_eq!(first, third);
