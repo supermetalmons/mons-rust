@@ -4926,6 +4926,18 @@ impl MonsGameModel {
             .then_with(|| b.1.hash.cmp(&a.1.hash))
     }
 
+    fn is_quiet_reduction_candidate(
+        ordering_efficiency: i32,
+        tactical_extension_trigger: bool,
+        classes: MoveClassFlags,
+    ) -> bool {
+        !classes.material
+            && ordering_efficiency <= 0
+            && !tactical_extension_trigger
+            && !classes.is_tactical_priority()
+            && !classes.carrier_progress
+    }
+
     fn compare_ranked_root_indices(
         root_moves: &[ScoredRootMove],
         a: (usize, i32),
@@ -6381,9 +6393,6 @@ impl MonsGameModel {
                 || events
                     .iter()
                     .any(|event| matches!(event, Event::ManaScored { .. }));
-            let quiet_reduction_candidate = !Self::has_material_event(&events)
-                && ordering_efficiency <= 0
-                && !tactical_extension_trigger;
             let classes = if config.enable_child_move_class_coverage {
                 Self::classify_move_classes(
                     game,
@@ -6396,6 +6405,11 @@ impl MonsGameModel {
             } else {
                 MoveClassFlags::default()
             };
+            let quiet_reduction_candidate = Self::is_quiet_reduction_candidate(
+                ordering_efficiency,
+                tactical_extension_trigger,
+                classes,
+            );
 
             scored_states.push((
                 heuristic,
@@ -10118,6 +10132,32 @@ mod opening_book_tests {
 
         scored_states.sort_by(|a, b| MonsGameModel::compare_ranked_child_entries(a, b, true));
         assert_eq!(scored_states[0].1.hash, 2);
+    }
+
+    #[test]
+    fn quiet_reduction_candidate_skips_carrier_progress_class() {
+        let classes = MoveClassFlags {
+            carrier_progress: true,
+            ..MoveClassFlags::default()
+        };
+
+        assert!(
+            !MonsGameModel::is_quiet_reduction_candidate(-10, false, classes),
+            "carrier-progress child should stay at full depth even when ordering efficiency is non-positive"
+        );
+    }
+
+    #[test]
+    fn quiet_reduction_candidate_still_applies_to_true_quiet_child() {
+        let classes = MoveClassFlags {
+            quiet: true,
+            ..MoveClassFlags::default()
+        };
+
+        assert!(
+            MonsGameModel::is_quiet_reduction_candidate(0, false, classes),
+            "true quiet child should remain eligible for quiet reduction"
+        );
     }
 
     #[test]
