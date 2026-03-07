@@ -4978,6 +4978,47 @@ impl MonsGameModel {
             .then_with(|| a.0.cmp(&b.0))
     }
 
+    fn root_scout_progress_bonus(candidate: &ScoredRootMove) -> i32 {
+        let mut bonus = 0i32;
+
+        if candidate.supermana_progress
+            && !candidate.scores_supermana_this_turn
+            && !candidate.safe_supermana_pickup_now
+            && !candidate.spirit_same_turn_score_setup_now
+            && !candidate.spirit_own_mana_setup_now
+        {
+            bonus = bonus
+                .saturating_add(520)
+                .saturating_add(Self::root_progress_step_soft_bonus(
+                    candidate.safe_supermana_progress_steps,
+                    48,
+                ));
+        }
+
+        if candidate.opponent_mana_progress
+            && !candidate.scores_opponent_mana_this_turn
+            && !candidate.safe_opponent_mana_pickup_now
+            && !candidate.spirit_same_turn_score_setup_now
+            && !candidate.spirit_own_mana_setup_now
+        {
+            bonus = bonus
+                .saturating_add(480)
+                .saturating_add(Self::root_progress_step_soft_bonus(
+                    candidate.safe_opponent_mana_progress_steps,
+                    40,
+                ));
+        }
+
+        bonus
+    }
+
+    fn root_focus_scout_score(candidate: &ScoredRootMove) -> i32 {
+        candidate
+            .heuristic
+            .saturating_add(candidate.efficiency / 2)
+            .saturating_add(Self::root_scout_progress_bonus(candidate))
+    }
+
     fn reorder_root_moves_by_ranked_indices(
         root_moves: Vec<ScoredRootMove>,
         ranked_indices: &[(usize, i32)],
@@ -5836,7 +5877,7 @@ impl MonsGameModel {
                     &mut scout_killer_table,
                 )
             } else {
-                candidate.heuristic.saturating_add(candidate.efficiency / 2)
+                Self::root_focus_scout_score(candidate)
             };
             scout_scores[index] = score;
             best_scout_score = best_scout_score.max(score);
@@ -5847,9 +5888,7 @@ impl MonsGameModel {
         let mut ranked_indices = (0..root_moves.len())
             .map(|index| {
                 let score = if scout_scores[index] == i32::MIN {
-                    root_moves[index]
-                        .heuristic
-                        .saturating_add(root_moves[index].efficiency / 2)
+                    Self::root_focus_scout_score(&root_moves[index])
                 } else {
                     scout_scores[index]
                 };
@@ -5898,9 +5937,7 @@ impl MonsGameModel {
             let mut volatility_ranked = (0..root_moves.len())
                 .map(|index| {
                     let scout_score = if scout_scores[index] == i32::MIN {
-                        root_moves[index]
-                            .heuristic
-                            .saturating_add(root_moves[index].efficiency / 2)
+                        Self::root_focus_scout_score(&root_moves[index])
                     } else {
                         scout_scores[index]
                     };
@@ -5946,9 +5983,7 @@ impl MonsGameModel {
                     return None;
                 }
                 let score = if scout_scores[index] == i32::MIN {
-                    root_moves[index]
-                        .heuristic
-                        .saturating_add(root_moves[index].efficiency / 2)
+                    Self::root_focus_scout_score(&root_moves[index])
                 } else {
                     scout_scores[index]
                 };
@@ -10358,6 +10393,70 @@ mod opening_book_tests {
     }
 
     #[test]
+    fn root_focus_scout_score_rewards_exact_safe_supermana_progress() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            &game,
+            Color::White,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        let mut progress = MonsGameModel::build_scored_root_move(
+            &game,
+            Color::White,
+            config,
+            own_drainer_vulnerable_before,
+            &[
+                Input::Location(Location::new(7, 5)),
+                Input::Location(Location::new(6, 5)),
+            ],
+        )
+        .expect("drainer advance should build a scored root");
+        progress.heuristic = 0;
+        progress.efficiency = 0;
+        assert!(progress.supermana_progress);
+        assert!(!progress.safe_supermana_pickup_now);
+        assert!(!progress.spirit_own_mana_setup_now);
+
+        let mut filler = progress.clone();
+        filler.inputs = vec![Input::Location(Location::new(0, 0))];
+        filler.supermana_progress = false;
+        filler.safe_supermana_progress_steps = Config::BOARD_SIZE + 4;
+        filler.heuristic = 0;
+        filler.efficiency = 0;
+
+        assert!(
+            MonsGameModel::root_focus_scout_score(&progress)
+                > MonsGameModel::root_focus_scout_score(&filler),
+            "exact safe supermana progress should improve scout fallback score"
+        );
+    }
+
+    #[test]
     fn tactical_child_top2_promotes_close_carrier_progress_child() {
         let game = game_with_items(
             vec![
@@ -12071,6 +12170,82 @@ mod opening_book_tests {
             .position(|candidate| candidate.inputs == long_inputs)
             .expect("long spirit root should survive focus");
         assert!(short_pos < long_pos);
+    }
+
+    #[test]
+    fn focused_root_candidates_keep_exact_safe_supermana_progress_with_scout_bonus() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.depth = 2;
+        config.root_focus_k = 1;
+        config.enable_two_pass_root_allocation = true;
+        let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            &game,
+            Color::White,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        let mut progress = MonsGameModel::build_scored_root_move(
+            &game,
+            Color::White,
+            config,
+            own_drainer_vulnerable_before,
+            &[
+                Input::Location(Location::new(7, 5)),
+                Input::Location(Location::new(6, 5)),
+            ],
+        )
+        .expect("drainer advance should build a scored root");
+        progress.heuristic = 0;
+        progress.efficiency = 0;
+        assert!(progress.supermana_progress);
+        assert!(!progress.safe_supermana_pickup_now);
+        assert!(!progress.spirit_own_mana_setup_now);
+
+        let mut filler = progress.clone();
+        filler.inputs = vec![Input::Location(Location::new(0, 0))];
+        filler.supermana_progress = false;
+        filler.safe_supermana_progress_steps = Config::BOARD_SIZE + 4;
+        filler.score_path_best_steps = Config::BOARD_SIZE * 3;
+        filler.heuristic = 2_500;
+        filler.efficiency = 0;
+
+        let progress_inputs = progress.inputs.clone();
+        let (focused, _) = MonsGameModel::focused_root_candidates(
+            &game,
+            Color::White,
+            vec![filler, progress],
+            config,
+            true,
+        );
+
+        assert!(
+            focused.iter().any(|candidate| candidate.inputs == progress_inputs),
+            "exact safe supermana progress root should survive scout focus despite lower raw heuristic"
+        );
     }
 
     #[test]
