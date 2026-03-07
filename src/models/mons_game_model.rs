@@ -5411,6 +5411,7 @@ impl MonsGameModel {
                 selected_mask[index] = true;
             }
         }
+        let unknown_progress_steps = Config::BOARD_SIZE + 4;
         for (index, candidate) in candidates.iter().enumerate() {
             let keep_direct_high_value = candidate.scores_supermana_this_turn
                 || candidate.scores_opponent_mana_this_turn
@@ -5419,7 +5420,11 @@ impl MonsGameModel {
                 || candidate.spirit_same_turn_score_setup_now
                 || candidate.same_turn_score_window_value > 0
                 || candidate.spirit_own_mana_setup_now;
-            if !keep_direct_high_value {
+            let keep_exact_progress = (candidate.supermana_progress
+                && candidate.safe_supermana_progress_steps < unknown_progress_steps)
+                || (candidate.opponent_mana_progress
+                    && candidate.safe_opponent_mana_progress_steps < unknown_progress_steps);
+            if !keep_direct_high_value && !keep_exact_progress {
                 continue;
             }
             if strict_guarantees || candidate.heuristic >= min_critical_heuristic {
@@ -10453,6 +10458,154 @@ mod opening_book_tests {
             MonsGameModel::root_focus_scout_score(&progress)
                 > MonsGameModel::root_focus_scout_score(&filler),
             "exact safe supermana progress should improve scout fallback score"
+        );
+    }
+
+    #[test]
+    fn truncate_root_candidates_keeps_exact_safe_supermana_progress() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            &game,
+            Color::White,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        let mut progress = MonsGameModel::build_scored_root_move(
+            &game,
+            Color::White,
+            config,
+            own_drainer_vulnerable_before,
+            &[
+                Input::Location(Location::new(7, 5)),
+                Input::Location(Location::new(6, 5)),
+            ],
+        )
+        .expect("drainer advance should build a scored root");
+        progress.heuristic = 100;
+        progress.efficiency = 0;
+        assert!(progress.supermana_progress);
+        assert!(progress.safe_supermana_progress_steps < Config::BOARD_SIZE + 4);
+        assert!(!progress.safe_supermana_pickup_now);
+
+        let mut filler_a = progress.clone();
+        filler_a.inputs = vec![Input::Location(Location::new(0, 0))];
+        filler_a.supermana_progress = false;
+        filler_a.safe_supermana_progress_steps = Config::BOARD_SIZE + 4;
+        filler_a.heuristic = 2_000;
+
+        let mut filler_b = filler_a.clone();
+        filler_b.inputs = vec![Input::Location(Location::new(0, 1))];
+        filler_b.heuristic = 1_950;
+
+        progress.heuristic = 1_885;
+
+        let truncated = MonsGameModel::truncate_root_candidates_with_class_coverage(
+            vec![filler_a, filler_b, progress.clone()],
+            2,
+            false,
+        );
+        assert!(
+            truncated
+                .iter()
+                .any(|candidate| candidate.inputs == progress.inputs),
+            "exact safe supermana progress root should survive root branch truncation"
+        );
+    }
+
+    #[test]
+    fn truncate_root_candidates_keeps_exact_safe_opponent_mana_progress() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 6),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 4),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            &game,
+            Color::White,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        let mut progress = MonsGameModel::build_scored_root_move(
+            &game,
+            Color::White,
+            config,
+            own_drainer_vulnerable_before,
+            &[
+                Input::Location(Location::new(7, 6)),
+                Input::Location(Location::new(6, 5)),
+            ],
+        )
+        .expect("drainer advance should build a scored root");
+        progress.heuristic = 1_885;
+        progress.efficiency = 0;
+        assert!(progress.opponent_mana_progress);
+        assert!(progress.safe_opponent_mana_progress_steps < Config::BOARD_SIZE + 4);
+        assert!(!progress.safe_opponent_mana_pickup_now);
+
+        let mut filler_a = progress.clone();
+        filler_a.inputs = vec![Input::Location(Location::new(0, 0))];
+        filler_a.opponent_mana_progress = false;
+        filler_a.safe_opponent_mana_progress_steps = Config::BOARD_SIZE + 4;
+        filler_a.heuristic = 2_000;
+
+        let mut filler_b = filler_a.clone();
+        filler_b.inputs = vec![Input::Location(Location::new(0, 1))];
+        filler_b.heuristic = 1_950;
+
+        let truncated = MonsGameModel::truncate_root_candidates_with_class_coverage(
+            vec![filler_a, filler_b, progress.clone()],
+            2,
+            false,
+        );
+        assert!(
+            truncated
+                .iter()
+                .any(|candidate| candidate.inputs == progress.inputs),
+            "exact safe opponent-mana progress root should survive root branch truncation"
         );
     }
 
