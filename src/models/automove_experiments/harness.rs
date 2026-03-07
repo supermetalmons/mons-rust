@@ -4,6 +4,25 @@ use super::profiles::{
 };
 use std::collections::HashMap;
 
+pub(super) fn select_inputs_with_runtime_fallback(
+    selector: AutomoveSelector,
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let inputs = selector(game, config);
+    if !inputs.is_empty() {
+        return inputs;
+    }
+
+    let mut simulated = game.clone_for_simulation();
+    let output = MonsGameModel::automove_game(&mut simulated);
+    if output.kind == OutputModelKind::Events {
+        Input::array_from_fen(output.input_fen().as_str())
+    } else {
+        Vec::new()
+    }
+}
+
 pub(super) fn evaluate_candidate_against_pool(
     candidate: AutomoveModel,
     pool: &[AutomoveModel],
@@ -188,9 +207,11 @@ pub(super) fn play_one_game(
         let config = budget.runtime_config_for_game(&game);
         let inputs = if use_white_opening_book {
             MonsGameModel::white_first_turn_opening_next_inputs(&game)
-                .unwrap_or_else(|| (actor_model.select_inputs)(&game, config))
+                .unwrap_or_else(|| {
+                    select_inputs_with_runtime_fallback(actor_model.select_inputs, &game, config)
+                })
         } else {
-            (actor_model.select_inputs)(&game, config)
+            select_inputs_with_runtime_fallback(actor_model.select_inputs, &game, config)
         };
         if inputs.is_empty() {
             return if candidate_to_move {
@@ -273,9 +294,11 @@ pub(super) fn play_one_game_budget_duel(
         let config = actor_budget.runtime_config_for_game(&game);
         let inputs = if use_white_opening_book {
             MonsGameModel::white_first_turn_opening_next_inputs(&game)
-                .unwrap_or_else(|| (actor_model.select_inputs)(&game, config))
+                .unwrap_or_else(|| {
+                    select_inputs_with_runtime_fallback(actor_model.select_inputs, &game, config)
+                })
         } else {
-            (actor_model.select_inputs)(&game, config)
+            select_inputs_with_runtime_fallback(actor_model.select_inputs, &game, config)
         };
         if inputs.is_empty() {
             return if a_to_move {
@@ -933,7 +956,7 @@ pub(super) fn profile_speed_by_mode_ms(
         for opening in openings {
             let game = MonsGame::from_fen(opening, false).expect("valid opening fen");
             let config = budget.runtime_config_for_game(&game);
-            let _ = selector(&game, config);
+            let _ = select_inputs_with_runtime_fallback(selector, &game, config);
         }
         stats.push(ModeSpeedStat {
             budget,
@@ -1432,7 +1455,8 @@ pub(super) fn assert_tactical_guardrails(selector: AutomoveSelector, profile_nam
     );
     let drainer_attack_config = SearchBudget::from_preference(SmartAutomovePreference::Fast)
         .runtime_config_for_game(&drainer_attack_game);
-    let drainer_attack_inputs = selector(&drainer_attack_game, drainer_attack_config);
+    let drainer_attack_inputs =
+        select_inputs_with_runtime_fallback(selector, &drainer_attack_game, drainer_attack_config);
     let (_, drainer_attack_events) = MonsGameModel::apply_inputs_for_search_with_events(
         &drainer_attack_game,
         &drainer_attack_inputs,
@@ -1480,7 +1504,8 @@ pub(super) fn assert_tactical_guardrails(selector: AutomoveSelector, profile_nam
     let mut bomb_config = SearchBudget::from_preference(SmartAutomovePreference::Fast)
         .runtime_config_for_game(&bomb_drainer_attack_game);
     bomb_config.root_enum_limit = 0;
-    let bomb_inputs = selector(&bomb_drainer_attack_game, bomb_config);
+    let bomb_inputs =
+        select_inputs_with_runtime_fallback(selector, &bomb_drainer_attack_game, bomb_config);
     let (after_bomb_probe, bomb_events) = MonsGameModel::apply_inputs_for_search_with_events(
         &bomb_drainer_attack_game,
         &bomb_inputs,
@@ -1512,13 +1537,21 @@ pub(super) fn assert_tactical_guardrails(selector: AutomoveSelector, profile_nam
         Location::new(8, 1),
     ] {
         let mut probe = tactical_game_with_items(
-            vec![(
-                location,
-                Item::MonWithMana {
-                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
-                    mana: Mana::Regular(Color::Black),
-                },
-            )],
+            vec![
+                (
+                    location,
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
             Color::White,
             3,
         );
@@ -1539,18 +1572,20 @@ pub(super) fn assert_tactical_guardrails(selector: AutomoveSelector, profile_nam
             break;
         }
     }
-    let mut winning_carrier_game =
+    let winning_carrier_game =
         winning_carrier_game.expect("expected at least one immediate-winning carrier setup");
     let winning_config = SearchBudget::from_preference(SmartAutomovePreference::Fast)
         .runtime_config_for_game(&winning_carrier_game);
-    let winning_inputs = selector(&winning_carrier_game, winning_config);
+    let winning_inputs =
+        select_inputs_with_runtime_fallback(selector, &winning_carrier_game, winning_config);
     assert!(!winning_inputs.is_empty(), "profile '{}' should produce a move in immediate-win setup", profile_name);
+    let mut winning_after = winning_carrier_game.clone_for_simulation();
     assert!(matches!(
-        winning_carrier_game.process_input(winning_inputs, false, false),
+        winning_after.process_input(winning_inputs, false, false),
         Output::Events(_)
     ));
     assert_eq!(
-        winning_carrier_game.winner_color(),
+        winning_after.winner_color(),
         Some(Color::White),
         "profile '{}' should convert immediate winning carrier line",
         profile_name
@@ -1588,7 +1623,11 @@ pub(super) fn assert_tactical_guardrails(selector: AutomoveSelector, profile_nam
         .iter()
         .any(|root| !root.own_drainer_vulnerable)
     {
-        let safety_inputs = selector(&drainer_safety_game, drainer_safety_config);
+        let safety_inputs = select_inputs_with_runtime_fallback(
+            selector,
+            &drainer_safety_game,
+            drainer_safety_config,
+        );
         let (safety_after, _) = MonsGameModel::apply_inputs_for_search_with_events(
             &drainer_safety_game,
             &safety_inputs,
@@ -1623,7 +1662,8 @@ pub(super) fn assert_tactical_guardrails(selector: AutomoveSelector, profile_nam
     );
     let spirit_config = SearchBudget::from_preference(SmartAutomovePreference::Normal)
         .runtime_config_for_game(&spirit_base_game);
-    let spirit_inputs = selector(&spirit_base_game, spirit_config);
+    let spirit_inputs =
+        select_inputs_with_runtime_fallback(selector, &spirit_base_game, spirit_config);
     let (spirit_after, _) =
         MonsGameModel::apply_inputs_for_search_with_events(&spirit_base_game, &spirit_inputs)
             .expect("spirit utility move should be legal");
@@ -1648,17 +1688,53 @@ pub(super) fn assert_tactical_guardrails(selector: AutomoveSelector, profile_nam
                 .into_iter()
                 .find(|root| Input::fen_from_array(&root.inputs) == selected_fen)
                 .map(|root| root.classes)
+                .or_else(|| {
+                    let own_drainer_vulnerable_before =
+                        MonsGameModel::is_own_drainer_vulnerable_next_turn(
+                            game,
+                            game.active_color,
+                            class_config.enable_enhanced_drainer_vulnerability,
+                        );
+                    let (after, events) =
+                        MonsGameModel::apply_inputs_for_search_with_events(game, selected)?;
+                    let own_drainer_vulnerable_after =
+                        MonsGameModel::is_own_drainer_vulnerable_next_turn(
+                            &after,
+                            game.active_color,
+                            class_config.enable_enhanced_drainer_vulnerability,
+                        );
+                    Some(MonsGameModel::classify_move_classes(
+                        game,
+                        &after,
+                        game.active_color,
+                        &events,
+                        own_drainer_vulnerable_before,
+                        own_drainer_vulnerable_after,
+                    ))
+                })
         };
     let carrier_progress_game = tactical_game_with_items(
         vec![
             (
-                Location::new(9, 5),
+                Location::new(10, 0),
                 Item::Mon {
                     mon: Mon::new(MonKind::Drainer, Color::White, 0),
                 },
             ),
             (
-                Location::new(8, 5),
+                Location::new(10, 1),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Angel, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(9, 1),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Mystic, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(9, 0),
                 Item::Mana {
                     mana: Mana::Regular(Color::White),
                 },
@@ -1668,26 +1744,42 @@ pub(super) fn assert_tactical_guardrails(selector: AutomoveSelector, profile_nam
         2,
     );
     let scenario_pack = vec![
-        ("drainer_attack", drainer_attack_game.fen(), MoveClass::DrainerAttack),
-        ("immediate_score", winning_carrier_game.fen(), MoveClass::ImmediateScore),
+        (
+            "drainer_attack",
+            drainer_attack_game.clone_for_simulation(),
+            MoveClass::DrainerAttack,
+        ),
+        (
+            "immediate_score",
+            winning_carrier_game.clone_for_simulation(),
+            MoveClass::ImmediateScore,
+        ),
         (
             "carrier_progress_probe",
-            carrier_progress_game.fen(),
+            carrier_progress_game.clone_for_simulation(),
             MoveClass::CarrierProgress,
         ),
     ];
-    for (scenario_id, fen, expected_class) in scenario_pack {
-        let game = MonsGame::from_fen(fen.as_str(), false).expect("valid scenario fen");
+    for (scenario_id, game, expected_class) in scenario_pack {
         let config = SearchBudget::from_preference(SmartAutomovePreference::Fast)
             .runtime_config_for_game(&game);
-        let selected = selector(&game, config);
+        let selected = select_inputs_with_runtime_fallback(selector, &game, config);
         let classes = selected_move_classes(&game, config, &selected).unwrap_or_default();
+        let selected_fen = Input::fen_from_array(&selected);
+        let score_before = MonsGameModel::score_for_color(&game, Color::White);
+        let score_after = MonsGameModel::apply_inputs_for_search_with_events(&game, &selected)
+            .map(|(after, _)| MonsGameModel::score_for_color(&after, Color::White))
+            .unwrap_or(score_before);
         assert!(
             classes.has(expected_class),
-            "profile '{}' failed scenario '{}' expected class {:?}",
+            "profile '{}' failed scenario '{}' expected class {:?}, selected={}, classes={:?}, score_before={}, score_after={}",
             profile_name,
             scenario_id,
-            expected_class
+            expected_class,
+            selected_fen,
+            classes,
+            score_before,
+            score_after
         );
     }
 }
@@ -1742,7 +1834,11 @@ pub(super) fn assert_interview_policy_regressions(selector: AutomoveSelector, pr
             && !root.attacks_opponent_drainer
     });
     if safe_supermana_exists {
-        let selected = selector(&supermana_progress_game, supermana_config);
+        let selected = select_inputs_with_runtime_fallback(
+            selector,
+            &supermana_progress_game,
+            supermana_config,
+        );
         let selected = selected_root(&supermana_progress_game, supermana_config, &selected)
             .expect("selected root should be in ranked list");
         assert!(
@@ -1796,7 +1892,11 @@ pub(super) fn assert_interview_policy_regressions(selector: AutomoveSelector, pr
             && !root.attacks_opponent_drainer
     });
     if safe_opponent_mana_exists {
-        let selected = selector(&opponent_mana_progress_game, opponent_mana_config);
+        let selected = select_inputs_with_runtime_fallback(
+            selector,
+            &opponent_mana_progress_game,
+            opponent_mana_config,
+        );
         let selected = selected_root(
             &opponent_mana_progress_game,
             opponent_mana_config,

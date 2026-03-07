@@ -899,6 +899,20 @@ pub fn evaluate_preferability_with_weights(
     color: Color,
     weights: &ScoringWeights,
 ) -> i32 {
+    evaluate_preferability_with_weights_and_exact_policy(game, color, weights, true)
+}
+
+pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
+    game: &MonsGame,
+    color: Color,
+    weights: &ScoringWeights,
+    allow_exact_strategic: bool,
+) -> i32 {
+    let mut effective_weights = *weights;
+    if !allow_exact_strategic {
+        effective_weights.use_legacy_formula = true;
+    }
+    let weights = &effective_weights;
     let use_legacy_formula = weights.use_legacy_formula;
     let include_regular_mana_move_windows =
         weights.include_regular_mana_move_windows && !use_legacy_formula;
@@ -908,7 +922,7 @@ pub fn evaluate_preferability_with_weights(
     let remaining_mon_moves_for_active =
         (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
     let mana_snapshot = ManaPathSnapshot::from_board(&game.board);
-    let exact_analysis = exact_strategic_analysis(game);
+    let exact_analysis = (!use_legacy_formula).then(|| exact_strategic_analysis(game));
 
     let mons_bases = Config::mons_bases_ref();
     let my_score_now = if color == Color::White {
@@ -972,6 +986,7 @@ pub fn evaluate_preferability_with_weights(
                             .map(|(path_steps, mana_value)| (path_steps, path_steps + 1, mana_value))
                     } else {
                         exact_analysis
+                            .expect("exact strategic analysis should be available")
                             .color_summary(mon.color)
                             .best_drainer_pickup
                             .map(|path| (path.path_steps, path.total_moves, path.mana_value))
@@ -1038,7 +1053,10 @@ pub fn evaluate_preferability_with_weights(
                             0,
                         )
                     } else {
-                        let spirit = spirit_summary_for_scoring(exact_analysis, mon.color);
+                        let spirit = spirit_summary_for_scoring(
+                            exact_analysis.expect("exact strategic analysis should be available"),
+                            mon.color,
+                        );
                         (
                             spirit.utility,
                             exact_spirit_pressure_bonus(spirit, weights),
@@ -1126,6 +1144,7 @@ pub fn evaluate_preferability_with_weights(
                     }
                     if !use_legacy_formula {
                         if let Some(path) = exact_analysis
+                            .expect("exact strategic analysis should be available")
                             .color_summary(mon.color)
                             .best_drainer_pickup
                             .map(|path| (path.path_steps, path.total_moves, path.mana_value))
@@ -1161,7 +1180,10 @@ pub fn evaluate_preferability_with_weights(
                             0,
                         )
                     } else {
-                        let spirit = spirit_summary_for_scoring(exact_analysis, mon.color);
+                        let spirit = spirit_summary_for_scoring(
+                            exact_analysis.expect("exact strategic analysis should be available"),
+                            mon.color,
+                        );
                         (
                             spirit.utility,
                             exact_spirit_pressure_bonus(spirit, weights),
@@ -1395,7 +1417,10 @@ pub fn evaluate_preferability_with_weights(
                             0,
                         )
                     } else {
-                        let spirit = exact_analysis.color_summary(mon.color).spirit;
+                        let spirit = exact_analysis
+                            .expect("exact strategic analysis should be available")
+                            .color_summary(mon.color)
+                            .spirit;
                         (
                             spirit.utility,
                             exact_spirit_pressure_bonus(spirit, weights),

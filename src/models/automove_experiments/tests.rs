@@ -93,8 +93,7 @@ fn smart_automove_pool_profile_speed_probe() {
 #[ignore = "diagnostic: compare candidate vs baseline pool deltas per mode/opponent"]
 fn smart_automove_pool_pool_regression_diagnostic() {
     let candidate_profile_name = candidate_profile().as_str().to_string();
-    let baseline_profile_name = env_profile_name("SMART_GATE_BASELINE_PROFILE")
-        .unwrap_or_else(|| "runtime_current".to_string());
+    let baseline_profile_name = gate_baseline_profile_name();
     let candidate = AutomoveModel {
         id: "candidate",
         select_inputs: CANDIDATE_MODEL.select_inputs,
@@ -172,8 +171,7 @@ fn smart_automove_tactical_candidate_profile() {
 #[ignore = "quick progressive screen: ~10-20 seconds, 2 tiers"]
 fn smart_automove_pool_fast_screen() {
     let candidate_profile_name = candidate_profile().as_str().to_string();
-    let baseline_profile_name = env_profile_name("SMART_GATE_BASELINE_PROFILE")
-        .unwrap_or_else(|| "runtime_current".to_string());
+    let baseline_profile_name = gate_baseline_profile_name();
     let allow_self_baseline = env_bool("SMART_GATE_ALLOW_SELF_BASELINE").unwrap_or(false);
     if !allow_self_baseline {
         assert!(
@@ -240,8 +238,7 @@ fn smart_automove_pool_fast_screen() {
 #[ignore = "progressive evaluation: geometric doubling, 2→4→8→16→32 games"]
 fn smart_automove_pool_progressive_duel() {
     let candidate_profile_name = candidate_profile().as_str().to_string();
-    let baseline_profile_name = env_profile_name("SMART_GATE_BASELINE_PROFILE")
-        .unwrap_or_else(|| "runtime_current".to_string());
+    let baseline_profile_name = gate_baseline_profile_name();
     let allow_self_baseline = env_bool("SMART_GATE_ALLOW_SELF_BASELINE").unwrap_or(false);
     if !allow_self_baseline {
         assert!(
@@ -310,8 +307,7 @@ fn smart_automove_pool_progressive_duel() {
 #[ignore = "staged promotion ladder with early-stop pruning and artifact output"]
 fn smart_automove_pool_promotion_ladder() {
     let candidate_profile_name = candidate_profile().as_str().to_string();
-    let baseline_profile_name = env_profile_name("SMART_GATE_BASELINE_PROFILE")
-        .unwrap_or_else(|| "runtime_current".to_string());
+    let baseline_profile_name = gate_baseline_profile_name();
     let allow_self_baseline = env_bool("SMART_GATE_ALLOW_SELF_BASELINE").unwrap_or(false);
     if !allow_self_baseline {
         assert!(
@@ -335,6 +331,8 @@ fn smart_automove_pool_promotion_ladder() {
 
     assert_tactical_guardrails(candidate.select_inputs, candidate_profile_name.as_str());
     assert_interview_policy_regressions(candidate.select_inputs, candidate_profile_name.as_str());
+    assert_tactical_guardrails(baseline.select_inputs, baseline_profile_name.as_str());
+    assert_interview_policy_regressions(baseline.select_inputs, baseline_profile_name.as_str());
     artifacts.push(format!(
         r#"{{"stage":"A_tactical","profile":"{}","status":"pass"}}"#,
         candidate_profile_name
@@ -699,6 +697,8 @@ fn smart_automove_pool_pro_promotion_ladder() {
 
     assert_tactical_guardrails(candidate_selector, candidate_profile.as_str());
     assert_interview_policy_regressions(candidate_selector, candidate_profile.as_str());
+    assert_tactical_guardrails(baseline_selector, baseline_profile.as_str());
+    assert_interview_policy_regressions(baseline_selector, baseline_profile.as_str());
 
     let speed_positions = env_usize("SMART_PRO_GATE_SPEED_POSITIONS")
         .unwrap_or(12)
@@ -1022,6 +1022,8 @@ fn smart_automove_pool_ultra_promotion_ladder() {
 
     assert_tactical_guardrails(candidate_selector, candidate_profile.as_str());
     assert_interview_policy_regressions(candidate_selector, candidate_profile.as_str());
+    assert_tactical_guardrails(baseline_selector, baseline_profile.as_str());
+    assert_interview_policy_regressions(baseline_selector, baseline_profile.as_str());
 
     let speed_positions = env_usize("SMART_ULTRA_GATE_SPEED_POSITIONS")
         .unwrap_or(12)

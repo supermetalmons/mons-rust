@@ -13,6 +13,12 @@ if ! cargo test --release --lib smart_automove_release_opening_black_reply_speed
     exit 1
 fi
 
+echo "Running release mixed runtime speed gate..."
+if ! cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --ignored --nocapture; then
+    echo "Release mixed runtime speed gate failed. Aborting publish."
+    exit 1
+fi
+
 # Bump patch version in Cargo.toml
 echo "Bumping patch version..."
 CURRENT_VERSION=$(grep '^version = "' Cargo.toml | sed 's/version = "\(.*\)"/\1/')

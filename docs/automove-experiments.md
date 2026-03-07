@@ -13,7 +13,7 @@ Use the same three-step pipeline for client-mode candidate work:
 ```sh
 ./scripts/run-experiment-logged.sh fast_screen_<candidate> -- \
   env SMART_CANDIDATE_PROFILE=<candidate> \
-      SMART_GATE_BASELINE_PROFILE=runtime_current \
+      SMART_GATE_BASELINE_PROFILE=runtime_release_safe_pre_exact \
   cargo test --release --lib smart_automove_pool_fast_screen -- --ignored --nocapture
 ```
 
@@ -22,7 +22,7 @@ Use the same three-step pipeline for client-mode candidate work:
 ```sh
 ./scripts/run-experiment-logged.sh progressive_<candidate> -- \
   env SMART_CANDIDATE_PROFILE=<candidate> \
-      SMART_GATE_BASELINE_PROFILE=runtime_current \
+      SMART_GATE_BASELINE_PROFILE=runtime_release_safe_pre_exact \
   cargo test --release --lib smart_automove_pool_progressive_duel -- --ignored --nocapture
 ```
 
@@ -31,7 +31,7 @@ Use the same three-step pipeline for client-mode candidate work:
 ```sh
 ./scripts/run-experiment-logged.sh ladder_<candidate> -- \
   env SMART_CANDIDATE_PROFILE=<candidate> \
-      SMART_GATE_BASELINE_PROFILE=runtime_current \
+      SMART_GATE_BASELINE_PROFILE=runtime_release_safe_pre_exact \
   cargo test --release --lib smart_automove_pool_promotion_ladder -- --ignored --nocapture
 ```
 
@@ -54,22 +54,23 @@ Only these profiles remain available for experiment selection:
 
 - `base`
 - `runtime_current`
+- `runtime_release_safe_pre_exact`
 - `swift_2024_eval_reference`
 - `swift_2024_style_reference`
 - `runtime_pre_fast_root_quality_v1_normal_conversion_v3`
 - `runtime_pre_pro_promotion_v1`
 
-`runtime_current` is the production reference profile. `base` intentionally stays as the default candidate name for cheap local sanity checks.
+`runtime_current` is the shipped runtime profile. `runtime_release_safe_pre_exact` is the frozen promotion baseline sourced from the last release-safe pre-exact runtime. `base` intentionally stays as the default candidate name for cheap local sanity checks.
 
 ## Curated Pool
 
 The curated pool is fixed to five distinct retained profiles:
 
 - `runtime_current`
+- `runtime_release_safe_pre_exact`
 - `swift_2024_eval_reference`
 - `swift_2024_style_reference`
 - `runtime_pre_fast_root_quality_v1_normal_conversion_v3`
-- `runtime_pre_pro_promotion_v1`
 
 Pool integrity is enforced by default tests:
 

@@ -1,13 +1,15 @@
 use super::*;
 use super::harness::env_usize;
 
+const DEFAULT_PROMOTION_BASELINE_PROFILE: &str = "runtime_release_safe_pre_exact";
+
 #[derive(Clone, Copy)]
 struct AutomoveProfile {
     id: &'static str,
     selector: AutomoveSelector,
 }
 
-const RETAINED_PROFILES: [AutomoveProfile; 6] = [
+const RETAINED_PROFILES: [AutomoveProfile; 7] = [
     AutomoveProfile {
         id: "base",
         selector: model_base_profile,
@@ -15,6 +17,10 @@ const RETAINED_PROFILES: [AutomoveProfile; 6] = [
     AutomoveProfile {
         id: "runtime_current",
         selector: model_runtime_current_profile,
+    },
+    AutomoveProfile {
+        id: "runtime_release_safe_pre_exact",
+        selector: model_runtime_release_safe_pre_exact,
     },
     AutomoveProfile {
         id: "swift_2024_eval_reference",
@@ -36,10 +42,10 @@ const RETAINED_PROFILES: [AutomoveProfile; 6] = [
 
 const CURATED_POOL_PROFILE_IDS: [&str; CURATED_POOL_SIZE] = [
     "runtime_current",
+    "runtime_release_safe_pre_exact",
     "swift_2024_eval_reference",
     "swift_2024_style_reference",
     "runtime_pre_fast_root_quality_v1_normal_conversion_v3",
-    "runtime_pre_pro_promotion_v1",
 ];
 
 pub(super) const CANDIDATE_MODEL: AutomoveModel = AutomoveModel {
@@ -47,11 +53,23 @@ pub(super) const CANDIDATE_MODEL: AutomoveModel = AutomoveModel {
     select_inputs: candidate_model,
 };
 
+fn runtime_selector_inputs(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    let inputs = MonsGameModel::smart_search_best_inputs(game, config);
+    if !inputs.is_empty() {
+        return inputs;
+    }
+
+    let mut simulated = game.clone_for_simulation();
+    let output = MonsGameModel::automove_game(&mut simulated);
+    if output.kind == OutputModelKind::Events {
+        Input::array_from_fen(output.input_fen().as_str())
+    } else {
+        Vec::new()
+    }
+}
+
 pub(super) fn model_current_best(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-    MonsGameModel::smart_search_best_inputs(
-        game,
-        MonsGameModel::with_runtime_scoring_weights(game, config),
-    )
+    runtime_selector_inputs(game, config)
 }
 
 pub(super) fn model_base_profile(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
@@ -60,6 +78,20 @@ pub(super) fn model_base_profile(game: &MonsGame, config: SmartSearchConfig) -> 
 
 pub(super) fn model_runtime_current_profile(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     model_current_best(game, config)
+}
+
+fn release_safe_pre_exact_config(mut config: SmartSearchConfig) -> SmartSearchConfig {
+    config.enable_root_exact_tactics = false;
+    config.enable_child_exact_tactics = false;
+    config.enable_static_exact_evaluation = false;
+    config
+}
+
+pub(super) fn model_runtime_release_safe_pre_exact(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    runtime_selector_inputs(game, release_safe_pre_exact_config(config))
 }
 
 pub(super) fn model_runtime_pre_pro_promotion_v1(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
@@ -228,6 +260,11 @@ pub(super) fn env_profile_name(name: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+pub(super) fn gate_baseline_profile_name() -> String {
+    env_profile_name("SMART_GATE_BASELINE_PROFILE")
+        .unwrap_or_else(|| DEFAULT_PROMOTION_BASELINE_PROFILE.to_string())
+}
+
 pub(super) fn pro_candidate_profile_name() -> String {
     env_profile_name("SMART_PRO_CANDIDATE_PROFILE")
         .or_else(|| env_profile_name("SMART_CANDIDATE_PROFILE"))
@@ -236,8 +273,8 @@ pub(super) fn pro_candidate_profile_name() -> String {
 
 pub(super) fn pro_baseline_profile_name() -> String {
     env_profile_name("SMART_PRO_BASELINE_PROFILE")
-        .or_else(|| env_profile_name("SMART_GATE_BASELINE_PROFILE"))
-        .unwrap_or_else(|| "runtime_current".to_string())
+        .or_else(|| Some(gate_baseline_profile_name()))
+        .unwrap_or_else(|| DEFAULT_PROMOTION_BASELINE_PROFILE.to_string())
 }
 
 pub(super) fn ultra_candidate_profile_name() -> String {
@@ -248,6 +285,6 @@ pub(super) fn ultra_candidate_profile_name() -> String {
 
 pub(super) fn ultra_baseline_profile_name() -> String {
     env_profile_name("SMART_ULTRA_BASELINE_PROFILE")
-        .or_else(|| env_profile_name("SMART_GATE_BASELINE_PROFILE"))
-        .unwrap_or_else(|| "runtime_current".to_string())
+        .or_else(|| Some(gate_baseline_profile_name()))
+        .unwrap_or_else(|| DEFAULT_PROMOTION_BASELINE_PROFILE.to_string())
 }
