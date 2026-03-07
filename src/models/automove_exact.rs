@@ -8,6 +8,7 @@ const EXACT_CARRIER_STEPS_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_DRAINER_TO_MANA_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_FOLLOWUP_SUMMARY_CACHE_MAX_ENTRIES: usize = 4096;
 const EXACT_PICKUP_PATH_CACHE_MAX_ENTRIES: usize = 8192;
+const EXACT_SPIRIT_SUMMARY_CACHE_MAX_ENTRIES: usize = 2048;
 const EXACT_WALK_THREAT_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_SECURE_MANA_CACHE_MAX_ENTRIES: usize = 4096;
 const EXACT_SPIRIT_UTILITY_CAP: i32 = 6;
@@ -188,6 +189,19 @@ struct ExactPickupPathCache {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ExactSpiritSummaryKey {
+    board_hash: u64,
+    color: Color,
+    remaining_mon_moves: i32,
+    can_use_action: bool,
+}
+
+#[derive(Default)]
+struct ExactSpiritSummaryCache {
+    entries: HashMap<ExactSpiritSummaryKey, ExactSpiritSummary>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ExactWalkThreatQueryKey {
     board_hash: u64,
     color: Color,
@@ -219,6 +233,8 @@ thread_local! {
         RefCell::new(ExactFollowupSummaryCache::default());
     static EXACT_PICKUP_PATH_CACHE: RefCell<ExactPickupPathCache> =
         RefCell::new(ExactPickupPathCache::default());
+    static EXACT_SPIRIT_SUMMARY_CACHE: RefCell<ExactSpiritSummaryCache> =
+        RefCell::new(ExactSpiritSummaryCache::default());
     static EXACT_WALK_THREAT_CACHE: RefCell<ExactWalkThreatCache> =
         RefCell::new(ExactWalkThreatCache::default());
     static EXACT_SECURE_MANA_CACHE: RefCell<ExactSecureManaCache> =
@@ -233,6 +249,7 @@ pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_DRAINER_TO_MANA_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_FOLLOWUP_SUMMARY_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_PICKUP_PATH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
+    EXACT_SPIRIT_SUMMARY_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_WALK_THREAT_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_SECURE_MANA_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
@@ -777,7 +794,7 @@ fn build_turn_summary(game: &MonsGame) -> ExactTurnSummary {
         color: Some(color),
         can_attack_opponent_drainer: can_attack_opponent_drainer_exact(game, color),
         safe_supermana_progress: can_secure_specific_mana_this_turn(game, color, Mana::Supermana),
-        safe_opponent_mana_progress: can_secure_opponent_mana_this_turn(game, color),
+        safe_opponent_mana_progress: can_secure_opponent_mana_this_turn(game, color, spirit),
         spirit_assisted_supermana_progress: spirit.supermana_progress,
         spirit_assisted_opponent_mana_progress: spirit.opponent_mana_progress,
         spirit_assisted_score: spirit.same_turn_score,
@@ -1242,23 +1259,14 @@ fn can_secure_specific_mana_in_game_uncached(game: &MonsGame, color: Color, want
     false
 }
 
-fn can_secure_opponent_mana_this_turn(game: &MonsGame, color: Color) -> bool {
+fn can_secure_opponent_mana_this_turn(
+    game: &MonsGame,
+    color: Color,
+    spirit_summary: ExactSpiritSummary,
+) -> bool {
     let opponent_mana = Mana::Regular(color.other());
     can_secure_specific_mana_this_turn(game, color, opponent_mana)
-        || spirit_can_score_opponent_mana_this_turn(
-            &game.board,
-            color,
-            if game.active_color == color {
-                (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0)
-            } else {
-                Config::MONS_MOVES_PER_TURN
-            },
-            if game.active_color == color {
-                game.player_can_use_action()
-            } else {
-                true
-            },
-        )
+        || spirit_summary.same_turn_opponent_mana_score
 }
 
 fn can_attack_opponent_drainer_exact(game: &MonsGame, color: Color) -> bool {
@@ -1298,6 +1306,40 @@ fn demon_has_line_attack(board: &Board, from: Location, target: Location) -> boo
 }
 
 fn exact_spirit_summary(
+    board: &Board,
+    color: Color,
+    remaining_mon_moves: i32,
+    can_use_action: bool,
+) -> ExactSpiritSummary {
+    if remaining_mon_moves < 0 {
+        return ExactSpiritSummary::default();
+    }
+    let key = ExactSpiritSummaryKey {
+        board_hash: exact_board_hash(board),
+        color,
+        remaining_mon_moves,
+        can_use_action,
+    };
+    if let Some(cached) =
+        EXACT_SPIRIT_SUMMARY_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
+    {
+        return cached;
+    }
+
+    let summary = exact_spirit_summary_uncached(board, color, remaining_mon_moves, can_use_action);
+    EXACT_SPIRIT_SUMMARY_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.entries.len() >= EXACT_SPIRIT_SUMMARY_CACHE_MAX_ENTRIES
+            && !cache.entries.contains_key(&key)
+        {
+            cache.entries.clear();
+        }
+        cache.entries.insert(key, summary);
+    });
+    summary
+}
+
+fn exact_spirit_summary_uncached(
     board: &Board,
     color: Color,
     remaining_mon_moves: i32,
@@ -1474,16 +1516,6 @@ fn exact_followup_summary(
         cache.entries.insert(key, summary);
     });
     summary
-}
-
-fn spirit_can_score_opponent_mana_this_turn(
-    board: &Board,
-    color: Color,
-    remaining_mon_moves: i32,
-    can_use_action: bool,
-) -> bool {
-    exact_spirit_summary(board, color, remaining_mon_moves, can_use_action)
-        .same_turn_opponent_mana_score
 }
 
 fn reachable_spirit_positions(
@@ -2548,6 +2580,80 @@ mod tests {
         assert_eq!(spirit.same_turn_score_value, 2);
         assert!(spirit.same_turn_opponent_mana_score);
         assert_eq!(spirit.same_turn_opponent_mana_score_value, 2);
+    }
+
+    #[test]
+    fn exact_spirit_summary_cache_preserves_repeated_result() {
+        clear_exact_state_analysis_cache();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+
+        let first = exact_spirit_summary(&board, Color::White, Config::MONS_MOVES_PER_TURN, true);
+        let second = exact_spirit_summary(&board, Color::White, Config::MONS_MOVES_PER_TURN, true);
+        clear_exact_state_analysis_cache();
+        let third = exact_spirit_summary(&board, Color::White, Config::MONS_MOVES_PER_TURN, true);
+
+        assert_eq!(first.utility, second.utility);
+        assert_eq!(first.same_turn_score, second.same_turn_score);
+        assert_eq!(
+            first.same_turn_opponent_mana_score,
+            second.same_turn_opponent_mana_score
+        );
+        assert_eq!(first.next_turn_setup_gain, second.next_turn_setup_gain);
+        assert_eq!(first.utility, third.utility);
+        assert_eq!(first.same_turn_score_value, third.same_turn_score_value);
+        assert_eq!(
+            first.same_turn_opponent_mana_score_value,
+            third.same_turn_opponent_mana_score_value
+        );
+    }
+
+    #[test]
+    fn exact_turn_summary_uses_spirit_denial_for_safe_opponent_progress() {
+        clear_exact_state_analysis_cache();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        let turn = exact_turn_summary(&game, Color::White);
+        assert!(turn.safe_opponent_mana_progress);
+        assert!(turn.spirit_assisted_denial);
     }
 
     #[test]
