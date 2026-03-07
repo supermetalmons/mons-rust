@@ -1609,6 +1609,7 @@ struct TranspositionEntry {
 struct RankedChildState {
     game: MonsGame,
     hash: u64,
+    ordering_efficiency: i32,
     tactical_extension_trigger: bool,
     quiet_reduction_candidate: bool,
     classes: MoveClassFlags,
@@ -4886,6 +4887,45 @@ impl MonsGameModel {
         });
     }
 
+    fn child_class_priority_score(classes: MoveClassFlags) -> i32 {
+        let mut score = 0;
+        if classes.immediate_score {
+            score += 1_000;
+        }
+        if classes.drainer_attack {
+            score += 700;
+        }
+        if classes.drainer_safety_recover {
+            score += 500;
+        }
+        if classes.carrier_progress {
+            score += 220;
+        }
+        if classes.material {
+            score += 80;
+        }
+        score
+    }
+
+    fn compare_ranked_child_entries(
+        a: &(i32, RankedChildState),
+        b: &(i32, RankedChildState),
+        maximizing: bool,
+    ) -> std::cmp::Ordering {
+        let heuristic_cmp = if maximizing {
+            b.0.cmp(&a.0)
+        } else {
+            a.0.cmp(&b.0)
+        };
+        heuristic_cmp
+            .then_with(|| b.1.ordering_efficiency.cmp(&a.1.ordering_efficiency))
+            .then_with(|| {
+                Self::child_class_priority_score(b.1.classes)
+                    .cmp(&Self::child_class_priority_score(a.1.classes))
+            })
+            .then_with(|| b.1.hash.cmp(&a.1.hash))
+    }
+
     fn compare_ranked_root_indices(
         root_moves: &[ScoredRootMove],
         a: (usize, i32),
@@ -6283,11 +6323,11 @@ impl MonsGameModel {
                 config.scoring_weights,
             );
 
-            let efficiency_delta = if config.enable_root_efficiency {
+            let ordering_efficiency = if config.enable_root_efficiency {
                 Self::move_efficiency_delta(
                     game,
                     &simulated_game,
-                    perspective,
+                    actor_color,
                     &events,
                     false,
                     false,
@@ -6342,7 +6382,7 @@ impl MonsGameModel {
                     .iter()
                     .any(|event| matches!(event, Event::ManaScored { .. }));
             let quiet_reduction_candidate = !Self::has_material_event(&events)
-                && efficiency_delta <= 0
+                && ordering_efficiency <= 0
                 && !tactical_extension_trigger;
             let classes = if config.enable_child_move_class_coverage {
                 Self::classify_move_classes(
@@ -6362,6 +6402,7 @@ impl MonsGameModel {
                 RankedChildState {
                     game: simulated_game,
                     hash: child_hash,
+                    ordering_efficiency,
                     tactical_extension_trigger,
                     quiet_reduction_candidate,
                     classes,
@@ -6369,11 +6410,7 @@ impl MonsGameModel {
             ));
         }
 
-        if maximizing {
-            scored_states.sort_by(|a, b| b.0.cmp(&a.0));
-        } else {
-            scored_states.sort_by(|a, b| a.0.cmp(&b.0));
-        }
+        scored_states.sort_by(|a, b| Self::compare_ranked_child_entries(a, b, maximizing));
 
         if config.enable_child_move_class_coverage && scored_states.len() >= 3 {
             Self::enforce_tactical_child_top2(
@@ -9993,6 +10030,173 @@ mod opening_book_tests {
             interview_soft_priority: candidate.interview_soft_priority,
             classes: candidate.classes,
         }
+    }
+
+    fn ranked_child_state_for_test(
+        game: &MonsGame,
+        hash: u64,
+        ordering_efficiency: i32,
+        classes: MoveClassFlags,
+    ) -> RankedChildState {
+        RankedChildState {
+            game: game.clone_for_simulation(),
+            hash,
+            ordering_efficiency,
+            tactical_extension_trigger: false,
+            quiet_reduction_candidate: false,
+            classes,
+        }
+    }
+
+    #[test]
+    fn child_priority_sort_prefers_higher_exact_ordering_efficiency_when_heuristic_tied() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            1,
+        );
+
+        let quiet = MoveClassFlags {
+            quiet: true,
+            ..MoveClassFlags::default()
+        };
+        let mut scored_states = vec![
+            (100, ranked_child_state_for_test(&game, 1, 0, quiet)),
+            (100, ranked_child_state_for_test(&game, 2, 40, quiet)),
+        ];
+
+        scored_states.sort_by(|a, b| MonsGameModel::compare_ranked_child_entries(a, b, true));
+        assert_eq!(scored_states[0].1.hash, 2);
+    }
+
+    #[test]
+    fn child_priority_sort_prefers_tactical_class_when_efficiency_tied() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            1,
+        );
+
+        let quiet = MoveClassFlags {
+            quiet: true,
+            ..MoveClassFlags::default()
+        };
+        let tactical = MoveClassFlags {
+            carrier_progress: true,
+            ..MoveClassFlags::default()
+        };
+        let mut scored_states = vec![
+            (100, ranked_child_state_for_test(&game, 1, 20, quiet)),
+            (100, ranked_child_state_for_test(&game, 2, 20, tactical)),
+        ];
+
+        scored_states.sort_by(|a, b| MonsGameModel::compare_ranked_child_entries(a, b, true));
+        assert_eq!(scored_states[0].1.hash, 2);
+    }
+
+    #[test]
+    fn opponent_spirit_supermana_progress_child_is_not_quiet_reduced() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(3, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 8),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+            ],
+            Color::Black,
+            2,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.node_enum_limit = 256;
+        config.node_branch_limit = 64;
+        let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            &game,
+            Color::Black,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        let child = MonsGameModel::build_scored_root_move(
+            &game,
+            Color::Black,
+            config,
+            own_drainer_vulnerable_before,
+            &[
+                Input::Location(Location::new(6, 10)),
+                Input::Location(Location::new(5, 8)),
+                Input::Location(Location::new(4, 9)),
+            ],
+        )
+        .expect("mirrored opponent spirit supermana handoff inputs should build a scored root");
+        let child_hash = MonsGameModel::search_state_hash(&child.game);
+
+        let children = MonsGameModel::ranked_child_states(
+            &game,
+            Color::White,
+            false,
+            None,
+            [0; 2],
+            config,
+        );
+        let ranked_child = children
+            .iter()
+            .find(|candidate| candidate.hash == child_hash)
+            .expect("ranked child states should include mirrored opponent spirit setup");
+
+        assert!(
+            ranked_child.ordering_efficiency > 0,
+            "dangerous opponent spirit setup should have positive actor-relative ordering efficiency"
+        );
+        assert!(
+            !ranked_child.quiet_reduction_candidate,
+            "dangerous opponent spirit setup should not be marked for quiet reduction"
+        );
     }
 
     #[test]
