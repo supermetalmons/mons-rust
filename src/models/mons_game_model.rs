@@ -4912,6 +4912,231 @@ impl MonsGameModel {
         ordered_root_moves
     }
 
+    fn sort_root_moves_by_ranked_scores(
+        root_moves: Vec<ScoredRootMove>,
+        scores: &[i32],
+    ) -> Vec<ScoredRootMove> {
+        debug_assert_eq!(root_moves.len(), scores.len());
+        let mut ranked_indices = scores
+            .iter()
+            .copied()
+            .enumerate()
+            .collect::<Vec<_>>();
+        ranked_indices.sort_by(|a, b| Self::compare_ranked_root_indices(&root_moves, *a, *b));
+        Self::reorder_root_moves_by_ranked_indices(root_moves, ranked_indices.as_slice())
+    }
+
+    fn compare_tactical_root_evaluations(
+        candidate: &RootEvaluation,
+        incumbent: &RootEvaluation,
+    ) -> std::cmp::Ordering {
+        if candidate.wins_immediately != incumbent.wins_immediately {
+            return if candidate.wins_immediately {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.attacks_opponent_drainer != incumbent.attacks_opponent_drainer {
+            return if candidate.attacks_opponent_drainer {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.own_drainer_vulnerable != incumbent.own_drainer_vulnerable {
+            return if !candidate.own_drainer_vulnerable {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.classes.immediate_score != incumbent.classes.immediate_score {
+            return if candidate.classes.immediate_score {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.scores_supermana_this_turn != incumbent.scores_supermana_this_turn {
+            return if candidate.scores_supermana_this_turn {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.scores_opponent_mana_this_turn != incumbent.scores_opponent_mana_this_turn {
+            return if candidate.scores_opponent_mana_this_turn {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.safe_supermana_pickup_now != incumbent.safe_supermana_pickup_now {
+            return if candidate.safe_supermana_pickup_now {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.safe_opponent_mana_pickup_now != incumbent.safe_opponent_mana_pickup_now {
+            return if candidate.safe_opponent_mana_pickup_now {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.same_turn_score_window_value != incumbent.same_turn_score_window_value {
+            return incumbent
+                .same_turn_score_window_value
+                .cmp(&candidate.same_turn_score_window_value);
+        }
+        if candidate.spirit_same_turn_score_setup_now != incumbent.spirit_same_turn_score_setup_now
+        {
+            return if candidate.spirit_same_turn_score_setup_now {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.spirit_own_mana_setup_now != incumbent.spirit_own_mana_setup_now {
+            return if candidate.spirit_own_mana_setup_now {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.spirit_own_mana_setup_now
+            && incumbent.spirit_own_mana_setup_now
+            && candidate.supermana_progress
+            && incumbent.supermana_progress
+            && candidate.safe_supermana_progress_steps != incumbent.safe_supermana_progress_steps
+        {
+            return if Self::root_progress_steps_better(
+                candidate.safe_supermana_progress_steps,
+                incumbent.safe_supermana_progress_steps,
+            ) {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.spirit_own_mana_setup_now
+            && incumbent.spirit_own_mana_setup_now
+            && candidate.opponent_mana_progress
+            && incumbent.opponent_mana_progress
+            && candidate.safe_opponent_mana_progress_steps
+                != incumbent.safe_opponent_mana_progress_steps
+        {
+            return if Self::root_progress_steps_better(
+                candidate.safe_opponent_mana_progress_steps,
+                incumbent.safe_opponent_mana_progress_steps,
+            ) {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.spirit_own_mana_setup_now
+            && incumbent.spirit_own_mana_setup_now
+            && candidate.score_path_best_steps != incumbent.score_path_best_steps
+        {
+            return if Self::root_score_path_steps_better(
+                candidate.score_path_best_steps,
+                incumbent.score_path_best_steps,
+            ) {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.supermana_progress != incumbent.supermana_progress {
+            return if candidate.supermana_progress {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.supermana_progress
+            && incumbent.supermana_progress
+            && candidate.safe_supermana_progress_steps != incumbent.safe_supermana_progress_steps
+        {
+            return if Self::root_progress_steps_better(
+                candidate.safe_supermana_progress_steps,
+                incumbent.safe_supermana_progress_steps,
+            ) {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.opponent_mana_progress != incumbent.opponent_mana_progress {
+            return if candidate.opponent_mana_progress {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.opponent_mana_progress
+            && incumbent.opponent_mana_progress
+            && candidate.safe_opponent_mana_progress_steps
+                != incumbent.safe_opponent_mana_progress_steps
+        {
+            return if Self::root_progress_steps_better(
+                candidate.safe_opponent_mana_progress_steps,
+                incumbent.safe_opponent_mana_progress_steps,
+            ) {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.mana_handoff_to_opponent != incumbent.mana_handoff_to_opponent {
+            return if !candidate.mana_handoff_to_opponent {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.has_roundtrip != incumbent.has_roundtrip {
+            return if !candidate.has_roundtrip {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.spirit_development != incumbent.spirit_development {
+            return if candidate.spirit_development {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+        if candidate.interview_soft_priority != incumbent.interview_soft_priority {
+            return incumbent
+                .interview_soft_priority
+                .cmp(&candidate.interview_soft_priority);
+        }
+        if candidate.efficiency != incumbent.efficiency {
+            return incumbent.efficiency.cmp(&candidate.efficiency);
+        }
+        std::cmp::Ordering::Equal
+    }
+
+    fn compare_ranked_scored_root_indices(
+        scored_roots: &[RootEvaluation],
+        a: usize,
+        b: usize,
+    ) -> std::cmp::Ordering {
+        scored_roots[b]
+            .score
+            .cmp(&scored_roots[a].score)
+            .then_with(|| {
+                Self::compare_tactical_root_evaluations(&scored_roots[a], &scored_roots[b])
+            })
+            .then_with(|| a.cmp(&b))
+    }
+
     fn best_tactical_root_index<F>(root_moves: &[ScoredRootMove], predicate: F) -> Option<usize>
     where
         F: Fn(&ScoredRootMove) -> bool,
@@ -5324,21 +5549,15 @@ impl MonsGameModel {
                     prelim_alpha = prelim_score;
                 }
             }
-            // Reorder root candidates by preliminary score (best first)
-            let mut indexed: Vec<(i32, ScoredRootMove)> = prelim_scores
-                .into_iter()
-                .zip(root_moves.into_iter())
-                .collect();
-            indexed.sort_by(|a, b| b.0.cmp(&a.0));
+            let best_prelim_score = prelim_scores.iter().copied().max().unwrap_or(i32::MIN);
+            root_moves = Self::sort_root_moves_by_ranked_scores(root_moves, prelim_scores.as_slice());
             // Optionally initialize alpha from preliminary best score
             if config.iterative_deepening_alpha_margin > 0 {
-                if let Some((best_score, _)) = indexed.first() {
-                    if *best_score != i32::MIN {
-                        alpha = best_score.saturating_sub(config.iterative_deepening_alpha_margin);
-                    }
+                if best_prelim_score != i32::MIN {
+                    alpha = best_prelim_score
+                        .saturating_sub(config.iterative_deepening_alpha_margin);
                 }
             }
-            root_moves = indexed.into_iter().map(|(_, m)| m).collect();
         }
 
         for candidate in root_moves {
@@ -7768,11 +7987,10 @@ impl MonsGameModel {
         candidate_indices: &[usize],
     ) -> usize {
         let mut best_index = candidate_indices.first().copied().unwrap_or(0);
-        let mut best_score = i32::MIN;
         for index in candidate_indices.iter().copied() {
-            let score = scored_roots[index].score;
-            if score > best_score {
-                best_score = score;
+            if Self::compare_ranked_scored_root_indices(scored_roots, index, best_index)
+                == std::cmp::Ordering::Less
+            {
                 best_index = index;
             }
         }
@@ -8048,7 +8266,7 @@ impl MonsGameModel {
             .copied()
             .filter(|index| scored_roots[*index].score + score_margin >= best_score)
             .collect::<Vec<_>>();
-        shortlist.sort_by(|a, b| scored_roots[*b].score.cmp(&scored_roots[*a].score));
+        shortlist.sort_by(|a, b| Self::compare_ranked_scored_root_indices(scored_roots, *a, *b));
         if shortlist.is_empty() {
             return None;
         }
@@ -8358,7 +8576,7 @@ impl MonsGameModel {
             .copied()
             .filter(|index| scored_roots[*index].score + score_margin >= best_score)
             .collect::<Vec<_>>();
-        shortlist.sort_by(|a, b| scored_roots[*b].score.cmp(&scored_roots[*a].score));
+        shortlist.sort_by(|a, b| Self::compare_ranked_scored_root_indices(scored_roots, *a, *b));
         if shortlist.len() > shortlist_limit {
             shortlist.truncate(shortlist_limit);
         }
@@ -8605,7 +8823,11 @@ impl MonsGameModel {
             );
             if floor_score > best_floor_score
                 || (floor_score == best_floor_score
-                    && scored_roots[index].score > scored_roots[best_index].score)
+                    && Self::compare_ranked_scored_root_indices(
+                        scored_roots,
+                        index,
+                        best_index,
+                    ) == std::cmp::Ordering::Less)
             {
                 best_floor_score = floor_score;
                 best_index = index;
@@ -10835,6 +11057,7 @@ mod opening_book_tests {
         )
         .expect("spirit supermana handoff inputs should build a scored root");
         let mut long = short.clone();
+        long.inputs = vec![Input::Location(Location::new(0, 0))];
         long.safe_supermana_progress_steps = short.safe_supermana_progress_steps + 2;
         long.score_path_best_steps = short.score_path_best_steps.saturating_sub(1);
 
@@ -10911,6 +11134,7 @@ mod opening_book_tests {
         )
         .expect("spirit supermana handoff inputs should build a scored root");
         let mut long = short.clone();
+        long.inputs = vec![Input::Location(Location::new(0, 0))];
         long.safe_supermana_progress_steps = short.safe_supermana_progress_steps + 2;
         long.score_path_best_steps = short.score_path_best_steps.saturating_sub(1);
 
@@ -11001,6 +11225,222 @@ mod opening_book_tests {
             .position(|candidate| candidate.inputs == long_inputs)
             .expect("long spirit root should remain in sorted roots");
         assert!(short_pos < long_pos);
+    }
+
+    #[test]
+    fn ranked_score_sort_prefers_spirit_supermana_exact_continuation_when_score_tied() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(4, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 2),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            &game,
+            Color::White,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        let short = MonsGameModel::build_scored_root_move(
+            &game,
+            Color::White,
+            config,
+            own_drainer_vulnerable_before,
+            &[
+                Input::Location(Location::new(4, 0)),
+                Input::Location(Location::new(5, 2)),
+                Input::Location(Location::new(6, 1)),
+            ],
+        )
+        .expect("spirit supermana handoff inputs should build a scored root");
+        let mut long = short.clone();
+        long.inputs = vec![Input::Location(Location::new(0, 0))];
+        long.safe_supermana_progress_steps = short.safe_supermana_progress_steps + 2;
+        long.score_path_best_steps = short.score_path_best_steps.saturating_sub(1);
+
+        let short_inputs = short.inputs.clone();
+        let long_inputs = long.inputs.clone();
+        let ordered = MonsGameModel::sort_root_moves_by_ranked_scores(vec![long, short], &[100, 100]);
+        let short_pos = ordered
+            .iter()
+            .position(|candidate| candidate.inputs == short_inputs)
+            .expect("short spirit root should remain in ranked-score order");
+        let long_pos = ordered
+            .iter()
+            .position(|candidate| candidate.inputs == long_inputs)
+            .expect("long spirit root should remain in ranked-score order");
+        assert!(short_pos < long_pos);
+    }
+
+    #[test]
+    fn reply_risk_shortlist_prefers_spirit_supermana_exact_continuation_when_score_tied() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(4, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 2),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.root_reply_risk_score_margin = 0;
+        config.root_reply_risk_shortlist_max = 1;
+        config.root_reply_risk_reply_limit = 1;
+        config.root_reply_risk_node_share_bp = 1_000;
+        let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            &game,
+            Color::White,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        let short = MonsGameModel::build_scored_root_move(
+            &game,
+            Color::White,
+            config,
+            own_drainer_vulnerable_before,
+            &[
+                Input::Location(Location::new(4, 0)),
+                Input::Location(Location::new(5, 2)),
+                Input::Location(Location::new(6, 1)),
+            ],
+        )
+        .expect("spirit supermana handoff inputs should build a scored root");
+        let mut long = short.clone();
+        long.inputs = vec![Input::Location(Location::new(0, 0))];
+        long.safe_supermana_progress_steps = short.safe_supermana_progress_steps + 2;
+        long.score_path_best_steps = short.score_path_best_steps.saturating_sub(1);
+
+        let picked = MonsGameModel::pick_root_move_with_reply_risk_guard(
+            &game,
+            &[
+                root_evaluation_for_test(&long, 100),
+                root_evaluation_for_test(&short, 100),
+            ],
+            &[0, 1],
+            Color::White,
+            config,
+        );
+        assert_eq!(picked, Some(1));
+    }
+
+    #[test]
+    fn normal_root_safety_shortlist_prefers_spirit_supermana_exact_continuation_when_score_tied() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(4, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 2),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.enable_normal_root_safety_deep_floor = false;
+        config.node_enum_limit = 1;
+        let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            &game,
+            Color::White,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        let short = MonsGameModel::build_scored_root_move(
+            &game,
+            Color::White,
+            config,
+            own_drainer_vulnerable_before,
+            &[
+                Input::Location(Location::new(4, 0)),
+                Input::Location(Location::new(5, 2)),
+                Input::Location(Location::new(6, 1)),
+            ],
+        )
+        .expect("spirit supermana handoff inputs should build a scored root");
+        let mut long = short.clone();
+        long.safe_supermana_progress_steps = short.safe_supermana_progress_steps + 2;
+        long.score_path_best_steps = short.score_path_best_steps.saturating_sub(1);
+
+        let picked = MonsGameModel::pick_root_move_with_normal_safety(
+            &game,
+            &[
+                root_evaluation_for_test(&long, 100),
+                root_evaluation_for_test(&short, 100),
+            ],
+            &[0, 1],
+            Color::White,
+            config,
+        );
+        assert_eq!(picked, short.inputs);
     }
 
     #[test]
@@ -11253,6 +11693,7 @@ mod opening_book_tests {
         )
         .expect("spirit opponent mana handoff inputs should build a scored root");
         let mut long = short.clone();
+        long.inputs = vec![Input::Location(Location::new(0, 0))];
         long.safe_opponent_mana_progress_steps = short.safe_opponent_mana_progress_steps + 2;
         long.score_path_best_steps = short.score_path_best_steps.saturating_sub(1);
 
@@ -11329,6 +11770,7 @@ mod opening_book_tests {
         )
         .expect("spirit opponent mana handoff inputs should build a scored root");
         let mut long = short.clone();
+        long.inputs = vec![Input::Location(Location::new(0, 0))];
         long.safe_opponent_mana_progress_steps = short.safe_opponent_mana_progress_steps + 2;
         long.score_path_best_steps = short.score_path_best_steps.saturating_sub(1);
 
@@ -11419,6 +11861,222 @@ mod opening_book_tests {
             .position(|candidate| candidate.inputs == long_inputs)
             .expect("long spirit root should remain in sorted roots");
         assert!(short_pos < long_pos);
+    }
+
+    #[test]
+    fn ranked_score_sort_prefers_spirit_opponent_exact_continuation_when_score_tied() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(4, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 2),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            &game,
+            Color::White,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        let short = MonsGameModel::build_scored_root_move(
+            &game,
+            Color::White,
+            config,
+            own_drainer_vulnerable_before,
+            &[
+                Input::Location(Location::new(4, 0)),
+                Input::Location(Location::new(5, 2)),
+                Input::Location(Location::new(6, 1)),
+            ],
+        )
+        .expect("spirit opponent mana handoff inputs should build a scored root");
+        let mut long = short.clone();
+        long.inputs = vec![Input::Location(Location::new(0, 0))];
+        long.safe_opponent_mana_progress_steps = short.safe_opponent_mana_progress_steps + 2;
+        long.score_path_best_steps = short.score_path_best_steps.saturating_sub(1);
+
+        let short_inputs = short.inputs.clone();
+        let long_inputs = long.inputs.clone();
+        let ordered = MonsGameModel::sort_root_moves_by_ranked_scores(vec![long, short], &[100, 100]);
+        let short_pos = ordered
+            .iter()
+            .position(|candidate| candidate.inputs == short_inputs)
+            .expect("short spirit root should remain in ranked-score order");
+        let long_pos = ordered
+            .iter()
+            .position(|candidate| candidate.inputs == long_inputs)
+            .expect("long spirit root should remain in ranked-score order");
+        assert!(short_pos < long_pos);
+    }
+
+    #[test]
+    fn reply_risk_shortlist_prefers_spirit_opponent_exact_continuation_when_score_tied() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(4, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 2),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.root_reply_risk_score_margin = 0;
+        config.root_reply_risk_shortlist_max = 1;
+        config.root_reply_risk_reply_limit = 1;
+        config.root_reply_risk_node_share_bp = 1_000;
+        let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            &game,
+            Color::White,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        let short = MonsGameModel::build_scored_root_move(
+            &game,
+            Color::White,
+            config,
+            own_drainer_vulnerable_before,
+            &[
+                Input::Location(Location::new(4, 0)),
+                Input::Location(Location::new(5, 2)),
+                Input::Location(Location::new(6, 1)),
+            ],
+        )
+        .expect("spirit opponent mana handoff inputs should build a scored root");
+        let mut long = short.clone();
+        long.inputs = vec![Input::Location(Location::new(0, 0))];
+        long.safe_opponent_mana_progress_steps = short.safe_opponent_mana_progress_steps + 2;
+        long.score_path_best_steps = short.score_path_best_steps.saturating_sub(1);
+
+        let picked = MonsGameModel::pick_root_move_with_reply_risk_guard(
+            &game,
+            &[
+                root_evaluation_for_test(&long, 100),
+                root_evaluation_for_test(&short, 100),
+            ],
+            &[0, 1],
+            Color::White,
+            config,
+        );
+        assert_eq!(picked, Some(1));
+    }
+
+    #[test]
+    fn normal_root_safety_shortlist_prefers_spirit_opponent_exact_continuation_when_score_tied() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(4, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 2),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.enable_normal_root_safety_deep_floor = false;
+        config.node_enum_limit = 1;
+        let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            &game,
+            Color::White,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        let short = MonsGameModel::build_scored_root_move(
+            &game,
+            Color::White,
+            config,
+            own_drainer_vulnerable_before,
+            &[
+                Input::Location(Location::new(4, 0)),
+                Input::Location(Location::new(5, 2)),
+                Input::Location(Location::new(6, 1)),
+            ],
+        )
+        .expect("spirit opponent mana handoff inputs should build a scored root");
+        let mut long = short.clone();
+        long.safe_opponent_mana_progress_steps = short.safe_opponent_mana_progress_steps + 2;
+        long.score_path_best_steps = short.score_path_best_steps.saturating_sub(1);
+
+        let picked = MonsGameModel::pick_root_move_with_normal_safety(
+            &game,
+            &[
+                root_evaluation_for_test(&long, 100),
+                root_evaluation_for_test(&short, 100),
+            ],
+            &[0, 1],
+            Color::White,
+            config,
+        );
+        assert_eq!(picked, short.inputs);
     }
 
     #[test]
