@@ -1,10 +1,8 @@
 use crate::*;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::time::Instant;
 
 const EXACT_ANALYSIS_CACHE_MAX_ENTRIES: usize = 512;
-const EXACT_TURN_QUERY_CACHE_MAX_ENTRIES: usize = 1024;
 const EXACT_ATTACK_REACH_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_CARRIER_STEPS_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_DRAINER_TO_MANA_CACHE_MAX_ENTRIES: usize = 8192;
@@ -66,124 +64,17 @@ pub(crate) struct ExactColorSummary {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct ExactSecureManaQuery {
-    pub steps: Option<i32>,
-    pub safe_landing: Option<Location>,
-    pub scores_this_turn: bool,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct ExactTurnQueryBundle {
-    pub color: Option<Color>,
-    pub can_attack_opponent_drainer: bool,
-    pub supermana: ExactSecureManaQuery,
-    pub opponent_mana: ExactSecureManaQuery,
-    pub spirit: ExactSpiritSummary,
-}
-
-impl ExactTurnQueryBundle {
-    #[inline]
-    pub(crate) fn summary(self) -> ExactTurnSummary {
-        ExactTurnSummary {
-            color: self.color,
-            can_attack_opponent_drainer: self.can_attack_opponent_drainer,
-            safe_supermana_progress: self.supermana.steps.is_some(),
-            safe_supermana_progress_steps: self.supermana.steps,
-            safe_supermana_landing: self.supermana.safe_landing,
-            safe_opponent_mana_progress: self.opponent_mana.steps.is_some()
-                || self.spirit.same_turn_opponent_mana_score,
-            safe_opponent_mana_progress_steps: self.opponent_mana.steps,
-            safe_opponent_mana_landing: self.opponent_mana.safe_landing,
-            spirit_assisted_supermana_progress: self.spirit.supermana_progress,
-            spirit_assisted_opponent_mana_progress: self.spirit.opponent_mana_progress,
-            spirit_assisted_score: self.spirit.same_turn_score,
-            spirit_assisted_denial: self.spirit.same_turn_opponent_mana_score,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct ExactTurnSummary {
-    #[allow(dead_code)]
     pub color: Option<Color>,
     pub can_attack_opponent_drainer: bool,
     pub safe_supermana_progress: bool,
     pub safe_supermana_progress_steps: Option<i32>,
-    pub safe_supermana_landing: Option<Location>,
     pub safe_opponent_mana_progress: bool,
     pub safe_opponent_mana_progress_steps: Option<i32>,
-    pub safe_opponent_mana_landing: Option<Location>,
     pub spirit_assisted_supermana_progress: bool,
     pub spirit_assisted_opponent_mana_progress: bool,
     pub spirit_assisted_score: bool,
     pub spirit_assisted_denial: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ExactQueryFamily {
-    AttackReach,
-    DrainerPickup,
-    SecureMana,
-    SafeLanding,
-    SpiritAssist,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct ExactQueryFamilyDiagnostics {
-    pub queries: u64,
-    pub cache_hits: u64,
-    pub cache_misses: u64,
-    pub elapsed_ns: u64,
-}
-
-impl ExactQueryFamilyDiagnostics {
-    fn record(&mut self, cache_hit: Option<bool>, elapsed_ns: u64) {
-        self.queries += 1;
-        if let Some(cache_hit) = cache_hit {
-            if cache_hit {
-                self.cache_hits += 1;
-            } else {
-                self.cache_misses += 1;
-            }
-        }
-        self.elapsed_ns = self.elapsed_ns.saturating_add(elapsed_ns);
-    }
-
-    fn merge(&mut self, other: Self) {
-        self.queries += other.queries;
-        self.cache_hits += other.cache_hits;
-        self.cache_misses += other.cache_misses;
-        self.elapsed_ns = self.elapsed_ns.saturating_add(other.elapsed_ns);
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct ExactQueryDiagnosticsSnapshot {
-    pub attack_reach: ExactQueryFamilyDiagnostics,
-    pub drainer_pickup: ExactQueryFamilyDiagnostics,
-    pub secure_mana: ExactQueryFamilyDiagnostics,
-    pub safe_landing: ExactQueryFamilyDiagnostics,
-    pub spirit_assist: ExactQueryFamilyDiagnostics,
-}
-
-impl ExactQueryDiagnosticsSnapshot {
-    fn family_mut(&mut self, family: ExactQueryFamily) -> &mut ExactQueryFamilyDiagnostics {
-        match family {
-            ExactQueryFamily::AttackReach => &mut self.attack_reach,
-            ExactQueryFamily::DrainerPickup => &mut self.drainer_pickup,
-            ExactQueryFamily::SecureMana => &mut self.secure_mana,
-            ExactQueryFamily::SafeLanding => &mut self.safe_landing,
-            ExactQueryFamily::SpiritAssist => &mut self.spirit_assist,
-        }
-    }
-
-    pub(crate) fn merge(&mut self, other: Self) {
-        self.attack_reach.merge(other.attack_reach);
-        self.drainer_pickup.merge(other.drainer_pickup);
-        self.secure_mana.merge(other.secure_mana);
-        self.safe_landing.merge(other.safe_landing);
-        self.spirit_assist.merge(other.spirit_assist);
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -216,9 +107,6 @@ struct ExactFollowupSummary {
 pub(crate) struct ExactStateAnalysis {
     pub white: ExactColorSummary,
     pub black: ExactColorSummary,
-    #[allow(dead_code)]
-    pub active_turn_queries: ExactTurnQueryBundle,
-    #[allow(dead_code)]
     pub active_turn: ExactTurnSummary,
 }
 
@@ -233,28 +121,9 @@ impl ExactStateAnalysis {
     }
 }
 
+#[derive(Default)]
 pub(crate) struct ExactStateAnalysisCache {
     entries: HashMap<u64, ExactStateAnalysis>,
-}
-
-struct ExactTurnQueryCache {
-    entries: HashMap<u64, ExactTurnQueryBundle>,
-}
-
-impl Default for ExactStateAnalysisCache {
-    fn default() -> Self {
-        Self {
-            entries: HashMap::with_capacity(EXACT_ANALYSIS_CACHE_MAX_ENTRIES),
-        }
-    }
-}
-
-impl Default for ExactTurnQueryCache {
-    fn default() -> Self {
-        Self {
-            entries: HashMap::with_capacity(EXACT_TURN_QUERY_CACHE_MAX_ENTRIES),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -267,16 +136,9 @@ struct ExactAttackQueryKey {
     can_use_action: bool,
 }
 
+#[derive(Default)]
 struct ExactAttackReachCache {
     entries: HashMap<ExactAttackQueryKey, bool>,
-}
-
-impl Default for ExactAttackReachCache {
-    fn default() -> Self {
-        Self {
-            entries: HashMap::with_capacity(EXACT_ATTACK_REACH_CACHE_MAX_ENTRIES),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -286,16 +148,9 @@ struct ExactCarrierStepsQueryKey {
     mana: Mana,
 }
 
+#[derive(Default)]
 struct ExactCarrierStepsCache {
     entries: HashMap<ExactCarrierStepsQueryKey, Option<i32>>,
-}
-
-impl Default for ExactCarrierStepsCache {
-    fn default() -> Self {
-        Self {
-            entries: HashMap::with_capacity(EXACT_CARRIER_STEPS_CACHE_MAX_ENTRIES),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -305,16 +160,9 @@ struct ExactDrainerToManaQueryKey {
     start: Location,
 }
 
+#[derive(Default)]
 struct ExactDrainerToManaCache {
     entries: HashMap<ExactDrainerToManaQueryKey, Option<i32>>,
-}
-
-impl Default for ExactDrainerToManaCache {
-    fn default() -> Self {
-        Self {
-            entries: HashMap::with_capacity(EXACT_DRAINER_TO_MANA_CACHE_MAX_ENTRIES),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -324,16 +172,9 @@ struct ExactFollowupSummaryKey {
     remaining_moves: i32,
 }
 
+#[derive(Default)]
 struct ExactFollowupSummaryCache {
     entries: HashMap<ExactFollowupSummaryKey, ExactFollowupSummary>,
-}
-
-impl Default for ExactFollowupSummaryCache {
-    fn default() -> Self {
-        Self {
-            entries: HashMap::with_capacity(EXACT_FOLLOWUP_SUMMARY_CACHE_MAX_ENTRIES),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -345,16 +186,9 @@ struct ExactPickupPathQueryKey {
     filter: ExactPickupFilter,
 }
 
+#[derive(Default)]
 struct ExactPickupPathCache {
     entries: HashMap<ExactPickupPathQueryKey, Option<ExactDrainerPickupPath>>,
-}
-
-impl Default for ExactPickupPathCache {
-    fn default() -> Self {
-        Self {
-            entries: HashMap::with_capacity(EXACT_PICKUP_PATH_CACHE_MAX_ENTRIES),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -365,16 +199,9 @@ struct ExactSpiritSummaryKey {
     can_use_action: bool,
 }
 
+#[derive(Default)]
 struct ExactSpiritSummaryCache {
     entries: HashMap<ExactSpiritSummaryKey, ExactSpiritSummary>,
-}
-
-impl Default for ExactSpiritSummaryCache {
-    fn default() -> Self {
-        Self {
-            entries: HashMap::with_capacity(EXACT_SPIRIT_SUMMARY_CACHE_MAX_ENTRIES),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -385,16 +212,9 @@ struct ExactSpiritReachQueryKey {
     remaining_mon_moves: i32,
 }
 
+#[derive(Default)]
 struct ExactSpiritReachCache {
     entries: HashMap<ExactSpiritReachQueryKey, Vec<(Location, i32)>>,
-}
-
-impl Default for ExactSpiritReachCache {
-    fn default() -> Self {
-        Self {
-            entries: HashMap::with_capacity(EXACT_SPIRIT_REACH_CACHE_MAX_ENTRIES),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -405,49 +225,20 @@ struct ExactWalkThreatQueryKey {
     angel_nearby: bool,
 }
 
+#[derive(Default)]
 struct ExactWalkThreatCache {
     entries: HashMap<ExactWalkThreatQueryKey, bool>,
 }
 
-impl Default for ExactWalkThreatCache {
-    fn default() -> Self {
-        Self {
-            entries: HashMap::with_capacity(EXACT_WALK_THREAT_CACHE_MAX_ENTRIES),
-        }
-    }
-}
-
-struct ExactSecureManaCache {
-    entries: HashMap<ExactSecureManaQueryKey, ExactSecureManaQuery>,
-}
-
-impl Default for ExactSecureManaCache {
-    fn default() -> Self {
-        Self {
-            entries: HashMap::with_capacity(EXACT_SECURE_MANA_CACHE_MAX_ENTRIES),
-        }
-    }
-}
-
 #[derive(Default)]
-struct ExactQueryDiagnostics {
-    snapshot: ExactQueryDiagnosticsSnapshot,
-    enabled: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct ExactSecureManaQueryKey {
-    board_hash: u64,
-    color: Color,
-    wanted: Mana,
-    remaining_moves: i32,
+struct ExactSecureManaCache {
+    entries: HashMap<(u64, Mana), Option<i32>>,
+    visiting: HashSet<(u64, Mana)>,
 }
 
 thread_local! {
     static EXACT_STATE_ANALYSIS_CACHE: RefCell<ExactStateAnalysisCache> =
         RefCell::new(ExactStateAnalysisCache::default());
-    static EXACT_TURN_QUERY_CACHE: RefCell<ExactTurnQueryCache> =
-        RefCell::new(ExactTurnQueryCache::default());
     static EXACT_ATTACK_REACH_CACHE: RefCell<ExactAttackReachCache> =
         RefCell::new(ExactAttackReachCache::default());
     static EXACT_CARRIER_STEPS_CACHE: RefCell<ExactCarrierStepsCache> =
@@ -466,14 +257,11 @@ thread_local! {
         RefCell::new(ExactWalkThreatCache::default());
     static EXACT_SECURE_MANA_CACHE: RefCell<ExactSecureManaCache> =
         RefCell::new(ExactSecureManaCache::default());
-    static EXACT_QUERY_DIAGNOSTICS: RefCell<ExactQueryDiagnostics> =
-        RefCell::new(ExactQueryDiagnostics::default());
 }
 
 #[inline]
 pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_STATE_ANALYSIS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
-    EXACT_TURN_QUERY_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_ATTACK_REACH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_CARRIER_STEPS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_DRAINER_TO_MANA_CACHE.with(|cache| cache.borrow_mut().entries.clear());
@@ -482,41 +270,10 @@ pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_SPIRIT_REACH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_SPIRIT_SUMMARY_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_WALK_THREAT_CACHE.with(|cache| cache.borrow_mut().entries.clear());
-    EXACT_SECURE_MANA_CACHE.with(|cache| cache.borrow_mut().entries.clear());
-}
-
-#[inline]
-pub(crate) fn reset_exact_query_diagnostics() {
-    EXACT_QUERY_DIAGNOSTICS.with(|diagnostics| {
-        diagnostics.borrow_mut().snapshot = ExactQueryDiagnosticsSnapshot::default();
-    });
-}
-
-#[inline]
-pub(crate) fn set_exact_query_diagnostics_enabled(enabled: bool) {
-    EXACT_QUERY_DIAGNOSTICS.with(|diagnostics| diagnostics.borrow_mut().enabled = enabled);
-}
-
-#[inline]
-pub(crate) fn exact_query_diagnostics_snapshot() -> ExactQueryDiagnosticsSnapshot {
-    EXACT_QUERY_DIAGNOSTICS.with(|diagnostics| diagnostics.borrow().snapshot)
-}
-
-#[inline]
-fn record_exact_query_diagnostics(
-    family: ExactQueryFamily,
-    cache_hit: Option<bool>,
-    elapsed_ns: u64,
-) {
-    EXACT_QUERY_DIAGNOSTICS.with(|diagnostics| {
-        let mut diagnostics = diagnostics.borrow_mut();
-        if !diagnostics.enabled {
-            return;
-        }
-        diagnostics
-            .snapshot
-            .family_mut(family)
-            .record(cache_hit, elapsed_ns);
+    EXACT_SECURE_MANA_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        cache.entries.clear();
+        cache.visiting.clear();
     });
 }
 
@@ -540,47 +297,15 @@ pub(crate) fn exact_state_analysis(game: &MonsGame) -> ExactStateAnalysis {
 
 #[inline]
 pub(crate) fn exact_turn_summary(game: &MonsGame, color: Color) -> ExactTurnSummary {
-    if game.active_color == color {
-        cached_active_turn_query_bundle(game).summary()
+    let analysis = exact_state_analysis(game);
+    if analysis.active_turn.color == Some(color) {
+        analysis.active_turn
     } else {
         ExactTurnSummary {
             color: Some(color),
             ..ExactTurnSummary::default()
         }
     }
-}
-
-#[inline]
-pub(crate) fn exact_turn_query_bundle(game: &MonsGame, color: Color) -> ExactTurnQueryBundle {
-    if game.active_color == color {
-        cached_active_turn_query_bundle(game)
-    } else {
-        ExactTurnQueryBundle {
-            color: Some(color),
-            ..ExactTurnQueryBundle::default()
-        }
-    }
-}
-
-fn cached_active_turn_query_bundle(game: &MonsGame) -> ExactTurnQueryBundle {
-    let key = MonsGameModel::search_state_hash(game);
-    if let Some(cached) =
-        EXACT_TURN_QUERY_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
-    {
-        return cached;
-    }
-
-    let built = build_turn_query_bundle(game);
-    EXACT_TURN_QUERY_CACHE.with(|turn_cache| {
-        let mut turn_cache = turn_cache.borrow_mut();
-        if turn_cache.entries.len() >= EXACT_TURN_QUERY_CACHE_MAX_ENTRIES
-            && !turn_cache.entries.contains_key(&key)
-        {
-            turn_cache.entries.clear();
-        }
-        turn_cache.entries.insert(key, built);
-    });
-    built
 }
 
 pub(crate) fn can_attack_opponent_drainer_this_turn(game: &MonsGame, color: Color) -> bool {
@@ -595,13 +320,7 @@ pub(crate) fn can_attack_target_on_board(
     remaining_moves: i32,
     can_use_action: bool,
 ) -> bool {
-    let started = Instant::now();
     if remaining_moves < 0 || !can_use_action || board.item(target).is_none() {
-        record_exact_query_diagnostics(
-            ExactQueryFamily::AttackReach,
-            Some(false),
-            started.elapsed().as_nanos() as u64,
-        );
         return false;
     }
 
@@ -616,11 +335,6 @@ pub(crate) fn can_attack_target_on_board(
     if let Some(cached) =
         EXACT_ATTACK_REACH_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
     {
-        record_exact_query_diagnostics(
-            ExactQueryFamily::AttackReach,
-            Some(true),
-            started.elapsed().as_nanos() as u64,
-        );
         return cached;
     }
 
@@ -641,11 +355,6 @@ pub(crate) fn can_attack_target_on_board(
         }
         cache.entries.insert(key, result);
     });
-    record_exact_query_diagnostics(
-        ExactQueryFamily::AttackReach,
-        Some(false),
-        started.elapsed().as_nanos() as u64,
-    );
     result
 }
 
@@ -987,39 +696,24 @@ pub(crate) fn is_drainer_exactly_safe_next_turn_on_board(
     color: Color,
     location: Location,
 ) -> bool {
-    let started = Instant::now();
     let angel_nearby = MonsGameModel::is_location_guarded_by_angel(board, color, location);
-    let result = !can_attack_target_on_board(
+    !can_attack_target_on_board(
         board,
         color.other(),
         color,
         location,
         Config::MONS_MOVES_PER_TURN,
         true,
-    ) && !is_drainer_under_walk_threat(board, color, location, angel_nearby);
-    record_exact_query_diagnostics(
-        ExactQueryFamily::SafeLanding,
-        None,
-        started.elapsed().as_nanos() as u64,
-    );
-    result
+    ) && !is_drainer_under_walk_threat(board, color, location, angel_nearby)
 }
 
 fn build_exact_state_analysis(game: &MonsGame) -> ExactStateAnalysis {
     let white = build_color_summary(game, Color::White);
     let black = build_color_summary(game, Color::Black);
-    let active_turn_queries = ExactTurnQueryBundle {
-        color: Some(game.active_color),
-        ..ExactTurnQueryBundle::default()
-    };
-    let active_turn = ExactTurnSummary {
-        color: Some(game.active_color),
-        ..ExactTurnSummary::default()
-    };
+    let active_turn = build_turn_summary(game);
     ExactStateAnalysis {
         white,
         black,
-        active_turn_queries,
         active_turn,
     }
 }
@@ -1087,11 +781,7 @@ fn build_color_summary(game: &MonsGame, color: Color) -> ExactColorSummary {
             immediate_scores.push(path.mana_value);
         }
     }
-    let spirit = if game.active_color == color {
-        exact_spirit_summary(&game.board, color, full_turn_moves, can_use_action)
-    } else {
-        approximate_nonactive_spirit_summary(&game.board, color)
-    };
+    let spirit = exact_spirit_summary(&game.board, color, full_turn_moves, can_use_action);
     if spirit.same_turn_score {
         immediate_scores.push(spirit.same_turn_score_value.max(1));
     }
@@ -1114,89 +804,27 @@ fn build_color_summary(game: &MonsGame, color: Color) -> ExactColorSummary {
     }
 }
 
-fn approximate_nonactive_spirit_summary(board: &Board, color: Color) -> ExactSpiritSummary {
-    let mut best = ExactSpiritSummary::default();
-
-    for (location, item) in board.occupied() {
-        let Some(mon) = item.mon() else {
-            continue;
-        };
-        if mon.color != color || mon.kind != MonKind::Spirit || mon.is_fainted() {
-            continue;
-        }
-
-        let mut actionable_targets = 0i32;
-        let mut pressure = 0i32;
-        for &target in location.reachable_by_spirit_action_ref() {
-            let Some(target_item) = board.item(target).copied() else {
-                continue;
-            };
-            if !spirit_target_allowed(target_item) {
-                continue;
-            }
-
-            let has_destination = target
-                .nearby_locations_ref()
-                .iter()
-                .copied()
-                .any(|dest| spirit_destination_allowed(board, target, target_item, dest));
-            if !has_destination {
-                continue;
-            }
-
-            actionable_targets += 1;
-            pressure = pressure.max(match target_item {
-                Item::Mana {
-                    mana: Mana::Regular(owner),
-                } if owner == color.other() => 3,
-                Item::Mana {
-                    mana: Mana::Supermana,
-                } => 2,
-                Item::MonWithMana { mon, mana } if mon.color == color => {
-                    if mana == Mana::Regular(color.other()) {
-                        3
-                    } else {
-                        2
-                    }
-                }
-                Item::Mon { mon }
-                | Item::MonWithMana { mon, .. }
-                | Item::MonWithConsumable { mon, .. }
-                    if mon.color != color =>
-                {
-                    2
-                }
-                _ => 1,
-            });
-        }
-
-        let utility = actionable_targets.min(EXACT_SPIRIT_UTILITY_CAP).max(pressure);
-        if utility > best.utility {
-            best.utility = utility;
-            best.next_turn_setup_gain = pressure.min(4);
-        } else if utility == best.utility {
-            best.next_turn_setup_gain = best.next_turn_setup_gain.max(pressure.min(4));
-        }
-    }
-
-    best
-}
-
-fn build_turn_query_bundle(game: &MonsGame) -> ExactTurnQueryBundle {
+fn build_turn_summary(game: &MonsGame) -> ExactTurnSummary {
     let color = game.active_color;
     let remaining_mon_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
     let can_use_action = game.player_can_use_action();
     let spirit = exact_spirit_summary(&game.board, color, remaining_mon_moves, can_use_action);
-    ExactTurnQueryBundle {
+    let safe_supermana_progress_steps =
+        exact_secure_specific_mana_steps_this_turn(game, color, Mana::Supermana);
+    let safe_opponent_mana_progress_steps =
+        exact_secure_specific_mana_steps_this_turn(game, color, Mana::Regular(color.other()));
+    ExactTurnSummary {
         color: Some(color),
         can_attack_opponent_drainer: can_attack_opponent_drainer_exact(game, color),
-        supermana: exact_secure_specific_mana_query_this_turn(game, color, Mana::Supermana),
-        opponent_mana: exact_secure_specific_mana_query_this_turn(
-            game,
-            color,
-            Mana::Regular(color.other()),
-        ),
-        spirit,
+        safe_supermana_progress: safe_supermana_progress_steps.is_some(),
+        safe_supermana_progress_steps,
+        safe_opponent_mana_progress: safe_opponent_mana_progress_steps.is_some()
+            || spirit.same_turn_opponent_mana_score,
+        safe_opponent_mana_progress_steps,
+        spirit_assisted_supermana_progress: spirit.supermana_progress,
+        spirit_assisted_opponent_mana_progress: spirit.opponent_mana_progress,
+        spirit_assisted_score: spirit.same_turn_score,
+        spirit_assisted_denial: spirit.same_turn_opponent_mana_score,
     }
 }
 
@@ -1235,8 +863,8 @@ fn exact_shortest_payload_state<F>(
 where
     F: FnMut(Location, ExactActorPayload) -> bool,
 {
-    let mut queue = VecDeque::with_capacity(64);
-    let mut seen = HashSet::with_capacity(128);
+    let mut queue = VecDeque::new();
+    let mut seen = HashSet::new();
     queue.push_back((start, start_payload, 0));
     seen.insert((start, start_payload));
 
@@ -1432,7 +1060,6 @@ fn exact_best_drainer_pickup_path_filtered(
     max_steps: Option<i32>,
     mana_filter: ExactPickupFilter,
 ) -> Option<ExactDrainerPickupPath> {
-    let started = Instant::now();
     let key = ExactPickupPathQueryKey {
         board_hash: exact_board_hash(board),
         color,
@@ -1443,16 +1070,11 @@ fn exact_best_drainer_pickup_path_filtered(
     if let Some(cached) =
         EXACT_PICKUP_PATH_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
     {
-        record_exact_query_diagnostics(
-            ExactQueryFamily::DrainerPickup,
-            Some(true),
-            started.elapsed().as_nanos() as u64,
-        );
         return cached;
     }
 
-    let mut queue = VecDeque::with_capacity(64);
-    let mut seen = HashSet::with_capacity(128);
+    let mut queue = VecDeque::new();
+    let mut seen = HashSet::new();
     let start_state = (start, ExactActorPayload::None, 0);
     queue.push_back(start_state);
     seen.insert((start, ExactActorPayload::None));
@@ -1509,11 +1131,6 @@ fn exact_best_drainer_pickup_path_filtered(
         }
         cache.entries.insert(key, best);
     });
-    record_exact_query_diagnostics(
-        ExactQueryFamily::DrainerPickup,
-        Some(false),
-        started.elapsed().as_nanos() as u64,
-    );
     best
 }
 
@@ -1561,54 +1178,17 @@ fn exact_drainer_to_any_mana_steps(board: &Board, color: Color, start: Location)
     result
 }
 
-#[derive(Debug, Clone)]
-struct ExactSecureState {
-    board: Board,
-    drainer_location: Location,
-    steps: i32,
-    previous_state: Option<usize>,
-    via_location: Option<Location>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct ExactSecureStateKey {
-    board_hash: u64,
-    drainer_location: Location,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct ExactSecureGoal {
-    steps: i32,
-    state_index: usize,
-    tail_location: Option<Location>,
-    safe_landing: Option<Location>,
-    scores_this_turn: bool,
-}
-
-#[derive(Debug, Clone)]
-struct ExactSecureSearchOutcome {
-    query: ExactSecureManaQuery,
-    path: Option<Vec<Location>>,
-}
-
-#[derive(Debug, Clone)]
-struct ExactDrainerMovePreview {
-    board: Board,
-    drainer_location: Location,
-    scored_mana: Option<Mana>,
-}
-
-fn exact_secure_specific_mana_query_this_turn(
+fn exact_secure_specific_mana_steps_this_turn(
     game: &MonsGame,
     color: Color,
     wanted: Mana,
-) -> ExactSecureManaQuery {
+) -> Option<i32> {
     let remaining_moves = if game.active_color == color {
         (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0)
     } else {
         Config::MONS_MOVES_PER_TURN
     };
-    exact_secure_specific_mana_query_on_board(&game.board, color, wanted, remaining_moves)
+    exact_secure_specific_mana_steps_on_board(&game.board, color, wanted, remaining_moves)
 }
 
 fn can_secure_specific_mana_on_board(
@@ -1617,9 +1197,7 @@ fn can_secure_specific_mana_on_board(
     wanted: Mana,
     remaining_moves: i32,
 ) -> bool {
-    exact_secure_specific_mana_query_on_board(board, color, wanted, remaining_moves)
-        .steps
-        .is_some()
+    exact_secure_specific_mana_steps_on_board(board, color, wanted, remaining_moves).is_some()
 }
 
 fn exact_secure_specific_mana_steps_on_board(
@@ -1628,318 +1206,109 @@ fn exact_secure_specific_mana_steps_on_board(
     wanted: Mana,
     remaining_moves: i32,
 ) -> Option<i32> {
-    exact_secure_specific_mana_query_on_board(board, color, wanted, remaining_moves).steps
-}
-
-fn exact_secure_specific_mana_query_on_board(
-    board: &Board,
-    color: Color,
-    wanted: Mana,
-    remaining_moves: i32,
-) -> ExactSecureManaQuery {
     if remaining_moves < 0 {
-        return ExactSecureManaQuery::default();
+        return None;
     }
 
-    let started = Instant::now();
-    let key = ExactSecureManaQueryKey {
-        board_hash: exact_board_hash(board),
-        color,
-        wanted,
-        remaining_moves,
-    };
+    let mut game = MonsGame::new(false);
+    game.board = board.clone();
+    game.active_color = color;
+    game.turn_number = 2;
+    game.actions_used_count = Config::ACTIONS_PER_TURN;
+    // Non-terminal same-turn states still have the mana move available; exhausting it here
+    // would make the synthetic game auto-end after one mon move and miss multi-step drainer paths.
+    game.mana_moves_count = 0;
+    game.mons_moves_count =
+        (Config::MONS_MOVES_PER_TURN - remaining_moves).clamp(0, Config::MONS_MOVES_PER_TURN);
+    game.white_score = 0;
+    game.black_score = 0;
+    game.white_potions_count = 0;
+    game.black_potions_count = 0;
+
+    exact_secure_specific_mana_steps_in_game(&game, color, wanted)
+}
+
+fn exact_secure_specific_mana_steps_in_game(
+    game: &MonsGame,
+    color: Color,
+    wanted: Mana,
+) -> Option<i32> {
+    let state_hash = MonsGameModel::search_state_hash(game);
+    let key = (state_hash, wanted);
     if let Some(cached) =
         EXACT_SECURE_MANA_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
     {
-        record_exact_query_diagnostics(
-            ExactQueryFamily::SecureMana,
-            Some(true),
-            started.elapsed().as_nanos() as u64,
-        );
         return cached;
     }
 
-    let result = exact_secure_specific_mana_search(board, color, wanted, remaining_moves, false)
-        .query;
+    let can_visit = EXACT_SECURE_MANA_CACHE.with(|cache| cache.borrow_mut().visiting.insert(key));
+    if !can_visit {
+        return None;
+    }
+
+    let result = exact_secure_specific_mana_steps_in_game_uncached(game, color, wanted);
     EXACT_SECURE_MANA_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
+        cache.visiting.remove(&key);
         if cache.entries.len() >= EXACT_SECURE_MANA_CACHE_MAX_ENTRIES
             && !cache.entries.contains_key(&key)
         {
             cache.entries.clear();
+            cache.visiting.clear();
         }
         cache.entries.insert(key, result);
     });
-    record_exact_query_diagnostics(
-        ExactQueryFamily::SecureMana,
-        Some(false),
-        started.elapsed().as_nanos() as u64,
-    );
     result
 }
 
-fn exact_secure_specific_mana_search(
-    board: &Board,
+fn exact_secure_specific_mana_steps_in_game_uncached(
+    game: &MonsGame,
     color: Color,
     wanted: Mana,
-    remaining_moves: i32,
-    want_path: bool,
-) -> ExactSecureSearchOutcome {
-    if remaining_moves < 0 {
-        return ExactSecureSearchOutcome {
-            query: ExactSecureManaQuery::default(),
-            path: None,
-        };
+) -> Option<i32> {
+    let Some(drainer_location) = find_awake_drainer(&game.board, color) else {
+        return None;
+    };
+
+    if matches!(
+        game.board.item(drainer_location),
+        Some(Item::MonWithMana { mana, .. }) if *mana == wanted
+    ) {
+        if is_drainer_exactly_safe_next_turn_on_board(&game.board, color, drainer_location) {
+            return Some(0);
+        }
     }
 
-    let Some(drainer_location) = find_awake_drainer(board, color) else {
-        return ExactSecureSearchOutcome {
-            query: ExactSecureManaQuery::default(),
-            path: None,
+    if game.active_color != color || !game.player_can_move_mon() {
+        return None;
+    }
+
+    let mut best = None;
+    for &next in drainer_location.nearby_locations_ref() {
+        let mut after = game.clone_for_simulation();
+        let Output::Events(events) = after.process_input(
+            vec![Input::Location(drainer_location), Input::Location(next)],
+            false,
+            false,
+        ) else {
+            continue;
         };
-    };
-
-    let initial_state = ExactSecureState {
-        board: board.clone(),
-        drainer_location,
-        steps: 0,
-        previous_state: None,
-        via_location: None,
-    };
-    let mut states = Vec::with_capacity(64);
-    states.push(initial_state);
-    let mut queue = VecDeque::with_capacity(64);
-    queue.push_back(0usize);
-    let mut seen = HashSet::with_capacity(128);
-    seen.insert(ExactSecureStateKey {
-        board_hash: exact_board_hash(board),
-        drainer_location,
-    });
-    let mut best_goal: Option<ExactSecureGoal> = None;
-
-    while let Some(state_index) = queue.pop_front() {
-        let state_steps = states[state_index].steps;
-        let state_drainer_location = states[state_index].drainer_location;
-        if best_goal.map_or(false, |goal| state_steps > goal.steps) {
-            break;
-        }
-
-        if exact_state_has_safe_carrier(
-            &states[state_index].board,
-            color,
-            state_drainer_location,
-            wanted,
-        ) {
-            let candidate = ExactSecureGoal {
-                steps: state_steps,
-                state_index,
-                tail_location: None,
-                safe_landing: Some(state_drainer_location),
-                scores_this_turn: false,
-            };
-            if exact_secure_goal_better(candidate, best_goal) {
-                best_goal = Some(candidate);
-            }
-        }
-
-        if state_steps >= remaining_moves
-            || best_goal.map_or(false, |goal| state_steps.saturating_add(1) > goal.steps)
-        {
+        if events.iter().any(|event| {
+            matches!(
+                event,
+                Event::ManaScored { mana, .. } if *mana == wanted
+            )
+        }) {
+            best = Some(best.map_or(1, |current: i32| current.min(1)));
             continue;
         }
-
-        for &next in state_drainer_location.nearby_locations_ref() {
-            let Some(preview) = apply_exact_drainer_move_preview(
-                &states[state_index].board,
-                color,
-                state_drainer_location,
-                next,
-            ) else {
-                continue;
-            };
-
-            let next_steps = state_steps.saturating_add(1);
-            if preview.scored_mana == Some(wanted) {
-                let candidate = ExactSecureGoal {
-                    steps: next_steps,
-                    state_index,
-                    tail_location: Some(next),
-                    safe_landing: None,
-                    scores_this_turn: true,
-                };
-                if exact_secure_goal_better(candidate, best_goal) {
-                    best_goal = Some(candidate);
-                }
-                continue;
-            }
-
-            let key = ExactSecureStateKey {
-                board_hash: exact_board_hash(&preview.board),
-                drainer_location: preview.drainer_location,
-            };
-            if !seen.insert(key) {
-                continue;
-            }
-
-            states.push(ExactSecureState {
-                board: preview.board,
-                drainer_location: preview.drainer_location,
-                steps: next_steps,
-                previous_state: Some(state_index),
-                via_location: Some(next),
-            });
-            queue.push_back(states.len() - 1);
+        if let Some(next_steps) = exact_secure_specific_mana_steps_in_game(&after, color, wanted) {
+            let candidate = next_steps.saturating_add(1);
+            best = Some(best.map_or(candidate, |current: i32| current.min(candidate)));
         }
     }
 
-    let Some(goal) = best_goal else {
-        return ExactSecureSearchOutcome {
-            query: ExactSecureManaQuery::default(),
-            path: None,
-        };
-    };
-
-    ExactSecureSearchOutcome {
-        query: ExactSecureManaQuery {
-            steps: Some(goal.steps),
-            safe_landing: goal.safe_landing,
-            scores_this_turn: goal.scores_this_turn,
-        },
-        path: want_path.then(|| reconstruct_exact_secure_path(states.as_slice(), goal)),
-    }
-}
-
-fn exact_secure_goal_better(
-    candidate: ExactSecureGoal,
-    current: Option<ExactSecureGoal>,
-) -> bool {
-    current.map_or(true, |current| {
-        candidate.steps < current.steps
-            || (candidate.steps == current.steps
-                && candidate.scores_this_turn
-                && !current.scores_this_turn)
-    })
-}
-
-fn reconstruct_exact_secure_path(
-    states: &[ExactSecureState],
-    goal: ExactSecureGoal,
-) -> Vec<Location> {
-    let mut path = Vec::with_capacity(goal.steps.max(0) as usize);
-    let mut cursor = Some(goal.state_index);
-    while let Some(index) = cursor {
-        let state = &states[index];
-        if let Some(location) = state.via_location {
-            path.push(location);
-        }
-        cursor = state.previous_state;
-    }
-    path.reverse();
-    if let Some(tail_location) = goal.tail_location {
-        path.push(tail_location);
-    }
-    path
-}
-
-fn exact_state_has_safe_carrier(
-    board: &Board,
-    color: Color,
-    drainer_location: Location,
-    wanted: Mana,
-) -> bool {
-    matches!(
-        board.item(drainer_location),
-        Some(Item::MonWithMana { mana, .. }) if *mana == wanted
-    ) && is_drainer_exactly_safe_next_turn_on_board(board, color, drainer_location)
-}
-
-fn apply_exact_drainer_move_preview(
-    board: &Board,
-    color: Color,
-    from: Location,
-    to: Location,
-) -> Option<ExactDrainerMovePreview> {
-    let start_item = board.item(from).copied()?;
-    let start_mon = match start_item {
-        Item::Mon { mon } | Item::MonWithMana { mon, .. } => mon,
-        Item::Mana { .. } | Item::MonWithConsumable { .. } | Item::Consumable { .. } => {
-            return None
-        }
-    };
-    if start_mon.color != color || start_mon.kind != MonKind::Drainer || start_mon.is_fainted() {
-        return None;
-    }
-
-    let destination_item = board.item(to).copied();
-    let destination_square = board.square(to);
-    let legal = match start_item {
-        Item::Mon { .. } => match destination_item {
-            Some(Item::Mon { .. })
-            | Some(Item::MonWithMana { .. })
-            | Some(Item::MonWithConsumable { .. }) => false,
-            Some(Item::Mana { .. }) => true,
-            Some(Item::Consumable {
-                consumable: Consumable::BombOrPotion,
-            }) => true,
-            Some(Item::Consumable { .. }) => false,
-            None => square_allows_empty_mon(destination_square, MonKind::Drainer, color),
-        },
-        Item::MonWithMana { mana, .. } => match destination_item {
-            Some(Item::Mon { .. })
-            | Some(Item::MonWithMana { .. })
-            | Some(Item::MonWithConsumable { .. }) => false,
-            Some(Item::Mana { .. }) => true,
-            Some(Item::Consumable {
-                consumable: Consumable::BombOrPotion,
-            }) => true,
-            Some(Item::Consumable { .. }) => false,
-            None => square_allows_mana_carrier(destination_square, mana),
-        },
-        Item::Mana { .. } | Item::MonWithConsumable { .. } | Item::Consumable { .. } => false,
-    };
-    if !legal {
-        return None;
-    }
-
-    let mut board = board.clone();
-    board.remove_item(from);
-
-    let mut placed_item = start_item;
-    match (start_item, destination_item) {
-        (Item::Mon { mon }, Some(Item::Mana { mana })) => {
-            placed_item = Item::MonWithMana { mon, mana };
-        }
-        (Item::MonWithMana { mon, mana: old }, Some(Item::Mana { mana: new })) => {
-            board.put(Item::Mana { mana: old }, from);
-            placed_item = Item::MonWithMana { mon, mana: new };
-        }
-        (Item::Mon { mon }, Some(Item::Consumable { .. })) => {
-            placed_item = Item::Mon { mon };
-        }
-        (Item::MonWithMana { mon, mana }, Some(Item::Consumable { .. })) => {
-            placed_item = Item::MonWithMana { mon, mana };
-        }
-        _ => {}
-    }
-
-    let mut scored_mana = None;
-    if matches!(destination_square, Square::ManaPool { .. }) {
-        if let Some(mana) = placed_item.mana().copied() {
-            scored_mana = Some(mana);
-            if let Some(mon) = placed_item.mon().copied() {
-                placed_item = Item::Mon { mon };
-            } else {
-                return None;
-            }
-        }
-    }
-
-    board.put(placed_item, to);
-    Some(ExactDrainerMovePreview {
-        board,
-        drainer_location: to,
-        scored_mana,
-    })
+    best
 }
 
 pub(crate) fn exact_secure_specific_mana_path_from(
@@ -1948,15 +1317,89 @@ pub(crate) fn exact_secure_specific_mana_path_from(
     start: Location,
     wanted: Mana,
 ) -> Option<Vec<Location>> {
-    if find_awake_drainer(&game.board, color) != Some(start) {
+    let mut visiting = HashSet::new();
+    exact_secure_specific_mana_path_from_uncached(game, color, start, wanted, &mut visiting)
+}
+
+fn exact_secure_specific_mana_path_from_uncached(
+    game: &MonsGame,
+    color: Color,
+    start: Location,
+    wanted: Mana,
+    visiting: &mut HashSet<(u64, Mana)>,
+) -> Option<Vec<Location>> {
+    let state_hash = MonsGameModel::search_state_hash(game);
+    let key = (state_hash, wanted);
+    if !visiting.insert(key) {
         return None;
     }
-    let remaining_moves = if game.active_color == color {
-        (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0)
+
+    let result = if matches!(
+        game.board.item(start),
+        Some(Item::MonWithMana { mana, .. }) if *mana == wanted
+    ) && is_drainer_exactly_safe_next_turn_on_board(&game.board, color, start)
+    {
+        Some(Vec::new())
+    } else if game.active_color != color || !game.player_can_move_mon() {
+        None
     } else {
-        Config::MONS_MOVES_PER_TURN
+        let mut best_path: Option<Vec<Location>> = None;
+
+        for &next in start.nearby_locations_ref() {
+            let mut after = game.clone_for_simulation();
+            let Output::Events(events) = after.process_input(
+                vec![Input::Location(start), Input::Location(next)],
+                false,
+                false,
+            ) else {
+                continue;
+            };
+
+            let candidate_path = if events.iter().any(|event| {
+                matches!(
+                    event,
+                    Event::ManaScored { mana, .. } if *mana == wanted
+                )
+            }) {
+                Some(vec![next])
+            } else if exact_secure_specific_mana_steps_in_game(&after, color, wanted).is_some() {
+                let Some(next_start) = find_awake_drainer(&after.board, color) else {
+                    continue;
+                };
+                let Some(mut suffix) = exact_secure_specific_mana_path_from_uncached(
+                    &after,
+                    color,
+                    next_start,
+                    wanted,
+                    visiting,
+                ) else {
+                    continue;
+                };
+                let mut path = Vec::with_capacity(suffix.len() + 1);
+                path.push(next);
+                path.append(&mut suffix);
+                Some(path)
+            } else {
+                None
+            };
+
+            let Some(candidate_path) = candidate_path else {
+                continue;
+            };
+            let replace = match &best_path {
+                None => true,
+                Some(current) => candidate_path.len() < current.len(),
+            };
+            if replace {
+                best_path = Some(candidate_path);
+            }
+        }
+
+        best_path
     };
-    exact_secure_specific_mana_search(&game.board, color, wanted, remaining_moves, true).path
+
+    visiting.remove(&key);
+    result
 }
 
 fn can_attack_opponent_drainer_exact(game: &MonsGame, color: Color) -> bool {
@@ -2001,13 +1444,7 @@ fn exact_spirit_summary(
     remaining_mon_moves: i32,
     can_use_action: bool,
 ) -> ExactSpiritSummary {
-    let started = Instant::now();
     if remaining_mon_moves < 0 {
-        record_exact_query_diagnostics(
-            ExactQueryFamily::SpiritAssist,
-            Some(false),
-            started.elapsed().as_nanos() as u64,
-        );
         return ExactSpiritSummary::default();
     }
     let key = ExactSpiritSummaryKey {
@@ -2019,11 +1456,6 @@ fn exact_spirit_summary(
     if let Some(cached) =
         EXACT_SPIRIT_SUMMARY_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
     {
-        record_exact_query_diagnostics(
-            ExactQueryFamily::SpiritAssist,
-            Some(true),
-            started.elapsed().as_nanos() as u64,
-        );
         return cached;
     }
 
@@ -2037,11 +1469,6 @@ fn exact_spirit_summary(
         }
         cache.entries.insert(key, summary);
     });
-    record_exact_query_diagnostics(
-        ExactQueryFamily::SpiritAssist,
-        Some(false),
-        started.elapsed().as_nanos() as u64,
-    );
     summary
 }
 
@@ -2245,8 +1672,8 @@ fn reachable_spirit_positions(
         return cached;
     }
 
-    let mut queue = VecDeque::with_capacity(64);
-    let mut seen = HashSet::with_capacity(128);
+    let mut queue = VecDeque::new();
+    let mut seen = HashSet::new();
     queue.push_back((start, 0));
     seen.insert(start);
     let mut positions = Vec::new();

@@ -1014,7 +1014,6 @@ struct SmartSearchConfig {
     interview_soft_mana_handoff_penalty: i32,
     interview_soft_roundtrip_penalty: i32,
     enable_enhanced_drainer_vulnerability: bool,
-    enable_exact_safe_landing_efficiency_bonus: bool,
     enable_supermana_prepass_exception: bool,
     enable_opponent_mana_prepass_exception: bool,
     enable_walk_threat_prefilter: bool,
@@ -1384,7 +1383,6 @@ impl SmartSearchConfig {
             interview_soft_mana_handoff_penalty: SMART_INTERVIEW_SOFT_MANA_HANDOFF_PENALTY,
             interview_soft_roundtrip_penalty: SMART_INTERVIEW_SOFT_ROUNDTRIP_PENALTY,
             enable_enhanced_drainer_vulnerability: false,
-            enable_exact_safe_landing_efficiency_bonus: false,
             enable_supermana_prepass_exception: false,
             enable_opponent_mana_prepass_exception: false,
             enable_walk_threat_prefilter: false,
@@ -1521,10 +1519,6 @@ struct MoveEfficiencySnapshot {
     opponent_safe_supermana_progress: bool,
     my_safe_opponent_mana_progress: bool,
     opponent_safe_opponent_mana_progress: bool,
-    my_safe_supermana_landing_now: bool,
-    opponent_safe_supermana_landing_now: bool,
-    my_safe_opponent_mana_landing_now: bool,
-    opponent_safe_opponent_mana_landing_now: bool,
     my_safe_supermana_progress_steps: i32,
     opponent_safe_supermana_progress_steps: i32,
     my_safe_opponent_mana_progress_steps: i32,
@@ -1755,7 +1749,6 @@ impl MonsGameModel {
         let in_progress = self.smart_search_in_progress.clone();
 
         clear_exact_state_analysis_cache();
-        reset_exact_query_diagnostics();
         let config = self.runtime_config_for_preference(preference);
         let perspective = self.game.active_color;
         let game = self.game.clone_for_simulation();
@@ -2927,7 +2920,6 @@ impl MonsGameModel {
                 true,
                 config.enable_backtrack_penalty,
                 config.enable_root_mana_handoff_guard,
-                config.enable_exact_safe_landing_efficiency_bonus,
                 config.root_backtrack_penalty,
                 config.root_mana_handoff_penalty,
             )
@@ -2960,15 +2952,13 @@ impl MonsGameModel {
         } else {
             None
         };
-        let exact_queries = if simulated_game.active_color == perspective {
-            exact_turn_query_bundle(&simulated_game, perspective)
-        } else {
-            ExactTurnQueryBundle {
+        let exact_turn = exact_analysis.map_or(
+            ExactTurnSummary {
                 color: Some(perspective),
-                ..ExactTurnQueryBundle::default()
-            }
-        };
-        let exact_turn = exact_queries.summary();
+                ..ExactTurnSummary::default()
+            },
+            |analysis| analysis.active_turn,
+        );
         let unknown_progress_steps = Config::BOARD_SIZE + 4;
         let safe_supermana_progress_steps =
             exact_turn.safe_supermana_progress_steps.unwrap_or(unknown_progress_steps);
@@ -2996,25 +2986,18 @@ impl MonsGameModel {
         let spirit_same_turn_score_setup_now = Self::events_include_spirit_target_move(&events)
             && simulated_game.active_color == perspective
             && same_turn_score_window_value > 0;
-        let exact_safe_supermana_pickup_now = exact_turn.safe_supermana_progress_steps == Some(0)
-            && exact_turn.safe_supermana_landing.is_some();
-        let exact_safe_opponent_mana_pickup_now =
-            exact_turn.safe_opponent_mana_progress_steps == Some(0)
-                && exact_turn.safe_opponent_mana_landing.is_some();
-        let safe_supermana_pickup_now = exact_safe_supermana_pickup_now
-            || Self::events_pickup_supermana(&events)
-                && Self::own_drainer_carries_specific_mana_safely(
-                    &simulated_game.board,
-                    perspective,
-                    Mana::Supermana,
-                );
-        let safe_opponent_mana_pickup_now = exact_safe_opponent_mana_pickup_now
-            || Self::events_pickup_opponent_mana(&events, perspective)
-                && Self::own_drainer_carries_specific_mana_safely(
-                    &simulated_game.board,
-                    perspective,
-                    Mana::Regular(perspective.other()),
-                );
+        let safe_supermana_pickup_now = Self::events_pickup_supermana(&events)
+            && Self::own_drainer_carries_specific_mana_safely(
+                &simulated_game.board,
+                perspective,
+                Mana::Supermana,
+            );
+        let safe_opponent_mana_pickup_now = Self::events_pickup_opponent_mana(&events, perspective)
+            && Self::own_drainer_carries_specific_mana_safely(
+                &simulated_game.board,
+                perspective,
+                Mana::Regular(perspective.other()),
+            );
         let spirit_own_mana_setup_now =
             Self::events_spirit_scoring_mana_setup(&events, &simulated_game.board, perspective);
         let supermana_progress = scores_supermana_this_turn
@@ -4614,7 +4597,14 @@ impl MonsGameModel {
         }
 
         let exact_analysis_before = exact_state_analysis(game);
-        let exact_turn_before = exact_turn_summary(game, perspective);
+        let exact_turn_before = if exact_analysis_before.active_turn.color == Some(perspective) {
+            exact_analysis_before.active_turn
+        } else {
+            ExactTurnSummary {
+                color: Some(perspective),
+                ..ExactTurnSummary::default()
+            }
+        };
         let exact_spirit_setup_gain_before = exact_analysis_before
             .color_summary(perspective)
             .spirit
@@ -5189,7 +5179,7 @@ impl MonsGameModel {
         let active_color = game.active_color;
         let analysis = exact_state_analysis(game);
         let active_summary = analysis.color_summary(active_color);
-        let turn_summary = exact_turn_summary(game, active_color);
+        let turn_summary = analysis.active_turn;
 
         active_summary.immediate_window.best_score > 0
             || turn_summary.can_attack_opponent_drainer
@@ -5917,7 +5907,6 @@ impl MonsGameModel {
         use_transposition_table: bool,
     ) -> Vec<Input> {
         clear_exact_state_analysis_cache();
-        reset_exact_query_diagnostics();
         let perspective = game.active_color;
         let root_moves = Self::ranked_root_moves(game, perspective, config);
         if root_moves.is_empty() {
@@ -6793,7 +6782,6 @@ impl MonsGameModel {
                     false,
                     false,
                     false,
-                    config.enable_exact_safe_landing_efficiency_bonus,
                     config.root_backtrack_penalty,
                     config.root_mana_handoff_penalty,
                 )
@@ -7195,7 +7183,6 @@ impl MonsGameModel {
         is_root: bool,
         apply_backtrack_penalty: bool,
         apply_root_mana_handoff_guard: bool,
-        enable_exact_safe_landing_bonus: bool,
         root_backtrack_penalty: i32,
         root_mana_handoff_penalty: i32,
     ) -> i32 {
@@ -7266,25 +7253,6 @@ impl MonsGameModel {
             && after.opponent_safe_opponent_mana_progress
         {
             delta -= 110;
-        }
-        if enable_exact_safe_landing_bonus {
-            if !before.my_safe_supermana_landing_now && after.my_safe_supermana_landing_now {
-                delta += 150;
-            }
-            if !before.opponent_safe_supermana_landing_now
-                && after.opponent_safe_supermana_landing_now
-            {
-                delta -= 135;
-            }
-            if !before.my_safe_opponent_mana_landing_now && after.my_safe_opponent_mana_landing_now
-            {
-                delta += 135;
-            }
-            if !before.opponent_safe_opponent_mana_landing_now
-                && after.opponent_safe_opponent_mana_landing_now
-            {
-                delta -= 125;
-            }
         }
         delta += Self::step_progress_delta(
             before.my_safe_supermana_progress_steps,
@@ -7389,24 +7357,22 @@ impl MonsGameModel {
         let analysis = exact_state_analysis(game);
         let my_summary = analysis.color_summary(perspective);
         let opponent_summary = analysis.color_summary(perspective.other());
-        let my_turn_queries = if game.active_color == perspective {
-            exact_turn_query_bundle(game, perspective)
+        let my_turn_summary = if game.active_color == perspective {
+            exact_turn_summary(game, perspective)
         } else {
-            ExactTurnQueryBundle {
+            ExactTurnSummary {
                 color: Some(perspective),
-                ..ExactTurnQueryBundle::default()
+                ..ExactTurnSummary::default()
             }
         };
-        let opponent_turn_queries = if game.active_color == perspective.other() {
-            exact_turn_query_bundle(game, perspective.other())
+        let opponent_turn_summary = if game.active_color == perspective.other() {
+            exact_turn_summary(game, perspective.other())
         } else {
-            ExactTurnQueryBundle {
+            ExactTurnSummary {
                 color: Some(perspective.other()),
-                ..ExactTurnQueryBundle::default()
+                ..ExactTurnSummary::default()
             }
         };
-        let my_turn_summary = my_turn_queries.summary();
-        let opponent_turn_summary = opponent_turn_queries.summary();
 
         let mut snapshot = MoveEfficiencySnapshot {
             my_best_carrier_steps: my_summary.best_carrier_steps.unwrap_or(unknown_steps),
@@ -7451,20 +7417,6 @@ impl MonsGameModel {
             opponent_safe_supermana_progress: opponent_turn_summary.safe_supermana_progress,
             my_safe_opponent_mana_progress: my_turn_summary.safe_opponent_mana_progress,
             opponent_safe_opponent_mana_progress: opponent_turn_summary.safe_opponent_mana_progress,
-            my_safe_supermana_landing_now: my_turn_summary.safe_supermana_progress_steps == Some(0)
-                && my_turn_summary.safe_supermana_landing.is_some(),
-            opponent_safe_supermana_landing_now: opponent_turn_summary
-                .safe_supermana_progress_steps
-                == Some(0)
-                && opponent_turn_summary.safe_supermana_landing.is_some(),
-            my_safe_opponent_mana_landing_now: my_turn_summary
-                .safe_opponent_mana_progress_steps
-                == Some(0)
-                && my_turn_summary.safe_opponent_mana_landing.is_some(),
-            opponent_safe_opponent_mana_landing_now: opponent_turn_summary
-                .safe_opponent_mana_progress_steps
-                == Some(0)
-                && opponent_turn_summary.safe_opponent_mana_landing.is_some(),
             my_safe_supermana_progress_steps: my_turn_summary
                 .safe_supermana_progress_steps
                 .unwrap_or(unknown_steps),
@@ -12462,7 +12414,6 @@ mod opening_book_tests {
             false,
             false,
             false,
-            true,
             0,
             0,
         );
@@ -12520,7 +12471,6 @@ mod opening_book_tests {
             false,
             false,
             false,
-            true,
             0,
             0,
         );
