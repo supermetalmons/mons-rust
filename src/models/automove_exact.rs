@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 const EXACT_ANALYSIS_CACHE_MAX_ENTRIES: usize = 512;
+const EXACT_SECURE_MANA_CACHE_MAX_ENTRIES: usize = 4096;
 const EXACT_SPIRIT_UTILITY_CAP: i32 = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -89,14 +90,27 @@ pub(crate) struct ExactStateAnalysisCache {
     entries: HashMap<u64, ExactStateAnalysis>,
 }
 
+#[derive(Default)]
+struct ExactSecureManaCache {
+    entries: HashMap<(u64, Mana), bool>,
+    visiting: HashSet<(u64, Mana)>,
+}
+
 thread_local! {
     static EXACT_STATE_ANALYSIS_CACHE: RefCell<ExactStateAnalysisCache> =
         RefCell::new(ExactStateAnalysisCache::default());
+    static EXACT_SECURE_MANA_CACHE: RefCell<ExactSecureManaCache> =
+        RefCell::new(ExactSecureManaCache::default());
 }
 
 #[inline]
 pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_STATE_ANALYSIS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
+    EXACT_SECURE_MANA_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        cache.entries.clear();
+        cache.visiting.clear();
+    });
 }
 
 pub(crate) fn exact_state_analysis(game: &MonsGame) -> ExactStateAnalysis {
@@ -782,15 +796,46 @@ fn can_secure_specific_mana_on_board(
     game.white_potions_count = 0;
     game.black_potions_count = 0;
 
-    let mut seen = HashSet::new();
-    can_secure_specific_mana_in_game(&game, color, wanted, &mut seen)
+    can_secure_specific_mana_in_game(&game, color, wanted)
 }
 
 fn can_secure_specific_mana_in_game(
     game: &MonsGame,
     color: Color,
     wanted: Mana,
-    seen: &mut HashSet<u64>,
+) -> bool {
+    let state_hash = MonsGameModel::search_state_hash(game);
+    let key = (state_hash, wanted);
+    if let Some(cached) =
+        EXACT_SECURE_MANA_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
+    {
+        return cached;
+    }
+
+    let can_visit = EXACT_SECURE_MANA_CACHE.with(|cache| cache.borrow_mut().visiting.insert(key));
+    if !can_visit {
+        return false;
+    }
+
+    let result = can_secure_specific_mana_in_game_uncached(game, color, wanted);
+    EXACT_SECURE_MANA_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        cache.visiting.remove(&key);
+        if cache.entries.len() >= EXACT_SECURE_MANA_CACHE_MAX_ENTRIES
+            && !cache.entries.contains_key(&key)
+        {
+            cache.entries.clear();
+            cache.visiting.clear();
+        }
+        cache.entries.insert(key, result);
+    });
+    result
+}
+
+fn can_secure_specific_mana_in_game_uncached(
+    game: &MonsGame,
+    color: Color,
+    wanted: Mana,
 ) -> bool {
     let Some(drainer_location) = find_awake_drainer(&game.board, color) else {
         return false;
@@ -819,11 +864,6 @@ fn can_secure_specific_mana_in_game(
         return false;
     }
 
-    let state_hash = MonsGameModel::search_state_hash(game);
-    if !seen.insert(state_hash) {
-        return false;
-    }
-
     for &next in drainer_location.nearby_locations_ref() {
         let mut after = game.clone_for_simulation();
         let Output::Events(events) = after.process_input(
@@ -841,7 +881,7 @@ fn can_secure_specific_mana_in_game(
         }) {
             return true;
         }
-        if can_secure_specific_mana_in_game(&after, color, wanted, seen) {
+        if can_secure_specific_mana_in_game(&after, color, wanted) {
             return true;
         }
     }
@@ -1453,6 +1493,44 @@ mod tests {
             Color::White,
         );
         assert!(exact_turn_summary(&game, Color::White).safe_supermana_progress);
+    }
+
+    #[test]
+    fn exact_secure_mana_cache_preserves_repeated_supermana_result() {
+        clear_exact_state_analysis_cache();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let first =
+            can_secure_specific_mana_on_board(&game.board, Color::White, Mana::Supermana, 5);
+        let second =
+            can_secure_specific_mana_on_board(&game.board, Color::White, Mana::Supermana, 5);
+        clear_exact_state_analysis_cache();
+        let third =
+            can_secure_specific_mana_on_board(&game.board, Color::White, Mana::Supermana, 5);
+
+        assert_eq!(first, second);
+        assert_eq!(first, third);
     }
 
     #[test]
