@@ -1623,7 +1623,7 @@ struct LegalInputTransition {
     events: Vec<Event>,
 }
 
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AsyncSmartSearchPhase {
     PendingRootRanking,
@@ -1631,13 +1631,13 @@ enum AsyncSmartSearchPhase {
     Scoring,
 }
 
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(test)]
 enum AsyncSmartSearchStart {
     Immediate(OutputModel),
     Pending(AsyncSmartSearchState),
 }
 
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(test)]
 struct AsyncSmartSearchState {
     game: MonsGame,
     perspective: Color,
@@ -1726,11 +1726,6 @@ impl MonsGameModel {
     #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen(js_name = smartAutomoveAsync)]
     pub fn smart_automove_async(&self, preference: &str) -> js_sys::Promise {
-        use std::cell::RefCell;
-        use std::rc::Rc;
-        use wasm_bindgen::closure::Closure;
-        use wasm_bindgen::JsCast;
-
         let Some(preference) = SmartAutomovePreference::from_api_value(preference) else {
             let message = format!(
                 "invalid smart automove mode; expected '{}', '{}', '{}', or '{}'",
@@ -1748,93 +1743,10 @@ impl MonsGameModel {
             ));
         }
 
-        let started = self.begin_async_smart_search(preference);
-        if let AsyncSmartSearchStart::Immediate(output) = started {
-            return js_sys::Promise::resolve(&JsValue::from(output));
-        }
-
         self.smart_search_in_progress.set(true);
-        let in_progress = self.smart_search_in_progress.clone();
-
-        let state = Rc::new(RefCell::new(match started {
-            AsyncSmartSearchStart::Immediate(_) => unreachable!(),
-            AsyncSmartSearchStart::Pending(state) => state,
-        }));
-
-        js_sys::Promise::new(&mut move |resolve, reject| {
-            let global = js_sys::global();
-            let set_timeout = match js_sys::Reflect::get(&global, &JsValue::from_str("setTimeout"))
-                .ok()
-                .and_then(|value| value.dyn_into::<js_sys::Function>().ok())
-            {
-                Some(function) => function,
-                None => {
-                    in_progress.set(false);
-                    let _ = reject.call1(
-                        &JsValue::NULL,
-                        &JsValue::from_str("setTimeout is not available"),
-                    );
-                    return;
-                }
-            };
-
-            let tick: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));
-            let tick_for_closure = tick.clone();
-            let state_inner = state.clone();
-            let resolve_inner = resolve.clone();
-            let reject_inner = reject.clone();
-            let set_timeout_inner = set_timeout.clone();
-            let in_progress_inner = in_progress.clone();
-
-            *tick.borrow_mut() = Some(Closure::wrap(Box::new(move || {
-                let done = {
-                    let mut borrowed = state_inner.borrow_mut();
-                    Self::advance_async_search(&mut borrowed)
-                };
-
-                if done {
-                    let output = {
-                        let mut borrowed = state_inner.borrow_mut();
-                        Self::finalize_async_search(&mut borrowed)
-                    };
-                    in_progress_inner.set(false);
-                    let _ = resolve_inner.call1(&JsValue::NULL, &JsValue::from(output));
-                    tick_for_closure.borrow_mut().take();
-                    return;
-                }
-
-                let callback = {
-                    let borrowed = tick_for_closure.borrow();
-                    borrowed.as_ref().map(|cb| cb.as_ref().clone())
-                };
-
-                if let Some(cb) = callback {
-                    if let Err(err) = set_timeout_inner.call2(
-                        &JsValue::NULL,
-                        cb.unchecked_ref(),
-                        &JsValue::from_f64(0.0),
-                    ) {
-                        in_progress_inner.set(false);
-                        let _ = reject_inner.call1(&JsValue::NULL, &err);
-                        tick_for_closure.borrow_mut().take();
-                    }
-                }
-            }) as Box<dyn FnMut()>));
-
-            let initial_callback = {
-                let borrowed = tick.borrow();
-                borrowed.as_ref().map(|cb| cb.as_ref().clone())
-            };
-            if let Some(cb) = initial_callback {
-                let schedule_result =
-                    set_timeout.call2(&JsValue::NULL, cb.unchecked_ref(), &JsValue::from_f64(0.0));
-                if let Err(err) = schedule_result {
-                    in_progress.set(false);
-                    let _ = reject.call1(&JsValue::NULL, &err);
-                    tick.borrow_mut().take();
-                }
-            }
-        })
+        let output = self.smart_automove_output(preference);
+        self.smart_search_in_progress.set(false);
+        js_sys::Promise::resolve(&JsValue::from(output))
     }
 
     pub fn automove(&mut self) -> OutputModel {
@@ -2145,6 +2057,31 @@ impl MonsGameModel {
             .set(ProRuntimeContext::OpeningBookDriven);
     }
 
+    fn smart_automove_output(&self, preference: SmartAutomovePreference) -> OutputModel {
+        if let Some(opening_inputs) = Self::white_first_turn_opening_next_inputs(&self.game) {
+            let mut game = self.game.clone_for_simulation();
+            let input_fen = Input::fen_from_array(&opening_inputs);
+            let output = game.process_input(opening_inputs, false, false);
+            if matches!(output, Output::Events(_)) {
+                self.mark_opening_book_driven_context();
+                return OutputModel::new(output, input_fen.as_str());
+            }
+        }
+
+        let config = self.runtime_config_for_preference(preference);
+        let inputs = Self::smart_search_best_inputs(&self.game, config);
+        if inputs.is_empty() {
+            let mut game = self.game.clone_for_simulation();
+            return Self::automove_game(&mut game);
+        }
+
+        let mut game = self.game.clone_for_simulation();
+        let input_fen = Input::fen_from_array(&inputs);
+        let output = game.process_input(inputs, false, false);
+        OutputModel::new(output, input_fen.as_str())
+    }
+
+    #[cfg(test)]
     fn new_async_smart_search_state(
         game: MonsGame,
         perspective: Color,
@@ -2168,6 +2105,7 @@ impl MonsGameModel {
         }
     }
 
+    #[cfg(test)]
     fn begin_async_smart_search(
         &self,
         preference: SmartAutomovePreference,
@@ -5929,7 +5867,7 @@ impl MonsGameModel {
         scored_states.swap(swap_index, replacement_index);
     }
 
-    #[cfg(test)]
+    #[cfg(any(target_arch = "wasm32", test))]
     fn smart_search_best_inputs(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
         Self::smart_search_best_inputs_internal(game, config, true)
     }
@@ -5942,7 +5880,7 @@ impl MonsGameModel {
         Self::smart_search_best_inputs_internal(game, config, false)
     }
 
-    #[cfg(test)]
+    #[cfg(any(target_arch = "wasm32", test))]
     fn smart_search_best_inputs_internal(
         game: &MonsGame,
         config: SmartSearchConfig,
@@ -7678,7 +7616,7 @@ impl MonsGameModel {
         value ^ (value >> 31)
     }
 
-    #[cfg(any(target_arch = "wasm32", test))]
+    #[cfg(test)]
     fn advance_async_search(state: &mut AsyncSmartSearchState) -> bool {
         match state.phase {
             AsyncSmartSearchPhase::PendingRootRanking => {
@@ -7787,7 +7725,7 @@ impl MonsGameModel {
         }
     }
 
-    #[cfg(any(target_arch = "wasm32", test))]
+    #[cfg(test)]
     fn finalize_async_search(state: &mut AsyncSmartSearchState) -> OutputModel {
         if let Some(output) = state.pending_output.take() {
             return output;
@@ -9582,30 +9520,32 @@ mod opening_book_tests {
         assert_eq!(game.active_color, Color::Black);
     }
 
-    fn advance_async_opening_book_until_black_turn(
+    fn clone_model_for_smart_automove_tests(model: &MonsGameModel) -> MonsGameModel {
+        let cloned = MonsGameModel::with_game(model.game.clone_for_simulation());
+        cloned
+            .pro_runtime_context_hint
+            .set(model.pro_runtime_context_hint.get());
+        cloned
+    }
+
+    fn advance_smart_opening_book_until_black_turn(
         model: &mut MonsGameModel,
         preference: SmartAutomovePreference,
     ) {
         let mut applied_steps = 0;
         while model.game.turn_number == 1 && applied_steps < 8 {
-            let output = match model.begin_async_smart_search(preference) {
-                AsyncSmartSearchStart::Immediate(output) => output,
-                AsyncSmartSearchStart::Pending(_) => panic!(
-                    "expected opening-book immediate output for {} during white first turn",
-                    preference.as_api_value()
-                ),
-            };
+            let output = model.smart_automove_output(preference);
             assert_eq!(
                 output.kind,
                 OutputModelKind::Events,
-                "opening-book async output should be events for {}",
+                "opening-book smart output should be events for {}",
                 preference.as_api_value()
             );
             let applied = model.process_input_fen(output.input_fen().as_str());
             assert_eq!(
                 applied.kind,
                 OutputModelKind::Events,
-                "opening-book input fen should apply cleanly for {}",
+                "opening-book smart input fen should apply cleanly for {}",
                 preference.as_api_value()
             );
             applied_steps += 1;
@@ -9619,15 +9559,15 @@ mod opening_book_tests {
         assert_eq!(model.game.active_color, Color::Black);
     }
 
-    fn apply_async_preference_step(
+    fn apply_smart_preference_step(
         model: &mut MonsGameModel,
         preference: SmartAutomovePreference,
     ) -> OutputModel {
-        let output = model.smart_automove_output_via_async_loop(preference);
+        let output = model.smart_automove_output(preference);
         assert_eq!(
             output.kind,
             OutputModelKind::Events,
-            "async smart automove should produce events for {}",
+            "smart automove should produce events for {}",
             preference.as_api_value()
         );
         let input_fen = output.input_fen();
@@ -9635,13 +9575,13 @@ mod opening_book_tests {
         assert_eq!(
             applied.kind,
             OutputModelKind::Events,
-            "async smart automove input fen should apply cleanly for {}",
+            "smart automove input fen should apply cleanly for {}",
             preference.as_api_value()
         );
         applied
     }
 
-    fn play_async_preference_until_end(
+    fn play_smart_preference_until_end(
         preference: SmartAutomovePreference,
         max_plies: usize,
     ) -> Color {
@@ -9649,12 +9589,12 @@ mod opening_book_tests {
         let mut previous_fen = model.fen();
 
         for ply in 0..max_plies {
-            let _ = apply_async_preference_step(&mut model, preference);
+            let _ = apply_smart_preference_step(&mut model, preference);
             let next_fen = model.fen();
             assert_ne!(
                 next_fen,
                 previous_fen,
-                "async smart automove should advance the board for {} at ply {}",
+                "smart automove should advance the board for {} at ply {}",
                 preference.as_api_value(),
                 ply + 1
             );
@@ -9665,7 +9605,7 @@ mod opening_book_tests {
         }
 
         panic!(
-            "async smart automove for {} did not finish within {} plies",
+            "smart automove for {} did not finish within {} plies",
             preference.as_api_value(),
             max_plies
         );
@@ -9849,7 +9789,7 @@ mod opening_book_tests {
     }
 
     #[test]
-    fn smart_automove_async_defers_root_preparation_after_opening_turn_for_all_modes() {
+    fn smart_automove_output_uses_opening_book_until_black_turn_for_all_modes() {
         for preference in [
             SmartAutomovePreference::Fast,
             SmartAutomovePreference::Normal,
@@ -9857,54 +9797,90 @@ mod opening_book_tests {
             SmartAutomovePreference::Ultra,
         ] {
             let mut model = MonsGameModel::new_for_simulation();
-            advance_async_opening_book_until_black_turn(&mut model, preference);
+            advance_smart_opening_book_until_black_turn(&mut model, preference);
+            assert_eq!(
+                model.pro_runtime_context_hint_for_tests(),
+                ProRuntimeContext::OpeningBookDriven
+            );
+        }
+    }
 
-            let state = match model.begin_async_smart_search(preference) {
-                AsyncSmartSearchStart::Immediate(_) => panic!(
-                    "expected pending async search after opening turn for {}",
-                    preference.as_api_value()
+    #[test]
+    fn smart_automove_sync_matches_async_pipeline_on_sparse_tactical_position_for_all_modes() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(5, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::White, 0),
+                    },
                 ),
-                AsyncSmartSearchStart::Pending(state) => state,
-            };
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        let base_model = MonsGameModel::with_game(game);
+        base_model
+            .pro_runtime_context_hint
+            .set(ProRuntimeContext::Independent);
 
-            assert_eq!(state.phase, AsyncSmartSearchPhase::PendingRootRanking);
-            assert_eq!(state.game.turn_number, 2);
-            assert_eq!(state.game.active_color, Color::Black);
-            assert_eq!(state.perspective, Color::Black);
-            assert!(state.root_moves.is_empty());
-            assert!(state.pending_output.is_none());
-            assert_eq!(state.next_index, 0);
-            assert_eq!(state.visited_nodes, 0);
-            assert_eq!(state.alpha, i32::MIN);
-            assert_eq!(state.extension_nodes_used, 0);
-            assert_eq!(state.extension_node_budget, 0);
-            assert!(state.scored_roots.is_empty());
-            assert!(state.transposition_table.is_empty());
+        for preference in [
+            SmartAutomovePreference::Fast,
+            SmartAutomovePreference::Normal,
+            SmartAutomovePreference::Pro,
+            SmartAutomovePreference::Ultra,
+        ] {
+            let sync_model = clone_model_for_smart_automove_tests(&base_model);
+            let async_model = clone_model_for_smart_automove_tests(&base_model);
+
+            let sync_output = sync_model.smart_automove_output(preference);
+            let async_output = async_model.smart_automove_output_via_async_loop(preference);
+
+            assert_eq!(sync_output.kind, OutputModelKind::Events);
+            assert_eq!(async_output.kind, OutputModelKind::Events);
+            assert_eq!(
+                sync_output.input_fen(),
+                async_output.input_fen(),
+                "sync production helper should match test-only async pipeline for {}",
+                preference.as_api_value()
+            );
         }
     }
 
     #[test]
     #[ignore = "long-running end-to-end smart automove test for fast mode"]
-    fn smart_automove_fast_till_end_via_async_loop() {
-        let _ = play_async_preference_until_end(SmartAutomovePreference::Fast, 512);
+    fn smart_automove_fast_till_end() {
+        let _ = play_smart_preference_until_end(SmartAutomovePreference::Fast, 512);
     }
 
     #[test]
     #[ignore = "long-running end-to-end smart automove test for normal mode"]
-    fn smart_automove_normal_till_end_via_async_loop() {
-        let _ = play_async_preference_until_end(SmartAutomovePreference::Normal, 512);
+    fn smart_automove_normal_till_end() {
+        let _ = play_smart_preference_until_end(SmartAutomovePreference::Normal, 512);
     }
 
     #[test]
     #[ignore = "long-running end-to-end smart automove test for pro mode"]
-    fn smart_automove_pro_till_end_via_async_loop() {
-        let _ = play_async_preference_until_end(SmartAutomovePreference::Pro, 512);
+    fn smart_automove_pro_till_end() {
+        let _ = play_smart_preference_until_end(SmartAutomovePreference::Pro, 512);
     }
 
     #[test]
     #[ignore = "long-running end-to-end smart automove test for ultra mode"]
-    fn smart_automove_ultra_till_end_via_async_loop() {
-        let _ = play_async_preference_until_end(SmartAutomovePreference::Ultra, 512);
+    fn smart_automove_ultra_till_end() {
+        let _ = play_smart_preference_until_end(SmartAutomovePreference::Ultra, 512);
     }
 
     #[test]
