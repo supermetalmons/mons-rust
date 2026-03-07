@@ -9928,6 +9928,63 @@ mod opening_book_tests {
     }
 
     #[test]
+    fn move_efficiency_rewards_faster_exact_safe_opponent_mana_progress() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 4),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let exact_turn_before =
+            crate::models::automove_exact::exact_turn_summary(&game, Color::White);
+        assert_eq!(exact_turn_before.safe_opponent_mana_progress_steps, Some(1));
+
+        let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(
+            &game,
+            &[
+                Input::Location(Location::new(6, 5)),
+                Input::Location(Location::new(5, 4)),
+            ],
+        )
+        .expect("shortening opponent mana path inputs should be legal");
+        let exact_turn_after =
+            crate::models::automove_exact::exact_turn_summary(&after, Color::White);
+        assert_eq!(exact_turn_after.safe_opponent_mana_progress_steps, Some(0));
+
+        let delta = MonsGameModel::move_efficiency_delta(
+            &game,
+            &after,
+            Color::White,
+            &events,
+            false,
+            false,
+            false,
+            0,
+            0,
+        );
+        assert!(delta > 0);
+    }
+
+    #[test]
     fn spirit_moves_own_mana_closer_to_pool_when_setup_is_strongest() {
         let white_spirit = Mon::new(MonKind::Spirit, Color::White, 0);
         let game = game_with_items(

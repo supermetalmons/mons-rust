@@ -2445,6 +2445,36 @@ mod tests {
     }
 
     #[test]
+    fn exact_turn_summary_detects_safe_opponent_mana_progress_steps() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 4),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let turn = exact_turn_summary(&game, Color::White);
+        assert!(turn.safe_opponent_mana_progress);
+        assert_eq!(turn.safe_opponent_mana_progress_steps, Some(1));
+    }
+
+    #[test]
     fn exact_turn_summary_rejects_exact_vulnerable_supermana_progress() {
         let mut game = game_with_items(
             vec![
