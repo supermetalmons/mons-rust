@@ -921,6 +921,15 @@ fn model_current_best(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> 
     )
 }
 
+fn model_runtime_exact_path_landing_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    runtime.enable_exact_safe_landing_efficiency_bonus = true;
+    MonsGameModel::smart_search_best_inputs(game, runtime)
+}
+
 fn model_runtime_pre_efficiency_logic(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.enable_root_efficiency = false;
@@ -24185,6 +24194,7 @@ fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     match candidate_profile().as_str() {
         "base" => candidate_model_base(game, config),
         "runtime_current" => candidate_model_base(game, config),
+        "runtime_exact_path_landing_v1" => model_runtime_exact_path_landing_v1(game, config),
         "swift_2024_eval_reference" => model_swift_2024_eval_reference(game, config),
         "swift_2024_style_reference" => model_swift_2024_style_reference(game, config),
         "runtime_pre_pro_promotion_v1" => model_runtime_pre_pro_promotion_v1(game, config),
@@ -25522,6 +25532,10 @@ fn all_profile_variants() -> Vec<(&'static str, fn(&MonsGame, SmartSearchConfig)
     vec![
         ("base", candidate_model_base),
         ("runtime_current", candidate_model_base),
+        (
+            "runtime_exact_path_landing_v1",
+            model_runtime_exact_path_landing_v1,
+        ),
         ("swift_2024_eval_reference", model_swift_2024_eval_reference),
         (
             "swift_2024_style_reference",
@@ -31629,6 +31643,387 @@ fn smart_automove_pool_runtime_diagnostics() {
     );
 }
 
+fn exact_path_probe_cases() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "attack_drainer",
+            tactical_game_with_items(
+                vec![
+                    (
+                        Location::new(5, 5),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Mystic, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(10, 5),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(7, 7),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                        },
+                    ),
+                ],
+                Color::White,
+                2,
+            )
+            .fen(),
+        ),
+        (
+            "safe_supermana",
+            tactical_game_with_items(
+                vec![
+                    (
+                        Location::new(6, 5),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(10, 0),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Angel, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(5, 5),
+                        Item::Mana {
+                            mana: Mana::Supermana,
+                        },
+                    ),
+                    (
+                        Location::new(0, 10),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                        },
+                    ),
+                ],
+                Color::White,
+                2,
+            )
+            .fen(),
+        ),
+        (
+            "safe_opponent_mana",
+            tactical_game_with_items(
+                vec![
+                    (
+                        Location::new(8, 5),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(10, 0),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Angel, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(7, 5),
+                        Item::Mana {
+                            mana: Mana::Regular(Color::Black),
+                        },
+                    ),
+                    (
+                        Location::new(0, 10),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                        },
+                    ),
+                ],
+                Color::White,
+                2,
+            )
+            .fen(),
+        ),
+        (
+            "spirit_denial",
+            tactical_game_with_items(
+                vec![
+                    (
+                        Location::new(7, 1),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(9, 0),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(9, 1),
+                        Item::Mana {
+                            mana: Mana::Regular(Color::Black),
+                        },
+                    ),
+                ],
+                Color::White,
+                2,
+            )
+            .fen(),
+        ),
+        (
+            "protect_drainer",
+            tactical_game_with_items(
+                vec![
+                    (
+                        Location::new(8, 5),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(9, 4),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Angel, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(6, 7),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                        },
+                    ),
+                ],
+                Color::White,
+                2,
+            )
+            .fen(),
+        ),
+    ]
+}
+
+fn exact_query_family_json(label: &str, stats: ExactQueryFamilyDiagnostics) -> String {
+    format!(
+        r#""{}":{{"queries":{},"hits":{},"misses":{},"elapsed_ns":{}}}"#,
+        label, stats.queries, stats.cache_hits, stats.cache_misses, stats.elapsed_ns
+    )
+}
+
+#[test]
+#[ignore = "diagnostic: fixed FEN exact-path probe suite"]
+fn smart_automove_exact_path_probe_suite() {
+    let profile = candidate_profile().as_str().to_string();
+    let selector = CANDIDATE_MODEL.select_inputs;
+    let output_path = env::var("SMART_EXACT_PROBE_OUTPUT")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| default_named_artifact_path("exact_path_probe", profile.as_str()));
+    let cases = exact_path_probe_cases();
+    let budgets = client_budgets_with_pro_ultra();
+    let mut lines = Vec::new();
+
+    for budget in budgets.iter().copied() {
+        for (scenario_id, fen) in &cases {
+            let game = MonsGame::from_fen(fen.as_str(), false).expect("valid exact-path probe fen");
+            let config = budget.runtime_config_for_game(&game);
+            clear_exact_state_analysis_cache();
+            reset_exact_query_diagnostics();
+            set_exact_query_diagnostics_enabled(true);
+            let before = exact_turn_query_bundle(&game, game.active_color);
+            let inputs = selector(&game, config);
+            let diagnostics = exact_query_diagnostics_snapshot();
+            set_exact_query_diagnostics_enabled(false);
+            let selected_fen = Input::fen_from_array(&inputs);
+            let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+                .expect("exact-path probe move should be legal");
+            let drainer_safe_after = !MonsGameModel::is_own_drainer_vulnerable_next_turn(
+                &after,
+                game.active_color,
+                config.enable_enhanced_drainer_vulnerability,
+            );
+
+            lines.push(format!(
+                r#"{{"profile":"{}","scenario":"{}","mode":"{}","fen":"{}","selected":"{}","before_attack_drainer":{},"before_safe_supermana":{},"before_safe_supermana_scores":{},"before_safe_opponent_mana":{},"before_safe_opponent_mana_scores":{},"before_spirit_denial":{},"selected_attack_drainer":{},"selected_scores_supermana":{},"selected_scores_opponent_mana":{},"after_drainer_safe":{},"exact":{{{},{},{},{},{}}}}}"#,
+                json_escape(profile.as_str()),
+                scenario_id,
+                budget.key(),
+                json_escape(fen.as_str()),
+                json_escape(selected_fen.as_str()),
+                before.can_attack_opponent_drainer,
+                before.supermana.steps.is_some(),
+                before.supermana.scores_this_turn,
+                before.opponent_mana.steps.is_some(),
+                before.opponent_mana.scores_this_turn,
+                before.spirit.same_turn_opponent_mana_score,
+                MonsGameModel::events_include_opponent_drainer_fainted(&events, game.active_color),
+                MonsGameModel::events_score_supermana(&events),
+                MonsGameModel::events_score_opponent_mana(&events, game.active_color),
+                drainer_safe_after,
+                exact_query_family_json("attack_reach", diagnostics.attack_reach),
+                exact_query_family_json("drainer_pickup", diagnostics.drainer_pickup),
+                exact_query_family_json("secure_mana", diagnostics.secure_mana),
+                exact_query_family_json("safe_landing", diagnostics.safe_landing),
+                exact_query_family_json("spirit_assist", diagnostics.spirit_assist),
+            ));
+        }
+    }
+
+    write_jsonl_artifact(output_path.as_str(), lines.as_slice());
+    println!(
+        "exact path probe suite: profile={} modes={} scenarios={} output={}",
+        profile,
+        budgets.len(),
+        cases.len(),
+        output_path
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: exact query family speed probe across runtime modes"]
+fn smart_automove_pool_exact_query_speed_probe() {
+    let profile = candidate_profile().as_str().to_string();
+    let selector = CANDIDATE_MODEL.select_inputs;
+    let iterations = env_usize("SMART_EXACT_SPEED_ITERATIONS").unwrap_or(12).max(1);
+    let output_path = env::var("SMART_EXACT_SPEED_OUTPUT")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| default_named_artifact_path("exact_query_speed", profile.as_str()));
+    let cases = exact_path_probe_cases();
+    let budgets = client_budgets_with_pro_ultra();
+    let mut lines = Vec::new();
+
+    println!(
+        "exact query speed probe: profile={} iterations={} scenarios={} modes={:?}",
+        profile,
+        iterations,
+        cases.len(),
+        budgets
+            .iter()
+            .map(|budget| budget.key().to_string())
+            .collect::<Vec<_>>()
+    );
+
+    for budget in budgets.iter().copied() {
+        let started = Instant::now();
+        let mut total_inputs = 0usize;
+        let mut aggregate = ExactQueryDiagnosticsSnapshot::default();
+        for _ in 0..iterations {
+            for (_, fen) in &cases {
+                let game =
+                    MonsGame::from_fen(fen.as_str(), false).expect("valid exact speed probe fen");
+                let config = budget.runtime_config_for_game(&game);
+                clear_exact_state_analysis_cache();
+                reset_exact_query_diagnostics();
+                set_exact_query_diagnostics_enabled(true);
+                let inputs = selector(&game, config);
+                set_exact_query_diagnostics_enabled(false);
+                total_inputs += inputs.len();
+                aggregate.merge(exact_query_diagnostics_snapshot());
+            }
+        }
+
+        let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+        let positions = (iterations * cases.len()) as f64;
+        lines.push(format!(
+            r#"{{"profile":"{}","mode":"{}","iterations":{},"positions":{},"elapsed_ms":{:.3},"avg_ms_per_position":{:.5},"avg_inputs_per_position":{:.5},"exact":{{{},{},{},{},{}}}}}"#,
+            json_escape(profile.as_str()),
+            budget.key(),
+            iterations,
+            positions as usize,
+            elapsed_ms,
+            elapsed_ms / positions,
+            total_inputs as f64 / positions,
+            exact_query_family_json("attack_reach", aggregate.attack_reach),
+            exact_query_family_json("drainer_pickup", aggregate.drainer_pickup),
+            exact_query_family_json("secure_mana", aggregate.secure_mana),
+            exact_query_family_json("safe_landing", aggregate.safe_landing),
+            exact_query_family_json("spirit_assist", aggregate.spirit_assist),
+        ));
+        println!(
+            "exact query speed mode {}: elapsed_ms={:.2} avg_ms_per_position={:.4} avg_inputs={:.2} secure_queries={} secure_hits={} secure_misses={}",
+            budget.key(),
+            elapsed_ms,
+            elapsed_ms / positions,
+            total_inputs as f64 / positions,
+            aggregate.secure_mana.queries,
+            aggregate.secure_mana.cache_hits,
+            aggregate.secure_mana.cache_misses
+        );
+    }
+
+    write_jsonl_artifact(output_path.as_str(), lines.as_slice());
+    println!("exact query speed artifact: {}", output_path);
+}
+
+#[test]
+#[ignore = "diagnostic: exact query profile on opening speed probe positions"]
+fn smart_automove_pool_opening_exact_query_probe() {
+    let profile = candidate_profile().as_str().to_string();
+    let selector = CANDIDATE_MODEL.select_inputs;
+    let positions = env_usize("SMART_OPENING_EXACT_POSITIONS").unwrap_or(1).max(1);
+    let openings = generate_opening_fens(seed_for_pairing("speed", "probe"), positions);
+    let budgets = client_budgets();
+    let output_path = env::var("SMART_OPENING_EXACT_OUTPUT")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| default_named_artifact_path("opening_exact_query", profile.as_str()));
+    let mut lines = Vec::new();
+
+    println!(
+        "opening exact probe: profile={} positions={} modes={:?}",
+        profile,
+        openings.len(),
+        budgets
+            .iter()
+            .map(|budget| budget.key().to_string())
+            .collect::<Vec<_>>()
+    );
+
+    for (opening_index, fen) in openings.iter().enumerate() {
+        let game = MonsGame::from_fen(fen.as_str(), false).expect("valid opening fen");
+        for budget in budgets.iter().copied() {
+            let config = budget.runtime_config_for_game(&game);
+            clear_exact_state_analysis_cache();
+            reset_exact_query_diagnostics();
+            set_exact_query_diagnostics_enabled(true);
+            let started = Instant::now();
+            let inputs = selector(&game, config);
+            let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+            let diagnostics = exact_query_diagnostics_snapshot();
+            set_exact_query_diagnostics_enabled(false);
+            let selected_fen = Input::fen_from_array(&inputs);
+
+            println!(
+                "opening exact probe idx={} mode={} elapsed_ms={:.2} avg_inputs={} secure_queries={} spirit_queries={} attack_queries={} drainer_queries={}",
+                opening_index,
+                budget.key(),
+                elapsed_ms,
+                inputs.len(),
+                diagnostics.secure_mana.queries,
+                diagnostics.spirit_assist.queries,
+                diagnostics.attack_reach.queries,
+                diagnostics.drainer_pickup.queries,
+            );
+
+            lines.push(format!(
+                r#"{{"profile":"{}","opening_index":{},"mode":"{}","fen":"{}","selected":"{}","elapsed_ms":{:.3},"exact":{{{},{},{},{},{}}}}}"#,
+                json_escape(profile.as_str()),
+                opening_index,
+                budget.key(),
+                json_escape(fen.as_str()),
+                json_escape(selected_fen.as_str()),
+                elapsed_ms,
+                exact_query_family_json("attack_reach", diagnostics.attack_reach),
+                exact_query_family_json("drainer_pickup", diagnostics.drainer_pickup),
+                exact_query_family_json("secure_mana", diagnostics.secure_mana),
+                exact_query_family_json("safe_landing", diagnostics.safe_landing),
+                exact_query_family_json("spirit_assist", diagnostics.spirit_assist),
+            ));
+        }
+    }
+
+    write_jsonl_artifact(output_path.as_str(), lines.as_slice());
+    println!("opening exact probe artifact: {}", output_path);
+}
+
 #[test]
 #[ignore = "profile speed probe on fixed opening positions"]
 fn smart_automove_pool_profile_speed_probe() {
@@ -32567,6 +32962,28 @@ fn persist_ladder_artifacts(lines: &[String]) {
             "failed writing SMART_LADDER_ARTIFACT_PATH '{}': {}",
             path, err
         );
+    }
+}
+
+fn default_named_artifact_path(prefix: &str, profile: &str) -> String {
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let log_dir = env::var("SMART_EXPERIMENT_LOG_DIR")
+        .unwrap_or_else(|_| "target/experiment-runs".to_string());
+    let _ = std::fs::create_dir_all(&log_dir);
+    format!("{}/{}_{}_{}.jsonl", log_dir, prefix, profile, timestamp)
+}
+
+fn write_jsonl_artifact(path: &str, lines: &[String]) {
+    let payload = if lines.is_empty() {
+        String::new()
+    } else {
+        lines.join("\n") + "\n"
+    };
+    if let Err(err) = std::fs::write(path, payload.as_bytes()) {
+        println!("WARNING: failed writing artifact '{}': {}", path, err);
     }
 }
 
