@@ -8,6 +8,7 @@ const EXACT_CARRIER_STEPS_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_DRAINER_TO_MANA_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_FOLLOWUP_SUMMARY_CACHE_MAX_ENTRIES: usize = 4096;
 const EXACT_PICKUP_PATH_CACHE_MAX_ENTRIES: usize = 8192;
+const EXACT_SPIRIT_REACH_CACHE_MAX_ENTRIES: usize = 4096;
 const EXACT_SPIRIT_SUMMARY_CACHE_MAX_ENTRIES: usize = 2048;
 const EXACT_WALK_THREAT_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_SECURE_MANA_CACHE_MAX_ENTRIES: usize = 4096;
@@ -202,6 +203,19 @@ struct ExactSpiritSummaryCache {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ExactSpiritReachQueryKey {
+    board_hash: u64,
+    start: Location,
+    color: Color,
+    remaining_mon_moves: i32,
+}
+
+#[derive(Default)]
+struct ExactSpiritReachCache {
+    entries: HashMap<ExactSpiritReachQueryKey, Vec<(Location, i32)>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ExactWalkThreatQueryKey {
     board_hash: u64,
     color: Color,
@@ -233,6 +247,8 @@ thread_local! {
         RefCell::new(ExactFollowupSummaryCache::default());
     static EXACT_PICKUP_PATH_CACHE: RefCell<ExactPickupPathCache> =
         RefCell::new(ExactPickupPathCache::default());
+    static EXACT_SPIRIT_REACH_CACHE: RefCell<ExactSpiritReachCache> =
+        RefCell::new(ExactSpiritReachCache::default());
     static EXACT_SPIRIT_SUMMARY_CACHE: RefCell<ExactSpiritSummaryCache> =
         RefCell::new(ExactSpiritSummaryCache::default());
     static EXACT_WALK_THREAT_CACHE: RefCell<ExactWalkThreatCache> =
@@ -249,6 +265,7 @@ pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_DRAINER_TO_MANA_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_FOLLOWUP_SUMMARY_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_PICKUP_PATH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
+    EXACT_SPIRIT_REACH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_SPIRIT_SUMMARY_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_WALK_THREAT_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_SECURE_MANA_CACHE.with(|cache| {
@@ -1369,14 +1386,13 @@ fn exact_spirit_summary_uncached(
             if matches!(board.square(spirit_pos), Square::MonBase { .. }) {
                 continue;
             }
-            let action_board = if spirit_pos == location {
-                board.clone()
-            } else {
+            let action_board_storage = (spirit_pos != location).then(|| {
                 let mut moved = board.clone();
                 moved.remove_item(location);
                 moved.put(*item, spirit_pos);
                 moved
-            };
+            });
+            let action_board = action_board_storage.as_ref().unwrap_or(board);
             let remaining_after_action = remaining_mon_moves.saturating_sub(spirit_steps);
             for &target in spirit_pos.reachable_by_spirit_action_ref() {
                 let Some(target_item) = action_board.item(target).copied() else {
@@ -1524,6 +1540,22 @@ fn reachable_spirit_positions(
     color: Color,
     remaining_mon_moves: i32,
 ) -> Vec<(Location, i32)> {
+    if remaining_mon_moves < 0 {
+        return Vec::new();
+    }
+
+    let key = ExactSpiritReachQueryKey {
+        board_hash: exact_board_hash(board),
+        start,
+        color,
+        remaining_mon_moves,
+    };
+    if let Some(cached) =
+        EXACT_SPIRIT_REACH_CACHE.with(|cache| cache.borrow().entries.get(&key).cloned())
+    {
+        return cached;
+    }
+
     let mut queue = VecDeque::new();
     let mut seen = HashSet::new();
     queue.push_back((start, 0));
@@ -1569,6 +1601,15 @@ fn reachable_spirit_positions(
         }
     }
 
+    EXACT_SPIRIT_REACH_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.entries.len() >= EXACT_SPIRIT_REACH_CACHE_MAX_ENTRIES
+            && !cache.entries.contains_key(&key)
+        {
+            cache.entries.clear();
+        }
+        cache.entries.insert(key, positions.clone());
+    });
     positions
 }
 
@@ -2628,6 +2669,43 @@ mod tests {
             first.same_turn_opponent_mana_score_value,
             third.same_turn_opponent_mana_score_value
         );
+    }
+
+    #[test]
+    fn exact_spirit_reach_cache_preserves_repeated_positions() {
+        clear_exact_state_analysis_cache();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 1),
+                    Item::Consumable {
+                        consumable: Consumable::BombOrPotion,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+
+        let first = reachable_spirit_positions(&board, Location::new(7, 1), Color::White, 3);
+        let second = reachable_spirit_positions(&board, Location::new(7, 1), Color::White, 3);
+        clear_exact_state_analysis_cache();
+        let third = reachable_spirit_positions(&board, Location::new(7, 1), Color::White, 3);
+
+        assert_eq!(first, second);
+        assert_eq!(first, third);
     }
 
     #[test]
