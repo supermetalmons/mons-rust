@@ -9583,7 +9583,7 @@ impl MonsGameModel {
 }
 
 #[cfg(test)]
-#[path = "mons_game_model_automove_experiments.rs"]
+#[path = "automove_experiments/mod.rs"]
 mod smart_automove_pool_tests;
 
 #[cfg(test)]
