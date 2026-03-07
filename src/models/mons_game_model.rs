@@ -6864,6 +6864,7 @@ impl MonsGameModel {
         board: &Board,
         perspective: Color,
         opponent_to_move: bool,
+        opponent_remaining_moves: i32,
         opponent_can_use_action: bool,
         _enhanced: bool,
     ) -> bool {
@@ -6879,13 +6880,13 @@ impl MonsGameModel {
         if !opponent_to_move || !opponent_can_use_action {
             return false;
         }
-        let drainer_action_protected =
-            Self::is_location_guarded_by_angel(board, perspective, own_drainer_location);
-        is_drainer_under_immediate_threat(
+        can_attack_target_on_board(
             board,
+            perspective.other(),
             perspective,
             own_drainer_location,
-            drainer_action_protected,
+            opponent_remaining_moves.max(0),
+            opponent_can_use_action,
         )
     }
 
@@ -6899,6 +6900,11 @@ impl MonsGameModel {
             &game.board,
             perspective,
             game.active_color == perspective.other(),
+            if game.active_color == perspective.other() {
+                (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0)
+            } else {
+                0
+            },
             game.player_can_use_action(),
             enhanced,
         )
@@ -6913,6 +6919,7 @@ impl MonsGameModel {
             &game.board,
             perspective,
             true,
+            Config::MONS_MOVES_PER_TURN,
             !game.is_first_turn(),
             enhanced,
         )
@@ -6929,6 +6936,7 @@ impl MonsGameModel {
             &game.board,
             perspective,
             true,
+            Config::MONS_MOVES_PER_TURN,
             opponent_can_use_action,
             enhanced,
         ) {
@@ -8731,6 +8739,52 @@ mod opening_book_tests {
     }
 
     #[test]
+    fn drainer_vulnerability_detects_multi_step_mystic_attack() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(8, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        assert!(
+            !crate::models::automove_exact::is_drainer_under_immediate_threat(
+                &game.board,
+                Color::White,
+                Location::new(8, 5),
+                false,
+            ),
+            "pure immediate geometry should not already see this multi-step attack"
+        );
+        assert!(
+            !crate::models::automove_exact::is_drainer_under_walk_threat(
+                &game.board,
+                Color::White,
+                Location::new(8, 5),
+                false,
+            ),
+            "one-step walk geometry should not already see this two-step mystic attack"
+        );
+        assert!(MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            &game,
+            Color::White,
+            true,
+        ));
+    }
+
+    #[test]
     fn selected_line_avoids_drainer_vulnerability_when_safe_root_exists() {
         let game = game_with_items(
             vec![
@@ -10048,6 +10102,39 @@ mod opening_book_tests {
             .can_attack_opponent_drainer;
         let exhaustive = exhaustive_same_turn_reachable(&game, Color::White, |_, events| {
             MonsGameModel::events_include_opponent_drainer_fainted(events, Color::White)
+        });
+
+        assert_eq!(exact, exhaustive);
+    }
+
+    #[test]
+    fn exact_drainer_vulnerability_oracle_matches_exhaustive_next_turn_search() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(8, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let exact = MonsGameModel::is_own_drainer_vulnerable_next_turn(&game, Color::White, true);
+        let mut opponent_turn = game.clone_for_simulation();
+        opponent_turn.active_color = Color::Black;
+        opponent_turn.actions_used_count = 0;
+        opponent_turn.mons_moves_count = 0;
+        let exhaustive = exhaustive_same_turn_reachable(&opponent_turn, Color::Black, |_, events| {
+            MonsGameModel::events_include_opponent_drainer_fainted(events, Color::Black)
         });
 
         assert_eq!(exact, exhaustive);

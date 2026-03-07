@@ -134,6 +134,81 @@ pub(crate) fn can_attack_opponent_drainer_this_turn(game: &MonsGame, color: Colo
     exact_turn_summary(game, color).can_attack_opponent_drainer
 }
 
+pub(crate) fn can_attack_target_on_board(
+    board: &Board,
+    attacker_color: Color,
+    target_color: Color,
+    target: Location,
+    remaining_moves: i32,
+    can_use_action: bool,
+) -> bool {
+    if remaining_moves < 0 || !can_use_action || board.item(target).is_none() {
+        return false;
+    }
+
+    let target_guarded = MonsGameModel::is_location_guarded_by_angel(board, target_color, target);
+
+    for (start, item) in board.occupied() {
+        let mon = match item {
+            Item::Mon { mon }
+            | Item::MonWithMana { mon, .. }
+            | Item::MonWithConsumable { mon, .. } => mon,
+            Item::Mana { .. } | Item::Consumable { .. } => continue,
+        };
+        if mon.color != attacker_color || mon.is_fainted() {
+            continue;
+        }
+        let allow_pick_bomb = !matches!(item, Item::MonWithMana { .. });
+        let start_payload = match item {
+            Item::MonWithConsumable {
+                consumable: Consumable::Bomb,
+                ..
+            } => ExactActorPayload::Bomb,
+            _ => ExactActorPayload::None,
+        };
+        let mut queue = VecDeque::new();
+        let mut seen = HashSet::new();
+        queue.push_back((start, start_payload, 0));
+        seen.insert((start, start_payload));
+
+        while let Some((location, payload, steps)) = queue.pop_front() {
+            if steps > remaining_moves {
+                continue;
+            }
+            if payload == ExactActorPayload::Bomb
+                && board.item(target).is_some()
+                && location.distance(&target) <= 3
+            {
+                return true;
+            }
+            if !matches!(board.square(location), Square::MonBase { .. }) && !target_guarded {
+                if mon.kind == MonKind::Mystic
+                    && (location.i - target.i).abs() == 2
+                    && (location.j - target.j).abs() == 2
+                {
+                    return true;
+                }
+                if mon.kind == MonKind::Demon && demon_has_line_attack(board, location, target) {
+                    return true;
+                }
+            }
+            if steps == remaining_moves {
+                continue;
+            }
+            for &next in location.nearby_locations_ref() {
+                if let Some(next_payload) =
+                    actor_payload_after_move(board, mon.kind, mon.color, payload, next, allow_pick_bomb)
+                {
+                    if seen.insert((next, next_payload)) {
+                        queue.push_back((next, next_payload, steps + 1));
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
 pub(crate) fn drainer_immediate_threats(
     board: &Board,
     color: Color,
@@ -756,88 +831,22 @@ fn can_attack_opponent_drainer_exact(game: &MonsGame, color: Color) -> bool {
     let Some(target) = find_awake_drainer(&game.board, color.other()) else {
         return false;
     };
-    let remaining_moves = if game.active_color == color {
-        (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0)
-    } else {
-        Config::MONS_MOVES_PER_TURN
-    };
-    let can_use_action = if game.active_color == color {
-        game.player_can_use_action()
-    } else {
-        true
-    };
-    if !can_use_action {
-        return false;
-    }
-    let target_guarded =
-        MonsGameModel::is_location_guarded_by_angel(&game.board, color.other(), target);
-
-    for (start, item) in game.board.occupied() {
-        let mon = match item {
-            Item::Mon { mon }
-            | Item::MonWithMana { mon, .. }
-            | Item::MonWithConsumable { mon, .. } => mon,
-            Item::Mana { .. } | Item::Consumable { .. } => continue,
-        };
-        if mon.color != color || mon.is_fainted() {
-            continue;
-        }
-        let allow_pick_bomb = !matches!(item, Item::MonWithMana { .. });
-        let start_payload = match item {
-            Item::MonWithConsumable {
-                consumable: Consumable::Bomb,
-                ..
-            } => ExactActorPayload::Bomb,
-            _ => ExactActorPayload::None,
-        };
-        let mut queue = VecDeque::new();
-        let mut seen = HashSet::new();
-        queue.push_back((start, start_payload, 0));
-        seen.insert((start, start_payload));
-
-        while let Some((location, payload, steps)) = queue.pop_front() {
-            if steps > remaining_moves {
-                continue;
-            }
-            if payload == ExactActorPayload::Bomb
-                && game.board.item(target).is_some()
-                && location.distance(&target) <= 3
-            {
-                return true;
-            }
-            if !matches!(game.board.square(location), Square::MonBase { .. }) && !target_guarded {
-                if mon.kind == MonKind::Mystic
-                    && (location.i - target.i).abs() == 2
-                    && (location.j - target.j).abs() == 2
-                {
-                    return true;
-                }
-                if mon.kind == MonKind::Demon
-                    && demon_has_line_attack(&game.board, location, target)
-                {
-                    return true;
-                }
-            }
-            if steps == remaining_moves {
-                continue;
-            }
-            for &next in location.nearby_locations_ref() {
-                if let Some(next_payload) = actor_payload_after_move(
-                    &game.board,
-                    mon.kind,
-                    mon.color,
-                    payload,
-                    next,
-                    allow_pick_bomb,
-                ) {
-                    if seen.insert((next, next_payload)) {
-                        queue.push_back((next, next_payload, steps + 1));
-                    }
-                }
-            }
-        }
-    }
-    false
+    can_attack_target_on_board(
+        &game.board,
+        color,
+        color.other(),
+        target,
+        if game.active_color == color {
+            (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0)
+        } else {
+            Config::MONS_MOVES_PER_TURN
+        },
+        if game.active_color == color {
+            game.player_can_use_action()
+        } else {
+            true
+        },
+    )
 }
 
 fn demon_has_line_attack(board: &Board, from: Location, target: Location) -> bool {
