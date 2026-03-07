@@ -1215,7 +1215,9 @@ fn exact_secure_specific_mana_steps_on_board(
     game.active_color = color;
     game.turn_number = 2;
     game.actions_used_count = Config::ACTIONS_PER_TURN;
-    game.mana_moves_count = Config::MANA_MOVES_PER_TURN;
+    // Non-terminal same-turn states still have the mana move available; exhausting it here
+    // would make the synthetic game auto-end after one mon move and miss multi-step drainer paths.
+    game.mana_moves_count = 0;
     game.mons_moves_count =
         (Config::MONS_MOVES_PER_TURN - remaining_moves).clamp(0, Config::MONS_MOVES_PER_TURN);
     game.white_score = 0;
@@ -2072,6 +2074,36 @@ mod tests {
     }
 
     #[test]
+    fn exact_turn_summary_detects_two_step_safe_supermana_progress() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let turn = exact_turn_summary(&game, Color::White);
+        assert!(turn.safe_supermana_progress);
+        assert_eq!(turn.safe_supermana_progress_steps, Some(2));
+    }
+
+    #[test]
     fn exact_secure_specific_mana_path_reconstructs_safe_supermana_pickup() {
         let game = game_with_items(
             vec![
@@ -2600,6 +2632,36 @@ mod tests {
         let turn = exact_turn_summary(&game, Color::White);
         assert!(turn.safe_opponent_mana_progress);
         assert_eq!(turn.safe_opponent_mana_progress_steps, Some(1));
+    }
+
+    #[test]
+    fn exact_turn_summary_detects_two_step_safe_opponent_mana_progress() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 4),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let turn = exact_turn_summary(&game, Color::White);
+        assert!(turn.safe_opponent_mana_progress);
+        assert_eq!(turn.safe_opponent_mana_progress_steps, Some(2));
     }
 
     #[test]
