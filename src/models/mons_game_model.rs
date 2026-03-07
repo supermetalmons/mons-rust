@@ -1623,12 +1623,28 @@ struct LegalInputTransition {
     events: Vec<Event>,
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AsyncSmartSearchPhase {
+    PendingRootRanking,
+    PendingFocusedCandidates,
+    Scoring,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+enum AsyncSmartSearchStart {
+    Immediate(OutputModel),
+    Pending(AsyncSmartSearchState),
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
 struct AsyncSmartSearchState {
     game: MonsGame,
     perspective: Color,
     config: SmartSearchConfig,
+    phase: AsyncSmartSearchPhase,
     root_moves: Vec<ScoredRootMove>,
+    pending_output: Option<OutputModel>,
     next_index: usize,
     visited_nodes: usize,
     alpha: i32,
@@ -1732,63 +1748,17 @@ impl MonsGameModel {
             ));
         }
 
-        if let Some(opening_inputs) = Self::white_first_turn_opening_next_inputs(&self.game) {
-            let mut game = self.game.clone_for_simulation();
-            let input_fen = Input::fen_from_array(&opening_inputs);
-            let output = game.process_input(opening_inputs, false, false);
-            if matches!(output, Output::Events(_)) {
-                self.mark_opening_book_driven_context();
-                return js_sys::Promise::resolve(&JsValue::from(OutputModel::new(
-                    output,
-                    input_fen.as_str(),
-                )));
-            }
+        let started = self.begin_async_smart_search(preference);
+        if let AsyncSmartSearchStart::Immediate(output) = started {
+            return js_sys::Promise::resolve(&JsValue::from(output));
         }
 
         self.smart_search_in_progress.set(true);
         let in_progress = self.smart_search_in_progress.clone();
 
-        clear_exact_state_analysis_cache();
-        let config = self.runtime_config_for_preference(preference);
-        let perspective = self.game.active_color;
-        let game = self.game.clone_for_simulation();
-        let root_moves = Self::ranked_root_moves(&game, perspective, config);
-        if let Some(forced_inputs) =
-            Self::forced_tactical_prepass_choice(&game, perspective, root_moves.as_slice(), config)
-        {
-            let mut forced_game = game.clone_for_simulation();
-            let input_fen = Input::fen_from_array(&forced_inputs);
-            let output = forced_game.process_input(forced_inputs, false, false);
-            in_progress.set(false);
-            return js_sys::Promise::resolve(&JsValue::from(OutputModel::new(
-                output,
-                input_fen.as_str(),
-            )));
-        }
-        let (root_moves, scout_visited_nodes) =
-            Self::focused_root_candidates(&game, perspective, root_moves, config, true);
-        let extension_node_budget =
-            if config.enable_selective_extensions && config.selective_extension_node_share_bp > 0 {
-                ((config.max_visited_nodes * config.selective_extension_node_share_bp as usize)
-                    / 10_000)
-                    .max(1)
-            } else {
-                0
-            };
-
-        let state = Rc::new(RefCell::new(AsyncSmartSearchState {
-            game,
-            perspective,
-            config,
-            root_moves,
-            next_index: 0,
-            visited_nodes: scout_visited_nodes,
-            alpha: i32::MIN,
-            extension_nodes_used: 0,
-            extension_node_budget,
-            scored_roots: Vec::new(),
-            transposition_table: U64HashMap::default(),
-            killer_table: [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2],
+        let state = Rc::new(RefCell::new(match started {
+            AsyncSmartSearchStart::Immediate(_) => unreachable!(),
+            AsyncSmartSearchStart::Pending(state) => state,
         }));
 
         js_sys::Promise::new(&mut move |resolve, reject| {
@@ -2175,6 +2145,57 @@ impl MonsGameModel {
             .set(ProRuntimeContext::OpeningBookDriven);
     }
 
+    fn new_async_smart_search_state(
+        game: MonsGame,
+        perspective: Color,
+        config: SmartSearchConfig,
+    ) -> AsyncSmartSearchState {
+        AsyncSmartSearchState {
+            game,
+            perspective,
+            config,
+            phase: AsyncSmartSearchPhase::PendingRootRanking,
+            root_moves: Vec::new(),
+            pending_output: None,
+            next_index: 0,
+            visited_nodes: 0,
+            alpha: i32::MIN,
+            extension_nodes_used: 0,
+            extension_node_budget: 0,
+            scored_roots: Vec::new(),
+            transposition_table: U64HashMap::default(),
+            killer_table: [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2],
+        }
+    }
+
+    fn begin_async_smart_search(
+        &self,
+        preference: SmartAutomovePreference,
+    ) -> AsyncSmartSearchStart {
+        if let Some(opening_inputs) = Self::white_first_turn_opening_next_inputs(&self.game) {
+            let mut game = self.game.clone_for_simulation();
+            let input_fen = Input::fen_from_array(&opening_inputs);
+            let output = game.process_input(opening_inputs, false, false);
+            if matches!(output, Output::Events(_)) {
+                self.mark_opening_book_driven_context();
+                return AsyncSmartSearchStart::Immediate(OutputModel::new(
+                    output,
+                    input_fen.as_str(),
+                ));
+            }
+        }
+
+        clear_exact_state_analysis_cache();
+        let config = self.runtime_config_for_preference(preference);
+        let perspective = self.game.active_color;
+        let game = self.game.clone_for_simulation();
+        AsyncSmartSearchStart::Pending(Self::new_async_smart_search_state(
+            game,
+            perspective,
+            config,
+        ))
+    }
+
     fn runtime_config_for_preference(
         &self,
         preference: SmartAutomovePreference,
@@ -2184,6 +2205,28 @@ impl MonsGameModel {
             Self::runtime_config_for_game_with_context(&self.game, preference, hinted);
         self.pro_runtime_context_hint.set(resolved_context);
         config
+    }
+
+    #[cfg(test)]
+    fn smart_automove_output_via_async_loop(
+        &self,
+        preference: SmartAutomovePreference,
+    ) -> OutputModel {
+        let mut state = match self.begin_async_smart_search(preference) {
+            AsyncSmartSearchStart::Immediate(output) => return output,
+            AsyncSmartSearchStart::Pending(state) => state,
+        };
+
+        for _ in 0..1_000_000usize {
+            if Self::advance_async_search(&mut state) {
+                return Self::finalize_async_search(&mut state);
+            }
+        }
+
+        panic!(
+            "async smart search did not finish for {} within tick budget",
+            preference.as_api_value()
+        );
     }
 
     fn runtime_config_for_game_with_context(
@@ -2960,10 +3003,12 @@ impl MonsGameModel {
             |analysis| analysis.active_turn,
         );
         let unknown_progress_steps = Config::BOARD_SIZE + 4;
-        let safe_supermana_progress_steps =
-            exact_turn.safe_supermana_progress_steps.unwrap_or(unknown_progress_steps);
-        let safe_opponent_mana_progress_steps =
-            exact_turn.safe_opponent_mana_progress_steps.unwrap_or(unknown_progress_steps);
+        let safe_supermana_progress_steps = exact_turn
+            .safe_supermana_progress_steps
+            .unwrap_or(unknown_progress_steps);
+        let safe_opponent_mana_progress_steps = exact_turn
+            .safe_opponent_mana_progress_steps
+            .unwrap_or(unknown_progress_steps);
         let unknown_score_path_steps = Config::BOARD_SIZE * 3;
         let same_turn_score_window_value = exact_analysis
             .map(|analysis| {
@@ -3284,10 +3329,7 @@ impl MonsGameModel {
         })
     }
 
-    fn events_spirit_move_opponent_mana_toward_color(
-        events: &[Event],
-        perspective: Color,
-    ) -> bool {
+    fn events_spirit_move_opponent_mana_toward_color(events: &[Event], perspective: Color) -> bool {
         events.iter().any(|event| {
             matches!(
                 event,
@@ -4247,7 +4289,8 @@ impl MonsGameModel {
             let mut inputs = Vec::with_capacity(path.len() + 1);
             inputs.push(Input::Location(drainer_loc));
             inputs.extend(path.into_iter().map(Input::Location));
-            let Some((after_game, events)) = Self::apply_inputs_for_search_with_events(game, &inputs)
+            let Some((after_game, events)) =
+                Self::apply_inputs_for_search_with_events(game, &inputs)
             else {
                 continue;
             };
@@ -5083,10 +5126,7 @@ impl MonsGameModel {
 
     fn is_child_search_priority_candidate(state: &RankedChildState) -> bool {
         Self::is_child_search_priority_class(state.classes)
-            || Self::is_exact_child_continuation_candidate(
-                state.ordering_efficiency,
-                state.classes,
-            )
+            || Self::is_exact_child_continuation_candidate(state.ordering_efficiency, state.classes)
     }
 
     fn is_quiet_reduction_candidate(
@@ -5106,7 +5146,8 @@ impl MonsGameModel {
         ordering_efficiency: i32,
         classes: MoveClassFlags,
     ) -> bool {
-        tactical_extension_trigger || (ordering_efficiency > 0 && !classes.quiet && !classes.material)
+        tactical_extension_trigger
+            || (ordering_efficiency > 0 && !classes.quiet && !classes.material)
     }
 
     fn child_score_within_coverage_margin(
@@ -5133,22 +5174,27 @@ impl MonsGameModel {
         }
 
         let cutoff_score = scored_states[limit - 1].0;
-        let preserve_index = scored_states
-            .iter()
-            .enumerate()
-            .skip(limit)
-            .find_map(|(index, (score, state))| {
-                if !Self::is_child_search_priority_candidate(state) {
-                    return None;
-                }
-                if strict_guarantees
-                    || Self::child_score_within_coverage_margin(*score, cutoff_score, maximizing)
-                {
-                    Some(index)
-                } else {
-                    None
-                }
-            });
+        let preserve_index =
+            scored_states
+                .iter()
+                .enumerate()
+                .skip(limit)
+                .find_map(|(index, (score, state))| {
+                    if !Self::is_child_search_priority_candidate(state) {
+                        return None;
+                    }
+                    if strict_guarantees
+                        || Self::child_score_within_coverage_margin(
+                            *score,
+                            cutoff_score,
+                            maximizing,
+                        )
+                    {
+                        Some(index)
+                    } else {
+                        None
+                    }
+                });
 
         let Some(preserve_index) = preserve_index else {
             return scored_states.into_iter().take(limit).collect();
@@ -5263,11 +5309,7 @@ impl MonsGameModel {
         scores: &[i32],
     ) -> Vec<ScoredRootMove> {
         debug_assert_eq!(root_moves.len(), scores.len());
-        let mut ranked_indices = scores
-            .iter()
-            .copied()
-            .enumerate()
-            .collect::<Vec<_>>();
+        let mut ranked_indices = scores.iter().copied().enumerate().collect::<Vec<_>>();
         ranked_indices.sort_by(|a, b| Self::compare_ranked_root_indices(&root_moves, *a, *b));
         Self::reorder_root_moves_by_ranked_indices(root_moves, ranked_indices.as_slice())
     }
@@ -5979,12 +6021,13 @@ impl MonsGameModel {
                 }
             }
             let best_prelim_score = prelim_scores.iter().copied().max().unwrap_or(i32::MIN);
-            root_moves = Self::sort_root_moves_by_ranked_scores(root_moves, prelim_scores.as_slice());
+            root_moves =
+                Self::sort_root_moves_by_ranked_scores(root_moves, prelim_scores.as_slice());
             // Optionally initialize alpha from preliminary best score
             if config.iterative_deepening_alpha_margin > 0 {
                 if best_prelim_score != i32::MIN {
-                    alpha = best_prelim_score
-                        .saturating_sub(config.iterative_deepening_alpha_margin);
+                    alpha =
+                        best_prelim_score.saturating_sub(config.iterative_deepening_alpha_margin);
                 }
             }
         }
@@ -6210,7 +6253,10 @@ impl MonsGameModel {
             let kth_score = ranked_indices[focus_k - 1].1;
             if best_score.saturating_sub(kth_score) <= SMART_TWO_PASS_ROOT_NARROW_SPREAD_FALLBACK {
                 return (
-                    Self::reorder_root_moves_by_ranked_indices(root_moves, ranked_indices.as_slice()),
+                    Self::reorder_root_moves_by_ranked_indices(
+                        root_moves,
+                        ranked_indices.as_slice(),
+                    ),
                     0,
                 );
             }
@@ -6298,8 +6344,7 @@ impl MonsGameModel {
                 Some((index, score))
             })
             .collect::<Vec<_>>();
-        focused_with_scores
-            .sort_by(|a, b| Self::compare_ranked_root_indices(&root_moves, *a, *b));
+        focused_with_scores.sort_by(|a, b| Self::compare_ranked_root_indices(&root_moves, *a, *b));
 
         let mut owned_root_moves = root_moves.into_iter().map(Some).collect::<Vec<_>>();
         let mut focused_root_moves = Vec::with_capacity(focused_with_scores.len());
@@ -7633,69 +7678,120 @@ impl MonsGameModel {
         value ^ (value >> 31)
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(target_arch = "wasm32", test))]
     fn advance_async_search(state: &mut AsyncSmartSearchState) -> bool {
-        if state.next_index >= state.root_moves.len()
-            || state.visited_nodes >= state.config.max_visited_nodes
-        {
-            return true;
+        match state.phase {
+            AsyncSmartSearchPhase::PendingRootRanking => {
+                state.root_moves =
+                    Self::ranked_root_moves(&state.game, state.perspective, state.config);
+                state.phase = AsyncSmartSearchPhase::PendingFocusedCandidates;
+                false
+            }
+            AsyncSmartSearchPhase::PendingFocusedCandidates => {
+                if let Some(forced_inputs) = Self::forced_tactical_prepass_choice(
+                    &state.game,
+                    state.perspective,
+                    state.root_moves.as_slice(),
+                    state.config,
+                ) {
+                    let mut forced_game = state.game.clone_for_simulation();
+                    let input_fen = Input::fen_from_array(&forced_inputs);
+                    let output = forced_game.process_input(forced_inputs, false, false);
+                    state.pending_output = Some(OutputModel::new(output, input_fen.as_str()));
+                    return true;
+                }
+
+                let root_moves = std::mem::take(&mut state.root_moves);
+                let (root_moves, scout_visited_nodes) = Self::focused_root_candidates(
+                    &state.game,
+                    state.perspective,
+                    root_moves,
+                    state.config,
+                    true,
+                );
+                state.root_moves = root_moves;
+                state.visited_nodes = scout_visited_nodes;
+                state.extension_node_budget = if state.config.enable_selective_extensions
+                    && state.config.selective_extension_node_share_bp > 0
+                {
+                    ((state.config.max_visited_nodes
+                        * state.config.selective_extension_node_share_bp as usize)
+                        / 10_000)
+                        .max(1)
+                } else {
+                    0
+                };
+                state.phase = AsyncSmartSearchPhase::Scoring;
+                state.next_index >= state.root_moves.len()
+                    || state.visited_nodes >= state.config.max_visited_nodes
+            }
+            AsyncSmartSearchPhase::Scoring => {
+                if state.next_index >= state.root_moves.len()
+                    || state.visited_nodes >= state.config.max_visited_nodes
+                {
+                    return true;
+                }
+
+                let candidate = &state.root_moves[state.next_index];
+                state.visited_nodes += 1;
+                let candidate_score = Self::evaluate_root_candidate_score(
+                    candidate,
+                    state.perspective,
+                    state.alpha,
+                    &mut state.visited_nodes,
+                    state.config,
+                    &mut state.transposition_table,
+                    &mut state.extension_nodes_used,
+                    state.extension_node_budget,
+                    true,
+                    &mut state.killer_table,
+                );
+
+                state.scored_roots.push(RootEvaluation {
+                    score: candidate_score,
+                    efficiency: candidate.efficiency,
+                    inputs: candidate.inputs.clone(),
+                    game: candidate.game.clone(),
+                    wins_immediately: candidate.wins_immediately,
+                    attacks_opponent_drainer: candidate.attacks_opponent_drainer,
+                    own_drainer_vulnerable: candidate.own_drainer_vulnerable,
+                    own_drainer_walk_vulnerable: candidate.own_drainer_walk_vulnerable,
+                    spirit_development: candidate.spirit_development,
+                    keeps_awake_spirit_on_base: candidate.keeps_awake_spirit_on_base,
+                    mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
+                    has_roundtrip: candidate.has_roundtrip,
+                    scores_supermana_this_turn: candidate.scores_supermana_this_turn,
+                    scores_opponent_mana_this_turn: candidate.scores_opponent_mana_this_turn,
+                    safe_supermana_pickup_now: candidate.safe_supermana_pickup_now,
+                    safe_opponent_mana_pickup_now: candidate.safe_opponent_mana_pickup_now,
+                    safe_supermana_progress_steps: candidate.safe_supermana_progress_steps,
+                    safe_opponent_mana_progress_steps: candidate.safe_opponent_mana_progress_steps,
+                    score_path_best_steps: candidate.score_path_best_steps,
+                    same_turn_score_window_value: candidate.same_turn_score_window_value,
+                    spirit_same_turn_score_setup_now: candidate.spirit_same_turn_score_setup_now,
+                    spirit_own_mana_setup_now: candidate.spirit_own_mana_setup_now,
+                    supermana_progress: candidate.supermana_progress,
+                    opponent_mana_progress: candidate.opponent_mana_progress,
+                    interview_soft_priority: candidate.interview_soft_priority,
+                    classes: candidate.classes,
+                });
+
+                if candidate_score > state.alpha {
+                    state.alpha = candidate_score;
+                }
+
+                state.next_index += 1;
+                state.next_index >= state.root_moves.len()
+                    || state.visited_nodes >= state.config.max_visited_nodes
+            }
         }
-
-        let candidate = &state.root_moves[state.next_index];
-        state.visited_nodes += 1;
-        let candidate_score = Self::evaluate_root_candidate_score(
-            candidate,
-            state.perspective,
-            state.alpha,
-            &mut state.visited_nodes,
-            state.config,
-            &mut state.transposition_table,
-            &mut state.extension_nodes_used,
-            state.extension_node_budget,
-            true,
-            &mut state.killer_table,
-        );
-
-        state.scored_roots.push(RootEvaluation {
-            score: candidate_score,
-            efficiency: candidate.efficiency,
-            inputs: candidate.inputs.clone(),
-            game: candidate.game.clone(),
-            wins_immediately: candidate.wins_immediately,
-            attacks_opponent_drainer: candidate.attacks_opponent_drainer,
-            own_drainer_vulnerable: candidate.own_drainer_vulnerable,
-            own_drainer_walk_vulnerable: candidate.own_drainer_walk_vulnerable,
-            spirit_development: candidate.spirit_development,
-            keeps_awake_spirit_on_base: candidate.keeps_awake_spirit_on_base,
-            mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
-            has_roundtrip: candidate.has_roundtrip,
-            scores_supermana_this_turn: candidate.scores_supermana_this_turn,
-            scores_opponent_mana_this_turn: candidate.scores_opponent_mana_this_turn,
-            safe_supermana_pickup_now: candidate.safe_supermana_pickup_now,
-            safe_opponent_mana_pickup_now: candidate.safe_opponent_mana_pickup_now,
-            safe_supermana_progress_steps: candidate.safe_supermana_progress_steps,
-            safe_opponent_mana_progress_steps: candidate.safe_opponent_mana_progress_steps,
-            score_path_best_steps: candidate.score_path_best_steps,
-            same_turn_score_window_value: candidate.same_turn_score_window_value,
-            spirit_same_turn_score_setup_now: candidate.spirit_same_turn_score_setup_now,
-            spirit_own_mana_setup_now: candidate.spirit_own_mana_setup_now,
-            supermana_progress: candidate.supermana_progress,
-            opponent_mana_progress: candidate.opponent_mana_progress,
-            interview_soft_priority: candidate.interview_soft_priority,
-            classes: candidate.classes,
-        });
-
-        if candidate_score > state.alpha {
-            state.alpha = candidate_score;
-        }
-
-        state.next_index += 1;
-        state.next_index >= state.root_moves.len()
-            || state.visited_nodes >= state.config.max_visited_nodes
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(target_arch = "wasm32", test))]
     fn finalize_async_search(state: &mut AsyncSmartSearchState) -> OutputModel {
+        if let Some(output) = state.pending_output.take() {
+            return output;
+        }
         if state.scored_roots.is_empty() {
             return Self::automove_game(&mut state.game);
         }
@@ -8592,28 +8688,27 @@ impl MonsGameModel {
                     evaluation.safe_supermana_progress_steps,
                     best_safe_supermana_progress_steps,
                 );
-            let equal_spirit_setup_supermana_progress_steps =
-                !evaluation.spirit_own_mana_setup_now
-                    || !best_spirit_own_mana_setup
-                    || !evaluation.supermana_progress
-                    || !best_supermana_progress
-                    || evaluation.safe_supermana_progress_steps == best_safe_supermana_progress_steps;
-            let spirit_setup_opponent_mana_progress_steps_better =
-                evaluation.spirit_own_mana_setup_now
-                    && best_spirit_own_mana_setup
-                    && evaluation.opponent_mana_progress
-                    && best_opponent_mana_progress
-                    && Self::root_progress_steps_better(
-                        evaluation.safe_opponent_mana_progress_steps,
-                        best_safe_opponent_mana_progress_steps,
-                    );
-            let equal_spirit_setup_opponent_mana_progress_steps =
-                !evaluation.spirit_own_mana_setup_now
-                    || !best_spirit_own_mana_setup
-                    || !evaluation.opponent_mana_progress
-                    || !best_opponent_mana_progress
-                    || evaluation.safe_opponent_mana_progress_steps
-                        == best_safe_opponent_mana_progress_steps;
+            let equal_spirit_setup_supermana_progress_steps = !evaluation.spirit_own_mana_setup_now
+                || !best_spirit_own_mana_setup
+                || !evaluation.supermana_progress
+                || !best_supermana_progress
+                || evaluation.safe_supermana_progress_steps == best_safe_supermana_progress_steps;
+            let spirit_setup_opponent_mana_progress_steps_better = evaluation
+                .spirit_own_mana_setup_now
+                && best_spirit_own_mana_setup
+                && evaluation.opponent_mana_progress
+                && best_opponent_mana_progress
+                && Self::root_progress_steps_better(
+                    evaluation.safe_opponent_mana_progress_steps,
+                    best_safe_opponent_mana_progress_steps,
+                );
+            let equal_spirit_setup_opponent_mana_progress_steps = !evaluation
+                .spirit_own_mana_setup_now
+                || !best_spirit_own_mana_setup
+                || !evaluation.opponent_mana_progress
+                || !best_opponent_mana_progress
+                || evaluation.safe_opponent_mana_progress_steps
+                    == best_safe_opponent_mana_progress_steps;
             let spirit_setup_score_path_better = evaluation.spirit_own_mana_setup_now
                 && best_spirit_own_mana_setup
                 && Self::root_score_path_steps_better(
@@ -8627,8 +8722,8 @@ impl MonsGameModel {
                 evaluation.safe_supermana_progress_steps,
                 best_safe_supermana_progress_steps,
             );
-            let equal_supermana_progress_steps = evaluation.safe_supermana_progress_steps
-                == best_safe_supermana_progress_steps;
+            let equal_supermana_progress_steps =
+                evaluation.safe_supermana_progress_steps == best_safe_supermana_progress_steps;
             let opponent_mana_progress_steps_better = Self::root_progress_steps_better(
                 evaluation.safe_opponent_mana_progress_steps,
                 best_safe_opponent_mana_progress_steps,
@@ -9317,11 +9412,8 @@ impl MonsGameModel {
             );
             if floor_score > best_floor_score
                 || (floor_score == best_floor_score
-                    && Self::compare_ranked_scored_root_indices(
-                        scored_roots,
-                        index,
-                        best_index,
-                    ) == std::cmp::Ordering::Less)
+                    && Self::compare_ranked_scored_root_indices(scored_roots, index, best_index)
+                        == std::cmp::Ordering::Less)
             {
                 best_floor_score = floor_score;
                 best_index = index;
@@ -9490,6 +9582,95 @@ mod opening_book_tests {
         assert_eq!(game.active_color, Color::Black);
     }
 
+    fn advance_async_opening_book_until_black_turn(
+        model: &mut MonsGameModel,
+        preference: SmartAutomovePreference,
+    ) {
+        let mut applied_steps = 0;
+        while model.game.turn_number == 1 && applied_steps < 8 {
+            let output = match model.begin_async_smart_search(preference) {
+                AsyncSmartSearchStart::Immediate(output) => output,
+                AsyncSmartSearchStart::Pending(_) => panic!(
+                    "expected opening-book immediate output for {} during white first turn",
+                    preference.as_api_value()
+                ),
+            };
+            assert_eq!(
+                output.kind,
+                OutputModelKind::Events,
+                "opening-book async output should be events for {}",
+                preference.as_api_value()
+            );
+            let applied = model.process_input_fen(output.input_fen().as_str());
+            assert_eq!(
+                applied.kind,
+                OutputModelKind::Events,
+                "opening-book input fen should apply cleanly for {}",
+                preference.as_api_value()
+            );
+            applied_steps += 1;
+        }
+        assert_eq!(
+            model.game.turn_number,
+            2,
+            "opening book should finish white first turn for {}",
+            preference.as_api_value()
+        );
+        assert_eq!(model.game.active_color, Color::Black);
+    }
+
+    fn apply_async_preference_step(
+        model: &mut MonsGameModel,
+        preference: SmartAutomovePreference,
+    ) -> OutputModel {
+        let output = model.smart_automove_output_via_async_loop(preference);
+        assert_eq!(
+            output.kind,
+            OutputModelKind::Events,
+            "async smart automove should produce events for {}",
+            preference.as_api_value()
+        );
+        let input_fen = output.input_fen();
+        let applied = model.process_input_fen(input_fen.as_str());
+        assert_eq!(
+            applied.kind,
+            OutputModelKind::Events,
+            "async smart automove input fen should apply cleanly for {}",
+            preference.as_api_value()
+        );
+        applied
+    }
+
+    fn play_async_preference_until_end(
+        preference: SmartAutomovePreference,
+        max_plies: usize,
+    ) -> Color {
+        let mut model = MonsGameModel::new_for_simulation();
+        let mut previous_fen = model.fen();
+
+        for ply in 0..max_plies {
+            let _ = apply_async_preference_step(&mut model, preference);
+            let next_fen = model.fen();
+            assert_ne!(
+                next_fen,
+                previous_fen,
+                "async smart automove should advance the board for {} at ply {}",
+                preference.as_api_value(),
+                ply + 1
+            );
+            if let Some(winner) = model.winner_color() {
+                return winner;
+            }
+            previous_fen = next_fen;
+        }
+
+        panic!(
+            "async smart automove for {} did not finish within {} plies",
+            preference.as_api_value(),
+            max_plies
+        );
+    }
+
     fn exhaustive_same_turn_reachable<F>(game: &MonsGame, color: Color, predicate: F) -> bool
     where
         F: Fn(&MonsGame, &[Event]) -> bool,
@@ -9533,11 +9714,7 @@ mod opening_book_tests {
         visit(game, color, &mut seen, &predicate)
     }
 
-    fn drainer_carries_exact_safe_mana(
-        board: &Board,
-        color: Color,
-        wanted_mana: Mana,
-    ) -> bool {
+    fn drainer_carries_exact_safe_mana(board: &Board, color: Color, wanted_mana: Mana) -> bool {
         board.occupied().any(|(location, item)| {
             matches!(
                 item,
@@ -9669,6 +9846,65 @@ mod opening_book_tests {
             model.pro_runtime_context_hint_for_tests(),
             ProRuntimeContext::OpeningBookDriven
         );
+    }
+
+    #[test]
+    fn smart_automove_async_defers_root_preparation_after_opening_turn_for_all_modes() {
+        for preference in [
+            SmartAutomovePreference::Fast,
+            SmartAutomovePreference::Normal,
+            SmartAutomovePreference::Pro,
+            SmartAutomovePreference::Ultra,
+        ] {
+            let mut model = MonsGameModel::new_for_simulation();
+            advance_async_opening_book_until_black_turn(&mut model, preference);
+
+            let state = match model.begin_async_smart_search(preference) {
+                AsyncSmartSearchStart::Immediate(_) => panic!(
+                    "expected pending async search after opening turn for {}",
+                    preference.as_api_value()
+                ),
+                AsyncSmartSearchStart::Pending(state) => state,
+            };
+
+            assert_eq!(state.phase, AsyncSmartSearchPhase::PendingRootRanking);
+            assert_eq!(state.game.turn_number, 2);
+            assert_eq!(state.game.active_color, Color::Black);
+            assert_eq!(state.perspective, Color::Black);
+            assert!(state.root_moves.is_empty());
+            assert!(state.pending_output.is_none());
+            assert_eq!(state.next_index, 0);
+            assert_eq!(state.visited_nodes, 0);
+            assert_eq!(state.alpha, i32::MIN);
+            assert_eq!(state.extension_nodes_used, 0);
+            assert_eq!(state.extension_node_budget, 0);
+            assert!(state.scored_roots.is_empty());
+            assert!(state.transposition_table.is_empty());
+        }
+    }
+
+    #[test]
+    #[ignore = "long-running end-to-end smart automove test for fast mode"]
+    fn smart_automove_fast_till_end_via_async_loop() {
+        let _ = play_async_preference_until_end(SmartAutomovePreference::Fast, 512);
+    }
+
+    #[test]
+    #[ignore = "long-running end-to-end smart automove test for normal mode"]
+    fn smart_automove_normal_till_end_via_async_loop() {
+        let _ = play_async_preference_until_end(SmartAutomovePreference::Normal, 512);
+    }
+
+    #[test]
+    #[ignore = "long-running end-to-end smart automove test for pro mode"]
+    fn smart_automove_pro_till_end_via_async_loop() {
+        let _ = play_async_preference_until_end(SmartAutomovePreference::Pro, 512);
+    }
+
+    #[test]
+    #[ignore = "long-running end-to-end smart automove test for ultra mode"]
+    fn smart_automove_ultra_till_end_via_async_loop() {
+        let _ = play_async_preference_until_end(SmartAutomovePreference::Ultra, 512);
     }
 
     #[test]
@@ -11296,7 +11532,10 @@ mod opening_book_tests {
         let mut scored_states = vec![
             (1_000, ranked_child_state_for_test(&game, 1, 0, quiet)),
             (995, ranked_child_state_for_test(&game, 2, 0, quiet)),
-            (992, ranked_child_state_for_test(&game, 3, 20, carrier_progress)),
+            (
+                992,
+                ranked_child_state_for_test(&game, 3, 20, carrier_progress),
+            ),
         ];
 
         MonsGameModel::enforce_tactical_child_top2(&mut scored_states, true, false);
@@ -11333,7 +11572,10 @@ mod opening_book_tests {
             ..MoveClassFlags::default()
         };
         let mut scored_states = vec![
-            (1_000, ranked_child_state_for_test(&game, 1, 20, carrier_progress)),
+            (
+                1_000,
+                ranked_child_state_for_test(&game, 1, 20, carrier_progress),
+            ),
             (995, ranked_child_state_for_test(&game, 2, 0, quiet)),
             (994, ranked_child_state_for_test(&game, 3, 0, quiet)),
         ];
@@ -11399,14 +11641,8 @@ mod opening_book_tests {
         .expect("mirrored opponent spirit supermana handoff inputs should build a scored root");
         let child_hash = MonsGameModel::search_state_hash(&child.game);
 
-        let children = MonsGameModel::ranked_child_states(
-            &game,
-            Color::White,
-            false,
-            None,
-            [0; 2],
-            config,
-        );
+        let children =
+            MonsGameModel::ranked_child_states(&game, Color::White, false, None, [0; 2], config);
         let ranked_child = children
             .iter()
             .find(|candidate| candidate.hash == child_hash)
@@ -11505,13 +11741,12 @@ mod opening_book_tests {
                     &game.board,
                     Color::White,
                     Mana::Supermana,
-                ) || (game.active_color == Color::White
-                    && {
-                        let exact_turn =
-                            crate::models::automove_exact::exact_turn_summary(game, Color::White);
-                        exact_turn.safe_supermana_progress
-                            || exact_turn.spirit_assisted_supermana_progress
-                    })
+                ) || (game.active_color == Color::White && {
+                    let exact_turn =
+                        crate::models::automove_exact::exact_turn_summary(game, Color::White);
+                    exact_turn.safe_supermana_progress
+                        || exact_turn.spirit_assisted_supermana_progress
+                })
             }),
             "exact safe supermana continuation child should survive tiny child enumeration cutoff"
         );
@@ -11683,8 +11918,7 @@ mod opening_book_tests {
         );
         assert!(short.interview_soft_priority > long.interview_soft_priority);
         assert!(MonsGameModel::is_better_tactical_root_candidate(
-            &short,
-            &long
+            &short, &long
         ));
         let picked = MonsGameModel::pick_root_move_with_exploration(
             &game,
@@ -11776,8 +12010,7 @@ mod opening_book_tests {
         );
         assert!(short.interview_soft_priority > long.interview_soft_priority);
         assert!(MonsGameModel::is_better_tactical_root_candidate(
-            &short,
-            &long
+            &short, &long
         ));
         let picked = MonsGameModel::pick_root_move_with_exploration(
             &game,
@@ -12359,28 +12592,29 @@ mod opening_book_tests {
         let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
         let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
             .expect("selected spirit-supermana inputs should be legal");
-        let spirit_supermana_to_safe_drainer = events.iter().any(|event| {
-            matches!(
-                event,
-                Event::SpiritTargetMove {
-                    item: Item::Mana {
+        let spirit_supermana_to_safe_drainer =
+            events.iter().any(|event| {
+                matches!(
+                    event,
+                    Event::SpiritTargetMove {
+                        item: Item::Mana {
+                            mana: Mana::Supermana,
+                        },
+                        to,
+                        ..
+                    } if *to == Location::new(10, 2)
+                )
+            }) && after.board.occupied().any(|(location, item)| {
+                matches!(
+                    item,
+                    Item::MonWithMana {
+                        mon,
                         mana: Mana::Supermana,
-                    },
-                    to,
-                    ..
-                } if *to == Location::new(10, 2)
-            )
-        }) && after.board.occupied().any(|(location, item)| {
-            matches!(
-                item,
-                Item::MonWithMana {
-                    mon,
-                    mana: Mana::Supermana,
-                } if location == Location::new(10, 2)
-                    && mon.color == Color::White
-                    && mon.kind == MonKind::Drainer
-            )
-        });
+                    } if location == Location::new(10, 2)
+                        && mon.color == Color::White
+                        && mon.kind == MonKind::Drainer
+                )
+            });
         assert!(
             after.white_score >= game.white_score + 2 || spirit_supermana_to_safe_drainer,
             "selected line should convert the spirit supermana opportunity into either an immediate score or a safe drainer handoff under capped root enumeration, inputs={:?}, events={:?}",
@@ -12996,7 +13230,8 @@ mod opening_book_tests {
 
         let short_inputs = short.inputs.clone();
         let long_inputs = long.inputs.clone();
-        let ordered = MonsGameModel::sort_root_moves_by_ranked_scores(vec![long, short], &[100, 100]);
+        let ordered =
+            MonsGameModel::sort_root_moves_by_ranked_scores(vec![long, short], &[100, 100]);
         let short_pos = ordered
             .iter()
             .position(|candidate| candidate.inputs == short_inputs)
@@ -13708,7 +13943,8 @@ mod opening_book_tests {
 
         let short_inputs = short.inputs.clone();
         let long_inputs = long.inputs.clone();
-        let ordered = MonsGameModel::sort_root_moves_by_ranked_scores(vec![long, short], &[100, 100]);
+        let ordered =
+            MonsGameModel::sort_root_moves_by_ranked_scores(vec![long, short], &[100, 100]);
         let short_pos = ordered
             .iter()
             .position(|candidate| candidate.inputs == short_inputs)
@@ -14377,9 +14613,10 @@ mod opening_book_tests {
         opponent_turn.active_color = Color::Black;
         opponent_turn.actions_used_count = 0;
         opponent_turn.mons_moves_count = 0;
-        let exhaustive = exhaustive_same_turn_reachable(&opponent_turn, Color::Black, |_, events| {
-            MonsGameModel::events_include_opponent_drainer_fainted(events, Color::Black)
-        });
+        let exhaustive =
+            exhaustive_same_turn_reachable(&opponent_turn, Color::Black, |_, events| {
+                MonsGameModel::events_include_opponent_drainer_fainted(events, Color::Black)
+            });
 
         assert_eq!(exact, exhaustive);
     }
