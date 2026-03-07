@@ -4950,6 +4950,22 @@ impl MonsGameModel {
         tactical_extension_trigger || (ordering_efficiency > 0 && !classes.quiet && !classes.material)
     }
 
+    fn has_exact_frontier_tactical_potential(game: &MonsGame) -> bool {
+        let active_color = game.active_color;
+        let analysis = exact_state_analysis(game);
+        let active_summary = analysis.color_summary(active_color);
+        let turn_summary = analysis.active_turn;
+
+        active_summary.immediate_window.best_score > 0
+            || turn_summary.can_attack_opponent_drainer
+            || turn_summary.safe_supermana_progress
+            || turn_summary.safe_opponent_mana_progress
+            || turn_summary.spirit_assisted_supermana_progress
+            || turn_summary.spirit_assisted_opponent_mana_progress
+            || turn_summary.spirit_assisted_score
+            || turn_summary.spirit_assisted_denial
+    }
+
     fn compare_ranked_root_indices(
         root_moves: &[ScoredRootMove],
         a: (usize, i32),
@@ -6014,7 +6030,10 @@ impl MonsGameModel {
 
         // Futility pruning: at frontier nodes (depth=1), skip expansion if static eval
         // is so far from the window that no child move could possibly improve it enough
-        if config.enable_futility_pruning && depth == 1 {
+        if config.enable_futility_pruning
+            && depth == 1
+            && !Self::has_exact_frontier_tactical_potential(game)
+        {
             let static_eval =
                 evaluate_preferability_with_weights(game, perspective, config.scoring_weights);
             if maximizing && static_eval + config.futility_margin < alpha {
@@ -10229,6 +10248,112 @@ mod opening_book_tests {
         assert!(
             !MonsGameModel::is_selective_extension_candidate(false, 20, classes),
             "material-only child should not consume selective extension budget without a tactical trigger"
+        );
+    }
+
+    #[test]
+    fn frontier_tactical_potential_detects_safe_supermana_progress() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        assert!(
+            MonsGameModel::has_exact_frontier_tactical_potential(&game),
+            "same-turn exact safe supermana progress should block frontier futility pruning"
+        );
+    }
+
+    #[test]
+    fn frontier_tactical_potential_is_false_on_quiet_board() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            1,
+        );
+
+        assert!(
+            !MonsGameModel::has_exact_frontier_tactical_potential(&game),
+            "quiet frontier state should remain eligible for futility pruning"
+        );
+    }
+
+    #[test]
+    fn frontier_tactical_potential_detects_spirit_supermana_progress() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(10, 2),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(7, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        assert!(
+            MonsGameModel::has_exact_frontier_tactical_potential(&game),
+            "spirit-assisted exact supermana progress should block frontier futility pruning"
         );
     }
 
