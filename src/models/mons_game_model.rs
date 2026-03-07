@@ -4926,6 +4926,10 @@ impl MonsGameModel {
             .then_with(|| b.1.hash.cmp(&a.1.hash))
     }
 
+    fn is_child_search_priority_class(classes: MoveClassFlags) -> bool {
+        classes.is_tactical_priority() || classes.carrier_progress
+    }
+
     fn is_quiet_reduction_candidate(
         ordering_efficiency: i32,
         tactical_extension_trigger: bool,
@@ -5471,7 +5475,7 @@ impl MonsGameModel {
         let top_has_tactical = scored_states
             .iter()
             .take(2)
-            .any(|(_, state)| state.classes.is_tactical_priority());
+            .any(|(_, state)| Self::is_child_search_priority_class(state.classes));
         if top_has_tactical {
             return;
         }
@@ -5483,7 +5487,7 @@ impl MonsGameModel {
                 .enumerate()
                 .skip(2)
                 .find_map(|(index, (score, state))| {
-                    if !state.classes.is_tactical_priority() {
+                    if !Self::is_child_search_priority_class(state.classes) {
                         return None;
                     }
                     if strict_guarantees {
@@ -10158,6 +10162,85 @@ mod opening_book_tests {
             MonsGameModel::is_quiet_reduction_candidate(0, false, classes),
             "true quiet child should remain eligible for quiet reduction"
         );
+    }
+
+    #[test]
+    fn tactical_child_top2_promotes_close_carrier_progress_child() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            1,
+        );
+
+        let quiet = MoveClassFlags {
+            quiet: true,
+            ..MoveClassFlags::default()
+        };
+        let carrier_progress = MoveClassFlags {
+            carrier_progress: true,
+            ..MoveClassFlags::default()
+        };
+        let mut scored_states = vec![
+            (1_000, ranked_child_state_for_test(&game, 1, 0, quiet)),
+            (995, ranked_child_state_for_test(&game, 2, 0, quiet)),
+            (992, ranked_child_state_for_test(&game, 3, 20, carrier_progress)),
+        ];
+
+        MonsGameModel::enforce_tactical_child_top2(&mut scored_states, true, false);
+        assert_eq!(scored_states[1].1.hash, 3);
+    }
+
+    #[test]
+    fn tactical_child_top2_keeps_existing_carrier_progress_in_front() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            1,
+        );
+
+        let quiet = MoveClassFlags {
+            quiet: true,
+            ..MoveClassFlags::default()
+        };
+        let carrier_progress = MoveClassFlags {
+            carrier_progress: true,
+            ..MoveClassFlags::default()
+        };
+        let mut scored_states = vec![
+            (1_000, ranked_child_state_for_test(&game, 1, 20, carrier_progress)),
+            (995, ranked_child_state_for_test(&game, 2, 0, quiet)),
+            (994, ranked_child_state_for_test(&game, 3, 0, quiet)),
+        ];
+
+        MonsGameModel::enforce_tactical_child_top2(&mut scored_states, true, false);
+        assert_eq!(scored_states[0].1.hash, 1);
+        assert_eq!(scored_states[1].1.hash, 2);
     }
 
     #[test]
