@@ -2852,6 +2852,226 @@ mod tests {
     }
 
     #[test]
+    fn exact_turn_summary_detects_two_step_spirit_assisted_supermana_progress() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(5, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(10, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 1),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 2;
+
+        let (after_board, score_delta, opponent_score_delta) = apply_spirit_move_preview(
+            &game.board,
+            Location::new(7, 1),
+            Item::Mana {
+                mana: Mana::Supermana,
+            },
+            Location::new(8, 2),
+            Color::White,
+        );
+        let after_summary = exact_followup_summary(&after_board, Color::White, 2);
+        assert_eq!(score_delta, 0);
+        assert_eq!(opponent_score_delta, 0);
+        assert!(after_summary.secure_supermana);
+
+        let turn = exact_turn_summary(&game, Color::White);
+        assert!(!turn.safe_supermana_progress);
+        assert!(turn.spirit_assisted_supermana_progress);
+        assert!(!turn.spirit_assisted_score);
+    }
+
+    #[test]
+    fn exact_turn_summary_detects_two_step_spirit_assisted_opponent_mana_progress() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(5, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(10, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 2;
+
+        let (after_board, score_delta, opponent_score_delta) = apply_spirit_move_preview(
+            &game.board,
+            Location::new(7, 1),
+            Item::Mana {
+                mana: Mana::Regular(Color::Black),
+            },
+            Location::new(8, 2),
+            Color::White,
+        );
+        let after_summary = exact_followup_summary(&after_board, Color::White, 2);
+        assert_eq!(score_delta, 0);
+        assert_eq!(opponent_score_delta, 0);
+        assert!(after_summary.secure_opponent_mana);
+
+        let turn = exact_turn_summary(&game, Color::White);
+        assert!(!turn.safe_opponent_mana_progress);
+        assert!(turn.spirit_assisted_opponent_mana_progress);
+        assert!(!turn.spirit_assisted_denial);
+    }
+
+    #[test]
+    fn exact_turn_summary_detects_two_step_spirit_assisted_supermana_score() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(5, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 1),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 2;
+
+        assert_eq!(exact_best_immediate_score_on_board(&game.board, Color::White, 2), 0);
+
+        let (after_board, score_delta, opponent_score_delta) = apply_spirit_move_preview(
+            &game.board,
+            Location::new(7, 1),
+            Item::Mana {
+                mana: Mana::Supermana,
+            },
+            Location::new(8, 1),
+            Color::White,
+        );
+        let after_summary = exact_followup_summary(&after_board, Color::White, 2);
+        assert_eq!(score_delta, 0);
+        assert_eq!(opponent_score_delta, 0);
+        assert_eq!(after_summary.immediate_score, Mana::Supermana.score(Color::White));
+
+        let turn = exact_turn_summary(&game, Color::White);
+        assert!(turn.spirit_assisted_score);
+        assert!(!turn.spirit_assisted_denial);
+    }
+
+    #[test]
+    fn exact_turn_summary_detects_two_step_spirit_assisted_opponent_mana_score() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(5, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 2;
+
+        assert_eq!(
+            exact_best_immediate_opponent_mana_score_on_board(&game.board, Color::White, 2),
+            0
+        );
+
+        let (after_board, score_delta, opponent_score_delta) = apply_spirit_move_preview(
+            &game.board,
+            Location::new(7, 1),
+            Item::Mana {
+                mana: Mana::Regular(Color::Black),
+            },
+            Location::new(8, 1),
+            Color::White,
+        );
+        let after_summary = exact_followup_summary(&after_board, Color::White, 2);
+        assert_eq!(score_delta, 0);
+        assert_eq!(opponent_score_delta, 0);
+        assert_eq!(
+            after_summary.immediate_opponent_mana_score,
+            Mana::Regular(Color::Black).score(Color::White)
+        );
+
+        let turn = exact_turn_summary(&game, Color::White);
+        assert!(turn.spirit_assisted_score);
+        assert!(turn.spirit_assisted_denial);
+    }
+
+    #[test]
     fn exact_spirit_summary_detects_same_turn_opponent_mana_score() {
         let game = game_with_items(
             vec![
