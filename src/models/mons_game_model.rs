@@ -9616,6 +9616,32 @@ mod opening_book_tests {
 
         let game = MonsGame::new(false);
         for preference in [SmartAutomovePreference::Pro, SmartAutomovePreference::Ultra] {
+            let mut config = SmartSearchConfig::from_preference(preference);
+            config.depth = 1;
+            config.max_visited_nodes = 16;
+            config.root_branch_limit = 1;
+            config.node_branch_limit = 1;
+            config.root_enum_limit = 1;
+            config.node_enum_limit = 1;
+            let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
+            assert!(
+                !inputs.is_empty(),
+                "{} mode should produce at least one input from initial position",
+                preference.as_api_value()
+            );
+            assert!(
+                MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs).is_some(),
+                "{} mode selected inputs should be legal",
+                preference.as_api_value()
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "full pro/ultra opening searches can take over a minute in debug"]
+    fn pro_and_ultra_modes_full_runtime_searches_produce_legal_inputs() {
+        let game = MonsGame::new(false);
+        for preference in [SmartAutomovePreference::Pro, SmartAutomovePreference::Ultra] {
             let config = SmartSearchConfig::from_preference(preference);
             let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
             assert!(

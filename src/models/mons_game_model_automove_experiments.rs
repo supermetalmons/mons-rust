@@ -921,6 +921,45 @@ fn model_current_best(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> 
     )
 }
 
+fn model_first_legal_automove(game: &MonsGame, _config: SmartSearchConfig) -> Vec<Input> {
+    let mut simulated = game.clone_for_simulation();
+    let automove_start_options = Some(SuggestedStartInputOptions::for_automove());
+    let mut inputs = Vec::new();
+    let mut output =
+        simulated.process_input_with_start_options(vec![], false, false, automove_start_options);
+
+    loop {
+        match output {
+            Output::InvalidInput => return Vec::new(),
+            Output::LocationsToStartFrom(locations) => {
+                let Some(location) = locations.first().copied() else {
+                    return Vec::new();
+                };
+                inputs.push(Input::Location(location));
+                output = simulated.process_input_with_start_options(
+                    inputs.clone(),
+                    false,
+                    false,
+                    automove_start_options,
+                );
+            }
+            Output::NextInputOptions(options) => {
+                let Some(next_input) = options.first() else {
+                    return Vec::new();
+                };
+                inputs.push(next_input.input.clone());
+                output = simulated.process_input_with_start_options(
+                    inputs.clone(),
+                    false,
+                    false,
+                    automove_start_options,
+                );
+            }
+            Output::Events(_) => return inputs,
+        }
+    }
+}
+
 fn model_runtime_pre_efficiency_logic(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
     runtime.enable_root_efficiency = false;
@@ -27726,6 +27765,22 @@ fn evaluate_candidate_against_pool(
     games_per_matchup: usize,
     budgets: &[SearchBudget],
 ) -> CandidateEvaluation {
+    evaluate_candidate_against_pool_with_max_plies(
+        candidate,
+        pool,
+        games_per_matchup,
+        budgets,
+        env_usize("SMART_POOL_MAX_PLIES").unwrap_or(MAX_GAME_PLIES),
+    )
+}
+
+fn evaluate_candidate_against_pool_with_max_plies(
+    candidate: AutomoveModel,
+    pool: &[AutomoveModel],
+    games_per_matchup: usize,
+    budgets: &[SearchBudget],
+    max_plies: usize,
+) -> CandidateEvaluation {
     assert!(!budgets.is_empty());
     assert!(!pool.is_empty());
 
@@ -27736,7 +27791,8 @@ fn evaluate_candidate_against_pool(
     let mut aggregate_stats = MatchupStats::default();
 
     for budget in budgets.iter().copied() {
-        let mode_result = run_mode_evaluation(candidate, pool, games_per_matchup, budget);
+        let mode_result =
+            run_mode_evaluation_with_max_plies(candidate, pool, games_per_matchup, budget, max_plies);
         aggregate_stats.merge(mode_result.aggregate_stats);
         for entry in &mode_result.opponents {
             combined_by_opponent
@@ -27797,11 +27853,12 @@ fn evaluate_candidate_against_pool(
     }
 }
 
-fn run_mode_evaluation(
+fn run_mode_evaluation_with_max_plies(
     candidate: AutomoveModel,
     pool: &[AutomoveModel],
     games_per_matchup: usize,
     budget: SearchBudget,
+    max_plies: usize,
 ) -> ModeEvaluation {
     let mut opponents = Vec::with_capacity(pool.len());
     let mut aggregate_stats = MatchupStats::default();
@@ -27809,12 +27866,13 @@ fn run_mode_evaluation(
     let mut handles = Vec::with_capacity(pool.len());
     for opponent in pool.iter().copied() {
         handles.push(std::thread::spawn(move || {
-            let stats = run_matchup_series(
+            let stats = run_matchup_series_with_max_plies(
                 candidate,
                 opponent,
                 games_per_matchup,
                 budget,
                 seed_for_pairing_and_budget(candidate.id, opponent.id, budget),
+                max_plies,
             );
             OpponentEvaluation {
                 opponent_id: opponent.id,
@@ -27854,8 +27912,25 @@ fn run_matchup_series(
     budget: SearchBudget,
     seed: u64,
 ) -> MatchupStats {
+    run_matchup_series_with_max_plies(
+        candidate,
+        opponent,
+        games_per_matchup,
+        budget,
+        seed,
+        env_usize("SMART_POOL_MAX_PLIES").unwrap_or(MAX_GAME_PLIES),
+    )
+}
+
+fn run_matchup_series_with_max_plies(
+    candidate: AutomoveModel,
+    opponent: AutomoveModel,
+    games_per_matchup: usize,
+    budget: SearchBudget,
+    seed: u64,
+    max_plies: usize,
+) -> MatchupStats {
     let opening_fens = generate_opening_fens_cached(seed, games_per_matchup);
-    let max_plies = env_usize("SMART_POOL_MAX_PLIES").unwrap_or(MAX_GAME_PLIES);
     let mut stats = MatchupStats::default();
 
     for game_index in 0..games_per_matchup {
@@ -30890,6 +30965,29 @@ fn smart_automove_pool_keeps_ten_models() {
 
 #[test]
 fn smart_automove_pool_smoke_runs() {
+    let probe_model = AutomoveModel {
+        id: "smoke_probe_candidate",
+        select_inputs: model_first_legal_automove,
+    };
+    let quick_budgets = [SearchBudget {
+        label: "smoke_probe",
+        depth: 1,
+        max_nodes: 1,
+    }];
+    let pool = vec![AutomoveModel {
+        id: "smoke_probe_pool",
+        select_inputs: model_first_legal_automove,
+    }];
+    let evaluation =
+        evaluate_candidate_against_pool_with_max_plies(probe_model, &pool, 1, &quick_budgets, 2);
+
+    assert_eq!(evaluation.opponents.len(), pool.len());
+    assert_eq!(evaluation.games_per_matchup, 1);
+}
+
+#[test]
+#[ignore = "full pool smoke runs a mini tournament and can take minutes in debug"]
+fn smart_automove_pool_smoke_runs_full_tournament() {
     let quick_budgets = [SearchBudget {
         label: "smoke_d1n96",
         depth: 1,
