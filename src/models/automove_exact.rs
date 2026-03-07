@@ -278,7 +278,7 @@ pub(crate) fn clear_exact_state_analysis_cache() {
 }
 
 pub(crate) fn exact_state_analysis(game: &MonsGame) -> ExactStateAnalysis {
-    let key = MonsGameModel::search_state_hash(game);
+    let key = exact_search_state_hash(game);
     EXACT_STATE_ANALYSIS_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         if let Some(cached) = cache.entries.get(&key).copied() {
@@ -366,7 +366,7 @@ fn can_attack_target_on_board_uncached(
     remaining_moves: i32,
     _can_use_action: bool,
 ) -> bool {
-    let target_guarded = MonsGameModel::is_location_guarded_by_angel(board, target_color, target);
+    let target_guarded = exact_is_location_guarded_by_angel(board, target_color, target);
 
     for (start, item) in board.occupied() {
         let mon = match item {
@@ -446,6 +446,98 @@ fn exact_board_hash(board: &Board) -> u64 {
         state = state.rotate_left(17).wrapping_mul(0x94d049bb133111eb);
     }
     exact_mix_u64(state)
+}
+
+fn exact_search_state_hash(game: &MonsGame) -> u64 {
+    let mut state = 0x6a09e667f3bcc909u64;
+    for (idx, item) in game.board.items.iter().enumerate() {
+        let Some(item) = item else { continue };
+        let entry = ((idx as u64)
+            .wrapping_add(1)
+            .wrapping_mul(0x9e3779b185ebca87))
+            ^ exact_search_hash_item(*item);
+        state ^= exact_search_mix_u64(entry);
+        state = state.rotate_left(17).wrapping_mul(0x94d049bb133111eb);
+    }
+
+    state ^= exact_search_mix_u64(game.white_score as i64 as u64 ^ 0x11);
+    state ^= exact_search_mix_u64(game.black_score as i64 as u64 ^ 0x23);
+    state ^= exact_search_mix_u64(exact_search_hash_color(game.active_color) ^ 0x35);
+    state ^= exact_search_mix_u64(game.actions_used_count as i64 as u64 ^ 0x47);
+    state ^= exact_search_mix_u64(game.mana_moves_count as i64 as u64 ^ 0x59);
+    state ^= exact_search_mix_u64(game.mons_moves_count as i64 as u64 ^ 0x6b);
+    state ^= exact_search_mix_u64(game.white_potions_count as i64 as u64 ^ 0x7d);
+    state ^= exact_search_mix_u64(game.black_potions_count as i64 as u64 ^ 0x8f);
+    state ^= exact_search_mix_u64(game.turn_number as i64 as u64 ^ 0xa1);
+    exact_search_mix_u64(state)
+}
+
+#[inline]
+fn exact_search_hash_item(item: Item) -> u64 {
+    match item {
+        Item::Mon { mon } => 0x100 | exact_search_hash_mon(mon),
+        Item::Mana { mana } => 0x200 | exact_search_hash_mana(mana),
+        Item::MonWithMana { mon, mana } => {
+            0x300 | exact_search_hash_mon(mon) | (exact_search_hash_mana(mana) << 16)
+        }
+        Item::MonWithConsumable { mon, consumable } => {
+            0x400
+                | exact_search_hash_mon(mon)
+                | (exact_search_hash_consumable(consumable) << 16)
+        }
+        Item::Consumable { consumable } => 0x500 | exact_search_hash_consumable(consumable),
+    }
+}
+
+#[inline]
+fn exact_search_hash_mon(mon: Mon) -> u64 {
+    exact_search_hash_mon_kind(mon.kind)
+        | (exact_search_hash_color(mon.color) << 4)
+        | (((mon.cooldown as i64 as u64) & 0xff) << 8)
+}
+
+#[inline]
+fn exact_search_hash_mon_kind(kind: MonKind) -> u64 {
+    match kind {
+        MonKind::Demon => 1,
+        MonKind::Drainer => 2,
+        MonKind::Angel => 3,
+        MonKind::Spirit => 4,
+        MonKind::Mystic => 5,
+    }
+}
+
+#[inline]
+fn exact_search_hash_color(color: Color) -> u64 {
+    match color {
+        Color::White => 1,
+        Color::Black => 2,
+    }
+}
+
+#[inline]
+fn exact_search_hash_mana(mana: Mana) -> u64 {
+    match mana {
+        Mana::Regular(color) => 0x10 | exact_search_hash_color(color),
+        Mana::Supermana => 0x20,
+    }
+}
+
+#[inline]
+fn exact_search_hash_consumable(consumable: Consumable) -> u64 {
+    match consumable {
+        Consumable::Potion => 1,
+        Consumable::Bomb => 2,
+        Consumable::BombOrPotion => 3,
+    }
+}
+
+#[inline]
+fn exact_search_mix_u64(mut value: u64) -> u64 {
+    value = value.wrapping_add(0x9e3779b97f4a7c15);
+    value = (value ^ (value >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+    value = (value ^ (value >> 27)).wrapping_mul(0x94d049bb133111eb);
+    value ^ (value >> 31)
 }
 
 #[inline]
@@ -696,7 +788,7 @@ pub(crate) fn is_drainer_exactly_safe_next_turn_on_board(
     color: Color,
     location: Location,
 ) -> bool {
-    let angel_nearby = MonsGameModel::is_location_guarded_by_angel(board, color, location);
+    let angel_nearby = exact_is_location_guarded_by_angel(board, color, location);
     !can_attack_target_on_board(
         board,
         color.other(),
@@ -705,6 +797,12 @@ pub(crate) fn is_drainer_exactly_safe_next_turn_on_board(
         Config::MONS_MOVES_PER_TURN,
         true,
     ) && !is_drainer_under_walk_threat(board, color, location, angel_nearby)
+}
+
+fn exact_is_location_guarded_by_angel(board: &Board, color: Color, location: Location) -> bool {
+    board
+        .find_awake_angel(color)
+        .map_or(false, |angel_location| angel_location.distance(&location) == 1)
 }
 
 fn build_exact_state_analysis(game: &MonsGame) -> ExactStateAnalysis {
@@ -1233,7 +1331,7 @@ fn exact_secure_specific_mana_steps_in_game(
     color: Color,
     wanted: Mana,
 ) -> Option<i32> {
-    let state_hash = MonsGameModel::search_state_hash(game);
+    let state_hash = exact_search_state_hash(game);
     let key = (state_hash, wanted);
     if let Some(cached) =
         EXACT_SECURE_MANA_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
@@ -1328,7 +1426,7 @@ fn exact_secure_specific_mana_path_from_uncached(
     wanted: Mana,
     visiting: &mut HashSet<(u64, Mana)>,
 ) -> Option<Vec<Location>> {
-    let state_hash = MonsGameModel::search_state_hash(game);
+    let state_hash = exact_search_state_hash(game);
     let key = (state_hash, wanted);
     if !visiting.insert(key) {
         return None;
@@ -2316,7 +2414,7 @@ mod tests {
         )
         .board;
         let angel_nearby =
-            MonsGameModel::is_location_guarded_by_angel(&board, Color::White, Location::new(6, 5));
+            exact_is_location_guarded_by_angel(&board, Color::White, Location::new(6, 5));
         let expected = !can_attack_target_on_board(
             &board,
             Color::Black,
@@ -2334,6 +2432,83 @@ mod tests {
         assert_eq!(
             is_drainer_exactly_safe_next_turn_on_board(&board, Color::White, Location::new(6, 5)),
             expected
+        );
+    }
+
+    #[test]
+    fn exact_search_state_hash_matches_model_search_state_hash() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(4, 4),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(7, 6),
+                    Item::MonWithConsumable {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 1),
+                        consumable: Consumable::Bomb,
+                    },
+                ),
+                (
+                    Location::new(6, 5),
+                    Item::Consumable {
+                        consumable: Consumable::Potion,
+                    },
+                ),
+            ],
+            Color::Black,
+        );
+        game.white_score = 1;
+        game.black_score = 2;
+        game.turn_number = 7;
+        game.actions_used_count = 1;
+        game.mana_moves_count = 1;
+        game.mons_moves_count = 2;
+        game.white_potions_count = 1;
+        game.black_potions_count = 0;
+
+        assert_eq!(
+            exact_search_state_hash(&game),
+            MonsGameModel::search_state_hash(&game)
+        );
+    }
+
+    #[test]
+    fn exact_angel_guard_helper_matches_model_helper() {
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(5, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(1, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+
+        assert_eq!(
+            exact_is_location_guarded_by_angel(&board, Color::White, Location::new(6, 5)),
+            MonsGameModel::is_location_guarded_by_angel(&board, Color::White, Location::new(6, 5))
+        );
+        assert_eq!(
+            exact_is_location_guarded_by_angel(&board, Color::White, Location::new(7, 5)),
+            MonsGameModel::is_location_guarded_by_angel(&board, Color::White, Location::new(7, 5))
+        );
+        assert_eq!(
+            exact_is_location_guarded_by_angel(&board, Color::Black, Location::new(1, 2)),
+            MonsGameModel::is_location_guarded_by_angel(&board, Color::Black, Location::new(1, 2))
         );
     }
 
