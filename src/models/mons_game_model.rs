@@ -4942,6 +4942,14 @@ impl MonsGameModel {
             && !classes.carrier_progress
     }
 
+    fn is_selective_extension_candidate(
+        tactical_extension_trigger: bool,
+        ordering_efficiency: i32,
+        classes: MoveClassFlags,
+    ) -> bool {
+        tactical_extension_trigger || (ordering_efficiency > 0 && !classes.quiet && !classes.material)
+    }
+
     fn compare_ranked_root_indices(
         root_moves: &[ScoredRootMove],
         a: (usize, i32),
@@ -6048,7 +6056,11 @@ impl MonsGameModel {
                 let mut child_depth = depth.saturating_sub(1);
                 let mut child_extensions_remaining = extensions_remaining;
                 if config.enable_selective_extensions
-                    && child.tactical_extension_trigger
+                    && Self::is_selective_extension_candidate(
+                        child.tactical_extension_trigger,
+                        child.ordering_efficiency,
+                        child.classes,
+                    )
                     && child_extensions_remaining > 0
                     && (extension_node_budget == 0 || *extension_nodes_used < extension_node_budget)
                 {
@@ -6157,7 +6169,11 @@ impl MonsGameModel {
                 let mut child_depth = depth.saturating_sub(1);
                 let mut child_extensions_remaining = extensions_remaining;
                 if config.enable_selective_extensions
-                    && child.tactical_extension_trigger
+                    && Self::is_selective_extension_candidate(
+                        child.tactical_extension_trigger,
+                        child.ordering_efficiency,
+                        child.classes,
+                    )
                     && child_extensions_remaining > 0
                     && (extension_node_budget == 0 || *extension_nodes_used < extension_node_budget)
                 {
@@ -10165,6 +10181,58 @@ mod opening_book_tests {
     }
 
     #[test]
+    fn selective_extension_candidate_preserves_existing_tactical_trigger() {
+        let classes = MoveClassFlags {
+            quiet: true,
+            ..MoveClassFlags::default()
+        };
+
+        assert!(
+            MonsGameModel::is_selective_extension_candidate(true, -20, classes),
+            "existing tactical trigger should still qualify for selective extension"
+        );
+    }
+
+    #[test]
+    fn selective_extension_candidate_includes_positive_carrier_progress() {
+        let classes = MoveClassFlags {
+            carrier_progress: true,
+            ..MoveClassFlags::default()
+        };
+
+        assert!(
+            MonsGameModel::is_selective_extension_candidate(false, 15, classes),
+            "positive exact carrier progress should qualify for selective extension"
+        );
+    }
+
+    #[test]
+    fn selective_extension_candidate_skips_nonpositive_carrier_progress() {
+        let classes = MoveClassFlags {
+            carrier_progress: true,
+            ..MoveClassFlags::default()
+        };
+
+        assert!(
+            !MonsGameModel::is_selective_extension_candidate(false, 0, classes),
+            "non-improving carrier progress should not consume selective extension budget"
+        );
+    }
+
+    #[test]
+    fn selective_extension_candidate_skips_positive_material_only_child() {
+        let classes = MoveClassFlags {
+            material: true,
+            ..MoveClassFlags::default()
+        };
+
+        assert!(
+            !MonsGameModel::is_selective_extension_candidate(false, 20, classes),
+            "material-only child should not consume selective extension budget without a tactical trigger"
+        );
+    }
+
+    #[test]
     fn tactical_child_top2_promotes_close_carrier_progress_child() {
         let game = game_with_items(
             vec![
@@ -10319,6 +10387,14 @@ mod opening_book_tests {
         assert!(
             !ranked_child.quiet_reduction_candidate,
             "dangerous opponent spirit setup should not be marked for quiet reduction"
+        );
+        assert!(
+            MonsGameModel::is_selective_extension_candidate(
+                ranked_child.tactical_extension_trigger,
+                ranked_child.ordering_efficiency,
+                ranked_child.classes,
+            ),
+            "dangerous opponent spirit setup should qualify for selective extension"
         );
     }
 
