@@ -2973,10 +2973,15 @@ impl MonsGameModel {
                 Mana::Regular(perspective.other()),
             );
         let spirit_own_mana_setup_now = spirit_development
-            && Self::events_spirit_move_own_mana_toward_color(&events, perspective);
+            && Self::events_spirit_scoring_mana_setup(
+                &events,
+                &simulated_game.board,
+                perspective,
+            );
         let supermana_progress = scores_supermana_this_turn
             || Self::events_pickup_supermana(&events)
             || Self::events_move_supermana_toward_color(&events, perspective)
+            || Self::events_spirit_supermana_setup(&events, &simulated_game.board, perspective)
             || exact_turn.safe_supermana_progress;
         let opponent_mana_progress = scores_opponent_mana_this_turn
             || Self::events_pickup_opponent_mana(&events, perspective)
@@ -3247,6 +3252,66 @@ impl MonsGameModel {
                 } if *owner == perspective && Self::mana_move_toward_color(*from, *to, perspective)
             )
         })
+    }
+
+    fn events_spirit_move_supermana_toward_color(events: &[Event], perspective: Color) -> bool {
+        events.iter().any(|event| {
+            matches!(
+                event,
+                Event::SpiritTargetMove {
+                    item: Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                    from,
+                    to,
+                    ..
+                } if Self::mana_move_toward_color(*from, *to, perspective)
+            )
+        })
+    }
+
+    fn events_spirit_move_supermana_onto_safe_drainer(
+        events: &[Event],
+        board_after: &Board,
+        perspective: Color,
+    ) -> bool {
+        events.iter().any(|event| {
+            matches!(
+                event,
+                Event::SpiritTargetMove {
+                    item: Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                    ..
+                }
+            )
+        }) && Self::own_drainer_carries_specific_mana_safely(
+            board_after,
+            perspective,
+            Mana::Supermana,
+        )
+    }
+
+    fn events_spirit_supermana_setup(
+        events: &[Event],
+        board_after: &Board,
+        perspective: Color,
+    ) -> bool {
+        Self::events_spirit_move_supermana_toward_color(events, perspective)
+            || Self::events_spirit_move_supermana_onto_safe_drainer(
+                events,
+                board_after,
+                perspective,
+            )
+    }
+
+    fn events_spirit_scoring_mana_setup(
+        events: &[Event],
+        board_after: &Board,
+        perspective: Color,
+    ) -> bool {
+        Self::events_spirit_move_own_mana_toward_color(events, perspective)
+            || Self::events_spirit_supermana_setup(events, board_after, perspective)
     }
 
     fn interview_root_soft_priority(
@@ -3572,8 +3637,11 @@ impl MonsGameModel {
                 if setup_inputs.len() >= max_candidates.max(1) {
                     break;
                 }
-                if !Self::events_spirit_move_own_mana_toward_color(&transition.events, perspective)
-                {
+                if !Self::events_spirit_scoring_mana_setup(
+                    &transition.events,
+                    &transition.game.board,
+                    perspective,
+                ) {
                     continue;
                 }
                 setup_inputs.push(transition);
@@ -4381,7 +4449,11 @@ impl MonsGameModel {
             && (Self::should_prefer_spirit_development(game, perspective)
                 || exact_spirit_setup_gain_before > 0)
             && !root_transitions.iter().any(|transition| {
-                Self::events_spirit_move_own_mana_toward_color(&transition.events, perspective)
+                Self::events_spirit_scoring_mana_setup(
+                    &transition.events,
+                    &transition.game.board,
+                    perspective,
+                )
             })
         {
             let fallback_limit = Self::spirit_setup_fallback_candidates_limit(config);
@@ -9418,6 +9490,87 @@ mod opening_book_tests {
                     Some(_)
                 ),
             "selected line should preserve the exact same-turn supermana threat under capped root enumeration, inputs={:?}, events={:?}",
+            inputs,
+            events
+        );
+    }
+
+    #[test]
+    fn spirit_converts_supermana_with_root_cutoff_when_direct_pickup_is_unsafe() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(10, 2),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(7, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+        let exact_turn_before =
+            crate::models::automove_exact::exact_turn_summary(&game, Color::White);
+        assert!(
+            !exact_turn_before.safe_supermana_progress,
+            "direct safe supermana pickup should be unavailable before the spirit move"
+        );
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.root_enum_limit = 0;
+        let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
+        let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
+            .expect("selected spirit-supermana inputs should be legal");
+        let spirit_supermana_to_safe_drainer = events.iter().any(|event| {
+            matches!(
+                event,
+                Event::SpiritTargetMove {
+                    item: Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                    to,
+                    ..
+                } if *to == Location::new(10, 2)
+            )
+        }) && after.board.occupied().any(|(location, item)| {
+            matches!(
+                item,
+                Item::MonWithMana {
+                    mon,
+                    mana: Mana::Supermana,
+                } if location == Location::new(10, 2)
+                    && mon.color == Color::White
+                    && mon.kind == MonKind::Drainer
+            )
+        });
+        assert!(
+            after.white_score >= game.white_score + 2 || spirit_supermana_to_safe_drainer,
+            "selected line should convert the spirit supermana opportunity into either an immediate score or a safe drainer handoff under capped root enumeration, inputs={:?}, events={:?}",
             inputs,
             events
         );
