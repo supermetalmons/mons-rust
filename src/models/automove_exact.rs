@@ -1309,6 +1309,97 @@ fn exact_secure_specific_mana_steps_in_game_uncached(
     best
 }
 
+pub(crate) fn exact_secure_specific_mana_path_from(
+    game: &MonsGame,
+    color: Color,
+    start: Location,
+    wanted: Mana,
+) -> Option<Vec<Location>> {
+    let mut visiting = HashSet::new();
+    exact_secure_specific_mana_path_from_uncached(game, color, start, wanted, &mut visiting)
+}
+
+fn exact_secure_specific_mana_path_from_uncached(
+    game: &MonsGame,
+    color: Color,
+    start: Location,
+    wanted: Mana,
+    visiting: &mut HashSet<(u64, Mana)>,
+) -> Option<Vec<Location>> {
+    let state_hash = MonsGameModel::search_state_hash(game);
+    let key = (state_hash, wanted);
+    if !visiting.insert(key) {
+        return None;
+    }
+
+    let result = if matches!(
+        game.board.item(start),
+        Some(Item::MonWithMana { mana, .. }) if *mana == wanted
+    ) && is_drainer_exactly_safe_next_turn_on_board(&game.board, color, start)
+    {
+        Some(Vec::new())
+    } else if game.active_color != color || !game.player_can_move_mon() {
+        None
+    } else {
+        let mut best_path: Option<Vec<Location>> = None;
+
+        for &next in start.nearby_locations_ref() {
+            let mut after = game.clone_for_simulation();
+            let Output::Events(events) = after.process_input(
+                vec![Input::Location(start), Input::Location(next)],
+                false,
+                false,
+            ) else {
+                continue;
+            };
+
+            let candidate_path = if events.iter().any(|event| {
+                matches!(
+                    event,
+                    Event::ManaScored { mana, .. } if *mana == wanted
+                )
+            }) {
+                Some(vec![next])
+            } else if exact_secure_specific_mana_steps_in_game(&after, color, wanted).is_some() {
+                let Some(next_start) = find_awake_drainer(&after.board, color) else {
+                    continue;
+                };
+                let Some(mut suffix) = exact_secure_specific_mana_path_from_uncached(
+                    &after,
+                    color,
+                    next_start,
+                    wanted,
+                    visiting,
+                ) else {
+                    continue;
+                };
+                let mut path = Vec::with_capacity(suffix.len() + 1);
+                path.push(next);
+                path.append(&mut suffix);
+                Some(path)
+            } else {
+                None
+            };
+
+            let Some(candidate_path) = candidate_path else {
+                continue;
+            };
+            let replace = match &best_path {
+                None => true,
+                Some(current) => candidate_path.len() < current.len(),
+            };
+            if replace {
+                best_path = Some(candidate_path);
+            }
+        }
+
+        best_path
+    };
+
+    visiting.remove(&key);
+    result
+}
+
 fn can_attack_opponent_drainer_exact(game: &MonsGame, color: Color) -> bool {
     let Some(target) = find_awake_drainer(&game.board, color.other()) else {
         return false;
@@ -1981,6 +2072,43 @@ mod tests {
     }
 
     #[test]
+    fn exact_secure_specific_mana_path_reconstructs_safe_supermana_pickup() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        assert_eq!(
+            exact_secure_specific_mana_path_from(
+                &game,
+                Color::White,
+                Location::new(6, 5),
+                Mana::Supermana,
+            ),
+            Some(vec![Location::new(5, 5)])
+        );
+    }
+
+    #[test]
     fn exact_attack_cache_preserves_repeated_mystic_reach_result() {
         clear_exact_state_analysis_cache();
         let board = game_with_items(
@@ -2472,6 +2600,43 @@ mod tests {
         let turn = exact_turn_summary(&game, Color::White);
         assert!(turn.safe_opponent_mana_progress);
         assert_eq!(turn.safe_opponent_mana_progress_steps, Some(1));
+    }
+
+    #[test]
+    fn exact_secure_specific_mana_path_reconstructs_safe_opponent_mana_pickup() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 4),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        assert_eq!(
+            exact_secure_specific_mana_path_from(
+                &game,
+                Color::White,
+                Location::new(6, 5),
+                Mana::Regular(Color::Black),
+            ),
+            Some(vec![Location::new(5, 4)])
+        );
     }
 
     #[test]

@@ -3560,6 +3560,22 @@ impl MonsGameModel {
         }
     }
 
+    fn child_exact_progress_fallback_candidates_limit(config: SmartSearchConfig) -> usize {
+        if config.depth >= 3 {
+            6
+        } else {
+            4
+        }
+    }
+
+    fn child_exact_progress_fallback_enum_limit(config: SmartSearchConfig) -> usize {
+        if config.depth >= 3 {
+            192
+        } else {
+            96
+        }
+    }
+
     fn generic_root_fallback_enum_limit(config: SmartSearchConfig) -> usize {
         if config.depth >= 3 {
             24
@@ -3998,6 +4014,107 @@ impl MonsGameModel {
         safety_inputs
     }
 
+    fn transition_preserves_exact_progress(
+        transition: &LegalInputTransition,
+        perspective: Color,
+        wanted_mana: Mana,
+    ) -> bool {
+        if matches!(wanted_mana, Mana::Supermana) {
+            if Self::events_score_supermana(&transition.events)
+                || Self::own_drainer_carries_specific_mana_safely(
+                    &transition.game.board,
+                    perspective,
+                    Mana::Supermana,
+                )
+            {
+                return true;
+            }
+            if transition.game.active_color == perspective {
+                let exact_turn = exact_turn_summary(&transition.game, perspective);
+                return exact_turn.safe_supermana_progress
+                    || exact_turn.spirit_assisted_supermana_progress;
+            }
+            return false;
+        }
+
+        if wanted_mana == Mana::Regular(perspective.other()) {
+            if Self::events_score_opponent_mana(&transition.events, perspective)
+                || Self::own_drainer_carries_specific_mana_safely(
+                    &transition.game.board,
+                    perspective,
+                    Mana::Regular(perspective.other()),
+                )
+            {
+                return true;
+            }
+            if transition.game.active_color == perspective {
+                let exact_turn = exact_turn_summary(&transition.game, perspective);
+                return exact_turn.safe_opponent_mana_progress
+                    || exact_turn.spirit_assisted_opponent_mana_progress
+                    || exact_turn.spirit_assisted_denial;
+            }
+        }
+
+        false
+    }
+
+    fn collect_targeted_exact_progress_inputs(
+        game: &MonsGame,
+        perspective: Color,
+        config: SmartSearchConfig,
+        max_candidates: usize,
+        wanted_mana: Mana,
+    ) -> Vec<LegalInputTransition> {
+        if !game.player_can_move_mon() && !game.player_can_use_action() {
+            return Vec::new();
+        }
+
+        let mut actor_locations = Self::find_awake_drainer_locations(game, perspective);
+        actor_locations.extend(Self::find_awake_spirit_locations(game, perspective));
+        if actor_locations.is_empty() {
+            return Vec::new();
+        }
+
+        let start_options = Self::automove_start_input_options(config);
+        let per_actor_enum_limit = Self::child_exact_progress_fallback_enum_limit(config);
+        let mut progress_inputs = Vec::new();
+        let mut seen_inputs = std::collections::HashSet::new();
+
+        for actor_loc in actor_locations {
+            if progress_inputs.len() >= max_candidates.max(1) {
+                break;
+            }
+
+            let mut actor_transitions = Vec::new();
+            let mut partial_inputs = vec![Input::Location(actor_loc)];
+            let mut simulated_game = game.clone_for_simulation();
+            Self::collect_legal_transitions(
+                &mut simulated_game,
+                &mut partial_inputs,
+                &mut actor_transitions,
+                per_actor_enum_limit,
+                start_options,
+            );
+            actor_transitions.sort_by(|a, b| a.inputs.cmp(&b.inputs));
+
+            for transition in actor_transitions {
+                if progress_inputs.len() >= max_candidates.max(1) {
+                    break;
+                }
+                if !Self::transition_preserves_exact_progress(&transition, perspective, wanted_mana)
+                {
+                    continue;
+                }
+                if seen_inputs.insert(transition.inputs.clone()) {
+                    progress_inputs.push(transition);
+                }
+            }
+        }
+
+        progress_inputs.sort_by(|a, b| a.inputs.cmp(&b.inputs));
+        progress_inputs
+    }
+
     fn spirit_target_allowed_for_root_fallback(item: Item) -> bool {
         match item {
             Item::Mon { mon }
@@ -4087,52 +4204,55 @@ impl MonsGameModel {
         }
 
         let mut pickup_inputs = Vec::new();
+        let mut seen_inputs = std::collections::HashSet::new();
 
         for drainer_loc in drainer_locations {
             if pickup_inputs.len() >= max_candidates.max(1) {
                 break;
             }
 
-            for &target in drainer_loc.nearby_locations_ref() {
-                if pickup_inputs.len() >= max_candidates.max(1) {
-                    break;
+            let Some(path) =
+                exact_secure_specific_mana_path_from(game, perspective, drainer_loc, wanted_mana)
+            else {
+                continue;
+            };
+            if path.is_empty() {
+                continue;
+            }
+
+            let mut inputs = Vec::with_capacity(path.len() + 1);
+            inputs.push(Input::Location(drainer_loc));
+            inputs.extend(path.into_iter().map(Input::Location));
+            let Some((after_game, events)) = Self::apply_inputs_for_search_with_events(game, &inputs)
+            else {
+                continue;
+            };
+            let picked_wanted_mana = match wanted_mana {
+                Mana::Supermana => Self::events_pickup_supermana(&events),
+                Mana::Regular(owner) if owner == perspective.other() => {
+                    Self::events_pickup_opponent_mana(&events, perspective)
                 }
-                let Some(Item::Mana { mana }) = game.board.item(target).copied() else {
-                    continue;
-                };
-                let picked_wanted_mana = match wanted_mana {
-                    Mana::Supermana => mana == Mana::Supermana,
-                    Mana::Regular(owner) if owner == perspective.other() => {
-                        mana == Mana::Regular(owner)
-                    }
-                    _ => false,
-                };
-                if !picked_wanted_mana {
-                    continue;
-                }
-                let inputs = vec![Input::Location(drainer_loc), Input::Location(target)];
-                let Some((after_game, events)) =
-                    Self::apply_inputs_for_search_with_events(game, &inputs)
-                else {
-                    continue;
-                };
-                if (match wanted_mana {
-                    Mana::Supermana => Self::events_pickup_supermana(&events),
-                    Mana::Regular(owner) if owner == perspective.other() => {
-                        Self::events_pickup_opponent_mana(&events, perspective)
-                    }
-                    _ => false,
-                }) && Self::own_drainer_carries_specific_mana_safely(
+                _ => false,
+            };
+            if picked_wanted_mana
+                && (Self::own_drainer_carries_specific_mana_safely(
                     &after_game.board,
                     perspective,
                     wanted_mana,
-                ) {
-                    pickup_inputs.push(LegalInputTransition {
-                        inputs,
-                        game: after_game,
-                        events,
-                    });
-                }
+                ) || match wanted_mana {
+                    Mana::Supermana => Self::events_score_supermana(&events),
+                    Mana::Regular(owner) if owner == perspective.other() => {
+                        Self::events_score_opponent_mana(&events, perspective)
+                    }
+                    _ => false,
+                })
+                && seen_inputs.insert(inputs.clone())
+            {
+                pickup_inputs.push(LegalInputTransition {
+                    inputs,
+                    game: after_game,
+                    events,
+                });
             }
         }
 
@@ -5379,6 +5499,14 @@ impl MonsGameModel {
 
         let has_supermana_scoring = config.enable_supermana_prepass_exception
             && root_moves.iter().any(|m| m.scores_supermana_this_turn);
+        let has_safe_supermana_pickup = config.enable_supermana_prepass_exception
+            && root_moves.iter().any(|m| {
+                m.safe_supermana_pickup_now
+                    && !m.own_drainer_vulnerable
+                    && !m.mana_handoff_to_opponent
+                    && !m.wins_immediately
+                    && !m.attacks_opponent_drainer
+            });
         let has_safe_opponent_mana_score = config.enable_opponent_mana_prepass_exception
             && root_moves.iter().any(|m| {
                 m.scores_opponent_mana_this_turn
@@ -5387,7 +5515,56 @@ impl MonsGameModel {
                     && !m.wins_immediately
                     && !m.attacks_opponent_drainer
             });
-        let has_tactical_prepass_exception = has_supermana_scoring || has_safe_opponent_mana_score;
+        let has_safe_opponent_mana_pickup = config.enable_opponent_mana_prepass_exception
+            && root_moves.iter().any(|m| {
+                m.safe_opponent_mana_pickup_now
+                    && !m.own_drainer_vulnerable
+                    && !m.mana_handoff_to_opponent
+                    && !m.wins_immediately
+                    && !m.attacks_opponent_drainer
+            });
+        let has_tactical_prepass_exception = has_supermana_scoring
+            || has_safe_supermana_pickup
+            || has_safe_opponent_mana_score
+            || has_safe_opponent_mana_pickup;
+
+        if config.enable_supermana_prepass_exception {
+            if let Some(index) = Self::best_tactical_root_index(root_moves, |candidate| {
+                candidate.scores_supermana_this_turn
+            }) {
+                return Some(root_moves[index].inputs.clone());
+            }
+            if let Some(index) = Self::best_tactical_root_index(root_moves, |candidate| {
+                candidate.safe_supermana_pickup_now
+                    && !candidate.own_drainer_vulnerable
+                    && !candidate.mana_handoff_to_opponent
+                    && !candidate.wins_immediately
+                    && !candidate.attacks_opponent_drainer
+            }) {
+                return Some(root_moves[index].inputs.clone());
+            }
+        }
+
+        if config.enable_opponent_mana_prepass_exception {
+            if let Some(index) = Self::best_tactical_root_index(root_moves, |candidate| {
+                candidate.scores_opponent_mana_this_turn
+                    && !candidate.own_drainer_vulnerable
+                    && !candidate.mana_handoff_to_opponent
+                    && !candidate.wins_immediately
+                    && !candidate.attacks_opponent_drainer
+            }) {
+                return Some(root_moves[index].inputs.clone());
+            }
+            if let Some(index) = Self::best_tactical_root_index(root_moves, |candidate| {
+                candidate.safe_opponent_mana_pickup_now
+                    && !candidate.own_drainer_vulnerable
+                    && !candidate.mana_handoff_to_opponent
+                    && !candidate.wins_immediately
+                    && !candidate.attacks_opponent_drainer
+            }) {
+                return Some(root_moves[index].inputs.clone());
+            }
+        }
 
         if config.enable_forced_drainer_attack
             && !has_tactical_prepass_exception
@@ -6481,9 +6658,65 @@ impl MonsGameModel {
             false
         };
         let start_options = Self::automove_start_input_options(config);
-        for transition in
-            Self::enumerate_legal_transitions(game, config.node_enum_limit, start_options)
-        {
+        let mut child_transitions =
+            Self::enumerate_legal_transitions(game, config.node_enum_limit, start_options);
+        if config.enable_child_move_class_coverage {
+            let exact_turn_before = exact_turn_summary(game, actor_color);
+            let fallback_limit = Self::child_exact_progress_fallback_candidates_limit(config);
+            let mut seen_inputs = child_transitions
+                .iter()
+                .map(|transition| transition.inputs.clone())
+                .collect::<std::collections::HashSet<_>>();
+            if (exact_turn_before.safe_supermana_progress
+                || exact_turn_before.spirit_assisted_supermana_progress)
+                && !child_transitions.iter().any(|transition| {
+                    Self::transition_preserves_exact_progress(
+                        transition,
+                        actor_color,
+                        Mana::Supermana,
+                    )
+                })
+            {
+                let fallback_inputs = Self::collect_targeted_exact_progress_inputs(
+                    game,
+                    actor_color,
+                    config,
+                    fallback_limit,
+                    Mana::Supermana,
+                );
+                for transition in fallback_inputs {
+                    if seen_inputs.insert(transition.inputs.clone()) {
+                        child_transitions.push(transition);
+                    }
+                }
+            }
+            if (exact_turn_before.safe_opponent_mana_progress
+                || exact_turn_before.spirit_assisted_opponent_mana_progress
+                || exact_turn_before.spirit_assisted_denial)
+                && !child_transitions.iter().any(|transition| {
+                    Self::transition_preserves_exact_progress(
+                        transition,
+                        actor_color,
+                        Mana::Regular(actor_color.other()),
+                    )
+                })
+            {
+                let fallback_inputs = Self::collect_targeted_exact_progress_inputs(
+                    game,
+                    actor_color,
+                    config,
+                    fallback_limit,
+                    Mana::Regular(actor_color.other()),
+                );
+                for transition in fallback_inputs {
+                    if seen_inputs.insert(transition.inputs.clone()) {
+                        child_transitions.push(transition);
+                    }
+                }
+            }
+        }
+
+        for transition in child_transitions {
             let simulated_game = transition.game;
             let events = transition.events;
             let child_hash = Self::search_state_hash(&simulated_game);
@@ -11002,6 +11235,181 @@ mod opening_book_tests {
     }
 
     #[test]
+    fn ranked_child_states_surface_exact_supermana_progress_with_node_enum_cutoff() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(0, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        assert!(
+            crate::models::automove_exact::exact_turn_summary(&game, Color::White)
+                .safe_supermana_progress,
+            "board should start with exact safe supermana progress"
+        );
+        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let limited_transitions = MonsGameModel::enumerate_legal_transitions(
+            &game,
+            1,
+            SuggestedStartInputOptions::for_automove(),
+        );
+        assert!(
+            !limited_transitions.iter().any(|transition| {
+                MonsGameModel::transition_preserves_exact_progress(
+                    transition,
+                    Color::White,
+                    Mana::Supermana,
+                )
+            }),
+            "plain tiny child enumeration should miss exact supermana continuations on this board"
+        );
+
+        let mut cutoff_config = config;
+        cutoff_config.node_enum_limit = 1;
+        cutoff_config.node_branch_limit = 8;
+        let children = MonsGameModel::ranked_child_states(
+            &game,
+            Color::White,
+            true,
+            None,
+            [0; 2],
+            cutoff_config,
+        );
+
+        assert!(
+            children.iter().any(|candidate| {
+                let game = &candidate.game;
+                MonsGameModel::own_drainer_carries_specific_mana_safely(
+                    &game.board,
+                    Color::White,
+                    Mana::Supermana,
+                ) || (game.active_color == Color::White
+                    && {
+                        let exact_turn =
+                            crate::models::automove_exact::exact_turn_summary(game, Color::White);
+                        exact_turn.safe_supermana_progress
+                            || exact_turn.spirit_assisted_supermana_progress
+                    })
+            }),
+            "exact safe supermana continuation child should survive tiny child enumeration cutoff"
+        );
+    }
+
+    #[test]
+    fn ranked_child_states_surface_exact_opponent_mana_progress_with_node_enum_cutoff() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(0, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 4),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        assert!(
+            crate::models::automove_exact::exact_turn_summary(&game, Color::White)
+                .safe_opponent_mana_progress,
+            "board should start with exact safe opponent-mana progress"
+        );
+        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let limited_transitions = MonsGameModel::enumerate_legal_transitions(
+            &game,
+            1,
+            SuggestedStartInputOptions::for_automove(),
+        );
+        assert!(
+            !limited_transitions.iter().any(|transition| {
+                MonsGameModel::transition_preserves_exact_progress(
+                    transition,
+                    Color::White,
+                    Mana::Regular(Color::Black),
+                )
+            }),
+            "plain tiny child enumeration should miss exact opponent-mana continuations on this board"
+        );
+
+        let mut cutoff_config = config;
+        cutoff_config.node_enum_limit = 1;
+        cutoff_config.node_branch_limit = 8;
+        let children = MonsGameModel::ranked_child_states(
+            &game,
+            Color::White,
+            true,
+            None,
+            [0; 2],
+            cutoff_config,
+        );
+
+        assert!(
+            children.iter().any(|candidate| {
+                let game = &candidate.game;
+                MonsGameModel::own_drainer_carries_specific_mana_safely(
+                    &game.board,
+                    Color::White,
+                    Mana::Regular(Color::Black),
+                ) || (game.active_color == Color::White
+                    && {
+                        let exact_turn =
+                            crate::models::automove_exact::exact_turn_summary(game, Color::White);
+                        exact_turn.safe_opponent_mana_progress
+                            || exact_turn.spirit_assisted_opponent_mana_progress
+                            || exact_turn.spirit_assisted_denial
+                    })
+            }),
+            "exact safe opponent-mana continuation child should survive tiny child enumeration cutoff"
+        );
+    }
+
+    #[test]
     fn shorter_exact_safe_supermana_progress_gets_higher_root_priority() {
         let game = game_with_items(
             vec![
@@ -11232,6 +11640,106 @@ mod opening_book_tests {
         assert!(
             roots.iter().any(|root| root.safe_opponent_mana_pickup_now),
             "expected a surfaced safe opponent-mana pickup root, got inputs={:?}",
+            roots
+                .iter()
+                .map(|root| root.inputs.clone())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn ranked_root_moves_surface_safe_supermana_pickup_with_root_cutoff_when_available() {
+        let white_spirit = Mon::new(MonKind::Spirit, Color::White, 0);
+        let white_spirit_base = Board::new().base(white_spirit);
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (white_spirit_base, Item::Mon { mon: white_spirit }),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.root_enum_limit = 1;
+        let roots = MonsGameModel::ranked_root_moves(&game, Color::White, config);
+
+        assert!(
+            roots.iter().any(|root| root.safe_supermana_pickup_now),
+            "expected a surfaced safe supermana pickup root under cutoff, got inputs={:?}",
+            roots
+                .iter()
+                .map(|root| root.inputs.clone())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn ranked_root_moves_surface_safe_opponent_mana_pickup_with_root_cutoff_when_available() {
+        let white_spirit = Mon::new(MonKind::Spirit, Color::White, 0);
+        let white_spirit_base = Board::new().base(white_spirit);
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 4),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (white_spirit_base, Item::Mon { mon: white_spirit }),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.root_enum_limit = 1;
+        let roots = MonsGameModel::ranked_root_moves(&game, Color::White, config);
+
+        assert!(
+            roots.iter().any(|root| root.safe_opponent_mana_pickup_now),
+            "expected a surfaced safe opponent-mana pickup root under cutoff, got inputs={:?}",
             roots
                 .iter()
                 .map(|root| root.inputs.clone())
