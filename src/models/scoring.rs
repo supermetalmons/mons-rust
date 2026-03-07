@@ -1032,13 +1032,21 @@ pub fn evaluate_preferability_with_weights(
                             weights.spirit_on_own_base_penalty,
                         );
                     let spirit_utility_cap = if use_legacy_formula { 4 } else { 6 };
-                    let spirit_utility = if use_legacy_formula {
-                        spirit_action_utility(&game.board, mon.color, location, true)
+                    let (spirit_utility, spirit_pressure_bonus) = if use_legacy_formula {
+                        (
+                            spirit_action_utility(&game.board, mon.color, location, true),
+                            0,
+                        )
                     } else {
-                        exact_analysis.color_summary(mon.color).spirit.utility
-                    }
-                    .min(spirit_utility_cap);
+                        let spirit = exact_analysis.color_summary(mon.color).spirit;
+                        (
+                            spirit.utility,
+                            exact_spirit_pressure_bonus(spirit, weights),
+                        )
+                    };
+                    let spirit_utility = spirit_utility.min(spirit_utility_cap);
                     score += my_mon_multiplier * weights.spirit_action_utility * spirit_utility;
+                    score += my_mon_multiplier * spirit_pressure_bonus;
                 } else if mon.kind == MonKind::Angel {
                     let friendly_drainer_distance =
                         nearest_friendly_drainer_distance(&game.board, mon.color, location);
@@ -1147,13 +1155,21 @@ pub fn evaluate_preferability_with_weights(
                             weights.spirit_on_own_base_penalty,
                         );
                     let spirit_utility_cap = if use_legacy_formula { 4 } else { 6 };
-                    let spirit_utility = if use_legacy_formula {
-                        spirit_action_utility(&game.board, mon.color, location, true)
+                    let (spirit_utility, spirit_pressure_bonus) = if use_legacy_formula {
+                        (
+                            spirit_action_utility(&game.board, mon.color, location, true),
+                            0,
+                        )
                     } else {
-                        exact_analysis.color_summary(mon.color).spirit.utility
-                    }
-                    .min(spirit_utility_cap);
+                        let spirit = exact_analysis.color_summary(mon.color).spirit;
+                        (
+                            spirit.utility,
+                            exact_spirit_pressure_bonus(spirit, weights),
+                        )
+                    };
+                    let spirit_utility = spirit_utility.min(spirit_utility_cap);
                     score += my_mon_multiplier * weights.spirit_action_utility * spirit_utility;
+                    score += my_mon_multiplier * spirit_pressure_bonus;
                 } else if mon.kind == MonKind::Angel {
                     let friendly_drainer_distance =
                         nearest_friendly_drainer_distance(&game.board, mon.color, location);
@@ -1373,13 +1389,21 @@ pub fn evaluate_preferability_with_weights(
                             weights.spirit_on_own_base_penalty,
                         );
                     let spirit_utility_cap = if use_legacy_formula { 4 } else { 6 };
-                    let spirit_utility = if use_legacy_formula {
-                        spirit_action_utility(&game.board, mon.color, location, true)
+                    let (spirit_utility, spirit_pressure_bonus) = if use_legacy_formula {
+                        (
+                            spirit_action_utility(&game.board, mon.color, location, true),
+                            0,
+                        )
                     } else {
-                        exact_analysis.color_summary(mon.color).spirit.utility
-                    }
-                    .min(spirit_utility_cap);
+                        let spirit = exact_analysis.color_summary(mon.color).spirit;
+                        (
+                            spirit.utility,
+                            exact_spirit_pressure_bonus(spirit, weights),
+                        )
+                    };
+                    let spirit_utility = spirit_utility.min(spirit_utility_cap);
                     score += my_mon_multiplier * weights.spirit_action_utility * spirit_utility;
+                    score += my_mon_multiplier * spirit_pressure_bonus;
                 }
 
                 if !use_legacy_formula && !mons_bases.contains(&location) {
@@ -1644,6 +1668,49 @@ fn exact_immediate_score_window_for_game(
         best_score,
         multi_pressure: exact.multi_pressure,
     }
+}
+
+fn exact_spirit_pressure_bonus(spirit: ExactSpiritSummary, weights: &ScoringWeights) -> i32 {
+    let setup_gain = spirit.next_turn_setup_gain.clamp(0, 4);
+    let mut bonus: i32 = 0;
+
+    if setup_gain > 0 {
+        bonus = bonus.saturating_add(
+            weights.score_race_path_progress.max(0).saturating_mul(setup_gain) / 4,
+        );
+        bonus = bonus.saturating_add(
+            weights
+                .opponent_score_race_path_progress
+                .max(0)
+                .saturating_mul(setup_gain)
+                / 6,
+        );
+        bonus = bonus.saturating_add(
+            weights.score_race_multi_path.max(0).saturating_mul(setup_gain) / 8,
+        );
+        bonus = bonus.saturating_add(
+            weights
+                .opponent_score_race_multi_path
+                .max(0)
+                .saturating_mul(setup_gain)
+                / 10,
+        );
+    }
+
+    if spirit.supermana_progress && !spirit.same_turn_score {
+        bonus = bonus
+            .saturating_add(weights.supermana_race_control.max(0).saturating_mul(3))
+            .saturating_add(weights.drainer_best_mana_path.max(0) / 4);
+    }
+
+    if spirit.opponent_mana_progress && !spirit.same_turn_opponent_mana_score {
+        bonus = bonus
+            .saturating_add(weights.opponent_mana_denial.max(0).saturating_mul(3))
+            .saturating_add(weights.drainer_best_mana_path.max(0) / 4)
+            .saturating_add(weights.score_race_path_progress.max(0) / 5);
+    }
+
+    bonus
 }
 
 fn spirit_action_utility(
@@ -2207,6 +2274,10 @@ mod tests {
     }
 
     fn exact_guard_only_weights() -> ScoringWeights {
+        exact_danger_only_weights()
+    }
+
+    fn exact_spirit_pressure_only_weights() -> ScoringWeights {
         exact_danger_only_weights()
     }
 
@@ -2912,6 +2983,245 @@ mod tests {
             "protected opponent-mana carrier should get strong extra credit when opponent score is not high (low_boost={}, high_boost={})",
             low_boost,
             high_boost
+        );
+    }
+
+    #[test]
+    fn exact_spirit_setup_gain_improves_preferability_without_spirit_utility_weight() {
+        let mut with_spirit = game_with_items(
+            vec![
+                (
+                    Location::new(9, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 8),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        with_spirit.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+        let mut without_spirit = game_with_items(
+            vec![
+                (
+                    Location::new(9, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 8),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        without_spirit.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        let spirit = exact_state_analysis(&with_spirit).color_summary(Color::White).spirit;
+        assert!(spirit.next_turn_setup_gain > 0);
+        assert!(!spirit.same_turn_score);
+        assert!(!spirit.same_turn_opponent_mana_score);
+
+        let mut weights = exact_spirit_pressure_only_weights();
+        weights.score_race_path_progress = 120;
+        weights.opponent_score_race_path_progress = 90;
+        weights.score_race_multi_path = 40;
+        weights.opponent_score_race_multi_path = 30;
+        weights.spirit_action_utility = 0;
+
+        let with_score = evaluate_preferability_with_weights(&with_spirit, Color::White, &weights);
+        let without_score =
+            evaluate_preferability_with_weights(&without_spirit, Color::White, &weights);
+        assert!(
+            with_score > without_score,
+            "exact spirit setup gain should improve preferability even when spirit_action_utility=0 (with={}, without={}, spirit={:?})",
+            with_score,
+            without_score,
+            spirit
+        );
+    }
+
+    #[test]
+    fn exact_spirit_supermana_progress_improves_preferability_without_spirit_utility_weight() {
+        let mut with_spirit = game_with_items(
+            vec![
+                (
+                    Location::new(5, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 2),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 1),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        with_spirit.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+        let mut without_spirit = game_with_items(
+            vec![
+                (
+                    Location::new(8, 2),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 1),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        without_spirit.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        let spirit = exact_state_analysis(&with_spirit).color_summary(Color::White).spirit;
+        assert!(spirit.supermana_progress);
+        assert!(!spirit.same_turn_score);
+
+        let mut weights = exact_spirit_pressure_only_weights();
+        weights.score_race_path_progress = 100;
+        weights.supermana_race_control = 40;
+        weights.drainer_best_mana_path = 80;
+        weights.spirit_action_utility = 0;
+
+        let with_score = evaluate_preferability_with_weights(&with_spirit, Color::White, &weights);
+        let without_score =
+            evaluate_preferability_with_weights(&without_spirit, Color::White, &weights);
+        assert!(
+            with_score > without_score,
+            "exact spirit supermana progress should improve preferability even when spirit_action_utility=0 (with={}, without={}, spirit={:?})",
+            with_score,
+            without_score,
+            spirit
+        );
+    }
+
+    #[test]
+    fn exact_spirit_opponent_mana_progress_improves_preferability_without_spirit_utility_weight() {
+        let mut with_spirit = game_with_items(
+            vec![
+                (
+                    Location::new(5, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 2),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        with_spirit.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+        let mut without_spirit = game_with_items(
+            vec![
+                (
+                    Location::new(8, 2),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        without_spirit.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        let spirit = exact_state_analysis(&with_spirit).color_summary(Color::White).spirit;
+        assert!(spirit.opponent_mana_progress);
+        assert!(!spirit.same_turn_opponent_mana_score);
+
+        let mut weights = exact_spirit_pressure_only_weights();
+        weights.score_race_path_progress = 100;
+        weights.opponent_mana_denial = 40;
+        weights.drainer_best_mana_path = 80;
+        weights.spirit_action_utility = 0;
+
+        let with_score = evaluate_preferability_with_weights(&with_spirit, Color::White, &weights);
+        let without_score =
+            evaluate_preferability_with_weights(&without_spirit, Color::White, &weights);
+        assert!(
+            with_score > without_score,
+            "exact spirit opponent-mana progress should improve preferability even when spirit_action_utility=0 (with={}, without={}, spirit={:?})",
+            with_score,
+            without_score,
+            spirit
         );
     }
 
