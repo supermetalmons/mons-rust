@@ -1458,6 +1458,7 @@ struct ScoredRootMove {
     safe_opponent_mana_pickup_now: bool,
     safe_supermana_progress_steps: i32,
     safe_opponent_mana_progress_steps: i32,
+    score_path_best_steps: i32,
     same_turn_score_window_value: i32,
     spirit_same_turn_score_setup_now: bool,
     spirit_own_mana_setup_now: bool,
@@ -1487,6 +1488,7 @@ struct RootEvaluation {
     safe_opponent_mana_pickup_now: bool,
     safe_supermana_progress_steps: i32,
     safe_opponent_mana_progress_steps: i32,
+    score_path_best_steps: i32,
     same_turn_score_window_value: i32,
     spirit_same_turn_score_setup_now: bool,
     spirit_own_mana_setup_now: bool,
@@ -2961,6 +2963,7 @@ impl MonsGameModel {
             exact_turn.safe_supermana_progress_steps.unwrap_or(unknown_progress_steps);
         let safe_opponent_mana_progress_steps =
             exact_turn.safe_opponent_mana_progress_steps.unwrap_or(unknown_progress_steps);
+        let unknown_score_path_steps = Config::BOARD_SIZE * 3;
         let same_turn_score_window_value = exact_analysis
             .map(|analysis| {
                 analysis
@@ -2970,6 +2973,15 @@ impl MonsGameModel {
                     .max(0)
             })
             .unwrap_or(0);
+        let score_path_best_steps = exact_analysis
+            .map(|analysis| {
+                analysis
+                    .color_summary(perspective)
+                    .score_path_window
+                    .best_steps
+                    .unwrap_or(unknown_score_path_steps)
+            })
+            .unwrap_or(unknown_score_path_steps);
         let spirit_same_turn_score_setup_now = Self::events_include_spirit_target_move(&events)
             && simulated_game.active_color == perspective
             && same_turn_score_window_value > 0;
@@ -3114,6 +3126,7 @@ impl MonsGameModel {
             safe_opponent_mana_pickup_now,
             safe_supermana_progress_steps,
             safe_opponent_mana_progress_steps,
+            score_path_best_steps,
             same_turn_score_window_value,
             spirit_same_turn_score_setup_now,
             spirit_own_mana_setup_now,
@@ -3450,6 +3463,17 @@ impl MonsGameModel {
 
     fn root_progress_steps_better(candidate_steps: i32, incumbent_steps: i32) -> bool {
         let unknown_steps = Config::BOARD_SIZE + 4;
+        let candidate_known = candidate_steps < unknown_steps;
+        let incumbent_known = incumbent_steps < unknown_steps;
+        match (candidate_known, incumbent_known) {
+            (true, true) => candidate_steps < incumbent_steps,
+            (true, false) => true,
+            _ => false,
+        }
+    }
+
+    fn root_score_path_steps_better(candidate_steps: i32, incumbent_steps: i32) -> bool {
+        let unknown_steps = Config::BOARD_SIZE * 3;
         let candidate_known = candidate_steps < unknown_steps;
         let incumbent_known = incumbent_steps < unknown_steps;
         match (candidate_known, incumbent_known) {
@@ -4769,6 +4793,15 @@ impl MonsGameModel {
         if candidate.spirit_own_mana_setup_now != incumbent.spirit_own_mana_setup_now {
             return candidate.spirit_own_mana_setup_now;
         }
+        if candidate.spirit_own_mana_setup_now
+            && incumbent.spirit_own_mana_setup_now
+            && candidate.score_path_best_steps != incumbent.score_path_best_steps
+        {
+            return Self::root_score_path_steps_better(
+                candidate.score_path_best_steps,
+                incumbent.score_path_best_steps,
+            );
+        }
         if candidate.supermana_progress != incumbent.supermana_progress {
             return candidate.supermana_progress;
         }
@@ -5279,6 +5312,7 @@ impl MonsGameModel {
                 safe_opponent_mana_pickup_now: candidate.safe_opponent_mana_pickup_now,
                 safe_supermana_progress_steps: candidate.safe_supermana_progress_steps,
                 safe_opponent_mana_progress_steps: candidate.safe_opponent_mana_progress_steps,
+                score_path_best_steps: candidate.score_path_best_steps,
                 same_turn_score_window_value: candidate.same_turn_score_window_value,
                 spirit_same_turn_score_setup_now: candidate.spirit_same_turn_score_setup_now,
                 spirit_own_mana_setup_now: candidate.spirit_own_mana_setup_now,
@@ -6857,6 +6891,7 @@ impl MonsGameModel {
             safe_opponent_mana_pickup_now: candidate.safe_opponent_mana_pickup_now,
             safe_supermana_progress_steps: candidate.safe_supermana_progress_steps,
             safe_opponent_mana_progress_steps: candidate.safe_opponent_mana_progress_steps,
+            score_path_best_steps: candidate.score_path_best_steps,
             same_turn_score_window_value: candidate.same_turn_score_window_value,
             spirit_same_turn_score_setup_now: candidate.spirit_same_turn_score_setup_now,
             spirit_own_mana_setup_now: candidate.spirit_own_mana_setup_now,
@@ -7672,6 +7707,7 @@ impl MonsGameModel {
         let mut best_spirit_same_turn_score_setup =
             scored_roots[best_index].spirit_same_turn_score_setup_now;
         let mut best_spirit_own_mana_setup = scored_roots[best_index].spirit_own_mana_setup_now;
+        let mut best_score_path_best_steps = scored_roots[best_index].score_path_best_steps;
         let mut best_safe_supermana_progress_steps =
             scored_roots[best_index].safe_supermana_progress_steps;
         let mut best_safe_opponent_mana_progress_steps =
@@ -7700,6 +7736,15 @@ impl MonsGameModel {
                 evaluation.spirit_own_mana_setup_now && !best_spirit_own_mana_setup;
             let equal_spirit_setup =
                 evaluation.spirit_own_mana_setup_now == best_spirit_own_mana_setup;
+            let spirit_setup_score_path_better = evaluation.spirit_own_mana_setup_now
+                && best_spirit_own_mana_setup
+                && Self::root_score_path_steps_better(
+                    evaluation.score_path_best_steps,
+                    best_score_path_best_steps,
+                );
+            let equal_spirit_setup_score_path = !evaluation.spirit_own_mana_setup_now
+                || !best_spirit_own_mana_setup
+                || evaluation.score_path_best_steps == best_score_path_best_steps;
             let supermana_progress_steps_better = Self::root_progress_steps_better(
                 evaluation.safe_supermana_progress_steps,
                 best_safe_supermana_progress_steps,
@@ -7747,6 +7792,10 @@ impl MonsGameModel {
                 true
             } else if !equal_spirit_setup {
                 false
+            } else if spirit_setup_score_path_better {
+                true
+            } else if !equal_spirit_setup_score_path {
+                false
             } else if supermana_progress_steps_better {
                 true
             } else if !equal_supermana_progress_steps {
@@ -7773,6 +7822,7 @@ impl MonsGameModel {
                 best_spirit_development = evaluation.spirit_development;
                 best_spirit_same_turn_score_setup = evaluation.spirit_same_turn_score_setup_now;
                 best_spirit_own_mana_setup = evaluation.spirit_own_mana_setup_now;
+                best_score_path_best_steps = evaluation.score_path_best_steps;
                 best_safe_supermana_progress_steps = evaluation.safe_supermana_progress_steps;
                 best_safe_opponent_mana_progress_steps =
                     evaluation.safe_opponent_mana_progress_steps;
@@ -8024,6 +8074,16 @@ impl MonsGameModel {
             && candidate.spirit_own_mana_setup_now != incumbent.spirit_own_mana_setup_now
         {
             return candidate.spirit_own_mana_setup_now;
+        }
+        if config.enable_interview_deterministic_tiebreak
+            && candidate.spirit_own_mana_setup_now
+            && incumbent.spirit_own_mana_setup_now
+            && candidate.score_path_best_steps != incumbent.score_path_best_steps
+        {
+            return Self::root_score_path_steps_better(
+                candidate.score_path_best_steps,
+                incumbent.score_path_best_steps,
+            );
         }
         if config.enable_interview_deterministic_tiebreak
             && candidate.spirit_development != incumbent.spirit_development
@@ -9501,6 +9561,7 @@ mod opening_book_tests {
             safe_opponent_mana_pickup_now: candidate.safe_opponent_mana_pickup_now,
             safe_supermana_progress_steps: candidate.safe_supermana_progress_steps,
             safe_opponent_mana_progress_steps: candidate.safe_opponent_mana_progress_steps,
+            score_path_best_steps: candidate.score_path_best_steps,
             same_turn_score_window_value: candidate.same_turn_score_window_value,
             spirit_same_turn_score_setup_now: candidate.spirit_same_turn_score_setup_now,
             spirit_own_mana_setup_now: candidate.spirit_own_mana_setup_now,
@@ -10434,6 +10495,90 @@ mod opening_book_tests {
             inputs,
             events
         );
+    }
+
+    #[test]
+    fn spirit_setup_with_shorter_exact_score_path_gets_higher_root_priority() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 7),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            &game,
+            Color::White,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        let short = MonsGameModel::build_scored_root_move(
+            &game,
+            Color::White,
+            config,
+            own_drainer_vulnerable_before,
+            &[
+                Input::Location(Location::new(6, 5)),
+                Input::Location(Location::new(5, 7)),
+                Input::Location(Location::new(6, 6)),
+            ],
+        )
+        .expect("shorter spirit setup inputs should build a scored root");
+        let long = MonsGameModel::build_scored_root_move(
+            &game,
+            Color::White,
+            config,
+            own_drainer_vulnerable_before,
+            &[
+                Input::Location(Location::new(6, 5)),
+                Input::Location(Location::new(5, 7)),
+                Input::Location(Location::new(6, 7)),
+            ],
+        )
+        .expect("longer spirit setup inputs should build a scored root");
+
+        assert!(short.spirit_own_mana_setup_now);
+        assert!(long.spirit_own_mana_setup_now);
+        assert!(!short.spirit_same_turn_score_setup_now);
+        assert!(!long.spirit_same_turn_score_setup_now);
+        assert_eq!(short.score_path_best_steps, 7);
+        assert_eq!(long.score_path_best_steps, 8);
+        assert!(MonsGameModel::is_better_tactical_root_candidate(
+            &short, &long
+        ));
+        let picked = MonsGameModel::pick_root_move_with_exploration(
+            &game,
+            &[
+                root_evaluation_for_test(&long, 100),
+                root_evaluation_for_test(&short, 100),
+            ],
+            Color::White,
+            config,
+        );
+        assert_eq!(picked, short.inputs);
     }
 
     #[test]
