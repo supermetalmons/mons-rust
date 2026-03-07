@@ -10394,14 +10394,21 @@ mod opening_book_tests {
         let opening_model = MonsGameModel::with_game(opening_game);
         let opening_config =
             opening_model.runtime_config_for_preference(SmartAutomovePreference::Pro);
-        assert_eq!(
-            opening_config.max_visited_nodes,
-            SMART_AUTOMOVE_PRO_MAX_VISITED_NODES as usize
-        );
+        assert_eq!(opening_config.depth, 3);
+        assert_eq!(opening_config.max_visited_nodes, 1_100);
+        assert_eq!(opening_config.root_branch_limit, 20);
+        assert_eq!(opening_config.node_branch_limit, 10);
+        assert_eq!(opening_config.root_enum_limit, 132);
+        assert_eq!(opening_config.node_enum_limit, 72);
+        assert!(!opening_config.enable_root_efficiency);
+        assert!(!opening_config.enable_child_move_class_coverage);
+        assert!(!opening_config.enable_two_pass_root_allocation);
+        assert!(!opening_config.enable_root_aspiration);
+        assert!(!opening_config.enable_selective_extensions);
         assert_eq!(opening_config.root_reply_risk_score_margin, 155);
         assert_eq!(opening_config.root_reply_risk_shortlist_max, 7);
-        assert_eq!(opening_config.root_reply_risk_reply_limit, 18);
-        assert_eq!(opening_config.root_reply_risk_node_share_bp, 1_400);
+        assert_eq!(opening_config.root_reply_risk_reply_limit, 8);
+        assert_eq!(opening_config.root_reply_risk_node_share_bp, 560);
         assert!(!opening_config.enable_normal_root_safety_deep_floor);
         assert_eq!(opening_config.root_drainer_safety_score_margin, 4_300);
         assert_eq!(opening_config.selective_extension_node_share_bp, 1_200);
@@ -10438,14 +10445,21 @@ mod opening_book_tests {
         let opening_model = MonsGameModel::with_game(opening_game);
         let opening_config =
             opening_model.runtime_config_for_preference(SmartAutomovePreference::Ultra);
-        assert_eq!(
-            opening_config.max_visited_nodes,
-            SMART_AUTOMOVE_ULTRA_MAX_VISITED_NODES as usize
-        );
+        assert_eq!(opening_config.depth, 4);
+        assert_eq!(opening_config.max_visited_nodes, 2_400);
+        assert_eq!(opening_config.root_branch_limit, 22);
+        assert_eq!(opening_config.node_branch_limit, 11);
+        assert_eq!(opening_config.root_enum_limit, 144);
+        assert_eq!(opening_config.node_enum_limit, 84);
+        assert!(!opening_config.enable_root_efficiency);
+        assert!(!opening_config.enable_child_move_class_coverage);
+        assert!(!opening_config.enable_two_pass_root_allocation);
+        assert!(!opening_config.enable_root_aspiration);
+        assert!(!opening_config.enable_selective_extensions);
         assert_eq!(opening_config.root_reply_risk_score_margin, 165);
         assert_eq!(opening_config.root_reply_risk_shortlist_max, 8);
-        assert_eq!(opening_config.root_reply_risk_reply_limit, 22);
-        assert_eq!(opening_config.root_reply_risk_node_share_bp, 1_700);
+        assert_eq!(opening_config.root_reply_risk_reply_limit, 8);
+        assert_eq!(opening_config.root_reply_risk_node_share_bp, 560);
         assert!(!opening_config.enable_normal_root_safety_deep_floor);
         assert_eq!(opening_config.root_drainer_safety_score_margin, 4_600);
         assert_eq!(opening_config.selective_extension_node_share_bp, 1_200);
