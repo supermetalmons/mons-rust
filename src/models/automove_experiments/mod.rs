@@ -33,14 +33,6 @@ pub(super) const SMART_PRO_CPU_RATIO_TARGET_MAX: f64 = 4.50;
 pub(super) const SMART_STAGE1_CPU_RATIO_MAX_FAST: f64 = 1.05;
 pub(super) const SMART_STAGE1_CPU_RATIO_MAX_NORMAL: f64 = 1.05;
 pub(super) const SMART_STAGE1_CPU_RATIO_MAX_PRO: f64 = 1.10;
-pub(super) const SMART_STAGE1_CPU_RATIO_MAX_ULTRA: f64 = 1.10;
-const SMART_ULTRA_FAST_SCREEN_DELTA_MIN: f64 = 0.0;
-const SMART_ULTRA_PROGRESSIVE_MEANINGFUL_DELTA_MIN: f64 = 0.04;
-const SMART_ULTRA_PROGRESSIVE_MEANINGFUL_CONFIDENCE_MIN: f64 = 0.65;
-const SMART_ULTRA_PRIMARY_IMPROVEMENT_DELTA_MIN_VS_PRO: f64 = 0.08;
-const SMART_ULTRA_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN: f64 = 0.90;
-pub(super) const SMART_ULTRA_CPU_RATIO_TARGET_MIN_VS_PRO: f64 = 3.30;
-pub(super) const SMART_ULTRA_CPU_RATIO_TARGET_MAX_VS_PRO: f64 = 10.0;
 pub(super) const SMART_EXACT_LITE_CACHE_HIT_RATE_MIN: f64 = 0.20;
 
 #[derive(Debug, Clone, Copy)]
@@ -68,7 +60,7 @@ impl SearchBudget {
         if let Some(preference) = SmartAutomovePreference::from_api_value(self.label) {
             let hinted_context = if matches!(
                 preference,
-                SmartAutomovePreference::Pro | SmartAutomovePreference::Ultra
+                SmartAutomovePreference::Pro
             ) && env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false)
             {
                 ProRuntimeContext::OpeningBookDriven
@@ -94,10 +86,6 @@ fn client_budgets() -> [SearchBudget; 2] {
 
 fn pro_budget() -> SearchBudget {
     SearchBudget::from_preference(SmartAutomovePreference::Pro)
-}
-
-fn ultra_budget() -> SearchBudget {
-    SearchBudget::from_preference(SmartAutomovePreference::Ultra)
 }
 
 #[derive(Clone, Copy)]

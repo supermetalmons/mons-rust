@@ -435,15 +435,3 @@ pub(super) fn pro_baseline_profile_name() -> String {
         .or_else(|| Some(gate_baseline_profile_name()))
         .unwrap_or_else(|| DEFAULT_PROMOTION_BASELINE_PROFILE.to_string())
 }
-
-pub(super) fn ultra_candidate_profile_name() -> String {
-    env_profile_name("SMART_ULTRA_CANDIDATE_PROFILE")
-        .or_else(|| env_profile_name("SMART_CANDIDATE_PROFILE"))
-        .unwrap_or_else(|| "runtime_current".to_string())
-}
-
-pub(super) fn ultra_baseline_profile_name() -> String {
-    env_profile_name("SMART_ULTRA_BASELINE_PROFILE")
-        .or_else(|| Some(gate_baseline_profile_name()))
-        .unwrap_or_else(|| DEFAULT_PROMOTION_BASELINE_PROFILE.to_string())
-}

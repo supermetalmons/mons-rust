@@ -16,7 +16,7 @@ Use the promotion-first stage order for client-mode candidates:
   cargo test --release --lib smart_automove_tactical_candidate_profile -- --ignored --nocapture
 ```
 
-2. Stage 1: strict CPU non-regression vs `runtime_current` (all 4 modes)
+2. Stage 1: strict CPU non-regression vs `runtime_current` (all 3 modes)
 
 ```sh
 ./scripts/run-experiment-logged.sh stage1_cpu_<candidate> -- \
@@ -24,7 +24,7 @@ Use the promotion-first stage order for client-mode candidates:
   cargo test --release --lib smart_automove_pool_stage1_cpu_non_regression_gate -- --ignored --nocapture
 ```
 
-Stage-1 CPU gate defaults to three seed tags (`stage1_cpu_v1`, `stage1_cpu_v2`, `stage1_cpu_v3`) and enforces per-seed caps: `fast <= 1.05x`, `normal <= 1.05x`, `pro <= 1.10x`, `ultra <= 1.10x` versus `runtime_current`. Override seeds with `SMART_STAGE1_SEED_TAGS` (comma-separated, minimum 3).
+Stage-1 CPU gate defaults to three seed tags (`stage1_cpu_v1`, `stage1_cpu_v2`, `stage1_cpu_v3`) and enforces per-seed caps: `fast <= 1.05x`, `normal <= 1.05x`, `pro <= 1.10x` versus `runtime_current`. Override seeds with `SMART_STAGE1_SEED_TAGS` (comma-separated, minimum 3).
 
 3. Stage 1b: exact-lite diagnostics gate (required for exact-lite candidates, no-op for non-exact candidates)
 
@@ -68,7 +68,7 @@ cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --
   cargo test --release --lib smart_automove_pool_promotion_ladder -- --ignored --nocapture
 ```
 
-For `pro` and `ultra`, use the mode-specific ignored tests listed below instead of the client pipeline.
+For `pro`, use the mode-specific ignored tests listed below instead of the client pipeline.
 
 Candidate naming convention for iteration waves:
 
@@ -127,7 +127,6 @@ The shipped automove API remains:
 - `smartAutomoveAsync("fast")`
 - `smartAutomoveAsync("normal")`
 - `smartAutomoveAsync("pro")`
-- `smartAutomoveAsync("ultra")`
 
 Current release discipline:
 
@@ -148,6 +147,7 @@ Client mode:
 - `smart_automove_tactical_candidate_profile`
 - `smart_automove_pool_stage1_cpu_non_regression_gate`
 - `smart_automove_pool_exact_lite_diagnostics_gate`
+- `smart_automove_pool_mode_comparison_report`
 - `smart_automove_pool_fast_screen`
 - `smart_automove_pool_progressive_duel`
 - `smart_automove_pool_promotion_ladder`
@@ -159,16 +159,6 @@ Pro mode:
 - `smart_automove_pool_pro_progressive_vs_normal`
 - `smart_automove_pool_pro_progressive_vs_fast`
 - `smart_automove_pool_pro_promotion_ladder`
-
-Ultra mode:
-
-- `smart_automove_pool_ultra_fast_screen_vs_pro`
-- `smart_automove_pool_ultra_fast_screen_vs_normal`
-- `smart_automove_pool_ultra_fast_screen_vs_fast`
-- `smart_automove_pool_ultra_progressive_vs_pro`
-- `smart_automove_pool_ultra_progressive_vs_normal`
-- `smart_automove_pool_ultra_progressive_vs_fast`
-- `smart_automove_pool_ultra_promotion_ladder`
 
 ## Release Steps
 

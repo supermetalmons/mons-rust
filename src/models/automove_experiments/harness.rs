@@ -569,35 +569,6 @@ pub(super) fn run_pro_matchup_across_seeds(
     aggregate
 }
 
-pub(super) fn run_ultra_matchup_across_seeds(
-    candidate_profile: &str,
-    baseline_profile: &str,
-    baseline_mode: SmartAutomovePreference,
-    seed_tag_prefix: &str,
-    seed_tags: &[&str],
-    repeats: usize,
-    games_per_seed: usize,
-    max_plies: usize,
-    use_white_opening_book: bool,
-) -> MatchupStats {
-    let mut aggregate = MatchupStats::default();
-    for seed_tag in seed_tags {
-        let tagged = format!("{}:{}", seed_tag_prefix, seed_tag);
-        aggregate.merge(run_cross_budget_duel(
-            candidate_profile,
-            SmartAutomovePreference::Ultra,
-            baseline_profile,
-            baseline_mode,
-            tagged.as_str(),
-            repeats,
-            games_per_seed,
-            max_plies,
-            use_white_opening_book,
-        ));
-    }
-    aggregate
-}
-
 pub(super) fn run_pro_progressive_matchup(
     candidate_profile: &str,
     baseline_profile: &str,
@@ -652,72 +623,6 @@ pub(super) fn run_pro_progressive_matchup(
 
         if delta >= SMART_PRO_PROGRESSIVE_MEANINGFUL_DELTA_MIN
             && confidence >= SMART_PRO_PROGRESSIVE_MEANINGFUL_CONFIDENCE_MIN
-        {
-            meaningful_lift = true;
-        }
-        if delta < -0.05 || games_per_seed >= max_games {
-            break;
-        }
-        games_per_seed = (games_per_seed * 2).min(max_games);
-    }
-
-    (cumulative, meaningful_lift)
-}
-
-pub(super) fn run_ultra_progressive_matchup(
-    candidate_profile: &str,
-    baseline_profile: &str,
-    baseline_mode: SmartAutomovePreference,
-    stage_tag: &str,
-) -> (MatchupStats, bool) {
-    let initial_games = env_usize("SMART_ULTRA_PROGRESSIVE_INITIAL_GAMES")
-        .unwrap_or(2)
-        .max(1);
-    let max_games = env_usize("SMART_ULTRA_PROGRESSIVE_MAX_GAMES")
-        .unwrap_or(32)
-        .max(initial_games);
-    let repeats = env_usize("SMART_ULTRA_PROGRESSIVE_REPEATS")
-        .unwrap_or(2)
-        .max(1);
-    let max_plies = env_usize("SMART_ULTRA_PROGRESSIVE_MAX_PLIES")
-        .unwrap_or(80)
-        .max(56);
-    let seed_tags = ["neutral_v1", "neutral_v2", "neutral_v3"];
-
-    let mut cumulative = MatchupStats::default();
-    let mut games_per_seed = initial_games;
-    let mut meaningful_lift = false;
-
-    loop {
-        for seed_tag in seed_tags {
-            let tagged_seed = format!("{}:{}:{}", stage_tag, seed_tag, games_per_seed);
-            cumulative.merge(run_cross_budget_duel(
-                candidate_profile,
-                SmartAutomovePreference::Ultra,
-                baseline_profile,
-                baseline_mode,
-                tagged_seed.as_str(),
-                repeats,
-                games_per_seed,
-                max_plies,
-                false,
-            ));
-        }
-
-        let (delta, confidence) = stats_delta_confidence(cumulative);
-        println!(
-            "ultra progressive {} vs {}({}): games/seed={} cumulative={} delta={:.4} confidence={:.3}",
-            candidate_profile,
-            baseline_profile,
-            baseline_mode.as_api_value(),
-            games_per_seed,
-            cumulative.total_games(),
-            delta,
-            confidence
-        );
-
-        if delta >= SMART_ULTRA_PROGRESSIVE_MEANINGFUL_DELTA_MIN
-            && confidence >= SMART_ULTRA_PROGRESSIVE_MEANINGFUL_CONFIDENCE_MIN
         {
             meaningful_lift = true;
         }
