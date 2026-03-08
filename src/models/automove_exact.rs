@@ -6,12 +6,16 @@ use std::hash::{BuildHasherDefault, Hasher};
 const EXACT_ANALYSIS_CACHE_MAX_ENTRIES: usize = 512;
 const EXACT_ATTACK_REACH_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_CARRIER_STEPS_CACHE_MAX_ENTRIES: usize = 8192;
+#[cfg(any(target_arch = "wasm32", test))]
 const EXACT_DRAINER_TO_MANA_CACHE_MAX_ENTRIES: usize = 8192;
+#[cfg(any(target_arch = "wasm32", test))]
 const EXACT_FOLLOWUP_SUMMARY_CACHE_MAX_ENTRIES: usize = 4096;
 const EXACT_PICKUP_PATH_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_SPIRIT_REACH_CACHE_MAX_ENTRIES: usize = 4096;
+#[cfg(any(target_arch = "wasm32", test))]
 const EXACT_SPIRIT_SUMMARY_CACHE_MAX_ENTRIES: usize = 2048;
 const EXACT_WALK_THREAT_CACHE_MAX_ENTRIES: usize = 8192;
+#[cfg(any(target_arch = "wasm32", test))]
 const EXACT_SECURE_MANA_CACHE_MAX_ENTRIES: usize = 4096;
 const EXACT_SPIRIT_UTILITY_CAP: i32 = 6;
 const EXACT_BFS_CAPACITY: usize = 128;
@@ -70,6 +74,7 @@ pub(crate) struct ExactDrainerPickupPath {
     pub path_steps: i32,
     pub total_moves: i32,
     pub mana_value: i32,
+    #[cfg(any(target_arch = "wasm32", test))]
     pub mana: Mana,
 }
 
@@ -77,8 +82,10 @@ pub(crate) struct ExactDrainerPickupPath {
 pub(crate) struct ExactSpiritSummary {
     pub utility: i32,
     pub same_turn_score: bool,
+    #[cfg(any(target_arch = "wasm32", test))]
     pub same_turn_score_value: i32,
     pub same_turn_opponent_mana_score: bool,
+    #[cfg(any(target_arch = "wasm32", test))]
     pub same_turn_opponent_mana_score_value: i32,
     pub supermana_progress: bool,
     pub opponent_mana_progress: bool,
@@ -90,14 +97,16 @@ pub(crate) struct ExactColorSummary {
     pub score_path_window: ExactScorePathWindow,
     pub immediate_window: ExactImmediateScoreWindow,
     pub best_drainer_pickup: Option<ExactDrainerPickupPath>,
+    #[cfg(any(target_arch = "wasm32", test))]
     pub best_carrier_steps: Option<i32>,
+    #[cfg(any(target_arch = "wasm32", test))]
     pub best_drainer_to_mana_steps: Option<i32>,
     pub spirit: ExactSpiritSummary,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct ExactTurnSummary {
-    pub color: Option<Color>,
     pub can_attack_opponent_drainer: bool,
     pub safe_supermana_progress: bool,
     pub safe_supermana_progress_steps: Option<i32>,
@@ -111,11 +120,11 @@ pub(crate) struct ExactTurnSummary {
     pub spirit_assisted_denial_value: i32,
     pub same_turn_score_window_value: i32,
     pub score_path_best_steps: Option<i32>,
-    pub spirit_next_turn_setup_gain: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExactColorSummaryMode {
+    #[cfg(any(target_arch = "wasm32", test))]
     ActiveTactical,
     PassiveStrategic,
 }
@@ -123,19 +132,22 @@ enum ExactColorSummaryMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum ExactPickupFilter {
     Any,
+    #[cfg(any(target_arch = "wasm32", test))]
     Wanted(Mana),
 }
 
 impl ExactPickupFilter {
     #[inline]
-    fn matches(self, mana: Mana) -> bool {
+    fn matches(self, _mana: Mana) -> bool {
         match self {
             ExactPickupFilter::Any => true,
-            ExactPickupFilter::Wanted(wanted) => mana == wanted,
+            #[cfg(any(target_arch = "wasm32", test))]
+            ExactPickupFilter::Wanted(wanted) => _mana == wanted,
         }
     }
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, Default)]
 struct ExactFollowupSummary {
     best_score_steps: Option<i32>,
@@ -146,13 +158,14 @@ struct ExactFollowupSummary {
     secure_opponent_mana: bool,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct ExactStateAnalysis {
     pub white: ExactColorSummary,
     pub black: ExactColorSummary,
-    pub active_turn: ExactTurnSummary,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 impl ExactStateAnalysis {
     #[inline]
     pub(crate) fn color_summary(self, color: Color) -> ExactColorSummary {
@@ -181,11 +194,13 @@ impl ExactStrategicAnalysis {
     }
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Default)]
 pub(crate) struct ExactStateAnalysisCache {
     entries: ExactHashMap<u64, ExactStateAnalysis>,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Default)]
 struct ExactTurnSummaryCache {
     entries: ExactHashMap<u64, ExactTurnSummary>,
@@ -223,6 +238,7 @@ struct ExactCarrierStepsCache {
     entries: ExactHashMap<ExactCarrierStepsQueryKey, Option<i32>>,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ExactDrainerToManaQueryKey {
     board_hash: u64,
@@ -230,11 +246,13 @@ struct ExactDrainerToManaQueryKey {
     start: Location,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Default)]
 struct ExactDrainerToManaCache {
     entries: ExactHashMap<ExactDrainerToManaQueryKey, Option<i32>>,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ExactFollowupSummaryKey {
     board_hash: u64,
@@ -242,6 +260,7 @@ struct ExactFollowupSummaryKey {
     remaining_moves: i32,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Default)]
 struct ExactFollowupSummaryCache {
     entries: ExactHashMap<ExactFollowupSummaryKey, ExactFollowupSummary>,
@@ -261,6 +280,7 @@ struct ExactPickupPathCache {
     entries: ExactHashMap<ExactPickupPathQueryKey, Option<ExactDrainerPickupPath>>,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ExactSpiritSummaryKey {
     board_hash: u64,
@@ -269,11 +289,13 @@ struct ExactSpiritSummaryKey {
     can_use_action: bool,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Default)]
 struct ExactSpiritSummaryCache {
     entries: ExactHashMap<ExactSpiritSummaryKey, ExactSpiritSummary>,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Default)]
 struct ExactSpiritTacticalSummaryCache {
     entries: ExactHashMap<ExactSpiritSummaryKey, ExactSpiritSummary>,
@@ -305,6 +327,7 @@ struct ExactWalkThreatCache {
     entries: ExactHashMap<ExactWalkThreatQueryKey, bool>,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Default)]
 struct ExactSecureManaCache {
     entries: ExactHashMap<(u64, Mana), Option<i32>>,
@@ -313,17 +336,27 @@ struct ExactSecureManaCache {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct ExactQueryDiagnostics {
+    #[cfg(any(target_arch = "wasm32", test))]
     pub exact_turn_summary_builds: u32,
+    #[cfg(any(target_arch = "wasm32", test))]
     pub active_tactical_summary_builds: u32,
     pub passive_strategic_summary_builds: u32,
+    #[cfg(any(target_arch = "wasm32", test))]
     pub exact_spirit_summary_calls: u32,
+    #[cfg(any(target_arch = "wasm32", test))]
     pub exact_spirit_summary_cache_hits: u32,
+    #[cfg(any(target_arch = "wasm32", test))]
     pub tactical_spirit_summary_calls: u32,
+    #[cfg(any(target_arch = "wasm32", test))]
     pub tactical_spirit_summary_cache_hits: u32,
     pub passive_spirit_summary_calls: u32,
+    #[cfg(any(target_arch = "wasm32", test))]
     pub exact_followup_summary_calls: u32,
+    #[cfg(any(target_arch = "wasm32", test))]
     pub exact_followup_summary_cache_hits: u32,
+    #[cfg(any(target_arch = "wasm32", test))]
     pub exact_secure_mana_calls: u32,
+    #[cfg(any(target_arch = "wasm32", test))]
     pub exact_secure_mana_cache_hits: u32,
     pub pickup_path_calls: u32,
     pub pickup_path_cache_hits: u32,
@@ -331,8 +364,10 @@ pub(crate) struct ExactQueryDiagnostics {
 }
 
 thread_local! {
+    #[cfg(any(target_arch = "wasm32", test))]
     static EXACT_STATE_ANALYSIS_CACHE: RefCell<ExactStateAnalysisCache> =
         RefCell::new(ExactStateAnalysisCache::default());
+    #[cfg(any(target_arch = "wasm32", test))]
     static EXACT_TURN_SUMMARY_CACHE: RefCell<ExactTurnSummaryCache> =
         RefCell::new(ExactTurnSummaryCache::default());
     static EXACT_STRATEGIC_ANALYSIS_CACHE: RefCell<ExactStrategicAnalysisCache> =
@@ -341,20 +376,25 @@ thread_local! {
         RefCell::new(ExactAttackReachCache::default());
     static EXACT_CARRIER_STEPS_CACHE: RefCell<ExactCarrierStepsCache> =
         RefCell::new(ExactCarrierStepsCache::default());
+    #[cfg(any(target_arch = "wasm32", test))]
     static EXACT_DRAINER_TO_MANA_CACHE: RefCell<ExactDrainerToManaCache> =
         RefCell::new(ExactDrainerToManaCache::default());
+    #[cfg(any(target_arch = "wasm32", test))]
     static EXACT_FOLLOWUP_SUMMARY_CACHE: RefCell<ExactFollowupSummaryCache> =
         RefCell::new(ExactFollowupSummaryCache::default());
     static EXACT_PICKUP_PATH_CACHE: RefCell<ExactPickupPathCache> =
         RefCell::new(ExactPickupPathCache::default());
     static EXACT_SPIRIT_REACH_CACHE: RefCell<ExactSpiritReachCache> =
         RefCell::new(ExactSpiritReachCache::default());
+    #[cfg(any(target_arch = "wasm32", test))]
     static EXACT_SPIRIT_SUMMARY_CACHE: RefCell<ExactSpiritSummaryCache> =
         RefCell::new(ExactSpiritSummaryCache::default());
+    #[cfg(any(target_arch = "wasm32", test))]
     static EXACT_SPIRIT_TACTICAL_SUMMARY_CACHE: RefCell<ExactSpiritTacticalSummaryCache> =
         RefCell::new(ExactSpiritTacticalSummaryCache::default());
     static EXACT_WALK_THREAT_CACHE: RefCell<ExactWalkThreatCache> =
         RefCell::new(ExactWalkThreatCache::default());
+    #[cfg(any(target_arch = "wasm32", test))]
     static EXACT_SECURE_MANA_CACHE: RefCell<ExactSecureManaCache> =
         RefCell::new(ExactSecureManaCache::default());
     #[cfg(test)]
@@ -364,9 +404,7 @@ thread_local! {
 
 #[cfg(test)]
 #[inline]
-fn update_exact_query_diagnostics(
-    update: impl FnOnce(&mut ExactQueryDiagnostics),
-) {
+fn update_exact_query_diagnostics(update: impl FnOnce(&mut ExactQueryDiagnostics)) {
     EXACT_QUERY_DIAGNOSTICS.with(|diagnostics| update(&mut diagnostics.borrow_mut()));
 }
 
@@ -388,6 +426,7 @@ pub(crate) fn exact_query_diagnostics_snapshot() -> ExactQueryDiagnostics {
     EXACT_QUERY_DIAGNOSTICS.with(|diagnostics| *diagnostics.borrow())
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 #[inline]
 pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_STATE_ANALYSIS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
@@ -409,6 +448,7 @@ pub(crate) fn clear_exact_state_analysis_cache() {
     });
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 pub(crate) fn exact_state_analysis(game: &MonsGame) -> ExactStateAnalysis {
     let key = exact_search_state_hash(game);
     EXACT_STATE_ANALYSIS_CACHE.with(|cache| {
@@ -445,11 +485,11 @@ pub(crate) fn exact_strategic_analysis(game: &MonsGame) -> ExactStrategicAnalysi
     })
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 #[inline]
 pub(crate) fn exact_turn_summary(game: &MonsGame, color: Color) -> ExactTurnSummary {
     if game.active_color != color {
         ExactTurnSummary {
-            color: Some(color),
             ..ExactTurnSummary::default()
         }
     } else {
@@ -471,6 +511,7 @@ pub(crate) fn exact_turn_summary(game: &MonsGame, color: Color) -> ExactTurnSumm
     }
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 pub(crate) fn can_attack_opponent_drainer_this_turn(game: &MonsGame, color: Color) -> bool {
     exact_turn_summary(game, color).can_attack_opponent_drainer
 }
@@ -645,9 +686,7 @@ fn exact_search_hash_item(item: Item) -> u64 {
             0x300 | exact_search_hash_mon(mon) | (exact_search_hash_mana(mana) << 16)
         }
         Item::MonWithConsumable { mon, consumable } => {
-            0x400
-                | exact_search_hash_mon(mon)
-                | (exact_search_hash_consumable(consumable) << 16)
+            0x400 | exact_search_hash_mon(mon) | (exact_search_hash_consumable(consumable) << 16)
         }
         Item::Consumable { consumable } => 0x500 | exact_search_hash_consumable(consumable),
     }
@@ -947,6 +986,7 @@ fn is_drainer_under_walk_threat_uncached(
     false
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 pub(crate) fn is_drainer_exactly_safe_next_turn_on_board(
     board: &Board,
     color: Color,
@@ -966,27 +1006,30 @@ pub(crate) fn is_drainer_exactly_safe_next_turn_on_board(
 fn exact_is_location_guarded_by_angel(board: &Board, color: Color, location: Location) -> bool {
     board
         .find_awake_angel(color)
-        .map_or(false, |angel_location| angel_location.distance(&location) == 1)
+        .map_or(false, |angel_location| {
+            angel_location.distance(&location) == 1
+        })
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn build_exact_state_analysis(game: &MonsGame) -> ExactStateAnalysis {
     let active_color = game.active_color;
-    let active_summary = build_color_summary(game, active_color, ExactColorSummaryMode::ActiveTactical);
-    let passive_summary =
-        build_color_summary(game, active_color.other(), ExactColorSummaryMode::PassiveStrategic);
-    let active_turn = build_turn_summary(game, active_summary);
-
+    let active_summary =
+        build_color_summary(game, active_color, ExactColorSummaryMode::ActiveTactical);
+    let passive_summary = build_color_summary(
+        game,
+        active_color.other(),
+        ExactColorSummaryMode::PassiveStrategic,
+    );
     if active_color == Color::White {
         ExactStateAnalysis {
             white: active_summary,
             black: passive_summary,
-            active_turn,
         }
     } else {
         ExactStateAnalysis {
             white: passive_summary,
             black: active_summary,
-            active_turn,
         }
     }
 }
@@ -1004,8 +1047,11 @@ fn build_color_summary(
     mode: ExactColorSummaryMode,
 ) -> ExactColorSummary {
     update_exact_query_diagnostics(|diagnostics| match mode {
+        #[cfg(any(target_arch = "wasm32", test))]
         ExactColorSummaryMode::ActiveTactical => diagnostics.active_tactical_summary_builds += 1,
-        ExactColorSummaryMode::PassiveStrategic => diagnostics.passive_strategic_summary_builds += 1,
+        ExactColorSummaryMode::PassiveStrategic => {
+            diagnostics.passive_strategic_summary_builds += 1
+        }
     });
 
     let (full_turn_moves, can_use_action) = if game.active_color == color {
@@ -1035,6 +1081,7 @@ fn build_color_summary(
 
     let best_drainer_pickup = find_awake_drainer(&game.board, color)
         .and_then(|location| exact_best_drainer_pickup_path(&game.board, color, location));
+    #[cfg(any(target_arch = "wasm32", test))]
     let best_drainer_to_mana_steps = find_awake_drainer(&game.board, color)
         .and_then(|location| exact_drainer_to_any_mana_steps(&game.board, color, location));
 
@@ -1069,6 +1116,7 @@ fn build_color_summary(
         }
     }
     let spirit = match mode {
+        #[cfg(any(target_arch = "wasm32", test))]
         ExactColorSummaryMode::ActiveTactical => {
             let spirit = exact_spirit_summary(&game.board, color, full_turn_moves, can_use_action);
             if spirit.same_turn_score {
@@ -1093,39 +1141,15 @@ fn build_color_summary(
         score_path_window,
         immediate_window,
         best_drainer_pickup,
+        #[cfg(any(target_arch = "wasm32", test))]
         best_carrier_steps,
+        #[cfg(any(target_arch = "wasm32", test))]
         best_drainer_to_mana_steps,
         spirit,
     }
 }
 
-fn build_turn_summary(game: &MonsGame, active_summary: ExactColorSummary) -> ExactTurnSummary {
-    let color = game.active_color;
-    let spirit = active_summary.spirit;
-    let safe_supermana_progress_steps =
-        exact_secure_specific_mana_steps_this_turn(game, color, Mana::Supermana);
-    let safe_opponent_mana_progress_steps =
-        exact_secure_specific_mana_steps_this_turn(game, color, Mana::Regular(color.other()));
-    ExactTurnSummary {
-        color: Some(color),
-        can_attack_opponent_drainer: can_attack_opponent_drainer_exact(game, color),
-        safe_supermana_progress: safe_supermana_progress_steps.is_some(),
-        safe_supermana_progress_steps,
-        safe_opponent_mana_progress: safe_opponent_mana_progress_steps.is_some()
-            || spirit.same_turn_opponent_mana_score,
-        safe_opponent_mana_progress_steps,
-        spirit_assisted_supermana_progress: spirit.supermana_progress,
-        spirit_assisted_opponent_mana_progress: spirit.opponent_mana_progress,
-        spirit_assisted_score: spirit.same_turn_score,
-        spirit_assisted_score_value: spirit.same_turn_score_value,
-        spirit_assisted_denial: spirit.same_turn_opponent_mana_score,
-        spirit_assisted_denial_value: spirit.same_turn_opponent_mana_score_value,
-        same_turn_score_window_value: active_summary.immediate_window.best_score.max(0),
-        score_path_best_steps: active_summary.score_path_window.best_steps,
-        spirit_next_turn_setup_gain: spirit.next_turn_setup_gain,
-    }
-}
-
+#[cfg(any(target_arch = "wasm32", test))]
 fn build_exact_turn_summary(game: &MonsGame) -> ExactTurnSummary {
     update_exact_query_diagnostics(|diagnostics| diagnostics.exact_turn_summary_builds += 1);
 
@@ -1138,16 +1162,12 @@ fn build_exact_turn_summary(game: &MonsGame) -> ExactTurnSummary {
         exact_secure_specific_mana_steps_this_turn(game, color, Mana::Supermana);
     let safe_opponent_mana_progress_steps =
         exact_secure_specific_mana_steps_this_turn(game, color, Mana::Regular(color.other()));
-    let same_turn_score_window_value = exact_best_immediate_score_on_board(
-        &game.board,
-        color,
-        remaining_moves,
-    )
-    .max(tactical_spirit.same_turn_score_value)
-    .max(tactical_spirit.same_turn_opponent_mana_score_value);
+    let same_turn_score_window_value =
+        exact_best_immediate_score_on_board(&game.board, color, remaining_moves)
+            .max(tactical_spirit.same_turn_score_value)
+            .max(tactical_spirit.same_turn_opponent_mana_score_value);
 
     ExactTurnSummary {
-        color: Some(color),
         can_attack_opponent_drainer: can_attack_opponent_drainer_exact(game, color),
         safe_supermana_progress: safe_supermana_progress_steps.is_some(),
         safe_supermana_progress_steps,
@@ -1162,7 +1182,6 @@ fn build_exact_turn_summary(game: &MonsGame) -> ExactTurnSummary {
         spirit_assisted_denial_value: tactical_spirit.same_turn_opponent_mana_score_value,
         same_turn_score_window_value,
         score_path_best_steps: exact_best_score_steps_on_board(&game.board, color),
-        spirit_next_turn_setup_gain: 0,
     }
 }
 
@@ -1436,6 +1455,7 @@ fn exact_best_drainer_pickup_path_filtered(
                     path_steps: total_moves.saturating_sub(1),
                     total_moves,
                     mana_value: mana.score(color),
+                    #[cfg(any(target_arch = "wasm32", test))]
                     mana,
                 };
                 let replace = match best {
@@ -1485,6 +1505,7 @@ fn find_awake_drainer(board: &Board, color: Color) -> Option<Location> {
     })
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn exact_drainer_to_any_mana_steps(board: &Board, color: Color, start: Location) -> Option<i32> {
     let key = ExactDrainerToManaQueryKey {
         board_hash: exact_board_hash(board),
@@ -1521,6 +1542,7 @@ fn exact_drainer_to_any_mana_steps(board: &Board, color: Color, start: Location)
     result
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn exact_secure_specific_mana_steps_this_turn(
     game: &MonsGame,
     color: Color,
@@ -1534,6 +1556,7 @@ fn exact_secure_specific_mana_steps_this_turn(
     exact_secure_specific_mana_steps_on_board(&game.board, color, wanted, remaining_moves)
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn can_secure_specific_mana_on_board(
     board: &Board,
     color: Color,
@@ -1543,6 +1566,7 @@ fn can_secure_specific_mana_on_board(
     exact_secure_specific_mana_steps_on_board(board, color, wanted, remaining_moves).is_some()
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 pub(crate) fn exact_secure_specific_mana_steps_on_board(
     board: &Board,
     color: Color,
@@ -1571,6 +1595,7 @@ pub(crate) fn exact_secure_specific_mana_steps_on_board(
     exact_secure_specific_mana_steps_in_game(&game, color, wanted)
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn exact_secure_specific_mana_steps_in_game(
     game: &MonsGame,
     color: Color,
@@ -1606,6 +1631,7 @@ fn exact_secure_specific_mana_steps_in_game(
     result
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn exact_secure_specific_mana_steps_in_game_uncached(
     game: &MonsGame,
     color: Color,
@@ -1656,6 +1682,7 @@ fn exact_secure_specific_mana_steps_in_game_uncached(
     best
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 pub(crate) fn exact_secure_specific_mana_path_from(
     game: &MonsGame,
     color: Color,
@@ -1667,6 +1694,7 @@ pub(crate) fn exact_secure_specific_mana_path_from(
     exact_secure_specific_mana_path_from_uncached(game, color, start, wanted, &mut visiting)
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn exact_secure_specific_mana_path_from_uncached(
     game: &MonsGame,
     color: Color,
@@ -1713,11 +1741,7 @@ fn exact_secure_specific_mana_path_from_uncached(
                     continue;
                 };
                 let Some(mut suffix) = exact_secure_specific_mana_path_from_uncached(
-                    &after,
-                    color,
-                    next_start,
-                    wanted,
-                    visiting,
+                    &after, color, next_start, wanted, visiting,
                 ) else {
                     continue;
                 };
@@ -1748,6 +1772,7 @@ fn exact_secure_specific_mana_path_from_uncached(
     result
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn can_attack_opponent_drainer_exact(game: &MonsGame, color: Color) -> bool {
     let Some(target) = find_awake_drainer(&game.board, color.other()) else {
         return false;
@@ -1784,6 +1809,7 @@ fn demon_has_line_attack(board: &Board, from: Location, target: Location) -> boo
         )
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn exact_spirit_summary(
     board: &Board,
     color: Color,
@@ -1803,7 +1829,9 @@ fn exact_spirit_summary(
     if let Some(cached) =
         EXACT_SPIRIT_SUMMARY_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
     {
-        update_exact_query_diagnostics(|diagnostics| diagnostics.exact_spirit_summary_cache_hits += 1);
+        update_exact_query_diagnostics(|diagnostics| {
+            diagnostics.exact_spirit_summary_cache_hits += 1
+        });
         return cached;
     }
 
@@ -1820,6 +1848,7 @@ fn exact_spirit_summary(
     summary
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn exact_tactical_spirit_summary(
     board: &Board,
     color: Color,
@@ -1836,8 +1865,8 @@ fn exact_tactical_spirit_summary(
         remaining_mon_moves,
         can_use_action,
     };
-    if let Some(cached) = EXACT_SPIRIT_TACTICAL_SUMMARY_CACHE
-        .with(|cache| cache.borrow().entries.get(&key).copied())
+    if let Some(cached) =
+        EXACT_SPIRIT_TACTICAL_SUMMARY_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
     {
         update_exact_query_diagnostics(|diagnostics| {
             diagnostics.tactical_spirit_summary_cache_hits += 1;
@@ -1880,7 +1909,8 @@ fn exact_passive_spirit_summary(
             continue;
         }
 
-        for (spirit_pos, _) in reachable_spirit_positions(board, location, color, remaining_mon_moves)
+        for (spirit_pos, _) in
+            reachable_spirit_positions(board, location, color, remaining_mon_moves)
         {
             if matches!(board.square(spirit_pos), Square::MonBase { .. }) {
                 continue;
@@ -1917,9 +1947,9 @@ fn exact_passive_spirit_summary(
                         supermana_progress = true;
                         setup_gain = setup_gain.max(2);
                     }
-                    Item::Mana { mana: Mana::Regular(mana_color) }
-                        if mana_color == color.other() =>
-                    {
+                    Item::Mana {
+                        mana: Mana::Regular(mana_color),
+                    } if mana_color == color.other() => {
                         opponent_mana_progress = true;
                         setup_gain = setup_gain.max(2);
                     }
@@ -1958,6 +1988,7 @@ fn exact_passive_spirit_summary(
     best
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn exact_tactical_spirit_summary_uncached(
     board: &Board,
     color: Color,
@@ -2094,6 +2125,7 @@ fn exact_tactical_spirit_summary_uncached(
     best
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn exact_spirit_summary_uncached(
     board: &Board,
     color: Color,
@@ -2217,6 +2249,7 @@ fn exact_spirit_summary_uncached(
     best
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn exact_followup_summary(
     board: &Board,
     color: Color,
@@ -2235,7 +2268,9 @@ fn exact_followup_summary(
     if let Some(cached) =
         EXACT_FOLLOWUP_SUMMARY_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
     {
-        update_exact_query_diagnostics(|diagnostics| diagnostics.exact_followup_summary_cache_hits += 1);
+        update_exact_query_diagnostics(|diagnostics| {
+            diagnostics.exact_followup_summary_cache_hits += 1
+        });
         return cached;
     }
 
@@ -2430,6 +2465,7 @@ fn spirit_destination_allowed(
     }
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn apply_spirit_move_preview(
     board: &Board,
     from: Location,
@@ -2497,6 +2533,7 @@ fn apply_spirit_move_preview(
     (board, score_delta, opponent_mana_score_delta)
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn best_step_improvement(before: Option<i32>, after: Option<i32>) -> i32 {
     match (before, after) {
         (Some(before), Some(after)) if after < before => before - after,
@@ -2505,6 +2542,7 @@ fn best_step_improvement(before: Option<i32>, after: Option<i32>) -> i32 {
     }
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn best_step_worsening(before: Option<i32>, after: Option<i32>) -> i32 {
     match (before, after) {
         (Some(before), Some(after)) if after > before => after - before,
@@ -2513,6 +2551,7 @@ fn best_step_worsening(before: Option<i32>, after: Option<i32>) -> i32 {
     }
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn exact_spirit_utility_score(score_delta: i32, opponent_score_delta: i32, setup_gain: i32) -> i32 {
     let score_bonus = if opponent_score_delta > 0 {
         5 + opponent_score_delta
@@ -2524,6 +2563,7 @@ fn exact_spirit_utility_score(score_delta: i32, opponent_score_delta: i32, setup
     score_bonus.max((1 + setup_gain).min(EXACT_SPIRIT_UTILITY_CAP))
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn exact_best_score_steps_on_board(board: &Board, color: Color) -> Option<i32> {
     let mut best = None;
     for (location, item) in board.occupied() {
@@ -2548,6 +2588,7 @@ fn exact_best_score_steps_on_board(board: &Board, color: Color) -> Option<i32> {
     best
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn exact_best_immediate_score_on_board(board: &Board, color: Color, move_budget: i32) -> i32 {
     if move_budget < 0 {
         return 0;
@@ -2582,6 +2623,7 @@ fn exact_best_immediate_score_on_board(board: &Board, color: Color, move_budget:
     best
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn exact_best_immediate_opponent_mana_score_on_board(
     board: &Board,
     color: Color,
@@ -3692,7 +3734,10 @@ mod tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 2;
 
-        assert_eq!(exact_best_immediate_score_on_board(&game.board, Color::White, 2), 0);
+        assert_eq!(
+            exact_best_immediate_score_on_board(&game.board, Color::White, 2),
+            0
+        );
 
         let (after_board, score_delta, opponent_score_delta) = apply_spirit_move_preview(
             &game.board,
@@ -3706,7 +3751,10 @@ mod tests {
         let after_summary = exact_followup_summary(&after_board, Color::White, 2);
         assert_eq!(score_delta, 0);
         assert_eq!(opponent_score_delta, 0);
-        assert_eq!(after_summary.immediate_score, Mana::Supermana.score(Color::White));
+        assert_eq!(
+            after_summary.immediate_score,
+            Mana::Supermana.score(Color::White)
+        );
 
         let turn = exact_turn_summary(&game, Color::White);
         assert!(turn.spirit_assisted_score);
@@ -3806,7 +3854,10 @@ mod tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 2;
 
-        assert_eq!(exact_best_immediate_score_on_board(&game.board, Color::White, 2), 0);
+        assert_eq!(
+            exact_best_immediate_score_on_board(&game.board, Color::White, 2),
+            0
+        );
 
         let mut action_board = game.board.clone();
         action_board.remove_item(Location::new(5, 1));
@@ -3829,7 +3880,10 @@ mod tests {
         let after_summary = exact_followup_summary(&after_board, Color::White, 1);
         assert_eq!(score_delta, 0);
         assert_eq!(opponent_score_delta, 0);
-        assert_eq!(after_summary.immediate_score, Mana::Supermana.score(Color::White));
+        assert_eq!(
+            after_summary.immediate_score,
+            Mana::Supermana.score(Color::White)
+        );
 
         let spirit = exact_state_analysis(&game).white.spirit;
         assert!(spirit.same_turn_score);

@@ -1,7 +1,5 @@
+use super::profiles::{profile_selector_from_name, selected_pool_models};
 use super::*;
-use super::profiles::{
-    profile_selector_from_name, selected_pool_models,
-};
 use std::collections::HashMap;
 
 pub(super) fn select_inputs_with_runtime_fallback(
@@ -54,8 +52,13 @@ pub(super) fn evaluate_candidate_against_pool_with_max_plies(
     let mut aggregate_stats = MatchupStats::default();
 
     for budget in budgets.iter().copied() {
-        let mode_result =
-            run_mode_evaluation_with_max_plies(candidate, pool, games_per_matchup, budget, max_plies);
+        let mode_result = run_mode_evaluation_with_max_plies(
+            candidate,
+            pool,
+            games_per_matchup,
+            budget,
+            max_plies,
+        );
         aggregate_stats.merge(mode_result.aggregate_stats);
         for entry in &mode_result.opponents {
             combined_by_opponent
@@ -84,7 +87,6 @@ pub(super) fn evaluate_candidate_against_pool_with_max_plies(
     CandidateEvaluation {
         games_per_matchup,
         beaten_opponents,
-        aggregate_confidence: aggregate_stats.confidence_better_than_even(),
         aggregate_stats,
         opponents,
         mode_results,
@@ -116,20 +118,10 @@ pub(super) fn run_mode_evaluation_with_max_plies(
             stats,
         });
     }
-
     opponents.sort_by(|a, b| a.opponent_id.cmp(b.opponent_id));
-    let beaten_opponents = opponents
-        .iter()
-        .filter(|entry| {
-            entry.stats.win_rate_points() > 0.5
-                && entry.stats.confidence_better_than_even() >= MIN_CONFIDENCE_TO_PROMOTE
-        })
-        .count();
 
     ModeEvaluation {
         budget,
-        beaten_opponents,
-        aggregate_confidence: aggregate_stats.confidence_better_than_even(),
         aggregate_stats,
         opponents,
     }
@@ -206,10 +198,9 @@ pub(super) fn play_one_game(
 
         let config = budget.runtime_config_for_game(&game);
         let inputs = if use_white_opening_book {
-            MonsGameModel::white_first_turn_opening_next_inputs(&game)
-                .unwrap_or_else(|| {
-                    select_inputs_with_runtime_fallback(actor_model.select_inputs, &game, config)
-                })
+            MonsGameModel::white_first_turn_opening_next_inputs(&game).unwrap_or_else(|| {
+                select_inputs_with_runtime_fallback(actor_model.select_inputs, &game, config)
+            })
         } else {
             select_inputs_with_runtime_fallback(actor_model.select_inputs, &game, config)
         };
@@ -293,10 +284,9 @@ pub(super) fn play_one_game_budget_duel(
 
         let config = actor_budget.runtime_config_for_game(&game);
         let inputs = if use_white_opening_book {
-            MonsGameModel::white_first_turn_opening_next_inputs(&game)
-                .unwrap_or_else(|| {
-                    select_inputs_with_runtime_fallback(actor_model.select_inputs, &game, config)
-                })
+            MonsGameModel::white_first_turn_opening_next_inputs(&game).unwrap_or_else(|| {
+                select_inputs_with_runtime_fallback(actor_model.select_inputs, &game, config)
+            })
         } else {
             select_inputs_with_runtime_fallback(actor_model.select_inputs, &game, config)
         };
@@ -323,7 +313,10 @@ pub(super) fn play_one_game_budget_duel(
     }
 }
 
-pub(super) fn match_result_from_winner(winner_color: Color, candidate_is_white: bool) -> MatchResult {
+pub(super) fn match_result_from_winner(
+    winner_color: Color,
+    candidate_is_white: bool,
+) -> MatchResult {
     if (candidate_is_white && winner_color == Color::White)
         || (!candidate_is_white && winner_color == Color::Black)
     {
@@ -458,7 +451,11 @@ pub(super) fn seed_for_pairing(candidate_id: &str, opponent_id: &str) -> u64 {
     hash
 }
 
-pub(super) fn seed_for_pairing_and_budget(candidate_id: &str, opponent_id: &str, budget: SearchBudget) -> u64 {
+pub(super) fn seed_for_pairing_and_budget(
+    candidate_id: &str,
+    opponent_id: &str,
+    budget: SearchBudget,
+) -> u64 {
     let mut hash = seed_for_pairing(candidate_id, opponent_id);
     for byte in budget.key().bytes() {
         hash ^= byte as u64;
@@ -677,7 +674,11 @@ pub(super) fn run_cross_budget_duel(
     env::set_var("SMART_POOL_MAX_PLIES", max_plies.to_string());
     env::set_var(
         "SMART_USE_WHITE_OPENING_BOOK",
-        if use_white_opening_book { "true" } else { "false" },
+        if use_white_opening_book {
+            "true"
+        } else {
+            "false"
+        },
     );
 
     let mut aggregate = MatchupStats::default();
@@ -727,7 +728,10 @@ pub(super) fn run_profile_vs_pool_cross_budget(
     seed_tag: &str,
 ) -> MatchupStats {
     let Some(selector) = profile_selector_from_name(profile_name) else {
-        panic!("unknown profile for pool cross-budget duel: {}", profile_name);
+        panic!(
+            "unknown profile for pool cross-budget duel: {}",
+            profile_name
+        );
     };
     let profile_model = AutomoveModel {
         id: "pool_candidate",
@@ -795,7 +799,8 @@ pub(super) fn run_pool_non_regression_check(
     let pool = selected_pool_models();
     let candidate_eval =
         evaluate_candidate_against_pool(candidate, &pool, games_per_matchup, budgets);
-    let baseline_eval = evaluate_candidate_against_pool(baseline, &pool, games_per_matchup, budgets);
+    let baseline_eval =
+        evaluate_candidate_against_pool(baseline, &pool, games_per_matchup, budgets);
     let candidate_wr = candidate_eval.aggregate_stats.win_rate_points();
     let baseline_wr = baseline_eval.aggregate_stats.win_rate_points();
     (candidate_eval, baseline_eval, candidate_wr, baseline_wr)
@@ -841,12 +846,8 @@ pub(super) fn run_budget_conversion_diagnostic(
 
     let fast_win_rate = aggregate.win_rate_points();
     BudgetConversionDiagnostic {
-        fast_wins: aggregate.wins,
-        fast_losses: aggregate.losses,
-        draws: aggregate.draws,
         fast_win_rate,
         normal_edge: 0.5 - fast_win_rate,
-        confidence: aggregate.confidence_better_than_even(),
     }
 }
 
@@ -886,7 +887,11 @@ pub(super) fn run_mirrored_duel_for_seed_tag(
     env::set_var("SMART_POOL_MAX_PLIES", max_plies.to_string());
     env::set_var(
         "SMART_USE_WHITE_OPENING_BOOK",
-        if use_white_opening_book { "true" } else { "false" },
+        if use_white_opening_book {
+            "true"
+        } else {
+            "false"
+        },
     );
 
     let mut results = Vec::with_capacity(budgets.len());
@@ -915,7 +920,10 @@ pub(super) fn run_mirrored_duel_for_seed_tag(
     results
 }
 
-pub(super) fn merge_mode_stats(target: &mut HashMap<&'static str, MatchupStats>, updates: &[(SearchBudget, MatchupStats)]) {
+pub(super) fn merge_mode_stats(
+    target: &mut HashMap<&'static str, MatchupStats>,
+    updates: &[(SearchBudget, MatchupStats)],
+) {
     for (budget, stats) in updates {
         target.entry(budget.key()).or_default().merge(*stats);
     }
@@ -1072,11 +1080,7 @@ pub(super) fn run_progressive_duel(
 
         println!(
             "progressive tier {} | games/seed={} | total={} | δ={:.4} | conf={:.3}",
-            tier_index,
-            games_per_seed,
-            total_games,
-            aggregate_delta,
-            aggregate_confidence
+            tier_index, games_per_seed, total_games, aggregate_delta, aggregate_confidence
         );
         for budget in budgets {
             if let Some(mode_stats) = cumulative_mode_stats.get(budget.key()) {
@@ -1242,7 +1246,11 @@ pub(super) fn evaluate_progressive_stop(
     None
 }
 
-pub(super) fn flush_progressive_artifact(path: &str, tiers: &[ProgressiveTierResult], budgets: &[SearchBudget]) {
+pub(super) fn flush_progressive_artifact(
+    path: &str,
+    tiers: &[ProgressiveTierResult],
+    budgets: &[SearchBudget],
+) {
     let mut lines = Vec::with_capacity(tiers.len());
     for tier in tiers {
         let mut mode_parts = Vec::new();
@@ -1290,8 +1298,8 @@ pub(super) fn default_progressive_artifact_path(profile: &str) -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or(0);
-    let log_dir =
-        env::var("SMART_EXPERIMENT_LOG_DIR").unwrap_or_else(|_| "target/experiment-runs".to_string());
+    let log_dir = env::var("SMART_EXPERIMENT_LOG_DIR")
+        .unwrap_or_else(|_| "target/experiment-runs".to_string());
     let _ = std::fs::create_dir_all(&log_dir);
     format!("{}/progressive_{}_{}.jsonl", log_dir, profile, timestamp)
 }
@@ -1411,11 +1419,9 @@ pub(super) fn assert_tactical_guardrails(selector: AutomoveSelector, profile_nam
     bomb_config.root_enum_limit = 0;
     let bomb_inputs =
         select_inputs_with_runtime_fallback(selector, &bomb_drainer_attack_game, bomb_config);
-    let (after_bomb_probe, bomb_events) = MonsGameModel::apply_inputs_for_search_with_events(
-        &bomb_drainer_attack_game,
-        &bomb_inputs,
-    )
-    .expect("bomb drainer attack move should be legal");
+    let (after_bomb_probe, bomb_events) =
+        MonsGameModel::apply_inputs_for_search_with_events(&bomb_drainer_attack_game, &bomb_inputs)
+            .expect("bomb drainer attack move should be legal");
     let bomb_attacks_now =
         MonsGameModel::events_include_opponent_drainer_fainted(&bomb_events, Color::White);
     let mut bomb_continuation_budget = SMART_FORCED_DRAINER_ATTACK_FALLBACK_NODE_BUDGET_FAST;
@@ -1483,7 +1489,11 @@ pub(super) fn assert_tactical_guardrails(selector: AutomoveSelector, profile_nam
         .runtime_config_for_game(&winning_carrier_game);
     let winning_inputs =
         select_inputs_with_runtime_fallback(selector, &winning_carrier_game, winning_config);
-    assert!(!winning_inputs.is_empty(), "profile '{}' should produce a move in immediate-win setup", profile_name);
+    assert!(
+        !winning_inputs.is_empty(),
+        "profile '{}' should produce a move in immediate-win setup",
+        profile_name
+    );
     let mut winning_after = winning_carrier_game.clone_for_simulation();
     assert!(matches!(
         winning_after.process_input(winning_inputs, false, false),
@@ -1584,40 +1594,42 @@ pub(super) fn assert_tactical_guardrails(selector: AutomoveSelector, profile_nam
         profile_name
     );
 
-    let selected_move_classes =
-        |game: &MonsGame, config: SmartSearchConfig, selected: &[Input]| -> Option<MoveClassFlags> {
-            let selected_fen = Input::fen_from_array(selected);
-            let mut class_config = config;
-            class_config.enable_move_class_coverage = true;
-            MonsGameModel::ranked_root_moves(game, game.active_color, class_config)
-                .into_iter()
-                .find(|root| Input::fen_from_array(&root.inputs) == selected_fen)
-                .map(|root| root.classes)
-                .or_else(|| {
-                    let own_drainer_vulnerable_before =
-                        MonsGameModel::is_own_drainer_vulnerable_next_turn(
-                            game,
-                            game.active_color,
-                            class_config.enable_enhanced_drainer_vulnerability,
-                        );
-                    let (after, events) =
-                        MonsGameModel::apply_inputs_for_search_with_events(game, selected)?;
-                    let own_drainer_vulnerable_after =
-                        MonsGameModel::is_own_drainer_vulnerable_next_turn(
-                            &after,
-                            game.active_color,
-                            class_config.enable_enhanced_drainer_vulnerability,
-                        );
-                    Some(MonsGameModel::classify_move_classes(
+    let selected_move_classes = |game: &MonsGame,
+                                 config: SmartSearchConfig,
+                                 selected: &[Input]|
+     -> Option<MoveClassFlags> {
+        let selected_fen = Input::fen_from_array(selected);
+        let mut class_config = config;
+        class_config.enable_move_class_coverage = true;
+        MonsGameModel::ranked_root_moves(game, game.active_color, class_config)
+            .into_iter()
+            .find(|root| Input::fen_from_array(&root.inputs) == selected_fen)
+            .map(|root| root.classes)
+            .or_else(|| {
+                let own_drainer_vulnerable_before =
+                    MonsGameModel::is_own_drainer_vulnerable_next_turn(
                         game,
+                        game.active_color,
+                        class_config.enable_enhanced_drainer_vulnerability,
+                    );
+                let (after, events) =
+                    MonsGameModel::apply_inputs_for_search_with_events(game, selected)?;
+                let own_drainer_vulnerable_after =
+                    MonsGameModel::is_own_drainer_vulnerable_next_turn(
                         &after,
                         game.active_color,
-                        &events,
-                        own_drainer_vulnerable_before,
-                        own_drainer_vulnerable_after,
-                    ))
-                })
-        };
+                        class_config.enable_enhanced_drainer_vulnerability,
+                    );
+                Some(MonsGameModel::classify_move_classes(
+                    game,
+                    &after,
+                    game.active_color,
+                    &events,
+                    own_drainer_vulnerable_before,
+                    own_drainer_vulnerable_after,
+                ))
+            })
+    };
     let carrier_progress_game = tactical_game_with_items(
         vec![
             (
@@ -1690,13 +1702,15 @@ pub(super) fn assert_tactical_guardrails(selector: AutomoveSelector, profile_nam
 }
 
 pub(super) fn assert_interview_policy_regressions(selector: AutomoveSelector, profile_name: &str) {
-    let selected_root =
-        |game: &MonsGame, config: SmartSearchConfig, selected: &[Input]| -> Option<ScoredRootMove> {
-            let selected_fen = Input::fen_from_array(selected);
-            MonsGameModel::ranked_root_moves(game, game.active_color, config)
-                .into_iter()
-                .find(|root| Input::fen_from_array(&root.inputs) == selected_fen)
-        };
+    let selected_root = |game: &MonsGame,
+                         config: SmartSearchConfig,
+                         selected: &[Input]|
+     -> Option<ScoredRootMove> {
+        let selected_fen = Input::fen_from_array(selected);
+        MonsGameModel::ranked_root_moves(game, game.active_color, config)
+            .into_iter()
+            .find(|root| Input::fen_from_array(&root.inputs) == selected_fen)
+    };
 
     let supermana_progress_game = tactical_game_with_items(
         vec![

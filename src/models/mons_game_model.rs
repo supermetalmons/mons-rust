@@ -2853,7 +2853,6 @@ impl MonsGameModel {
             }
         } else {
             ExactTurnSummary {
-                color: Some(perspective),
                 ..ExactTurnSummary::default()
             }
         };
@@ -7267,7 +7266,6 @@ impl MonsGameModel {
             Mana::Regular(color.other()),
         );
         ExactTurnSummary {
-            color: Some(color),
             safe_supermana_progress: safe_supermana_progress_steps
                 .map(|steps| steps <= remaining_moves)
                 .unwrap_or(false),
@@ -7490,7 +7488,6 @@ impl MonsGameModel {
             exact_turn_summary(game, perspective)
         } else {
             ExactTurnSummary {
-                color: Some(perspective),
                 same_turn_score_window_value: my_summary
                     .map(|summary| summary.immediate_window.best_score)
                     .unwrap_or_else(|| {
@@ -7505,7 +7502,6 @@ impl MonsGameModel {
             exact_turn_summary(game, perspective.other())
         } else {
             ExactTurnSummary {
-                color: Some(perspective.other()),
                 same_turn_score_window_value: opponent_summary
                     .map(|summary| summary.immediate_window.best_score)
                     .unwrap_or_else(|| {

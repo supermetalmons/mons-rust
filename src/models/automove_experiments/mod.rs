@@ -60,10 +60,8 @@ impl SearchBudget {
 
     fn runtime_config_for_game(self, game: &MonsGame) -> SmartSearchConfig {
         if let Some(preference) = SmartAutomovePreference::from_api_value(self.label) {
-            let hinted_context = if matches!(
-                preference,
-                SmartAutomovePreference::Pro
-            ) && env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false)
+            let hinted_context = if matches!(preference, SmartAutomovePreference::Pro)
+                && env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false)
             {
                 ProRuntimeContext::OpeningBookDriven
             } else {
@@ -171,9 +169,7 @@ struct OpponentEvaluation {
 #[derive(Debug)]
 struct ModeEvaluation {
     budget: SearchBudget,
-    beaten_opponents: usize,
     aggregate_stats: MatchupStats,
-    aggregate_confidence: f64,
     opponents: Vec<OpponentEvaluation>,
 }
 
@@ -182,7 +178,6 @@ struct CandidateEvaluation {
     games_per_matchup: usize,
     beaten_opponents: usize,
     aggregate_stats: MatchupStats,
-    aggregate_confidence: f64,
     opponents: Vec<OpponentEvaluation>,
     mode_results: Vec<ModeEvaluation>,
 }
@@ -195,12 +190,8 @@ struct ModeSpeedStat {
 
 #[derive(Clone, Copy, Debug)]
 struct BudgetConversionDiagnostic {
-    fast_wins: usize,
-    fast_losses: usize,
-    draws: usize,
     fast_win_rate: f64,
     normal_edge: f64,
-    confidence: f64,
 }
 
 mod harness;

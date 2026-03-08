@@ -664,7 +664,12 @@ pub fn evaluate_preferability_breakdown_with_weights(
             include_regular_mana_move_windows,
         )
     } else {
-        exact_score_path_window_for_game(game, &mana_snapshot, color, include_regular_mana_move_windows)
+        exact_score_path_window_for_game(
+            game,
+            &mana_snapshot,
+            color,
+            include_regular_mana_move_windows,
+        )
     };
     let opponent_score_path_window = if use_legacy_formula {
         score_path_window_to_any_pool_with_snapshot(
@@ -968,8 +973,12 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                         });
                     score += my_mon_multiplier * weights.fainted_cooldown_step * mon.cooldown;
                 } else if is_drainer {
-                    let safety =
-                        drainer_safety_snapshot(&game.board, mon.color, location, use_legacy_formula);
+                    let safety = drainer_safety_snapshot(
+                        &game.board,
+                        mon.color,
+                        location,
+                        use_legacy_formula,
+                    );
                     score += my_mon_multiplier * weights.drainer_close_to_mana / safety.min_mana;
                     score += my_mon_multiplier * weights.drainer_close_to_own_pool
                         / distance(location, Destination::ClosestPool(mon.color));
@@ -983,7 +992,9 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
 
                     if let Some(path) = if use_legacy_formula {
                         best_drainer_pickup_path_with_snapshot(&mana_snapshot, mon.color, location)
-                            .map(|(path_steps, mana_value)| (path_steps, path_steps + 1, mana_value))
+                            .map(|(path_steps, mana_value)| {
+                                (path_steps, path_steps + 1, mana_value)
+                            })
                     } else {
                         exact_analysis
                             .expect("exact strategic analysis should be available")
@@ -994,7 +1005,9 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                         let (path_steps, total_moves, mana_value) = path;
                         score += my_mon_multiplier * weights.drainer_best_mana_path * mana_value
                             / (path_steps + 1);
-                        if mon.color == game.active_color && total_moves <= remaining_mon_moves_for_active {
+                        if mon.color == game.active_color
+                            && total_moves <= remaining_mon_moves_for_active
+                        {
                             score += my_mon_multiplier
                                 * weights.drainer_pickup_score_this_turn
                                 * mana_value;
@@ -1020,8 +1033,8 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
 
                     let evaluate_drainer_danger = weights.drainer_danger_boolean != 0
                         || weights.drainer_walk_threat_boolean != 0;
-                    let drainer_under_danger_threat = evaluate_drainer_danger
-                        && safety.exact_danger_threat;
+                    let drainer_under_danger_threat =
+                        evaluate_drainer_danger && safety.exact_danger_threat;
                     if weights.drainer_danger_boolean != 0 && drainer_under_danger_threat {
                         score += my_mon_multiplier * weights.drainer_danger_boolean;
                         if my_mon_multiplier == -1 {
@@ -1057,10 +1070,7 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                             exact_analysis.expect("exact strategic analysis should be available"),
                             mon.color,
                         );
-                        (
-                            spirit.utility,
-                            exact_spirit_pressure_bonus(spirit, weights),
-                        )
+                        (spirit.utility, exact_spirit_pressure_bonus(spirit, weights))
                     };
                     let spirit_utility = spirit_utility.min(spirit_utility_cap);
                     score += my_mon_multiplier * weights.spirit_action_utility * spirit_utility;
@@ -1095,8 +1105,12 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                 score += my_mon_multiplier * weights.has_consumable;
 
                 if is_drainer {
-                    let safety =
-                        drainer_safety_snapshot(&game.board, mon.color, location, use_legacy_formula);
+                    let safety = drainer_safety_snapshot(
+                        &game.board,
+                        mon.color,
+                        location,
+                        use_legacy_formula,
+                    );
                     score += my_mon_multiplier * weights.drainer_close_to_mana / safety.min_mana;
                     score += my_mon_multiplier * weights.drainer_close_to_own_pool
                         / distance(location, Destination::ClosestPool(mon.color));
@@ -1127,8 +1141,8 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
 
                     let evaluate_drainer_danger = weights.drainer_danger_boolean != 0
                         || weights.drainer_walk_threat_boolean != 0;
-                    let drainer_under_danger_threat = evaluate_drainer_danger
-                        && safety.exact_danger_threat;
+                    let drainer_under_danger_threat =
+                        evaluate_drainer_danger && safety.exact_danger_threat;
                     if weights.drainer_danger_boolean != 0 && drainer_under_danger_threat {
                         score += my_mon_multiplier * weights.drainer_danger_boolean;
                         if my_mon_multiplier == -1 {
@@ -1184,10 +1198,7 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                             exact_analysis.expect("exact strategic analysis should be available"),
                             mon.color,
                         );
-                        (
-                            spirit.utility,
-                            exact_spirit_pressure_bonus(spirit, weights),
-                        )
+                        (spirit.utility, exact_spirit_pressure_bonus(spirit, weights))
                     };
                     let spirit_utility = spirit_utility.min(spirit_utility_cap);
                     score += my_mon_multiplier * weights.spirit_action_utility * spirit_utility;
@@ -1341,7 +1352,8 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                             .max(0);
                         let protected = if use_legacy_formula {
                             safety.angel_nearby
-                                || safety.risk_danger >= PROTECTED_HIGH_VALUE_CARRIER_SAFE_DANGER_MIN
+                                || safety.risk_danger
+                                    >= PROTECTED_HIGH_VALUE_CARRIER_SAFE_DANGER_MIN
                         } else {
                             safety.exact_safe()
                         };
@@ -1387,8 +1399,8 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
 
                     let evaluate_carrier_danger = weights.mana_carrier_danger_boolean != 0
                         || weights.mana_carrier_walk_threat_boolean != 0;
-                    let drainer_under_danger_threat = evaluate_carrier_danger
-                        && safety.exact_danger_threat;
+                    let drainer_under_danger_threat =
+                        evaluate_carrier_danger && safety.exact_danger_threat;
                     if weights.mana_carrier_danger_boolean != 0 && drainer_under_danger_threat {
                         score += my_mon_multiplier * weights.mana_carrier_danger_boolean;
                         if my_mon_multiplier == -1 {
@@ -1421,10 +1433,7 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                             .expect("exact strategic analysis should be available")
                             .color_summary(mon.color)
                             .spirit;
-                        (
-                            spirit.utility,
-                            exact_spirit_pressure_bonus(spirit, weights),
-                        )
+                        (spirit.utility, exact_spirit_pressure_bonus(spirit, weights))
                     };
                     let spirit_utility = spirit_utility.min(spirit_utility_cap);
                     score += my_mon_multiplier * weights.spirit_action_utility * spirit_utility;
@@ -1448,7 +1457,12 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
             include_regular_mana_move_windows,
         )
     } else {
-        exact_score_path_window_for_game(game, &mana_snapshot, color, include_regular_mana_move_windows)
+        exact_score_path_window_for_game(
+            game,
+            &mana_snapshot,
+            color,
+            include_regular_mana_move_windows,
+        )
     };
     let opponent_score_path_window = if use_legacy_formula {
         score_path_window_to_any_pool_with_snapshot(
@@ -1666,13 +1680,16 @@ fn exact_score_path_window_for_game(
     color: Color,
     include_regular_mana_move_windows: bool,
 ) -> ScorePathWindow {
-    let exact = exact_strategic_analysis(game).color_summary(color).score_path_window;
+    let exact = exact_strategic_analysis(game)
+        .color_summary(color)
+        .score_path_window;
     let mut best_steps = exact.best_steps;
     if include_regular_mana_move_windows {
         for candidate in &mana_snapshot.candidates {
             if candidate.mana == Mana::Regular(color) {
                 let candidate_steps = candidate.score_steps + 1;
-                best_steps = Some(best_steps.map_or(candidate_steps, |best| best.min(candidate_steps)));
+                best_steps =
+                    Some(best_steps.map_or(candidate_steps, |best| best.min(candidate_steps)));
             }
         }
     }
@@ -1688,7 +1705,9 @@ fn exact_immediate_score_window_for_game(
     color: Color,
     allow_mana_move: bool,
 ) -> ImmediateScoreWindow {
-    let exact = exact_strategic_analysis(game).color_summary(color).immediate_window;
+    let exact = exact_strategic_analysis(game)
+        .color_summary(color)
+        .immediate_window;
     let mut best_score = exact.best_score;
     if allow_mana_move {
         best_score = best_score.max(best_regular_mana_move_score_window_with_snapshot(
@@ -1708,7 +1727,11 @@ fn exact_spirit_pressure_bonus(spirit: ExactSpiritSummary, weights: &ScoringWeig
 
     if setup_gain > 0 {
         bonus = bonus.saturating_add(
-            weights.score_race_path_progress.max(0).saturating_mul(setup_gain) / 4,
+            weights
+                .score_race_path_progress
+                .max(0)
+                .saturating_mul(setup_gain)
+                / 4,
         );
         bonus = bonus.saturating_add(
             weights
@@ -1718,7 +1741,11 @@ fn exact_spirit_pressure_bonus(spirit: ExactSpiritSummary, weights: &ScoringWeig
                 / 6,
         );
         bonus = bonus.saturating_add(
-            weights.score_race_multi_path.max(0).saturating_mul(setup_gain) / 8,
+            weights
+                .score_race_multi_path
+                .max(0)
+                .saturating_mul(setup_gain)
+                / 8,
         );
         bonus = bonus.saturating_add(
             weights
@@ -1843,9 +1870,11 @@ impl ManaPathSnapshot {
             });
             if score_steps <= 1 {
                 if *mana == Mana::Regular(Color::White) {
-                    snapshot.regular_mana_move_scores[color_slot(Color::White)] = mana.score(Color::White);
+                    snapshot.regular_mana_move_scores[color_slot(Color::White)] =
+                        mana.score(Color::White);
                 } else if *mana == Mana::Regular(Color::Black) {
-                    snapshot.regular_mana_move_scores[color_slot(Color::Black)] = mana.score(Color::Black);
+                    snapshot.regular_mana_move_scores[color_slot(Color::Black)] =
+                        mana.score(Color::Black);
                 }
             }
         }
@@ -2544,18 +2573,22 @@ mod tests {
             Color::White,
         );
 
-        assert!(!crate::models::automove_exact::is_drainer_under_immediate_threat(
-            &threatened.board,
-            Color::White,
-            Location::new(8, 5),
-            false,
-        ));
-        assert!(!crate::models::automove_exact::is_drainer_under_walk_threat(
-            &threatened.board,
-            Color::White,
-            Location::new(8, 5),
-            false,
-        ));
+        assert!(
+            !crate::models::automove_exact::is_drainer_under_immediate_threat(
+                &threatened.board,
+                Color::White,
+                Location::new(8, 5),
+                false,
+            )
+        );
+        assert!(
+            !crate::models::automove_exact::is_drainer_under_walk_threat(
+                &threatened.board,
+                Color::White,
+                Location::new(8, 5),
+                false,
+            )
+        );
 
         let mut weights = exact_danger_only_weights();
         weights.drainer_danger_boolean = -500;
@@ -2603,18 +2636,22 @@ mod tests {
             Color::White,
         );
 
-        assert!(!crate::models::automove_exact::is_drainer_under_immediate_threat(
-            &threatened.board,
-            Color::White,
-            Location::new(8, 5),
-            false,
-        ));
-        assert!(!crate::models::automove_exact::is_drainer_under_walk_threat(
-            &threatened.board,
-            Color::White,
-            Location::new(8, 5),
-            false,
-        ));
+        assert!(
+            !crate::models::automove_exact::is_drainer_under_immediate_threat(
+                &threatened.board,
+                Color::White,
+                Location::new(8, 5),
+                false,
+            )
+        );
+        assert!(
+            !crate::models::automove_exact::is_drainer_under_walk_threat(
+                &threatened.board,
+                Color::White,
+                Location::new(8, 5),
+                false,
+            )
+        );
 
         let mut weights = exact_danger_only_weights();
         weights.mana_carrier_danger_boolean = -700;
@@ -3078,7 +3115,9 @@ mod tests {
         );
         without_spirit.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let spirit = exact_state_analysis(&with_spirit).color_summary(Color::White).spirit;
+        let spirit = exact_state_analysis(&with_spirit)
+            .color_summary(Color::White)
+            .spirit;
         assert!(spirit.next_turn_setup_gain > 0);
         assert!(!spirit.same_turn_score);
         assert!(!spirit.same_turn_opponent_mana_score);
@@ -3159,7 +3198,9 @@ mod tests {
         );
         without_spirit.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let spirit = exact_state_analysis(&with_spirit).color_summary(Color::White).spirit;
+        let spirit = exact_state_analysis(&with_spirit)
+            .color_summary(Color::White)
+            .spirit;
         assert!(spirit.supermana_progress);
         assert!(!spirit.same_turn_score);
 
@@ -3238,7 +3279,9 @@ mod tests {
         );
         without_spirit.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let spirit = exact_state_analysis(&with_spirit).color_summary(Color::White).spirit;
+        let spirit = exact_state_analysis(&with_spirit)
+            .color_summary(Color::White)
+            .spirit;
         assert!(spirit.opponent_mana_progress);
         assert!(!spirit.same_turn_opponent_mana_score);
 

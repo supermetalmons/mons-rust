@@ -5,6 +5,22 @@ or
 
 `npm install mons-rust`
 
+## automove
+
+The active automove workflow lives here:
+
+- runbook: `docs/automove-experiments.md`
+- durable lessons: `docs/automove-knowledge.md`
+- retired profile archive: `docs/automove-archive.md`
+
+Useful scripts:
+
+- `./scripts/run-automove-experiment.sh preflight <candidate>`
+- `./scripts/run-automove-experiment.sh fast-screen <candidate>`
+- `./scripts/run-automove-experiment.sh progressive <candidate>`
+- `./scripts/run-automove-experiment.sh ladder <candidate>`
+- `./scripts/clean-experiment-artifacts.sh`
+
 ## rules-tests runner
 
 Fixtures are stored as chunk archives in `rules-tests-chunks/` (default: `100000` fixtures per chunk).

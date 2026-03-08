@@ -277,7 +277,10 @@ fn mode_compare_modes() -> Vec<SmartAutomovePreference> {
     ]
 }
 
-fn compare_focus_mode_from_env(name: &str, fallback: SmartAutomovePreference) -> SmartAutomovePreference {
+fn compare_focus_mode_from_env(
+    name: &str,
+    fallback: SmartAutomovePreference,
+) -> SmartAutomovePreference {
     env::var(name)
         .ok()
         .map(|value| value.trim().to_ascii_lowercase())
@@ -290,37 +293,6 @@ fn compare_focus_mode_from_env(name: &str, fallback: SmartAutomovePreference) ->
         .unwrap_or(fallback)
 }
 
-fn historical_same_mode_compare_seed_tags() -> Vec<String> {
-    let from_env = env::var("SMART_HIST_MODE_COMPARE_SEED_TAGS")
-        .ok()
-        .map(|value| {
-            value
-                .split(',')
-                .map(|item| item.trim().to_string())
-                .filter(|item| !item.is_empty())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    if !from_env.is_empty() {
-        return from_env;
-    }
-    vec![
-        "hist_mode_v1".to_string(),
-        "hist_mode_v2".to_string(),
-        "hist_mode_v3".to_string(),
-    ]
-}
-
-fn historical_runtime_profile_ids() -> [&'static str; 5] {
-    [
-        PROFILE_RUNTIME_HISTORICAL_0_1_109,
-        PROFILE_RUNTIME_HISTORICAL_0_1_110,
-        PROFILE_RUNTIME_HISTORICAL_POST_0_1_110_6C3D5CB,
-        PROFILE_RUNTIME_HISTORICAL_POST_0_1_110_A70B842,
-        PROFILE_RUNTIME_HISTORICAL_PRE_EXACT_E9A05CE,
-    ]
-}
-
 #[test]
 fn smart_automove_pool_profile_registry_resolves_retained_profiles() {
     for profile_id in retained_profile_ids() {
@@ -330,6 +302,26 @@ fn smart_automove_pool_profile_registry_resolves_retained_profiles() {
             profile_id
         );
     }
+}
+
+#[test]
+fn smart_automove_pool_retained_profile_ids_match_active_registry() {
+    assert_eq!(
+        retained_profile_ids(),
+        vec![
+            "base",
+            "runtime_current",
+            "runtime_release_safe_pre_exact",
+            "runtime_eff_non_exact_v1",
+            "runtime_eff_non_exact_v2",
+            "runtime_efficient_v1",
+            "runtime_eff_exact_lite_v1",
+            "swift_2024_eval_reference",
+            "swift_2024_style_reference",
+            "runtime_pre_fast_root_quality_v1_normal_conversion_v3",
+            "runtime_pre_pro_promotion_v1",
+        ]
+    );
 }
 
 #[test]
@@ -378,288 +370,6 @@ fn smart_automove_pool_smoke_runs() {
         evaluate_candidate_against_pool_with_max_plies(probe_model, &pool, 1, &quick_budgets, 2);
     assert_eq!(evaluation.opponents.len(), pool.len());
     assert_eq!(evaluation.games_per_matchup, 1);
-}
-
-fn historical_opening_black_reply_game() -> MonsGame {
-    let mut game = MonsGame::new(false);
-    let mut applied_steps = 0;
-    while game.turn_number == 1 && applied_steps < 8 {
-        let inputs = MonsGameModel::white_first_turn_opening_next_inputs(&game)
-            .expect("expected opening-book continuation during white first turn");
-        assert!(matches!(
-            game.process_input(inputs, false, false),
-            Output::Events(_)
-        ));
-        applied_steps += 1;
-    }
-    assert_eq!(game.turn_number, 2, "opening book should advance to black reply");
-    assert_eq!(game.active_color, Color::Black);
-    game
-}
-
-#[test]
-fn smart_automove_pool_historical_profiles_rebuild_expected_runtime_shapes() {
-    let neutral_game = MonsGame::new(false);
-    let opening_reply_game = historical_opening_black_reply_game();
-
-    let fast = historical_profile_runtime_config(
-        PROFILE_RUNTIME_HISTORICAL_0_1_109,
-        &neutral_game,
-        SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
-    )
-    .expect("historical fast profile should resolve");
-    assert_eq!(fast.root_reply_risk_score_margin, 125);
-    assert_eq!(fast.root_reply_risk_shortlist_max, 4);
-    assert_eq!(fast.root_reply_risk_reply_limit, 10);
-    assert_eq!(fast.root_reply_risk_node_share_bp, 650);
-    assert!(fast.enable_quiet_reductions);
-    assert!(!fast.enable_root_exact_tactics);
-    assert!(!fast.enable_child_exact_tactics);
-    assert!(!fast.enable_static_exact_evaluation);
-
-    let normal = historical_profile_runtime_config(
-        PROFILE_RUNTIME_HISTORICAL_0_1_110,
-        &neutral_game,
-        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
-    )
-    .expect("historical normal profile should resolve");
-    assert_eq!(normal.root_reply_risk_score_margin, 145);
-    assert_eq!(normal.root_reply_risk_shortlist_max, 7);
-    assert_eq!(normal.root_reply_risk_reply_limit, 16);
-    assert_eq!(normal.root_reply_risk_node_share_bp, 1_350);
-    assert_eq!(normal.selective_extension_node_share_bp, 1_250);
-    assert!(normal.enable_quiet_reductions);
-    assert!(!normal.enable_root_exact_tactics);
-
-    let pro_109 = historical_profile_runtime_config(
-        PROFILE_RUNTIME_HISTORICAL_0_1_109,
-        &opening_reply_game,
-        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
-    )
-    .expect("0.1.109 pro profile should resolve");
-    assert_eq!(pro_109.max_visited_nodes, 13_680);
-    assert_eq!(pro_109.root_reply_risk_score_margin, 155);
-    assert_eq!(pro_109.root_reply_risk_shortlist_max, 8);
-    assert_eq!(pro_109.root_reply_risk_reply_limit, 20);
-    assert_eq!(pro_109.root_reply_risk_node_share_bp, 1_600);
-    assert!(pro_109.enable_forced_tactical_prepass);
-    assert_eq!(pro_109.interview_soft_opponent_mana_progress_bonus, 220);
-    assert_eq!(pro_109.interview_soft_opponent_mana_score_bonus, 280);
-    assert!(!pro_109.enable_root_exact_tactics);
-
-    let pro_110 = historical_profile_runtime_config(
-        PROFILE_RUNTIME_HISTORICAL_0_1_110,
-        &neutral_game,
-        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
-    )
-    .expect("0.1.110 pro profile should resolve");
-    assert_eq!(pro_110.max_visited_nodes, 10_200);
-    assert_eq!(pro_110.root_reply_risk_score_margin, 165);
-    assert_eq!(pro_110.root_reply_risk_shortlist_max, 9);
-    assert_eq!(pro_110.root_reply_risk_reply_limit, 24);
-    assert_eq!(pro_110.root_reply_risk_node_share_bp, 2_000);
-    assert_eq!(pro_110.root_drainer_safety_score_margin, 4_800);
-    assert_eq!(pro_110.interview_soft_opponent_mana_progress_bonus, 280);
-    assert_eq!(pro_110.interview_soft_opponent_mana_score_bonus, 340);
-
-    let pro_110_opening = historical_profile_runtime_config(
-        PROFILE_RUNTIME_HISTORICAL_0_1_110,
-        &opening_reply_game,
-        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
-    )
-    .expect("0.1.110 opening-reply pro profile should resolve");
-    assert_eq!(pro_110_opening.max_visited_nodes, 10_200);
-    assert_eq!(pro_110_opening.root_reply_risk_score_margin, 155);
-    assert_eq!(pro_110_opening.root_reply_risk_shortlist_max, 7);
-    assert_eq!(pro_110_opening.root_reply_risk_reply_limit, 18);
-    assert_eq!(pro_110_opening.root_reply_risk_node_share_bp, 1_400);
-    assert!(!pro_110_opening.enable_normal_root_safety_deep_floor);
-    assert_eq!(pro_110_opening.root_drainer_safety_score_margin, 4_300);
-
-    let pro_6c = historical_profile_runtime_config(
-        PROFILE_RUNTIME_HISTORICAL_POST_0_1_110_6C3D5CB,
-        &neutral_game,
-        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
-    )
-    .expect("6c3d5cb pro profile should resolve");
-    assert_eq!(pro_6c.max_visited_nodes, 10_200);
-    assert_eq!(pro_6c.root_reply_risk_score_margin, 165);
-    assert_eq!(pro_6c.root_reply_risk_reply_limit, 24);
-    assert_eq!(pro_6c.interview_soft_opponent_mana_progress_bonus, 280);
-    assert_eq!(pro_6c.interview_soft_opponent_mana_score_bonus, 340);
-
-    let pro_a70 = historical_profile_runtime_config(
-        PROFILE_RUNTIME_HISTORICAL_POST_0_1_110_A70B842,
-        &neutral_game,
-        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
-    )
-    .expect("a70b842 pro profile should resolve");
-    assert_eq!(pro_a70.max_visited_nodes, 14_022);
-    assert_eq!(pro_a70.root_reply_risk_score_margin, 165);
-    assert_eq!(pro_a70.root_reply_risk_reply_limit, 24);
-    assert_eq!(pro_a70.interview_soft_opponent_mana_progress_bonus, 280);
-    assert_eq!(pro_a70.interview_soft_opponent_mana_score_bonus, 340);
-
-    let pro_e9 = historical_profile_runtime_config(
-        PROFILE_RUNTIME_HISTORICAL_PRE_EXACT_E9A05CE,
-        &neutral_game,
-        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
-    )
-    .expect("e9a05ce pro profile should resolve");
-    assert_eq!(pro_e9.max_visited_nodes, 14_022);
-    assert_eq!(pro_e9.root_reply_risk_score_margin, 165);
-    assert_eq!(pro_e9.root_reply_risk_reply_limit, 24);
-    assert_eq!(pro_e9.interview_soft_opponent_mana_progress_bonus, 320);
-    assert_eq!(pro_e9.interview_soft_opponent_mana_score_bonus, 400);
-}
-
-#[test]
-fn smart_automove_pool_runtime_eff_non_exact_v3_keeps_current_fast_normal_and_e9_pro() {
-    let neutral_game = MonsGame::new(false);
-    let opening_reply_game = historical_opening_black_reply_game();
-
-    let current_fast = MonsGameModel::runtime_config_for_game_with_context(
-        &neutral_game,
-        SmartAutomovePreference::Fast,
-        ProRuntimeContext::Unknown,
-    )
-    .0;
-    let hybrid_fast = runtime_eff_non_exact_v3_runtime_config(
-        &neutral_game,
-        SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
-    );
-    assert_eq!(hybrid_fast.depth, current_fast.depth);
-    assert_eq!(hybrid_fast.max_visited_nodes, current_fast.max_visited_nodes);
-    assert_eq!(hybrid_fast.root_branch_limit, current_fast.root_branch_limit);
-    assert_eq!(hybrid_fast.node_branch_limit, current_fast.node_branch_limit);
-    assert_eq!(hybrid_fast.root_reply_risk_score_margin, current_fast.root_reply_risk_score_margin);
-    assert_eq!(
-        hybrid_fast.root_reply_risk_shortlist_max,
-        current_fast.root_reply_risk_shortlist_max
-    );
-    assert_eq!(hybrid_fast.root_reply_risk_reply_limit, current_fast.root_reply_risk_reply_limit);
-    assert_eq!(
-        hybrid_fast.root_reply_risk_node_share_bp,
-        current_fast.root_reply_risk_node_share_bp
-    );
-    assert_eq!(
-        hybrid_fast.enable_quiet_reductions,
-        current_fast.enable_quiet_reductions
-    );
-
-    let current_normal = MonsGameModel::runtime_config_for_game_with_context(
-        &neutral_game,
-        SmartAutomovePreference::Normal,
-        ProRuntimeContext::Unknown,
-    )
-    .0;
-    let hybrid_normal = runtime_eff_non_exact_v3_runtime_config(
-        &neutral_game,
-        SmartSearchConfig::from_preference(SmartAutomovePreference::Normal),
-    );
-    assert_eq!(hybrid_normal.depth, current_normal.depth);
-    assert_eq!(hybrid_normal.max_visited_nodes, current_normal.max_visited_nodes);
-    assert_eq!(hybrid_normal.root_branch_limit, current_normal.root_branch_limit);
-    assert_eq!(hybrid_normal.node_branch_limit, current_normal.node_branch_limit);
-    assert_eq!(
-        hybrid_normal.root_reply_risk_score_margin,
-        current_normal.root_reply_risk_score_margin
-    );
-    assert_eq!(
-        hybrid_normal.root_reply_risk_shortlist_max,
-        current_normal.root_reply_risk_shortlist_max
-    );
-    assert_eq!(
-        hybrid_normal.root_reply_risk_reply_limit,
-        current_normal.root_reply_risk_reply_limit
-    );
-    assert_eq!(
-        hybrid_normal.root_reply_risk_node_share_bp,
-        current_normal.root_reply_risk_node_share_bp
-    );
-    assert_eq!(
-        hybrid_normal.enable_quiet_reductions,
-        current_normal.enable_quiet_reductions
-    );
-
-    let expected_pro = historical_profile_runtime_config(
-        PROFILE_RUNTIME_HISTORICAL_PRE_EXACT_E9A05CE,
-        &neutral_game,
-        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
-    )
-    .expect("historical e9 pro profile should resolve");
-    let hybrid_pro = runtime_eff_non_exact_v3_runtime_config(
-        &neutral_game,
-        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
-    );
-    assert_eq!(hybrid_pro.max_visited_nodes, expected_pro.max_visited_nodes);
-    assert_eq!(
-        hybrid_pro.root_reply_risk_score_margin,
-        expected_pro.root_reply_risk_score_margin
-    );
-    assert_eq!(
-        hybrid_pro.root_reply_risk_shortlist_max,
-        expected_pro.root_reply_risk_shortlist_max
-    );
-    assert_eq!(
-        hybrid_pro.root_reply_risk_reply_limit,
-        expected_pro.root_reply_risk_reply_limit
-    );
-    assert_eq!(
-        hybrid_pro.root_reply_risk_node_share_bp,
-        expected_pro.root_reply_risk_node_share_bp
-    );
-    assert_eq!(
-        hybrid_pro.interview_soft_opponent_mana_progress_bonus,
-        expected_pro.interview_soft_opponent_mana_progress_bonus
-    );
-    assert_eq!(
-        hybrid_pro.interview_soft_opponent_mana_score_bonus,
-        expected_pro.interview_soft_opponent_mana_score_bonus
-    );
-    assert_eq!(
-        hybrid_pro.enable_quiet_reductions,
-        expected_pro.enable_quiet_reductions
-    );
-
-    let expected_opening_pro = historical_profile_runtime_config(
-        PROFILE_RUNTIME_HISTORICAL_PRE_EXACT_E9A05CE,
-        &opening_reply_game,
-        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
-    )
-    .expect("historical e9 opening-reply pro profile should resolve");
-    let hybrid_opening_pro = runtime_eff_non_exact_v3_runtime_config(
-        &opening_reply_game,
-        SmartSearchConfig::from_preference(SmartAutomovePreference::Pro),
-    );
-    assert_eq!(
-        hybrid_opening_pro.max_visited_nodes,
-        expected_opening_pro.max_visited_nodes
-    );
-    assert_eq!(
-        hybrid_opening_pro.root_reply_risk_score_margin,
-        expected_opening_pro.root_reply_risk_score_margin
-    );
-    assert_eq!(
-        hybrid_opening_pro.root_reply_risk_shortlist_max,
-        expected_opening_pro.root_reply_risk_shortlist_max
-    );
-    assert_eq!(
-        hybrid_opening_pro.root_reply_risk_reply_limit,
-        expected_opening_pro.root_reply_risk_reply_limit
-    );
-    assert_eq!(
-        hybrid_opening_pro.root_reply_risk_node_share_bp,
-        expected_opening_pro.root_reply_risk_node_share_bp
-    );
-    assert_eq!(
-        hybrid_opening_pro.enable_normal_root_safety_deep_floor,
-        expected_opening_pro.enable_normal_root_safety_deep_floor
-    );
-    assert_eq!(
-        hybrid_opening_pro.enable_quiet_reductions,
-        expected_opening_pro.enable_quiet_reductions
-    );
 }
 
 #[test]
@@ -800,12 +510,14 @@ fn smart_automove_pool_mode_comparison_report() {
     let max_plies = env_usize("SMART_MODE_COMPARE_MAX_PLIES")
         .unwrap_or(80)
         .max(56);
-    let use_white_opening_book = env_bool("SMART_MODE_COMPARE_USE_WHITE_OPENING_BOOK")
-        .unwrap_or(false);
+    let use_white_opening_book =
+        env_bool("SMART_MODE_COMPARE_USE_WHITE_OPENING_BOOK").unwrap_or(false);
     let seed_tags = mode_compare_seed_tags();
     let modes = mode_compare_modes();
-    let focus_mode =
-        compare_focus_mode_from_env("SMART_MODE_COMPARE_FOCUS_MODE", SmartAutomovePreference::Pro);
+    let focus_mode = compare_focus_mode_from_env(
+        "SMART_MODE_COMPARE_FOCUS_MODE",
+        SmartAutomovePreference::Pro,
+    );
     let compare_tag = env::var("SMART_MODE_COMPARE_TAG")
         .ok()
         .map(|value| value.trim().to_ascii_lowercase())
@@ -871,81 +583,6 @@ fn smart_automove_pool_mode_comparison_report() {
             delta,
             confidence
         );
-    }
-}
-
-#[test]
-#[ignore = "diagnostic: same-mode historical runtime matrix vs runtime_current"]
-fn smart_automove_pool_historical_same_mode_report() {
-    let baseline_profile = env_profile_name("SMART_HIST_MODE_COMPARE_BASELINE_PROFILE")
-        .unwrap_or_else(|| "runtime_current".to_string());
-    let repeats = env_usize("SMART_HIST_MODE_COMPARE_REPEATS")
-        .unwrap_or(2)
-        .max(1);
-    let games_per_repeat = env_usize("SMART_HIST_MODE_COMPARE_GAMES")
-        .unwrap_or(2)
-        .max(1);
-    let max_plies = env_usize("SMART_HIST_MODE_COMPARE_MAX_PLIES")
-        .unwrap_or(72)
-        .max(56);
-    let use_white_opening_book = env_bool("SMART_HIST_MODE_COMPARE_USE_WHITE_OPENING_BOOK")
-        .unwrap_or(false);
-    let seed_tags = historical_same_mode_compare_seed_tags();
-    let modes = [
-        SmartAutomovePreference::Fast,
-        SmartAutomovePreference::Normal,
-        SmartAutomovePreference::Pro,
-    ];
-
-    eprintln!(
-        "historical same-mode report: baseline_profile={} candidates={} seeds={} repeats={} games_per_repeat={} max_plies={} use_white_opening_book={}",
-        baseline_profile,
-        historical_runtime_profile_ids().len(),
-        seed_tags.len(),
-        repeats,
-        games_per_repeat,
-        max_plies,
-        use_white_opening_book
-    );
-
-    for candidate_profile in historical_runtime_profile_ids() {
-        eprintln!("candidate={}", candidate_profile);
-        for mode in modes {
-            let mut aggregate = MatchupStats::default();
-            for seed_tag in &seed_tags {
-                let tagged_seed = format!(
-                    "hist_same:{}:{}:{}",
-                    candidate_profile,
-                    mode.as_api_value(),
-                    seed_tag
-                );
-                aggregate.merge(run_cross_budget_duel(
-                    candidate_profile,
-                    mode,
-                    baseline_profile.as_str(),
-                    mode,
-                    tagged_seed.as_str(),
-                    repeats,
-                    games_per_repeat,
-                    max_plies,
-                    use_white_opening_book,
-                ));
-            }
-            let (delta, confidence) = stats_delta_confidence(aggregate);
-            eprintln!(
-                "candidate={} mode={} baseline={} games={} W={} L={} D={} win_rate={:.4} delta={:+.4} confidence={:.3}",
-                candidate_profile,
-                mode.as_api_value(),
-                baseline_profile,
-                aggregate.total_games(),
-                aggregate.wins,
-                aggregate.losses,
-                aggregate.draws,
-                aggregate.win_rate_points(),
-                delta,
-                confidence
-            );
-        }
     }
 }
 
