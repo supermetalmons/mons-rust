@@ -1,6 +1,234 @@
-use super::*;
 use super::harness::*;
 use super::profiles::*;
+use super::*;
+use crate::models::automove_exact::{
+    clear_exact_query_diagnostics, clear_exact_state_analysis_cache,
+    exact_query_diagnostics_snapshot,
+};
+
+fn stage1_cpu_budgets() -> [SearchBudget; 4] {
+    [
+        SearchBudget::from_preference(SmartAutomovePreference::Fast),
+        SearchBudget::from_preference(SmartAutomovePreference::Normal),
+        SearchBudget::from_preference(SmartAutomovePreference::Pro),
+        SearchBudget::from_preference(SmartAutomovePreference::Ultra),
+    ]
+}
+
+fn stage1_cpu_ratio_limit(mode: &str) -> f64 {
+    match mode {
+        "fast" => SMART_STAGE1_CPU_RATIO_MAX_FAST,
+        "normal" => SMART_STAGE1_CPU_RATIO_MAX_NORMAL,
+        "pro" => SMART_STAGE1_CPU_RATIO_MAX_PRO,
+        "ultra" => SMART_STAGE1_CPU_RATIO_MAX_ULTRA,
+        _ => SMART_STAGE1_CPU_RATIO_MAX_ULTRA,
+    }
+}
+
+fn stage1_seed_tags() -> Vec<String> {
+    let from_env = env::var("SMART_STAGE1_SEED_TAGS")
+        .ok()
+        .map(|value| {
+            value
+                .split(',')
+                .map(|item| item.trim().to_string())
+                .filter(|item| !item.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if !from_env.is_empty() {
+        assert!(
+            from_env.len() >= 3,
+            "stage-1 cpu gate requires at least 3 seeds; got {}",
+            from_env.len()
+        );
+        return from_env;
+    }
+    vec![
+        "stage1_cpu_v1".to_string(),
+        "stage1_cpu_v2".to_string(),
+        "stage1_cpu_v3".to_string(),
+    ]
+}
+
+fn assert_stage1_cpu_non_regression(
+    candidate_profile_name: &str,
+    candidate_selector: AutomoveSelector,
+) {
+    let baseline_selector = profile_selector_from_name("runtime_current")
+        .expect("runtime_current selector should exist for stage-1 cpu gate");
+    let budgets = stage1_cpu_budgets();
+    let speed_positions = env_usize("SMART_STAGE1_SPEED_POSITIONS")
+        .unwrap_or(16)
+        .max(12);
+
+    for seed_tag in stage1_seed_tags() {
+        let speed_seed = seed_for_pairing(
+            "stage1_cpu_gate",
+            format!("{}:{}", candidate_profile_name, seed_tag).as_str(),
+        );
+        let speed_openings = generate_opening_fens_cached(speed_seed, speed_positions);
+        let baseline_speed =
+            profile_speed_by_mode_ms(baseline_selector, speed_openings.as_slice(), &budgets);
+        let candidate_speed =
+            profile_speed_by_mode_ms(candidate_selector, speed_openings.as_slice(), &budgets);
+        let baseline_map = baseline_speed
+            .iter()
+            .map(|stat| (stat.budget.key(), stat.avg_ms))
+            .collect::<std::collections::HashMap<_, _>>();
+
+        for stat in candidate_speed {
+            let baseline_ms = baseline_map
+                .get(stat.budget.key())
+                .copied()
+                .unwrap_or(1.0)
+                .max(0.001);
+            let ratio = stat.avg_ms / baseline_ms;
+            let ratio_limit = stage1_cpu_ratio_limit(stat.budget.key());
+            println!(
+                "stage-1 cpu seed={} mode={} candidate={} ratio={:.3} limit={:.3}",
+                seed_tag,
+                stat.budget.key(),
+                candidate_profile_name,
+                ratio,
+                ratio_limit
+            );
+            assert!(
+                ratio <= ratio_limit,
+                "stage-1 cpu gate failed for seed={} mode={} candidate={} baseline=runtime_current ratio={:.3} > {:.3}",
+                seed_tag,
+                stat.budget.key(),
+                candidate_profile_name,
+                ratio,
+                ratio_limit
+            );
+        }
+    }
+}
+
+fn exact_lite_cache_totals() -> (usize, usize) {
+    let diagnostics = exact_query_diagnostics_snapshot();
+    let calls = diagnostics.exact_spirit_summary_calls as usize
+        + diagnostics.tactical_spirit_summary_calls as usize
+        + diagnostics.exact_followup_summary_calls as usize
+        + diagnostics.exact_secure_mana_calls as usize
+        + diagnostics.pickup_path_calls as usize;
+    let hits = diagnostics.exact_spirit_summary_cache_hits as usize
+        + diagnostics.tactical_spirit_summary_cache_hits as usize
+        + diagnostics.exact_followup_summary_cache_hits as usize
+        + diagnostics.exact_secure_mana_cache_hits as usize
+        + diagnostics.pickup_path_cache_hits as usize;
+    (calls, hits)
+}
+
+fn env_f64(name: &str) -> Option<f64> {
+    env::var(name)
+        .ok()
+        .and_then(|value| value.trim().parse::<f64>().ok())
+}
+
+fn assert_exact_lite_diagnostics_gate_if_enabled(
+    candidate_profile_name: &str,
+    candidate_selector: AutomoveSelector,
+) {
+    let budgets = stage1_cpu_budgets();
+    let positions = env_usize("SMART_EXACT_LITE_DIAGNOSTIC_POSITIONS")
+        .unwrap_or(8)
+        .max(1);
+    let openings = generate_opening_fens_cached(
+        seed_for_pairing("exact_lite_diag", candidate_profile_name),
+        positions,
+    );
+    let cache_repeats = env_usize("SMART_EXACT_LITE_CACHE_REPEATS")
+        .unwrap_or(2)
+        .max(2);
+    let min_cache_calls = env_usize("SMART_EXACT_LITE_CACHE_MIN_CALLS")
+        .unwrap_or(12)
+        .max(1);
+    let min_cache_hit_rate = env_f64("SMART_EXACT_LITE_CACHE_HIT_RATE_MIN")
+        .unwrap_or(SMART_EXACT_LITE_CACHE_HIT_RATE_MIN)
+        .clamp(0.0, 1.0);
+
+    let mut any_exact_lite_budget = false;
+    for budget in budgets.iter().copied() {
+        for opening in openings.iter() {
+            let game = MonsGame::from_fen(opening, false).expect("valid opening fen");
+            let config = budget.runtime_config_for_game(&game);
+            let Some(limits) = profile_exact_lite_budgets(candidate_profile_name, &game, config)
+            else {
+                continue;
+            };
+            any_exact_lite_budget = true;
+            clear_exact_state_analysis_cache();
+            clear_exact_query_diagnostics();
+            let _ = select_inputs_with_runtime_fallback(candidate_selector, &game, config);
+            let diagnostics = exact_query_diagnostics_snapshot();
+            let root_calls = diagnostics.exact_turn_summary_builds as usize;
+            let static_calls = (diagnostics.passive_strategic_summary_builds as usize + 1) / 2;
+
+            assert!(
+                root_calls <= limits.root_call_budget,
+                "exact-lite root budget exceeded for profile={} mode={} opening={} calls={} budget={}",
+                candidate_profile_name,
+                budget.key(),
+                opening,
+                root_calls,
+                limits.root_call_budget
+            );
+            assert!(
+                static_calls <= limits.static_call_budget,
+                "exact-lite static budget exceeded for profile={} mode={} opening={} calls={} budget={}",
+                candidate_profile_name,
+                budget.key(),
+                opening,
+                static_calls,
+                limits.static_call_budget
+            );
+        }
+    }
+
+    if !any_exact_lite_budget {
+        return;
+    }
+
+    for budget in budgets.iter().copied() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let mut budget_uses_exact_lite = false;
+        for _ in 0..cache_repeats {
+            for opening in openings.iter() {
+                let game = MonsGame::from_fen(opening, false).expect("valid opening fen");
+                let config = budget.runtime_config_for_game(&game);
+                if profile_exact_lite_budgets(candidate_profile_name, &game, config).is_none() {
+                    continue;
+                }
+                budget_uses_exact_lite = true;
+                let _ = select_inputs_with_runtime_fallback(candidate_selector, &game, config);
+            }
+        }
+
+        if !budget_uses_exact_lite {
+            continue;
+        }
+        let (cache_calls, cache_hits) = exact_lite_cache_totals();
+        if cache_calls < min_cache_calls {
+            continue;
+        }
+        let cache_hit_rate = cache_hits as f64 / cache_calls as f64;
+        assert!(
+            cache_hit_rate >= min_cache_hit_rate,
+            "exact-lite cache-hit gate failed for profile={} mode={} rate={:.3} < {:.3} (hits={}, calls={})",
+            candidate_profile_name,
+            budget.key(),
+            cache_hit_rate,
+            min_cache_hit_rate,
+            cache_hits,
+            cache_calls
+        );
+    }
+    clear_exact_state_analysis_cache();
+    clear_exact_query_diagnostics();
+}
 
 #[test]
 fn smart_automove_pool_profile_registry_resolves_retained_profiles() {
@@ -168,6 +396,26 @@ fn smart_automove_tactical_candidate_profile() {
 }
 
 #[test]
+#[ignore = "strict stage-1 cpu non-regression gate against runtime_current"]
+fn smart_automove_pool_stage1_cpu_non_regression_gate() {
+    let candidate_profile_name = candidate_profile().as_str().to_string();
+    assert_stage1_cpu_non_regression(
+        candidate_profile_name.as_str(),
+        CANDIDATE_MODEL.select_inputs,
+    );
+}
+
+#[test]
+#[ignore = "exact-lite diagnostics gate for per-move budgets and cache efficiency"]
+fn smart_automove_pool_exact_lite_diagnostics_gate() {
+    let candidate_profile_name = candidate_profile().as_str().to_string();
+    assert_exact_lite_diagnostics_gate_if_enabled(
+        candidate_profile_name.as_str(),
+        CANDIDATE_MODEL.select_inputs,
+    );
+}
+
+#[test]
 #[ignore = "quick progressive screen: ~10-20 seconds, 2 tiers"]
 fn smart_automove_pool_fast_screen() {
     let candidate_profile_name = candidate_profile().as_str().to_string();
@@ -179,6 +427,14 @@ fn smart_automove_pool_fast_screen() {
             "candidate and baseline must differ (set SMART_GATE_ALLOW_SELF_BASELINE=true to override)"
         );
     }
+    assert_stage1_cpu_non_regression(
+        candidate_profile_name.as_str(),
+        CANDIDATE_MODEL.select_inputs,
+    );
+    assert_exact_lite_diagnostics_gate_if_enabled(
+        candidate_profile_name.as_str(),
+        CANDIDATE_MODEL.select_inputs,
+    );
 
     let candidate = AutomoveModel {
         id: "candidate",
@@ -246,6 +502,14 @@ fn smart_automove_pool_progressive_duel() {
             "candidate and baseline must differ"
         );
     }
+    assert_stage1_cpu_non_regression(
+        candidate_profile_name.as_str(),
+        CANDIDATE_MODEL.select_inputs,
+    );
+    assert_exact_lite_diagnostics_gate_if_enabled(
+        candidate_profile_name.as_str(),
+        CANDIDATE_MODEL.select_inputs,
+    );
 
     let candidate = AutomoveModel {
         id: "candidate",
@@ -288,9 +552,7 @@ fn smart_automove_pool_progressive_duel() {
         ProgressiveStopReason::EarlyReject | ProgressiveStopReason::MathematicalReject => {
             panic!(
                 "progressive duel rejected: {:?} at {} games, δ={:.4}",
-                result.stop_reason,
-                result.total_games,
-                result.final_delta
+                result.stop_reason, result.total_games, result.final_delta
             );
         }
         ProgressiveStopReason::EarlyPromote | ProgressiveStopReason::MaxGamesReached => {
@@ -315,6 +577,14 @@ fn smart_automove_pool_promotion_ladder() {
             "candidate profile and baseline profile must differ for ladder gate"
         );
     }
+    assert_stage1_cpu_non_regression(
+        candidate_profile_name.as_str(),
+        CANDIDATE_MODEL.select_inputs,
+    );
+    assert_exact_lite_diagnostics_gate_if_enabled(
+        candidate_profile_name.as_str(),
+        CANDIDATE_MODEL.select_inputs,
+    );
 
     let candidate = AutomoveModel {
         id: "candidate",
@@ -341,10 +611,16 @@ fn smart_automove_pool_promotion_ladder() {
     let speed_positions = env_usize("SMART_GATE_SPEED_POSITIONS").unwrap_or(12).max(4);
     let speed_seed = seed_for_pairing("promotion_ladder", "speed");
     let speed_openings = generate_opening_fens_cached(speed_seed, speed_positions);
-    let baseline_speed =
-        profile_speed_by_mode_ms(baseline.select_inputs, speed_openings.as_slice(), budgets.as_slice());
-    let candidate_speed =
-        profile_speed_by_mode_ms(candidate.select_inputs, speed_openings.as_slice(), budgets.as_slice());
+    let baseline_speed = profile_speed_by_mode_ms(
+        baseline.select_inputs,
+        speed_openings.as_slice(),
+        budgets.as_slice(),
+    );
+    let candidate_speed = profile_speed_by_mode_ms(
+        candidate.select_inputs,
+        speed_openings.as_slice(),
+        budgets.as_slice(),
+    );
     let baseline_map = baseline_speed
         .iter()
         .map(|stat| (stat.budget.key(), stat.avg_ms))
@@ -367,7 +643,11 @@ fn smart_automove_pool_promotion_ladder() {
         r#"{{"stage":"A_speed","fast_ratio":{:.5},"normal_ratio":{:.5}}}"#,
         fast_ratio, normal_ratio
     ));
-    assert!(fast_ratio <= 1.15, "fast cpu gate failed: ratio={:.3}", fast_ratio);
+    assert!(
+        fast_ratio <= 1.15,
+        "fast cpu gate failed: ratio={:.3}",
+        fast_ratio
+    );
     assert!(
         normal_ratio <= 1.15,
         "normal cpu gate failed: ratio={:.3}",
@@ -417,8 +697,7 @@ fn smart_automove_pool_promotion_ladder() {
     {
         println!(
             "promotion gate budget conversion NOTE: candidate normal_edge {:.3} < baseline {:.3}",
-            candidate_budget_conversion.normal_edge,
-            baseline_budget_conversion.normal_edge
+            candidate_budget_conversion.normal_edge, baseline_budget_conversion.normal_edge
         );
     }
 
@@ -442,8 +721,7 @@ fn smart_automove_pool_promotion_ladder() {
             persist_ladder_artifacts(artifacts.as_slice());
             panic!(
                 "progressive duel early reject: delta={:.3} after {} games",
-                progressive_result.final_delta,
-                progressive_result.total_games
+                progressive_result.final_delta, progressive_result.total_games
             );
         }
         ProgressiveStopReason::MathematicalReject => {
@@ -580,7 +858,9 @@ fn smart_automove_pool_pro_fast_screen_vs_normal() {
     let baseline_profile = pro_baseline_profile_name();
     let seed_tag = env_profile_name("SMART_PRO_FAST_SCREEN_SEED_TAG")
         .unwrap_or_else(|| "pro_fast_screen_vs_normal_v1".to_string());
-    let repeats = env_usize("SMART_PRO_FAST_SCREEN_REPEATS").unwrap_or(2).max(1);
+    let repeats = env_usize("SMART_PRO_FAST_SCREEN_REPEATS")
+        .unwrap_or(2)
+        .max(1);
     let games = env_usize("SMART_PRO_FAST_SCREEN_GAMES").unwrap_or(2).max(1);
     let max_plies = env_usize("SMART_PRO_FAST_SCREEN_MAX_PLIES")
         .unwrap_or(72)
@@ -617,7 +897,9 @@ fn smart_automove_pool_pro_fast_screen_vs_fast() {
     let baseline_profile = pro_baseline_profile_name();
     let seed_tag = env_profile_name("SMART_PRO_FAST_SCREEN_SEED_TAG")
         .unwrap_or_else(|| "pro_fast_screen_vs_fast_v1".to_string());
-    let repeats = env_usize("SMART_PRO_FAST_SCREEN_REPEATS").unwrap_or(2).max(1);
+    let repeats = env_usize("SMART_PRO_FAST_SCREEN_REPEATS")
+        .unwrap_or(2)
+        .max(1);
     let games = env_usize("SMART_PRO_FAST_SCREEN_GAMES").unwrap_or(2).max(1);
     let max_plies = env_usize("SMART_PRO_FAST_SCREEN_MAX_PLIES")
         .unwrap_or(72)
@@ -663,7 +945,11 @@ fn smart_automove_pool_pro_progressive_vs_normal() {
         "pro progressive vs normal: profile={} baseline={} delta={:.4} confidence={:.3}",
         candidate_profile, baseline_profile, delta, confidence
     );
-    assert!(delta >= 0.0, "pro progressive vs normal failed: delta {:.4} < 0.0", delta);
+    assert!(
+        delta >= 0.0,
+        "pro progressive vs normal failed: delta {:.4} < 0.0",
+        delta
+    );
 }
 
 #[test]
@@ -682,7 +968,11 @@ fn smart_automove_pool_pro_progressive_vs_fast() {
         "pro progressive vs fast: profile={} baseline={} delta={:.4} confidence={:.3}",
         candidate_profile, baseline_profile, delta, confidence
     );
-    assert!(delta >= 0.0, "pro progressive vs fast failed: delta {:.4} < 0.0", delta);
+    assert!(
+        delta >= 0.0,
+        "pro progressive vs fast failed: delta {:.4} < 0.0",
+        delta
+    );
 }
 
 #[test]
@@ -694,6 +984,8 @@ fn smart_automove_pool_pro_promotion_ladder() {
         .unwrap_or_else(|| panic!("candidate selector '{}' should exist", candidate_profile));
     let baseline_selector = profile_selector_from_name(baseline_profile.as_str())
         .unwrap_or_else(|| panic!("baseline selector '{}' should exist", baseline_profile));
+    assert_stage1_cpu_non_regression(candidate_profile.as_str(), candidate_selector);
+    assert_exact_lite_diagnostics_gate_if_enabled(candidate_profile.as_str(), candidate_selector);
 
     assert_tactical_guardrails(candidate_selector, candidate_profile.as_str());
     assert_interview_policy_regressions(candidate_selector, candidate_profile.as_str());
@@ -705,14 +997,20 @@ fn smart_automove_pool_pro_promotion_ladder() {
         .max(4);
     let speed_seed = seed_for_pairing("pro_promotion_ladder", "speed");
     let speed_openings = generate_opening_fens_cached(speed_seed, speed_positions);
-    let pro_ms = profile_speed_by_mode_ms(candidate_selector, speed_openings.as_slice(), &[pro_budget()])
-        .first()
-        .map(|stat| stat.avg_ms)
-        .unwrap_or(0.0);
+    let pro_ms = profile_speed_by_mode_ms(
+        candidate_selector,
+        speed_openings.as_slice(),
+        &[pro_budget()],
+    )
+    .first()
+    .map(|stat| stat.avg_ms)
+    .unwrap_or(0.0);
     let normal_ms = profile_speed_by_mode_ms(
         baseline_selector,
         speed_openings.as_slice(),
-        &[SearchBudget::from_preference(SmartAutomovePreference::Normal)],
+        &[SearchBudget::from_preference(
+            SmartAutomovePreference::Normal,
+        )],
     )
     .first()
     .map(|stat| stat.avg_ms)
@@ -732,8 +1030,12 @@ fn smart_automove_pool_pro_promotion_ladder() {
         SMART_PRO_CPU_RATIO_TARGET_MAX
     );
 
-    let primary_games = env_usize("SMART_PRO_GATE_PRIMARY_GAMES").unwrap_or(6).max(2);
-    let primary_repeats = env_usize("SMART_PRO_GATE_PRIMARY_REPEATS").unwrap_or(6).max(2);
+    let primary_games = env_usize("SMART_PRO_GATE_PRIMARY_GAMES")
+        .unwrap_or(6)
+        .max(2);
+    let primary_repeats = env_usize("SMART_PRO_GATE_PRIMARY_REPEATS")
+        .unwrap_or(6)
+        .max(2);
     let primary_max_plies = env_usize("SMART_PRO_GATE_PRIMARY_MAX_PLIES")
         .unwrap_or(96)
         .max(56);
@@ -788,8 +1090,12 @@ fn smart_automove_pool_pro_promotion_ladder() {
         SMART_PRO_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN
     );
 
-    let confirm_games = env_usize("SMART_PRO_GATE_CONFIRM_GAMES").unwrap_or(4).max(2);
-    let confirm_repeats = env_usize("SMART_PRO_GATE_CONFIRM_REPEATS").unwrap_or(4).max(2);
+    let confirm_games = env_usize("SMART_PRO_GATE_CONFIRM_GAMES")
+        .unwrap_or(4)
+        .max(2);
+    let confirm_repeats = env_usize("SMART_PRO_GATE_CONFIRM_REPEATS")
+        .unwrap_or(4)
+        .max(2);
     let confirm_max_plies = env_usize("SMART_PRO_GATE_CONFIRM_MAX_PLIES")
         .unwrap_or(96)
         .max(56);
@@ -879,8 +1185,12 @@ fn smart_automove_pool_ultra_fast_screen_vs_pro() {
     let baseline_profile = ultra_baseline_profile_name();
     let seed_tag = env_profile_name("SMART_ULTRA_FAST_SCREEN_SEED_TAG")
         .unwrap_or_else(|| "ultra_fast_screen_vs_pro_v1".to_string());
-    let repeats = env_usize("SMART_ULTRA_FAST_SCREEN_REPEATS").unwrap_or(2).max(1);
-    let games = env_usize("SMART_ULTRA_FAST_SCREEN_GAMES").unwrap_or(2).max(1);
+    let repeats = env_usize("SMART_ULTRA_FAST_SCREEN_REPEATS")
+        .unwrap_or(2)
+        .max(1);
+    let games = env_usize("SMART_ULTRA_FAST_SCREEN_GAMES")
+        .unwrap_or(2)
+        .max(1);
     let max_plies = env_usize("SMART_ULTRA_FAST_SCREEN_MAX_PLIES")
         .unwrap_or(72)
         .max(56);
@@ -908,8 +1218,12 @@ fn smart_automove_pool_ultra_fast_screen_vs_normal() {
     let baseline_profile = ultra_baseline_profile_name();
     let seed_tag = env_profile_name("SMART_ULTRA_FAST_SCREEN_SEED_TAG")
         .unwrap_or_else(|| "ultra_fast_screen_vs_normal_v1".to_string());
-    let repeats = env_usize("SMART_ULTRA_FAST_SCREEN_REPEATS").unwrap_or(2).max(1);
-    let games = env_usize("SMART_ULTRA_FAST_SCREEN_GAMES").unwrap_or(2).max(1);
+    let repeats = env_usize("SMART_ULTRA_FAST_SCREEN_REPEATS")
+        .unwrap_or(2)
+        .max(1);
+    let games = env_usize("SMART_ULTRA_FAST_SCREEN_GAMES")
+        .unwrap_or(2)
+        .max(1);
     let max_plies = env_usize("SMART_ULTRA_FAST_SCREEN_MAX_PLIES")
         .unwrap_or(72)
         .max(56);
@@ -937,8 +1251,12 @@ fn smart_automove_pool_ultra_fast_screen_vs_fast() {
     let baseline_profile = ultra_baseline_profile_name();
     let seed_tag = env_profile_name("SMART_ULTRA_FAST_SCREEN_SEED_TAG")
         .unwrap_or_else(|| "ultra_fast_screen_vs_fast_v1".to_string());
-    let repeats = env_usize("SMART_ULTRA_FAST_SCREEN_REPEATS").unwrap_or(2).max(1);
-    let games = env_usize("SMART_ULTRA_FAST_SCREEN_GAMES").unwrap_or(2).max(1);
+    let repeats = env_usize("SMART_ULTRA_FAST_SCREEN_REPEATS")
+        .unwrap_or(2)
+        .max(1);
+    let games = env_usize("SMART_ULTRA_FAST_SCREEN_GAMES")
+        .unwrap_or(2)
+        .max(1);
     let max_plies = env_usize("SMART_ULTRA_FAST_SCREEN_MAX_PLIES")
         .unwrap_or(72)
         .max(56);
@@ -1019,6 +1337,8 @@ fn smart_automove_pool_ultra_promotion_ladder() {
         .unwrap_or_else(|| panic!("candidate selector '{}' should exist", candidate_profile));
     let baseline_selector = profile_selector_from_name(baseline_profile.as_str())
         .unwrap_or_else(|| panic!("baseline selector '{}' should exist", baseline_profile));
+    assert_stage1_cpu_non_regression(candidate_profile.as_str(), candidate_selector);
+    assert_exact_lite_diagnostics_gate_if_enabled(candidate_profile.as_str(), candidate_selector);
 
     assert_tactical_guardrails(candidate_selector, candidate_profile.as_str());
     assert_interview_policy_regressions(candidate_selector, candidate_profile.as_str());
@@ -1030,16 +1350,23 @@ fn smart_automove_pool_ultra_promotion_ladder() {
         .max(4);
     let speed_seed = seed_for_pairing("ultra_promotion_ladder", "speed");
     let speed_openings = generate_opening_fens_cached(speed_seed, speed_positions);
-    let ultra_ms =
-        profile_speed_by_mode_ms(candidate_selector, speed_openings.as_slice(), &[ultra_budget()])
-            .first()
-            .map(|stat| stat.avg_ms)
-            .unwrap_or(0.0);
-    let pro_ms = profile_speed_by_mode_ms(baseline_selector, speed_openings.as_slice(), &[pro_budget()])
-        .first()
-        .map(|stat| stat.avg_ms)
-        .unwrap_or(1.0)
-        .max(0.001);
+    let ultra_ms = profile_speed_by_mode_ms(
+        candidate_selector,
+        speed_openings.as_slice(),
+        &[ultra_budget()],
+    )
+    .first()
+    .map(|stat| stat.avg_ms)
+    .unwrap_or(0.0);
+    let pro_ms = profile_speed_by_mode_ms(
+        baseline_selector,
+        speed_openings.as_slice(),
+        &[pro_budget()],
+    )
+    .first()
+    .map(|stat| stat.avg_ms)
+    .unwrap_or(1.0)
+    .max(0.001);
     let speed_ratio = ultra_ms / pro_ms;
     assert!(
         speed_ratio >= SMART_ULTRA_CPU_RATIO_TARGET_MIN_VS_PRO,
@@ -1119,8 +1446,12 @@ fn smart_automove_pool_ultra_promotion_ladder() {
         "ultra primary vs fast failed non-regression"
     );
 
-    let confirm_games = env_usize("SMART_ULTRA_GATE_CONFIRM_GAMES").unwrap_or(4).max(2);
-    let confirm_repeats = env_usize("SMART_ULTRA_GATE_CONFIRM_REPEATS").unwrap_or(4).max(2);
+    let confirm_games = env_usize("SMART_ULTRA_GATE_CONFIRM_GAMES")
+        .unwrap_or(4)
+        .max(2);
+    let confirm_repeats = env_usize("SMART_ULTRA_GATE_CONFIRM_REPEATS")
+        .unwrap_or(4)
+        .max(2);
     let confirm_max_plies = env_usize("SMART_ULTRA_GATE_CONFIRM_MAX_PLIES")
         .unwrap_or(96)
         .max(56);

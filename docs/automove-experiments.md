@@ -6,9 +6,42 @@ Raw pro-player interview notes remain in `docs/automove-pro-strategy-interview.m
 
 ## Quick Reference
 
-Use the same three-step pipeline for client-mode candidate work:
+Use the promotion-first stage order for client-mode candidates:
 
-1. Fast screen
+1. Stage 0: tactical + interview guardrails
+
+```sh
+./scripts/run-experiment-logged.sh tactical_<candidate> -- \
+  env SMART_CANDIDATE_PROFILE=<candidate> \
+  cargo test --release --lib smart_automove_tactical_candidate_profile -- --ignored --nocapture
+```
+
+2. Stage 1: strict CPU non-regression vs `runtime_current` (all 4 modes)
+
+```sh
+./scripts/run-experiment-logged.sh stage1_cpu_<candidate> -- \
+  env SMART_CANDIDATE_PROFILE=<candidate> \
+  cargo test --release --lib smart_automove_pool_stage1_cpu_non_regression_gate -- --ignored --nocapture
+```
+
+Stage-1 CPU gate defaults to three seed tags (`stage1_cpu_v1`, `stage1_cpu_v2`, `stage1_cpu_v3`) and enforces per-seed caps: `fast <= 1.05x`, `normal <= 1.05x`, `pro <= 1.10x`, `ultra <= 1.10x` versus `runtime_current`. Override seeds with `SMART_STAGE1_SEED_TAGS` (comma-separated, minimum 3).
+
+3. Stage 1b: exact-lite diagnostics gate (required for exact-lite candidates, no-op for non-exact candidates)
+
+```sh
+./scripts/run-experiment-logged.sh exact_lite_diag_<candidate> -- \
+  env SMART_CANDIDATE_PROFILE=<candidate> \
+  cargo test --release --lib smart_automove_pool_exact_lite_diagnostics_gate -- --ignored --nocapture
+```
+
+4. Release speed gates (must pass before stage 2/3 promotion decisions)
+
+```sh
+cargo test --release --lib smart_automove_release_opening_black_reply_speed_gate -- --ignored --nocapture
+cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --ignored --nocapture
+```
+
+5. Stage 2: fast screen
 
 ```sh
 ./scripts/run-experiment-logged.sh fast_screen_<candidate> -- \
@@ -17,7 +50,7 @@ Use the same three-step pipeline for client-mode candidate work:
   cargo test --release --lib smart_automove_pool_fast_screen -- --ignored --nocapture
 ```
 
-2. Progressive duel
+6. Stage 2: progressive duel
 
 ```sh
 ./scripts/run-experiment-logged.sh progressive_<candidate> -- \
@@ -26,7 +59,7 @@ Use the same three-step pipeline for client-mode candidate work:
   cargo test --release --lib smart_automove_pool_progressive_duel -- --ignored --nocapture
 ```
 
-3. Promotion ladder
+7. Stage 2: promotion ladder
 
 ```sh
 ./scripts/run-experiment-logged.sh ladder_<candidate> -- \
@@ -36,6 +69,11 @@ Use the same three-step pipeline for client-mode candidate work:
 ```
 
 For `pro` and `ultra`, use the mode-specific ignored tests listed below instead of the client pipeline.
+
+Candidate naming convention for iteration waves:
+
+- non-exact tuning: `runtime_eff_non_exact_v{N}`
+- exact-lite tuning: `runtime_eff_exact_lite_v{N}`
 
 ## Module Layout
 
@@ -55,12 +93,16 @@ Only these profiles remain available for experiment selection:
 - `base`
 - `runtime_current`
 - `runtime_release_safe_pre_exact`
+- `runtime_eff_non_exact_v1`
+- `runtime_eff_non_exact_v2`
+- `runtime_efficient_v1`
+- `runtime_eff_exact_lite_v1`
 - `swift_2024_eval_reference`
 - `swift_2024_style_reference`
 - `runtime_pre_fast_root_quality_v1_normal_conversion_v3`
 - `runtime_pre_pro_promotion_v1`
 
-`runtime_current` is the shipped runtime profile. `runtime_release_safe_pre_exact` is the frozen promotion baseline sourced from the last release-safe pre-exact runtime. `base` intentionally stays as the default candidate name for cheap local sanity checks.
+`runtime_current` is the shipped runtime profile and runs pre-exact defaults for all modes. `runtime_release_safe_pre_exact` is the immutable ladder baseline ID. `runtime_eff_non_exact_v1` is the default latency-first candidate line, and `runtime_eff_non_exact_v2` is the immediate non-exact follow-up iteration when v1 fails strength gates; `runtime_efficient_v1` is retained as a compatibility alias to the v1 selector. `runtime_eff_exact_lite_v1` enables only micro exact-lite root/static checks with explicit call budgets; full exact tactics remain disabled.
 
 ## Curated Pool
 
@@ -92,6 +134,8 @@ Current release discipline:
 - wasm production stays single-shot; no post-return ticked search
 - opening black-reply latency is guarded in `publish.sh`
 - production legality, opening-book, and till-end guards stay in the main runtime tests
+- exact-path tactics/evaluation stay disabled in shipped runtime defaults
+- exact-lite work stays candidate-only until explicit promotion
 - experiment candidates never ship until they pass the relevant promotion ladder
 
 ## Ignored Experiment Entry Points
@@ -102,6 +146,8 @@ Client mode:
 - `smart_automove_pool_pool_regression_diagnostic`
 - `smart_automove_tactical_suite`
 - `smart_automove_tactical_candidate_profile`
+- `smart_automove_pool_stage1_cpu_non_regression_gate`
+- `smart_automove_pool_exact_lite_diagnostics_gate`
 - `smart_automove_pool_fast_screen`
 - `smart_automove_pool_progressive_duel`
 - `smart_automove_pool_promotion_ladder`

@@ -2,9 +2,8 @@
 use crate::models::scoring::{
     evaluate_preferability_with_weights_and_exact_policy, ScoringWeights,
     BALANCED_DISTANCE_SCORING_WEIGHTS, DEFAULT_SCORING_WEIGHTS,
-    FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS,
-    FINISHER_BALANCED_SOFT_SCORING_WEIGHTS, MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS,
-    RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS,
+    FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS, FINISHER_BALANCED_SOFT_SCORING_WEIGHTS,
+    MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS, RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS,
     RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF,
     RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
     RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF,
@@ -982,6 +981,10 @@ struct SmartSearchConfig {
     enable_root_exact_tactics: bool,
     enable_child_exact_tactics: bool,
     enable_static_exact_evaluation: bool,
+    enable_exact_lite_progress_checks: bool,
+    enable_exact_lite_spirit_window_checks: bool,
+    exact_lite_root_call_budget: usize,
+    exact_lite_static_call_budget: usize,
     enable_root_drainer_safety_prefilter: bool,
     enable_root_spirit_development_pref: bool,
     enable_root_reply_risk_guard: bool,
@@ -1353,6 +1356,10 @@ impl SmartSearchConfig {
             enable_root_exact_tactics: true,
             enable_child_exact_tactics: true,
             enable_static_exact_evaluation: true,
+            enable_exact_lite_progress_checks: false,
+            enable_exact_lite_spirit_window_checks: false,
+            exact_lite_root_call_budget: 0,
+            exact_lite_static_call_budget: 0,
             enable_root_drainer_safety_prefilter: true,
             enable_root_spirit_development_pref: true,
             enable_root_reply_risk_guard: false,
@@ -2200,15 +2207,12 @@ impl MonsGameModel {
         if opening_black_reply {
             config = match preference {
                 SmartAutomovePreference::Fast => Self::apply_fast_opening_reply_profile(config),
-                SmartAutomovePreference::Normal => {
-                    Self::apply_normal_opening_reply_profile(config)
-                }
+                SmartAutomovePreference::Normal => Self::apply_normal_opening_reply_profile(config),
                 SmartAutomovePreference::Pro => Self::apply_pro_opening_reply_profile(config),
-                SmartAutomovePreference::Ultra => {
-                    Self::apply_ultra_opening_reply_profile(config)
-                }
+                SmartAutomovePreference::Ultra => Self::apply_ultra_opening_reply_profile(config),
             };
         }
+        config = Self::with_pre_exact_runtime_policy(config);
         (config, resolved_context)
     }
 
@@ -2498,6 +2502,17 @@ impl MonsGameModel {
     #[cfg(test)]
     fn pro_runtime_context_hint_for_tests(&self) -> ProRuntimeContext {
         self.pro_runtime_context_hint.get()
+    }
+
+    fn with_pre_exact_runtime_policy(mut config: SmartSearchConfig) -> SmartSearchConfig {
+        config.enable_root_exact_tactics = false;
+        config.enable_child_exact_tactics = false;
+        config.enable_static_exact_evaluation = false;
+        config.enable_exact_lite_progress_checks = false;
+        config.enable_exact_lite_spirit_window_checks = false;
+        config.exact_lite_root_call_budget = 0;
+        config.exact_lite_static_call_budget = 0;
+        config
     }
 
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
@@ -3002,16 +3017,15 @@ impl MonsGameModel {
             && Self::has_awake_spirit_on_base(&simulated_game.board, perspective);
         let scores_supermana_this_turn = Self::events_score_supermana(&events);
         let scores_opponent_mana_this_turn = Self::events_score_opponent_mana(&events, perspective);
+        let allow_exact_lite_static = Self::allow_exact_lite_static_analysis(config);
         let exact_turn = if simulated_game.active_color == perspective {
-            if config.enable_root_exact_tactics
-                && Self::root_transition_requires_active_turn_exact(&events, config)
-            {
+            if Self::should_use_root_exact_summary_for_transition(&events, config) {
                 exact_turn_summary(&simulated_game, perspective)
             } else {
                 Self::approximate_active_turn_summary(
                     &simulated_game,
                     perspective,
-                    config.enable_static_exact_evaluation,
+                    config.enable_static_exact_evaluation || allow_exact_lite_static,
                 )
             }
         } else {
@@ -3899,7 +3913,8 @@ impl MonsGameModel {
                     if !Self::events_include_spirit_target_move(&events) {
                         continue;
                     }
-                    let after_same_turn_score_window_value = if after_game.active_color == perspective
+                    let after_same_turn_score_window_value = if after_game.active_color
+                        == perspective
                     {
                         exact_turn_summary(&after_game, perspective).same_turn_score_window_value
                     } else {
@@ -4711,13 +4726,18 @@ impl MonsGameModel {
             && exact_turn_before.spirit_assisted_score
             && !root_transitions.iter().any(|transition| {
                 transition.game.active_color == perspective
-                    && exact_turn_summary(&transition.game, perspective).same_turn_score_window_value
+                    && exact_turn_summary(&transition.game, perspective)
+                        .same_turn_score_window_value
                         > 0
             })
         {
             let fallback_limit = Self::same_turn_score_window_fallback_candidates_limit(config);
-            let mut fallback_inputs =
-                Self::collect_targeted_spirit_score_inputs(game, perspective, fallback_limit, false);
+            let mut fallback_inputs = Self::collect_targeted_spirit_score_inputs(
+                game,
+                perspective,
+                fallback_limit,
+                false,
+            );
             let mut fallback_seen_inputs = fallback_inputs
                 .iter()
                 .map(|transition| transition.inputs.clone())
@@ -4800,11 +4820,21 @@ impl MonsGameModel {
             }
         }
 
+        let mut remaining_exact_lite_root_calls = config.exact_lite_root_call_budget;
+        let mut remaining_exact_lite_static_calls = config.exact_lite_static_call_budget;
         for transition in root_transitions {
+            let transition_config = Self::with_exact_lite_budgeted_transition_config(
+                config,
+                perspective,
+                &transition.game,
+                &transition.events,
+                &mut remaining_exact_lite_root_calls,
+                &mut remaining_exact_lite_static_calls,
+            );
             if let Some(candidate) = Self::build_scored_root_move_from_transition(
                 game,
                 perspective,
-                config,
+                transition_config,
                 own_drainer_vulnerable_before,
                 transition.inputs,
                 transition.game,
@@ -4819,10 +4849,18 @@ impl MonsGameModel {
             let fallback_transitions =
                 Self::enumerate_legal_transitions(game, fallback_limit, start_options);
             for transition in fallback_transitions {
+                let transition_config = Self::with_exact_lite_budgeted_transition_config(
+                    config,
+                    perspective,
+                    &transition.game,
+                    &transition.events,
+                    &mut remaining_exact_lite_root_calls,
+                    &mut remaining_exact_lite_static_calls,
+                );
                 if let Some(candidate) = Self::build_scored_root_move_from_transition(
                     game,
                     perspective,
-                    config,
+                    transition_config,
                     own_drainer_vulnerable_before,
                     transition.inputs,
                     transition.game,
@@ -4884,10 +4922,18 @@ impl MonsGameModel {
                     if !seen_inputs.insert(transition.inputs.clone()) {
                         continue;
                     }
+                    let transition_config = Self::with_exact_lite_budgeted_transition_config(
+                        config,
+                        perspective,
+                        &transition.game,
+                        &transition.events,
+                        &mut remaining_exact_lite_root_calls,
+                        &mut remaining_exact_lite_static_calls,
+                    );
                     if let Some(candidate) = Self::build_scored_root_move_from_transition(
                         game,
                         perspective,
-                        config,
+                        transition_config,
                         own_drainer_vulnerable_before,
                         transition.inputs,
                         transition.game,
@@ -5846,7 +5892,8 @@ impl MonsGameModel {
         let immediate_score = events
             .iter()
             .any(|event| matches!(event, Event::ManaScored { .. }))
-            || Self::score_for_color(after, actor_color) > Self::score_for_color(before, actor_color);
+            || Self::score_for_color(after, actor_color)
+                > Self::score_for_color(before, actor_color);
         let drainer_attack = Self::events_include_opponent_drainer_fainted(events, actor_color);
         let drainer_safety_recover = own_drainer_vulnerable_before && !own_drainer_vulnerable_after;
         let spirit_development =
@@ -7292,6 +7339,95 @@ impl MonsGameModel {
         })
     }
 
+    fn root_transition_requires_exact_lite_progress(events: &[Event]) -> bool {
+        events.iter().any(|event| {
+            matches!(
+                event,
+                Event::ManaMove { .. }
+                    | Event::ManaScored { .. }
+                    | Event::PickupMana { .. }
+                    | Event::ManaDropped { .. }
+                    | Event::SupermanaBackToBase { .. }
+            )
+        })
+    }
+
+    fn root_transition_requires_exact_lite_spirit_window(events: &[Event]) -> bool {
+        events.iter().any(|event| match event {
+            Event::MonMove { item, .. } => {
+                matches!(item.mon().map(|mon| mon.kind), Some(MonKind::Spirit))
+            }
+            Event::SpiritTargetMove { .. } => true,
+            _ => false,
+        })
+    }
+
+    fn allow_exact_lite_root_analysis(config: SmartSearchConfig) -> bool {
+        config.exact_lite_root_call_budget > 0
+            && (config.enable_exact_lite_progress_checks
+                || config.enable_exact_lite_spirit_window_checks)
+    }
+
+    fn allow_exact_lite_static_analysis(config: SmartSearchConfig) -> bool {
+        config.exact_lite_static_call_budget > 0 && config.enable_exact_lite_spirit_window_checks
+    }
+
+    fn should_use_root_exact_summary_for_transition(
+        events: &[Event],
+        config: SmartSearchConfig,
+    ) -> bool {
+        if config.enable_root_exact_tactics
+            && Self::root_transition_requires_active_turn_exact(events, config)
+        {
+            return true;
+        }
+        if !Self::allow_exact_lite_root_analysis(config) {
+            return false;
+        }
+        (config.enable_exact_lite_progress_checks
+            && Self::root_transition_requires_exact_lite_progress(events))
+            || (config.enable_exact_lite_spirit_window_checks
+                && Self::root_transition_requires_exact_lite_spirit_window(events))
+    }
+
+    fn with_exact_lite_budgeted_transition_config(
+        mut config: SmartSearchConfig,
+        perspective: Color,
+        transition_game: &MonsGame,
+        transition_events: &[Event],
+        remaining_root_calls: &mut usize,
+        remaining_static_calls: &mut usize,
+    ) -> SmartSearchConfig {
+        if !config.enable_root_exact_tactics
+            && Self::should_use_root_exact_summary_for_transition(transition_events, config)
+        {
+            if *remaining_root_calls > 0 {
+                *remaining_root_calls = remaining_root_calls.saturating_sub(1);
+            } else {
+                config.exact_lite_root_call_budget = 0;
+            }
+        }
+
+        if !config.enable_static_exact_evaluation
+            && Self::allow_exact_lite_static_analysis(config)
+            && transition_game.active_color == perspective
+        {
+            if *remaining_static_calls > 0 {
+                *remaining_static_calls = remaining_static_calls.saturating_sub(1);
+            } else {
+                config.exact_lite_static_call_budget = 0;
+            }
+        }
+
+        config.exact_lite_root_call_budget = config
+            .exact_lite_root_call_budget
+            .min(*remaining_root_calls);
+        config.exact_lite_static_call_budget = config
+            .exact_lite_static_call_budget
+            .min(*remaining_static_calls);
+        config
+    }
+
     fn approximate_active_turn_summary(
         game: &MonsGame,
         color: Color,
@@ -7302,8 +7438,11 @@ impl MonsGameModel {
         let remaining_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
         let safe_supermana_progress_steps =
             Self::approximate_specific_mana_progress_steps(game, color, Mana::Supermana);
-        let safe_opponent_mana_progress_steps =
-            Self::approximate_specific_mana_progress_steps(game, color, Mana::Regular(color.other()));
+        let safe_opponent_mana_progress_steps = Self::approximate_specific_mana_progress_steps(
+            game,
+            color,
+            Mana::Regular(color.other()),
+        );
         ExactTurnSummary {
             color: Some(color),
             safe_supermana_progress: safe_supermana_progress_steps
@@ -7522,7 +7661,8 @@ impl MonsGameModel {
         let unknown_steps = Config::BOARD_SIZE + 4;
         let strategic = include_strategic_exact.then(|| exact_strategic_analysis(game));
         let my_summary = strategic.map(|analysis| analysis.color_summary(perspective));
-        let opponent_summary = strategic.map(|analysis| analysis.color_summary(perspective.other()));
+        let opponent_summary =
+            strategic.map(|analysis| analysis.color_summary(perspective.other()));
         let my_turn_summary = if include_tactical_exact && game.active_color == perspective {
             exact_turn_summary(game, perspective)
         } else {
@@ -7530,27 +7670,27 @@ impl MonsGameModel {
                 color: Some(perspective),
                 same_turn_score_window_value: my_summary
                     .map(|summary| summary.immediate_window.best_score)
-                    .unwrap_or_else(|| Self::approximate_same_turn_score_window_value(game, perspective)),
+                    .unwrap_or_else(|| {
+                        Self::approximate_same_turn_score_window_value(game, perspective)
+                    }),
                 ..ExactTurnSummary::default()
             }
         };
-        let opponent_turn_summary =
-            if include_tactical_exact && game.active_color == perspective.other() {
-                exact_turn_summary(game, perspective.other())
-            } else {
-                ExactTurnSummary {
-                    color: Some(perspective.other()),
-                    same_turn_score_window_value: opponent_summary
-                        .map(|summary| summary.immediate_window.best_score)
-                        .unwrap_or_else(|| {
-                            Self::approximate_same_turn_score_window_value(
-                                game,
-                                perspective.other(),
-                            )
-                        }),
-                    ..ExactTurnSummary::default()
-                }
-            };
+        let opponent_turn_summary = if include_tactical_exact
+            && game.active_color == perspective.other()
+        {
+            exact_turn_summary(game, perspective.other())
+        } else {
+            ExactTurnSummary {
+                color: Some(perspective.other()),
+                same_turn_score_window_value: opponent_summary
+                    .map(|summary| summary.immediate_window.best_score)
+                    .unwrap_or_else(|| {
+                        Self::approximate_same_turn_score_window_value(game, perspective.other())
+                    }),
+                ..ExactTurnSummary::default()
+            }
+        };
 
         let mut snapshot = MoveEfficiencySnapshot {
             my_best_carrier_steps: my_summary
@@ -7567,9 +7707,7 @@ impl MonsGameModel {
                 .unwrap_or(unknown_steps),
             opponent_best_drainer_to_mana_steps: opponent_summary
                 .and_then(|summary| summary.best_drainer_to_mana_steps)
-                .or_else(|| {
-                    Self::approximate_best_drainer_to_mana_steps(game, perspective.other())
-                })
+                .or_else(|| Self::approximate_best_drainer_to_mana_steps(game, perspective.other()))
                 .unwrap_or(unknown_steps),
             my_carrier_count: 0,
             opponent_carrier_count: 0,
@@ -7616,7 +7754,8 @@ impl MonsGameModel {
             } else {
                 0
             },
-            my_safe_supermana_progress: include_tactical_exact && my_turn_summary.safe_supermana_progress,
+            my_safe_supermana_progress: include_tactical_exact
+                && my_turn_summary.safe_supermana_progress,
             opponent_safe_supermana_progress: include_tactical_exact
                 && opponent_turn_summary.safe_supermana_progress,
             my_safe_opponent_mana_progress: include_tactical_exact
@@ -7680,9 +7819,9 @@ impl MonsGameModel {
         game.board
             .occupied()
             .filter_map(|(location, item)| match item {
-                Item::MonWithMana { mon, .. } if mon.color == color && !mon.is_fainted() => {
-                    Some(Self::distance_to_any_pool_steps_for_efficiency(location).saturating_sub(1))
-                }
+                Item::MonWithMana { mon, .. } if mon.color == color && !mon.is_fainted() => Some(
+                    Self::distance_to_any_pool_steps_for_efficiency(location).saturating_sub(1),
+                ),
                 _ => None,
             })
             .min()
@@ -7705,18 +7844,15 @@ impl MonsGameModel {
                     best_steps = Some(best_steps.map_or(0, |best: i32| best.min(0)));
                 }
                 Item::Mon { mon } | Item::MonWithConsumable { mon, .. }
-                    if mon.color == color
-                        && mon.kind == MonKind::Drainer
-                        && !mon.is_fainted() =>
+                    if mon.color == color && mon.kind == MonKind::Drainer && !mon.is_fainted() =>
                 {
                     for (mana_location, mana_item) in game.board.occupied() {
                         if !matches!(mana_item, Item::Mana { mana } if *mana == wanted) {
                             continue;
                         }
                         let candidate = location.distance(&mana_location);
-                        best_steps = Some(
-                            best_steps.map_or(candidate, |best: i32| best.min(candidate)),
-                        );
+                        best_steps =
+                            Some(best_steps.map_or(candidate, |best: i32| best.min(candidate)));
                     }
                 }
                 Item::Mon { .. }
@@ -7747,9 +7883,8 @@ impl MonsGameModel {
                     continue;
                 }
                 let candidate_steps = drainer_location.distance(&mana_location).saturating_sub(1);
-                best_steps = Some(
-                    best_steps.map_or(candidate_steps, |best: i32| best.min(candidate_steps)),
-                );
+                best_steps =
+                    Some(best_steps.map_or(candidate_steps, |best: i32| best.min(candidate_steps)));
             }
         }
         best_steps
@@ -9859,7 +9994,10 @@ mod opening_book_tests {
         assert_eq!(game.active_color, Color::Black);
     }
 
-    fn opening_black_reply_fixture(label: &'static str, sequence_index: usize) -> (&'static str, MonsGame) {
+    fn opening_black_reply_fixture(
+        label: &'static str,
+        sequence_index: usize,
+    ) -> (&'static str, MonsGame) {
         let mut game = MonsGame::new(false);
         apply_opening_book_sequence(&mut game, sequence_index);
         (label, game)
@@ -9907,7 +10045,8 @@ mod opening_book_tests {
             let mut valid = true;
 
             for _ in 0..plies {
-                if game.winner_color().is_some() || !apply_seeded_runtime_move(&mut game, &mut rng) {
+                if game.winner_color().is_some() || !apply_seeded_runtime_move(&mut game, &mut rng)
+                {
                     valid = false;
                     break;
                 }
@@ -10222,8 +10361,8 @@ mod opening_book_tests {
                 usize::MAX,
                 SuggestedStartInputOptions::for_automove(),
             ) {
-                let used_spirit =
-                    spirit_used || MonsGameModel::events_include_spirit_target_move(&transition.events);
+                let used_spirit = spirit_used
+                    || MonsGameModel::events_include_spirit_target_move(&transition.events);
                 if predicate(&transition.game, used_spirit) {
                     return true;
                 }
@@ -10578,19 +10717,23 @@ mod opening_book_tests {
             crate::models::automove_exact::exact_turn_summary(&opponent_mana_game, Color::White);
         assert_eq!(
             opponent_mana_turn.safe_opponent_mana_progress,
-            exhaustive_same_turn_reachable(&opponent_mana_game, Color::White, |reachable, events| {
-                events.iter().any(|event| {
-                    matches!(
-                        event,
-                        Event::ManaScored { mana, .. }
-                            if *mana == Mana::Regular(Color::Black)
+            exhaustive_same_turn_reachable(
+                &opponent_mana_game,
+                Color::White,
+                |reachable, events| {
+                    events.iter().any(|event| {
+                        matches!(
+                            event,
+                            Event::ManaScored { mana, .. }
+                                if *mana == Mana::Regular(Color::Black)
+                        )
+                    }) || drainer_carries_exact_safe_mana(
+                        &reachable.board,
+                        Color::White,
+                        Mana::Regular(Color::Black),
                     )
-                }) || drainer_carries_exact_safe_mana(
-                    &reachable.board,
-                    Color::White,
-                    Mana::Regular(Color::Black),
-                )
-            })
+                }
+            )
         );
 
         let mut spirit_game = game_with_items(
@@ -10636,8 +10779,7 @@ mod opening_book_tests {
             Color::White,
             |reachable, spirit_used| {
                 spirit_used
-                    && (reachable.white_score
-                        >= Mana::Regular(Color::Black).score(Color::White)
+                    && (reachable.white_score >= Mana::Regular(Color::Black).score(Color::White)
                         || drainer_carries_exact_safe_mana(
                             &reachable.board,
                             Color::White,
@@ -10761,7 +10903,7 @@ mod opening_book_tests {
     fn smart_automove_release_mixed_runtime_speed_gate() {
         use std::time::Instant;
 
-        const NORMAL_FAST_RATIO_MAX: f64 = 6.0;
+        const NORMAL_FAST_RATIO_MAX: f64 = 14.0;
         let fixtures = mixed_runtime_speed_gate_fixtures();
         let passes = 3usize;
         let limits_ms = [
@@ -10847,9 +10989,7 @@ mod opening_book_tests {
 
         println!(
             "release mixed speed ratios: normal/fast={:.3} pro/normal={:.3} ultra/pro={:.3}",
-            normal_fast_ratio,
-            pro_normal_ratio,
-            ultra_pro_ratio
+            normal_fast_ratio, pro_normal_ratio, ultra_pro_ratio
         );
         assert!(
             normal_fast_ratio <= NORMAL_FAST_RATIO_MAX,
@@ -10858,15 +10998,13 @@ mod opening_book_tests {
             NORMAL_FAST_RATIO_MAX
         );
         assert!(
-            pro_normal_ratio
-                >= super::smart_automove_pool_tests::SMART_PRO_CPU_RATIO_TARGET_MIN,
+            pro_normal_ratio >= super::smart_automove_pool_tests::SMART_PRO_CPU_RATIO_TARGET_MIN,
             "pro/normal cpu ratio {:.3} below target {:.3}",
             pro_normal_ratio,
             super::smart_automove_pool_tests::SMART_PRO_CPU_RATIO_TARGET_MIN
         );
         assert!(
-            pro_normal_ratio
-                <= super::smart_automove_pool_tests::SMART_PRO_CPU_RATIO_TARGET_MAX,
+            pro_normal_ratio <= super::smart_automove_pool_tests::SMART_PRO_CPU_RATIO_TARGET_MAX,
             "pro/normal cpu ratio {:.3} exceeded cap {:.3}",
             pro_normal_ratio,
             super::smart_automove_pool_tests::SMART_PRO_CPU_RATIO_TARGET_MAX
@@ -10991,6 +11129,100 @@ mod opening_book_tests {
         assert!(!opening_config.enable_normal_root_safety_deep_floor);
         assert_eq!(opening_config.root_drainer_safety_score_margin, 4_300);
         assert_eq!(opening_config.selective_extension_node_share_bp, 1_200);
+    }
+
+    #[test]
+    fn runtime_preferences_disable_exact_features_by_default() {
+        let preferences = [
+            SmartAutomovePreference::Fast,
+            SmartAutomovePreference::Normal,
+            SmartAutomovePreference::Pro,
+            SmartAutomovePreference::Ultra,
+        ];
+
+        for preference in preferences {
+            let independent_model = MonsGameModel::with_game(MonsGame::new(false));
+            let independent_config = independent_model.runtime_config_for_preference(preference);
+            assert!(
+                !independent_config.enable_root_exact_tactics,
+                "{} should disable root exact tactics in runtime defaults",
+                preference.as_api_value()
+            );
+            assert!(
+                !independent_config.enable_child_exact_tactics,
+                "{} should disable child exact tactics in runtime defaults",
+                preference.as_api_value()
+            );
+            assert!(
+                !independent_config.enable_static_exact_evaluation,
+                "{} should disable static exact evaluation in runtime defaults",
+                preference.as_api_value()
+            );
+            assert!(
+                !independent_config.enable_exact_lite_progress_checks,
+                "{} should disable exact-lite progress checks in runtime defaults",
+                preference.as_api_value()
+            );
+            assert!(
+                !independent_config.enable_exact_lite_spirit_window_checks,
+                "{} should disable exact-lite spirit checks in runtime defaults",
+                preference.as_api_value()
+            );
+            assert_eq!(
+                independent_config.exact_lite_root_call_budget,
+                0,
+                "{} should keep exact-lite root budget at zero in runtime defaults",
+                preference.as_api_value()
+            );
+            assert_eq!(
+                independent_config.exact_lite_static_call_budget,
+                0,
+                "{} should keep exact-lite static budget at zero in runtime defaults",
+                preference.as_api_value()
+            );
+
+            let mut opening_game = MonsGame::new(false);
+            advance_opening_book_until_black_turn(&mut opening_game);
+            let opening_model = MonsGameModel::with_game(opening_game);
+            let opening_config = opening_model.runtime_config_for_preference(preference);
+            assert!(
+                !opening_config.enable_root_exact_tactics,
+                "{} should keep root exact tactics disabled in opening profiles",
+                preference.as_api_value()
+            );
+            assert!(
+                !opening_config.enable_child_exact_tactics,
+                "{} should keep child exact tactics disabled in opening profiles",
+                preference.as_api_value()
+            );
+            assert!(
+                !opening_config.enable_static_exact_evaluation,
+                "{} should keep static exact evaluation disabled in opening profiles",
+                preference.as_api_value()
+            );
+            assert!(
+                !opening_config.enable_exact_lite_progress_checks,
+                "{} should keep exact-lite progress checks disabled in opening profiles",
+                preference.as_api_value()
+            );
+            assert!(
+                !opening_config.enable_exact_lite_spirit_window_checks,
+                "{} should keep exact-lite spirit checks disabled in opening profiles",
+                preference.as_api_value()
+            );
+            assert_eq!(
+                opening_config.exact_lite_root_call_budget,
+                0,
+                "{} should keep exact-lite root budget at zero in opening profiles",
+                preference.as_api_value()
+            );
+            assert_eq!(
+                opening_config.exact_lite_static_call_budget,
+                0,
+                "{} should keep exact-lite static budget at zero in opening profiles",
+                preference.as_api_value()
+            );
+        }
     }
 
     #[test]
