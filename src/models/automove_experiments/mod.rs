@@ -28,7 +28,9 @@ const SMART_PRO_PROGRESSIVE_MEANINGFUL_CONFIDENCE_MIN: f64 = 0.65;
 const SMART_PRO_PRIMARY_IMPROVEMENT_DELTA_MIN_VS_NORMAL: f64 = 0.08;
 const SMART_PRO_PRIMARY_IMPROVEMENT_DELTA_MIN_VS_FAST: f64 = 0.14;
 const SMART_PRO_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN: f64 = 0.90;
-pub(super) const SMART_PRO_CPU_RATIO_TARGET_MIN: f64 = 2.70;
+// Stronger pro candidates may also be cheaper than the current runtime; keep a
+// floor high enough to preserve a distinct pro budget without blocking faster wins.
+pub(super) const SMART_PRO_CPU_RATIO_TARGET_MIN: f64 = 1.60;
 pub(super) const SMART_PRO_CPU_RATIO_TARGET_MAX: f64 = 4.50;
 pub(super) const SMART_STAGE1_CPU_RATIO_MAX_FAST: f64 = 1.05;
 pub(super) const SMART_STAGE1_CPU_RATIO_MAX_NORMAL: f64 = 1.05;

@@ -4,7 +4,18 @@ use super::*;
 const DEFAULT_PROMOTION_BASELINE_PROFILE: &str = "runtime_release_safe_pre_exact";
 const PROFILE_RUNTIME_EFF_NON_EXACT_V1: &str = "runtime_eff_non_exact_v1";
 const PROFILE_RUNTIME_EFF_NON_EXACT_V2: &str = "runtime_eff_non_exact_v2";
+pub(super) const PROFILE_RUNTIME_EFF_NON_EXACT_V3: &str = "runtime_eff_non_exact_v3";
 const PROFILE_RUNTIME_EFF_EXACT_LITE_V1: &str = "runtime_eff_exact_lite_v1";
+pub(super) const PROFILE_RUNTIME_HISTORICAL_0_1_109: &str = "runtime_historical_0_1_109";
+pub(super) const PROFILE_RUNTIME_HISTORICAL_0_1_110: &str = "runtime_historical_0_1_110";
+pub(super) const PROFILE_RUNTIME_HISTORICAL_POST_0_1_110_6C3D5CB: &str =
+    "runtime_historical_post_0_1_110_6c3d5cb";
+pub(super) const PROFILE_RUNTIME_HISTORICAL_POST_0_1_110_A70B842: &str =
+    "runtime_historical_post_0_1_110_a70b842";
+pub(super) const PROFILE_RUNTIME_HISTORICAL_PRE_EXACT_E9A05CE: &str =
+    "runtime_historical_pre_exact_e9a05ce";
+const LEGACY_HISTORICAL_PRO_MAX_VISITED_NODES_PRE_A70: i32 =
+    SMART_AUTOMOVE_NORMAL_MAX_VISITED_NODES * 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct ExactLiteBudgets {
@@ -18,7 +29,7 @@ struct AutomoveProfile {
     selector: AutomoveSelector,
 }
 
-const RETAINED_PROFILES: [AutomoveProfile; 11] = [
+const RETAINED_PROFILES: [AutomoveProfile; 17] = [
     AutomoveProfile {
         id: "base",
         selector: model_base_profile,
@@ -32,12 +43,36 @@ const RETAINED_PROFILES: [AutomoveProfile; 11] = [
         selector: model_runtime_release_safe_pre_exact,
     },
     AutomoveProfile {
+        id: PROFILE_RUNTIME_HISTORICAL_0_1_109,
+        selector: model_runtime_historical_0_1_109,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_HISTORICAL_0_1_110,
+        selector: model_runtime_historical_0_1_110,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_HISTORICAL_POST_0_1_110_6C3D5CB,
+        selector: model_runtime_historical_post_0_1_110_6c3d5cb,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_HISTORICAL_POST_0_1_110_A70B842,
+        selector: model_runtime_historical_post_0_1_110_a70b842,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_HISTORICAL_PRE_EXACT_E9A05CE,
+        selector: model_runtime_historical_pre_exact_e9a05ce,
+    },
+    AutomoveProfile {
         id: PROFILE_RUNTIME_EFF_NON_EXACT_V1,
         selector: model_runtime_eff_non_exact_v1,
     },
     AutomoveProfile {
         id: PROFILE_RUNTIME_EFF_NON_EXACT_V2,
         selector: model_runtime_eff_non_exact_v2,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_EFF_NON_EXACT_V3,
+        selector: model_runtime_eff_non_exact_v3,
     },
     AutomoveProfile {
         id: "runtime_efficient_v1",
@@ -78,6 +113,490 @@ pub(super) const CANDIDATE_MODEL: AutomoveModel = AutomoveModel {
     select_inputs: candidate_model,
 };
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HistoricalRuntimeProfile {
+    V0109,
+    V0110,
+    Post0110UltraIntro,
+    Post0110HighUtilPro,
+    PreExactWave,
+}
+
+fn historical_profile_from_name(profile_name: &str) -> Option<HistoricalRuntimeProfile> {
+    match profile_name {
+        PROFILE_RUNTIME_HISTORICAL_0_1_109 => Some(HistoricalRuntimeProfile::V0109),
+        PROFILE_RUNTIME_HISTORICAL_0_1_110 => Some(HistoricalRuntimeProfile::V0110),
+        PROFILE_RUNTIME_HISTORICAL_POST_0_1_110_6C3D5CB => {
+            Some(HistoricalRuntimeProfile::Post0110UltraIntro)
+        }
+        PROFILE_RUNTIME_HISTORICAL_POST_0_1_110_A70B842 => {
+            Some(HistoricalRuntimeProfile::Post0110HighUtilPro)
+        }
+        PROFILE_RUNTIME_HISTORICAL_PRE_EXACT_E9A05CE => {
+            Some(HistoricalRuntimeProfile::PreExactWave)
+        }
+        _ => None,
+    }
+}
+
+fn historical_preference_from_config(config: SmartSearchConfig) -> SmartAutomovePreference {
+    if config.depth < 3 {
+        SmartAutomovePreference::Fast
+    } else if config.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
+        SmartAutomovePreference::Normal
+    } else {
+        SmartAutomovePreference::Pro
+    }
+}
+
+fn historical_budget_for_profile(
+    profile: HistoricalRuntimeProfile,
+    preference: SmartAutomovePreference,
+) -> (i32, i32) {
+    match preference {
+        SmartAutomovePreference::Fast => (
+            SMART_AUTOMOVE_FAST_DEPTH,
+            SMART_AUTOMOVE_FAST_MAX_VISITED_NODES,
+        ),
+        SmartAutomovePreference::Normal => (
+            SMART_AUTOMOVE_NORMAL_DEPTH,
+            SMART_AUTOMOVE_NORMAL_MAX_VISITED_NODES,
+        ),
+        SmartAutomovePreference::Pro => match profile {
+            HistoricalRuntimeProfile::V0109
+            | HistoricalRuntimeProfile::V0110
+            | HistoricalRuntimeProfile::Post0110UltraIntro => (
+                SMART_AUTOMOVE_PRO_DEPTH,
+                LEGACY_HISTORICAL_PRO_MAX_VISITED_NODES_PRE_A70,
+            ),
+            HistoricalRuntimeProfile::Post0110HighUtilPro
+            | HistoricalRuntimeProfile::PreExactWave => (
+                SMART_AUTOMOVE_PRO_DEPTH,
+                SMART_AUTOMOVE_PRO_MAX_VISITED_NODES,
+            ),
+        },
+    }
+}
+
+fn configure_historical_fast_runtime() -> SmartSearchConfig {
+    let (depth, max_nodes) =
+        historical_budget_for_profile(HistoricalRuntimeProfile::V0109, SmartAutomovePreference::Fast);
+    let mut tuned = SmartSearchConfig::from_budget(depth, max_nodes)
+        .for_runtime()
+        .with_fast_wideroot_shape();
+    tuned.enable_root_efficiency = true;
+    tuned.enable_event_ordering_bonus = true;
+    tuned.enable_backtrack_penalty = true;
+    tuned.enable_tt_best_child_ordering = true;
+    tuned.enable_root_aspiration = false;
+    tuned.enable_two_pass_root_allocation = false;
+    tuned.root_focus_k = 2;
+    tuned.root_focus_budget_share_bp = 6_000;
+    tuned.enable_selective_extensions = false;
+    tuned.enable_quiet_reductions = true;
+    tuned.max_extensions_per_path = 1;
+    tuned.selective_extension_node_share_bp = 0;
+    tuned.enable_root_mana_handoff_guard = true;
+    tuned.enable_forced_drainer_attack = true;
+    tuned.enable_forced_drainer_attack_fallback = true;
+    tuned.enable_forced_tactical_prepass = true;
+    tuned.enable_root_drainer_safety_prefilter = true;
+    tuned.enable_root_spirit_development_pref = true;
+    tuned.enable_root_reply_risk_guard = true;
+    tuned.root_reply_risk_score_margin = 125;
+    tuned.root_reply_risk_shortlist_max = 4;
+    tuned.root_reply_risk_reply_limit = 10;
+    tuned.root_reply_risk_node_share_bp = 650;
+    tuned.enable_move_class_coverage = true;
+    tuned.enable_child_move_class_coverage = true;
+    tuned.enable_strict_tactical_class_coverage = true;
+    tuned.enable_strict_anti_help_filter = true;
+    tuned.root_anti_help_score_margin = 220;
+    tuned.root_anti_help_reply_limit = SMART_ROOT_ANTI_HELP_REPLY_LIMIT_FAST;
+    tuned.enable_two_pass_volatility_focus = false;
+    tuned.enable_normal_root_safety_rerank = false;
+    tuned.enable_normal_root_safety_deep_floor = false;
+    tuned.enable_interview_hard_spirit_deploy = false;
+    tuned.enable_interview_soft_root_priors = true;
+    tuned.enable_interview_deterministic_tiebreak = false;
+    tuned.enable_mana_start_mix_with_potion_actions = true;
+    tuned.enable_potion_progress_compensation = true;
+    tuned.prefer_clean_reply_risk_roots = false;
+    tuned.root_drainer_safety_score_margin = SMART_ROOT_DRAINER_SAFETY_SCORE_MARGIN;
+    tuned.root_mana_handoff_penalty = 300;
+    tuned.root_backtrack_penalty = 220;
+    tuned.root_efficiency_score_margin = 1_700;
+    tuned.potion_spend_penalty_fast = 220;
+    tuned.potion_spend_penalty_normal = SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_NORMAL;
+    tuned.interview_soft_score_margin = 80;
+    tuned.interview_soft_supermana_progress_bonus = 320;
+    tuned.interview_soft_supermana_score_bonus = 600;
+    tuned.interview_soft_opponent_mana_progress_bonus = 200;
+    tuned.interview_soft_opponent_mana_score_bonus = 310;
+    tuned.interview_soft_mana_handoff_penalty = 280;
+    tuned.interview_soft_roundtrip_penalty = 220;
+    tuned.enable_enhanced_drainer_vulnerability = true;
+    tuned.enable_supermana_prepass_exception = true;
+    tuned.scoring_weights = &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF;
+    tuned
+}
+
+fn configure_historical_normal_runtime() -> SmartSearchConfig {
+    let (depth, max_nodes) = historical_budget_for_profile(
+        HistoricalRuntimeProfile::V0109,
+        SmartAutomovePreference::Normal,
+    );
+    let mut tuned = SmartSearchConfig::from_budget(depth, max_nodes)
+        .for_runtime()
+        .with_normal_deeper_shape();
+    tuned.max_visited_nodes = (tuned.max_visited_nodes * 3 / 2)
+        .clamp(tuned.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
+    tuned.max_visited_nodes = (tuned.max_visited_nodes * 112 / 100)
+        .clamp(tuned.max_visited_nodes, MAX_SMART_MAX_VISITED_NODES);
+    tuned.root_branch_limit = tuned.root_branch_limit.saturating_sub(1).clamp(12, 38);
+    tuned.node_branch_limit = (tuned.node_branch_limit + 2).clamp(8, 18);
+    tuned.root_enum_limit = (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 240);
+    tuned.node_enum_limit = ((tuned.node_branch_limit + 2) * 6).clamp(tuned.node_branch_limit, 156);
+    tuned.enable_root_efficiency = true;
+    tuned.enable_event_ordering_bonus = false;
+    tuned.enable_backtrack_penalty = true;
+    tuned.enable_tt_best_child_ordering = true;
+    tuned.enable_root_aspiration = false;
+    tuned.enable_two_pass_root_allocation = true;
+    tuned.root_focus_k = 3;
+    tuned.root_focus_budget_share_bp = 7_000;
+    tuned.enable_selective_extensions = true;
+    tuned.enable_quiet_reductions = true;
+    tuned.max_extensions_per_path = 1;
+    tuned.selective_extension_node_share_bp = SMART_SELECTIVE_EXTENSION_NODE_SHARE_BP_NORMAL;
+    tuned.enable_root_mana_handoff_guard = true;
+    tuned.enable_forced_drainer_attack = true;
+    tuned.enable_forced_drainer_attack_fallback = true;
+    tuned.enable_forced_tactical_prepass = true;
+    tuned.enable_root_drainer_safety_prefilter = true;
+    tuned.enable_root_spirit_development_pref = true;
+    tuned.enable_root_reply_risk_guard = true;
+    tuned.root_reply_risk_score_margin = 145;
+    tuned.root_reply_risk_shortlist_max = 7;
+    tuned.root_reply_risk_reply_limit = 16;
+    tuned.root_reply_risk_node_share_bp = 1_350;
+    tuned.enable_move_class_coverage = true;
+    tuned.enable_child_move_class_coverage = true;
+    tuned.enable_strict_tactical_class_coverage = true;
+    tuned.enable_strict_anti_help_filter = true;
+    tuned.root_anti_help_score_margin = 300;
+    tuned.root_anti_help_reply_limit = 10;
+    tuned.enable_two_pass_volatility_focus = true;
+    tuned.enable_normal_root_safety_rerank = true;
+    tuned.enable_normal_root_safety_deep_floor = true;
+    tuned.enable_interview_hard_spirit_deploy = true;
+    tuned.enable_interview_soft_root_priors = true;
+    tuned.enable_interview_deterministic_tiebreak = false;
+    tuned.enable_mana_start_mix_with_potion_actions = true;
+    tuned.enable_potion_progress_compensation = true;
+    tuned.prefer_clean_reply_risk_roots = true;
+    tuned.root_drainer_safety_score_margin = 4_200;
+    tuned.enable_enhanced_drainer_vulnerability = true;
+    tuned.root_mana_handoff_penalty = 340;
+    tuned.root_backtrack_penalty = 240;
+    tuned.root_efficiency_score_margin = 1_400;
+    tuned.selective_extension_node_share_bp = 1_250;
+    tuned.potion_spend_penalty_fast = SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_FAST;
+    tuned.potion_spend_penalty_normal = 130;
+    tuned.interview_soft_score_margin = 80;
+    tuned.interview_soft_supermana_progress_bonus = 240;
+    tuned.interview_soft_supermana_score_bonus = 300;
+    tuned.interview_soft_opponent_mana_progress_bonus = 220;
+    tuned.interview_soft_opponent_mana_score_bonus = 280;
+    tuned.interview_soft_mana_handoff_penalty = 340;
+    tuned.interview_soft_roundtrip_penalty = 260;
+    tuned
+}
+
+fn configure_historical_pro_runtime_base(profile: HistoricalRuntimeProfile) -> SmartSearchConfig {
+    let (depth, max_nodes) = historical_budget_for_profile(profile, SmartAutomovePreference::Pro);
+    match profile {
+        HistoricalRuntimeProfile::V0109 => {
+            let mut tuned = SmartSearchConfig::from_budget(depth, max_nodes)
+                .for_runtime()
+                .with_normal_deeper_shape();
+            tuned.max_visited_nodes = LEGACY_HISTORICAL_PRO_MAX_VISITED_NODES_PRE_A70 as usize;
+            tuned.root_branch_limit = tuned.root_branch_limit.clamp(14, 42);
+            tuned.node_branch_limit = (tuned.node_branch_limit + 2).clamp(10, 18);
+            tuned.root_enum_limit = (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 252);
+            tuned.node_enum_limit =
+                ((tuned.node_branch_limit + 2) * 6).clamp(tuned.node_branch_limit, 168);
+            tuned.enable_root_efficiency = true;
+            tuned.enable_event_ordering_bonus = false;
+            tuned.enable_backtrack_penalty = true;
+            tuned.enable_tt_best_child_ordering = true;
+            tuned.enable_root_aspiration = false;
+            tuned.enable_two_pass_root_allocation = true;
+            tuned.root_focus_k = 3;
+            tuned.root_focus_budget_share_bp = 7_000;
+            tuned.enable_selective_extensions = true;
+            tuned.enable_quiet_reductions = true;
+            tuned.max_extensions_per_path = 1;
+            tuned.selective_extension_node_share_bp = 1_500;
+            tuned.enable_root_mana_handoff_guard = true;
+            tuned.enable_forced_drainer_attack = true;
+            tuned.enable_forced_drainer_attack_fallback = true;
+            tuned.enable_forced_tactical_prepass = true;
+            tuned.enable_root_drainer_safety_prefilter = true;
+            tuned.enable_root_spirit_development_pref = true;
+            tuned.enable_root_reply_risk_guard = true;
+            tuned.root_reply_risk_score_margin = 155;
+            tuned.root_reply_risk_shortlist_max = 8;
+            tuned.root_reply_risk_reply_limit = 20;
+            tuned.root_reply_risk_node_share_bp = 1_600;
+            tuned.enable_move_class_coverage = true;
+            tuned.enable_child_move_class_coverage = true;
+            tuned.enable_strict_tactical_class_coverage = true;
+            tuned.enable_strict_anti_help_filter = true;
+            tuned.root_anti_help_score_margin = 300;
+            tuned.root_anti_help_reply_limit = 10;
+            tuned.enable_two_pass_volatility_focus = true;
+            tuned.enable_normal_root_safety_rerank = true;
+            tuned.enable_normal_root_safety_deep_floor = true;
+            tuned.enable_interview_hard_spirit_deploy = true;
+            tuned.enable_interview_soft_root_priors = true;
+            tuned.enable_interview_deterministic_tiebreak = false;
+            tuned.enable_mana_start_mix_with_potion_actions = true;
+            tuned.enable_potion_progress_compensation = true;
+            tuned.prefer_clean_reply_risk_roots = true;
+            tuned.root_drainer_safety_score_margin = 4_200;
+            tuned.enable_enhanced_drainer_vulnerability = true;
+            tuned.root_mana_handoff_penalty = 340;
+            tuned.root_backtrack_penalty = 240;
+            tuned.root_efficiency_score_margin = 1_400;
+            tuned.potion_spend_penalty_fast = SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_FAST;
+            tuned.potion_spend_penalty_normal = 130;
+            tuned.interview_soft_score_margin = 80;
+            tuned.interview_soft_supermana_progress_bonus = 240;
+            tuned.interview_soft_supermana_score_bonus = 300;
+            tuned.interview_soft_opponent_mana_progress_bonus = 220;
+            tuned.interview_soft_opponent_mana_score_bonus = 280;
+            tuned.interview_soft_mana_handoff_penalty = 340;
+            tuned.interview_soft_roundtrip_penalty = 260;
+            tuned
+        }
+        HistoricalRuntimeProfile::V0110
+        | HistoricalRuntimeProfile::Post0110UltraIntro
+        | HistoricalRuntimeProfile::Post0110HighUtilPro
+        | HistoricalRuntimeProfile::PreExactWave => {
+            let mut tuned = SmartSearchConfig::from_budget(depth, max_nodes)
+                .for_runtime()
+                .with_normal_deeper_shape();
+            tuned.max_visited_nodes = 9_800;
+            tuned.root_branch_limit = tuned.root_branch_limit.clamp(14, 34);
+            tuned.node_branch_limit = tuned.node_branch_limit.clamp(9, 15);
+            tuned.root_enum_limit = (tuned.root_branch_limit * 6).clamp(tuned.root_branch_limit, 204);
+            tuned.node_enum_limit =
+                ((tuned.node_branch_limit + 2) * 6).clamp(tuned.node_branch_limit, 132);
+            tuned.enable_root_efficiency = true;
+            tuned.enable_event_ordering_bonus = false;
+            tuned.enable_backtrack_penalty = true;
+            tuned.enable_tt_best_child_ordering = true;
+            tuned.enable_root_aspiration = false;
+            tuned.enable_two_pass_root_allocation = true;
+            tuned.root_focus_k = 3;
+            tuned.root_focus_budget_share_bp = 7_000;
+            tuned.enable_selective_extensions = true;
+            tuned.enable_quiet_reductions = true;
+            tuned.max_extensions_per_path = 1;
+            tuned.selective_extension_node_share_bp = 1_500;
+            tuned.enable_root_mana_handoff_guard = true;
+            tuned.enable_forced_drainer_attack = true;
+            tuned.enable_forced_drainer_attack_fallback = true;
+            tuned.enable_forced_tactical_prepass = false;
+            tuned.enable_root_drainer_safety_prefilter = true;
+            tuned.enable_root_spirit_development_pref = true;
+            tuned.enable_root_reply_risk_guard = true;
+            tuned.root_reply_risk_score_margin = 165;
+            tuned.root_reply_risk_shortlist_max = 9;
+            tuned.root_reply_risk_reply_limit = 24;
+            tuned.root_reply_risk_node_share_bp = 2_000;
+            tuned.enable_move_class_coverage = true;
+            tuned.enable_child_move_class_coverage = true;
+            tuned.enable_strict_tactical_class_coverage = true;
+            tuned.enable_strict_anti_help_filter = true;
+            tuned.root_anti_help_score_margin = 300;
+            tuned.root_anti_help_reply_limit = 10;
+            tuned.enable_two_pass_volatility_focus = true;
+            tuned.enable_normal_root_safety_rerank = true;
+            tuned.enable_normal_root_safety_deep_floor = true;
+            tuned.enable_interview_hard_spirit_deploy = true;
+            tuned.enable_interview_soft_root_priors = true;
+            tuned.enable_interview_deterministic_tiebreak = false;
+            tuned.enable_mana_start_mix_with_potion_actions = true;
+            tuned.enable_potion_progress_compensation = true;
+            tuned.prefer_clean_reply_risk_roots = true;
+            tuned.root_drainer_safety_score_margin = 4_800;
+            tuned.enable_enhanced_drainer_vulnerability = true;
+            tuned.root_mana_handoff_penalty = 340;
+            tuned.root_backtrack_penalty = 240;
+            tuned.root_efficiency_score_margin = 1_400;
+            tuned.enable_futility_pruning = true;
+            tuned.futility_margin = 2_300;
+            tuned.quiet_reduction_depth_threshold = 2;
+            tuned.potion_spend_penalty_fast = SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_FAST;
+            tuned.potion_spend_penalty_normal = 130;
+            tuned.interview_soft_score_margin = 80;
+            tuned.interview_soft_supermana_progress_bonus = 240;
+            tuned.interview_soft_supermana_score_bonus = 300;
+            tuned.interview_soft_opponent_mana_progress_bonus = 280;
+            tuned.interview_soft_opponent_mana_score_bonus = 340;
+            tuned.interview_soft_mana_handoff_penalty = 340;
+            tuned.interview_soft_roundtrip_penalty = 260;
+            tuned
+        }
+    }
+}
+
+fn apply_historical_pro_context_profile(
+    game: &MonsGame,
+    mut config: SmartSearchConfig,
+    profile: HistoricalRuntimeProfile,
+) -> SmartSearchConfig {
+    if config.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
+        return config;
+    }
+
+    let context = if MonsGameModel::detect_opening_book_context(game) {
+        ProRuntimeContext::OpeningBookDriven
+    } else {
+        ProRuntimeContext::Independent
+    };
+
+    match profile {
+        HistoricalRuntimeProfile::V0109 => config,
+        HistoricalRuntimeProfile::V0110 | HistoricalRuntimeProfile::Post0110UltraIntro => {
+            config.max_visited_nodes = 10_200;
+            config.enable_forced_tactical_prepass = false;
+            config.root_branch_limit = config.root_branch_limit.clamp(14, 34);
+            config.node_branch_limit = config.node_branch_limit.clamp(9, 15);
+            config.root_enum_limit = (config.root_branch_limit * 6).clamp(config.root_branch_limit, 204);
+            config.node_enum_limit =
+                ((config.node_branch_limit + 2) * 6).clamp(config.node_branch_limit, 132);
+            config.enable_futility_pruning = true;
+            config.enable_quiet_reductions = true;
+            config.quiet_reduction_depth_threshold = 2;
+            config.enable_root_reply_risk_guard = true;
+            config.enable_normal_root_safety_rerank = true;
+            config.enable_selective_extensions = true;
+            config.max_extensions_per_path = 1;
+            match context {
+                ProRuntimeContext::OpeningBookDriven => {
+                    config.futility_margin = 2_500;
+                    config.root_reply_risk_score_margin = 155;
+                    config.root_reply_risk_shortlist_max = 7;
+                    config.root_reply_risk_reply_limit = 18;
+                    config.root_reply_risk_node_share_bp = 1_400;
+                    config.enable_normal_root_safety_deep_floor = false;
+                    config.root_drainer_safety_score_margin = 4_300;
+                    config.selective_extension_node_share_bp = 1_200;
+                }
+                ProRuntimeContext::Unknown | ProRuntimeContext::Independent => {
+                    config.futility_margin = 2_300;
+                    config.root_reply_risk_score_margin = 165;
+                    config.root_reply_risk_shortlist_max = 9;
+                    config.root_reply_risk_reply_limit = 24;
+                    config.root_reply_risk_node_share_bp = 2_000;
+                    config.enable_normal_root_safety_deep_floor = true;
+                    config.root_drainer_safety_score_margin = 4_800;
+                    config.selective_extension_node_share_bp = 1_500;
+                    config.scoring_weights =
+                        MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                            game,
+                            config.depth,
+                        );
+                    config.interview_soft_opponent_mana_progress_bonus = 280;
+                    config.interview_soft_opponent_mana_score_bonus = 340;
+                }
+            }
+            config
+        }
+        HistoricalRuntimeProfile::Post0110HighUtilPro | HistoricalRuntimeProfile::PreExactWave => {
+            config.max_visited_nodes = SMART_AUTOMOVE_PRO_MAX_VISITED_NODES as usize;
+            config.enable_forced_tactical_prepass = false;
+            config.root_branch_limit = config.root_branch_limit.clamp(14, 34);
+            config.node_branch_limit = config.node_branch_limit.clamp(9, 15);
+            config.root_enum_limit = (config.root_branch_limit * 6).clamp(config.root_branch_limit, 204);
+            config.node_enum_limit =
+                ((config.node_branch_limit + 2) * 6).clamp(config.node_branch_limit, 132);
+            config.enable_futility_pruning = true;
+            config.enable_quiet_reductions = true;
+            config.quiet_reduction_depth_threshold = 2;
+            config.enable_root_reply_risk_guard = true;
+            config.enable_normal_root_safety_rerank = true;
+            config.enable_selective_extensions = true;
+            config.max_extensions_per_path = 1;
+            match context {
+                ProRuntimeContext::OpeningBookDriven => {
+                    config.futility_margin = 2_500;
+                    config.root_reply_risk_score_margin = 155;
+                    config.root_reply_risk_shortlist_max = 7;
+                    config.root_reply_risk_reply_limit = 18;
+                    config.root_reply_risk_node_share_bp = 1_400;
+                    config.enable_normal_root_safety_deep_floor = false;
+                    config.root_drainer_safety_score_margin = 4_300;
+                    config.selective_extension_node_share_bp = 1_200;
+                }
+                ProRuntimeContext::Unknown | ProRuntimeContext::Independent => {
+                    config.futility_margin = 2_300;
+                    config.root_reply_risk_score_margin = 165;
+                    config.root_reply_risk_shortlist_max = 9;
+                    config.root_reply_risk_reply_limit = 24;
+                    config.root_reply_risk_node_share_bp = 2_000;
+                    config.enable_normal_root_safety_deep_floor = true;
+                    config.root_drainer_safety_score_margin = 4_800;
+                    config.selective_extension_node_share_bp = 1_500;
+                    config.scoring_weights =
+                        MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                            game,
+                            config.depth,
+                        );
+                    if profile == HistoricalRuntimeProfile::PreExactWave {
+                        config.interview_soft_opponent_mana_progress_bonus = 320;
+                        config.interview_soft_opponent_mana_score_bonus = 400;
+                    } else {
+                        config.interview_soft_opponent_mana_progress_bonus = 280;
+                        config.interview_soft_opponent_mana_score_bonus = 340;
+                    }
+                }
+            }
+            config
+        }
+    }
+}
+
+fn configure_historical_runtime_profile(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+    profile: HistoricalRuntimeProfile,
+) -> SmartSearchConfig {
+    let preference = historical_preference_from_config(config);
+    let mut runtime = match preference {
+        SmartAutomovePreference::Fast => configure_historical_fast_runtime(),
+        SmartAutomovePreference::Normal => configure_historical_normal_runtime(),
+        SmartAutomovePreference::Pro => configure_historical_pro_runtime_base(profile),
+    };
+    runtime = MonsGameModel::with_runtime_scoring_weights(game, runtime);
+    if preference == SmartAutomovePreference::Pro {
+        runtime = apply_historical_pro_context_profile(game, runtime, profile);
+    }
+    MonsGameModel::with_pre_exact_runtime_policy(runtime)
+}
+
+pub(super) fn historical_profile_runtime_config(
+    profile_name: &str,
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Option<SmartSearchConfig> {
+    historical_profile_from_name(profile_name)
+        .map(|profile| configure_historical_runtime_profile(game, config, profile))
+}
+
 fn runtime_selector_inputs(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let inputs = MonsGameModel::smart_search_best_inputs(game, config);
     if !inputs.is_empty() {
@@ -113,6 +632,49 @@ pub(super) fn model_runtime_release_safe_pre_exact(
     config: SmartSearchConfig,
 ) -> Vec<Input> {
     runtime_selector_inputs(game, MonsGameModel::with_pre_exact_runtime_policy(config))
+}
+
+fn historical_runtime_selector_inputs(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+    profile: HistoricalRuntimeProfile,
+) -> Vec<Input> {
+    runtime_selector_inputs(game, configure_historical_runtime_profile(game, config, profile))
+}
+
+pub(super) fn model_runtime_historical_0_1_109(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    historical_runtime_selector_inputs(game, config, HistoricalRuntimeProfile::V0109)
+}
+
+pub(super) fn model_runtime_historical_0_1_110(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    historical_runtime_selector_inputs(game, config, HistoricalRuntimeProfile::V0110)
+}
+
+pub(super) fn model_runtime_historical_post_0_1_110_6c3d5cb(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    historical_runtime_selector_inputs(game, config, HistoricalRuntimeProfile::Post0110UltraIntro)
+}
+
+pub(super) fn model_runtime_historical_post_0_1_110_a70b842(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    historical_runtime_selector_inputs(game, config, HistoricalRuntimeProfile::Post0110HighUtilPro)
+}
+
+pub(super) fn model_runtime_historical_pre_exact_e9a05ce(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    historical_runtime_selector_inputs(game, config, HistoricalRuntimeProfile::PreExactWave)
 }
 
 fn configure_runtime_eff_non_exact_v1(
@@ -174,6 +736,38 @@ fn configure_runtime_eff_non_exact_v2(
     MonsGameModel::with_pre_exact_runtime_policy(runtime)
 }
 
+fn configure_runtime_eff_non_exact_v3(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    match historical_preference_from_config(config) {
+        SmartAutomovePreference::Fast => MonsGameModel::runtime_config_for_game_with_context(
+            game,
+            SmartAutomovePreference::Fast,
+            ProRuntimeContext::Unknown,
+        )
+        .0,
+        SmartAutomovePreference::Normal => MonsGameModel::runtime_config_for_game_with_context(
+            game,
+            SmartAutomovePreference::Normal,
+            ProRuntimeContext::Unknown,
+        )
+        .0,
+        SmartAutomovePreference::Pro => configure_historical_runtime_profile(
+            game,
+            config,
+            HistoricalRuntimeProfile::PreExactWave,
+        ),
+    }
+}
+
+pub(super) fn runtime_eff_non_exact_v3_runtime_config(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    configure_runtime_eff_non_exact_v3(game, config)
+}
+
 fn configure_runtime_eff_exact_lite_v1(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -209,6 +803,13 @@ pub(super) fn model_runtime_eff_non_exact_v2(
     config: SmartSearchConfig,
 ) -> Vec<Input> {
     MonsGameModel::smart_search_best_inputs(game, configure_runtime_eff_non_exact_v2(game, config))
+}
+
+pub(super) fn model_runtime_eff_non_exact_v3(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(game, configure_runtime_eff_non_exact_v3(game, config))
 }
 
 pub(super) fn model_runtime_eff_exact_lite_v1(
