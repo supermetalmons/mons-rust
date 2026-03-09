@@ -19,6 +19,10 @@ This document keeps compressed history for retired automove profiles and experim
 
 - `runtime_eff_non_exact_v3`
   This hybrid line mixed current fast/normal with archived pre-exact pro behavior. It answered a one-time comparison question and is now retired because keeping it selectable in the active registry only adds noise.
+- `runtime_root_signal_v1`
+  This March 9, 2026 low-CPU signal wave improved cheap safe-progress detection, but it failed `fast-screen` against `runtime_release_safe_pre_exact` at `24` games with aggregate delta `-0.0417`. Keep the lesson that cheap safety-aware setup signals are useful, but do not promote a signal-only wave without stronger reply selection.
+- `runtime_root_reply_v1`
+  This March 9, 2026 low-CPU reply-selection wave cleared `preflight` and a constrained `fast-screen`, but follow-up diagnostics did not show promotable normal-side strength. Focused mode checks showed candidate `fast` at `+0.0208` vs baseline `fast` and `0.0000` vs baseline `normal` over `48` games each, while candidate `normal` ran `-0.0417` vs baseline `fast` over `48` games and `-0.0938` vs baseline `normal` after `32` games before the report was stopped. Keep the lesson that cheap reply-risk cleanup can be acceptable in `fast`, but do not carry the aggressive normal shortlist and penalty tuning forward.
 
 ## Mistakes Not To Repeat
 

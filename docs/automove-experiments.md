@@ -28,6 +28,15 @@ Default ladder baseline is `runtime_release_safe_pre_exact`. Override it with th
 ./scripts/run-automove-experiment.sh fast-screen <candidate> <baseline>
 ```
 
+## Exploration Discipline
+
+- Keep `main` as the last known clean promotion checkpoint.
+- Run active exploration on a `codex/*` branch until a candidate is promotable.
+- Use hypothesis-driven names in the `runtime_root_*` line for new pre-exact waves.
+- Keep only one live `runtime_root_*` candidate in the active registry at a time.
+- Keep archived low-CPU waves in `docs/automove-archive.md`; do not revive them by default.
+- Do not start an `runtime_exact_lite_probe_*` wave until a pre-exact candidate clears preflight plus the client promotion ladder.
+
 ## What Each Stage Does
 
 - `preflight`: runs tactical guardrails, strict client-mode (`fast` and `normal`) stage-1 CPU non-regression vs `runtime_current`, and the exact-lite diagnostics gate. The stage-1 gate uses repeated speed probes and a median ratio so one noisy sample does not kill a candidate. The exact-lite gate is a no-op for non-exact candidates.
