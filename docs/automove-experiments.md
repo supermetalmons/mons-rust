@@ -30,7 +30,7 @@ Default ladder baseline is `runtime_release_safe_pre_exact`. Override it with th
 
 ## What Each Stage Does
 
-- `preflight`: runs tactical guardrails, strict stage-1 CPU non-regression vs `runtime_current`, and the exact-lite diagnostics gate. The exact-lite gate is a no-op for non-exact candidates.
+- `preflight`: runs tactical guardrails, strict client-mode (`fast` and `normal`) stage-1 CPU non-regression vs `runtime_current`, and the exact-lite diagnostics gate. The stage-1 gate uses repeated speed probes and a median ratio so one noisy sample does not kill a candidate. The exact-lite gate is a no-op for non-exact candidates.
 - `fast-screen`: quick active-pool screen against `runtime_release_safe_pre_exact`.
 - `progressive`: geometric duel against `runtime_release_safe_pre_exact` with artifact output under `target/experiment-runs`.
 - `ladder`: full promotion gate with tactical checks, speed checks, progressive duel, confirmation duel, and pool non-regression.
@@ -43,6 +43,8 @@ Run these before any promotion decision that could change shipped runtime behavi
 cargo test --release --lib smart_automove_release_opening_black_reply_speed_gate -- --ignored --nocapture
 cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --ignored --nocapture
 ```
+
+For experiment-only stage-1 speed checks that also include `pro`, set `SMART_STAGE1_INCLUDE_PRO=true`.
 
 The shipped wasm API remains:
 

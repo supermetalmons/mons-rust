@@ -6,12 +6,12 @@ use crate::models::automove_exact::{
     exact_query_diagnostics_snapshot,
 };
 
-fn stage1_cpu_budgets() -> [SearchBudget; 3] {
-    [
-        SearchBudget::from_preference(SmartAutomovePreference::Fast),
-        SearchBudget::from_preference(SmartAutomovePreference::Normal),
-        SearchBudget::from_preference(SmartAutomovePreference::Pro),
-    ]
+fn stage1_cpu_budgets() -> Vec<SearchBudget> {
+    let mut budgets = client_budgets().to_vec();
+    if env_bool("SMART_STAGE1_INCLUDE_PRO").unwrap_or(false) {
+        budgets.push(pro_budget());
+    }
+    budgets
 }
 
 fn stage1_cpu_ratio_limit(mode: &str) -> f64 {
@@ -49,6 +49,22 @@ fn stage1_seed_tags() -> Vec<String> {
     ]
 }
 
+fn stage1_cpu_measurement_repeats() -> usize {
+    env_usize("SMART_STAGE1_MEASUREMENT_REPEATS")
+        .unwrap_or(3)
+        .max(1)
+}
+
+fn median_f64(values: &mut [f64]) -> f64 {
+    values.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = values.len() / 2;
+    if values.len() % 2 == 0 {
+        (values[mid - 1] + values[mid]) / 2.0
+    } else {
+        values[mid]
+    }
+}
+
 fn assert_stage1_cpu_non_regression(
     candidate_profile_name: &str,
     candidate_selector: AutomoveSelector,
@@ -56,6 +72,7 @@ fn assert_stage1_cpu_non_regression(
     let baseline_selector = profile_selector_from_name("runtime_current")
         .expect("runtime_current selector should exist for stage-1 cpu gate");
     let budgets = stage1_cpu_budgets();
+    let repeats = stage1_cpu_measurement_repeats();
     let speed_positions = env_usize("SMART_STAGE1_SPEED_POSITIONS")
         .unwrap_or(16)
         .max(12);
@@ -66,39 +83,68 @@ fn assert_stage1_cpu_non_regression(
             format!("{}:{}", candidate_profile_name, seed_tag).as_str(),
         );
         let speed_openings = generate_opening_fens_cached(speed_seed, speed_positions);
-        let baseline_speed =
-            profile_speed_by_mode_ms(baseline_selector, speed_openings.as_slice(), &budgets);
-        let candidate_speed =
-            profile_speed_by_mode_ms(candidate_selector, speed_openings.as_slice(), &budgets);
-        let baseline_map = baseline_speed
-            .iter()
-            .map(|stat| (stat.budget.key(), stat.avg_ms))
-            .collect::<std::collections::HashMap<_, _>>();
+        let mut ratio_samples = std::collections::HashMap::<&'static str, Vec<f64>>::new();
 
-        for stat in candidate_speed {
-            let baseline_ms = baseline_map
-                .get(stat.budget.key())
-                .copied()
-                .unwrap_or(1.0)
-                .max(0.001);
-            let ratio = stat.avg_ms / baseline_ms;
-            let ratio_limit = stage1_cpu_ratio_limit(stat.budget.key());
+        for _ in 0..repeats {
+            let baseline_speed = profile_speed_by_mode_ms(
+                baseline_selector,
+                speed_openings.as_slice(),
+                budgets.as_slice(),
+            );
+            let candidate_speed = profile_speed_by_mode_ms(
+                candidate_selector,
+                speed_openings.as_slice(),
+                budgets.as_slice(),
+            );
+            let baseline_map = baseline_speed
+                .iter()
+                .map(|stat| (stat.budget.key(), stat.avg_ms))
+                .collect::<std::collections::HashMap<_, _>>();
+
+            for stat in candidate_speed {
+                let baseline_ms = baseline_map
+                    .get(stat.budget.key())
+                    .copied()
+                    .unwrap_or(1.0)
+                    .max(0.001);
+                let ratio = stat.avg_ms / baseline_ms;
+                ratio_samples
+                    .entry(stat.budget.key())
+                    .or_default()
+                    .push(ratio);
+            }
+        }
+
+        for budget in &budgets {
+            let mode = budget.key();
+            let mut samples = ratio_samples.remove(mode).unwrap_or_default();
+            assert_eq!(
+                samples.len(),
+                repeats,
+                "stage-1 cpu gate expected {} samples for mode {}",
+                repeats,
+                mode
+            );
+            let ratio = median_f64(samples.as_mut_slice());
+            let ratio_limit = stage1_cpu_ratio_limit(mode);
             println!(
-                "stage-1 cpu seed={} mode={} candidate={} ratio={:.3} limit={:.3}",
+                "stage-1 cpu seed={} mode={} candidate={} ratio={:.3} limit={:.3} samples={:?}",
                 seed_tag,
-                stat.budget.key(),
+                mode,
                 candidate_profile_name,
                 ratio,
-                ratio_limit
+                ratio_limit,
+                samples
             );
             assert!(
                 ratio <= ratio_limit,
-                "stage-1 cpu gate failed for seed={} mode={} candidate={} baseline=runtime_current ratio={:.3} > {:.3}",
+                "stage-1 cpu gate failed for seed={} mode={} candidate={} baseline=runtime_current median_ratio={:.3} > {:.3} samples={:?}",
                 seed_tag,
-                stat.budget.key(),
+                mode,
                 candidate_profile_name,
                 ratio,
-                ratio_limit
+                ratio_limit,
+                samples
             );
         }
     }
