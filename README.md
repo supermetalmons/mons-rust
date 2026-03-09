@@ -18,10 +18,17 @@ The active automove workflow lives here:
 Useful scripts:
 
 - `./scripts/run-automove-experiment.sh preflight <candidate>`
+- `./scripts/run-automove-experiment.sh pre-screen <candidate>`
 - `./scripts/run-automove-experiment.sh fast-screen <candidate>`
 - `./scripts/run-automove-experiment.sh progressive <candidate>`
 - `./scripts/run-automove-experiment.sh ladder <candidate>`
+- `./scripts/run-automove-experiment.sh pro-pre-screen <candidate>`
+- `./scripts/run-automove-experiment.sh pro-fast-screen <candidate>`
+- `./scripts/run-automove-experiment.sh pro-progressive <candidate>`
+- `./scripts/run-automove-experiment.sh pro-ladder <candidate>`
 - `./scripts/clean-experiment-artifacts.sh`
+
+Most candidates should stop at `pre-screen`, `pro-pre-screen`, or `fast-screen` unless they already show a concrete promotion story.
 
 ## rules-tests runner
 

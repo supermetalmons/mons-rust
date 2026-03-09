@@ -2,24 +2,40 @@
 set -euo pipefail
 
 usage() {
-  cat <<'EOF'
+  cat <<'EOF_HELP'
 usage: ./scripts/run-automove-experiment.sh <stage> <candidate> [baseline]
 
 stages:
-  preflight    tactical guardrails + stage-1 cpu gate + exact-lite diagnostics
-  fast-screen  quick active-pool screen against the baseline
-  progressive  progressive duel against the baseline
-  ladder       full promotion ladder against the baseline
+  preflight       tactical guardrails + stage-1 cpu gate + exact-lite diagnostics
+  pre-screen      reject-only generic screen with tighter fast-screen budgets
+  fast-screen     quick active-pool screen against the baseline
+  progressive     progressive duel against the baseline
+  ladder          full promotion ladder against the baseline
+  pro-pre-screen  reject-only pro screen vs normal and fast with tighter budgets
+  pro-fast-screen pro fast screens vs normal and fast at the standard budgets
+  pro-progressive pro progressive duels vs normal and fast
+  pro-ladder      strict pro promotion ladder against the baseline
 
 defaults:
   baseline = runtime_release_safe_pre_exact
 
 examples:
   ./scripts/run-automove-experiment.sh preflight runtime_eff_non_exact_v2
+  ./scripts/run-automove-experiment.sh pre-screen runtime_eff_non_exact_v2
   ./scripts/run-automove-experiment.sh fast-screen runtime_eff_non_exact_v2
-  ./scripts/run-automove-experiment.sh progressive runtime_eff_exact_lite_v1 runtime_release_safe_pre_exact
-EOF
+  ./scripts/run-automove-experiment.sh pro-pre-screen runtime_eff_non_exact_v2
+  ./scripts/run-automove-experiment.sh pro-ladder runtime_eff_exact_lite_v1 runtime_release_safe_pre_exact
+EOF_HELP
 }
+
+if [ "$#" -eq 1 ]; then
+  case "$1" in
+    -h|--help|help)
+      usage
+      exit 0
+      ;;
+  esac
+fi
 
 if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
   usage >&2
@@ -42,8 +58,49 @@ run_cargo_logged() {
   shift 2
   run_logged "${run_name}" env \
     "SMART_CANDIDATE_PROFILE=${candidate}" \
+    "SMART_PRO_CANDIDATE_PROFILE=${candidate}" \
     "$@" \
     cargo test --release --lib "${test_name}" -- --ignored --nocapture
+}
+
+run_fast_screen() {
+  local run_name="$1"
+  shift
+  run_cargo_logged \
+    "${run_name}" \
+    "smart_automove_pool_fast_screen" \
+    "SMART_GATE_BASELINE_PROFILE=${baseline}" \
+    "$@"
+}
+
+run_pro_fast_screens() {
+  local run_prefix="$1"
+  shift
+  run_cargo_logged \
+    "${run_prefix}_vs_normal_${candidate}" \
+    "smart_automove_pool_pro_fast_screen_vs_normal" \
+    "SMART_GATE_BASELINE_PROFILE=${baseline}" \
+    "SMART_PRO_BASELINE_PROFILE=${baseline}" \
+    "$@"
+  run_cargo_logged \
+    "${run_prefix}_vs_fast_${candidate}" \
+    "smart_automove_pool_pro_fast_screen_vs_fast" \
+    "SMART_GATE_BASELINE_PROFILE=${baseline}" \
+    "SMART_PRO_BASELINE_PROFILE=${baseline}" \
+    "$@"
+}
+
+run_pro_progressive() {
+  run_cargo_logged \
+    "pro_progressive_vs_normal_${candidate}" \
+    "smart_automove_pool_pro_progressive_vs_normal" \
+    "SMART_GATE_BASELINE_PROFILE=${baseline}" \
+    "SMART_PRO_BASELINE_PROFILE=${baseline}"
+  run_cargo_logged \
+    "pro_progressive_vs_fast_${candidate}" \
+    "smart_automove_pool_pro_progressive_vs_fast" \
+    "SMART_GATE_BASELINE_PROFILE=${baseline}" \
+    "SMART_PRO_BASELINE_PROFILE=${baseline}"
 }
 
 case "${stage}" in
@@ -52,11 +109,15 @@ case "${stage}" in
     run_cargo_logged "stage1_cpu_${candidate}" "smart_automove_pool_stage1_cpu_non_regression_gate"
     run_cargo_logged "exact_lite_diag_${candidate}" "smart_automove_pool_exact_lite_diagnostics_gate"
     ;;
+  pre-screen)
+    run_fast_screen \
+      "pre_screen_${candidate}" \
+      "SMART_PROGRESSIVE_SCREEN_INITIAL_GAMES=2" \
+      "SMART_PROGRESSIVE_SCREEN_MAX_GAMES=4" \
+      "SMART_PROGRESSIVE_SCREEN_REPEATS=1"
+    ;;
   fast-screen)
-    run_cargo_logged \
-      "fast_screen_${candidate}" \
-      "smart_automove_pool_fast_screen" \
-      "SMART_GATE_BASELINE_PROFILE=${baseline}"
+    run_fast_screen "fast_screen_${candidate}"
     ;;
   progressive)
     run_cargo_logged \
@@ -69,6 +130,25 @@ case "${stage}" in
       "ladder_${candidate}" \
       "smart_automove_pool_promotion_ladder" \
       "SMART_GATE_BASELINE_PROFILE=${baseline}"
+    ;;
+  pro-pre-screen)
+    run_pro_fast_screens \
+      "pro_pre_screen" \
+      "SMART_PRO_FAST_SCREEN_GAMES=1" \
+      "SMART_PRO_FAST_SCREEN_REPEATS=1"
+    ;;
+  pro-fast-screen)
+    run_pro_fast_screens "pro_fast_screen"
+    ;;
+  pro-progressive)
+    run_pro_progressive
+    ;;
+  pro-ladder)
+    run_cargo_logged \
+      "pro_ladder_${candidate}" \
+      "smart_automove_pool_pro_promotion_ladder" \
+      "SMART_GATE_BASELINE_PROFILE=${baseline}" \
+      "SMART_PRO_BASELINE_PROFILE=${baseline}"
     ;;
   -h|--help|help)
     usage

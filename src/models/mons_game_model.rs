@@ -996,6 +996,7 @@ struct SmartSearchConfig {
     enable_potion_progress_compensation: bool,
     prefer_clean_reply_risk_roots: bool,
     root_drainer_safety_score_margin: i32,
+    root_drainer_exposure_penalty: i32,
     root_mana_handoff_penalty: i32,
     root_backtrack_penalty: i32,
     root_efficiency_score_margin: i32,
@@ -1304,6 +1305,7 @@ impl SmartSearchConfig {
             enable_potion_progress_compensation: false,
             prefer_clean_reply_risk_roots: false,
             root_drainer_safety_score_margin: SMART_ROOT_DRAINER_SAFETY_SCORE_MARGIN,
+            root_drainer_exposure_penalty: 0,
             root_mana_handoff_penalty: SMART_ROOT_MANA_HANDOFF_PENALTY,
             root_backtrack_penalty: SMART_ROOT_BACKTRACK_PENALTY,
             root_efficiency_score_margin: SMART_ROOT_EFFICIENCY_SCORE_MARGIN,
@@ -2980,6 +2982,19 @@ impl MonsGameModel {
             has_roundtrip,
         );
 
+        let drainer_exposure_penalty = if own_drainer_vulnerable
+            && config.root_drainer_exposure_penalty > 0
+            && !wins_immediately
+            && !attacks_opponent_drainer
+            && !scores_supermana_this_turn
+            && !scores_opponent_mana_this_turn
+            && !spirit_assisted_score
+        {
+            config.root_drainer_exposure_penalty
+        } else {
+            0
+        };
+
         let heuristic_with_policy = heuristic
             .saturating_add(ordering_bonus)
             .saturating_add(if config.enable_interview_soft_root_priors {
@@ -2987,7 +3002,8 @@ impl MonsGameModel {
             } else {
                 0
             })
-            .saturating_sub(potion_spend_penalty);
+            .saturating_sub(potion_spend_penalty)
+            .saturating_sub(drainer_exposure_penalty);
 
         Some(ScoredRootMove {
             inputs,

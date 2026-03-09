@@ -15,6 +15,7 @@ This document keeps only durable lessons that should shape future automove work.
 
 - Large candidate catalogs slow iteration and hide the actual question. Keep the active registry small.
 - Raw logs are not knowledge. If a run matters, promote the conclusion into docs immediately.
+- Reject fast, archive fast, and keep only promotable signal in the live experiment surface.
 - Heavy exact evaluation on both colors in every node is too expensive for production-facing turns.
 - Client-mode experiment gating gets noisy if `pro` is mixed into the default speed check. Default stage-1 gating to `fast` and `normal`, use repeated probes, and gate on the median ratio.
 - Shipping experiment code before it clears the promotion pipeline is too risky.
@@ -35,4 +36,4 @@ This document keeps only durable lessons that should shape future automove work.
 - Reuse cached tactical answers across root ranking, efficiency scoring, and tactical prepasses.
 - Probe exact child progress only on boards that plausibly have target mana or spirit-assisted conversion worth preserving.
 - Add fixtures around spirit scoring, safe supermana, opponent-mana conversion, and drainer exposure.
-- Promote only candidates that pass preflight, the 3-command pipeline, and release speed gates.
+- Promote only candidates that pass `preflight`, earn their way through the screen pipeline, and clear the release speed gates.
