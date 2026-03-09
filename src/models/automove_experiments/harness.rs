@@ -1011,6 +1011,10 @@ pub(super) struct ProgressiveDuelConfig {
     pub(super) seed_tags: Vec<&'static str>,
     pub(super) max_plies: usize,
     pub(super) early_exit_delta_floor: f64,
+    pub(super) first_tier_signal_games_per_seed: Option<usize>,
+    pub(super) first_tier_signal_aggregate_delta_min: f64,
+    pub(super) first_tier_signal_mode_delta_min: f64,
+    pub(super) first_tier_signal_mode_floor: f64,
     pub(super) mode_improvement_delta: HashMap<&'static str, f64>,
     pub(super) mode_improvement_confidence: HashMap<&'static str, f64>,
     pub(super) mode_non_regression_delta: HashMap<&'static str, f64>,
@@ -1039,6 +1043,10 @@ impl Default for ProgressiveDuelConfig {
             seed_tags: vec!["neutral_v1", "neutral_v2", "neutral_v3"],
             max_plies: 80,
             early_exit_delta_floor: -0.08,
+            first_tier_signal_games_per_seed: None,
+            first_tier_signal_aggregate_delta_min: 0.0,
+            first_tier_signal_mode_delta_min: 0.0,
+            first_tier_signal_mode_floor: -1.0,
             mode_improvement_delta,
             mode_improvement_confidence,
             mode_non_regression_delta,
@@ -1171,6 +1179,30 @@ pub(super) fn evaluate_progressive_stop(
 ) -> Option<ProgressiveStopReason> {
     if aggregate_delta < config.early_exit_delta_floor {
         return Some(ProgressiveStopReason::EarlyReject);
+    }
+
+    if let Some(first_tier_signal_games_per_seed) = config.first_tier_signal_games_per_seed {
+        if current_games_per_seed == first_tier_signal_games_per_seed {
+            let mut any_mode_showed_signal = false;
+            let mut all_modes_cleared_floor = true;
+            for budget in budgets {
+                let stats = mode_stats.get(budget.key()).copied().unwrap_or_default();
+                let mode_delta = stats.win_rate_points() - 0.5;
+                if mode_delta >= config.first_tier_signal_mode_delta_min {
+                    any_mode_showed_signal = true;
+                }
+                if mode_delta < config.first_tier_signal_mode_floor {
+                    all_modes_cleared_floor = false;
+                }
+            }
+
+            if aggregate_delta < config.first_tier_signal_aggregate_delta_min
+                || !any_mode_showed_signal
+                || !all_modes_cleared_floor
+            {
+                return Some(ProgressiveStopReason::EarlyReject);
+            }
+        }
     }
 
     let next_games_per_seed =

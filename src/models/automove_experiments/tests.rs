@@ -65,6 +65,102 @@ fn median_f64(values: &mut [f64]) -> f64 {
     }
 }
 
+#[test]
+fn progressive_stop_rejects_dead_even_first_screen_tier() {
+    let budgets = client_budgets().to_vec();
+    let mut mode_stats = std::collections::HashMap::<&'static str, MatchupStats>::new();
+    let flat_stats = MatchupStats {
+        wins: 4,
+        losses: 4,
+        draws: 0,
+    };
+    mode_stats.insert("fast", flat_stats);
+    mode_stats.insert("normal", flat_stats);
+
+    let stop = evaluate_progressive_stop(
+        budgets.as_slice(),
+        &mode_stats,
+        0.0,
+        2,
+        &ProgressiveDuelConfig {
+            first_tier_signal_games_per_seed: Some(2),
+            first_tier_signal_aggregate_delta_min: 0.10,
+            first_tier_signal_mode_delta_min: 0.125,
+            first_tier_signal_mode_floor: 0.0,
+            ..ProgressiveDuelConfig::default()
+        },
+    );
+
+    assert_eq!(stop, Some(ProgressiveStopReason::EarlyReject));
+}
+
+#[test]
+fn progressive_stop_rejects_weak_positive_first_screen_tier() {
+    let budgets = client_budgets().to_vec();
+    let mut mode_stats = std::collections::HashMap::<&'static str, MatchupStats>::new();
+    mode_stats.insert(
+        "fast",
+        MatchupStats {
+            wins: 5,
+            losses: 3,
+            draws: 0,
+        },
+    );
+    mode_stats.insert(
+        "normal",
+        MatchupStats {
+            wins: 4,
+            losses: 4,
+            draws: 0,
+        },
+    );
+
+    let stop = evaluate_progressive_stop(
+        budgets.as_slice(),
+        &mode_stats,
+        0.0625,
+        2,
+        &ProgressiveDuelConfig {
+            first_tier_signal_games_per_seed: Some(2),
+            first_tier_signal_aggregate_delta_min: 0.10,
+            first_tier_signal_mode_delta_min: 0.125,
+            first_tier_signal_mode_floor: 0.0,
+            ..ProgressiveDuelConfig::default()
+        },
+    );
+
+    assert_eq!(stop, Some(ProgressiveStopReason::EarlyReject));
+}
+
+#[test]
+fn progressive_stop_keeps_strong_first_screen_tier_alive() {
+    let budgets = client_budgets().to_vec();
+    let mut mode_stats = std::collections::HashMap::<&'static str, MatchupStats>::new();
+    let strong_stats = MatchupStats {
+        wins: 5,
+        losses: 3,
+        draws: 0,
+    };
+    mode_stats.insert("fast", strong_stats);
+    mode_stats.insert("normal", strong_stats);
+
+    let stop = evaluate_progressive_stop(
+        budgets.as_slice(),
+        &mode_stats,
+        0.125,
+        2,
+        &ProgressiveDuelConfig {
+            first_tier_signal_games_per_seed: Some(2),
+            first_tier_signal_aggregate_delta_min: 0.10,
+            first_tier_signal_mode_delta_min: 0.125,
+            first_tier_signal_mode_floor: 0.0,
+            ..ProgressiveDuelConfig::default()
+        },
+    );
+
+    assert_eq!(stop, None);
+}
+
 fn assert_stage1_cpu_non_regression(
     candidate_profile_name: &str,
     candidate_selector: AutomoveSelector,
@@ -626,7 +722,7 @@ fn smart_automove_pool_mode_comparison_report() {
 }
 
 #[test]
-#[ignore = "quick progressive screen: ~10-20 seconds, 2 tiers"]
+#[ignore = "quick reject-oriented screen that requires meaningful tier-0 signal"]
 fn smart_automove_pool_fast_screen() {
     let candidate_profile_name = candidate_profile().as_str().to_string();
     let baseline_profile_name = gate_baseline_profile_name();
@@ -671,6 +767,10 @@ fn smart_automove_pool_fast_screen() {
             seed_tags: vec!["neutral_v1"],
             max_plies: 72,
             early_exit_delta_floor: -0.10,
+            first_tier_signal_games_per_seed: Some(config.initial_games.max(2)),
+            first_tier_signal_aggregate_delta_min: 0.10,
+            first_tier_signal_mode_delta_min: 0.125,
+            first_tier_signal_mode_floor: 0.0,
             ..config
         },
         Some(artifact_path.as_str()),

@@ -89,6 +89,7 @@ The strongest candidate is only valuable if it is safe to ship.
 
 - Stop immediately on any `preflight` failure.
 - Treat `pre-screen` and `pro-pre-screen` as reject-only noise filters. Passing one means only that the idea earned a real screen.
+- The first real screen tier must already show a meaningful win edge. Dead-even, weakly positive, or one-mode-up/one-mode-down results are rejects, not invitations to pay for more games.
 - Kill a candidate after `fast-screen` or `pro-fast-screen` if the result is negative, flat, or only vaguely positive without a concrete mode-specific explanation.
 - Allow at most one focused diagnostic after a borderline screen. Good defaults are `smart_automove_pool_mode_comparison_report` or `smart_automove_pool_pool_regression_diagnostic`.
 - If that one diagnostic does not reveal a clear next edit, archive or split the idea instead of continuing the same candidate.
