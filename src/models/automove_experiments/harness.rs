@@ -92,6 +92,7 @@ pub(super) struct TriageFixture {
     pub game: MonsGame,
     pub mode: SmartAutomovePreference,
     pub opening_book_driven: bool,
+    pub config_tweak: Option<fn(SmartSearchConfig) -> SmartSearchConfig>,
 }
 
 pub(super) fn select_inputs_with_runtime_fallback(
@@ -1033,6 +1034,29 @@ pub(super) enum ProgressiveStopReason {
     MaxGamesReached,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PromotionTargetMode {
+    Fast,
+    Normal,
+}
+
+impl PromotionTargetMode {
+    fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "fast" => Some(Self::Fast),
+            "normal" => Some(Self::Normal),
+            _ => None,
+        }
+    }
+
+    fn key(self) -> &'static str {
+        match self {
+            Self::Fast => "fast",
+            Self::Normal => "normal",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct ProgressiveTierResult {
     pub(super) tier: usize,
@@ -1063,10 +1087,12 @@ pub(super) struct ProgressiveDuelConfig {
     pub(super) first_tier_signal_games_per_seed: Option<usize>,
     pub(super) first_tier_signal_aggregate_delta_min: f64,
     pub(super) first_tier_signal_mode_delta_min: f64,
+    pub(super) first_tier_target_confidence_min: f64,
     pub(super) first_tier_signal_mode_floor: f64,
     pub(super) mode_improvement_delta: HashMap<&'static str, f64>,
     pub(super) mode_improvement_confidence: HashMap<&'static str, f64>,
     pub(super) mode_non_regression_delta: HashMap<&'static str, f64>,
+    pub(super) promotion_target_mode: Option<PromotionTargetMode>,
     pub(super) repeats_per_game: usize,
     pub(super) use_white_opening_book: bool,
 }
@@ -1095,10 +1121,12 @@ impl Default for ProgressiveDuelConfig {
             first_tier_signal_games_per_seed: None,
             first_tier_signal_aggregate_delta_min: 0.0,
             first_tier_signal_mode_delta_min: 0.0,
+            first_tier_target_confidence_min: 0.0,
             first_tier_signal_mode_floor: -1.0,
             mode_improvement_delta,
             mode_improvement_confidence,
             mode_non_regression_delta,
+            promotion_target_mode: None,
             repeats_per_game: 2,
             use_white_opening_book: false,
         }
@@ -1121,8 +1149,61 @@ impl ProgressiveDuelConfig {
         if let Some(value) = env_usize(&format!("{}_MAX_PLIES", prefix)) {
             config.max_plies = value.max(32);
         }
+        if let Some(value) = env::var("SMART_PROMOTION_TARGET_MODE")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+        {
+            config.promotion_target_mode =
+                PromotionTargetMode::parse(value.as_str()).or_else(|| {
+                    panic!(
+                        "unknown SMART_PROMOTION_TARGET_MODE='{}' (expected 'fast' or 'normal')",
+                        value
+                    )
+                });
+        }
         config
     }
+}
+
+fn mode_thresholds(config: &ProgressiveDuelConfig, mode_key: &'static str) -> (f64, f64, f64) {
+    let required_delta = config
+        .mode_improvement_delta
+        .get(mode_key)
+        .copied()
+        .unwrap_or(0.02);
+    let required_confidence = config
+        .mode_improvement_confidence
+        .get(mode_key)
+        .copied()
+        .unwrap_or(0.60);
+    let floor = config
+        .mode_non_regression_delta
+        .get(mode_key)
+        .copied()
+        .unwrap_or(-0.03);
+    (required_delta, required_confidence, floor)
+}
+
+fn mode_improved(
+    stats: MatchupStats,
+    mode_key: &'static str,
+    config: &ProgressiveDuelConfig,
+) -> bool {
+    let mode_delta = stats.win_rate_points() - 0.5;
+    let mode_confidence = stats.confidence_better_than_even();
+    let (required_delta, required_confidence, _) = mode_thresholds(config, mode_key);
+    mode_delta >= required_delta && mode_confidence >= required_confidence
+}
+
+fn mode_non_regressed(
+    stats: MatchupStats,
+    mode_key: &'static str,
+    config: &ProgressiveDuelConfig,
+) -> bool {
+    let mode_delta = stats.win_rate_points() - 0.5;
+    let (_, _, floor) = mode_thresholds(config, mode_key);
+    mode_delta >= floor
 }
 
 pub(super) fn run_progressive_duel(
@@ -1232,23 +1313,43 @@ pub(super) fn evaluate_progressive_stop(
 
     if let Some(first_tier_signal_games_per_seed) = config.first_tier_signal_games_per_seed {
         if current_games_per_seed == first_tier_signal_games_per_seed {
-            let mut any_mode_showed_signal = false;
-            let mut all_modes_cleared_floor = true;
-            for budget in budgets {
-                let stats = mode_stats.get(budget.key()).copied().unwrap_or_default();
-                let mode_delta = stats.win_rate_points() - 0.5;
-                if mode_delta >= config.first_tier_signal_mode_delta_min {
-                    any_mode_showed_signal = true;
+            let first_tier_ok = if let Some(target_mode) = config.promotion_target_mode {
+                let target_key = target_mode.key();
+                let target_stats = mode_stats.get(target_key).copied().unwrap_or_default();
+                let target_delta = target_stats.win_rate_points() - 0.5;
+                let target_confidence = target_stats.confidence_better_than_even();
+                let off_target_modes_cleared_floor = budgets.iter().all(|budget| {
+                    let stats = mode_stats.get(budget.key()).copied().unwrap_or_default();
+                    if budget.key() == target_key {
+                        true
+                    } else {
+                        stats.win_rate_points() - 0.5 >= config.first_tier_signal_mode_floor
+                    }
+                });
+                aggregate_delta >= config.first_tier_signal_aggregate_delta_min
+                    && target_delta >= config.first_tier_signal_mode_delta_min
+                    && target_confidence >= config.first_tier_target_confidence_min
+                    && off_target_modes_cleared_floor
+            } else {
+                let mut any_mode_showed_signal = false;
+                let mut all_modes_cleared_floor = true;
+                for budget in budgets {
+                    let stats = mode_stats.get(budget.key()).copied().unwrap_or_default();
+                    let mode_delta = stats.win_rate_points() - 0.5;
+                    if mode_delta >= config.first_tier_signal_mode_delta_min {
+                        any_mode_showed_signal = true;
+                    }
+                    if mode_delta < config.first_tier_signal_mode_floor {
+                        all_modes_cleared_floor = false;
+                    }
                 }
-                if mode_delta < config.first_tier_signal_mode_floor {
-                    all_modes_cleared_floor = false;
-                }
-            }
 
-            if aggregate_delta < config.first_tier_signal_aggregate_delta_min
-                || !any_mode_showed_signal
-                || !all_modes_cleared_floor
-            {
+                aggregate_delta >= config.first_tier_signal_aggregate_delta_min
+                    && any_mode_showed_signal
+                    && all_modes_cleared_floor
+            };
+
+            if !first_tier_ok {
                 return Some(ProgressiveStopReason::EarlyReject);
             }
         }
@@ -1259,37 +1360,31 @@ pub(super) fn evaluate_progressive_stop(
     let at_max = current_games_per_seed >= config.max_games_per_seed;
 
     if at_max {
-        let mut any_mode_improved = false;
-        let mut non_regression_ok = true;
-        for budget in budgets {
-            let stats = mode_stats.get(budget.key()).copied().unwrap_or_default();
-            let mode_delta = stats.win_rate_points() - 0.5;
-            let mode_confidence = stats.confidence_better_than_even();
-            let required_delta = config
-                .mode_improvement_delta
-                .get(budget.key())
-                .copied()
-                .unwrap_or(0.02);
-            let required_confidence = config
-                .mode_improvement_confidence
-                .get(budget.key())
-                .copied()
-                .unwrap_or(0.60);
-            let floor = config
-                .mode_non_regression_delta
-                .get(budget.key())
-                .copied()
-                .unwrap_or(-0.03);
+        let primary_mode_improved = if let Some(target_mode) = config.promotion_target_mode {
+            let key = target_mode.key();
+            mode_improved(
+                mode_stats.get(key).copied().unwrap_or_default(),
+                key,
+                config,
+            )
+        } else {
+            budgets.iter().any(|budget| {
+                mode_improved(
+                    mode_stats.get(budget.key()).copied().unwrap_or_default(),
+                    budget.key(),
+                    config,
+                )
+            })
+        };
+        let non_regression_ok = budgets.iter().all(|budget| {
+            mode_non_regressed(
+                mode_stats.get(budget.key()).copied().unwrap_or_default(),
+                budget.key(),
+                config,
+            )
+        });
 
-            if mode_delta >= required_delta && mode_confidence >= required_confidence {
-                any_mode_improved = true;
-            }
-            if mode_delta < floor {
-                non_regression_ok = false;
-            }
-        }
-
-        if any_mode_improved && non_regression_ok && aggregate_delta >= 0.0 {
+        if primary_mode_improved && non_regression_ok && aggregate_delta >= 0.0 {
             return Some(ProgressiveStopReason::EarlyPromote);
         }
         return Some(ProgressiveStopReason::MaxGamesReached);
@@ -1306,54 +1401,52 @@ pub(super) fn evaluate_progressive_stop(
         next = (next * config.growth_factor).min(config.max_games_per_seed);
     }
 
-    let any_mode_can_improve = budgets.iter().any(|budget| {
-        let stats = mode_stats.get(budget.key()).copied().unwrap_or_default();
+    let primary_mode_can_improve = if let Some(target_mode) = config.promotion_target_mode {
+        let key = target_mode.key();
+        let stats = mode_stats.get(key).copied().unwrap_or_default();
         let best_case = max_achievable_delta(stats, remaining_per_mode);
-        let required_delta = config
-            .mode_improvement_delta
-            .get(budget.key())
-            .copied()
-            .unwrap_or(0.02);
+        let (required_delta, _, _) = mode_thresholds(config, key);
         best_case >= required_delta
-    });
-    if !any_mode_can_improve {
+    } else {
+        budgets.iter().any(|budget| {
+            let stats = mode_stats.get(budget.key()).copied().unwrap_or_default();
+            let best_case = max_achievable_delta(stats, remaining_per_mode);
+            let (required_delta, _, _) = mode_thresholds(config, budget.key());
+            best_case >= required_delta
+        })
+    };
+    if !primary_mode_can_improve {
         return Some(ProgressiveStopReason::MathematicalReject);
     }
 
-    let mut any_mode_improved = false;
-    let mut all_modes_non_regressed = true;
-    for budget in budgets {
-        let stats = mode_stats.get(budget.key()).copied().unwrap_or_default();
-        let mode_delta = stats.win_rate_points() - 0.5;
-        let mode_confidence = stats.confidence_better_than_even();
-        let required_delta = config
-            .mode_improvement_delta
-            .get(budget.key())
-            .copied()
-            .unwrap_or(0.02);
-        let required_confidence = config
-            .mode_improvement_confidence
-            .get(budget.key())
-            .copied()
-            .unwrap_or(0.60);
-        let floor = config
-            .mode_non_regression_delta
-            .get(budget.key())
-            .copied()
-            .unwrap_or(-0.03);
-
-        if mode_delta >= required_delta && mode_confidence >= required_confidence {
-            any_mode_improved = true;
-        }
-        if mode_delta < floor {
-            all_modes_non_regressed = false;
-        }
-    }
+    let primary_mode_improved = if let Some(target_mode) = config.promotion_target_mode {
+        let key = target_mode.key();
+        mode_improved(
+            mode_stats.get(key).copied().unwrap_or_default(),
+            key,
+            config,
+        )
+    } else {
+        budgets.iter().any(|budget| {
+            mode_improved(
+                mode_stats.get(budget.key()).copied().unwrap_or_default(),
+                budget.key(),
+                config,
+            )
+        })
+    };
+    let all_modes_non_regressed = budgets.iter().all(|budget| {
+        mode_non_regressed(
+            mode_stats.get(budget.key()).copied().unwrap_or_default(),
+            budget.key(),
+            config,
+        )
+    });
 
     let total_games: usize = mode_stats.values().map(|stats| stats.total_games()).sum();
     let min_games_for_early_promote =
         config.initial_games * config.growth_factor * remaining_seed_factor * budgets.len();
-    if any_mode_improved
+    if primary_mode_improved
         && all_modes_non_regressed
         && aggregate_delta >= 0.0
         && total_games >= min_games_for_early_promote
@@ -2014,6 +2107,60 @@ fn opponent_mana_progress_triage_game() -> MonsGame {
     )
 }
 
+fn exact_safe_supermana_progress_triage_game() -> MonsGame {
+    tactical_game_with_items(
+        vec![
+            (
+                Location::new(7, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(5, 5),
+                Item::Mana {
+                    mana: Mana::Supermana,
+                },
+            ),
+            (
+                Location::new(0, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    )
+}
+
+fn exact_safe_opponent_mana_progress_triage_game() -> MonsGame {
+    tactical_game_with_items(
+        vec![
+            (
+                Location::new(6, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(5, 4),
+                Item::Mana {
+                    mana: Mana::Regular(Color::Black),
+                },
+            ),
+            (
+                Location::new(0, 10),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    )
+}
+
 fn drainer_safety_triage_game() -> MonsGame {
     tactical_game_with_items(
         vec![
@@ -2042,6 +2189,76 @@ fn drainer_safety_triage_game() -> MonsGame {
 }
 
 fn reply_risk_triage_game() -> MonsGame {
+    let mut game = tactical_game_with_items(
+        vec![
+            (
+                Location::new(4, 0),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(7, 0),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(5, 2),
+                Item::Mana {
+                    mana: Mana::Regular(Color::Black),
+                },
+            ),
+            (
+                Location::new(0, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    );
+    game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+    game
+}
+
+fn reply_risk_supermana_handoff_triage_game() -> MonsGame {
+    let mut game = tactical_game_with_items(
+        vec![
+            (
+                Location::new(4, 0),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(7, 0),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(5, 2),
+                Item::Mana {
+                    mana: Mana::Supermana,
+                },
+            ),
+            (
+                Location::new(0, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    );
+    game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+    game
+}
+
+fn reply_risk_opponent_mana_handoff_triage_game() -> MonsGame {
     let mut game = tactical_game_with_items(
         vec![
             (
@@ -2109,36 +2326,224 @@ fn spirit_setup_triage_game() -> MonsGame {
     )
 }
 
+fn same_turn_supermana_threat_triage_game() -> MonsGame {
+    let white_spirit = Mon::new(MonKind::Spirit, Color::White, 0);
+    let white_spirit_base = Board::new().base(white_spirit);
+    tactical_game_with_items(
+        vec![
+            (
+                Location::new(7, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(5, 5),
+                Item::Mana {
+                    mana: Mana::Supermana,
+                },
+            ),
+            (white_spirit_base, Item::Mon { mon: white_spirit }),
+            (
+                Location::new(0, 10),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+            (
+                Location::new(9, 1),
+                Item::Mana {
+                    mana: Mana::Regular(Color::White),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    )
+}
+
+fn unsafe_direct_pickup_supermana_triage_game() -> MonsGame {
+    let mut game = tactical_game_with_items(
+        vec![
+            (
+                Location::new(7, 1),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(10, 2),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(9, 1),
+                Item::Mana {
+                    mana: Mana::Supermana,
+                },
+            ),
+            (
+                Location::new(7, 3),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                },
+            ),
+            (
+                Location::new(0, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    );
+    game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+    game
+}
+
+fn same_turn_opponent_mana_threat_triage_game() -> MonsGame {
+    tactical_game_with_items(
+        vec![
+            (
+                Location::new(5, 3),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(9, 0),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(7, 3),
+                Item::Mana {
+                    mana: Mana::Regular(Color::Black),
+                },
+            ),
+            (
+                Location::new(0, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    )
+}
+
+fn triage_fixture(
+    id: &'static str,
+    game: MonsGame,
+    mode: SmartAutomovePreference,
+    config_tweak: Option<fn(SmartSearchConfig) -> SmartSearchConfig>,
+) -> TriageFixture {
+    TriageFixture {
+        id,
+        game,
+        mode,
+        opening_book_driven: false,
+        config_tweak,
+    }
+}
+
+fn reply_risk_probe_config(mut config: SmartSearchConfig) -> SmartSearchConfig {
+    config.root_reply_risk_score_margin = 0;
+    config.root_reply_risk_shortlist_max = 1;
+    config.root_reply_risk_reply_limit = 1;
+    config.root_reply_risk_node_share_bp = 1_000;
+    config
+}
+
+fn root_cutoff_config(mut config: SmartSearchConfig) -> SmartSearchConfig {
+    config.root_enum_limit = 0;
+    config
+}
+
 fn duplicate_fixture_across_client_modes(id: &'static str, game: MonsGame) -> Vec<TriageFixture> {
     vec![
-        TriageFixture {
+        triage_fixture(
             id,
-            game: game.clone_for_simulation(),
-            mode: SmartAutomovePreference::Fast,
-            opening_book_driven: false,
-        },
-        TriageFixture {
-            id,
-            game,
-            mode: SmartAutomovePreference::Normal,
-            opening_book_driven: false,
-        },
+            game.clone_for_simulation(),
+            SmartAutomovePreference::Fast,
+            None,
+        ),
+        triage_fixture(id, game, SmartAutomovePreference::Normal, None),
     ]
 }
 
 pub(super) fn generic_triage_surface_fixtures(surface: TriageSurface) -> Vec<TriageFixture> {
     match surface {
-        TriageSurface::ReplyRisk => {
-            duplicate_fixture_across_client_modes("reply_risk_handoff", reply_risk_triage_game())
-        }
-        TriageSurface::Supermana => duplicate_fixture_across_client_modes(
-            "safe_supermana_progress",
-            supermana_progress_triage_game(),
-        ),
-        TriageSurface::OpponentMana => duplicate_fixture_across_client_modes(
-            "safe_opponent_mana_progress",
-            opponent_mana_progress_triage_game(),
-        ),
+        TriageSurface::ReplyRisk => vec![
+            triage_fixture(
+                "reply_risk_supermana_handoff",
+                reply_risk_supermana_handoff_triage_game(),
+                SmartAutomovePreference::Fast,
+                Some(reply_risk_probe_config),
+            ),
+            triage_fixture(
+                "reply_risk_opponent_handoff",
+                reply_risk_opponent_mana_handoff_triage_game(),
+                SmartAutomovePreference::Fast,
+                Some(reply_risk_probe_config),
+            ),
+            triage_fixture(
+                "reply_risk_roundtrip_probe",
+                reply_risk_triage_game(),
+                SmartAutomovePreference::Fast,
+                Some(reply_risk_probe_config),
+            ),
+        ],
+        TriageSurface::Supermana => vec![
+            triage_fixture(
+                "supermana_threat_cutoff",
+                same_turn_supermana_threat_triage_game(),
+                SmartAutomovePreference::Normal,
+                Some(root_cutoff_config),
+            ),
+            triage_fixture(
+                "supermana_spirit_conversion_cutoff",
+                unsafe_direct_pickup_supermana_triage_game(),
+                SmartAutomovePreference::Normal,
+                Some(root_cutoff_config),
+            ),
+            triage_fixture(
+                "supermana_exact_progress",
+                exact_safe_supermana_progress_triage_game(),
+                SmartAutomovePreference::Normal,
+                None,
+            ),
+        ],
+        TriageSurface::OpponentMana => vec![
+            triage_fixture(
+                "opponent_mana_reply_risk_handoff",
+                reply_risk_opponent_mana_handoff_triage_game(),
+                SmartAutomovePreference::Normal,
+                Some(reply_risk_probe_config),
+            ),
+            triage_fixture(
+                "opponent_mana_spirit_setup",
+                spirit_setup_triage_game(),
+                SmartAutomovePreference::Normal,
+                None,
+            ),
+            triage_fixture(
+                "opponent_mana_same_turn_threat",
+                same_turn_opponent_mana_threat_triage_game(),
+                SmartAutomovePreference::Normal,
+                None,
+            ),
+            triage_fixture(
+                "opponent_mana_exact_progress",
+                exact_safe_opponent_mana_progress_triage_game(),
+                SmartAutomovePreference::Normal,
+                None,
+            ),
+        ],
         TriageSurface::SpiritSetup => duplicate_fixture_across_client_modes(
             "spirit_setup_progress",
             spirit_setup_triage_game(),
@@ -2176,6 +2581,7 @@ fn opening_black_reply_triage_fixture(
         game,
         mode: SmartAutomovePreference::Pro,
         opening_book_driven: true,
+        config_tweak: None,
     }
 }
 
@@ -2221,24 +2627,28 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             game: supermana_progress_triage_game(),
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
+            config_tweak: None,
         },
         TriageFixture {
             id: "primary_opponent_mana_progress",
             game: opponent_mana_progress_triage_game(),
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
+            config_tweak: None,
         },
         TriageFixture {
             id: "primary_spirit_setup",
             game: spirit_setup_triage_game(),
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
+            config_tweak: None,
         },
         TriageFixture {
             id: "primary_drainer_safety",
             game: drainer_safety_triage_game(),
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
+            config_tweak: None,
         },
     ]
 }

@@ -161,6 +161,156 @@ fn progressive_stop_keeps_strong_first_screen_tier_alive() {
     assert_eq!(stop, None);
 }
 
+#[test]
+fn progressive_stop_targeted_fast_accepts_fast_win_with_normal_non_regression() {
+    let budgets = client_budgets().to_vec();
+    let mut mode_stats = std::collections::HashMap::<&'static str, MatchupStats>::new();
+    mode_stats.insert(
+        "fast",
+        MatchupStats {
+            wins: 5,
+            losses: 3,
+            draws: 0,
+        },
+    );
+    mode_stats.insert(
+        "normal",
+        MatchupStats {
+            wins: 4,
+            losses: 4,
+            draws: 0,
+        },
+    );
+
+    let stop = evaluate_progressive_stop(
+        budgets.as_slice(),
+        &mode_stats,
+        0.0625,
+        2,
+        &ProgressiveDuelConfig {
+            first_tier_signal_games_per_seed: Some(2),
+            first_tier_signal_aggregate_delta_min: 0.0,
+            first_tier_signal_mode_delta_min: 0.125,
+            first_tier_target_confidence_min: 0.60,
+            first_tier_signal_mode_floor: 0.0,
+            promotion_target_mode: Some(PromotionTargetMode::Fast),
+            ..ProgressiveDuelConfig::default()
+        },
+    );
+
+    assert_eq!(stop, None);
+}
+
+#[test]
+fn progressive_stop_targeted_fast_rejects_fast_win_with_normal_regression() {
+    let budgets = client_budgets().to_vec();
+    let mut mode_stats = std::collections::HashMap::<&'static str, MatchupStats>::new();
+    mode_stats.insert(
+        "fast",
+        MatchupStats {
+            wins: 5,
+            losses: 3,
+            draws: 0,
+        },
+    );
+    mode_stats.insert(
+        "normal",
+        MatchupStats {
+            wins: 3,
+            losses: 5,
+            draws: 0,
+        },
+    );
+
+    let stop = evaluate_progressive_stop(
+        budgets.as_slice(),
+        &mode_stats,
+        0.0,
+        2,
+        &ProgressiveDuelConfig {
+            first_tier_signal_games_per_seed: Some(2),
+            first_tier_signal_aggregate_delta_min: 0.0,
+            first_tier_signal_mode_delta_min: 0.125,
+            first_tier_target_confidence_min: 0.60,
+            first_tier_signal_mode_floor: 0.0,
+            promotion_target_mode: Some(PromotionTargetMode::Fast),
+            ..ProgressiveDuelConfig::default()
+        },
+    );
+
+    assert_eq!(stop, Some(ProgressiveStopReason::EarlyReject));
+}
+
+#[test]
+fn progressive_stop_targeted_fast_promotes_without_off_target_improvement() {
+    let budgets = client_budgets().to_vec();
+    let mut mode_stats = std::collections::HashMap::<&'static str, MatchupStats>::new();
+    mode_stats.insert(
+        "fast",
+        MatchupStats {
+            wins: 45,
+            losses: 19,
+            draws: 0,
+        },
+    );
+    mode_stats.insert(
+        "normal",
+        MatchupStats {
+            wins: 31,
+            losses: 33,
+            draws: 0,
+        },
+    );
+
+    let stop = evaluate_progressive_stop(
+        budgets.as_slice(),
+        &mode_stats,
+        0.09375,
+        32,
+        &ProgressiveDuelConfig {
+            promotion_target_mode: Some(PromotionTargetMode::Fast),
+            ..ProgressiveDuelConfig::default()
+        },
+    );
+
+    assert_eq!(stop, Some(ProgressiveStopReason::EarlyPromote));
+}
+
+#[test]
+fn progressive_stop_targeted_fast_does_not_promote_off_target_winner() {
+    let budgets = client_budgets().to_vec();
+    let mut mode_stats = std::collections::HashMap::<&'static str, MatchupStats>::new();
+    mode_stats.insert(
+        "fast",
+        MatchupStats {
+            wins: 32,
+            losses: 32,
+            draws: 0,
+        },
+    );
+    mode_stats.insert(
+        "normal",
+        MatchupStats {
+            wins: 45,
+            losses: 19,
+            draws: 0,
+        },
+    );
+
+    let stop = evaluate_progressive_stop(
+        budgets.as_slice(),
+        &mode_stats,
+        0.1016,
+        32,
+        &ProgressiveDuelConfig {
+            promotion_target_mode: Some(PromotionTargetMode::Fast),
+            ..ProgressiveDuelConfig::default()
+        },
+    );
+
+    assert_eq!(stop, Some(ProgressiveStopReason::MaxGamesReached));
+}
+
 fn triage_surface_from_env() -> TriageSurface {
     let value = env::var("SMART_TRIAGE_SURFACE").unwrap_or_else(|_| {
         panic!(
@@ -181,6 +331,225 @@ fn generic_signal_triage_passes(target_changed: usize) -> bool {
 
 fn pro_signal_triage_passes(target_changed: usize, off_target_changed: usize) -> bool {
     target_changed > 0 && off_target_changed <= 1
+}
+
+fn triage_game_with_items(
+    items: Vec<(Location, Item)>,
+    active_color: Color,
+    turn_number: i32,
+) -> MonsGame {
+    let mut game = MonsGame::new(false);
+    game.board = Board::new_with_items(
+        items.into_iter()
+            .collect::<std::collections::HashMap<_, _>>(),
+    );
+    game.active_color = active_color;
+    game.turn_number = turn_number;
+    game.actions_used_count = 0;
+    game.mana_moves_count = 0;
+    game.mons_moves_count = 0;
+    game.white_score = 0;
+    game.black_score = 0;
+    game.white_potions_count = 0;
+    game.black_potions_count = 0;
+    game
+}
+
+fn triage_root_evaluation(candidate: &ScoredRootMove, score: i32) -> RootEvaluation {
+    RootEvaluation {
+        score,
+        efficiency: candidate.efficiency,
+        inputs: candidate.inputs.clone(),
+        game: candidate.game.clone(),
+        wins_immediately: candidate.wins_immediately,
+        attacks_opponent_drainer: candidate.attacks_opponent_drainer,
+        own_drainer_vulnerable: candidate.own_drainer_vulnerable,
+        own_drainer_walk_vulnerable: candidate.own_drainer_walk_vulnerable,
+        spirit_development: candidate.spirit_development,
+        keeps_awake_spirit_on_base: candidate.keeps_awake_spirit_on_base,
+        mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
+        has_roundtrip: candidate.has_roundtrip,
+        scores_supermana_this_turn: candidate.scores_supermana_this_turn,
+        scores_opponent_mana_this_turn: candidate.scores_opponent_mana_this_turn,
+        safe_supermana_pickup_now: candidate.safe_supermana_pickup_now,
+        safe_opponent_mana_pickup_now: candidate.safe_opponent_mana_pickup_now,
+        safe_supermana_progress_steps: candidate.safe_supermana_progress_steps,
+        safe_opponent_mana_progress_steps: candidate.safe_opponent_mana_progress_steps,
+        score_path_best_steps: candidate.score_path_best_steps,
+        same_turn_score_window_value: candidate.same_turn_score_window_value,
+        spirit_same_turn_score_setup_now: candidate.spirit_same_turn_score_setup_now,
+        spirit_own_mana_setup_now: candidate.spirit_own_mana_setup_now,
+        supermana_progress: candidate.supermana_progress,
+        opponent_mana_progress: candidate.opponent_mana_progress,
+        interview_soft_priority: candidate.interview_soft_priority,
+        classes: candidate.classes,
+    }
+}
+
+fn calibration_runtime_config(
+    profile_name: &str,
+    game: &MonsGame,
+    mode: SmartAutomovePreference,
+) -> SmartSearchConfig {
+    let base = SearchBudget::from_preference(mode).runtime_config_for_game(game);
+    profile_runtime_config_for_name(profile_name, game, base)
+        .unwrap_or_else(|| panic!("profile '{}' does not expose a runtime config", profile_name))
+}
+
+fn reply_risk_calibration_probe(profile_name: &str) -> i32 {
+    let white_drainer = Mon::new(MonKind::Drainer, Color::White, 0);
+    let black_drainer = Mon::new(MonKind::Drainer, Color::Black, 0);
+    let game = triage_game_with_items(
+        vec![
+            (Location::new(4, 0), Item::Mon { mon: white_drainer }),
+            (Location::new(0, 5), Item::Mon { mon: black_drainer }),
+        ],
+        Color::White,
+        2,
+    );
+    let config =
+        calibration_runtime_config(profile_name, &game, SmartAutomovePreference::Fast);
+    let events = vec![
+        Event::MonMove {
+            item: Item::Mon { mon: white_drainer },
+            from: Location::new(4, 0),
+            to: Location::new(5, 0),
+        },
+        Event::MonMove {
+            item: Item::Mon { mon: white_drainer },
+            from: Location::new(5, 0),
+            to: Location::new(4, 0),
+        },
+    ];
+    MonsGameModel::move_efficiency_delta(
+        &game,
+        &game,
+        Color::White,
+        events.as_slice(),
+        true,
+        true,
+        false,
+        false,
+        false,
+        config.root_backtrack_penalty,
+        config.root_mana_handoff_penalty,
+    )
+}
+
+fn opponent_mana_calibration_probe(profile_name: &str) -> usize {
+    let mut game = triage_game_with_items(
+        vec![
+            (
+                Location::new(4, 0),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(7, 0),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(5, 2),
+                Item::Mana {
+                    mana: Mana::Regular(Color::Black),
+                },
+            ),
+            (
+                Location::new(0, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    );
+    game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+    let config =
+        calibration_runtime_config(profile_name, &game, SmartAutomovePreference::Normal);
+    let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+        &game,
+        Color::White,
+        config.enable_enhanced_drainer_vulnerability,
+    );
+    let mut progress = MonsGameModel::build_scored_root_move(
+        &game,
+        Color::White,
+        config,
+        own_drainer_vulnerable_before,
+        &[
+            Input::Location(Location::new(4, 0)),
+            Input::Location(Location::new(5, 2)),
+            Input::Location(Location::new(6, 1)),
+        ],
+    )
+    .expect("spirit opponent mana handoff inputs should build a scored root");
+    progress.opponent_mana_progress = true;
+    progress.safe_opponent_mana_progress_steps = 1;
+    progress.mana_handoff_to_opponent = false;
+    progress.has_roundtrip = false;
+
+    let mut risky = progress.clone();
+    risky.inputs = vec![Input::Location(Location::new(0, 0))];
+    risky.opponent_mana_progress = false;
+    risky.safe_opponent_mana_progress_steps = 6;
+    risky.mana_handoff_to_opponent = true;
+    risky.has_roundtrip = true;
+    risky.interview_soft_priority = 0;
+
+    MonsGameModel::pick_root_move_with_reply_risk_guard(
+        &game,
+        &[
+            triage_root_evaluation(&risky, 200),
+            triage_root_evaluation(&progress, 40),
+        ],
+        &[0, 1],
+        Color::White,
+        config,
+    )
+    .expect("reply-risk calibration probe should pick one of the synthetic roots")
+}
+
+fn supermana_calibration_probe(profile_name: &str) -> bool {
+    let game = triage_game_with_items(
+        vec![
+            (
+                Location::new(6, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(5, 5),
+                Item::Mana {
+                    mana: Mana::Supermana,
+                },
+            ),
+            (
+                Location::new(0, 10),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    );
+    let config =
+        calibration_runtime_config(profile_name, &game, SmartAutomovePreference::Normal);
+    let (_, events) = MonsGameModel::apply_inputs_for_search_with_events(
+        &game,
+        &[
+            Input::Location(Location::new(6, 5)),
+            Input::Location(Location::new(5, 5)),
+        ],
+    )
+    .expect("shortening supermana path inputs should be legal");
+    MonsGameModel::should_use_root_exact_summary_for_transition(events.as_slice(), config)
 }
 
 #[test]
@@ -211,6 +580,176 @@ fn pro_signal_triage_accepts_primary_pro_with_stable_opening_reply() {
     assert!(pro_signal_triage_passes(1, 0));
 }
 
+#[test]
+fn triage_calibration_probe_detects_reply_risk_profile_delta() {
+    let candidate = reply_risk_calibration_probe(
+        "runtime_pre_fast_root_quality_v1_normal_conversion_v3",
+    );
+    let baseline = reply_risk_calibration_probe("runtime_release_safe_pre_exact");
+    assert!(candidate > baseline);
+}
+
+#[test]
+fn triage_calibration_probe_detects_opponent_mana_profile_delta() {
+    let candidate = opponent_mana_calibration_probe(
+        "runtime_pre_fast_root_quality_v1_normal_conversion_v3",
+    );
+    let baseline = opponent_mana_calibration_probe("runtime_release_safe_pre_exact");
+    assert_ne!(candidate, baseline);
+}
+
+#[test]
+fn triage_calibration_probe_detects_supermana_profile_delta() {
+    let candidate = supermana_calibration_probe("runtime_eff_exact_lite_v1");
+    let baseline = supermana_calibration_probe("runtime_release_safe_pre_exact");
+    assert!(candidate);
+    assert!(!baseline);
+}
+
+fn maybe_run_runtime_preflight_checks(
+    skip_runtime_preflight: bool,
+    run_stage1: impl FnOnce(),
+    run_exact: impl FnOnce(),
+) {
+    if skip_runtime_preflight {
+        return;
+    }
+    run_stage1();
+    run_exact();
+}
+
+#[test]
+fn runtime_preflight_checks_run_when_not_skipped() {
+    let stage1_calls = std::cell::Cell::new(0);
+    let exact_calls = std::cell::Cell::new(0);
+
+    maybe_run_runtime_preflight_checks(
+        false,
+        || stage1_calls.set(stage1_calls.get() + 1),
+        || exact_calls.set(exact_calls.get() + 1),
+    );
+
+    assert_eq!(stage1_calls.get(), 1);
+    assert_eq!(exact_calls.get(), 1);
+}
+
+#[test]
+fn runtime_preflight_checks_are_skipped_when_requested() {
+    let stage1_calls = std::cell::Cell::new(0);
+    let exact_calls = std::cell::Cell::new(0);
+
+    maybe_run_runtime_preflight_checks(
+        true,
+        || stage1_calls.set(stage1_calls.get() + 1),
+        || exact_calls.set(exact_calls.get() + 1),
+    );
+
+    assert_eq!(stage1_calls.get(), 0);
+    assert_eq!(exact_calls.get(), 0);
+}
+
+#[test]
+fn reply_risk_triage_detects_shortlist_signal_when_selected_root_is_unchanged() {
+    let risky_root = TriageRootDigestEntry {
+        input_fen: "l4,0;l5,2;l6,1".to_string(),
+        heuristic: 100,
+        efficiency: 12,
+        wins_immediately: false,
+        attacks_opponent_drainer: false,
+        own_drainer_vulnerable: false,
+        own_drainer_walk_vulnerable: false,
+        spirit_development: false,
+        mana_handoff_to_opponent: true,
+        has_roundtrip: true,
+        scores_supermana_this_turn: false,
+        scores_opponent_mana_this_turn: false,
+        safe_supermana_pickup_now: false,
+        safe_opponent_mana_pickup_now: false,
+        safe_supermana_progress_steps: 15,
+        safe_opponent_mana_progress_steps: 15,
+        score_path_best_steps: 20,
+        same_turn_score_window_value: 0,
+        spirit_same_turn_score_setup_now: false,
+        spirit_own_mana_setup_now: false,
+        supermana_progress: false,
+        opponent_mana_progress: false,
+        interview_soft_priority: 0,
+    };
+    let mut clean_root = risky_root.clone();
+    clean_root.input_fen = "l7,0;l6,1".to_string();
+    clean_root.mana_handoff_to_opponent = false;
+    clean_root.has_roundtrip = false;
+
+    let baseline = TriageSignalSnapshot {
+        selected_rank: 0,
+        selected_root: risky_root.clone(),
+        top_root_count: 2,
+        top_roots: vec![risky_root.clone(), clean_root.clone()],
+        reply_risk_shortlist: Some(TriageReplyRiskShortlistDigest {
+            preferred_root_input_fen: risky_root.input_fen.clone(),
+            shortlisted_roots: vec![
+                TriageReplyRiskShortlistEntry {
+                    input_fen: risky_root.input_fen.clone(),
+                    mana_handoff_to_opponent: true,
+                    has_roundtrip: true,
+                    own_drainer_vulnerable: false,
+                    own_drainer_walk_vulnerable: false,
+                    allows_immediate_opponent_win: false,
+                    opponent_reaches_match_point: false,
+                    worst_reply_score: 120,
+                },
+                TriageReplyRiskShortlistEntry {
+                    input_fen: clean_root.input_fen.clone(),
+                    mana_handoff_to_opponent: false,
+                    has_roundtrip: false,
+                    own_drainer_vulnerable: false,
+                    own_drainer_walk_vulnerable: false,
+                    allows_immediate_opponent_win: false,
+                    opponent_reaches_match_point: false,
+                    worst_reply_score: 120,
+                },
+            ],
+        }),
+    };
+    let candidate = TriageSignalSnapshot {
+        selected_rank: 0,
+        selected_root: risky_root.clone(),
+        top_root_count: 2,
+        top_roots: vec![risky_root, clean_root.clone()],
+        reply_risk_shortlist: Some(TriageReplyRiskShortlistDigest {
+            preferred_root_input_fen: clean_root.input_fen.clone(),
+            shortlisted_roots: vec![
+                TriageReplyRiskShortlistEntry {
+                    input_fen: "l4,0;l5,2;l6,1".to_string(),
+                    mana_handoff_to_opponent: true,
+                    has_roundtrip: true,
+                    own_drainer_vulnerable: false,
+                    own_drainer_walk_vulnerable: false,
+                    allows_immediate_opponent_win: false,
+                    opponent_reaches_match_point: false,
+                    worst_reply_score: 120,
+                },
+                TriageReplyRiskShortlistEntry {
+                    input_fen: clean_root.input_fen,
+                    mana_handoff_to_opponent: false,
+                    has_roundtrip: false,
+                    own_drainer_vulnerable: false,
+                    own_drainer_walk_vulnerable: false,
+                    allows_immediate_opponent_win: false,
+                    opponent_reaches_match_point: false,
+                    worst_reply_score: 120,
+                },
+            ],
+        }),
+    };
+
+    assert!(triage_surface_signal_changed(
+        TriageSurface::ReplyRisk,
+        &candidate,
+        &baseline,
+    ));
+}
+
 fn with_env_override<T>(name: &str, value: &str, f: impl FnOnce() -> T) -> T {
     let previous = env::var(name).ok();
     env::set_var(name, value);
@@ -223,7 +762,216 @@ fn with_env_override<T>(name: &str, value: &str, f: impl FnOnce() -> T) -> T {
     result
 }
 
-fn triage_fixture_selected_fen(selector: AutomoveSelector, fixture: &TriageFixture) -> String {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TriageRootDigestEntry {
+    input_fen: String,
+    heuristic: i32,
+    efficiency: i32,
+    wins_immediately: bool,
+    attacks_opponent_drainer: bool,
+    own_drainer_vulnerable: bool,
+    own_drainer_walk_vulnerable: bool,
+    spirit_development: bool,
+    mana_handoff_to_opponent: bool,
+    has_roundtrip: bool,
+    scores_supermana_this_turn: bool,
+    scores_opponent_mana_this_turn: bool,
+    safe_supermana_pickup_now: bool,
+    safe_opponent_mana_pickup_now: bool,
+    safe_supermana_progress_steps: i32,
+    safe_opponent_mana_progress_steps: i32,
+    score_path_best_steps: i32,
+    same_turn_score_window_value: i32,
+    spirit_same_turn_score_setup_now: bool,
+    spirit_own_mana_setup_now: bool,
+    supermana_progress: bool,
+    opponent_mana_progress: bool,
+    interview_soft_priority: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TriageReplyRiskShortlistEntry {
+    input_fen: String,
+    mana_handoff_to_opponent: bool,
+    has_roundtrip: bool,
+    own_drainer_vulnerable: bool,
+    own_drainer_walk_vulnerable: bool,
+    allows_immediate_opponent_win: bool,
+    opponent_reaches_match_point: bool,
+    worst_reply_score: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TriageReplyRiskShortlistDigest {
+    preferred_root_input_fen: String,
+    shortlisted_roots: Vec<TriageReplyRiskShortlistEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TriageSignalSnapshot {
+    selected_rank: usize,
+    selected_root: TriageRootDigestEntry,
+    top_root_count: usize,
+    top_roots: Vec<TriageRootDigestEntry>,
+    reply_risk_shortlist: Option<TriageReplyRiskShortlistDigest>,
+}
+
+const TRIAGE_TOP_ROOT_DIGEST_SIZE: usize = 3;
+const TRIAGE_REPLY_RISK_SHORTLIST_DIGEST_SIZE: usize = 6;
+const TRIAGE_HEURISTIC_DELTA_MIN: i32 = 20;
+const TRIAGE_EFFICIENCY_DELTA_MIN: i32 = 8;
+const TRIAGE_INTERVIEW_PRIORITY_DELTA_MIN: i32 = 16;
+const TRIAGE_REPLY_RISK_WORST_REPLY_DELTA_MIN: i32 = 20;
+
+fn triage_root_digest_entry(root: &ScoredRootMove) -> TriageRootDigestEntry {
+    TriageRootDigestEntry {
+        input_fen: Input::fen_from_array(&root.inputs),
+        heuristic: root.heuristic,
+        efficiency: root.efficiency,
+        wins_immediately: root.wins_immediately,
+        attacks_opponent_drainer: root.attacks_opponent_drainer,
+        own_drainer_vulnerable: root.own_drainer_vulnerable,
+        own_drainer_walk_vulnerable: root.own_drainer_walk_vulnerable,
+        spirit_development: root.spirit_development,
+        mana_handoff_to_opponent: root.mana_handoff_to_opponent,
+        has_roundtrip: root.has_roundtrip,
+        scores_supermana_this_turn: root.scores_supermana_this_turn,
+        scores_opponent_mana_this_turn: root.scores_opponent_mana_this_turn,
+        safe_supermana_pickup_now: root.safe_supermana_pickup_now,
+        safe_opponent_mana_pickup_now: root.safe_opponent_mana_pickup_now,
+        safe_supermana_progress_steps: root.safe_supermana_progress_steps,
+        safe_opponent_mana_progress_steps: root.safe_opponent_mana_progress_steps,
+        score_path_best_steps: root.score_path_best_steps,
+        same_turn_score_window_value: root.same_turn_score_window_value,
+        spirit_same_turn_score_setup_now: root.spirit_same_turn_score_setup_now,
+        spirit_own_mana_setup_now: root.spirit_own_mana_setup_now,
+        supermana_progress: root.supermana_progress,
+        opponent_mana_progress: root.opponent_mana_progress,
+        interview_soft_priority: root.interview_soft_priority,
+    }
+}
+
+fn triage_meaningful_i32_delta(candidate: i32, baseline: i32, min_delta: i32) -> bool {
+    candidate.abs_diff(baseline) >= min_delta.max(0) as u32
+}
+
+fn triage_reply_risk_shortlist_entry(
+    root: &ScoredRootMove,
+    snapshot: RootReplyRiskSnapshot,
+) -> TriageReplyRiskShortlistEntry {
+    TriageReplyRiskShortlistEntry {
+        input_fen: Input::fen_from_array(&root.inputs),
+        mana_handoff_to_opponent: root.mana_handoff_to_opponent,
+        has_roundtrip: root.has_roundtrip,
+        own_drainer_vulnerable: root.own_drainer_vulnerable,
+        own_drainer_walk_vulnerable: root.own_drainer_walk_vulnerable,
+        allows_immediate_opponent_win: snapshot.allows_immediate_opponent_win,
+        opponent_reaches_match_point: snapshot.opponent_reaches_match_point,
+        worst_reply_score: snapshot.worst_reply_score,
+    }
+}
+
+fn triage_reply_risk_shortlist_digest(
+    game: &MonsGame,
+    ranked_roots: &[ScoredRootMove],
+    config: SmartSearchConfig,
+) -> Option<TriageReplyRiskShortlistDigest> {
+    if !config.enable_root_reply_risk_guard || ranked_roots.is_empty() {
+        return None;
+    }
+
+    let shortlist_len = config
+        .root_reply_risk_shortlist_max
+        .max(1)
+        .min(ranked_roots.len())
+        .min(TRIAGE_REPLY_RISK_SHORTLIST_DIGEST_SIZE);
+    let shortlisted_roots = ranked_roots
+        .iter()
+        .take(shortlist_len)
+        .collect::<Vec<_>>();
+    let root_node_budget = ((config.max_visited_nodes
+        * config.root_reply_risk_node_share_bp.max(0) as usize)
+        / 10_000)
+        .max(shortlisted_roots.len())
+        .max(1);
+    let per_root_reply_limit = (root_node_budget / shortlisted_roots.len().max(1))
+        .max(1)
+        .min(config.root_reply_risk_reply_limit.max(1));
+    let digest_entries = shortlisted_roots
+        .iter()
+        .map(|root| {
+            let snapshot = MonsGameModel::root_reply_risk_snapshot(
+                &root.game,
+                game.active_color,
+                config,
+                per_root_reply_limit,
+            );
+            triage_reply_risk_shortlist_entry(root, snapshot)
+        })
+        .collect::<Vec<_>>();
+    let shortlisted_evaluations = shortlisted_roots
+        .iter()
+        .map(|root| triage_root_evaluation(root, 0))
+        .collect::<Vec<_>>();
+    let shortlist_indices = (0..shortlisted_evaluations.len()).collect::<Vec<_>>();
+    let preferred_index = MonsGameModel::pick_root_move_with_reply_risk_guard(
+        game,
+        shortlisted_evaluations.as_slice(),
+        shortlist_indices.as_slice(),
+        game.active_color,
+        config,
+    )
+    .unwrap_or(0);
+
+    Some(TriageReplyRiskShortlistDigest {
+        preferred_root_input_fen: digest_entries[preferred_index].input_fen.clone(),
+        shortlisted_roots: digest_entries,
+    })
+}
+
+fn triage_reply_risk_shortlist_digest_changed(
+    candidate: Option<&TriageReplyRiskShortlistDigest>,
+    baseline: Option<&TriageReplyRiskShortlistDigest>,
+) -> bool {
+    match (candidate, baseline) {
+        (Some(candidate), Some(baseline)) => {
+            candidate.preferred_root_input_fen != baseline.preferred_root_input_fen
+                || candidate.shortlisted_roots.len() != baseline.shortlisted_roots.len()
+                || candidate
+                    .shortlisted_roots
+                    .iter()
+                    .zip(baseline.shortlisted_roots.iter())
+                    .any(|(candidate_root, baseline_root)| {
+                        candidate_root.input_fen != baseline_root.input_fen
+                            || candidate_root.mana_handoff_to_opponent
+                                != baseline_root.mana_handoff_to_opponent
+                            || candidate_root.has_roundtrip != baseline_root.has_roundtrip
+                            || candidate_root.own_drainer_vulnerable
+                                != baseline_root.own_drainer_vulnerable
+                            || candidate_root.own_drainer_walk_vulnerable
+                                != baseline_root.own_drainer_walk_vulnerable
+                            || candidate_root.allows_immediate_opponent_win
+                                != baseline_root.allows_immediate_opponent_win
+                            || candidate_root.opponent_reaches_match_point
+                                != baseline_root.opponent_reaches_match_point
+                            || triage_meaningful_i32_delta(
+                                candidate_root.worst_reply_score,
+                                baseline_root.worst_reply_score,
+                                TRIAGE_REPLY_RISK_WORST_REPLY_DELTA_MIN,
+                            )
+                    })
+        }
+        (None, None) => false,
+        _ => true,
+    }
+}
+
+fn triage_fixture_snapshot(
+    surface: TriageSurface,
+    profile_name: &str,
+    selector: AutomoveSelector,
+    fixture: &TriageFixture,
+) -> TriageSignalSnapshot {
     with_env_override(
         "SMART_USE_WHITE_OPENING_BOOK",
         if fixture.opening_book_driven {
@@ -232,10 +980,24 @@ fn triage_fixture_selected_fen(selector: AutomoveSelector, fixture: &TriageFixtu
             "false"
         },
         || {
-            let config = SearchBudget::from_preference(fixture.mode).runtime_config_for_game(
-                &fixture.game,
-            );
-            let inputs = select_inputs_with_runtime_fallback(selector, &fixture.game, config);
+            let base_config = fixture
+                .config_tweak
+                .map(|tweak| {
+                    tweak(
+                        SearchBudget::from_preference(fixture.mode)
+                            .runtime_config_for_game(&fixture.game),
+                    )
+                })
+                .unwrap_or_else(|| {
+                    SearchBudget::from_preference(fixture.mode).runtime_config_for_game(
+                        &fixture.game,
+                    )
+                });
+            let resolved_config =
+                profile_runtime_config_for_name(profile_name, &fixture.game, base_config)
+                    .unwrap_or(base_config);
+            let inputs =
+                select_inputs_with_runtime_fallback(selector, &fixture.game, base_config);
             assert!(
                 !inputs.is_empty(),
                 "triage fixture '{}' produced no legal move for mode {}",
@@ -250,13 +1012,209 @@ fn triage_fixture_selected_fen(selector: AutomoveSelector, fixture: &TriageFixtu
                         fixture.mode.as_api_value()
                     )
                 });
-            Input::fen_from_array(&inputs)
+            let input_fen = Input::fen_from_array(&inputs);
+            let ranked_roots = MonsGameModel::ranked_root_moves(
+                &fixture.game,
+                fixture.game.active_color,
+                resolved_config,
+            );
+            let selected_rank = ranked_roots
+                .iter()
+                .position(|root| Input::fen_from_array(&root.inputs) == input_fen)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "triage fixture '{}' selected move missing from ranked roots in mode {}",
+                        fixture.id,
+                        fixture.mode.as_api_value()
+                    )
+                });
+            TriageSignalSnapshot {
+                selected_rank,
+                selected_root: triage_root_digest_entry(&ranked_roots[selected_rank]),
+                top_root_count: ranked_roots.len(),
+                top_roots: ranked_roots
+                    .iter()
+                    .take(TRIAGE_TOP_ROOT_DIGEST_SIZE)
+                    .map(triage_root_digest_entry)
+                    .collect(),
+                reply_risk_shortlist: match surface {
+                    TriageSurface::ReplyRisk => triage_reply_risk_shortlist_digest(
+                        &fixture.game,
+                        ranked_roots.as_slice(),
+                        resolved_config,
+                    ),
+                    _ => None,
+                },
+            }
         },
     )
 }
 
+fn triage_root_digest_changed(
+    surface: TriageSurface,
+    candidate: &TriageRootDigestEntry,
+    baseline: &TriageRootDigestEntry,
+) -> bool {
+    if candidate.input_fen != baseline.input_fen {
+        return true;
+    }
+
+    match surface {
+        TriageSurface::ReplyRisk => {
+            candidate.mana_handoff_to_opponent != baseline.mana_handoff_to_opponent
+                || candidate.has_roundtrip != baseline.has_roundtrip
+                || candidate.own_drainer_vulnerable != baseline.own_drainer_vulnerable
+                || candidate.own_drainer_walk_vulnerable != baseline.own_drainer_walk_vulnerable
+                || triage_meaningful_i32_delta(
+                    candidate.heuristic,
+                    baseline.heuristic,
+                    TRIAGE_HEURISTIC_DELTA_MIN,
+                )
+                || triage_meaningful_i32_delta(
+                    candidate.efficiency,
+                    baseline.efficiency,
+                    TRIAGE_EFFICIENCY_DELTA_MIN,
+                )
+                || triage_meaningful_i32_delta(
+                    candidate.interview_soft_priority,
+                    baseline.interview_soft_priority,
+                    TRIAGE_INTERVIEW_PRIORITY_DELTA_MIN,
+                )
+        }
+        TriageSurface::Supermana => {
+            candidate.supermana_progress != baseline.supermana_progress
+                || candidate.scores_supermana_this_turn != baseline.scores_supermana_this_turn
+                || candidate.safe_supermana_pickup_now != baseline.safe_supermana_pickup_now
+                || candidate.safe_supermana_progress_steps
+                    != baseline.safe_supermana_progress_steps
+                || candidate.spirit_own_mana_setup_now != baseline.spirit_own_mana_setup_now
+                || candidate.same_turn_score_window_value != baseline.same_turn_score_window_value
+                || triage_meaningful_i32_delta(
+                    candidate.heuristic,
+                    baseline.heuristic,
+                    TRIAGE_HEURISTIC_DELTA_MIN,
+                )
+                || triage_meaningful_i32_delta(
+                    candidate.interview_soft_priority,
+                    baseline.interview_soft_priority,
+                    TRIAGE_INTERVIEW_PRIORITY_DELTA_MIN,
+                )
+        }
+        TriageSurface::OpponentMana => {
+            candidate.opponent_mana_progress != baseline.opponent_mana_progress
+                || candidate.scores_opponent_mana_this_turn
+                    != baseline.scores_opponent_mana_this_turn
+                || candidate.safe_opponent_mana_pickup_now
+                    != baseline.safe_opponent_mana_pickup_now
+                || candidate.safe_opponent_mana_progress_steps
+                    != baseline.safe_opponent_mana_progress_steps
+                || candidate.spirit_own_mana_setup_now != baseline.spirit_own_mana_setup_now
+                || triage_meaningful_i32_delta(
+                    candidate.heuristic,
+                    baseline.heuristic,
+                    TRIAGE_HEURISTIC_DELTA_MIN,
+                )
+                || triage_meaningful_i32_delta(
+                    candidate.interview_soft_priority,
+                    baseline.interview_soft_priority,
+                    TRIAGE_INTERVIEW_PRIORITY_DELTA_MIN,
+                )
+        }
+        TriageSurface::SpiritSetup => {
+            candidate.spirit_development != baseline.spirit_development
+                || candidate.spirit_own_mana_setup_now != baseline.spirit_own_mana_setup_now
+                || candidate.spirit_same_turn_score_setup_now
+                    != baseline.spirit_same_turn_score_setup_now
+                || candidate.score_path_best_steps != baseline.score_path_best_steps
+                || candidate.same_turn_score_window_value != baseline.same_turn_score_window_value
+                || triage_meaningful_i32_delta(
+                    candidate.heuristic,
+                    baseline.heuristic,
+                    TRIAGE_HEURISTIC_DELTA_MIN,
+                )
+        }
+        TriageSurface::DrainerSafety => {
+            candidate.own_drainer_vulnerable != baseline.own_drainer_vulnerable
+                || candidate.own_drainer_walk_vulnerable != baseline.own_drainer_walk_vulnerable
+                || candidate.mana_handoff_to_opponent != baseline.mana_handoff_to_opponent
+                || candidate.has_roundtrip != baseline.has_roundtrip
+                || candidate.attacks_opponent_drainer != baseline.attacks_opponent_drainer
+        }
+        TriageSurface::OpeningReply | TriageSurface::PrimaryPro => false,
+        TriageSurface::CacheReuse => false,
+    }
+}
+
+fn triage_top_root_digest_changed(
+    surface: TriageSurface,
+    candidate: &[TriageRootDigestEntry],
+    baseline: &[TriageRootDigestEntry],
+) -> bool {
+    candidate.len() != baseline.len()
+        || candidate
+            .iter()
+            .zip(baseline.iter())
+            .any(|(candidate_root, baseline_root)| {
+                triage_root_digest_changed(surface, candidate_root, baseline_root)
+            })
+}
+
+fn triage_surface_signal_changed(
+    surface: TriageSurface,
+    candidate: &TriageSignalSnapshot,
+    baseline: &TriageSignalSnapshot,
+) -> bool {
+    match surface {
+        TriageSurface::ReplyRisk => {
+            candidate.selected_rank != baseline.selected_rank
+                || candidate.top_root_count != baseline.top_root_count
+                || triage_root_digest_changed(
+                    surface,
+                    &candidate.selected_root,
+                    &baseline.selected_root,
+                )
+                || triage_top_root_digest_changed(
+                    surface,
+                    candidate.top_roots.as_slice(),
+                    baseline.top_roots.as_slice(),
+                )
+                || triage_reply_risk_shortlist_digest_changed(
+                    candidate.reply_risk_shortlist.as_ref(),
+                    baseline.reply_risk_shortlist.as_ref(),
+                )
+        }
+        TriageSurface::Supermana
+        | TriageSurface::OpponentMana
+        | TriageSurface::SpiritSetup
+        | TriageSurface::DrainerSafety => {
+            candidate.selected_rank != baseline.selected_rank
+                || candidate.top_root_count != baseline.top_root_count
+                || triage_root_digest_changed(
+                    surface,
+                    &candidate.selected_root,
+                    &baseline.selected_root,
+                )
+                || triage_top_root_digest_changed(
+                    surface,
+                    candidate.top_roots.as_slice(),
+                    baseline.top_roots.as_slice(),
+                )
+        }
+        TriageSurface::OpeningReply | TriageSurface::PrimaryPro => {
+            candidate.selected_root.input_fen != baseline.selected_root.input_fen
+                || candidate.selected_rank != baseline.selected_rank
+                || triage_top_root_digest_changed(
+                    surface,
+                    candidate.top_roots.as_slice(),
+                    baseline.top_roots.as_slice(),
+                )
+        }
+        TriageSurface::CacheReuse => false,
+    }
+}
+
 fn compare_triage_fixture_pack(
-    surface: &str,
+    surface: TriageSurface,
     candidate_profile: &str,
     candidate_selector: AutomoveSelector,
     baseline_profile: &str,
@@ -265,28 +1223,31 @@ fn compare_triage_fixture_pack(
 ) -> usize {
     let mut changed = 0;
     for fixture in fixtures {
-        let candidate_fen = triage_fixture_selected_fen(candidate_selector, fixture);
-        let baseline_fen = triage_fixture_selected_fen(baseline_selector, fixture);
-        let fixture_changed = candidate_fen != baseline_fen;
+        let candidate_snapshot =
+            triage_fixture_snapshot(surface, candidate_profile, candidate_selector, fixture);
+        let baseline_snapshot =
+            triage_fixture_snapshot(surface, baseline_profile, baseline_selector, fixture);
+        let fixture_changed =
+            triage_surface_signal_changed(surface, &candidate_snapshot, &baseline_snapshot);
         if fixture_changed {
             changed += 1;
         }
         println!(
-            "triage surface={} fixture={} mode={} opening_book={} changed={} candidate_profile={} candidate={} baseline_profile={} baseline={}",
-            surface,
+            "triage surface={} fixture={} mode={} opening_book={} changed={} candidate_profile={} candidate={:?} baseline_profile={} baseline={:?}",
+            surface.as_str(),
             fixture.id,
             fixture.mode.as_api_value(),
             fixture.opening_book_driven,
             fixture_changed,
             candidate_profile,
-            candidate_fen,
+            candidate_snapshot,
             baseline_profile,
-            baseline_fen
+            baseline_snapshot
         );
     }
     println!(
         "triage surface={} summary candidate={} baseline={} changed={}/{}",
-        surface,
+        surface.as_str(),
         candidate_profile,
         baseline_profile,
         changed,
@@ -634,6 +1595,24 @@ fn smart_automove_pool_profile_registry_resolves_retained_profiles() {
     }
 }
 
+fn assert_runtime_preflight_if_required(
+    candidate_profile_name: &str,
+    candidate_selector: AutomoveSelector,
+) {
+    let skip_runtime_preflight = env_bool("SMART_SKIP_RUNTIME_PREFLIGHT").unwrap_or(false);
+    if skip_runtime_preflight {
+        println!(
+            "runtime preflight skipped for duel stage candidate={}",
+            candidate_profile_name
+        );
+    }
+    maybe_run_runtime_preflight_checks(
+        skip_runtime_preflight,
+        || assert_stage1_cpu_non_regression(candidate_profile_name, candidate_selector),
+        || assert_exact_lite_diagnostics_gate_if_enabled(candidate_profile_name, candidate_selector),
+    );
+}
+
 #[test]
 fn smart_automove_pool_retained_profile_ids_match_active_registry() {
     assert_eq!(
@@ -880,7 +1859,7 @@ fn smart_automove_pool_signal_triage() {
                 surface.as_str()
             );
             let target_changed = compare_triage_fixture_pack(
-                surface.as_str(),
+                surface,
                 candidate_profile_name.as_str(),
                 CANDIDATE_MODEL.select_inputs,
                 baseline_profile_name.as_str(),
@@ -890,6 +1869,73 @@ fn smart_automove_pool_signal_triage() {
             assert!(
                 generic_signal_triage_passes(target_changed),
                 "triage surface '{}' showed no deterministic evidence change vs baseline",
+                surface.as_str()
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "retained-profile calibration for triage surfaces"]
+fn smart_automove_pool_surface_calibration() {
+    let surface = triage_surface_from_env();
+    let candidate_profile_name = candidate_profile().as_str().to_string();
+    let baseline_profile_name = gate_baseline_profile_name();
+
+    match surface {
+        TriageSurface::ReplyRisk => {
+            let candidate_probe = reply_risk_calibration_probe(candidate_profile_name.as_str());
+            let baseline_probe = reply_risk_calibration_probe(baseline_profile_name.as_str());
+            println!(
+                "triage-calibrate surface=reply_risk candidate={} probe={} baseline={} probe={} delta={}",
+                candidate_profile_name,
+                candidate_probe,
+                baseline_profile_name,
+                baseline_probe,
+                candidate_probe - baseline_probe
+            );
+            assert!(
+                candidate_probe.abs_diff(baseline_probe) >= 20,
+                "reply_risk calibration found no meaningful profile delta: candidate={} baseline={}",
+                candidate_probe,
+                baseline_probe
+            );
+        }
+        TriageSurface::OpponentMana => {
+            let candidate_pick = opponent_mana_calibration_probe(candidate_profile_name.as_str());
+            let baseline_pick = opponent_mana_calibration_probe(baseline_profile_name.as_str());
+            println!(
+                "triage-calibrate surface=opponent_mana candidate={} pick={} baseline={} pick={}",
+                candidate_profile_name,
+                candidate_pick,
+                baseline_profile_name,
+                baseline_pick
+            );
+            assert_ne!(
+                candidate_pick, baseline_pick,
+                "opponent_mana calibration found no profile delta: candidate_pick={} baseline_pick={}",
+                candidate_pick, baseline_pick
+            );
+        }
+        TriageSurface::Supermana => {
+            let candidate_probe = supermana_calibration_probe(candidate_profile_name.as_str());
+            let baseline_probe = supermana_calibration_probe(baseline_profile_name.as_str());
+            println!(
+                "triage-calibrate surface=supermana candidate={} exact_lite={} baseline={} exact_lite={}",
+                candidate_profile_name,
+                candidate_probe,
+                baseline_profile_name,
+                baseline_probe
+            );
+            assert_ne!(
+                candidate_probe, baseline_probe,
+                "supermana calibration found no profile delta: candidate_exact_lite={} baseline_exact_lite={}",
+                candidate_probe, baseline_probe
+            );
+        }
+        _ => {
+            panic!(
+                "triage-calibrate only supports SMART_TRIAGE_SURFACE=reply_risk|opponent_mana|supermana; got '{}'",
                 surface.as_str()
             );
         }
@@ -911,7 +1957,7 @@ fn smart_automove_pool_pro_signal_triage() {
     assert_interview_policy_regressions(candidate_selector, candidate_profile_name.as_str());
 
     let opening_changed = compare_triage_fixture_pack(
-        TriageSurface::OpeningReply.as_str(),
+        TriageSurface::OpeningReply,
         candidate_profile_name.as_str(),
         candidate_selector,
         baseline_profile_name.as_str(),
@@ -919,7 +1965,7 @@ fn smart_automove_pool_pro_signal_triage() {
         opening_reply_triage_fixtures().as_slice(),
     );
     let primary_changed = compare_triage_fixture_pack(
-        TriageSurface::PrimaryPro.as_str(),
+        TriageSurface::PrimaryPro,
         candidate_profile_name.as_str(),
         candidate_selector,
         baseline_profile_name.as_str(),
@@ -1053,11 +2099,7 @@ fn smart_automove_pool_fast_screen() {
             "candidate and baseline must differ (set SMART_GATE_ALLOW_SELF_BASELINE=true to override)"
         );
     }
-    assert_stage1_cpu_non_regression(
-        candidate_profile_name.as_str(),
-        CANDIDATE_MODEL.select_inputs,
-    );
-    assert_exact_lite_diagnostics_gate_if_enabled(
+    assert_runtime_preflight_if_required(
         candidate_profile_name.as_str(),
         CANDIDATE_MODEL.select_inputs,
     );
@@ -1073,6 +2115,12 @@ fn smart_automove_pool_fast_screen() {
     };
     let budgets = client_budgets().to_vec();
     let config = ProgressiveDuelConfig::from_env_with_defaults("screen");
+    let targeted_first_tier = config.promotion_target_mode.is_some();
+    let max_games_per_seed = if targeted_first_tier {
+        config.max_games_per_seed.clamp(4, 4)
+    } else {
+        config.max_games_per_seed.clamp(4, 8)
+    };
     let artifact_path = env::var("SMART_LADDER_ARTIFACT_PATH")
         .ok()
         .filter(|value| !value.trim().is_empty())
@@ -1083,13 +2131,14 @@ fn smart_automove_pool_fast_screen() {
         budgets.as_slice(),
         &ProgressiveDuelConfig {
             initial_games: config.initial_games.max(2),
-            max_games_per_seed: config.max_games_per_seed.clamp(4, 8),
+            max_games_per_seed,
             seed_tags: vec!["neutral_v1"],
             max_plies: 72,
             early_exit_delta_floor: -0.10,
             first_tier_signal_games_per_seed: Some(config.initial_games.max(2)),
-            first_tier_signal_aggregate_delta_min: 0.10,
+            first_tier_signal_aggregate_delta_min: if targeted_first_tier { 0.0 } else { 0.10 },
             first_tier_signal_mode_delta_min: 0.125,
+            first_tier_target_confidence_min: if targeted_first_tier { 0.60 } else { 0.0 },
             first_tier_signal_mode_floor: 0.0,
             ..config
         },
@@ -1132,11 +2181,7 @@ fn smart_automove_pool_progressive_duel() {
             "candidate and baseline must differ"
         );
     }
-    assert_stage1_cpu_non_regression(
-        candidate_profile_name.as_str(),
-        CANDIDATE_MODEL.select_inputs,
-    );
-    assert_exact_lite_diagnostics_gate_if_enabled(
+    assert_runtime_preflight_if_required(
         candidate_profile_name.as_str(),
         CANDIDATE_MODEL.select_inputs,
     );
@@ -1207,11 +2252,7 @@ fn smart_automove_pool_promotion_ladder() {
             "candidate profile and baseline profile must differ for ladder gate"
         );
     }
-    assert_stage1_cpu_non_regression(
-        candidate_profile_name.as_str(),
-        CANDIDATE_MODEL.select_inputs,
-    );
-    assert_exact_lite_diagnostics_gate_if_enabled(
+    assert_runtime_preflight_if_required(
         candidate_profile_name.as_str(),
         CANDIDATE_MODEL.select_inputs,
     );
@@ -1486,6 +2527,8 @@ fn smart_automove_pool_promotion_ladder() {
 fn smart_automove_pool_pro_fast_screen_vs_normal() {
     let candidate_profile = pro_candidate_profile_name();
     let baseline_profile = pro_baseline_profile_name();
+    let candidate_selector = profile_selector_from_name(candidate_profile.as_str())
+        .unwrap_or_else(|| panic!("candidate '{}' not found", candidate_profile));
     let seed_tag = env_profile_name("SMART_PRO_FAST_SCREEN_SEED_TAG")
         .unwrap_or_else(|| "pro_fast_screen_vs_normal_v1".to_string());
     let repeats = env_usize("SMART_PRO_FAST_SCREEN_REPEATS")
@@ -1495,6 +2538,8 @@ fn smart_automove_pool_pro_fast_screen_vs_normal() {
     let max_plies = env_usize("SMART_PRO_FAST_SCREEN_MAX_PLIES")
         .unwrap_or(72)
         .max(56);
+
+    assert_runtime_preflight_if_required(candidate_profile.as_str(), candidate_selector);
 
     let stats = run_cross_budget_duel(CrossBudgetDuelConfig {
         profile_a: candidate_profile.as_str(),
@@ -1525,6 +2570,8 @@ fn smart_automove_pool_pro_fast_screen_vs_normal() {
 fn smart_automove_pool_pro_fast_screen_vs_fast() {
     let candidate_profile = pro_candidate_profile_name();
     let baseline_profile = pro_baseline_profile_name();
+    let candidate_selector = profile_selector_from_name(candidate_profile.as_str())
+        .unwrap_or_else(|| panic!("candidate '{}' not found", candidate_profile));
     let seed_tag = env_profile_name("SMART_PRO_FAST_SCREEN_SEED_TAG")
         .unwrap_or_else(|| "pro_fast_screen_vs_fast_v1".to_string());
     let repeats = env_usize("SMART_PRO_FAST_SCREEN_REPEATS")
@@ -1534,6 +2581,8 @@ fn smart_automove_pool_pro_fast_screen_vs_fast() {
     let max_plies = env_usize("SMART_PRO_FAST_SCREEN_MAX_PLIES")
         .unwrap_or(72)
         .max(56);
+
+    assert_runtime_preflight_if_required(candidate_profile.as_str(), candidate_selector);
 
     let stats = run_cross_budget_duel(CrossBudgetDuelConfig {
         profile_a: candidate_profile.as_str(),
@@ -1564,6 +2613,9 @@ fn smart_automove_pool_pro_fast_screen_vs_fast() {
 fn smart_automove_pool_pro_progressive_vs_normal() {
     let candidate_profile = pro_candidate_profile_name();
     let baseline_profile = pro_baseline_profile_name();
+    let candidate_selector = profile_selector_from_name(candidate_profile.as_str())
+        .unwrap_or_else(|| panic!("candidate '{}' not found", candidate_profile));
+    assert_runtime_preflight_if_required(candidate_profile.as_str(), candidate_selector);
     let (stats, _) = run_pro_progressive_matchup(
         candidate_profile.as_str(),
         baseline_profile.as_str(),
@@ -1587,6 +2639,9 @@ fn smart_automove_pool_pro_progressive_vs_normal() {
 fn smart_automove_pool_pro_progressive_vs_fast() {
     let candidate_profile = pro_candidate_profile_name();
     let baseline_profile = pro_baseline_profile_name();
+    let candidate_selector = profile_selector_from_name(candidate_profile.as_str())
+        .unwrap_or_else(|| panic!("candidate '{}' not found", candidate_profile));
+    assert_runtime_preflight_if_required(candidate_profile.as_str(), candidate_selector);
     let (stats, _) = run_pro_progressive_matchup(
         candidate_profile.as_str(),
         baseline_profile.as_str(),
@@ -1614,8 +2669,7 @@ fn smart_automove_pool_pro_promotion_ladder() {
         .unwrap_or_else(|| panic!("candidate selector '{}' should exist", candidate_profile));
     let baseline_selector = profile_selector_from_name(baseline_profile.as_str())
         .unwrap_or_else(|| panic!("baseline selector '{}' should exist", baseline_profile));
-    assert_stage1_cpu_non_regression(candidate_profile.as_str(), candidate_selector);
-    assert_exact_lite_diagnostics_gate_if_enabled(candidate_profile.as_str(), candidate_selector);
+    assert_runtime_preflight_if_required(candidate_profile.as_str(), candidate_selector);
 
     assert_tactical_guardrails(candidate_selector, candidate_profile.as_str());
     assert_interview_policy_regressions(candidate_selector, candidate_profile.as_str());

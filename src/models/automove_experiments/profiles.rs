@@ -104,7 +104,11 @@ pub(super) fn model_runtime_release_safe_pre_exact(
     game: &MonsGame,
     config: SmartSearchConfig,
 ) -> Vec<Input> {
-    runtime_selector_inputs(game, MonsGameModel::with_pre_exact_runtime_policy(config))
+    runtime_selector_inputs(game, configure_runtime_release_safe_pre_exact(config))
+}
+
+fn configure_runtime_release_safe_pre_exact(config: SmartSearchConfig) -> SmartSearchConfig {
+    MonsGameModel::with_pre_exact_runtime_policy(config)
 }
 
 fn configure_runtime_eff_non_exact_v1(
@@ -210,6 +214,89 @@ pub(super) fn model_runtime_eff_exact_lite_v1(
     MonsGameModel::smart_search_best_inputs(game, configure_runtime_eff_exact_lite_v1(game, config))
 }
 
+fn configure_runtime_pre_fast_root_quality_v1_normal_conversion_v3(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+    if runtime.depth < 3 {
+        runtime.root_reply_risk_score_margin = SMART_ROOT_REPLY_RISK_SCORE_MARGIN;
+        runtime.root_reply_risk_shortlist_max = SMART_ROOT_REPLY_RISK_SHORTLIST_FAST;
+        runtime.root_reply_risk_reply_limit = SMART_ROOT_REPLY_RISK_REPLY_LIMIT_FAST;
+        runtime.root_reply_risk_node_share_bp = SMART_ROOT_REPLY_RISK_NODE_SHARE_BP_FAST;
+        runtime.root_mana_handoff_penalty = 260;
+        runtime.root_backtrack_penalty = 180;
+        runtime.root_efficiency_score_margin = 1_900;
+        runtime.root_anti_help_score_margin = 220;
+    } else {
+        runtime.root_reply_risk_score_margin = 170;
+        runtime.root_reply_risk_shortlist_max = 6;
+        runtime.root_reply_risk_reply_limit = 14;
+        runtime.root_reply_risk_node_share_bp = 1_150;
+        runtime.root_drainer_safety_score_margin = 4_000;
+        runtime.selective_extension_node_share_bp = SMART_SELECTIVE_EXTENSION_NODE_SHARE_BP_NORMAL;
+        runtime.root_efficiency_score_margin = 1_400;
+    }
+    runtime
+}
+
+pub(super) fn profile_runtime_config_for_name(
+    profile_name: &str,
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Option<SmartSearchConfig> {
+    let resolved = match profile_name {
+        "base" | "runtime_current" => config,
+        "runtime_release_safe_pre_exact" => configure_runtime_release_safe_pre_exact(config),
+        PROFILE_RUNTIME_EFF_NON_EXACT_V1 => configure_runtime_eff_non_exact_v1(game, config),
+        PROFILE_RUNTIME_EFF_NON_EXACT_V2 => configure_runtime_eff_non_exact_v2(game, config),
+        PROFILE_RUNTIME_EFF_EXACT_LITE_V1 => configure_runtime_eff_exact_lite_v1(game, config),
+        "runtime_pre_fast_root_quality_v1_normal_conversion_v3" => {
+            configure_runtime_pre_fast_root_quality_v1_normal_conversion_v3(game, config)
+        }
+        "swift_2024_eval_reference" => {
+            let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
+            runtime.scoring_weights = &SWIFT_2024_REFERENCE_SCORING_WEIGHTS;
+            runtime
+        }
+        "swift_2024_style_reference" => {
+            let mut swift_style =
+                SmartSearchConfig::from_budget(3, LEGACY_NORMAL_MAX_VISITED_NODES).for_runtime();
+            swift_style.scoring_weights = &SWIFT_2024_REFERENCE_SCORING_WEIGHTS;
+            swift_style.enable_root_efficiency = false;
+            swift_style.enable_event_ordering_bonus = false;
+            swift_style.enable_backtrack_penalty = false;
+            swift_style.enable_tt_best_child_ordering = false;
+            swift_style.enable_two_pass_root_allocation = false;
+            swift_style.enable_selective_extensions = false;
+            swift_style.enable_quiet_reductions = false;
+            swift_style.enable_root_mana_handoff_guard = false;
+            swift_style.enable_forced_tactical_prepass = false;
+            swift_style.enable_root_drainer_safety_prefilter = false;
+            swift_style.enable_root_reply_risk_guard = false;
+            swift_style.enable_move_class_coverage = false;
+            swift_style.enable_child_move_class_coverage = false;
+            swift_style.enable_strict_tactical_class_coverage = false;
+            swift_style.enable_strict_anti_help_filter = false;
+            swift_style.enable_interview_hard_spirit_deploy = false;
+            swift_style.enable_interview_soft_root_priors = false;
+            swift_style.enable_interview_deterministic_tiebreak = false;
+            swift_style.enable_mana_start_mix_with_potion_actions = false;
+            swift_style.enable_potion_progress_compensation = false;
+            swift_style.enable_enhanced_drainer_vulnerability = false;
+            swift_style.enable_supermana_prepass_exception = false;
+            swift_style.enable_opponent_mana_prepass_exception = false;
+            swift_style.enable_walk_threat_prefilter = false;
+            swift_style.enable_killer_move_ordering = false;
+            swift_style.enable_tt_depth_preferred_replacement = false;
+            swift_style.enable_pvs = false;
+            swift_style
+        }
+        _ => return None,
+    };
+    Some(resolved)
+}
+
 pub(super) fn profile_exact_lite_budgets(
     profile_name: &str,
     game: &MonsGame,
@@ -282,26 +369,10 @@ pub(super) fn model_runtime_pre_fast_root_quality_v1_normal_conversion_v3(
     game: &MonsGame,
     config: SmartSearchConfig,
 ) -> Vec<Input> {
-    let mut runtime = MonsGameModel::with_runtime_scoring_weights(game, config);
-    if runtime.depth < 3 {
-        runtime.root_reply_risk_score_margin = SMART_ROOT_REPLY_RISK_SCORE_MARGIN;
-        runtime.root_reply_risk_shortlist_max = SMART_ROOT_REPLY_RISK_SHORTLIST_FAST;
-        runtime.root_reply_risk_reply_limit = SMART_ROOT_REPLY_RISK_REPLY_LIMIT_FAST;
-        runtime.root_reply_risk_node_share_bp = SMART_ROOT_REPLY_RISK_NODE_SHARE_BP_FAST;
-        runtime.root_mana_handoff_penalty = 260;
-        runtime.root_backtrack_penalty = 180;
-        runtime.root_efficiency_score_margin = 1_900;
-        runtime.root_anti_help_score_margin = 220;
-    } else {
-        runtime.root_reply_risk_score_margin = 170;
-        runtime.root_reply_risk_shortlist_max = 6;
-        runtime.root_reply_risk_reply_limit = 14;
-        runtime.root_reply_risk_node_share_bp = 1_150;
-        runtime.root_drainer_safety_score_margin = 4_000;
-        runtime.selective_extension_node_share_bp = SMART_SELECTIVE_EXTENSION_NODE_SHARE_BP_NORMAL;
-        runtime.root_efficiency_score_margin = 1_400;
-    }
-    MonsGameModel::smart_search_best_inputs(game, runtime)
+    MonsGameModel::smart_search_best_inputs(
+        game,
+        configure_runtime_pre_fast_root_quality_v1_normal_conversion_v3(game, config),
+    )
 }
 
 pub(super) fn model_swift_2024_eval_reference(
