@@ -6655,7 +6655,10 @@ impl MonsGameModel {
         let start_options = Self::automove_start_input_options(config);
         let mut child_transitions =
             Self::enumerate_legal_transitions(game, config.node_enum_limit, start_options);
-        if config.enable_child_move_class_coverage && config.enable_child_exact_tactics {
+        if config.enable_child_move_class_coverage
+            && config.enable_child_exact_tactics
+            && Self::should_probe_exact_child_progress(game, actor_color)
+        {
             let exact_turn_before = exact_turn_summary(game, actor_color);
             let fallback_limit = Self::child_exact_progress_fallback_candidates_limit(config);
             let mut seen_inputs = child_transitions
@@ -6835,6 +6838,80 @@ impl MonsGameModel {
         }
 
         scored_states.into_iter().map(|(_, state)| state).collect()
+    }
+
+    fn should_probe_exact_child_progress(game: &MonsGame, color: Color) -> bool {
+        let remaining_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
+        if remaining_moves <= 0 {
+            return false;
+        }
+
+        let approximate = Self::approximate_active_turn_summary(game, color, false);
+        if approximate.safe_supermana_progress
+            || approximate.safe_opponent_mana_progress
+            || approximate.same_turn_score_window_value > 0
+        {
+            return true;
+        }
+
+        let mut drainer_locations = Vec::new();
+        let mut relevant_mana_locations = Vec::new();
+        let mut drainer_carries_relevant_mana = false;
+        let mut has_live_spirit = false;
+
+        for (location, item) in game.board.occupied() {
+            match item {
+                Item::Mon { mon } | Item::MonWithConsumable { mon, .. }
+                    if mon.color == color && !mon.is_fainted() =>
+                {
+                    match mon.kind {
+                        MonKind::Drainer => drainer_locations.push(location),
+                        MonKind::Spirit => has_live_spirit = true,
+                        _ => {}
+                    }
+                }
+                Item::MonWithMana { mon, mana }
+                    if mon.color == color && !mon.is_fainted() =>
+                {
+                    match mon.kind {
+                        MonKind::Drainer => {
+                            drainer_locations.push(location);
+                            if *mana == Mana::Supermana || *mana == Mana::Regular(color.other()) {
+                                drainer_carries_relevant_mana = true;
+                            }
+                        }
+                        MonKind::Spirit => has_live_spirit = true,
+                        _ => {}
+                    }
+                }
+                Item::Mana { mana }
+                    if *mana == Mana::Supermana || *mana == Mana::Regular(color.other()) =>
+                {
+                    relevant_mana_locations.push(location);
+                }
+                Item::Mon { .. }
+                | Item::MonWithMana { .. }
+                | Item::MonWithConsumable { .. }
+                | Item::Mana { .. }
+                | Item::Consumable { .. } => {}
+            }
+        }
+
+        if drainer_carries_relevant_mana {
+            return true;
+        }
+
+        let geometry_reach = remaining_moves + 2;
+        if drainer_locations.iter().copied().any(|drainer_location| {
+            relevant_mana_locations
+                .iter()
+                .copied()
+                .any(|mana_location| drainer_location.distance(&mana_location) <= geometry_reach)
+        }) {
+            return true;
+        }
+
+        has_live_spirit && !relevant_mana_locations.is_empty()
     }
 
     fn enumerate_legal_transitions(
@@ -12698,6 +12775,8 @@ mod opening_book_tests {
         cutoff_config.node_enum_limit = 1;
         cutoff_config.node_branch_limit = 8;
         cutoff_config.enable_child_exact_tactics = true;
+        crate::models::automove_exact::clear_exact_state_analysis_cache();
+        crate::models::automove_exact::clear_exact_query_diagnostics();
         let children = MonsGameModel::ranked_child_states(
             &game,
             Color::White,
@@ -12705,6 +12784,11 @@ mod opening_book_tests {
             None,
             [0; 2],
             cutoff_config,
+        );
+        let diagnostics = crate::models::automove_exact::exact_query_diagnostics_snapshot();
+        assert!(
+            diagnostics.exact_turn_summary_builds > 0,
+            "exact safe supermana fixture should still probe exact child progress"
         );
 
         assert!(
@@ -12722,6 +12806,48 @@ mod opening_book_tests {
                 })
             }),
             "exact safe supermana continuation child should survive tiny child enumeration cutoff"
+        );
+    }
+
+    #[test]
+    fn ranked_child_states_skip_exact_progress_probe_without_progress_targets() {
+        crate::models::automove_exact::clear_exact_state_analysis_cache();
+        crate::models::automove_exact::clear_exact_query_diagnostics();
+
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.node_enum_limit = 1;
+        config.node_branch_limit = 8;
+        config.enable_child_exact_tactics = true;
+        config.enable_root_efficiency = false;
+        config.enable_static_exact_evaluation = false;
+
+        let children =
+            MonsGameModel::ranked_child_states(&game, Color::White, true, None, [0; 2], config);
+        assert!(!children.is_empty(), "simple board should still enumerate child states");
+
+        let diagnostics = crate::models::automove_exact::exact_query_diagnostics_snapshot();
+        assert_eq!(
+            diagnostics.exact_turn_summary_builds, 0,
+            "no-progress board should skip exact child progress probing"
         );
     }
 
@@ -12785,6 +12911,8 @@ mod opening_book_tests {
         cutoff_config.node_enum_limit = 1;
         cutoff_config.node_branch_limit = 8;
         cutoff_config.enable_child_exact_tactics = true;
+        crate::models::automove_exact::clear_exact_state_analysis_cache();
+        crate::models::automove_exact::clear_exact_query_diagnostics();
         let children = MonsGameModel::ranked_child_states(
             &game,
             Color::White,
@@ -12792,6 +12920,11 @@ mod opening_book_tests {
             None,
             [0; 2],
             cutoff_config,
+        );
+        let diagnostics = crate::models::automove_exact::exact_query_diagnostics_snapshot();
+        assert!(
+            diagnostics.exact_turn_summary_builds > 0,
+            "exact safe opponent-mana fixture should still probe exact child progress"
         );
 
         assert!(
