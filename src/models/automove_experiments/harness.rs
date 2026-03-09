@@ -45,6 +45,55 @@ pub(super) struct MirroredDuelSeedConfig<'a> {
     pub use_white_opening_book: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum TriageSurface {
+    OpeningReply,
+    PrimaryPro,
+    ReplyRisk,
+    Supermana,
+    OpponentMana,
+    SpiritSetup,
+    DrainerSafety,
+    CacheReuse,
+}
+
+impl TriageSurface {
+    pub(super) fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "opening_reply" => Some(Self::OpeningReply),
+            "primary_pro" => Some(Self::PrimaryPro),
+            "reply_risk" => Some(Self::ReplyRisk),
+            "supermana" => Some(Self::Supermana),
+            "opponent_mana" => Some(Self::OpponentMana),
+            "spirit_setup" => Some(Self::SpiritSetup),
+            "drainer_safety" => Some(Self::DrainerSafety),
+            "cache_reuse" => Some(Self::CacheReuse),
+            _ => None,
+        }
+    }
+
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::OpeningReply => "opening_reply",
+            Self::PrimaryPro => "primary_pro",
+            Self::ReplyRisk => "reply_risk",
+            Self::Supermana => "supermana",
+            Self::OpponentMana => "opponent_mana",
+            Self::SpiritSetup => "spirit_setup",
+            Self::DrainerSafety => "drainer_safety",
+            Self::CacheReuse => "cache_reuse",
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(super) struct TriageFixture {
+    pub id: &'static str,
+    pub game: MonsGame,
+    pub mode: SmartAutomovePreference,
+    pub opening_book_driven: bool,
+}
+
 pub(super) fn select_inputs_with_runtime_fallback(
     selector: AutomoveSelector,
     game: &MonsGame,
@@ -1897,4 +1946,299 @@ pub(super) fn assert_interview_policy_regressions(selector: AutomoveSelector, pr
             profile_name
         );
     }
+}
+
+fn supermana_progress_triage_game() -> MonsGame {
+    tactical_game_with_items(
+        vec![
+            (
+                Location::new(6, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(10, 0),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Angel, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(5, 5),
+                Item::Mana {
+                    mana: Mana::Supermana,
+                },
+            ),
+            (
+                Location::new(0, 10),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    )
+}
+
+fn opponent_mana_progress_triage_game() -> MonsGame {
+    tactical_game_with_items(
+        vec![
+            (
+                Location::new(8, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(10, 0),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Angel, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(7, 5),
+                Item::Mana {
+                    mana: Mana::Regular(Color::Black),
+                },
+            ),
+            (
+                Location::new(0, 10),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    )
+}
+
+fn drainer_safety_triage_game() -> MonsGame {
+    tactical_game_with_items(
+        vec![
+            (
+                Location::new(8, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(9, 4),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Angel, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(6, 7),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    )
+}
+
+fn reply_risk_triage_game() -> MonsGame {
+    let mut game = tactical_game_with_items(
+        vec![
+            (
+                Location::new(4, 0),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(7, 0),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(5, 2),
+                Item::Mana {
+                    mana: Mana::Regular(Color::Black),
+                },
+            ),
+            (
+                Location::new(0, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    );
+    game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+    game
+}
+
+fn spirit_setup_triage_game() -> MonsGame {
+    tactical_game_with_items(
+        vec![
+            (
+                Location::new(9, 7),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(9, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(7, 8),
+                Item::Mana {
+                    mana: Mana::Regular(Color::Black),
+                },
+            ),
+            (
+                Location::new(0, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    )
+}
+
+fn duplicate_fixture_across_client_modes(id: &'static str, game: MonsGame) -> Vec<TriageFixture> {
+    vec![
+        TriageFixture {
+            id,
+            game: game.clone_for_simulation(),
+            mode: SmartAutomovePreference::Fast,
+            opening_book_driven: false,
+        },
+        TriageFixture {
+            id,
+            game,
+            mode: SmartAutomovePreference::Normal,
+            opening_book_driven: false,
+        },
+    ]
+}
+
+pub(super) fn generic_triage_surface_fixtures(surface: TriageSurface) -> Vec<TriageFixture> {
+    match surface {
+        TriageSurface::ReplyRisk => {
+            duplicate_fixture_across_client_modes("reply_risk_handoff", reply_risk_triage_game())
+        }
+        TriageSurface::Supermana => duplicate_fixture_across_client_modes(
+            "safe_supermana_progress",
+            supermana_progress_triage_game(),
+        ),
+        TriageSurface::OpponentMana => duplicate_fixture_across_client_modes(
+            "safe_opponent_mana_progress",
+            opponent_mana_progress_triage_game(),
+        ),
+        TriageSurface::SpiritSetup => duplicate_fixture_across_client_modes(
+            "spirit_setup_progress",
+            spirit_setup_triage_game(),
+        ),
+        TriageSurface::DrainerSafety => duplicate_fixture_across_client_modes(
+            "drainer_safety_filter",
+            drainer_safety_triage_game(),
+        ),
+        TriageSurface::OpeningReply
+        | TriageSurface::PrimaryPro
+        | TriageSurface::CacheReuse => Vec::new(),
+    }
+}
+
+fn apply_triage_opening_sequence(game: &mut MonsGame, sequence: &[&str; 5]) {
+    for step in sequence {
+        let inputs = Input::array_from_fen(step);
+        assert!(matches!(
+            game.process_input(inputs, false, false),
+            Output::Events(_)
+        ));
+    }
+    assert_eq!(game.turn_number, 2);
+    assert_eq!(game.active_color, Color::Black);
+}
+
+fn opening_black_reply_triage_fixture(
+    id: &'static str,
+    sequence: &[&str; 5],
+) -> TriageFixture {
+    let mut game = MonsGame::new(false);
+    apply_triage_opening_sequence(&mut game, sequence);
+    TriageFixture {
+        id,
+        game,
+        mode: SmartAutomovePreference::Pro,
+        opening_book_driven: true,
+    }
+}
+
+pub(super) fn opening_reply_triage_fixtures() -> Vec<TriageFixture> {
+    vec![
+        opening_black_reply_triage_fixture(
+            "opening_left_route",
+            &[
+                "l10,3;l9,2",
+                "l9,2;l8,1",
+                "l8,1;l7,0",
+                "l7,0;l6,0",
+                "l6,0;l5,0;mp",
+            ],
+        ),
+        opening_black_reply_triage_fixture(
+            "opening_center_route",
+            &[
+                "l10,4;l9,4",
+                "l9,4;l8,4",
+                "l8,4;l7,3",
+                "l7,3;l6,4",
+                "l6,4;l5,4",
+            ],
+        ),
+        opening_black_reply_triage_fixture(
+            "opening_right_route",
+            &[
+                "l10,7;l9,8",
+                "l9,8;l8,9",
+                "l8,9;l7,10",
+                "l7,10;l6,10",
+                "l6,10;l5,10;mp",
+            ],
+        ),
+    ]
+}
+
+pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
+    vec![
+        TriageFixture {
+            id: "primary_supermana_progress",
+            game: supermana_progress_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+        },
+        TriageFixture {
+            id: "primary_opponent_mana_progress",
+            game: opponent_mana_progress_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+        },
+        TriageFixture {
+            id: "primary_spirit_setup",
+            game: spirit_setup_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+        },
+        TriageFixture {
+            id: "primary_drainer_safety",
+            game: drainer_safety_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+        },
+    ]
 }

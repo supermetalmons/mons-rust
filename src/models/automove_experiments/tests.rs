@@ -161,6 +161,140 @@ fn progressive_stop_keeps_strong_first_screen_tier_alive() {
     assert_eq!(stop, None);
 }
 
+fn triage_surface_from_env() -> TriageSurface {
+    let value = env::var("SMART_TRIAGE_SURFACE").unwrap_or_else(|_| {
+        panic!(
+            "SMART_TRIAGE_SURFACE is required (expected one of: opening_reply, primary_pro, reply_risk, supermana, opponent_mana, spirit_setup, drainer_safety, cache_reuse)"
+        )
+    });
+    TriageSurface::parse(value.as_str()).unwrap_or_else(|| {
+        panic!(
+            "unknown SMART_TRIAGE_SURFACE='{}' (expected one of: opening_reply, primary_pro, reply_risk, supermana, opponent_mana, spirit_setup, drainer_safety, cache_reuse)",
+            value
+        )
+    })
+}
+
+fn generic_signal_triage_passes(target_changed: usize) -> bool {
+    target_changed > 0
+}
+
+fn pro_signal_triage_passes(target_changed: usize, off_target_changed: usize) -> bool {
+    target_changed > 0 && off_target_changed <= 1
+}
+
+#[test]
+fn signal_triage_rejects_no_op_candidate() {
+    assert!(!generic_signal_triage_passes(0));
+}
+
+#[test]
+fn signal_triage_rejects_wrong_surface_candidate() {
+    let target_changed = 0;
+    let off_target_changed = 2;
+    assert_eq!(off_target_changed, 2);
+    assert!(!generic_signal_triage_passes(target_changed));
+}
+
+#[test]
+fn signal_triage_accepts_target_surface_candidate() {
+    assert!(generic_signal_triage_passes(1));
+}
+
+#[test]
+fn pro_signal_triage_accepts_opening_reply_with_stable_primary() {
+    assert!(pro_signal_triage_passes(2, 1));
+}
+
+#[test]
+fn pro_signal_triage_accepts_primary_pro_with_stable_opening_reply() {
+    assert!(pro_signal_triage_passes(1, 0));
+}
+
+fn with_env_override<T>(name: &str, value: &str, f: impl FnOnce() -> T) -> T {
+    let previous = env::var(name).ok();
+    env::set_var(name, value);
+    let result = f();
+    if let Some(previous) = previous {
+        env::set_var(name, previous);
+    } else {
+        env::remove_var(name);
+    }
+    result
+}
+
+fn triage_fixture_selected_fen(selector: AutomoveSelector, fixture: &TriageFixture) -> String {
+    with_env_override(
+        "SMART_USE_WHITE_OPENING_BOOK",
+        if fixture.opening_book_driven {
+            "true"
+        } else {
+            "false"
+        },
+        || {
+            let config = SearchBudget::from_preference(fixture.mode).runtime_config_for_game(
+                &fixture.game,
+            );
+            let inputs = select_inputs_with_runtime_fallback(selector, &fixture.game, config);
+            assert!(
+                !inputs.is_empty(),
+                "triage fixture '{}' produced no legal move for mode {}",
+                fixture.id,
+                fixture.mode.as_api_value()
+            );
+            MonsGameModel::apply_inputs_for_search_with_events(&fixture.game, &inputs)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "triage fixture '{}' selected illegal move in mode {}",
+                        fixture.id,
+                        fixture.mode.as_api_value()
+                    )
+                });
+            Input::fen_from_array(&inputs)
+        },
+    )
+}
+
+fn compare_triage_fixture_pack(
+    surface: &str,
+    candidate_profile: &str,
+    candidate_selector: AutomoveSelector,
+    baseline_profile: &str,
+    baseline_selector: AutomoveSelector,
+    fixtures: &[TriageFixture],
+) -> usize {
+    let mut changed = 0;
+    for fixture in fixtures {
+        let candidate_fen = triage_fixture_selected_fen(candidate_selector, fixture);
+        let baseline_fen = triage_fixture_selected_fen(baseline_selector, fixture);
+        let fixture_changed = candidate_fen != baseline_fen;
+        if fixture_changed {
+            changed += 1;
+        }
+        println!(
+            "triage surface={} fixture={} mode={} opening_book={} changed={} candidate_profile={} candidate={} baseline_profile={} baseline={}",
+            surface,
+            fixture.id,
+            fixture.mode.as_api_value(),
+            fixture.opening_book_driven,
+            fixture_changed,
+            candidate_profile,
+            candidate_fen,
+            baseline_profile,
+            baseline_fen
+        );
+    }
+    println!(
+        "triage surface={} summary candidate={} baseline={} changed={}/{}",
+        surface,
+        candidate_profile,
+        baseline_profile,
+        changed,
+        fixtures.len()
+    );
+    changed
+}
+
 fn assert_stage1_cpu_non_regression(
     candidate_profile_name: &str,
     candidate_selector: AutomoveSelector,
@@ -256,10 +390,69 @@ fn exact_lite_cache_totals() -> (usize, usize) {
     (calls, hits)
 }
 
+#[derive(Debug, Clone, Copy)]
+struct CacheReuseProbe {
+    avg_ms: f64,
+    calls: usize,
+    hits: usize,
+    hit_rate: f64,
+}
+
 fn env_f64(name: &str) -> Option<f64> {
     env::var(name)
         .ok()
         .and_then(|value| value.trim().parse::<f64>().ok())
+}
+
+fn cache_reuse_triage_probe(_profile_name: &str, selector: AutomoveSelector) -> CacheReuseProbe {
+    let budgets = client_budgets().to_vec();
+    let positions = env_usize("SMART_TRIAGE_SPEED_POSITIONS")
+        .unwrap_or(6)
+        .max(2);
+    let openings = generate_opening_fens_cached(seed_for_pairing("triage_cache_reuse", "fixed"), positions);
+    let speed_stats = profile_speed_by_mode_ms(selector, openings.as_slice(), budgets.as_slice());
+    let avg_ms = if speed_stats.is_empty() {
+        0.0
+    } else {
+        speed_stats.iter().map(|stat| stat.avg_ms).sum::<f64>() / speed_stats.len() as f64
+    };
+
+    clear_exact_state_analysis_cache();
+    clear_exact_query_diagnostics();
+    let repeats = env_usize("SMART_TRIAGE_CACHE_REPEATS")
+        .unwrap_or(2)
+        .max(1);
+    for _ in 0..repeats {
+        for opening in openings.iter() {
+            let game = MonsGame::from_fen(opening, false).expect("valid cache triage opening");
+            for budget in budgets.iter().copied() {
+                let config = budget.runtime_config_for_game(&game);
+                let _ = select_inputs_with_runtime_fallback(selector, &game, config);
+            }
+        }
+    }
+    let (calls, hits) = exact_lite_cache_totals();
+    clear_exact_state_analysis_cache();
+    clear_exact_query_diagnostics();
+
+    CacheReuseProbe {
+        avg_ms,
+        calls,
+        hits,
+        hit_rate: if calls == 0 {
+            0.0
+        } else {
+            hits as f64 / calls as f64
+        },
+    }
+}
+
+fn cache_reuse_triage_passes(candidate: CacheReuseProbe, baseline: CacheReuseProbe) -> bool {
+    let faster = candidate.avg_ms <= baseline.avg_ms * 0.97;
+    let better_cache = candidate.calls > 0
+        && baseline.calls > 0
+        && candidate.hit_rate >= baseline.hit_rate + 0.05;
+    faster || better_cache
 }
 
 fn assert_exact_lite_diagnostics_gate_if_enabled(
@@ -630,6 +823,133 @@ fn smart_automove_pool_exact_lite_diagnostics_gate() {
     assert_exact_lite_diagnostics_gate_if_enabled(
         candidate_profile_name.as_str(),
         CANDIDATE_MODEL.select_inputs,
+    );
+}
+
+#[test]
+#[ignore = "deterministic fixture-first triage for fast/normal candidate surfaces"]
+fn smart_automove_pool_signal_triage() {
+    let surface = triage_surface_from_env();
+    let candidate_profile_name = candidate_profile().as_str().to_string();
+    let baseline_profile_name = gate_baseline_profile_name();
+    let baseline_selector = profile_selector_from_name(baseline_profile_name.as_str())
+        .unwrap_or_else(|| panic!("baseline '{}' not found", baseline_profile_name));
+
+    assert_tactical_guardrails(CANDIDATE_MODEL.select_inputs, candidate_profile_name.as_str());
+    assert_interview_policy_regressions(CANDIDATE_MODEL.select_inputs, candidate_profile_name.as_str());
+
+    match surface {
+        TriageSurface::OpeningReply | TriageSurface::PrimaryPro => {
+            panic!(
+                "surface '{}' requires pro-triage; use SMART_TRIAGE_SURFACE=opening_reply|primary_pro with ./scripts/run-automove-experiment.sh pro-triage",
+                surface.as_str()
+            );
+        }
+        TriageSurface::CacheReuse => {
+            let candidate_probe =
+                cache_reuse_triage_probe(candidate_profile_name.as_str(), CANDIDATE_MODEL.select_inputs);
+            let baseline_probe =
+                cache_reuse_triage_probe(baseline_profile_name.as_str(), baseline_selector);
+            println!(
+                "triage surface=cache_reuse candidate={} avg_ms={:.2} hit_rate={:.3} hits={} calls={} baseline={} avg_ms={:.2} hit_rate={:.3} hits={} calls={}",
+                candidate_profile_name,
+                candidate_probe.avg_ms,
+                candidate_probe.hit_rate,
+                candidate_probe.hits,
+                candidate_probe.calls,
+                baseline_profile_name,
+                baseline_probe.avg_ms,
+                baseline_probe.hit_rate,
+                baseline_probe.hits,
+                baseline_probe.calls
+            );
+            assert!(
+                cache_reuse_triage_passes(candidate_probe, baseline_probe),
+                "cache_reuse triage found no deterministic evidence change: candidate avg_ms={:.2} hit_rate={:.3}, baseline avg_ms={:.2} hit_rate={:.3}",
+                candidate_probe.avg_ms,
+                candidate_probe.hit_rate,
+                baseline_probe.avg_ms,
+                baseline_probe.hit_rate
+            );
+        }
+        _ => {
+            let fixtures = generic_triage_surface_fixtures(surface);
+            assert!(
+                !fixtures.is_empty(),
+                "surface '{}' has no generic triage fixtures; add the fixture first",
+                surface.as_str()
+            );
+            let target_changed = compare_triage_fixture_pack(
+                surface.as_str(),
+                candidate_profile_name.as_str(),
+                CANDIDATE_MODEL.select_inputs,
+                baseline_profile_name.as_str(),
+                baseline_selector,
+                fixtures.as_slice(),
+            );
+            assert!(
+                generic_signal_triage_passes(target_changed),
+                "triage surface '{}' showed no deterministic evidence change vs baseline",
+                surface.as_str()
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "deterministic fixture-first triage for pro opening_reply and primary_pro surfaces"]
+fn smart_automove_pool_pro_signal_triage() {
+    let surface = triage_surface_from_env();
+    let candidate_profile_name = pro_candidate_profile_name();
+    let baseline_profile_name = pro_baseline_profile_name();
+    let candidate_selector = profile_selector_from_name(candidate_profile_name.as_str())
+        .unwrap_or_else(|| panic!("candidate '{}' not found", candidate_profile_name));
+    let baseline_selector = profile_selector_from_name(baseline_profile_name.as_str())
+        .unwrap_or_else(|| panic!("baseline '{}' not found", baseline_profile_name));
+
+    assert_tactical_guardrails(candidate_selector, candidate_profile_name.as_str());
+    assert_interview_policy_regressions(candidate_selector, candidate_profile_name.as_str());
+
+    let opening_changed = compare_triage_fixture_pack(
+        TriageSurface::OpeningReply.as_str(),
+        candidate_profile_name.as_str(),
+        candidate_selector,
+        baseline_profile_name.as_str(),
+        baseline_selector,
+        opening_reply_triage_fixtures().as_slice(),
+    );
+    let primary_changed = compare_triage_fixture_pack(
+        TriageSurface::PrimaryPro.as_str(),
+        candidate_profile_name.as_str(),
+        candidate_selector,
+        baseline_profile_name.as_str(),
+        baseline_selector,
+        primary_pro_triage_fixtures().as_slice(),
+    );
+
+    let (target_changed, off_target_changed) = match surface {
+        TriageSurface::OpeningReply => (opening_changed, primary_changed),
+        TriageSurface::PrimaryPro => (primary_changed, opening_changed),
+        _ => {
+            panic!(
+                "pro-triage only supports SMART_TRIAGE_SURFACE=opening_reply or primary_pro; got '{}'",
+                surface.as_str()
+            );
+        }
+    };
+
+    println!(
+        "pro triage surface={} target_changed={} off_target_changed={}",
+        surface.as_str(),
+        target_changed,
+        off_target_changed
+    );
+    assert!(
+        pro_signal_triage_passes(target_changed, off_target_changed),
+        "pro triage failed for surface='{}': target_changed={} off_target_changed={} (expected at least one target change and at most one off-target change)",
+        surface.as_str(),
+        target_changed,
+        off_target_changed
     );
 }
 

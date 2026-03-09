@@ -35,5 +35,5 @@ This document keeps only durable lessons that should shape future automove work.
 - Keep passive summaries lightweight and tactical exactness active-turn focused.
 - Reuse cached tactical answers across root ranking, efficiency scoring, and tactical prepasses.
 - Probe exact child progress only on boards that plausibly have target mana or spirit-assisted conversion worth preserving.
-- Add fixtures around spirit scoring, safe supermana, opponent-mana conversion, and drainer exposure.
-- Promote only candidates that pass `preflight`, earn their way through the screen pipeline, and clear the release speed gates.
+- Add fixtures around spirit scoring, safe supermana, opponent-mana conversion, drainer exposure, and opening black replies.
+- Promote only candidates that pass `preflight`, prove a deterministic surface in `triage` or `pro-triage`, and then clear the earned duel path plus the release speed gates.

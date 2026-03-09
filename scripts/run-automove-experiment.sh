@@ -2,28 +2,34 @@
 set -euo pipefail
 
 usage() {
+  local triage_surfaces="opening_reply primary_pro reply_risk supermana opponent_mana spirit_setup drainer_safety cache_reuse"
   cat <<'EOF_HELP'
 usage: ./scripts/run-automove-experiment.sh <stage> <candidate> [baseline]
 
 stages:
   preflight       tactical guardrails + stage-1 cpu gate + exact-lite diagnostics
-  pre-screen      reject-only generic screen with tighter fast-screen budgets
+  triage          fixed-cost deterministic triage for fast/normal (requires SMART_TRIAGE_SURFACE)
+  pre-screen      legacy reject-only generic screen with tighter fast-screen budgets
   fast-screen     quick active-pool screen against the baseline
   progressive     progressive duel against the baseline
   ladder          full promotion ladder against the baseline
-  pro-pre-screen  reject-only pro screen vs normal and fast with tighter budgets
+  pro-triage      fixed-cost deterministic triage for pro (requires SMART_TRIAGE_SURFACE)
+  pro-pre-screen  legacy reject-only pro screen vs normal and fast with tighter budgets
   pro-fast-screen pro fast screens vs normal and fast at the standard budgets
   pro-progressive pro progressive duels vs normal and fast
   pro-ladder      strict pro promotion ladder against the baseline
 
 defaults:
   baseline = runtime_release_safe_pre_exact
+EOF_HELP
+  cat <<EOF_HELP
+  triage surfaces = ${triage_surfaces}
 
 examples:
   ./scripts/run-automove-experiment.sh preflight runtime_eff_non_exact_v2
-  ./scripts/run-automove-experiment.sh pre-screen runtime_eff_non_exact_v2
+  SMART_TRIAGE_SURFACE=opponent_mana ./scripts/run-automove-experiment.sh triage runtime_eff_non_exact_v2
   ./scripts/run-automove-experiment.sh fast-screen runtime_eff_non_exact_v2
-  ./scripts/run-automove-experiment.sh pro-pre-screen runtime_eff_non_exact_v2
+  SMART_TRIAGE_SURFACE=opening_reply ./scripts/run-automove-experiment.sh pro-triage runtime_eff_non_exact_v2
   ./scripts/run-automove-experiment.sh pro-ladder runtime_eff_exact_lite_v1 runtime_release_safe_pre_exact
 EOF_HELP
 }
@@ -109,6 +115,13 @@ case "${stage}" in
     run_cargo_logged "stage1_cpu_${candidate}" "smart_automove_pool_stage1_cpu_non_regression_gate"
     run_cargo_logged "exact_lite_diag_${candidate}" "smart_automove_pool_exact_lite_diagnostics_gate"
     ;;
+  triage)
+    triage_surface="${SMART_TRIAGE_SURFACE:-unset}"
+    run_cargo_logged \
+      "triage_${triage_surface}_${candidate}" \
+      "smart_automove_pool_signal_triage" \
+      "SMART_GATE_BASELINE_PROFILE=${baseline}"
+    ;;
   pre-screen)
     run_fast_screen \
       "pre_screen_${candidate}" \
@@ -130,6 +143,14 @@ case "${stage}" in
       "ladder_${candidate}" \
       "smart_automove_pool_promotion_ladder" \
       "SMART_GATE_BASELINE_PROFILE=${baseline}"
+    ;;
+  pro-triage)
+    triage_surface="${SMART_TRIAGE_SURFACE:-unset}"
+    run_cargo_logged \
+      "pro_triage_${triage_surface}_${candidate}" \
+      "smart_automove_pool_pro_signal_triage" \
+      "SMART_GATE_BASELINE_PROFILE=${baseline}" \
+      "SMART_PRO_BASELINE_PROFILE=${baseline}"
     ;;
   pro-pre-screen)
     run_pro_fast_screens \
