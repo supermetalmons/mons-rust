@@ -24,6 +24,13 @@ This document keeps compressed history for retired automove profiles and experim
 - `runtime_root_reply_v1`
   This March 9, 2026 low-CPU reply-selection wave cleared `preflight` and a constrained `fast-screen`, but follow-up diagnostics did not show promotable normal-side strength. Focused mode checks showed candidate `fast` at `+0.0208` vs baseline `fast` and `0.0000` vs baseline `normal` over `48` games each, while candidate `normal` ran `-0.0417` vs baseline `fast` over `48` games and `-0.0938` vs baseline `normal` after `32` games before the report was stopped. Keep the lesson that cheap reply-risk cleanup can be acceptable in `fast`, but do not carry the aggressive normal shortlist and penalty tuning forward.
 
+## Removed Registry Aliases
+
+- `runtime_efficient_v1`
+  Removed from the active registry on March 9, 2026 because it was only a compatibility alias for `runtime_eff_non_exact_v1`. Use the canonical ID instead.
+- `runtime_pre_pro_promotion_v1`
+  Removed from the active registry on March 9, 2026 because it was a no-op duplicate of `runtime_current`. Use `runtime_current` for that behavior.
+
 ## Mistakes Not To Repeat
 
 - Do not keep historical profiles live in the active registry after their lesson is absorbed.

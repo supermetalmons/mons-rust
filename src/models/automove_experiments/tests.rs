@@ -58,7 +58,7 @@ fn stage1_cpu_measurement_repeats() -> usize {
 fn median_f64(values: &mut [f64]) -> f64 {
     values.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
     let mid = values.len() / 2;
-    if values.len() % 2 == 0 {
+    if values.len().is_multiple_of(2) {
         (values[mid - 1] + values[mid]) / 2.0
     } else {
         values[mid]
@@ -129,12 +129,7 @@ fn assert_stage1_cpu_non_regression(
             let ratio_limit = stage1_cpu_ratio_limit(mode);
             println!(
                 "stage-1 cpu seed={} mode={} candidate={} ratio={:.3} limit={:.3} samples={:?}",
-                seed_tag,
-                mode,
-                candidate_profile_name,
-                ratio,
-                ratio_limit,
-                samples
+                seed_tag, mode, candidate_profile_name, ratio, ratio_limit, samples
             );
             assert!(
                 ratio <= ratio_limit,
@@ -208,7 +203,7 @@ fn assert_exact_lite_diagnostics_gate_if_enabled(
             let _ = select_inputs_with_runtime_fallback(candidate_selector, &game, config);
             let diagnostics = exact_query_diagnostics_snapshot();
             let root_calls = diagnostics.exact_turn_summary_builds as usize;
-            let static_calls = (diagnostics.passive_strategic_summary_builds as usize + 1) / 2;
+            let static_calls = (diagnostics.passive_strategic_summary_builds as usize).div_ceil(2);
 
             assert!(
                 root_calls <= limits.root_call_budget,
@@ -360,12 +355,10 @@ fn smart_automove_pool_retained_profile_ids_match_active_registry() {
             "runtime_release_safe_pre_exact",
             "runtime_eff_non_exact_v1",
             "runtime_eff_non_exact_v2",
-            "runtime_efficient_v1",
             "runtime_eff_exact_lite_v1",
             "swift_2024_eval_reference",
             "swift_2024_style_reference",
             "runtime_pre_fast_root_quality_v1_normal_conversion_v3",
-            "runtime_pre_pro_promotion_v1",
         ]
     );
 }
@@ -592,17 +585,17 @@ fn smart_automove_pool_mode_comparison_report() {
                 mode.as_api_value(),
                 seed_tag
             );
-            aggregate.merge(run_cross_budget_duel(
-                focus_profile.as_str(),
-                focus_mode,
-                baseline_profile.as_str(),
-                mode,
-                tagged_seed.as_str(),
+            aggregate.merge(run_cross_budget_duel(CrossBudgetDuelConfig {
+                profile_a: focus_profile.as_str(),
+                mode_a: focus_mode,
+                profile_b: baseline_profile.as_str(),
+                mode_b: mode,
+                seed_tag: tagged_seed.as_str(),
                 repeats,
                 games_per_repeat,
                 max_plies,
                 use_white_opening_book,
-            ));
+            }));
             eprintln!(
                 "{}-vs-{} seed={} cumulative_games={} W={} L={} D={} win_rate={:.4}",
                 compare_tag,
@@ -674,7 +667,7 @@ fn smart_automove_pool_fast_screen() {
         budgets.as_slice(),
         &ProgressiveDuelConfig {
             initial_games: config.initial_games.max(2),
-            max_games_per_seed: config.max_games_per_seed.max(4).min(8),
+            max_games_per_seed: config.max_games_per_seed.clamp(4, 8),
             seed_tags: vec!["neutral_v1"],
             max_plies: 72,
             early_exit_delta_floor: -0.10,
@@ -1015,16 +1008,16 @@ fn smart_automove_pool_promotion_ladder() {
     let confirm_max_plies = env_usize("SMART_GATE_CONFIRM_MAX_PLIES")
         .unwrap_or(80)
         .max(56);
-    let confirm_results = run_mirrored_duel_for_seed_tag(
+    let confirm_results = run_mirrored_duel_for_seed_tag(MirroredDuelSeedConfig {
         candidate,
         baseline,
-        budgets.as_slice(),
-        "prod_open_v1",
-        confirm_repeats,
-        confirm_games,
-        confirm_max_plies,
-        true,
-    );
+        budgets: budgets.as_slice(),
+        seed_tag: "prod_open_v1",
+        repeats: confirm_repeats,
+        games_per_mode: confirm_games,
+        max_plies: confirm_max_plies,
+        use_white_opening_book: true,
+    });
     let mut confirm_aggregate = MatchupStats::default();
     for (_, stats) in &confirm_results {
         confirm_aggregate.merge(*stats);
@@ -1083,17 +1076,17 @@ fn smart_automove_pool_pro_fast_screen_vs_normal() {
         .unwrap_or(72)
         .max(56);
 
-    let stats = run_cross_budget_duel(
-        candidate_profile.as_str(),
-        SmartAutomovePreference::Pro,
-        baseline_profile.as_str(),
-        SmartAutomovePreference::Normal,
-        seed_tag.as_str(),
+    let stats = run_cross_budget_duel(CrossBudgetDuelConfig {
+        profile_a: candidate_profile.as_str(),
+        mode_a: SmartAutomovePreference::Pro,
+        profile_b: baseline_profile.as_str(),
+        mode_b: SmartAutomovePreference::Normal,
+        seed_tag: seed_tag.as_str(),
         repeats,
-        games,
+        games_per_repeat: games,
         max_plies,
-        false,
-    );
+        use_white_opening_book: false,
+    });
     let (delta, confidence) = stats_delta_confidence(stats);
     println!(
         "pro fast screen vs normal: profile={} baseline={} delta={:.4} confidence={:.3}",
@@ -1122,17 +1115,17 @@ fn smart_automove_pool_pro_fast_screen_vs_fast() {
         .unwrap_or(72)
         .max(56);
 
-    let stats = run_cross_budget_duel(
-        candidate_profile.as_str(),
-        SmartAutomovePreference::Pro,
-        baseline_profile.as_str(),
-        SmartAutomovePreference::Fast,
-        seed_tag.as_str(),
+    let stats = run_cross_budget_duel(CrossBudgetDuelConfig {
+        profile_a: candidate_profile.as_str(),
+        mode_a: SmartAutomovePreference::Pro,
+        profile_b: baseline_profile.as_str(),
+        mode_b: SmartAutomovePreference::Fast,
+        seed_tag: seed_tag.as_str(),
         repeats,
-        games,
+        games_per_repeat: games,
         max_plies,
-        false,
-    );
+        use_white_opening_book: false,
+    });
     let (delta, confidence) = stats_delta_confidence(stats);
     println!(
         "pro fast screen vs fast: profile={} baseline={} delta={:.4} confidence={:.3}",
@@ -1258,28 +1251,28 @@ fn smart_automove_pool_pro_promotion_ladder() {
         .max(56);
     let primary_seed_tags = ["neutral_v1", "neutral_v2", "neutral_v3"];
 
-    let vs_normal_stats = run_pro_matchup_across_seeds(
-        candidate_profile.as_str(),
-        baseline_profile.as_str(),
-        SmartAutomovePreference::Normal,
-        "pro_primary_vs_normal",
-        &primary_seed_tags,
-        primary_repeats,
-        primary_games,
-        primary_max_plies,
-        false,
-    );
-    let vs_fast_stats = run_pro_matchup_across_seeds(
-        candidate_profile.as_str(),
-        baseline_profile.as_str(),
-        SmartAutomovePreference::Fast,
-        "pro_primary_vs_fast",
-        &primary_seed_tags,
-        primary_repeats,
-        primary_games,
-        primary_max_plies,
-        false,
-    );
+    let vs_normal_stats = run_pro_matchup_across_seeds(ProMatchupAcrossSeedsConfig {
+        candidate_profile: candidate_profile.as_str(),
+        baseline_profile: baseline_profile.as_str(),
+        baseline_mode: SmartAutomovePreference::Normal,
+        seed_tag_prefix: "pro_primary_vs_normal",
+        seed_tags: &primary_seed_tags,
+        repeats: primary_repeats,
+        games_per_seed: primary_games,
+        max_plies: primary_max_plies,
+        use_white_opening_book: false,
+    });
+    let vs_fast_stats = run_pro_matchup_across_seeds(ProMatchupAcrossSeedsConfig {
+        candidate_profile: candidate_profile.as_str(),
+        baseline_profile: baseline_profile.as_str(),
+        baseline_mode: SmartAutomovePreference::Fast,
+        seed_tag_prefix: "pro_primary_vs_fast",
+        seed_tags: &primary_seed_tags,
+        repeats: primary_repeats,
+        games_per_seed: primary_games,
+        max_plies: primary_max_plies,
+        use_white_opening_book: false,
+    });
     let (vs_normal_delta, vs_normal_confidence) = stats_delta_confidence(vs_normal_stats);
     let (vs_fast_delta, vs_fast_confidence) = stats_delta_confidence(vs_fast_stats);
     assert!(
@@ -1316,28 +1309,28 @@ fn smart_automove_pool_pro_promotion_ladder() {
     let confirm_max_plies = env_usize("SMART_PRO_GATE_CONFIRM_MAX_PLIES")
         .unwrap_or(96)
         .max(56);
-    let confirm_vs_normal = run_cross_budget_duel(
-        candidate_profile.as_str(),
-        SmartAutomovePreference::Pro,
-        baseline_profile.as_str(),
-        SmartAutomovePreference::Normal,
-        "pro_confirm_vs_normal_v1",
-        confirm_repeats,
-        confirm_games,
-        confirm_max_plies,
-        true,
-    );
-    let confirm_vs_fast = run_cross_budget_duel(
-        candidate_profile.as_str(),
-        SmartAutomovePreference::Pro,
-        baseline_profile.as_str(),
-        SmartAutomovePreference::Fast,
-        "pro_confirm_vs_fast_v1",
-        confirm_repeats,
-        confirm_games,
-        confirm_max_plies,
-        true,
-    );
+    let confirm_vs_normal = run_cross_budget_duel(CrossBudgetDuelConfig {
+        profile_a: candidate_profile.as_str(),
+        mode_a: SmartAutomovePreference::Pro,
+        profile_b: baseline_profile.as_str(),
+        mode_b: SmartAutomovePreference::Normal,
+        seed_tag: "pro_confirm_vs_normal_v1",
+        repeats: confirm_repeats,
+        games_per_repeat: confirm_games,
+        max_plies: confirm_max_plies,
+        use_white_opening_book: true,
+    });
+    let confirm_vs_fast = run_cross_budget_duel(CrossBudgetDuelConfig {
+        profile_a: candidate_profile.as_str(),
+        mode_a: SmartAutomovePreference::Pro,
+        profile_b: baseline_profile.as_str(),
+        mode_b: SmartAutomovePreference::Fast,
+        seed_tag: "pro_confirm_vs_fast_v1",
+        repeats: confirm_repeats,
+        games_per_repeat: confirm_games,
+        max_plies: confirm_max_plies,
+        use_white_opening_book: true,
+    });
     assert!(
         stats_delta_confidence(confirm_vs_normal).0 >= 0.0,
         "pro confirmation vs normal failed non-regression"

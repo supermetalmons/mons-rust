@@ -2,6 +2,49 @@ use super::profiles::{profile_selector_from_name, selected_pool_models};
 use super::*;
 use std::collections::HashMap;
 
+type OpeningFensCacheKey = (u64, usize);
+type OpeningFens = Arc<Vec<String>>;
+type OpeningFensCacheMap = HashMap<OpeningFensCacheKey, OpeningFens>;
+type OpeningFensCache = Mutex<OpeningFensCacheMap>;
+
+#[derive(Clone, Copy)]
+pub(super) struct ProMatchupAcrossSeedsConfig<'a> {
+    pub candidate_profile: &'a str,
+    pub baseline_profile: &'a str,
+    pub baseline_mode: SmartAutomovePreference,
+    pub seed_tag_prefix: &'a str,
+    pub seed_tags: &'a [&'a str],
+    pub repeats: usize,
+    pub games_per_seed: usize,
+    pub max_plies: usize,
+    pub use_white_opening_book: bool,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct CrossBudgetDuelConfig<'a> {
+    pub profile_a: &'a str,
+    pub mode_a: SmartAutomovePreference,
+    pub profile_b: &'a str,
+    pub mode_b: SmartAutomovePreference,
+    pub seed_tag: &'a str,
+    pub repeats: usize,
+    pub games_per_repeat: usize,
+    pub max_plies: usize,
+    pub use_white_opening_book: bool,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct MirroredDuelSeedConfig<'a> {
+    pub candidate: AutomoveModel,
+    pub baseline: AutomoveModel,
+    pub budgets: &'a [SearchBudget],
+    pub seed_tag: &'a str,
+    pub repeats: usize,
+    pub games_per_mode: usize,
+    pub max_plies: usize,
+    pub use_white_opening_book: bool,
+}
+
 pub(super) fn select_inputs_with_runtime_fallback(
     selector: AutomoveSelector,
     game: &MonsGame,
@@ -375,8 +418,8 @@ pub(super) fn generate_opening_fens(seed: u64, count: usize) -> Vec<String> {
     fens
 }
 
-pub(super) fn opening_fens_cache() -> &'static Mutex<HashMap<(u64, usize), Arc<Vec<String>>>> {
-    static CACHE: OnceLock<Mutex<HashMap<(u64, usize), Arc<Vec<String>>>>> = OnceLock::new();
+pub(super) fn opening_fens_cache() -> &'static OpeningFensCache {
+    static CACHE: OnceLock<OpeningFensCache> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -538,30 +581,22 @@ pub(super) fn stats_delta_confidence(stats: MatchupStats) -> (f64, f64) {
 }
 
 pub(super) fn run_pro_matchup_across_seeds(
-    candidate_profile: &str,
-    baseline_profile: &str,
-    baseline_mode: SmartAutomovePreference,
-    seed_tag_prefix: &str,
-    seed_tags: &[&str],
-    repeats: usize,
-    games_per_seed: usize,
-    max_plies: usize,
-    use_white_opening_book: bool,
+    config: ProMatchupAcrossSeedsConfig<'_>,
 ) -> MatchupStats {
     let mut aggregate = MatchupStats::default();
-    for seed_tag in seed_tags {
-        let tagged = format!("{}:{}", seed_tag_prefix, seed_tag);
-        aggregate.merge(run_cross_budget_duel(
-            candidate_profile,
-            SmartAutomovePreference::Pro,
-            baseline_profile,
-            baseline_mode,
-            tagged.as_str(),
-            repeats,
-            games_per_seed,
-            max_plies,
-            use_white_opening_book,
-        ));
+    for seed_tag in config.seed_tags {
+        let tagged = format!("{}:{}", config.seed_tag_prefix, seed_tag);
+        aggregate.merge(run_cross_budget_duel(CrossBudgetDuelConfig {
+            profile_a: config.candidate_profile,
+            mode_a: SmartAutomovePreference::Pro,
+            profile_b: config.baseline_profile,
+            mode_b: config.baseline_mode,
+            seed_tag: tagged.as_str(),
+            repeats: config.repeats,
+            games_per_repeat: config.games_per_seed,
+            max_plies: config.max_plies,
+            use_white_opening_book: config.use_white_opening_book,
+        }));
     }
     aggregate
 }
@@ -593,17 +628,17 @@ pub(super) fn run_pro_progressive_matchup(
     loop {
         for seed_tag in seed_tags {
             let tagged_seed = format!("{}:{}:{}", stage_tag, seed_tag, games_per_seed);
-            cumulative.merge(run_cross_budget_duel(
-                candidate_profile,
-                SmartAutomovePreference::Pro,
-                baseline_profile,
-                baseline_mode,
-                tagged_seed.as_str(),
+            cumulative.merge(run_cross_budget_duel(CrossBudgetDuelConfig {
+                profile_a: candidate_profile,
+                mode_a: SmartAutomovePreference::Pro,
+                profile_b: baseline_profile,
+                mode_b: baseline_mode,
+                seed_tag: tagged_seed.as_str(),
                 repeats,
-                games_per_seed,
+                games_per_repeat: games_per_seed,
                 max_plies,
-                false,
-            ));
+                use_white_opening_book: false,
+            }));
         }
 
         let (delta, confidence) = stats_delta_confidence(cumulative);
@@ -640,22 +675,18 @@ pub(super) fn mirrored_candidate_stats(ab: MatchupStats, ba: MatchupStats) -> Ma
     }
 }
 
-pub(super) fn run_cross_budget_duel(
-    profile_a: &str,
-    mode_a: SmartAutomovePreference,
-    profile_b: &str,
-    mode_b: SmartAutomovePreference,
-    seed_tag: &str,
-    repeats: usize,
-    games_per_repeat: usize,
-    max_plies: usize,
-    use_white_opening_book: bool,
-) -> MatchupStats {
-    let Some(selector_a) = profile_selector_from_name(profile_a) else {
-        panic!("unknown profile for cross-budget duel A: {}", profile_a);
+pub(super) fn run_cross_budget_duel(config: CrossBudgetDuelConfig<'_>) -> MatchupStats {
+    let Some(selector_a) = profile_selector_from_name(config.profile_a) else {
+        panic!(
+            "unknown profile for cross-budget duel A: {}",
+            config.profile_a
+        );
     };
-    let Some(selector_b) = profile_selector_from_name(profile_b) else {
-        panic!("unknown profile for cross-budget duel B: {}", profile_b);
+    let Some(selector_b) = profile_selector_from_name(config.profile_b) else {
+        panic!(
+            "unknown profile for cross-budget duel B: {}",
+            config.profile_b
+        );
     };
 
     let model_a = AutomoveModel {
@@ -666,15 +697,15 @@ pub(super) fn run_cross_budget_duel(
         id: "cross_budget_b",
         select_inputs: selector_b,
     };
-    let budget_a = SearchBudget::from_preference(mode_a);
-    let budget_b = SearchBudget::from_preference(mode_b);
+    let budget_a = SearchBudget::from_preference(config.mode_a);
+    let budget_b = SearchBudget::from_preference(config.mode_b);
 
     let original_max_plies = env::var("SMART_POOL_MAX_PLIES").ok();
     let original_opening_book = env::var("SMART_USE_WHITE_OPENING_BOOK").ok();
-    env::set_var("SMART_POOL_MAX_PLIES", max_plies.to_string());
+    env::set_var("SMART_POOL_MAX_PLIES", config.max_plies.to_string());
     env::set_var(
         "SMART_USE_WHITE_OPENING_BOOK",
-        if use_white_opening_book {
+        if config.use_white_opening_book {
             "true"
         } else {
             "false"
@@ -682,25 +713,26 @@ pub(super) fn run_cross_budget_duel(
     );
 
     let mut aggregate = MatchupStats::default();
-    for repeat_index in 0..repeats.max(1) {
-        let seed = seed_for_budget_duel_repeat_and_tag(budget_a, budget_b, repeat_index, seed_tag);
+    for repeat_index in 0..config.repeats.max(1) {
+        let seed =
+            seed_for_budget_duel_repeat_and_tag(budget_a, budget_b, repeat_index, config.seed_tag);
         let ab = run_budget_duel_series(
             model_a,
             budget_a,
             model_b,
             budget_b,
-            games_per_repeat.max(1),
+            config.games_per_repeat.max(1),
             seed,
-            max_plies,
+            config.max_plies,
         );
         let ba = run_budget_duel_series(
             model_b,
             budget_b,
             model_a,
             budget_a,
-            games_per_repeat.max(1),
+            config.games_per_repeat.max(1),
             seed,
-            max_plies,
+            config.max_plies,
         );
         aggregate.merge(mirrored_candidate_stats(ab, ba));
     }
@@ -873,34 +905,39 @@ pub(super) fn profile_speed_by_mode_ms(
 }
 
 pub(super) fn run_mirrored_duel_for_seed_tag(
-    candidate: AutomoveModel,
-    baseline: AutomoveModel,
-    budgets: &[SearchBudget],
-    seed_tag: &str,
-    repeats: usize,
-    games_per_mode: usize,
-    max_plies: usize,
-    use_white_opening_book: bool,
+    config: MirroredDuelSeedConfig<'_>,
 ) -> Vec<(SearchBudget, MatchupStats)> {
     let original_max_plies = env::var("SMART_POOL_MAX_PLIES").ok();
     let original_opening_book = env::var("SMART_USE_WHITE_OPENING_BOOK").ok();
-    env::set_var("SMART_POOL_MAX_PLIES", max_plies.to_string());
+    env::set_var("SMART_POOL_MAX_PLIES", config.max_plies.to_string());
     env::set_var(
         "SMART_USE_WHITE_OPENING_BOOK",
-        if use_white_opening_book {
+        if config.use_white_opening_book {
             "true"
         } else {
             "false"
         },
     );
 
-    let mut results = Vec::with_capacity(budgets.len());
-    for budget in budgets.iter().copied() {
+    let mut results = Vec::with_capacity(config.budgets.len());
+    for budget in config.budgets.iter().copied() {
         let mut aggregate = MatchupStats::default();
-        for repeat_index in 0..repeats.max(1) {
-            let seed = seed_for_budget_repeat_and_tag(budget, repeat_index, seed_tag);
-            let ab = run_matchup_series(candidate, baseline, games_per_mode.max(1), budget, seed);
-            let ba = run_matchup_series(baseline, candidate, games_per_mode.max(1), budget, seed);
+        for repeat_index in 0..config.repeats.max(1) {
+            let seed = seed_for_budget_repeat_and_tag(budget, repeat_index, config.seed_tag);
+            let ab = run_matchup_series(
+                config.candidate,
+                config.baseline,
+                config.games_per_mode.max(1),
+                budget,
+                seed,
+            );
+            let ba = run_matchup_series(
+                config.baseline,
+                config.candidate,
+                config.games_per_mode.max(1),
+                budget,
+                seed,
+            );
             aggregate.merge(mirrored_candidate_stats(ab, ba));
         }
         results.push((budget, aggregate));
@@ -1045,16 +1082,16 @@ pub(super) fn run_progressive_duel(
 
     loop {
         for seed_tag in &config.seed_tags {
-            let tier_results = run_mirrored_duel_for_seed_tag(
+            let tier_results = run_mirrored_duel_for_seed_tag(MirroredDuelSeedConfig {
                 candidate,
                 baseline,
                 budgets,
                 seed_tag,
-                config.repeats_per_game,
-                games_per_seed,
-                config.max_plies,
-                config.use_white_opening_book,
-            );
+                repeats: config.repeats_per_game,
+                games_per_mode: games_per_seed,
+                max_plies: config.max_plies,
+                use_white_opening_book: config.use_white_opening_book,
+            });
             merge_mode_stats(&mut cumulative_mode_stats, tier_results.as_slice());
         }
 

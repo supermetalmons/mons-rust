@@ -9,7 +9,9 @@ or
 
 The active automove workflow lives here:
 
-- runbook: `docs/automove-experiments.md`
+- canonical workflow: `HOW_TO_ITERATE_ON_AUTOMOVE.md`
+- ideas backlog: `AUTOMOVE_IDEAS.md`
+- compatibility entrypoint: `docs/automove-experiments.md`
 - durable lessons: `docs/automove-knowledge.md`
 - retired profile archive: `docs/automove-archive.md`
 

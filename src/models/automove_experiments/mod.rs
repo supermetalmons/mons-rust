@@ -94,21 +94,11 @@ struct AutomoveModel {
     select_inputs: AutomoveSelector,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 struct MatchupStats {
     wins: usize,
     losses: usize,
     draws: usize,
-}
-
-impl Default for MatchupStats {
-    fn default() -> Self {
-        Self {
-            wins: 0,
-            losses: 0,
-            draws: 0,
-        }
-    }
 }
 
 impl MatchupStats {

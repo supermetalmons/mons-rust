@@ -18,7 +18,7 @@ struct AutomoveProfile {
     selector: AutomoveSelector,
 }
 
-const RETAINED_PROFILES: [AutomoveProfile; 11] = [
+const RETAINED_PROFILES: [AutomoveProfile; 9] = [
     AutomoveProfile {
         id: "base",
         selector: model_base_profile,
@@ -40,10 +40,6 @@ const RETAINED_PROFILES: [AutomoveProfile; 11] = [
         selector: model_runtime_eff_non_exact_v2,
     },
     AutomoveProfile {
-        id: "runtime_efficient_v1",
-        selector: model_runtime_eff_non_exact_v1,
-    },
-    AutomoveProfile {
         id: PROFILE_RUNTIME_EFF_EXACT_LITE_V1,
         selector: model_runtime_eff_exact_lite_v1,
     },
@@ -58,10 +54,6 @@ const RETAINED_PROFILES: [AutomoveProfile; 11] = [
     AutomoveProfile {
         id: "runtime_pre_fast_root_quality_v1_normal_conversion_v3",
         selector: model_runtime_pre_fast_root_quality_v1_normal_conversion_v3,
-    },
-    AutomoveProfile {
-        id: "runtime_pre_pro_promotion_v1",
-        selector: model_runtime_pre_pro_promotion_v1,
     },
 ];
 
@@ -238,13 +230,6 @@ pub(super) fn profile_exact_lite_budgets(
     })
 }
 
-pub(super) fn model_runtime_pre_pro_promotion_v1(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    model_current_best(game, config)
-}
-
 pub(super) fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let selector =
         profile_selector_from_name(candidate_profile().as_str()).unwrap_or(model_base_profile);
@@ -280,7 +265,7 @@ pub(super) fn model_first_legal_automove(
                 let Some(next_input) = options.first() else {
                     return Vec::new();
                 };
-                inputs.push(next_input.input.clone());
+                inputs.push(next_input.input);
                 output = simulated.process_input_with_start_options(
                     inputs.clone(),
                     false,
