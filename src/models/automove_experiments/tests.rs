@@ -1628,6 +1628,11 @@ fn smart_automove_pool_retained_profile_ids_match_active_registry() {
             "swift_2024_style_reference",
             "runtime_pre_fast_root_quality_v1_normal_conversion_v3",
             "runtime_attacker_proximity_v1",
+            "runtime_normal_history_heuristic_v1",
+            "runtime_pro_history_heuristic_v1",
+            "runtime_normal_quiescence_v1",
+            "runtime_pro_quiescence_v1",
+            "runtime_pro_quiescence_v2",
         ]
     );
 }
