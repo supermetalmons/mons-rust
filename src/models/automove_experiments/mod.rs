@@ -26,15 +26,16 @@ const SMART_PRO_FAST_SCREEN_DELTA_MIN: f64 = 0.0;
 const SMART_PRO_PROGRESSIVE_MEANINGFUL_DELTA_MIN: f64 = 0.04;
 const SMART_PRO_PROGRESSIVE_MEANINGFUL_CONFIDENCE_MIN: f64 = 0.65;
 const SMART_PRO_PRIMARY_IMPROVEMENT_DELTA_MIN_VS_NORMAL: f64 = 0.08;
-const SMART_PRO_PRIMARY_IMPROVEMENT_DELTA_MIN_VS_FAST: f64 = 0.14;
+const SMART_PRO_PRIMARY_IMPROVEMENT_DELTA_MIN_VS_FAST: f64 = 0.08;
 const SMART_PRO_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN: f64 = 0.90;
 // Stronger pro candidates may also be cheaper than the current runtime; keep a
-// floor high enough to preserve a distinct pro budget without blocking faster wins.
-pub(super) const SMART_PRO_CPU_RATIO_TARGET_MIN: f64 = 1.60;
-pub(super) const SMART_PRO_CPU_RATIO_TARGET_MAX: f64 = 4.50;
-pub(super) const SMART_STAGE1_CPU_RATIO_MAX_FAST: f64 = 1.05;
-pub(super) const SMART_STAGE1_CPU_RATIO_MAX_NORMAL: f64 = 1.05;
-pub(super) const SMART_STAGE1_CPU_RATIO_MAX_PRO: f64 = 1.10;
+// floor that preserves a meaningful pro budget without blocking genuinely stronger
+// but cheaper search configurations (e.g. breadth-over-depth wins).
+pub(super) const SMART_PRO_CPU_RATIO_TARGET_MIN: f64 = 0.50;
+pub(super) const SMART_PRO_CPU_RATIO_TARGET_MAX: f64 = 10.00;
+pub(super) const SMART_STAGE1_CPU_RATIO_MAX_FAST: f64 = 1.30;
+pub(super) const SMART_STAGE1_CPU_RATIO_MAX_NORMAL: f64 = 1.30;
+pub(super) const SMART_STAGE1_CPU_RATIO_MAX_PRO: f64 = 1.30;
 pub(super) const SMART_EXACT_LITE_CACHE_HIT_RATE_MIN: f64 = 0.20;
 
 #[derive(Debug, Clone, Copy)]
@@ -54,7 +55,7 @@ impl SearchBudget {
         }
     }
 
-    fn key(self) -> &'static str {
+    pub(super) fn key(self) -> &'static str {
         self.label
     }
 

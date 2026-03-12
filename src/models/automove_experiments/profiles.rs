@@ -5,6 +5,25 @@ const DEFAULT_PROMOTION_BASELINE_PROFILE: &str = "runtime_release_safe_pre_exact
 const PROFILE_RUNTIME_EFF_NON_EXACT_V1: &str = "runtime_eff_non_exact_v1";
 const PROFILE_RUNTIME_EFF_NON_EXACT_V2: &str = "runtime_eff_non_exact_v2";
 const PROFILE_RUNTIME_EFF_EXACT_LITE_V1: &str = "runtime_eff_exact_lite_v1";
+const PROFILE_RUNTIME_ATTACKER_PROXIMITY_V1: &str = "runtime_attacker_proximity_v1";
+const PROFILE_RUNTIME_PRO_DEEPER_EXTENSIONS_V1: &str = "runtime_pro_deeper_extensions_v1";
+const PROFILE_RUNTIME_PRO_MORE_EXTENSIONS_V1: &str = "runtime_pro_more_extensions_v1";
+const PROFILE_RUNTIME_NORMAL_NO_SAFETY_RERANK_V1: &str = "runtime_normal_no_safety_rerank_v1";
+const PROFILE_RUNTIME_NORMAL_NO_TWO_PASS_V1: &str = "runtime_normal_no_two_pass_v1";
+const PROFILE_RUNTIME_NORMAL_NO_EXTENSIONS_V1: &str = "runtime_normal_no_extensions_v1";
+const PROFILE_RUNTIME_NORMAL_WIDER_REPLY_V1: &str = "runtime_normal_wider_reply_v1";
+const PROFILE_RUNTIME_PRO_NO_QUIET_REDUCTIONS_V1: &str = "runtime_pro_no_quiet_reductions_v1";
+const PROFILE_RUNTIME_PRO_NO_FUTILITY_V1: &str = "runtime_pro_no_futility_v1";
+const PROFILE_RUNTIME_PRO_KILLER_ORDERING_V1: &str = "runtime_pro_killer_ordering_v1";
+const PROFILE_RUNTIME_PRO_SEARCH_COMBO_V1: &str = "runtime_pro_search_combo_v1";
+const PROFILE_RUNTIME_FAST_NO_QUIET_REDUCTIONS_V1: &str = "runtime_fast_no_quiet_reductions_v1";
+const PROFILE_RUNTIME_FAST_TWO_PASS_V1: &str = "runtime_fast_spirit_deploy_v1";
+const PROFILE_RUNTIME_NORMAL_ITERATIVE_DEEPENING_V1: &str = "runtime_normal_iterative_deepening_v1";
+const PROFILE_RUNTIME_NORMAL_HISTORY_HEURISTIC_V1: &str = "runtime_normal_history_heuristic_v1";
+const PROFILE_RUNTIME_PRO_HISTORY_HEURISTIC_V1: &str = "runtime_pro_history_heuristic_v1";
+const PROFILE_RUNTIME_NORMAL_QUIESCENCE_V1: &str = "runtime_normal_quiescence_v1";
+const PROFILE_RUNTIME_PRO_QUIESCENCE_V1: &str = "runtime_pro_quiescence_v1";
+const PROFILE_RUNTIME_PRO_QUIESCENCE_V2: &str = "runtime_pro_quiescence_v2";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct ExactLiteBudgets {
@@ -18,7 +37,7 @@ struct AutomoveProfile {
     selector: AutomoveSelector,
 }
 
-const RETAINED_PROFILES: [AutomoveProfile; 9] = [
+const RETAINED_PROFILES: [AutomoveProfile; 15] = [
     AutomoveProfile {
         id: "base",
         selector: model_base_profile,
@@ -54,6 +73,30 @@ const RETAINED_PROFILES: [AutomoveProfile; 9] = [
     AutomoveProfile {
         id: "runtime_pre_fast_root_quality_v1_normal_conversion_v3",
         selector: model_runtime_pre_fast_root_quality_v1_normal_conversion_v3,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_ATTACKER_PROXIMITY_V1,
+        selector: model_runtime_attacker_proximity_v1,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_NORMAL_HISTORY_HEURISTIC_V1,
+        selector: model_runtime_normal_history_heuristic_v1,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_PRO_HISTORY_HEURISTIC_V1,
+        selector: model_runtime_pro_history_heuristic_v1,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_NORMAL_QUIESCENCE_V1,
+        selector: model_runtime_normal_quiescence_v1,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_PRO_QUIESCENCE_V1,
+        selector: model_runtime_pro_quiescence_v1,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_PRO_QUIESCENCE_V2,
+        selector: model_runtime_pro_quiescence_v2,
     },
 ];
 
@@ -214,6 +257,342 @@ pub(super) fn model_runtime_eff_exact_lite_v1(
     MonsGameModel::smart_search_best_inputs(game, configure_runtime_eff_exact_lite_v1(game, config))
 }
 
+fn configure_runtime_attacker_proximity_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= 3 {
+        runtime.scoring_weights =
+            MonsGameModel::runtime_phase_adaptive_attacker_proximity_scoring_weights(
+                game,
+                runtime.depth,
+            );
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_attacker_proximity_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        game,
+        configure_runtime_attacker_proximity_v1(game, config),
+    )
+}
+
+fn configure_runtime_pro_wider_roots_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.root_focus_k = 4;
+        runtime.root_focus_budget_share_bp = 6_500;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_pro_wider_roots_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_pro_wider_roots_v1(config),
+    )
+}
+
+fn configure_runtime_normal_no_prepass_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= 3 && runtime.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_forced_tactical_prepass = false;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_normal_no_prepass_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_normal_no_prepass_v1(config),
+    )
+}
+
+fn configure_runtime_pro_deeper_extensions_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_selective_extensions = false;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_pro_deeper_extensions_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_pro_deeper_extensions_v1(config),
+    )
+}
+
+
+fn configure_runtime_pro_more_extensions_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_extensions_per_path = 2;
+        runtime.selective_extension_node_share_bp = 2_500;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_pro_more_extensions_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_pro_more_extensions_v1(config),
+    )
+}
+
+fn configure_runtime_pro_no_quiet_reductions_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_selective_extensions = false;
+        runtime.enable_quiet_reductions = false;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_pro_no_quiet_reductions_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_pro_no_quiet_reductions_v1(config),
+    )
+}
+
+fn configure_runtime_pro_no_futility_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_futility_pruning = false;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_pro_no_futility_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_pro_no_futility_v1(config),
+    )
+}
+
+fn configure_runtime_pro_killer_ordering_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_killer_move_ordering = true;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_pro_killer_ordering_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_pro_killer_ordering_v1(config),
+    )
+}
+
+fn configure_runtime_pro_search_combo_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_killer_move_ordering = true;
+        runtime.enable_futility_pruning = false;
+        runtime.enable_pvs = true;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_pro_search_combo_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_pro_search_combo_v1(config),
+    )
+}
+
+fn configure_runtime_fast_no_quiet_reductions_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth < 3 {
+        runtime.enable_quiet_reductions = false;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_fast_no_quiet_reductions_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_fast_no_quiet_reductions_v1(config),
+    )
+}
+
+fn configure_runtime_fast_spirit_deploy_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth < 3 {
+        runtime.enable_interview_hard_spirit_deploy = true;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_fast_spirit_deploy_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_fast_spirit_deploy_v1(config),
+    )
+}
+
+fn configure_runtime_normal_iterative_deepening_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= 3 && runtime.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_root_aspiration = true;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_normal_iterative_deepening_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_normal_iterative_deepening_v1(config),
+    )
+}
+
+fn configure_runtime_normal_wider_reply_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= 3 && runtime.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.root_reply_risk_score_margin = 165;
+        runtime.root_reply_risk_shortlist_max = 9;
+        runtime.root_reply_risk_reply_limit = 22;
+        runtime.root_reply_risk_node_share_bp = 1_800;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_normal_wider_reply_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_normal_wider_reply_v1(config),
+    )
+}
+
+fn configure_runtime_normal_no_safety_rerank_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= 3 && runtime.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_normal_root_safety_rerank = false;
+        runtime.enable_normal_root_safety_deep_floor = false;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_normal_no_safety_rerank_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_normal_no_safety_rerank_v1(config),
+    )
+}
+
+fn configure_runtime_normal_no_two_pass_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= 3 && runtime.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_two_pass_root_allocation = false;
+        runtime.enable_two_pass_volatility_focus = false;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_normal_no_two_pass_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_normal_no_two_pass_v1(config),
+    )
+}
+
+fn configure_runtime_normal_no_extensions_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= 3 && runtime.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_selective_extensions = false;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_normal_no_extensions_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_normal_no_extensions_v1(config),
+    )
+}
+
 fn configure_runtime_pre_fast_root_quality_v1_normal_conversion_v3(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -251,6 +630,45 @@ pub(super) fn profile_runtime_config_for_name(
         PROFILE_RUNTIME_EFF_NON_EXACT_V1 => configure_runtime_eff_non_exact_v1(game, config),
         PROFILE_RUNTIME_EFF_NON_EXACT_V2 => configure_runtime_eff_non_exact_v2(game, config),
         PROFILE_RUNTIME_EFF_EXACT_LITE_V1 => configure_runtime_eff_exact_lite_v1(game, config),
+        PROFILE_RUNTIME_ATTACKER_PROXIMITY_V1 => {
+            configure_runtime_attacker_proximity_v1(game, config)
+        }
+        PROFILE_RUNTIME_PRO_DEEPER_EXTENSIONS_V1 => {
+            configure_runtime_pro_deeper_extensions_v1(config)
+        }
+        PROFILE_RUNTIME_PRO_MORE_EXTENSIONS_V1 => {
+            configure_runtime_pro_more_extensions_v1(config)
+        }
+        PROFILE_RUNTIME_NORMAL_NO_SAFETY_RERANK_V1 => {
+            configure_runtime_normal_no_safety_rerank_v1(config)
+        }
+        PROFILE_RUNTIME_NORMAL_NO_TWO_PASS_V1 => {
+            configure_runtime_normal_no_two_pass_v1(config)
+        }
+        PROFILE_RUNTIME_NORMAL_WIDER_REPLY_V1 => {
+            configure_runtime_normal_wider_reply_v1(config)
+        }
+        PROFILE_RUNTIME_PRO_NO_QUIET_REDUCTIONS_V1 => {
+            configure_runtime_pro_no_quiet_reductions_v1(config)
+        }
+        PROFILE_RUNTIME_PRO_NO_FUTILITY_V1 => {
+            configure_runtime_pro_no_futility_v1(config)
+        }
+        PROFILE_RUNTIME_PRO_KILLER_ORDERING_V1 => {
+            configure_runtime_pro_killer_ordering_v1(config)
+        }
+        PROFILE_RUNTIME_PRO_SEARCH_COMBO_V1 => {
+            configure_runtime_pro_search_combo_v1(config)
+        }
+        PROFILE_RUNTIME_FAST_NO_QUIET_REDUCTIONS_V1 => {
+            configure_runtime_fast_no_quiet_reductions_v1(config)
+        }
+        PROFILE_RUNTIME_FAST_TWO_PASS_V1 => {
+            configure_runtime_fast_spirit_deploy_v1(config)
+        }
+        PROFILE_RUNTIME_NORMAL_ITERATIVE_DEEPENING_V1 => {
+            configure_runtime_normal_iterative_deepening_v1(config)
+        }
         "runtime_pre_fast_root_quality_v1_normal_conversion_v3" => {
             configure_runtime_pre_fast_root_quality_v1_normal_conversion_v3(game, config)
         }
@@ -317,6 +735,109 @@ pub(super) fn profile_exact_lite_budgets(
     })
 }
 
+fn configure_runtime_normal_history_heuristic_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= 3 && runtime.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_history_heuristic = true;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_normal_history_heuristic_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_normal_history_heuristic_v1(config),
+    )
+}
+
+fn configure_runtime_pro_history_heuristic_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_history_heuristic = true;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_pro_history_heuristic_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_pro_history_heuristic_v1(config),
+    )
+}
+
+fn configure_runtime_normal_quiescence_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= 3 && runtime.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_quiescence_search = true;
+        runtime.quiescence_node_budget = 30;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_normal_quiescence_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_normal_quiescence_v1(config),
+    )
+}
+
+fn configure_runtime_pro_quiescence_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_quiescence_search = true;
+        runtime.quiescence_node_budget = 200;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_pro_quiescence_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_pro_quiescence_v1(config),
+    )
+}
+
+fn configure_runtime_pro_quiescence_v2(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_quiescence_search = true;
+        runtime.quiescence_node_budget = 30;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_pro_quiescence_v2(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_pro_quiescence_v2(config),
+    )
+}
+
 pub(super) fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let selector =
         profile_selector_from_name(candidate_profile().as_str()).unwrap_or(model_base_profile);
@@ -374,6 +895,7 @@ pub(super) fn model_runtime_pre_fast_root_quality_v1_normal_conversion_v3(
         configure_runtime_pre_fast_root_quality_v1_normal_conversion_v3(game, config),
     )
 }
+
 
 pub(super) fn model_swift_2024_eval_reference(
     game: &MonsGame,

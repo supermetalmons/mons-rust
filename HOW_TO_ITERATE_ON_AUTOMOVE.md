@@ -81,6 +81,49 @@ cargo test --release --lib <test_name> -- --ignored --nocapture
 
 Promotion means changing the production runtime in `src/models/mons_game_model.rs`, not just leaving a stronger candidate in the experiment registry.
 
+## Timeouts And Progress Checks — CRITICAL ANTI-STUCK RULES
+
+**This section is the highest-priority workflow rule.** Getting stuck on a long-running experiment is the single biggest iteration killer. Follow these rules without exception.
+
+### Terminal Timeout Values (MANDATORY on every run_in_terminal call)
+
+Every experiment command MUST use the `timeout` parameter on the terminal tool call. No exceptions.
+
+| Stage | timeout (ms) | Notes |
+|---|---|---|
+| guardrails, triage, triage-calibrate | 120000 | Should finish in <30s |
+| runtime-preflight | 180000 | CPU gate + diagnostics |
+| audit-screen, pro-audit-screen | 300000 | Small sample |
+| fast-screen, pro-fast-screen (each lane) | 600000 | Per-lane, not total |
+| progressive, pro-progressive | 900000 | Kill at 15 min — if not done, it won't help |
+| ladder, pro-ladder | 1200000 | Only for strong candidates |
+
+If a command exceeds its timeout, the candidate is **dead**. Do not retry the same command. Do not increase the timeout. Kill the candidate, record the outcome, and move on.
+
+### Progress Cadence (MANDATORY)
+
+After launching any experiment command:
+1. **Do NOT fire-and-forget.** Always use `isBackground=false` with a timeout. Never use `isBackground=true` for experiment commands.
+2. When the command returns (either by completion or timeout), **immediately** parse the output for the result line.
+3. If the output shows no result summary (no `changed=`, no `δ=`, no `EarlyReject`/`EarlyPromote`), the run is broken. Kill it immediately.
+
+### Wall-Time Budgets (HARD LIMITS)
+
+- **Per candidate**: 10 minutes max from idea selection through final duel decision. If 10 minutes pass, kill and move on.
+- **Per triage surface**: Do not spend more than 3 candidates on the same surface without a duel win. After 3 kills, pivot to a different surface or mode.
+- **Per session**: Aim for 3-5 candidates tried per conversation. If you've tried 2 candidates and both died at triage, the remaining candidates should target different surfaces or modes.
+
+### Stale Experiment Recovery
+
+If you inherit a conversation with running or recently-completed experiments:
+1. Check exit codes immediately.
+2. Do not re-run them.
+3. Read the result, record the outcome in AUTOMOVE_IDEAS.md, and move on.
+
+### Stuck Detection Self-Check
+
+Before running any experiment command, ask: "Am I about to wait more than 2 minutes for something?" If yes, double-check that the timeout is set. After the command finishes, ask: "Did I get a clear pass/fail result?" If no, kill and move on immediately.
+
 ## Core Rules
 
 - Optimize for promotion, not for experiment volume.
@@ -126,6 +169,11 @@ The strongest candidate is only valuable if it is safe to ship.
 - Allow at most one focused diagnostic after a borderline duel result. Good defaults are `smart_automove_pool_mode_comparison_report` or `smart_automove_pool_pool_regression_diagnostic`.
 - If that one diagnostic does not reveal a clear next split, archive the lesson and move on.
 - Never run `ladder` or `pro-ladder` for a merely non-negative candidate. Promotion stages are for strong, explainable signal only.
+- The progressive harness has a built-in fading-signal detector: if the target-mode delta drops below half the previous tier and falls below 0.02, it stops early with `FadingSignal`. Do not wait for tier 4/5 when the signal is clearly dying — if you notice the target-mode delta dropped by more than half between tiers, kill the run manually even before the detector fires.
+- Time-budget rule: if a single candidate (including all retries and waiting) has consumed more than 10 minutes of wall time without reaching a promotable signal, kill it and move to the next idea. Volume of diverse candidates beats depth on a single marginal one.
+- Never launch a long-running experiment without a timeout. Use the timeout values from the "Timeouts And Progress Checks" section. Treat timeout expiry as a failure.
+- δ=0.000 at fast-screen is not a pass — it is a flat result. A flat candidate at fast-screen should be killed immediately, not escalated to progressive. Only escalate candidates with δ > 0 on the target mode at fast-screen.
+- If pro-fast-screen passes both lanes with δ=0.000, the candidate is flat — kill it. Do not run pro-progressive on flat candidates.
 
 ## Recommended Iteration Loop
 
@@ -141,7 +189,7 @@ The strongest candidate is only valuable if it is safe to ship.
 10. Only if `runtime-preflight` passes, run `fast-screen` or `pro-fast-screen`.
 11. If the first duel is borderline, allow one focused diagnostic, then either kill the candidate or split the idea into a narrower follow-up.
 12. Only if the first duel already shows a strong, mode-specific story, run `progressive` or `pro-progressive`.
-13. Only if the progressive result remains clearly stronger and safe, run `ladder` or `pro-ladder`.
+13. Only if the progressive result remains clearly stronger and safe, run `ladder` or `pro-ladder`. If the target-mode delta fades (drops by more than half between tiers), kill immediately — do not wait for completion.
 14. If the candidate still looks promotable, run the release speed gates.
 15. Promote if it is stronger and safe. Otherwise compress the lesson into docs, clean stale artifacts, and move to the next attempt.
 
@@ -166,3 +214,16 @@ A good loop often spreads findings across modes. For example: learn something in
 ## When The Backlog Runs Dry
 
 If every current item in `AUTOMOVE_IDEAS.md` has already been tried, generate new ideas, add them to the backlog, and continue iterating. The workflow does not end when the current list is exhausted.
+
+## Speed Over Depth — NEVER GET STUCK
+
+The biggest risk is spending hours on a single marginal candidate. The second biggest risk is waiting for a terminal command that will never finish. **Every terminal call MUST have a timeout. No exceptions.**
+
+Optimize for candidate throughput:
+
+- Most candidates should die at triage or fast-screen within minutes. That is normal and healthy.
+- A candidate that passes fast-screen but shows fading signal in progressive is dead — do not wait for more tiers.
+- Do not re-run the same candidate with minor parameter tweaks. If the idea failed, record the lesson and move to the next idea.
+- When stuck, generate 3-5 fresh ideas from different angles and try the cheapest one first.
+- Scoring-weight tuning passes triage reliably but may not survive progressive — decide quickly (1-2 tiers) and kill early.
+- Search-structure changes (futility pruning, PVS, quiet reductions) are invisible to triage on current fixtures. Until fixtures change, skip these ideas.

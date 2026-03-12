@@ -1030,6 +1030,7 @@ pub(super) fn max_achievable_delta(current: MatchupStats, remaining_games: usize
 pub(super) enum ProgressiveStopReason {
     EarlyReject,
     MathematicalReject,
+    FadingSignal,
     EarlyPromote,
     MaxGamesReached,
 }
@@ -1049,7 +1050,7 @@ impl PromotionTargetMode {
         }
     }
 
-    fn key(self) -> &'static str {
+    pub(super) fn key(self) -> &'static str {
         match self {
             Self::Fast => "fast",
             Self::Normal => "normal",
@@ -1295,6 +1296,48 @@ pub(super) fn run_progressive_duel(
             };
         }
 
+        // Fading-signal detection: if target-mode delta dropped by more than
+        // half compared to the previous tier, the early signal was noise.
+        if tiers.len() >= 3 {
+            let prev = &tiers[tiers.len() - 2];
+            let curr = &tiers[tiers.len() - 1];
+            let faded = if let Some(target_mode) = config.promotion_target_mode {
+                let key = target_mode.key();
+                let prev_delta = prev
+                    .mode_stats
+                    .get(key)
+                    .map(|s| s.win_rate_points() - 0.5)
+                    .unwrap_or(0.0);
+                let curr_delta = curr
+                    .mode_stats
+                    .get(key)
+                    .map(|s| s.win_rate_points() - 0.5)
+                    .unwrap_or(0.0);
+                prev_delta > 0.02 && curr_delta < prev_delta * 0.5 && curr_delta < 0.02
+            } else {
+                prev.aggregate_delta > 0.02
+                    && aggregate_delta < prev.aggregate_delta * 0.5
+                    && aggregate_delta < 0.02
+            };
+            if faded {
+                println!(
+                    "progressive fading signal: tier {} δ={:.4} → tier {} δ={:.4}, killing",
+                    tiers.len() - 2,
+                    prev.aggregate_delta,
+                    tiers.len() - 1,
+                    aggregate_delta
+                );
+                return ProgressiveDuelResult {
+                    tiers,
+                    final_mode_stats: cumulative_mode_stats,
+                    final_delta: aggregate_delta,
+                    final_confidence: aggregate_confidence,
+                    total_games,
+                    stop_reason: ProgressiveStopReason::FadingSignal,
+                };
+            }
+        }
+
         games_per_seed = (games_per_seed * config.growth_factor).min(config.max_games_per_seed);
         tier_index += 1;
     }
@@ -1481,6 +1524,7 @@ pub(super) fn flush_progressive_artifact(
         let stop = match tier.stop_reason {
             Some(ProgressiveStopReason::EarlyReject) => "\"early_reject\"",
             Some(ProgressiveStopReason::MathematicalReject) => "\"math_reject\"",
+            Some(ProgressiveStopReason::FadingSignal) => "\"fading_signal\"",
             Some(ProgressiveStopReason::EarlyPromote) => "\"early_promote\"",
             Some(ProgressiveStopReason::MaxGamesReached) => "\"max_games\"",
             None => "null",
@@ -2161,6 +2205,84 @@ fn exact_safe_opponent_mana_progress_triage_game() -> MonsGame {
     )
 }
 
+fn contested_opponent_mana_approach_triage_game() -> MonsGame {
+    tactical_game_with_items(
+        vec![
+            (
+                Location::new(7, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(5, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(4, 5),
+                Item::Mana {
+                    mana: Mana::Regular(Color::Black),
+                },
+            ),
+            (
+                Location::new(3, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+            (
+                Location::new(6, 3),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    )
+}
+
+fn defended_opponent_mana_pickup_triage_game() -> MonsGame {
+    tactical_game_with_items(
+        vec![
+            (
+                Location::new(7, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(8, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Angel, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(5, 4),
+                Item::Mana {
+                    mana: Mana::Regular(Color::Black),
+                },
+            ),
+            (
+                Location::new(4, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                },
+            ),
+            (
+                Location::new(0, 10),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    )
+}
+
 fn drainer_safety_triage_game() -> MonsGame {
     tactical_game_with_items(
         vec![
@@ -2186,6 +2308,166 @@ fn drainer_safety_triage_game() -> MonsGame {
         Color::White,
         2,
     )
+}
+
+fn pvs_sensitive_search_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 1 0 0 0 0 4 n05d0xa0xn04/n02xxmn01s0xn03e0xn02/n02y0xn08/n06xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMxxMxxMn01xxMn03/n11/n01E0xn03D0xxxMS0xn03/n04A0xn01Y0xn04/n11",
+        false,
+    )
+    .expect("pvs_sensitive_search_triage_game: valid fen")
+}
+
+fn extension_sensitive_no_ext_a_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 1 0 4 0 0 6 n03y0xn07/n07e0xn03/n06d0xa0xn03/n03xxmn03xxmn03/n02s0xxxmxxmn02xxmn03/xxQn04xxUn01xxMn02xxQ/n05xxMn05/n02xxMn03xxMn03Y0x/n03xxMn03D0xn03/n05A0xn05/n03E0xn02S0xn04",
+        false,
+    )
+    .expect("extension_sensitive_no_ext_a: valid fen")
+}
+
+fn extension_sensitive_more_ext_a_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 2 0 0 6 n05d0xn01e0xn03/n03y0xn07/n02s0xn02xxmn01a0xn03/n11/n03xxmxxmxxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMxxMn02xxMn03/n06xxMn04/n04E0xn06/n03D0xxxMA0xS0xn02Y0xn01/n11",
+        false,
+    )
+    .expect("extension_sensitive_more_ext_a: valid fen")
+}
+
+fn extension_sensitive_no_ext_b_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 0 0 0 6 n11/n05s0xe0xn04/n03y0xn03a0xn03/n04xxmn01d0mn04/n03xxmn01xxmn01xxmn03/xxQn01D0Mn02xxUxxMn03xxQ/n01xxMn05xxMn03/n11/n07xxMn03/n04Y0xn02S0xn03/n03E0xA0xn06",
+        false,
+    )
+    .expect("extension_sensitive_no_ext_b: valid fen")
+}
+
+fn extension_sensitive_more_ext_b_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 w 1 0 5 0 0 5 n04s0xd0xa0xn02e0xn01/n02y0xn08/n11/n04xxmxxmxxmn04/n04xxmn06/xxQn04xxUxxmxxMn02xxQ/n03xxMn01D0Mn05/n04xxMn01xxMn04/n02E0xA0xn07/n06S0xn03Y0x/n11",
+        false,
+    )
+    .expect("extension_sensitive_more_ext_b: valid fen")
+}
+
+fn normal_ext_sensitive_a_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 1 0 3 0 0 4 n02y0xn02d0xn05/n05s0xe0xa0xn03/n06xxmn04/n04xxmn06/n03xxmxxmn02xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n05xxMxxMn04/n05S0xn05/n07Y0xD0xn02/n03E0xA0xn06",
+        false,
+    )
+    .expect("normal_ext_sensitive_a: valid fen")
+}
+
+fn normal_ext_sensitive_b_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 w 0 0 1 0 0 5 n04s0xd0xn05/n11/n02y0xn02a0xn05/n04xxmn01xxme0xn03/n02xxmn02xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMxxMn05/n11/n02E0xn01A0xn02Y0xn03/n05D0xS0xn04",
+        false,
+    )
+    .expect("normal_ext_sensitive_b: valid fen")
+}
+
+fn normal_ext_sensitive_c_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 1 0 2 0 0 4 n11/n03y0xn02a0xe0xn03/n03xxms0xd0xn05/n05xxmn05/n03xxmn01xxmn05/xxQn04xxUn02xxmn01xxQ/n03xxMn01xxMxxMxxMn03/n04xxMn06/n04D0xn06/n04E0xn06/n04A0xn02Y0xS0xn02",
+        false,
+    )
+    .expect("normal_ext_sensitive_c: valid fen")
+}
+
+fn normal_ext_sensitive_d_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 2 0 0 4 n04s0xn01a0xn01e0xn02/n03y0xn07/n05d0xn05/n04xxmn01xxmn04/n03xxmn01xxmn02xxmn02/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n03xxMn02xxMn02Y0xn01/n11/n01E0xn02D0xn01S0xn04/n04A0xn06",
+        false,
+    )
+    .expect("normal_ext_sensitive_d: valid fen")
+}
+
+fn depth_disagree_a_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 w 0 0 1 0 0 5 n03y0xn07/n06e0xn04/n06d0xa0xn03/n03xxmn03xxmn03/n02s0xxxmxxmn02xxmn03/xxQn04xxUn01xxMn02xxQ/n03xxMn01xxMn05/n04xxMn01xxMn04/n09Y0xn01/n03E0xA0xn01D0xn04/n06S0xn04",
+        false,
+    )
+    .expect("depth_disagree_a: valid fen")
+}
+
+fn depth_disagree_b_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 1 0 3 0 0 4 n02y0xn02d0xn05/n05s0xe0xa0xn03/n06xxmn04/n04xxmn06/n03xxmxxmn02xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n05xxMxxMn04/n05S0xn05/n07Y0xD0xn02/n03E0xA0xn06",
+        false,
+    )
+    .expect("depth_disagree_b: valid fen")
+}
+
+fn depth_disagree_c_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 4 0 0 4 n02y0xn01s0xd0xn05/n06e0xn04/n05a0xn05/n03xxmn02xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMxxMn04/n06xxMn04/n05xxMn02D0xn02/n06S0xn04/n02E0xn01A0xn02Y0xn03",
+        false,
+    )
+    .expect("depth_disagree_c: valid fen")
+}
+
+fn depth_disagree_d_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 w 0 0 0 0 0 5 n05d0xa0xn04/y0xn02s0xn03e0xn03/n04xxmn06/n05xxmxxmn04/n03xxmn03xxmn03/xxQn04xxUn04xxQ/n02xxMn02xxMn05/n04xxMn01xxMxxMn03/n08S0xn02/n05A0xn05/n03E0xn01D0xn01Y0xn03",
+        false,
+    )
+    .expect("depth_disagree_d: valid fen")
+}
+
+fn fast_sensitive_spirit_a_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 2 0 0 6 n04s0xn01a0xn04/n03y0xn07/n06xxme0xn03/n04xxmn03xxmn02/n05xxmn05/xxQn01d0mn01xxMxxUxxMn03xxQ/n04xxMn02xxMn03/n06xxMn04/n08Y0xn02/n05D0xn05/n01E0xn02A0xn01S0xn04",
+        false,
+    )
+    .expect("fast_sensitive_spirit_a: valid fen")
+}
+
+fn fast_sensitive_reply_a_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 w 1 0 3 0 0 5 n06a0xn02e0xn01/n02xxmn03d0xn04/n02y0xn08/n04s0xn01xxmn04/n03xxmn01xxmn05/xxQn03xxMxxUn02xxmn01xxQ/n03xxMn01xxMn01xxMn03/n06S0xn04/E0xn04D0xxxMn04/n04A0xY0xn05/n11",
+        false,
+    )
+    .expect("fast_sensitive_reply_a: valid fen")
+}
+
+fn fast_sensitive_spirit_b_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 2 0 0 6 n04s0xd0xn05/n08e0xn02/n11/n01y0xn01xxmxxma0xn01xxmn03/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n02E0xn01xxMn02xxMn03/n03xxMxxMn01xxMn04/n03A0xn02S0xn04/n10Y0x/n05D0xn05",
+        false,
+    )
+    .expect("fast_sensitive_spirit_b: valid fen")
+}
+
+fn fast_sensitive_event_reply_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 4 0 0 6 n07e0xn03/n02y0xn08/n02s0xd0mn01a0xn01xxmn03/n11/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/E0xn04xxMn01xxMn03/n03xxMn02xxMn04/n04A0xxxMn05/n06D0xn01Y0xn02/n06S0xn04",
+        false,
+    )
+    .expect("fast_sensitive_event_reply: valid fen")
+}
+
+fn human_win_pro_a_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 w 0 0 1 1 0 5 n11/n02xxmn02a0xn05/n02y0xn01s0xn01d0xxxmn03/n02xxmn04e0xn03/n05xxmn01xxmn03/E0xn09xxQ/n03xxMS0xxxMxxUxxMn03/n04xxMn06/n05D0xn01xxMn03/n11/n04A0xn02Y0xn03",
+        false,
+    )
+    .expect("human_win_pro_a: valid fen")
+}
+
+fn human_win_pro_b_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "2 0 w 0 0 1 0 0 7 n11/n05a0xn02xxmn02/n02y0xn01s0xn01d0xn04/n02xxmn03xxmn04/n02S0xn04xxmn03/E0xn07e0xn02/n03xxMn01xxMxxUxxMn03/n04xxMn06/n11/n05A0xn02xxMn02/n05D1xn01Y0xn03",
+        false,
+    )
+    .expect("human_win_pro_b: valid fen")
+}
+
+fn human_win_pro_c_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "2 1 w 0 0 0 0 0 9 n09xxmd0x/n06a0xn04/n02y0xn01s0xn06/n02xxmn08/n07xxmn03/E0xn07e0xn02/n03xxMn01xxMn01xxMn03/n04xxMS0xn01xxUn03/n05A0xn05/n11/n05D0xn01Y0xn01xxMn01",
+        false,
+    )
+    .expect("human_win_pro_c: valid fen")
 }
 
 fn reply_risk_triage_game() -> MonsGame {
@@ -2543,6 +2825,90 @@ pub(super) fn generic_triage_surface_fixtures(surface: TriageSurface) -> Vec<Tri
                 SmartAutomovePreference::Normal,
                 None,
             ),
+            triage_fixture(
+                "opponent_mana_contested_approach",
+                contested_opponent_mana_approach_triage_game(),
+                SmartAutomovePreference::Normal,
+                None,
+            ),
+            triage_fixture(
+                "opponent_mana_defended_pickup",
+                defended_opponent_mana_pickup_triage_game(),
+                SmartAutomovePreference::Normal,
+                None,
+            ),
+            triage_fixture(
+                "normal_ext_sensitive_a",
+                normal_ext_sensitive_a_triage_game(),
+                SmartAutomovePreference::Normal,
+                None,
+            ),
+            triage_fixture(
+                "normal_ext_sensitive_b",
+                normal_ext_sensitive_b_triage_game(),
+                SmartAutomovePreference::Normal,
+                None,
+            ),
+            triage_fixture(
+                "normal_ext_sensitive_c",
+                normal_ext_sensitive_c_triage_game(),
+                SmartAutomovePreference::Normal,
+                None,
+            ),
+            triage_fixture(
+                "normal_ext_sensitive_d",
+                normal_ext_sensitive_d_triage_game(),
+                SmartAutomovePreference::Normal,
+                None,
+            ),
+            triage_fixture(
+                "depth_disagree_a",
+                depth_disagree_a_triage_game(),
+                SmartAutomovePreference::Normal,
+                None,
+            ),
+            triage_fixture(
+                "depth_disagree_b",
+                depth_disagree_b_triage_game(),
+                SmartAutomovePreference::Normal,
+                None,
+            ),
+            triage_fixture(
+                "depth_disagree_c",
+                depth_disagree_c_triage_game(),
+                SmartAutomovePreference::Normal,
+                None,
+            ),
+            triage_fixture(
+                "depth_disagree_d",
+                depth_disagree_d_triage_game(),
+                SmartAutomovePreference::Normal,
+                None,
+            ),
+            triage_fixture(
+                "fast_sensitive_spirit_a",
+                fast_sensitive_spirit_a_triage_game(),
+                SmartAutomovePreference::Fast,
+                None,
+            ),
+            triage_fixture(
+                "fast_sensitive_reply_a",
+                fast_sensitive_reply_a_triage_game(),
+                SmartAutomovePreference::Fast,
+                None,
+            ),
+            triage_fixture(
+                "fast_sensitive_spirit_b",
+                fast_sensitive_spirit_b_triage_game(),
+                SmartAutomovePreference::Fast,
+                None,
+            ),
+            triage_fixture(
+                "fast_sensitive_event_reply",
+                fast_sensitive_event_reply_triage_game(),
+                SmartAutomovePreference::Fast,
+                None,
+            ),
         ],
         TriageSurface::SpiritSetup => duplicate_fixture_across_client_modes(
             "spirit_setup_progress",
@@ -2552,8 +2918,27 @@ pub(super) fn generic_triage_surface_fixtures(surface: TriageSurface) -> Vec<Tri
             "drainer_safety_filter",
             drainer_safety_triage_game(),
         ),
+        TriageSurface::PrimaryPro => vec![
+            triage_fixture(
+                "human_win_pro_a",
+                human_win_pro_a_triage_game(),
+                SmartAutomovePreference::Pro,
+                None,
+            ),
+            triage_fixture(
+                "human_win_pro_b",
+                human_win_pro_b_triage_game(),
+                SmartAutomovePreference::Pro,
+                None,
+            ),
+            triage_fixture(
+                "human_win_pro_c",
+                human_win_pro_c_triage_game(),
+                SmartAutomovePreference::Pro,
+                None,
+            ),
+        ],
         TriageSurface::OpeningReply
-        | TriageSurface::PrimaryPro
         | TriageSurface::CacheReuse => Vec::new(),
     }
 }
@@ -2646,6 +3031,62 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
         TriageFixture {
             id: "primary_drainer_safety",
             game: drainer_safety_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+        },
+        TriageFixture {
+            id: "primary_pvs_sensitive_search",
+            game: pvs_sensitive_search_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+        },
+        TriageFixture {
+            id: "primary_ext_sensitive_no_ext_a",
+            game: extension_sensitive_no_ext_a_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+        },
+        TriageFixture {
+            id: "primary_ext_sensitive_more_ext_a",
+            game: extension_sensitive_more_ext_a_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+        },
+        TriageFixture {
+            id: "primary_ext_sensitive_no_ext_b",
+            game: extension_sensitive_no_ext_b_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+        },
+        TriageFixture {
+            id: "primary_ext_sensitive_more_ext_b",
+            game: extension_sensitive_more_ext_b_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+        },
+        TriageFixture {
+            id: "human_win_pro_a",
+            game: human_win_pro_a_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+        },
+        TriageFixture {
+            id: "human_win_pro_b",
+            game: human_win_pro_b_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+        },
+        TriageFixture {
+            id: "human_win_pro_c",
+            game: human_win_pro_c_triage_game(),
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,

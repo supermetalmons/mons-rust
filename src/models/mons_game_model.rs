@@ -73,6 +73,8 @@ const SMART_TT_BEST_CHILD_BONUS: i32 = 2_400;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_KILLER_MOVE_BONUS: i32 = 1_200;
 #[cfg(any(target_arch = "wasm32", test))]
+const SMART_HISTORY_BONUS_CAP: i32 = 800;
+#[cfg(any(target_arch = "wasm32", test))]
 const SMART_TWO_PASS_ROOT_SCOUT_DEPTH: usize = 2;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_TWO_PASS_ROOT_SCOUT_MIN_NODES: usize = 96;
@@ -1015,6 +1017,9 @@ struct SmartSearchConfig {
     enable_walk_threat_prefilter: bool,
     root_walk_threat_score_margin: i32,
     enable_killer_move_ordering: bool,
+    enable_history_heuristic: bool,
+    enable_quiescence_search: bool,
+    quiescence_node_budget: usize,
     enable_tt_depth_preferred_replacement: bool,
     enable_pvs: bool,
     quiet_reduction_depth_threshold: usize,
@@ -1113,7 +1118,7 @@ impl SmartSearchConfig {
                 tuned.enable_two_pass_root_allocation = true;
                 tuned.root_focus_k = 3;
                 tuned.root_focus_budget_share_bp = 7_000;
-                tuned.enable_selective_extensions = true;
+                tuned.enable_selective_extensions = false;
                 tuned.enable_quiet_reductions = false;
                 tuned.max_extensions_per_path = 1;
                 tuned.selective_extension_node_share_bp =
@@ -1326,6 +1331,9 @@ impl SmartSearchConfig {
             enable_walk_threat_prefilter: false,
             root_walk_threat_score_margin: 2000,
             enable_killer_move_ordering: false,
+            enable_history_heuristic: false,
+            enable_quiescence_search: false,
+            quiescence_node_budget: 0,
             enable_tt_depth_preferred_replacement: false,
             enable_pvs: false,
             quiet_reduction_depth_threshold: 3,
@@ -1538,6 +1546,9 @@ enum TranspositionBound {
 type KillerTable = [[u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
 
 #[cfg(any(target_arch = "wasm32", test))]
+type HistoryTable = U64HashMap<i32>;
+
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Clone, Copy)]
 struct TranspositionEntry {
     depth: usize,
@@ -1595,6 +1606,8 @@ struct AsyncSmartSearchState {
     scored_roots: Vec<RootEvaluation>,
     transposition_table: U64HashMap<TranspositionEntry>,
     killer_table: KillerTable,
+    history_table: HistoryTable,
+    quiescence_nodes_used: usize,
 }
 
 #[wasm_bindgen]
@@ -2043,6 +2056,8 @@ impl MonsGameModel {
             scored_roots: Vec::new(),
             transposition_table: U64HashMap::default(),
             killer_table: [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2],
+            history_table: HistoryTable::default(),
+            quiescence_nodes_used: 0,
         }
     }
 
@@ -2291,6 +2306,8 @@ impl MonsGameModel {
             Self::runtime_phase_adaptive_attacker_proximity_scoring_weights(game, config.depth);
         config.interview_soft_opponent_mana_progress_bonus = 320;
         config.interview_soft_opponent_mana_score_bonus = 400;
+        config.enable_quiescence_search = true;
+        config.quiescence_node_budget = 200;
         config
     }
 
@@ -5903,6 +5920,8 @@ impl MonsGameModel {
             };
         let mut extension_nodes_used = 0usize;
         let mut killer_table: KillerTable = [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
+        let mut history_table: HistoryTable = HistoryTable::default();
+        let mut quiescence_nodes_used = 0usize;
 
         // Iterative deepening: run a shallow pass to pre-populate TT and reorder roots
         if config.enable_iterative_deepening && config.depth >= 3 {
@@ -5932,6 +5951,8 @@ impl MonsGameModel {
                     0,
                     use_transposition_table,
                     &mut killer_table,
+                    &mut history_table,
+                    &mut quiescence_nodes_used,
                 );
                 prelim_scores.push(prelim_score);
                 if prelim_score > prelim_alpha {
@@ -5967,6 +5988,8 @@ impl MonsGameModel {
                 extension_node_budget,
                 use_transposition_table,
                 &mut killer_table,
+                &mut history_table,
+                &mut quiescence_nodes_used,
             );
 
             scored_roots.push(RootEvaluation {
@@ -6021,6 +6044,8 @@ impl MonsGameModel {
         extension_node_budget: usize,
         use_transposition_table: bool,
         killer_table: &mut KillerTable,
+        history_table: &mut HistoryTable,
+        quiescence_nodes_used: &mut usize,
     ) -> i32 {
         if config.depth <= 1 {
             return candidate.heuristic;
@@ -6048,6 +6073,8 @@ impl MonsGameModel {
             extension_node_budget,
             use_transposition_table,
             killer_table,
+            history_table,
+            quiescence_nodes_used,
         );
 
         if config.enable_root_aspiration
@@ -6069,6 +6096,8 @@ impl MonsGameModel {
                 extension_node_budget,
                 use_transposition_table,
                 killer_table,
+                history_table,
+                quiescence_nodes_used,
             );
         }
 
@@ -6119,6 +6148,8 @@ impl MonsGameModel {
         let mut scout_transposition_table = U64HashMap::default();
         let mut scout_extension_nodes_used = 0usize;
         let mut scout_killer_table: KillerTable = [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
+        let mut scout_history_table: HistoryTable = HistoryTable::default();
+        let mut scout_quiescence_nodes_used = 0usize;
         let mut scout_scores = vec![i32::MIN; root_moves.len()];
         let mut best_scout_score = i32::MIN;
 
@@ -6144,6 +6175,8 @@ impl MonsGameModel {
                     0,
                     use_transposition_table,
                     &mut scout_killer_table,
+                    &mut scout_history_table,
+                    &mut scout_quiescence_nodes_used,
                 )
             } else {
                 Self::root_focus_scout_score(candidate)
@@ -6292,6 +6325,8 @@ impl MonsGameModel {
         extension_node_budget: usize,
         use_transposition_table: bool,
         killer_table: &mut KillerTable,
+        history_table: &mut HistoryTable,
+        quiescence_nodes_used: &mut usize,
     ) -> i32 {
         if let Some(terminal_score) = Self::terminal_score(game, perspective, depth, config.depth) {
             return terminal_score;
@@ -6300,6 +6335,92 @@ impl MonsGameModel {
             return Self::evaluate_search_preferability(game, perspective, config);
         }
         if depth == 0 {
+            if config.enable_quiescence_search
+                && *visited_nodes < config.max_visited_nodes
+                && (config.quiescence_node_budget == 0
+                    || *quiescence_nodes_used < config.quiescence_node_budget)
+            {
+                let stand_pat =
+                    Self::evaluate_search_preferability(game, perspective, config);
+                let maximizing = game.active_color == perspective;
+                if maximizing {
+                    if stand_pat >= beta {
+                        return stand_pat;
+                    }
+                    *quiescence_nodes_used += 1;
+                    let mut q_alpha = alpha.max(stand_pat);
+                    let mut best = stand_pat;
+                    let children = Self::ranked_child_states(
+                        game,
+                        perspective,
+                        maximizing,
+                        None,
+                        [0u64; 2],
+                        config,
+                        history_table,
+                    );
+                    for child in children.iter() {
+                        if child.classes.quiet {
+                            continue;
+                        }
+                        if *visited_nodes >= config.max_visited_nodes {
+                            break;
+                        }
+                        *visited_nodes += 1;
+                        let score = Self::evaluate_search_preferability(
+                            &child.game,
+                            perspective,
+                            config,
+                        );
+                        if score > best {
+                            best = score;
+                        }
+                        q_alpha = q_alpha.max(best);
+                        if q_alpha >= beta {
+                            break;
+                        }
+                    }
+                    return best;
+                } else {
+                    if stand_pat <= alpha {
+                        return stand_pat;
+                    }
+                    *quiescence_nodes_used += 1;
+                    let mut q_beta = beta.min(stand_pat);
+                    let mut best = stand_pat;
+                    let children = Self::ranked_child_states(
+                        game,
+                        perspective,
+                        maximizing,
+                        None,
+                        [0u64; 2],
+                        config,
+                        history_table,
+                    );
+                    for child in children.iter() {
+                        if child.classes.quiet {
+                            continue;
+                        }
+                        if *visited_nodes >= config.max_visited_nodes {
+                            break;
+                        }
+                        *visited_nodes += 1;
+                        let score = Self::evaluate_search_preferability(
+                            &child.game,
+                            perspective,
+                            config,
+                        );
+                        if score < best {
+                            best = score;
+                        }
+                        q_beta = q_beta.min(best);
+                        if q_beta <= alpha {
+                            break;
+                        }
+                    }
+                    return best;
+                }
+            }
             return Self::evaluate_search_preferability(game, perspective, config);
         }
 
@@ -6365,6 +6486,7 @@ impl MonsGameModel {
             preferred_child_hash,
             current_killers,
             config,
+            history_table,
         );
         if children.is_empty() {
             return Self::evaluate_search_preferability(game, perspective, config);
@@ -6421,6 +6543,8 @@ impl MonsGameModel {
                         extension_node_budget,
                         use_transposition_table,
                         killer_table,
+                        history_table,
+                        quiescence_nodes_used,
                     );
                     if probe > alpha && probe < beta {
                         // Fail high: re-search with full window
@@ -6438,6 +6562,8 @@ impl MonsGameModel {
                             extension_node_budget,
                             use_transposition_table,
                             killer_table,
+                            history_table,
+                            quiescence_nodes_used,
                         )
                     } else {
                         probe
@@ -6457,6 +6583,8 @@ impl MonsGameModel {
                         extension_node_budget,
                         use_transposition_table,
                         killer_table,
+                        history_table,
+                        quiescence_nodes_used,
                     )
                 };
                 first_child = false;
@@ -6475,6 +6603,12 @@ impl MonsGameModel {
                             killer_table[depth][1] = killer_table[depth][0];
                             killer_table[depth][0] = child.hash;
                         }
+                    }
+                    // Record history heuristic on beta cutoff
+                    if config.enable_history_heuristic && child.hash != 0 {
+                        let bonus = (depth * depth) as i32;
+                        let entry = history_table.entry(child.hash).or_insert(0);
+                        *entry = (*entry).saturating_add(bonus);
                     }
                     break;
                 }
@@ -6534,6 +6668,8 @@ impl MonsGameModel {
                         extension_node_budget,
                         use_transposition_table,
                         killer_table,
+                        history_table,
+                        quiescence_nodes_used,
                     );
                     if probe < beta && probe > alpha {
                         // Fail low: re-search with full window
@@ -6551,6 +6687,8 @@ impl MonsGameModel {
                             extension_node_budget,
                             use_transposition_table,
                             killer_table,
+                            history_table,
+                            quiescence_nodes_used,
                         )
                     } else {
                         probe
@@ -6570,6 +6708,8 @@ impl MonsGameModel {
                         extension_node_budget,
                         use_transposition_table,
                         killer_table,
+                        history_table,
+                        quiescence_nodes_used,
                     )
                 };
                 first_child = false;
@@ -6588,6 +6728,12 @@ impl MonsGameModel {
                             killer_table[depth][1] = killer_table[depth][0];
                             killer_table[depth][0] = child.hash;
                         }
+                    }
+                    // Record history heuristic on alpha cutoff
+                    if config.enable_history_heuristic && child.hash != 0 {
+                        let bonus = (depth * depth) as i32;
+                        let entry = history_table.entry(child.hash).or_insert(0);
+                        *entry = (*entry).saturating_add(bonus);
                     }
                     break;
                 }
@@ -6656,6 +6802,7 @@ impl MonsGameModel {
         preferred_child_hash: Option<u64>,
         killer_hashes: [u64; 2],
         config: SmartSearchConfig,
+        history_table: &HistoryTable,
     ) -> Vec<RankedChildState> {
         let mut scored_states: Vec<(i32, RankedChildState)> = Vec::new();
         let actor_color = game.active_color;
@@ -6785,6 +6932,12 @@ impl MonsGameModel {
                 && preferred_child_hash != Some(child_hash)
             {
                 heuristic = heuristic.saturating_add(SMART_KILLER_MOVE_BONUS);
+            }
+            if config.enable_history_heuristic && child_hash != 0 {
+                if let Some(&history_score) = history_table.get(&child_hash) {
+                    heuristic =
+                        heuristic.saturating_add(history_score.min(SMART_HISTORY_BONUS_CAP));
+                }
             }
 
             let own_drainer_vulnerable_after = if config.enable_child_move_class_coverage {
@@ -8057,6 +8210,8 @@ impl MonsGameModel {
                     state.extension_node_budget,
                     true,
                     &mut state.killer_table,
+                    &mut state.history_table,
+                    &mut state.quiescence_nodes_used,
                 );
 
                 state.scored_roots.push(RootEvaluation {
@@ -9772,6 +9927,8 @@ impl MonsGameModel {
                     let mut probe_extension_nodes_used = 0usize;
                     let mut probe_killer_table: KillerTable =
                         [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
+                    let mut probe_history_table: HistoryTable = HistoryTable::default();
+                    let mut probe_quiescence_nodes_used = 0usize;
                     Self::search_score(
                         &after_reply,
                         perspective,
@@ -9786,6 +9943,8 @@ impl MonsGameModel {
                         0,
                         true,
                         &mut probe_killer_table,
+                        &mut probe_history_table,
+                        &mut probe_quiescence_nodes_used,
                     )
                 }
             };
@@ -12707,7 +12866,7 @@ mod opening_book_tests {
         let child_hash = MonsGameModel::search_state_hash(&child.game);
 
         let children =
-            MonsGameModel::ranked_child_states(&game, Color::White, false, None, [0; 2], config);
+            MonsGameModel::ranked_child_states(&game, Color::White, false, None, [0; 2], config, &HistoryTable::default());
         let ranked_child = children
             .iter()
             .find(|candidate| candidate.hash == child_hash)
@@ -12800,6 +12959,7 @@ mod opening_book_tests {
             None,
             [0; 2],
             cutoff_config,
+            &HistoryTable::default(),
         );
         let diagnostics = crate::models::automove_exact::exact_query_diagnostics_snapshot();
         assert!(
@@ -12857,7 +13017,7 @@ mod opening_book_tests {
         config.enable_static_exact_evaluation = false;
 
         let children =
-            MonsGameModel::ranked_child_states(&game, Color::White, true, None, [0; 2], config);
+            MonsGameModel::ranked_child_states(&game, Color::White, true, None, [0; 2], config, &HistoryTable::default());
         assert!(!children.is_empty(), "simple board should still enumerate child states");
 
         let diagnostics = crate::models::automove_exact::exact_query_diagnostics_snapshot();
@@ -12936,6 +13096,7 @@ mod opening_book_tests {
             None,
             [0; 2],
             cutoff_config,
+            &HistoryTable::default(),
         );
         let diagnostics = crate::models::automove_exact::exact_query_diagnostics_snapshot();
         assert!(
