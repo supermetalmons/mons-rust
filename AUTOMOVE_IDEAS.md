@@ -33,35 +33,91 @@ Unless an idea explicitly says otherwise, new candidates must start as a delta o
 ### Idea: Pro quiescence search
 - Base profile: `runtime_current`
 - Target mode: `pro`
-- Triage surface: `opening_reply`, `primary_pro`
-- Triage pass signal: `pro-triage` changes at least one fixture.
+- Triage surface: `opening_reply` (target), `primary_pro` (off-target guard)
+- Triage pass signal: `pro-triage` reports `target_changed>=1` with `off_target_changed<=1`.
+- Calibration gate: none
 - Candidate budget: 1
-- Expected upside: One-ply quiescence at depth=0 for Pro mode (depth≥4). Pro has 5x more CPU headroom (173ms baseline vs 35ms normal). With quiescence_node_budget=200, overhead was ~41ms in Normal — well within Pro's ~52ms headroom. At depth=4, quiescence extends tactical lines to effective depth=5. Concept proven at Normal (46W-26L, δ=0.139, conf=0.988 in progressive).
-- CPU risk: low — budget=200 at Normal was ~2.16x overhead on Normal's 35ms; same 200 activations on Pro's 173ms gives ~1.24x overhead.
-- Cheapest falsifier: `guardrails`, then `pro-triage`.
-- Kill if: pro-triage 0/3 + 0/12.
-- Next split if rejected: LMR (late move reductions), or quiescence with lighter move generation.
-- How to test: `SMART_CANDIDATE_PROFILE=runtime_pro_quiescence_v1` through the pro earned pipeline.
+- Expected upside: recover the proven quiescence strength signal in Pro without breaking release CPU gates.
+- CPU risk: medium to high — current quiescence still pays full `ranked_child_states()` cost at depth 0.
+- Cheapest falsifier: `guardrails`, then `SMART_TRIAGE_SURFACE=opening_reply ./scripts/run-automove-experiment.sh pro-triage <candidate>`.
+- Escalate only if: `pro-triage` passes and `runtime-preflight` clears CPU and exact-lite diagnostics.
+- Kill if: `pro-triage` misses target change, or first `pro-fast-screen` lane is flat/regressed.
+- Next split if rejected: tactical-only quiescence child generation.
+- How to test: `guardrails`, `pro-triage`, `runtime-preflight`, `pro-fast-screen`, then `pro-progressive`/`pro-ladder` only with clear target-mode signal.
 - Status: in-progress
-- Notes:
+- Notes: Existing retained candidates: `runtime_pro_quiescence_v1` (budget 200) and `runtime_pro_quiescence_v2` (budget 30).
 
-## Backlog
+## Curated Proposals (March 2026)
 
-### Idea: Shared tactical and exact-lite cache reuse
+### Idea: Tactical-only child generation for quiescence
+- Base profile: `runtime_current`
+- Target mode: `pro` first, `normal` only if Pro path is safe
+- Triage surface: `opening_reply`
+- Triage pass signal: candidate still changes `opening_reply` fixtures while reducing runtime-preflight CPU cost versus current quiescence variants.
+- Calibration gate: none
+- Candidate budget: 1
+- Expected upside: unblock quiescence by removing the biggest known bottleneck (`ranked_child_states()` over full child sets).
+- CPU risk: medium
+- Cheapest falsifier: `guardrails`, `pro-triage` (`opening_reply`), then `runtime-preflight`.
+- Escalate only if: first `pro-fast-screen` lane is positive and non-noisy.
+- Kill if: no measurable CPU win or `pro-triage` stays flat.
+- Next split if rejected: capture-only quiescence expansion (skip non-capture tactical classes).
+- How to test: one candidate delta on `runtime_current`, then the earned Pro pipeline.
+- Status: backlog
+- Notes: Keep this as the top follow-up if `runtime_pro_quiescence_v1/v2` stay blocked.
+
+### Idea: Volatility-gated quiescence trigger
+- Base profile: `runtime_current`
+- Target mode: `pro`
+- Triage surface: `opening_reply`
+- Triage pass signal: quiescence only activates on volatile/tactical frontier nodes and still changes `opening_reply` fixtures.
+- Calibration gate: none
+- Candidate budget: 1
+- Expected upside: preserve most tactical upside while reducing needless quiescence calls on quiet leaves.
+- CPU risk: medium
+- Cheapest falsifier: `guardrails`, `pro-triage` (`opening_reply`), `runtime-preflight`.
+- Escalate only if: `pro-fast-screen` beats baseline without vs_fast regression.
+- Kill if: CPU drops but signal disappears, or signal remains with no CPU relief.
+- Next split if rejected: combine trigger gate with tactical-only child generation.
+- How to test: single-profile delta, then standard Pro earned loop.
+- Status: backlog
+- Notes: Distinct from tactical-only generation; this changes when quiescence runs, not how children are generated.
+
+### Idea: Reply-risk shortlist cache reuse
 - Base profile: `runtime_current`
 - Target mode: `normal`, `pro`
 - Triage surface: `cache_reuse`
-- Triage pass signal: `triage` shows deterministic speed or cache-hit improvement versus baseline on the fixed cache probe.
+- Triage pass signal: `triage` shows deterministic cache win (`avg_ms` drop or hit-rate lift) with no guardrail regression.
+- Calibration gate: none
 - Candidate budget: 1
-- Expected upside: more strength from the same CPU budget by reusing cached summaries across root ranking, tie-breaks, and tactical prepasses.
+- Expected upside: reclaim budget from repeated reply-risk and exact-lite summaries, then convert that budget into duel strength.
 - CPU risk: low to medium
-- Cheapest falsifier: speed probes, exact-lite diagnostics gate, then `SMART_TRIAGE_SURFACE=cache_reuse ./scripts/run-automove-experiment.sh triage <candidate>`.
-- Escalate only if: cache reuse lowers duplicated work and the first duel shows strength from the reclaimed budget instead of from extra search.
-- Kill if: reuse adds bookkeeping without deterministic cache evidence, or the first duel stays flat after the speed gain.
-- Next split if rejected: keep only the cheapest cache-sharing point and drop the rest of the reuse surface.
-- How to test: speed probes, exact-lite diagnostics gate, `guardrails`, `triage`, `runtime-preflight`, then the earned promotion path for the target mode.
+- Cheapest falsifier: `guardrails`, then `SMART_TRIAGE_SURFACE=cache_reuse ./scripts/run-automove-experiment.sh triage <candidate>`.
+- Escalate only if: `cache_reuse` triage passes and first duel stage is positive.
+- Kill if: cache metrics improve but duel stays flat.
+- Next split if rejected: isolate one cache-sharing point (reply-risk shortlist only or exact-lite summary only).
+- How to test: cache-reuse triage first, then `runtime-preflight` and earned duel path.
 - Status: backlog
-- Notes: Prefer reuse before deeper search. Strength that comes from duplicated work is unlikely to be promotable.
+- Notes: This keeps the existing cache-reuse direction but narrows it to a concrete first split.
+
+### Idea: Candidate-aware opening-reply speed probe
+- Base profile: workflow-only
+- Target mode: `pro`
+- Triage surface: blocked until probe exists
+- Triage pass signal: new probe reports stable candidate-vs-baseline opening reply latency deltas on fixed seeds.
+- Calibration gate: none
+- Candidate budget: 1
+- Expected upside: catch opening latency regressions early for `opening_reply` ideas without misusing the production-only release gate.
+- CPU risk: low
+- Cheapest falsifier: implement probe and verify it cannot reliably separate known retained profiles.
+- Escalate only if: probe is stable enough to become a pre-duel diagnostic for Pro candidates.
+- Kill if: probe is noisy or adds overhead without better reject decisions.
+- Next split if rejected: keep release gate only and shrink opening fixture pack instead.
+- How to test: add ignored harness test, run side-by-side against `runtime_current` and one known slower/faster retained profile.
+- Status: backlog
+- Notes: This is workflow infrastructure, but it directly improves promotion quality for Pro opening work.
+
+## Backlog
 
 ### Idea: Stuck-state and bounded-progress safety fixtures
 - Base profile: `runtime_current`
