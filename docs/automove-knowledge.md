@@ -34,6 +34,14 @@ This document keeps only durable lessons that should shape future automove work.
 - Client-mode experiment gating gets noisy if `pro` is mixed into the default speed check. Default stage-1 gating to `fast` and `normal`, use repeated probes, and gate on the median ratio.
 - Shipping experiment code before it clears the promotion pipeline is too risky.
 - Generic meta-tooling for automated iteration helped less than direct code, direct gates, and short written lessons.
+- Scoring weight changes (±30 tweaks, dormant feature activation, multi-path activation, mana-race fields) consistently pass triage by inflating heuristic scores but are pure noise at duel scale. Do not invest duel budget on scoring-only candidates.
+- Search-structure-only changes (futility pruning, PVS, quiet reductions, aspirations) at Normal depth-3 are invisible to triage because fixture positions have dominant top moves unaffected by ordering or pruning efficiency.
+- History heuristic is dominated by TT best-child (+2400) and killer (+1200) bonuses at both Normal and Pro depth. The additional history bonus (capped at 800) cannot change ordering in any position that matters.
+- The config knob space is completely exhausted across all three modes (Mar 2026). Every SmartSearchConfig structural feature has been individually tested. Future improvement requires new code (new evaluation features, new search algorithms), not config permutations.
+- Quiescence search concept is proven (Normal 46W-26L, δ=0.139) but `ranked_child_states()` per activation is too expensive. Need cheaper move generation for quiescence or structural redesign before it can ship.
+- Breadth-over-depth (disabling extensions) is fundamentally stronger than extending promising lines. The search wins by evaluating more root candidates at nominal depth rather than extending a few children deeper.
+- Pro CPU ratio gate (1.60x minimum) blocked the strongest candidate ever found (+13% across 1,488 games). The gate ensures Pro "feels premium" but the stronger search is paradoxically cheaper.
+- Pro vs_fast regression is a hard gate. Two Pro candidates with strong vs_normal signals (+12-13%) failed because they regressed against Fast mode baseline.
 
 ## Interview Guidance That Still Matters
 
@@ -46,8 +54,9 @@ This document keeps only durable lessons that should shape future automove work.
 
 ## Current Improvement Direction
 
-- Keep passive summaries lightweight and tactical exactness active-turn focused.
-- Reuse cached tactical answers across root ranking, efficiency scoring, and tactical prepasses.
-- Probe exact child progress only on boards that plausibly have target mana or spirit-assisted conversion worth preserving.
-- Add fixtures around spirit scoring, safe supermana, opponent-mana conversion, drainer exposure, and opening black replies.
+- Config knob space is exhausted. All future candidates must involve new code, not config permutations.
+- Pro quiescence search is the most promising active path: concept proven at Normal (46W-26L), Pro has 5x more CPU headroom.
+- Cheaper move generation for quiescence (avoiding full `ranked_child_states()`) could unlock Normal quiescence too.
+- Shared tactical/exact-lite cache reuse could reclaim duplicated work across root ranking and tactical prepasses.
+- Safety fixtures (stuck-state, bounded-progress) remain backlog infrastructure work.
 - Promote only candidates that pass `preflight`, prove a deterministic surface in `triage` or `pro-triage`, and then clear the earned duel path plus the release speed gates.
