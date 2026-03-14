@@ -11338,28 +11338,53 @@ mod opening_book_tests {
                 "{} should disable static exact evaluation in runtime defaults",
                 preference.as_api_value()
             );
-            assert!(
-                !independent_config.enable_exact_lite_progress_checks,
-                "{} should disable exact-lite progress checks in runtime defaults",
-                preference.as_api_value()
-            );
-            assert!(
-                !independent_config.enable_exact_lite_spirit_window_checks,
-                "{} should disable exact-lite spirit checks in runtime defaults",
-                preference.as_api_value()
-            );
-            assert_eq!(
-                independent_config.exact_lite_root_call_budget,
-                0,
-                "{} should keep exact-lite root budget at zero in runtime defaults",
-                preference.as_api_value()
-            );
-            assert_eq!(
-                independent_config.exact_lite_static_call_budget,
-                0,
-                "{} should keep exact-lite static budget at zero in runtime defaults",
-                preference.as_api_value()
-            );
+            if preference == SmartAutomovePreference::Normal {
+                assert!(
+                    independent_config.enable_exact_lite_progress_checks,
+                    "{} should enable exact-lite progress checks in runtime defaults",
+                    preference.as_api_value()
+                );
+                assert!(
+                    independent_config.enable_exact_lite_spirit_window_checks,
+                    "{} should enable exact-lite spirit checks in runtime defaults",
+                    preference.as_api_value()
+                );
+                assert_eq!(
+                    independent_config.exact_lite_root_call_budget,
+                    1,
+                    "{} should set exact-lite root budget to one in runtime defaults",
+                    preference.as_api_value()
+                );
+                assert_eq!(
+                    independent_config.exact_lite_static_call_budget,
+                    1,
+                    "{} should set exact-lite static budget to one in runtime defaults",
+                    preference.as_api_value()
+                );
+            } else {
+                assert!(
+                    !independent_config.enable_exact_lite_progress_checks,
+                    "{} should disable exact-lite progress checks in runtime defaults",
+                    preference.as_api_value()
+                );
+                assert!(
+                    !independent_config.enable_exact_lite_spirit_window_checks,
+                    "{} should disable exact-lite spirit checks in runtime defaults",
+                    preference.as_api_value()
+                );
+                assert_eq!(
+                    independent_config.exact_lite_root_call_budget,
+                    0,
+                    "{} should keep exact-lite root budget at zero in runtime defaults",
+                    preference.as_api_value()
+                );
+                assert_eq!(
+                    independent_config.exact_lite_static_call_budget,
+                    0,
+                    "{} should keep exact-lite static budget at zero in runtime defaults",
+                    preference.as_api_value()
+                );
+            }
 
             let mut opening_game = MonsGame::new(false);
             advance_opening_book_until_black_turn(&mut opening_game);
