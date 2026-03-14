@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  local triage_surfaces="opening_reply primary_pro reply_risk supermana opponent_mana normal_fast_gap spirit_setup drainer_safety cache_reuse"
+  local triage_surfaces="opening_reply primary_pro reply_risk supermana opponent_mana normal_fast_gap normal_release_seed_gap spirit_setup drainer_safety cache_reuse"
   cat <<'EOF_HELP'
 usage:
   ./scripts/run-automove-experiment.sh <stage> <candidate> [baseline]

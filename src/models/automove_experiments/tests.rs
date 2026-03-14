@@ -314,12 +314,12 @@ fn progressive_stop_targeted_fast_does_not_promote_off_target_winner() {
 fn triage_surface_from_env() -> TriageSurface {
     let value = env::var("SMART_TRIAGE_SURFACE").unwrap_or_else(|_| {
         panic!(
-            "SMART_TRIAGE_SURFACE is required (expected one of: opening_reply, primary_pro, reply_risk, supermana, opponent_mana, normal_fast_gap, normal_tiebreak, spirit_setup, drainer_safety, cache_reuse)"
+            "SMART_TRIAGE_SURFACE is required (expected one of: opening_reply, primary_pro, reply_risk, supermana, opponent_mana, normal_fast_gap, normal_release_seed_gap, normal_tiebreak, spirit_setup, drainer_safety, cache_reuse)"
         )
     });
     TriageSurface::parse(value.as_str()).unwrap_or_else(|| {
         panic!(
-            "unknown SMART_TRIAGE_SURFACE='{}' (expected one of: opening_reply, primary_pro, reply_risk, supermana, opponent_mana, normal_fast_gap, normal_tiebreak, spirit_setup, drainer_safety, cache_reuse)",
+            "unknown SMART_TRIAGE_SURFACE='{}' (expected one of: opening_reply, primary_pro, reply_risk, supermana, opponent_mana, normal_fast_gap, normal_release_seed_gap, normal_tiebreak, spirit_setup, drainer_safety, cache_reuse)",
             value
         )
     })
@@ -1134,6 +1134,7 @@ fn triage_root_digest_changed(
                 || candidate.attacks_opponent_drainer != baseline.attacks_opponent_drainer
         }
         TriageSurface::NormalFastGap
+        | TriageSurface::NormalReleaseSeedGap
         | TriageSurface::NormalTiebreak
         | TriageSurface::OpeningReply
         | TriageSurface::PrimaryPro => false,
@@ -1197,6 +1198,7 @@ fn triage_surface_signal_changed(
                 )
         }
         TriageSurface::NormalFastGap
+        | TriageSurface::NormalReleaseSeedGap
         | TriageSurface::NormalTiebreak
         | TriageSurface::OpeningReply
         | TriageSurface::PrimaryPro => {
@@ -1220,6 +1222,17 @@ fn triage_surface_fixture_changed(
 ) -> bool {
     match surface {
         TriageSurface::NormalFastGap => {
+            let expected = fixture.expected_selected_input_fen.unwrap_or_else(|| {
+                panic!(
+                    "triage surface '{}' fixture '{}' is missing expected_selected_input_fen",
+                    surface.as_str(),
+                    fixture.id
+                )
+            });
+            candidate.selected_root.input_fen == expected
+                && baseline.selected_root.input_fen != expected
+        }
+        TriageSurface::NormalReleaseSeedGap => {
             let expected = fixture.expected_selected_input_fen.unwrap_or_else(|| {
                 panic!(
                     "triage surface '{}' fixture '{}' is missing expected_selected_input_fen",
@@ -2394,6 +2407,48 @@ fn smart_automove_normal_fast_gap_surface_probe() {
         assert_ne!(
             normal.move_fen, expected,
             "normal_fast_gap fixture '{}' no longer separates current Normal from current Fast",
+            fixture.id
+        );
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: validate normal_release_seed_gap fixtures against fast-derived reference vs release baseline"]
+fn smart_automove_normal_release_seed_gap_surface_probe() {
+    let fixtures = generic_triage_surface_fixtures(TriageSurface::NormalReleaseSeedGap);
+    const REFERENCE_PROFILE: &str = "runtime_normal_from_fast_reference_v1";
+    const BASELINE_PROFILE: &str = "runtime_release_safe_pre_exact";
+
+    assert!(
+        fixtures.len() >= 6,
+        "normal_release_seed_gap surface should have at least 6 deterministic fixtures"
+    );
+
+    for fixture in fixtures {
+        let expected = fixture.expected_selected_input_fen.unwrap_or_else(|| {
+            panic!(
+                "normal_release_seed_gap fixture '{}' must declare expected_selected_input_fen",
+                fixture.id
+            )
+        });
+        let reference = loss_probe_decision(REFERENCE_PROFILE, fixture.mode, &fixture.game);
+        let baseline = loss_probe_decision(BASELINE_PROFILE, fixture.mode, &fixture.game);
+        println!(
+            "normal_release_seed_gap fixture={} expected={} reference_move={} baseline_move={} fen={}",
+            fixture.id,
+            expected,
+            reference.move_fen,
+            baseline.move_fen,
+            fixture.game.fen()
+        );
+        assert_eq!(
+            reference.move_fen, expected,
+            "normal_release_seed_gap fixture '{}' no longer matches fast-derived reference",
+            fixture.id
+        );
+        assert_ne!(
+            baseline.move_fen, expected,
+            "normal_release_seed_gap fixture '{}' no longer separates release baseline",
             fixture.id
         );
     }

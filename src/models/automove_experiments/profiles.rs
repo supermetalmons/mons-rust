@@ -11,6 +11,13 @@ const PROFILE_RUNTIME_NORMAL_HISTORY_HEURISTIC_V1: &str = "runtime_normal_histor
 const PROFILE_RUNTIME_PRO_HISTORY_HEURISTIC_V1: &str = "runtime_pro_history_heuristic_v1";
 const PROFILE_RUNTIME_NORMAL_QUIESCENCE_V1: &str = "runtime_normal_quiescence_v1";
 const PROFILE_RUNTIME_NORMAL_FAST_CORE_V1: &str = "runtime_normal_fast_core_v1";
+const PROFILE_RUNTIME_NORMAL_FAST_CORE_SAFETY_V1: &str = "runtime_normal_fast_core_safety_v1";
+const PROFILE_RUNTIME_NORMAL_FAST_CORE_QUIESCENCE_V1: &str =
+    "runtime_normal_fast_core_quiescence_v1";
+const PROFILE_RUNTIME_NORMAL_FAST_CORE_EXACT_LITE_V1: &str =
+    "runtime_normal_fast_core_exact_lite_v1";
+const PROFILE_RUNTIME_NORMAL_FAST_CORE_BUDGET_SPEND_V1: &str =
+    "runtime_normal_fast_core_budget_spend_v1";
 const PROFILE_RUNTIME_NORMAL_FROM_FAST_REFERENCE_V1: &str = "runtime_normal_from_fast_reference_v1";
 const PROFILE_RUNTIME_NORMAL_TACTICAL_QUIESCENCE_V1: &str = "runtime_normal_tactical_quiescence_v1";
 const PROFILE_RUNTIME_NORMAL_TACTICAL_QUIESCENCE_EXACT_LITE_V1: &str =
@@ -32,7 +39,7 @@ struct AutomoveProfile {
     selector: AutomoveSelector,
 }
 
-const RETAINED_PROFILES: [AutomoveProfile; 20] = [
+const RETAINED_PROFILES: [AutomoveProfile; 24] = [
     AutomoveProfile {
         id: "base",
         selector: model_base_profile,
@@ -88,6 +95,22 @@ const RETAINED_PROFILES: [AutomoveProfile; 20] = [
     AutomoveProfile {
         id: PROFILE_RUNTIME_NORMAL_FAST_CORE_V1,
         selector: model_runtime_normal_fast_core_v1,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_NORMAL_FAST_CORE_SAFETY_V1,
+        selector: model_runtime_normal_fast_core_safety_v1,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_NORMAL_FAST_CORE_QUIESCENCE_V1,
+        selector: model_runtime_normal_fast_core_quiescence_v1,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_NORMAL_FAST_CORE_EXACT_LITE_V1,
+        selector: model_runtime_normal_fast_core_exact_lite_v1,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_NORMAL_FAST_CORE_BUDGET_SPEND_V1,
+        selector: model_runtime_normal_fast_core_budget_spend_v1,
     },
     AutomoveProfile {
         id: PROFILE_RUNTIME_NORMAL_FROM_FAST_REFERENCE_V1,
@@ -347,6 +370,18 @@ pub(super) fn profile_runtime_config_for_name(
         PROFILE_RUNTIME_NORMAL_FAST_CORE_V1 => {
             configure_runtime_normal_from_fast_reference_v1(game, config)
         }
+        PROFILE_RUNTIME_NORMAL_FAST_CORE_SAFETY_V1 => {
+            configure_runtime_normal_fast_core_safety_v1(config)
+        }
+        PROFILE_RUNTIME_NORMAL_FAST_CORE_QUIESCENCE_V1 => {
+            configure_runtime_normal_fast_core_quiescence_v1(config)
+        }
+        PROFILE_RUNTIME_NORMAL_FAST_CORE_EXACT_LITE_V1 => {
+            configure_runtime_normal_fast_core_exact_lite_v1(config)
+        }
+        PROFILE_RUNTIME_NORMAL_FAST_CORE_BUDGET_SPEND_V1 => {
+            configure_runtime_normal_fast_core_budget_spend_v1(config)
+        }
         PROFILE_RUNTIME_NORMAL_FROM_FAST_REFERENCE_V1 => {
             configure_runtime_normal_from_fast_reference_v1(game, config)
         }
@@ -472,60 +507,109 @@ fn configure_runtime_normal_quiescence_v1(config: SmartSearchConfig) -> SmartSea
     runtime
 }
 
+fn configure_runtime_normal_fast_policy_block(mut runtime: SmartSearchConfig) -> SmartSearchConfig {
+    runtime.root_branch_limit = (runtime.root_branch_limit + 5).clamp(12, 40);
+    runtime.node_branch_limit = runtime.node_branch_limit.saturating_sub(2).clamp(8, 18);
+    runtime.root_enum_limit = (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 240);
+    runtime.node_enum_limit = (runtime.node_branch_limit * 4).clamp(runtime.node_branch_limit, 108);
+    runtime.enable_event_ordering_bonus = true;
+    runtime.enable_two_pass_root_allocation = false;
+    runtime.root_focus_k = 2;
+    runtime.root_focus_budget_share_bp = 6_000;
+    runtime.enable_selective_extensions = false;
+    runtime.selective_extension_node_share_bp = 0;
+    runtime.enable_quiet_reductions = true;
+    runtime.root_reply_risk_score_margin = 125;
+    runtime.root_reply_risk_shortlist_max = 4;
+    runtime.root_reply_risk_reply_limit = 10;
+    runtime.root_reply_risk_node_share_bp = 650;
+    runtime.root_anti_help_score_margin = 220;
+    runtime.root_anti_help_reply_limit = SMART_ROOT_ANTI_HELP_REPLY_LIMIT_FAST;
+    runtime.enable_two_pass_volatility_focus = false;
+    runtime.enable_normal_root_safety_rerank = false;
+    runtime.enable_normal_root_safety_deep_floor = false;
+    runtime.enable_interview_hard_spirit_deploy = false;
+    runtime.enable_interview_soft_root_priors = true;
+    runtime.enable_interview_deterministic_tiebreak = false;
+    runtime.prefer_clean_reply_risk_roots = false;
+    runtime.root_drainer_safety_score_margin = SMART_ROOT_DRAINER_SAFETY_SCORE_MARGIN;
+    runtime.root_mana_handoff_penalty = 300;
+    runtime.root_backtrack_penalty = 220;
+    runtime.root_efficiency_score_margin = 1_700;
+    runtime.potion_spend_penalty_fast = 220;
+    runtime.potion_spend_penalty_normal = SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_NORMAL;
+    runtime.interview_soft_score_margin = 80;
+    runtime.interview_soft_supermana_progress_bonus = 320;
+    runtime.interview_soft_supermana_score_bonus = 600;
+    runtime.interview_soft_opponent_mana_progress_bonus = 200;
+    runtime.interview_soft_opponent_mana_score_bonus = 310;
+    runtime.interview_soft_mana_handoff_penalty = 280;
+    runtime.interview_soft_roundtrip_penalty = 220;
+    runtime.enable_enhanced_drainer_vulnerability = true;
+    runtime.enable_supermana_prepass_exception = true;
+    runtime.scoring_weights = &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF;
+    runtime
+}
+
 fn configure_runtime_normal_from_fast_reference_v1(
     game: &MonsGame,
     config: SmartSearchConfig,
 ) -> SmartSearchConfig {
     let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
     if runtime.depth >= 3 && runtime.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
-        runtime.root_branch_limit = (runtime.root_branch_limit + 5).clamp(12, 40);
-        runtime.node_branch_limit = runtime.node_branch_limit.saturating_sub(2).clamp(8, 18);
+        runtime = configure_runtime_normal_fast_policy_block(runtime);
+    } else {
+        runtime = MonsGameModel::with_runtime_scoring_weights(game, runtime);
+    }
+    runtime
+}
+
+fn configure_runtime_normal_fast_core_safety_v1(config: SmartSearchConfig) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= 3 && runtime.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime = configure_runtime_normal_fast_policy_block(runtime);
+    }
+    runtime
+}
+
+fn configure_runtime_normal_fast_core_quiescence_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = configure_runtime_normal_fast_core_safety_v1(config);
+    if runtime.depth >= 3 && runtime.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_quiescence_search = true;
+        runtime.quiescence_node_budget = 48;
+        runtime.enable_quiescence_tactical_children_only = true;
+        runtime.quiescence_tactical_enum_limit = 12;
+    }
+    runtime
+}
+
+fn configure_runtime_normal_fast_core_exact_lite_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = configure_runtime_normal_fast_core_safety_v1(config);
+    if runtime.depth >= 3 && runtime.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.enable_exact_lite_progress_checks = true;
+        runtime.enable_exact_lite_spirit_window_checks = true;
+        runtime.exact_lite_root_call_budget = 1;
+        runtime.exact_lite_static_call_budget = 1;
+    }
+    runtime
+}
+
+fn configure_runtime_normal_fast_core_budget_spend_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = configure_runtime_normal_fast_core_exact_lite_v1(config);
+    if runtime.depth >= 3 && runtime.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
+        runtime.max_visited_nodes = runtime.max_visited_nodes.saturating_mul(130) / 100;
+        runtime.root_branch_limit = (runtime.root_branch_limit + 2).clamp(12, 40);
         runtime.root_enum_limit =
             (runtime.root_branch_limit * 6).clamp(runtime.root_branch_limit, 240);
-        runtime.node_enum_limit =
-            (runtime.node_branch_limit * 4).clamp(runtime.node_branch_limit, 108);
-        runtime.enable_event_ordering_bonus = true;
-        runtime.enable_two_pass_root_allocation = false;
-        runtime.root_focus_k = 2;
-        runtime.root_focus_budget_share_bp = 6_000;
-        runtime.enable_selective_extensions = false;
-        runtime.selective_extension_node_share_bp = 0;
-        runtime.enable_quiet_reductions = true;
-        runtime.root_reply_risk_score_margin = 125;
-        runtime.root_reply_risk_shortlist_max = 4;
-        runtime.root_reply_risk_reply_limit = 10;
-        runtime.root_reply_risk_node_share_bp = 650;
-        runtime.root_anti_help_score_margin = 220;
-        runtime.root_anti_help_reply_limit = SMART_ROOT_ANTI_HELP_REPLY_LIMIT_FAST;
-        runtime.enable_two_pass_volatility_focus = false;
-        runtime.enable_normal_root_safety_rerank = false;
-        runtime.enable_normal_root_safety_deep_floor = false;
-        runtime.enable_interview_hard_spirit_deploy = false;
-        runtime.enable_interview_soft_root_priors = true;
-        runtime.enable_interview_deterministic_tiebreak = false;
-        runtime.prefer_clean_reply_risk_roots = false;
-        runtime.root_drainer_safety_score_margin = SMART_ROOT_DRAINER_SAFETY_SCORE_MARGIN;
-        runtime.root_mana_handoff_penalty = 300;
-        runtime.root_backtrack_penalty = 220;
-        runtime.root_efficiency_score_margin = 1_700;
-        runtime.potion_spend_penalty_fast = 220;
-        runtime.potion_spend_penalty_normal = SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_NORMAL;
-        runtime.interview_soft_score_margin = 80;
-        runtime.interview_soft_supermana_progress_bonus = 320;
-        runtime.interview_soft_supermana_score_bonus = 600;
-        runtime.interview_soft_opponent_mana_progress_bonus = 200;
-        runtime.interview_soft_opponent_mana_score_bonus = 310;
-        runtime.interview_soft_mana_handoff_penalty = 280;
-        runtime.interview_soft_roundtrip_penalty = 220;
-        runtime.enable_enhanced_drainer_vulnerability = true;
-        runtime.enable_supermana_prepass_exception = true;
-        runtime.scoring_weights = &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF;
-    } else {
-        runtime.scoring_weights =
-            MonsGameModel::runtime_phase_adaptive_walk_threat_medium_scoring_weights(
-                game,
-                runtime.depth,
-            );
+        runtime.root_reply_risk_shortlist_max = runtime.root_reply_risk_shortlist_max.max(5);
+        runtime.root_reply_risk_reply_limit = runtime.root_reply_risk_reply_limit.max(12);
+        runtime.root_reply_risk_node_share_bp = runtime.root_reply_risk_node_share_bp.max(900);
     }
     runtime
 }
@@ -608,6 +692,46 @@ pub(super) fn model_runtime_normal_fast_core_v1(
     MonsGameModel::smart_search_best_inputs(
         game,
         configure_runtime_normal_from_fast_reference_v1(game, config),
+    )
+}
+
+pub(super) fn model_runtime_normal_fast_core_safety_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_normal_fast_core_safety_v1(config),
+    )
+}
+
+pub(super) fn model_runtime_normal_fast_core_quiescence_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_normal_fast_core_quiescence_v1(config),
+    )
+}
+
+pub(super) fn model_runtime_normal_fast_core_exact_lite_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_normal_fast_core_exact_lite_v1(config),
+    )
+}
+
+pub(super) fn model_runtime_normal_fast_core_budget_spend_v1(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_normal_fast_core_budget_spend_v1(config),
     )
 }
 

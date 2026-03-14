@@ -45,8 +45,76 @@ Unless an idea explicitly says otherwise, new candidates must start as a delta o
 - Kill if: the reference is flat or negative against current Fast or current Normal, or the first earned duel for the live candidate is flat/negative.
 - Next split if rejected: only continue this architecture with a narrower fast-gap surface or a single extra CPU-spend feature on top of a winning fast-derived core.
 - How to test: surface probe, quick mode-comparison report, then the standard earned Normal promotion path for a live candidate.
-- Status: blocked on release-baseline safety split
-- Notes: `runtime_normal_from_fast_reference_v1` moves `6/9` `normal_fast_gap` fixtures onto the current Fast-selected move and screened positive directionally before timeout (`8W-4L` over 12 finished games vs current Fast, `5W-3L` over 8 finished games vs current Normal). The live `runtime_normal_fast_core_v1` candidate then passed `guardrails`, `normal_fast_gap` triage, and `runtime-preflight`, but died immediately at targeted `fast-screen` vs `runtime_release_safe_pre_exact`: tier-0 overall `δ=-0.1250`, `mode fast 2W-6L`, `mode normal 4W-4L`, `EarlyReject`. The next split should recover release-baseline fast-lane safety/non-regression before adding any extra CPU spend.
+- Status: split then promoted via budget-spend branch
+- Notes: `runtime_normal_from_fast_reference_v1` moves `6/9` `normal_fast_gap` fixtures onto the current Fast-selected move and screened positive directionally before timeout (`8W-4L` over 12 finished games vs current Fast, `5W-3L` over 8 finished games vs current Normal). The live `runtime_normal_fast_core_v1` candidate then passed `guardrails`, `normal_fast_gap` triage, and `runtime-preflight`, but died immediately at targeted `fast-screen` vs `runtime_release_safe_pre_exact`: tier-0 overall `δ=-0.1250`, `mode fast 2W-6L`, `mode normal 4W-4L`, `EarlyReject`. The safety split candidate `runtime_normal_fast_core_safety_v1` recovered off-target safety and passed `guardrails`, `normal_fast_gap` triage (`changed=6/9`), and `runtime-preflight` (stage-1 ratios fast `~1.00`, normal `~0.89`), but still died flat at targeted `fast-screen`: tier-0 `δ=0.0000`, `mode fast 4W-4L`, `mode normal 4W-4L`, `EarlyReject`. One focused diagnostic (`mode_comparison_report`, 16 games/lane) still showed directional lift versus `runtime_current` (`normal-vs-fast 10W-6L`, `normal-vs-normal 9W-7L`), so the architecture was retained and moved to Normal-only CPU spend. That split (`runtime_normal_fast_core_budget_spend_v1`) produced the promotion.
+
+### Idea: Normal fast-core tactical quiescence spend
+- Base profile: `runtime_current`
+- Target mode: `normal`
+- Triage surface: `normal_fast_gap`
+- Triage pass signal: `triage` keeps moving the fast-gap fixtures (`changed>0/N`) while preserving the fast-derived root-selection story.
+- Calibration gate: `cargo test --release --lib smart_automove_normal_fast_gap_surface_probe -- --ignored --nocapture`
+- Candidate budget: 1
+- Expected upside: keep the proven fast-derived Normal core and use Normal-only tactical quiescence as bounded extra CPU spend to gain release-baseline strength.
+- CPU risk: medium — tactical-only quiescence has passed preflight before, but this combines it with a wider fast-derived root policy.
+- Cheapest falsifier: `guardrails`, then `SMART_TRIAGE_SURFACE=normal_fast_gap ./scripts/run-automove-experiment.sh triage runtime_normal_fast_core_quiescence_v1`.
+- Escalate only if: `runtime-preflight` passes and targeted `fast-screen` shows positive Normal delta (`SMART_PROMOTION_TARGET_MODE=normal`) with Fast non-regression.
+- Kill if: first earned duel is flat or negative (`δ<=0`) or runtime-preflight fails CPU/non-regression.
+- Next split if rejected: keep fast-core safety lane and try one exact-lite-only spend variant (`runtime_normal_fast_core_exact_lite_v1`) before any combined leaf stack.
+- How to test: `guardrails`, `triage`, `runtime-preflight`, targeted `fast-screen`; only then `progressive`/`ladder`.
+- Status: killed at first duel
+- Notes: `runtime_normal_fast_core_quiescence_v1` passed `guardrails`, `normal_fast_gap` triage (`changed=5/9`), and `runtime-preflight` (stage-1 ratios fast `~1.00`, normal `~0.92`), then died flat at targeted `fast-screen` vs `runtime_release_safe_pre_exact`: tier-0 `δ=0.0000`, `mode fast 4W-4L`, `mode normal 4W-4L`, `EarlyReject`.
+
+### Idea: Normal fast-core exact-lite spend
+- Base profile: `runtime_current`
+- Target mode: `normal`
+- Triage surface: `normal_fast_gap`
+- Triage pass signal: `triage` keeps the fast-gap fixture movement while exact-lite remains bounded and deterministic.
+- Calibration gate: `cargo test --release --lib smart_automove_normal_fast_gap_surface_probe -- --ignored --nocapture`
+- Candidate budget: 1
+- Expected upside: keep the fast-derived Normal core and spend a bounded exact-lite confirmation budget (`1/1`) to recover release-baseline strength without widening runtime risk.
+- CPU risk: low to medium — exact-lite budgets are tightly capped, but still need to clear runtime-preflight.
+- Cheapest falsifier: `guardrails`, then `SMART_TRIAGE_SURFACE=normal_fast_gap ./scripts/run-automove-experiment.sh triage runtime_normal_fast_core_exact_lite_v1`.
+- Escalate only if: `runtime-preflight` passes and targeted `fast-screen` shows positive Normal delta (`SMART_PROMOTION_TARGET_MODE=normal`) with Fast non-regression.
+- Kill if: first earned duel is flat or negative (`δ<=0`) or runtime-preflight fails CPU/non-regression.
+- Next split if rejected: pause leaf-feature stacking and revisit release-baseline alignment diagnostics before any combo candidate.
+- How to test: `guardrails`, `triage`, `runtime-preflight`, targeted `fast-screen`; only then `progressive`/`ladder`.
+- Status: killed at first duel
+- Notes: `runtime_normal_fast_core_exact_lite_v1` passed `guardrails`, `normal_fast_gap` triage (`changed=6/9` vs both `runtime_current` and `runtime_release_safe_pre_exact`), and `runtime-preflight` (stage-1 ratios fast `~1.00`, normal `~0.90`), then died flat at targeted `fast-screen` vs `runtime_release_safe_pre_exact`: tier-0 `δ=0.0000`, `mode fast 4W-4L`, `mode normal 4W-4L`, `EarlyReject`. One focused pool diagnostic (`SMART_GATE_POOL_GAMES=1`) was directionally positive (`delta=+0.200`, mode normal `+0.400`), which suggests the current fast-screen `neutral_v1` seed pack is the blocker rather than broad strength.
+
+### Idea: Normal release-seed alignment surface
+- Base profile: workflow-only
+- Target mode: `normal`
+- Triage surface: add a new deterministic fast-screen-aligned surface (seed family: `neutral_v1`, promotion baseline: `runtime_release_safe_pre_exact`)
+- Triage pass signal: retained fast-derived references/candidates that previously show directional pool lift must also move the new release-seed fixtures deterministically.
+- Calibration gate: new surface probe must cleanly separate `runtime_release_safe_pre_exact` from at least one known directional fast-derived profile.
+- Candidate budget: 1
+- Expected upside: stop spending candidate slots on profiles that are broad-pool positive but invisible to the first earned promotion duel.
+- CPU risk: low (fixture/surface workflow work).
+- Cheapest falsifier: implement probe and show no deterministic separation across known profiles; if so, abandon this surface.
+- Escalate only if: the new surface is deterministic and a fresh candidate clears `guardrails`, new triage, `runtime-preflight`, and targeted `fast-screen` with `δ>0` on Normal.
+- Kill if: the surface cannot be made deterministic or still fails to predict fast-screen outcome after one candidate.
+- Next split if rejected: revisit fast-screen seed configuration/first-tier thresholds rather than continuing candidate knob work.
+- How to test: add probe + fixtures first, then rerun one fast-derived candidate through earned path.
+- Status: completed (surface added)
+- Notes: Three consecutive fast-derived candidates (`runtime_normal_fast_core_safety_v1`, `_quiescence_v1`, `_exact_lite_v1`) all died with identical fast-screen tier-0 output (`4W-4L` in both fast and normal lanes), while off-path diagnostics still showed directional gains. Added `normal_release_seed_gap` as a deterministic triage surface built from `neutral_v1` release-seed openings (6 fixtures) and validated with `smart_automove_normal_release_seed_gap_surface_probe`. Re-running `runtime_normal_fast_core_exact_lite_v1` with the new surface still dies flat at first duel, so fixture alignment alone is not sufficient.
+
+### Idea: Normal fast-core budget spend
+- Base profile: `runtime_current`
+- Target mode: `normal`
+- Triage surface: `normal_release_seed_gap`
+- Triage pass signal: candidate keeps `changed>0/N` on release-seed fixtures while preserving fast non-regression.
+- Calibration gate: `cargo test --release --lib smart_automove_normal_release_seed_gap_surface_probe -- --ignored --nocapture`
+- Candidate budget: 1
+- Expected upside: current fast-core candidates are consistently below baseline CPU in Normal (`~0.90x`), so spend that saved budget directly on Normal search breadth/nodes.
+- CPU risk: medium — deliberate node/breadth increase must remain within stage-1 non-regression limits.
+- Cheapest falsifier: `guardrails`, then `SMART_TRIAGE_SURFACE=normal_release_seed_gap ./scripts/run-automove-experiment.sh triage runtime_normal_fast_core_budget_spend_v1`.
+- Escalate only if: `runtime-preflight` passes and targeted `fast-screen` shows positive Normal delta with Fast floor intact.
+- Kill if: first earned duel is flat/negative (`δ<=0`) or CPU gate regresses.
+- Next split if rejected: pause fast-core leaf/knob tuning and inspect fast-screen tier-0 seed/outcome decomposition before any further config spend.
+- How to test: `guardrails`, release-seed `triage`, `runtime-preflight`, targeted `fast-screen`; only then `progressive`/`ladder`.
+- Status: promoted to `runtime_current` (2026-03-14)
+- Notes: Candidate `runtime_normal_fast_core_budget_spend_v1` (normal-only +30% node budget plus slightly wider root/reply-risk spend on top of fast-core exact-lite) passed `guardrails`, `normal_release_seed_gap` triage (`changed=3/6`), and `runtime-preflight` (stage-1 ratios fast `~0.99-1.00`, normal `~0.91`). It then cleared targeted `fast-screen` with a strong Normal signal: tier-0 aggregate `δ=+0.1875` (`normal 7W-1L`, `fast 4W-4L`) and tier-1 aggregate `δ=+0.1042` (`normal 17W-7L`, `fast 12W-12L`, `EarlyPromote`). `progressive` passed (`δ=+0.1181`, confidence `0.997`, `normal 53W-19L`, `fast 36W-36L`) and `ladder` passed (exit `0`). After wiring the same Normal transform into production runtime config, both release speed gates passed (`opening_black_reply` and `mixed_runtime`; mixed medians fast `5.75ms`, normal `30.48ms`, pro `224.33ms`, normal/fast ratio `5.299`). Post-promotion quick mode comparison on `runtime_current` confirmed the target story: `normal-vs-fast 11W-5L` over 16 games.
 
 ### Idea: Normal tactical quiescence
 - Base profile: `runtime_current`

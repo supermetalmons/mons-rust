@@ -53,6 +53,7 @@ pub(super) enum TriageSurface {
     Supermana,
     OpponentMana,
     NormalFastGap,
+    NormalReleaseSeedGap,
     NormalTiebreak,
     SpiritSetup,
     DrainerSafety,
@@ -68,6 +69,7 @@ impl TriageSurface {
             "supermana" => Some(Self::Supermana),
             "opponent_mana" => Some(Self::OpponentMana),
             "normal_fast_gap" => Some(Self::NormalFastGap),
+            "normal_release_seed_gap" => Some(Self::NormalReleaseSeedGap),
             "normal_tiebreak" => Some(Self::NormalTiebreak),
             "spirit_setup" => Some(Self::SpiritSetup),
             "drainer_safety" => Some(Self::DrainerSafety),
@@ -84,6 +86,7 @@ impl TriageSurface {
             Self::Supermana => "supermana",
             Self::OpponentMana => "opponent_mana",
             Self::NormalFastGap => "normal_fast_gap",
+            Self::NormalReleaseSeedGap => "normal_release_seed_gap",
             Self::NormalTiebreak => "normal_tiebreak",
             Self::SpiritSetup => "spirit_setup",
             Self::DrainerSafety => "drainer_safety",
@@ -2753,6 +2756,76 @@ fn normal_fast_gap_triage_game(fen: &'static str) -> MonsGame {
     MonsGame::from_fen(fen, false).expect("normal fast gap triage fen should be valid")
 }
 
+fn leaked_static_str(value: String) -> &'static str {
+    Box::leak(value.into_boxed_str())
+}
+
+fn normal_release_seed_gap_triage_fixtures() -> Vec<TriageFixture> {
+    const SEED_TAG: &str = "neutral_v1";
+    const REPEATS: usize = 12;
+    const GAMES_PER_REPEAT: usize = 2;
+    const MIN_FIXTURES: usize = 6;
+    const MAX_FIXTURES: usize = 10;
+    const REFERENCE_PROFILE: &str = "runtime_normal_from_fast_reference_v1";
+    const BASELINE_PROFILE: &str = "runtime_release_safe_pre_exact";
+
+    let mode = SmartAutomovePreference::Normal;
+    let budget = SearchBudget::from_preference(mode);
+    let reference_selector = profile_selector_from_name(REFERENCE_PROFILE)
+        .expect("runtime_normal_from_fast_reference_v1 selector should exist");
+    let baseline_selector = profile_selector_from_name(BASELINE_PROFILE)
+        .expect("runtime_release_safe_pre_exact selector should exist");
+
+    let mut fixtures = Vec::new();
+    for repeat_index in 0..REPEATS {
+        if fixtures.len() >= MAX_FIXTURES {
+            break;
+        }
+        let seed = seed_for_budget_repeat_and_tag(budget, repeat_index, SEED_TAG);
+        let opening_fens = generate_opening_fens_cached(seed, GAMES_PER_REPEAT);
+        for (game_index, opening_fen) in opening_fens.iter().enumerate() {
+            if fixtures.len() >= MAX_FIXTURES {
+                break;
+            }
+            let game = MonsGame::from_fen(opening_fen.as_str(), false)
+                .expect("normal release-seed triage opening fen should be valid");
+            let config = budget.runtime_config_for_game(&game);
+            let reference_inputs =
+                select_inputs_with_runtime_fallback(reference_selector, &game, config);
+            let baseline_inputs =
+                select_inputs_with_runtime_fallback(baseline_selector, &game, config);
+            if reference_inputs.is_empty() || baseline_inputs.is_empty() {
+                continue;
+            }
+            let reference_move_fen = Input::fen_from_array(&reference_inputs);
+            let baseline_move_fen = Input::fen_from_array(&baseline_inputs);
+            if reference_move_fen == baseline_move_fen {
+                continue;
+            }
+            let fixture_id = leaked_static_str(format!(
+                "normal_release_seed_gap_r{}_g{}",
+                repeat_index, game_index
+            ));
+            let expected_move_fen = leaked_static_str(reference_move_fen);
+            fixtures.push(directional_triage_fixture(
+                fixture_id,
+                game,
+                mode,
+                expected_move_fen,
+            ));
+        }
+    }
+
+    assert!(
+        fixtures.len() >= MIN_FIXTURES,
+        "normal_release_seed_gap requires at least {} deterministic fixtures, found {}",
+        MIN_FIXTURES,
+        fixtures.len()
+    );
+
+    fixtures
+}
+
 fn triage_fixture(
     id: &'static str,
     game: MonsGame,
@@ -3040,6 +3113,7 @@ pub(super) fn generic_triage_surface_fixtures(surface: TriageSurface) -> Vec<Tri
                 "l8,2;l8,3",
             ),
         ],
+        TriageSurface::NormalReleaseSeedGap => normal_release_seed_gap_triage_fixtures(),
         TriageSurface::NormalTiebreak => vec![
             triage_fixture(
                 "normal_tiebreak_a",

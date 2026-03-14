@@ -2153,6 +2153,9 @@ impl MonsGameModel {
             };
         }
         config = Self::with_pre_exact_runtime_policy(config);
+        if matches!(preference, SmartAutomovePreference::Normal) {
+            config = Self::apply_runtime_normal_fast_core_budget_spend_profile(config);
+        }
         (config, resolved_context)
     }
 
@@ -2260,6 +2263,73 @@ impl MonsGameModel {
         config.enable_normal_root_safety_deep_floor = false;
         config.root_reply_risk_reply_limit = config.root_reply_risk_reply_limit.min(8);
         config.root_reply_risk_node_share_bp = config.root_reply_risk_node_share_bp.min(560);
+        config
+    }
+
+    fn apply_runtime_normal_fast_policy_block(mut config: SmartSearchConfig) -> SmartSearchConfig {
+        config.root_branch_limit = (config.root_branch_limit + 5).clamp(12, 40);
+        config.node_branch_limit = config.node_branch_limit.saturating_sub(2).clamp(8, 18);
+        config.root_enum_limit =
+            (config.root_branch_limit * 6).clamp(config.root_branch_limit, 240);
+        config.node_enum_limit =
+            (config.node_branch_limit * 4).clamp(config.node_branch_limit, 108);
+        config.enable_event_ordering_bonus = true;
+        config.enable_two_pass_root_allocation = false;
+        config.root_focus_k = 2;
+        config.root_focus_budget_share_bp = 6_000;
+        config.enable_selective_extensions = false;
+        config.selective_extension_node_share_bp = 0;
+        config.enable_quiet_reductions = true;
+        config.root_reply_risk_score_margin = 125;
+        config.root_reply_risk_shortlist_max = 4;
+        config.root_reply_risk_reply_limit = 10;
+        config.root_reply_risk_node_share_bp = 650;
+        config.root_anti_help_score_margin = 220;
+        config.root_anti_help_reply_limit = SMART_ROOT_ANTI_HELP_REPLY_LIMIT_FAST;
+        config.enable_two_pass_volatility_focus = false;
+        config.enable_normal_root_safety_rerank = false;
+        config.enable_normal_root_safety_deep_floor = false;
+        config.enable_interview_hard_spirit_deploy = false;
+        config.enable_interview_soft_root_priors = true;
+        config.enable_interview_deterministic_tiebreak = false;
+        config.prefer_clean_reply_risk_roots = false;
+        config.root_drainer_safety_score_margin = SMART_ROOT_DRAINER_SAFETY_SCORE_MARGIN;
+        config.root_mana_handoff_penalty = 300;
+        config.root_backtrack_penalty = 220;
+        config.root_efficiency_score_margin = 1_700;
+        config.potion_spend_penalty_fast = 220;
+        config.potion_spend_penalty_normal = SMART_POTION_SPEND_NO_COMPENSATION_PENALTY_NORMAL;
+        config.interview_soft_score_margin = 80;
+        config.interview_soft_supermana_progress_bonus = 320;
+        config.interview_soft_supermana_score_bonus = 600;
+        config.interview_soft_opponent_mana_progress_bonus = 200;
+        config.interview_soft_opponent_mana_score_bonus = 310;
+        config.interview_soft_mana_handoff_penalty = 280;
+        config.interview_soft_roundtrip_penalty = 220;
+        config.enable_enhanced_drainer_vulnerability = true;
+        config.enable_supermana_prepass_exception = true;
+        config.scoring_weights = &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS_POTION_PREF;
+        config
+    }
+
+    fn apply_runtime_normal_fast_core_budget_spend_profile(
+        mut config: SmartSearchConfig,
+    ) -> SmartSearchConfig {
+        if config.depth < 3 || config.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
+            return config;
+        }
+        config = Self::apply_runtime_normal_fast_policy_block(config);
+        config.enable_exact_lite_progress_checks = true;
+        config.enable_exact_lite_spirit_window_checks = true;
+        config.exact_lite_root_call_budget = 1;
+        config.exact_lite_static_call_budget = 1;
+        config.max_visited_nodes = config.max_visited_nodes.saturating_mul(130) / 100;
+        config.root_branch_limit = (config.root_branch_limit + 2).clamp(12, 40);
+        config.root_enum_limit =
+            (config.root_branch_limit * 6).clamp(config.root_branch_limit, 240);
+        config.root_reply_risk_shortlist_max = config.root_reply_risk_shortlist_max.max(5);
+        config.root_reply_risk_reply_limit = config.root_reply_risk_reply_limit.max(12);
+        config.root_reply_risk_node_share_bp = config.root_reply_risk_node_share_bp.max(900);
         config
     }
 
