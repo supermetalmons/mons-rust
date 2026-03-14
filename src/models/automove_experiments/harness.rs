@@ -52,6 +52,8 @@ pub(super) enum TriageSurface {
     ReplyRisk,
     Supermana,
     OpponentMana,
+    NormalFastGap,
+    NormalTiebreak,
     SpiritSetup,
     DrainerSafety,
     CacheReuse,
@@ -65,6 +67,8 @@ impl TriageSurface {
             "reply_risk" => Some(Self::ReplyRisk),
             "supermana" => Some(Self::Supermana),
             "opponent_mana" => Some(Self::OpponentMana),
+            "normal_fast_gap" => Some(Self::NormalFastGap),
+            "normal_tiebreak" => Some(Self::NormalTiebreak),
             "spirit_setup" => Some(Self::SpiritSetup),
             "drainer_safety" => Some(Self::DrainerSafety),
             "cache_reuse" => Some(Self::CacheReuse),
@@ -79,6 +83,8 @@ impl TriageSurface {
             Self::ReplyRisk => "reply_risk",
             Self::Supermana => "supermana",
             Self::OpponentMana => "opponent_mana",
+            Self::NormalFastGap => "normal_fast_gap",
+            Self::NormalTiebreak => "normal_tiebreak",
             Self::SpiritSetup => "spirit_setup",
             Self::DrainerSafety => "drainer_safety",
             Self::CacheReuse => "cache_reuse",
@@ -93,6 +99,7 @@ pub(super) struct TriageFixture {
     pub mode: SmartAutomovePreference,
     pub opening_book_driven: bool,
     pub config_tweak: Option<fn(SmartSearchConfig) -> SmartSearchConfig>,
+    pub expected_selected_input_fen: Option<&'static str>,
 }
 
 pub(super) fn select_inputs_with_runtime_fallback(
@@ -2718,6 +2725,34 @@ fn same_turn_opponent_mana_threat_triage_game() -> MonsGame {
     )
 }
 
+fn normal_tiebreak_a_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 4 0 0 4 n02y0xn04e0xn03/n02s0xd0xn07/n05a0xn05/n04xxmn01xxmxxmn03/n03xxmn01xxmn05/xxQn04xxUxxmn03xxQ/n03xxMn01xxMA0xxxMn03/n03xxMn02xxMn04/n05D0xn03Y0xn01/n04E0xn06/n06S0xn04",
+        false,
+    )
+    .expect("normal tiebreak A triage fen should be valid")
+}
+
+fn normal_tiebreak_b_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 5 0 0 4 n04s0xn01a0xn04/n03y0xn04e0xn02/n11/n04xxmn01xxmn01xxmn02/n03d0mn01xxmn05/xxQn04xxUxxMn03xxQ/n03xxMn03xxMn03/n04xxMn01xxMn04/n05S0xn05/n04D0xn06/n01E0xn02A0xD0xn03Y0xn02",
+        false,
+    )
+    .expect("normal tiebreak B triage fen should be valid")
+}
+
+fn normal_tiebreak_c_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 5 0 0 4 n04s0xn06/n04d0xa0xn05/n04y0xn01e0xn04/n04xxmn01xxmn04/n05xxmn01xxmn03/xxQn03xxmxxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn06/n11/n05S0xn01xxMn01Y0xn01/E0xn03A0xD0xn05",
+        false,
+    )
+    .expect("normal tiebreak C triage fen should be valid")
+}
+
+fn normal_fast_gap_triage_game(fen: &'static str) -> MonsGame {
+    MonsGame::from_fen(fen, false).expect("normal fast gap triage fen should be valid")
+}
+
 fn triage_fixture(
     id: &'static str,
     game: MonsGame,
@@ -2730,6 +2765,23 @@ fn triage_fixture(
         mode,
         opening_book_driven: false,
         config_tweak,
+        expected_selected_input_fen: None,
+    }
+}
+
+fn directional_triage_fixture(
+    id: &'static str,
+    game: MonsGame,
+    mode: SmartAutomovePreference,
+    expected_selected_input_fen: &'static str,
+) -> TriageFixture {
+    TriageFixture {
+        id,
+        game,
+        mode,
+        opening_book_driven: false,
+        config_tweak: None,
+        expected_selected_input_fen: Some(expected_selected_input_fen),
     }
 }
 
@@ -2914,6 +2966,100 @@ pub(super) fn generic_triage_surface_fixtures(surface: TriageSurface) -> Vec<Tri
             "spirit_setup_progress",
             spirit_setup_triage_game(),
         ),
+        TriageSurface::NormalFastGap => vec![
+            directional_triage_fixture(
+                "normal_fast_gap_a",
+                normal_fast_gap_triage_game(
+                    "0 0 w 0 0 1 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n04D0xn06/n03E0xA0xn01S0xY0xn03",
+                ),
+                SmartAutomovePreference::Normal,
+                "l10,6;l9,5",
+            ),
+            directional_triage_fixture(
+                "normal_fast_gap_b",
+                normal_fast_gap_triage_game(
+                    "0 0 w 0 0 2 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n05D0xn05/n11/n03E0xA0xn01S0xY0xn03",
+                ),
+                SmartAutomovePreference::Normal,
+                "l10,4;l9,4",
+            ),
+            directional_triage_fixture(
+                "normal_fast_gap_c",
+                normal_fast_gap_triage_game(
+                    "0 0 w 1 0 5 0 0 3 n07e0xn03/n03y0xn01s0xn01a0xn03/n06d0xxxmn03/n04xxmn02xxmn03/n03xxmn01xxmn05/xxQn04xxUn04xxQ/E0xn02xxMn01xxMn01xxMn03/n06xxMn04/n05D0MS0xn04/n04A0xn03Y0xn02/n11",
+                ),
+                SmartAutomovePreference::Normal,
+                "l6,5;l7,4",
+            ),
+            directional_triage_fixture(
+                "normal_fast_gap_d",
+                normal_fast_gap_triage_game(
+                    "0 0 b 1 0 3 0 0 2 n06a0xe0xn03/n03y0xn01s0xd0xn04/n07xxmn03/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n04D0xn06/n02E0xA0xn01S0xn05/n07Y0xn03",
+                ),
+                SmartAutomovePreference::Normal,
+                "l0,6;l1,7",
+            ),
+            directional_triage_fixture(
+                "normal_fast_gap_e",
+                normal_fast_gap_triage_game(
+                    "0 0 b 1 0 5 0 0 2 n06a0xn04/n05s0xd0xe0xn03/n03y0xn03xxmn03/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n04D0xn06/n02E0xA0xn01S0xn05/n07Y0xn03",
+                ),
+                SmartAutomovePreference::Normal,
+                "l4,7;l3,7",
+            ),
+            directional_triage_fixture(
+                "normal_fast_gap_f",
+                normal_fast_gap_triage_game(
+                    "1 0 b 0 0 4 0 0 4 n06a0xn04/n05s0xd0xe0xn03/n07xxmn03/n03xxmn07/n03xxmn01xxmn01xxmn03/n05xxUn04xxQ/y0Bn04xxMn01xxMn03/n03xxMn02xxMn04/n11/n02E0xA0xn01S0xn01Y0xn03/D0xn10",
+                ),
+                SmartAutomovePreference::Normal,
+                "l6,0;l7,0",
+            ),
+            directional_triage_fixture(
+                "normal_fast_gap_g",
+                normal_fast_gap_triage_game(
+                    "0 0 w 0 0 2 0 0 3 n07e0xn03/n02y0xn01s0xn01a0xn04/n06d0xn04/n03xxmn02xxmxxmn03/n03xxmn01xxmn05/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n02A0xn02D0xn05/n05S0xn05/n03E0xn03Y0xn03",
+                ),
+                SmartAutomovePreference::Normal,
+                "l9,5;l7,4;l8,3",
+            ),
+            directional_triage_fixture(
+                "normal_fast_gap_h",
+                normal_fast_gap_triage_game(
+                    "0 0 w 1 0 2 0 0 3 n07e0xn03/n02y0xn01s0xn01a0xn04/n06d0xn04/n03xxmn02xxmxxmn03/n03xxmn01xxmn05/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn02xxMn03/n02A0xn02D0xn05/n05S0xn05/n03E0xn03Y0xn03",
+                ),
+                SmartAutomovePreference::Normal,
+                "l8,2;l8,3",
+            ),
+            directional_triage_fixture(
+                "normal_fast_gap_i",
+                normal_fast_gap_triage_game(
+                    "0 0 w 1 0 3 0 0 3 n07e0xn03/n02y0xn01s0xn01a0xn04/n06d0xn04/n03xxmn02xxmxxmn03/n03xxmn01xxmn05/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn02xxMn03/n02A0xn02D0xn05/n03E0xn01S0xn05/n07Y0xn03",
+                ),
+                SmartAutomovePreference::Normal,
+                "l8,2;l8,3",
+            ),
+        ],
+        TriageSurface::NormalTiebreak => vec![
+            triage_fixture(
+                "normal_tiebreak_a",
+                normal_tiebreak_a_triage_game(),
+                SmartAutomovePreference::Normal,
+                None,
+            ),
+            triage_fixture(
+                "normal_tiebreak_b",
+                normal_tiebreak_b_triage_game(),
+                SmartAutomovePreference::Normal,
+                None,
+            ),
+            triage_fixture(
+                "normal_tiebreak_c",
+                normal_tiebreak_c_triage_game(),
+                SmartAutomovePreference::Normal,
+                None,
+            ),
+        ],
         TriageSurface::DrainerSafety => duplicate_fixture_across_client_modes(
             "drainer_safety_filter",
             drainer_safety_triage_game(),
@@ -2955,10 +3101,7 @@ fn apply_triage_opening_sequence(game: &mut MonsGame, sequence: &[&str; 5]) {
     assert_eq!(game.active_color, Color::Black);
 }
 
-fn opening_black_reply_triage_fixture(
-    id: &'static str,
-    sequence: &[&str; 5],
-) -> TriageFixture {
+fn opening_black_reply_triage_fixture(id: &'static str, sequence: &[&str; 5]) -> TriageFixture {
     let mut game = MonsGame::new(false);
     apply_triage_opening_sequence(&mut game, sequence);
     TriageFixture {
@@ -2967,6 +3110,7 @@ fn opening_black_reply_triage_fixture(
         mode: SmartAutomovePreference::Pro,
         opening_book_driven: true,
         config_tweak: None,
+        expected_selected_input_fen: None,
     }
 }
 
@@ -3013,6 +3157,7 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,
+            expected_selected_input_fen: None,
         },
         TriageFixture {
             id: "primary_opponent_mana_progress",
@@ -3020,6 +3165,7 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,
+            expected_selected_input_fen: None,
         },
         TriageFixture {
             id: "primary_spirit_setup",
@@ -3027,6 +3173,7 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,
+            expected_selected_input_fen: None,
         },
         TriageFixture {
             id: "primary_drainer_safety",
@@ -3034,6 +3181,7 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,
+            expected_selected_input_fen: None,
         },
         TriageFixture {
             id: "primary_pvs_sensitive_search",
@@ -3041,6 +3189,7 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,
+            expected_selected_input_fen: None,
         },
         TriageFixture {
             id: "primary_ext_sensitive_no_ext_a",
@@ -3048,6 +3197,7 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,
+            expected_selected_input_fen: None,
         },
         TriageFixture {
             id: "primary_ext_sensitive_more_ext_a",
@@ -3055,6 +3205,7 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,
+            expected_selected_input_fen: None,
         },
         TriageFixture {
             id: "primary_ext_sensitive_no_ext_b",
@@ -3062,6 +3213,7 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,
+            expected_selected_input_fen: None,
         },
         TriageFixture {
             id: "primary_ext_sensitive_more_ext_b",
@@ -3069,6 +3221,7 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,
+            expected_selected_input_fen: None,
         },
         TriageFixture {
             id: "human_win_pro_a",
@@ -3076,6 +3229,7 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,
+            expected_selected_input_fen: None,
         },
         TriageFixture {
             id: "human_win_pro_b",
@@ -3083,6 +3237,7 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,
+            expected_selected_input_fen: None,
         },
         TriageFixture {
             id: "human_win_pro_c",
@@ -3090,6 +3245,7 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,
+            expected_selected_input_fen: None,
         },
     ]
 }

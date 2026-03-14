@@ -30,6 +30,41 @@ Unless an idea explicitly says otherwise, new candidates must start as a delta o
 
 ## In-Progress
 
+### Idea: Normal fast-derived core
+- Base profile: `runtime_current`
+- Reference-only exception: retained `runtime_normal_from_fast_reference_v1` starts from Normal budget/runtime, applies Fast's policy block, and is not promotable directly.
+- Target mode: `normal`
+- Triage surface: `normal_fast_gap`
+- Triage pass signal: `triage` moves fixed Normal fixtures onto the current Fast-selected root/input against `runtime_current`.
+- Calibration gate: `cargo test --release --lib smart_automove_normal_fast_gap_surface_probe -- --ignored --nocapture`
+- Candidate budget: 1
+- Expected upside: start from the policy block that already beats current Normal head-to-head, then spend Normal's extra CPU only after that core wins.
+- CPU risk: medium — the reference keeps Normal depth and node budget, but wider root spend plus Fast ordering materially changes allocation.
+- Cheapest falsifier: quick `runtime_normal_from_fast_reference_v1` mode-comparison report must be positive against both current Fast and current Normal.
+- Escalate only if: the reference is directionally positive, then the live `runtime_normal_fast_core_v1` candidate clears `guardrails`, `normal_fast_gap` triage, `runtime-preflight`, and targeted `fast-screen`.
+- Kill if: the reference is flat or negative against current Fast or current Normal, or the first earned duel for the live candidate is flat/negative.
+- Next split if rejected: only continue this architecture with a narrower fast-gap surface or a single extra CPU-spend feature on top of a winning fast-derived core.
+- How to test: surface probe, quick mode-comparison report, then the standard earned Normal promotion path for a live candidate.
+- Status: blocked on release-baseline safety split
+- Notes: `runtime_normal_from_fast_reference_v1` moves `6/9` `normal_fast_gap` fixtures onto the current Fast-selected move and screened positive directionally before timeout (`8W-4L` over 12 finished games vs current Fast, `5W-3L` over 8 finished games vs current Normal). The live `runtime_normal_fast_core_v1` candidate then passed `guardrails`, `normal_fast_gap` triage, and `runtime-preflight`, but died immediately at targeted `fast-screen` vs `runtime_release_safe_pre_exact`: tier-0 overall `δ=-0.1250`, `mode fast 2W-6L`, `mode normal 4W-4L`, `EarlyReject`. The next split should recover release-baseline fast-lane safety/non-regression before adding any extra CPU spend.
+
+### Idea: Normal tactical quiescence
+- Base profile: `runtime_current`
+- Target mode: `normal`
+- Triage surface: `normal_tiebreak`
+- Triage pass signal: `triage` reports `changed>0/N` on fixed Normal tie-break fixtures without guardrail regressions.
+- Calibration gate: none
+- Candidate budget: 1
+- Expected upside: recover the earlier quiescence strength signal without the old full-child explosion by expanding only tactical quiescence children, so Normal gets better leaf confirmation while staying near current CPU.
+- CPU risk: medium — tactical-only quiescence should be far cheaper than full-child quiescence, but the budget still needs to clear runtime-preflight.
+- Cheapest falsifier: `guardrails`, then `SMART_TRIAGE_SURFACE=normal_tiebreak ./scripts/run-automove-experiment.sh triage <candidate>`.
+- Escalate only if: `runtime-preflight` passes and targeted `fast-screen` (`SMART_PROMOTION_TARGET_MODE=normal`) shows positive Normal delta with Fast non-regression.
+- Kill if: direct candidate-vs-`runtime_current` Normal-vs-Fast check stays dead even or negative, or earned duel stages stall beyond the hard wall-time budget.
+- Next split if rejected: deeper fixture work on the `normal_tiebreak` surface or a stronger new-code leaf-evaluation change; do not reopen this branch with more bounded exact-lite layering alone.
+- How to test: `guardrails`, `triage`, `runtime-preflight`, then targeted `fast-screen`, `progressive`, `ladder`.
+- Status: retired in favor of the fast-derived core pivot
+- Notes: `runtime_normal_tactical_quiescence_v1` and `runtime_normal_tactical_quiescence_exact_lite_v1` both produced the same quick directional direct result vs current Fast (`9W-7L` over 16 games) and both passed `normal_tiebreak` triage plus `runtime-preflight`, but both died at targeted `fast-screen` against `runtime_release_safe_pre_exact` with `δ=0.000` (`4W-4L` in both Fast and Normal tiers). The previous root-breadth exact-lite candidate is also killed as direct Normal-vs-Fast stayed dead even.
+
 ### Idea: Pro quiescence search
 - Base profile: `runtime_current`
 - Target mode: `pro`

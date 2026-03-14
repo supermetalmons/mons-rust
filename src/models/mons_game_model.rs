@@ -1020,6 +1020,8 @@ struct SmartSearchConfig {
     enable_history_heuristic: bool,
     enable_quiescence_search: bool,
     quiescence_node_budget: usize,
+    enable_quiescence_tactical_children_only: bool,
+    quiescence_tactical_enum_limit: usize,
     enable_tt_depth_preferred_replacement: bool,
     enable_pvs: bool,
     quiet_reduction_depth_threshold: usize,
@@ -1334,6 +1336,8 @@ impl SmartSearchConfig {
             enable_history_heuristic: false,
             enable_quiescence_search: false,
             quiescence_node_budget: 0,
+            enable_quiescence_tactical_children_only: false,
+            quiescence_tactical_enum_limit: 0,
             enable_tt_depth_preferred_replacement: false,
             enable_pvs: false,
             quiet_reduction_depth_threshold: 3,
@@ -6340,8 +6344,7 @@ impl MonsGameModel {
                 && (config.quiescence_node_budget == 0
                     || *quiescence_nodes_used < config.quiescence_node_budget)
             {
-                let stand_pat =
-                    Self::evaluate_search_preferability(game, perspective, config);
+                let stand_pat = Self::evaluate_search_preferability(game, perspective, config);
                 let maximizing = game.active_color == perspective;
                 if maximizing {
                     if stand_pat >= beta {
@@ -6350,34 +6353,57 @@ impl MonsGameModel {
                     *quiescence_nodes_used += 1;
                     let mut q_alpha = alpha.max(stand_pat);
                     let mut best = stand_pat;
-                    let children = Self::ranked_child_states(
-                        game,
-                        perspective,
-                        maximizing,
-                        None,
-                        [0u64; 2],
-                        config,
-                        history_table,
-                    );
-                    for child in children.iter() {
-                        if child.classes.quiet {
-                            continue;
+                    if config.enable_quiescence_tactical_children_only {
+                        for child_game in
+                            Self::enumerate_quiescence_tactical_games(game, config).iter()
+                        {
+                            if *visited_nodes >= config.max_visited_nodes {
+                                break;
+                            }
+                            *visited_nodes += 1;
+                            let score = Self::evaluate_search_preferability(
+                                child_game,
+                                perspective,
+                                config,
+                            );
+                            if score > best {
+                                best = score;
+                            }
+                            q_alpha = q_alpha.max(best);
+                            if q_alpha >= beta {
+                                break;
+                            }
                         }
-                        if *visited_nodes >= config.max_visited_nodes {
-                            break;
-                        }
-                        *visited_nodes += 1;
-                        let score = Self::evaluate_search_preferability(
-                            &child.game,
+                    } else {
+                        let children = Self::ranked_child_states(
+                            game,
                             perspective,
+                            maximizing,
+                            None,
+                            [0u64; 2],
                             config,
+                            history_table,
                         );
-                        if score > best {
-                            best = score;
-                        }
-                        q_alpha = q_alpha.max(best);
-                        if q_alpha >= beta {
-                            break;
+                        for child in children.iter() {
+                            if child.classes.quiet {
+                                continue;
+                            }
+                            if *visited_nodes >= config.max_visited_nodes {
+                                break;
+                            }
+                            *visited_nodes += 1;
+                            let score = Self::evaluate_search_preferability(
+                                &child.game,
+                                perspective,
+                                config,
+                            );
+                            if score > best {
+                                best = score;
+                            }
+                            q_alpha = q_alpha.max(best);
+                            if q_alpha >= beta {
+                                break;
+                            }
                         }
                     }
                     return best;
@@ -6388,34 +6414,57 @@ impl MonsGameModel {
                     *quiescence_nodes_used += 1;
                     let mut q_beta = beta.min(stand_pat);
                     let mut best = stand_pat;
-                    let children = Self::ranked_child_states(
-                        game,
-                        perspective,
-                        maximizing,
-                        None,
-                        [0u64; 2],
-                        config,
-                        history_table,
-                    );
-                    for child in children.iter() {
-                        if child.classes.quiet {
-                            continue;
+                    if config.enable_quiescence_tactical_children_only {
+                        for child_game in
+                            Self::enumerate_quiescence_tactical_games(game, config).iter()
+                        {
+                            if *visited_nodes >= config.max_visited_nodes {
+                                break;
+                            }
+                            *visited_nodes += 1;
+                            let score = Self::evaluate_search_preferability(
+                                child_game,
+                                perspective,
+                                config,
+                            );
+                            if score < best {
+                                best = score;
+                            }
+                            q_beta = q_beta.min(best);
+                            if q_beta <= alpha {
+                                break;
+                            }
                         }
-                        if *visited_nodes >= config.max_visited_nodes {
-                            break;
-                        }
-                        *visited_nodes += 1;
-                        let score = Self::evaluate_search_preferability(
-                            &child.game,
+                    } else {
+                        let children = Self::ranked_child_states(
+                            game,
                             perspective,
+                            maximizing,
+                            None,
+                            [0u64; 2],
                             config,
+                            history_table,
                         );
-                        if score < best {
-                            best = score;
-                        }
-                        q_beta = q_beta.min(best);
-                        if q_beta <= alpha {
-                            break;
+                        for child in children.iter() {
+                            if child.classes.quiet {
+                                continue;
+                            }
+                            if *visited_nodes >= config.max_visited_nodes {
+                                break;
+                            }
+                            *visited_nodes += 1;
+                            let score = Self::evaluate_search_preferability(
+                                &child.game,
+                                perspective,
+                                config,
+                            );
+                            if score < best {
+                                best = score;
+                            }
+                            q_beta = q_beta.min(best);
+                            if q_beta <= alpha {
+                                break;
+                            }
                         }
                     }
                     return best;
@@ -7039,9 +7088,7 @@ impl MonsGameModel {
                         _ => {}
                     }
                 }
-                Item::MonWithMana { mon, mana }
-                    if mon.color == color && !mon.is_fainted() =>
-                {
+                Item::MonWithMana { mon, mana } if mon.color == color && !mon.is_fainted() => {
                     match mon.kind {
                         MonKind::Drainer => {
                             drainer_locations.push(location);
@@ -7307,6 +7354,44 @@ impl MonsGameModel {
                     | Event::BombExplosion { .. }
             )
         })
+    }
+
+    fn quiescence_transition_is_tactical(events: &[Event]) -> bool {
+        events.iter().any(|event| {
+            matches!(
+                event,
+                Event::ManaScored { .. }
+                    | Event::PickupMana { .. }
+                    | Event::MonFainted { .. }
+                    | Event::UsePotion { .. }
+                    | Event::BombAttack { .. }
+                    | Event::BombExplosion { .. }
+                    | Event::SpiritTargetMove { .. }
+                    | Event::SupermanaBackToBase { .. }
+            )
+        })
+    }
+
+    fn enumerate_quiescence_tactical_games(
+        game: &MonsGame,
+        config: SmartSearchConfig,
+    ) -> Vec<MonsGame> {
+        let enum_limit = config
+            .quiescence_tactical_enum_limit
+            .max(1)
+            .min(config.node_enum_limit.max(1));
+        let transitions = Self::enumerate_legal_transitions(
+            game,
+            enum_limit,
+            Self::automove_start_input_options(config),
+        );
+        let mut games = Vec::with_capacity(transitions.len());
+        for transition in transitions {
+            if Self::quiescence_transition_is_tactical(transition.events.as_slice()) {
+                games.push(transition.game);
+            }
+        }
+        games
     }
 
     fn ordering_event_bonus(actor_color: Color, perspective: Color, events: &[Event]) -> i32 {
@@ -12865,8 +12950,15 @@ mod opening_book_tests {
         .expect("mirrored opponent spirit supermana handoff inputs should build a scored root");
         let child_hash = MonsGameModel::search_state_hash(&child.game);
 
-        let children =
-            MonsGameModel::ranked_child_states(&game, Color::White, false, None, [0; 2], config, &HistoryTable::default());
+        let children = MonsGameModel::ranked_child_states(
+            &game,
+            Color::White,
+            false,
+            None,
+            [0; 2],
+            config,
+            &HistoryTable::default(),
+        );
         let ranked_child = children
             .iter()
             .find(|candidate| candidate.hash == child_hash)
@@ -13016,9 +13108,19 @@ mod opening_book_tests {
         config.enable_root_efficiency = false;
         config.enable_static_exact_evaluation = false;
 
-        let children =
-            MonsGameModel::ranked_child_states(&game, Color::White, true, None, [0; 2], config, &HistoryTable::default());
-        assert!(!children.is_empty(), "simple board should still enumerate child states");
+        let children = MonsGameModel::ranked_child_states(
+            &game,
+            Color::White,
+            true,
+            None,
+            [0; 2],
+            config,
+            &HistoryTable::default(),
+        );
+        assert!(
+            !children.is_empty(),
+            "simple board should still enumerate child states"
+        );
 
         let diagnostics = crate::models::automove_exact::exact_query_diagnostics_snapshot();
         assert_eq!(

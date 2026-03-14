@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  local triage_surfaces="opening_reply primary_pro reply_risk supermana opponent_mana spirit_setup drainer_safety cache_reuse"
+  local triage_surfaces="opening_reply primary_pro reply_risk supermana opponent_mana normal_fast_gap spirit_setup drainer_safety cache_reuse"
   cat <<'EOF_HELP'
 usage:
   ./scripts/run-automove-experiment.sh <stage> <candidate> [baseline]
@@ -28,6 +28,7 @@ stages:
 
 defaults:
   baseline = runtime_release_safe_pre_exact
+  triage override: SMART_TRIAGE_SURFACE=normal_fast_gap defaults baseline to runtime_current unless explicitly provided
 EOF_HELP
   cat <<EOF_HELP
   triage surfaces = ${triage_surfaces}
@@ -237,6 +238,10 @@ fi
 
 candidate="$2"
 baseline="${3:-runtime_release_safe_pre_exact}"
+baseline_was_explicit=false
+if [ "$#" -eq 3 ]; then
+  baseline_was_explicit=true
+fi
 
 case "${stage}" in
   guardrails)
@@ -257,6 +262,10 @@ case "${stage}" in
     ;;
   triage)
     triage_surface="${SMART_TRIAGE_SURFACE:-unset}"
+    if [ "${triage_surface}" = "normal_fast_gap" ] && [ "${baseline_was_explicit}" = false ]; then
+      baseline="runtime_current"
+      echo "triage surface normal_fast_gap: defaulting baseline to runtime_current"
+    fi
     run_cargo_logged \
       "triage_${triage_surface}_${candidate}" \
       "smart_automove_pool_signal_triage" \

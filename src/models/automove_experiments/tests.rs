@@ -314,12 +314,12 @@ fn progressive_stop_targeted_fast_does_not_promote_off_target_winner() {
 fn triage_surface_from_env() -> TriageSurface {
     let value = env::var("SMART_TRIAGE_SURFACE").unwrap_or_else(|_| {
         panic!(
-            "SMART_TRIAGE_SURFACE is required (expected one of: opening_reply, primary_pro, reply_risk, supermana, opponent_mana, spirit_setup, drainer_safety, cache_reuse)"
+            "SMART_TRIAGE_SURFACE is required (expected one of: opening_reply, primary_pro, reply_risk, supermana, opponent_mana, normal_fast_gap, normal_tiebreak, spirit_setup, drainer_safety, cache_reuse)"
         )
     });
     TriageSurface::parse(value.as_str()).unwrap_or_else(|| {
         panic!(
-            "unknown SMART_TRIAGE_SURFACE='{}' (expected one of: opening_reply, primary_pro, reply_risk, supermana, opponent_mana, spirit_setup, drainer_safety, cache_reuse)",
+            "unknown SMART_TRIAGE_SURFACE='{}' (expected one of: opening_reply, primary_pro, reply_risk, supermana, opponent_mana, normal_fast_gap, normal_tiebreak, spirit_setup, drainer_safety, cache_reuse)",
             value
         )
     })
@@ -340,7 +340,8 @@ fn triage_game_with_items(
 ) -> MonsGame {
     let mut game = MonsGame::new(false);
     game.board = Board::new_with_items(
-        items.into_iter()
+        items
+            .into_iter()
             .collect::<std::collections::HashMap<_, _>>(),
     );
     game.active_color = active_color;
@@ -392,8 +393,12 @@ fn calibration_runtime_config(
     mode: SmartAutomovePreference,
 ) -> SmartSearchConfig {
     let base = SearchBudget::from_preference(mode).runtime_config_for_game(game);
-    profile_runtime_config_for_name(profile_name, game, base)
-        .unwrap_or_else(|| panic!("profile '{}' does not expose a runtime config", profile_name))
+    profile_runtime_config_for_name(profile_name, game, base).unwrap_or_else(|| {
+        panic!(
+            "profile '{}' does not expose a runtime config",
+            profile_name
+        )
+    })
 }
 
 fn reply_risk_calibration_probe(profile_name: &str) -> i32 {
@@ -407,8 +412,7 @@ fn reply_risk_calibration_probe(profile_name: &str) -> i32 {
         Color::White,
         2,
     );
-    let config =
-        calibration_runtime_config(profile_name, &game, SmartAutomovePreference::Fast);
+    let config = calibration_runtime_config(profile_name, &game, SmartAutomovePreference::Fast);
     let events = vec![
         Event::MonMove {
             item: Item::Mon { mon: white_drainer },
@@ -469,8 +473,7 @@ fn opponent_mana_calibration_probe(profile_name: &str) -> usize {
     );
     game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-    let config =
-        calibration_runtime_config(profile_name, &game, SmartAutomovePreference::Normal);
+    let config = calibration_runtime_config(profile_name, &game, SmartAutomovePreference::Normal);
     let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
         &game,
         Color::White,
@@ -539,8 +542,7 @@ fn supermana_calibration_probe(profile_name: &str) -> bool {
         Color::White,
         2,
     );
-    let config =
-        calibration_runtime_config(profile_name, &game, SmartAutomovePreference::Normal);
+    let config = calibration_runtime_config(profile_name, &game, SmartAutomovePreference::Normal);
     let (_, events) = MonsGameModel::apply_inputs_for_search_with_events(
         &game,
         &[
@@ -582,18 +584,16 @@ fn pro_signal_triage_accepts_primary_pro_with_stable_opening_reply() {
 
 #[test]
 fn triage_calibration_probe_detects_reply_risk_profile_delta() {
-    let candidate = reply_risk_calibration_probe(
-        "runtime_pre_fast_root_quality_v1_normal_conversion_v3",
-    );
+    let candidate =
+        reply_risk_calibration_probe("runtime_pre_fast_root_quality_v1_normal_conversion_v3");
     let baseline = reply_risk_calibration_probe("runtime_release_safe_pre_exact");
     assert!(candidate > baseline);
 }
 
 #[test]
 fn triage_calibration_probe_detects_opponent_mana_profile_delta() {
-    let candidate = opponent_mana_calibration_probe(
-        "runtime_pre_fast_root_quality_v1_normal_conversion_v3",
-    );
+    let candidate =
+        opponent_mana_calibration_probe("runtime_pre_fast_root_quality_v1_normal_conversion_v3");
     let baseline = opponent_mana_calibration_probe("runtime_release_safe_pre_exact");
     assert_ne!(candidate, baseline);
 }
@@ -885,10 +885,7 @@ fn triage_reply_risk_shortlist_digest(
         .max(1)
         .min(ranked_roots.len())
         .min(TRIAGE_REPLY_RISK_SHORTLIST_DIGEST_SIZE);
-    let shortlisted_roots = ranked_roots
-        .iter()
-        .take(shortlist_len)
-        .collect::<Vec<_>>();
+    let shortlisted_roots = ranked_roots.iter().take(shortlist_len).collect::<Vec<_>>();
     let root_node_budget = ((config.max_visited_nodes
         * config.root_reply_risk_node_share_bp.max(0) as usize)
         / 10_000)
@@ -989,15 +986,13 @@ fn triage_fixture_snapshot(
                     )
                 })
                 .unwrap_or_else(|| {
-                    SearchBudget::from_preference(fixture.mode).runtime_config_for_game(
-                        &fixture.game,
-                    )
+                    SearchBudget::from_preference(fixture.mode)
+                        .runtime_config_for_game(&fixture.game)
                 });
             let resolved_config =
                 profile_runtime_config_for_name(profile_name, &fixture.game, base_config)
                     .unwrap_or(base_config);
-            let inputs =
-                select_inputs_with_runtime_fallback(selector, &fixture.game, base_config);
+            let inputs = select_inputs_with_runtime_fallback(selector, &fixture.game, base_config);
             assert!(
                 !inputs.is_empty(),
                 "triage fixture '{}' produced no legal move for mode {}",
@@ -1085,8 +1080,7 @@ fn triage_root_digest_changed(
             candidate.supermana_progress != baseline.supermana_progress
                 || candidate.scores_supermana_this_turn != baseline.scores_supermana_this_turn
                 || candidate.safe_supermana_pickup_now != baseline.safe_supermana_pickup_now
-                || candidate.safe_supermana_progress_steps
-                    != baseline.safe_supermana_progress_steps
+                || candidate.safe_supermana_progress_steps != baseline.safe_supermana_progress_steps
                 || candidate.spirit_own_mana_setup_now != baseline.spirit_own_mana_setup_now
                 || candidate.same_turn_score_window_value != baseline.same_turn_score_window_value
                 || triage_meaningful_i32_delta(
@@ -1104,8 +1098,7 @@ fn triage_root_digest_changed(
             candidate.opponent_mana_progress != baseline.opponent_mana_progress
                 || candidate.scores_opponent_mana_this_turn
                     != baseline.scores_opponent_mana_this_turn
-                || candidate.safe_opponent_mana_pickup_now
-                    != baseline.safe_opponent_mana_pickup_now
+                || candidate.safe_opponent_mana_pickup_now != baseline.safe_opponent_mana_pickup_now
                 || candidate.safe_opponent_mana_progress_steps
                     != baseline.safe_opponent_mana_progress_steps
                 || candidate.spirit_own_mana_setup_now != baseline.spirit_own_mana_setup_now
@@ -1140,7 +1133,10 @@ fn triage_root_digest_changed(
                 || candidate.has_roundtrip != baseline.has_roundtrip
                 || candidate.attacks_opponent_drainer != baseline.attacks_opponent_drainer
         }
-        TriageSurface::OpeningReply | TriageSurface::PrimaryPro => false,
+        TriageSurface::NormalFastGap
+        | TriageSurface::NormalTiebreak
+        | TriageSurface::OpeningReply
+        | TriageSurface::PrimaryPro => false,
         TriageSurface::CacheReuse => false,
     }
 }
@@ -1200,7 +1196,10 @@ fn triage_surface_signal_changed(
                     baseline.top_roots.as_slice(),
                 )
         }
-        TriageSurface::OpeningReply | TriageSurface::PrimaryPro => {
+        TriageSurface::NormalFastGap
+        | TriageSurface::NormalTiebreak
+        | TriageSurface::OpeningReply
+        | TriageSurface::PrimaryPro => {
             candidate.selected_root.input_fen != baseline.selected_root.input_fen
                 || candidate.selected_rank != baseline.selected_rank
                 || triage_top_root_digest_changed(
@@ -1210,6 +1209,28 @@ fn triage_surface_signal_changed(
                 )
         }
         TriageSurface::CacheReuse => false,
+    }
+}
+
+fn triage_surface_fixture_changed(
+    surface: TriageSurface,
+    fixture: &TriageFixture,
+    candidate: &TriageSignalSnapshot,
+    baseline: &TriageSignalSnapshot,
+) -> bool {
+    match surface {
+        TriageSurface::NormalFastGap => {
+            let expected = fixture.expected_selected_input_fen.unwrap_or_else(|| {
+                panic!(
+                    "triage surface '{}' fixture '{}' is missing expected_selected_input_fen",
+                    surface.as_str(),
+                    fixture.id
+                )
+            });
+            candidate.selected_root.input_fen == expected
+                && baseline.selected_root.input_fen != expected
+        }
+        _ => triage_surface_signal_changed(surface, candidate, baseline),
     }
 }
 
@@ -1227,17 +1248,22 @@ fn compare_triage_fixture_pack(
             triage_fixture_snapshot(surface, candidate_profile, candidate_selector, fixture);
         let baseline_snapshot =
             triage_fixture_snapshot(surface, baseline_profile, baseline_selector, fixture);
-        let fixture_changed =
-            triage_surface_signal_changed(surface, &candidate_snapshot, &baseline_snapshot);
+        let fixture_changed = triage_surface_fixture_changed(
+            surface,
+            fixture,
+            &candidate_snapshot,
+            &baseline_snapshot,
+        );
         if fixture_changed {
             changed += 1;
         }
         println!(
-            "triage surface={} fixture={} mode={} opening_book={} changed={} candidate_profile={} candidate={:?} baseline_profile={} baseline={:?}",
+            "triage surface={} fixture={} mode={} opening_book={} expected={:?} changed={} candidate_profile={} candidate={:?} baseline_profile={} baseline={:?}",
             surface.as_str(),
             fixture.id,
             fixture.mode.as_api_value(),
             fixture.opening_book_driven,
+            fixture.expected_selected_input_fen,
             fixture_changed,
             candidate_profile,
             candidate_snapshot,
@@ -1370,7 +1396,8 @@ fn cache_reuse_triage_probe(_profile_name: &str, selector: AutomoveSelector) -> 
     let positions = env_usize("SMART_TRIAGE_SPEED_POSITIONS")
         .unwrap_or(6)
         .max(2);
-    let openings = generate_opening_fens_cached(seed_for_pairing("triage_cache_reuse", "fixed"), positions);
+    let openings =
+        generate_opening_fens_cached(seed_for_pairing("triage_cache_reuse", "fixed"), positions);
     let speed_stats = profile_speed_by_mode_ms(selector, openings.as_slice(), budgets.as_slice());
     let avg_ms = if speed_stats.is_empty() {
         0.0
@@ -1380,9 +1407,7 @@ fn cache_reuse_triage_probe(_profile_name: &str, selector: AutomoveSelector) -> 
 
     clear_exact_state_analysis_cache();
     clear_exact_query_diagnostics();
-    let repeats = env_usize("SMART_TRIAGE_CACHE_REPEATS")
-        .unwrap_or(2)
-        .max(1);
+    let repeats = env_usize("SMART_TRIAGE_CACHE_REPEATS").unwrap_or(2).max(1);
     for _ in 0..repeats {
         for opening in openings.iter() {
             let game = MonsGame::from_fen(opening, false).expect("valid cache triage opening");
@@ -1410,9 +1435,8 @@ fn cache_reuse_triage_probe(_profile_name: &str, selector: AutomoveSelector) -> 
 
 fn cache_reuse_triage_passes(candidate: CacheReuseProbe, baseline: CacheReuseProbe) -> bool {
     let faster = candidate.avg_ms <= baseline.avg_ms * 0.97;
-    let better_cache = candidate.calls > 0
-        && baseline.calls > 0
-        && candidate.hit_rate >= baseline.hit_rate + 0.05;
+    let better_cache =
+        candidate.calls > 0 && baseline.calls > 0 && candidate.hit_rate >= baseline.hit_rate + 0.05;
     faster || better_cache
 }
 
@@ -1584,6 +1608,436 @@ fn compare_focus_mode_from_env(
         .unwrap_or(fallback)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LossProbeConfigDigest {
+    max_visited_nodes: usize,
+    root_branch_limit: usize,
+    node_branch_limit: usize,
+    root_focus_k: usize,
+    root_focus_budget_share_bp: i32,
+    enable_event_ordering_bonus: bool,
+    enable_two_pass_root_allocation: bool,
+    enable_two_pass_volatility_focus: bool,
+    enable_quiet_reductions: bool,
+    quiet_reduction_depth_threshold: usize,
+    enable_normal_root_safety_rerank: bool,
+    enable_normal_root_safety_deep_floor: bool,
+    enable_interview_hard_spirit_deploy: bool,
+    prefer_clean_reply_risk_roots: bool,
+    root_reply_risk_shortlist_max: usize,
+    root_reply_risk_reply_limit: usize,
+    root_reply_risk_node_share_bp: i32,
+    root_efficiency_score_margin: i32,
+    root_drainer_safety_score_margin: i32,
+}
+
+struct LossProbeDecision {
+    inputs: Vec<Input>,
+    move_fen: String,
+    selected_rank: Option<usize>,
+    selected_root: Option<TriageRootDigestEntry>,
+    top_roots: Vec<TriageRootDigestEntry>,
+    config: LossProbeConfigDigest,
+}
+
+struct LossProbeTrace {
+    ply: usize,
+    fen: String,
+    normal: LossProbeDecision,
+    fast: LossProbeDecision,
+    pro: LossProbeDecision,
+}
+
+fn loss_probe_seed_tags() -> Vec<String> {
+    let from_env = env::var("SMART_PROBE_SEED_TAGS")
+        .ok()
+        .map(|value| {
+            value
+                .split(',')
+                .map(|item| item.trim().to_string())
+                .filter(|item| !item.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if !from_env.is_empty() {
+        return from_env;
+    }
+    vec![
+        "normal_fast_probe_v1".to_string(),
+        "normal_fast_probe_v2".to_string(),
+        "normal_fast_probe_v3".to_string(),
+    ]
+}
+
+fn loss_probe_runtime_config(
+    profile_name: &str,
+    game: &MonsGame,
+    mode: SmartAutomovePreference,
+) -> SmartSearchConfig {
+    let base = SearchBudget::from_preference(mode).runtime_config_for_game(game);
+    profile_runtime_config_for_name(profile_name, game, base).unwrap_or_else(|| {
+        panic!(
+            "profile '{}' does not expose a runtime config for mode '{}'",
+            profile_name,
+            mode.as_api_value()
+        )
+    })
+}
+
+fn loss_probe_decision(
+    profile_name: &str,
+    mode: SmartAutomovePreference,
+    game: &MonsGame,
+) -> LossProbeDecision {
+    let selector = profile_selector_from_name(profile_name)
+        .unwrap_or_else(|| panic!("profile '{}' not found for loss probe", profile_name));
+    let config = loss_probe_runtime_config(profile_name, game, mode);
+    let inputs = select_inputs_with_runtime_fallback(selector, game, config);
+    let move_fen = Input::fen_from_array(&inputs);
+    let ranked_roots = MonsGameModel::ranked_root_moves(game, game.active_color, config);
+    let selected_rank = ranked_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == move_fen);
+    let selected_root = selected_rank.map(|rank| triage_root_digest_entry(&ranked_roots[rank]));
+    let top_roots = ranked_roots
+        .iter()
+        .take(TRIAGE_TOP_ROOT_DIGEST_SIZE)
+        .map(triage_root_digest_entry)
+        .collect::<Vec<_>>();
+
+    LossProbeDecision {
+        inputs,
+        move_fen,
+        selected_rank,
+        selected_root,
+        top_roots,
+        config: LossProbeConfigDigest {
+            max_visited_nodes: config.max_visited_nodes,
+            root_branch_limit: config.root_branch_limit,
+            node_branch_limit: config.node_branch_limit,
+            root_focus_k: config.root_focus_k,
+            root_focus_budget_share_bp: config.root_focus_budget_share_bp,
+            enable_event_ordering_bonus: config.enable_event_ordering_bonus,
+            enable_two_pass_root_allocation: config.enable_two_pass_root_allocation,
+            enable_two_pass_volatility_focus: config.enable_two_pass_volatility_focus,
+            enable_quiet_reductions: config.enable_quiet_reductions,
+            quiet_reduction_depth_threshold: config.quiet_reduction_depth_threshold,
+            enable_normal_root_safety_rerank: config.enable_normal_root_safety_rerank,
+            enable_normal_root_safety_deep_floor: config.enable_normal_root_safety_deep_floor,
+            enable_interview_hard_spirit_deploy: config.enable_interview_hard_spirit_deploy,
+            prefer_clean_reply_risk_roots: config.prefer_clean_reply_risk_roots,
+            root_reply_risk_shortlist_max: config.root_reply_risk_shortlist_max,
+            root_reply_risk_reply_limit: config.root_reply_risk_reply_limit,
+            root_reply_risk_node_share_bp: config.root_reply_risk_node_share_bp,
+            root_efficiency_score_margin: config.root_efficiency_score_margin,
+            root_drainer_safety_score_margin: config.root_drainer_safety_score_margin,
+        },
+    }
+}
+
+fn print_loss_probe_decision(label: &str, decision: &LossProbeDecision) {
+    eprintln!(
+        "{} move={} rank={:?} cfg(nodes={} root={} node={} focus={}/{} event_order={} two_pass={} vol_focus={} quiet_red={} q_depth={} safety_rerank={} deep_floor={} hard_spirit={} clean_reply={} reply={}/{} reply_share_bp={} eff_margin={} drainer_margin={})",
+        label,
+        decision.move_fen,
+        decision.selected_rank,
+        decision.config.max_visited_nodes,
+        decision.config.root_branch_limit,
+        decision.config.node_branch_limit,
+        decision.config.root_focus_k,
+        decision.config.root_focus_budget_share_bp,
+        decision.config.enable_event_ordering_bonus,
+        decision.config.enable_two_pass_root_allocation,
+        decision.config.enable_two_pass_volatility_focus,
+        decision.config.enable_quiet_reductions,
+        decision.config.quiet_reduction_depth_threshold,
+        decision.config.enable_normal_root_safety_rerank,
+        decision.config.enable_normal_root_safety_deep_floor,
+        decision.config.enable_interview_hard_spirit_deploy,
+        decision.config.prefer_clean_reply_risk_roots,
+        decision.config.root_reply_risk_shortlist_max,
+        decision.config.root_reply_risk_reply_limit,
+        decision.config.root_reply_risk_node_share_bp,
+        decision.config.root_efficiency_score_margin,
+        decision.config.root_drainer_safety_score_margin,
+    );
+    eprintln!("{} selected_root={:?}", label, decision.selected_root);
+    eprintln!("{} top_roots={:?}", label, decision.top_roots);
+}
+
+fn replay_normal_vs_fast_loss_probe_game(
+    normal_profile: &str,
+    fast_profile: &str,
+    pro_profile: &str,
+    opening_fen: &str,
+    normal_is_white: bool,
+    max_plies: usize,
+    use_white_opening_book: bool,
+    trace_limit: usize,
+) -> (MatchResult, Vec<LossProbeTrace>) {
+    let fast_selector = profile_selector_from_name(fast_profile)
+        .unwrap_or_else(|| panic!("profile '{}' not found for fast side", fast_profile));
+    let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
+    let mut traces = Vec::new();
+
+    for ply in 0..max_plies {
+        if let Some(winner_color) = game.winner_color() {
+            return (
+                match_result_from_winner(winner_color, normal_is_white),
+                traces,
+            );
+        }
+
+        let normal_to_move = if normal_is_white {
+            game.active_color == Color::White
+        } else {
+            game.active_color == Color::Black
+        };
+
+        let inputs = if use_white_opening_book {
+            MonsGameModel::white_first_turn_opening_next_inputs(&game).unwrap_or_else(|| {
+                if normal_to_move {
+                    let normal =
+                        loss_probe_decision(normal_profile, SmartAutomovePreference::Normal, &game);
+                    let fast =
+                        loss_probe_decision(fast_profile, SmartAutomovePreference::Fast, &game);
+                    let pro = loss_probe_decision(pro_profile, SmartAutomovePreference::Pro, &game);
+                    let normal_inputs = normal.inputs.clone();
+                    if normal.move_fen != fast.move_fen && traces.len() < trace_limit {
+                        traces.push(LossProbeTrace {
+                            ply,
+                            fen: game.fen(),
+                            normal,
+                            fast,
+                            pro,
+                        });
+                    }
+                    normal_inputs
+                } else {
+                    let config = loss_probe_runtime_config(
+                        fast_profile,
+                        &game,
+                        SmartAutomovePreference::Fast,
+                    );
+                    select_inputs_with_runtime_fallback(fast_selector, &game, config)
+                }
+            })
+        } else if normal_to_move {
+            let normal =
+                loss_probe_decision(normal_profile, SmartAutomovePreference::Normal, &game);
+            let fast = loss_probe_decision(fast_profile, SmartAutomovePreference::Fast, &game);
+            let pro = loss_probe_decision(pro_profile, SmartAutomovePreference::Pro, &game);
+            let normal_inputs = normal.inputs.clone();
+            if normal.move_fen != fast.move_fen && traces.len() < trace_limit {
+                traces.push(LossProbeTrace {
+                    ply,
+                    fen: game.fen(),
+                    normal,
+                    fast,
+                    pro,
+                });
+            }
+            normal_inputs
+        } else {
+            let config =
+                loss_probe_runtime_config(fast_profile, &game, SmartAutomovePreference::Fast);
+            select_inputs_with_runtime_fallback(fast_selector, &game, config)
+        };
+
+        if inputs.is_empty() {
+            return if normal_to_move {
+                (MatchResult::OpponentWin, traces)
+            } else {
+                (MatchResult::CandidateWin, traces)
+            };
+        }
+
+        if !matches!(game.process_input(inputs, false, false), Output::Events(_)) {
+            return if normal_to_move {
+                (MatchResult::OpponentWin, traces)
+            } else {
+                (MatchResult::CandidateWin, traces)
+            };
+        }
+    }
+
+    (
+        match adjudicate_non_terminal_game(&game) {
+            Some(winner_color) => match_result_from_winner(winner_color, normal_is_white),
+            None => MatchResult::Draw,
+        },
+        traces,
+    )
+}
+
+#[test]
+#[ignore = "diagnostic: replay Normal losses vs Fast and print same-position move disagreements"]
+fn smart_automove_normal_vs_fast_loss_probe() {
+    let normal_profile =
+        env_profile_name("SMART_PROBE_NORMAL_PROFILE").unwrap_or_else(|| "runtime_current".into());
+    let fast_profile =
+        env_profile_name("SMART_PROBE_FAST_PROFILE").unwrap_or_else(|| normal_profile.clone());
+    let pro_profile =
+        env_profile_name("SMART_PROBE_PRO_PROFILE").unwrap_or_else(|| normal_profile.clone());
+    let repeats = env_usize("SMART_PROBE_REPEATS").unwrap_or(1).max(1);
+    let games_per_repeat = env_usize("SMART_PROBE_GAMES").unwrap_or(4).max(1);
+    let max_plies = env_usize("SMART_PROBE_MAX_PLIES").unwrap_or(80).max(40);
+    let trace_limit = env_usize("SMART_PROBE_TRACE_LIMIT").unwrap_or(3).max(1);
+    let loss_limit = env_usize("SMART_PROBE_LOSS_LIMIT").unwrap_or(6).max(1);
+    let use_white_opening_book = env_bool("SMART_PROBE_USE_WHITE_OPENING_BOOK").unwrap_or(false);
+    let seed_tags = loss_probe_seed_tags();
+    let normal_budget = SearchBudget::from_preference(SmartAutomovePreference::Normal);
+    let fast_budget = SearchBudget::from_preference(SmartAutomovePreference::Fast);
+
+    let mut total_games = 0usize;
+    let mut normal_losses = 0usize;
+    let mut losses_with_disagreement = 0usize;
+    let mut disagreements_logged = 0usize;
+    let mut pro_matches_fast = 0usize;
+    let mut pro_matches_normal = 0usize;
+    let mut pro_matches_neither = 0usize;
+    let mut fast_safer_supermana = 0usize;
+    let mut fast_safer_opponent_mana = 0usize;
+    let mut fast_avoids_handoff = 0usize;
+    let mut fast_avoids_roundtrip = 0usize;
+    let mut fast_avoids_drainer_vulnerability = 0usize;
+    let mut fast_more_attack = 0usize;
+    let mut fast_more_spirit = 0usize;
+
+    eprintln!(
+        "normal-fast loss probe config: normal_profile={} fast_profile={} pro_profile={} seeds={} repeats={} games_per_repeat={} max_plies={} trace_limit={} loss_limit={} use_white_opening_book={}",
+        normal_profile,
+        fast_profile,
+        pro_profile,
+        seed_tags.len(),
+        repeats,
+        games_per_repeat,
+        max_plies,
+        trace_limit,
+        loss_limit,
+        use_white_opening_book
+    );
+
+    'seed_loop: for seed_tag in &seed_tags {
+        for repeat_index in 0..repeats {
+            let seed = seed_for_budget_duel_repeat_and_tag(
+                normal_budget,
+                fast_budget,
+                repeat_index,
+                seed_tag.as_str(),
+            );
+            let opening_fens = generate_opening_fens_cached(seed, games_per_repeat);
+            for opening_fen in opening_fens.iter() {
+                for normal_is_white in [true, false] {
+                    total_games += 1;
+                    let (result, traces) = replay_normal_vs_fast_loss_probe_game(
+                        normal_profile.as_str(),
+                        fast_profile.as_str(),
+                        pro_profile.as_str(),
+                        opening_fen.as_str(),
+                        normal_is_white,
+                        max_plies,
+                        use_white_opening_book,
+                        trace_limit,
+                    );
+                    if result != MatchResult::OpponentWin {
+                        continue;
+                    }
+
+                    normal_losses += 1;
+                    if !traces.is_empty() {
+                        losses_with_disagreement += 1;
+                    }
+
+                    eprintln!(
+                        "NORMAL_LOSS game={} seed_tag={} repeat={} normal_is_white={} opening={}",
+                        normal_losses, seed_tag, repeat_index, normal_is_white, opening_fen
+                    );
+                    for trace in &traces {
+                        disagreements_logged += 1;
+                        match (
+                            trace.pro.move_fen == trace.fast.move_fen,
+                            trace.pro.move_fen == trace.normal.move_fen,
+                        ) {
+                            (true, false) => pro_matches_fast += 1,
+                            (false, true) => pro_matches_normal += 1,
+                            _ => pro_matches_neither += 1,
+                        }
+                        if let (Some(normal_root), Some(fast_root)) = (
+                            trace.normal.selected_root.as_ref(),
+                            trace.fast.selected_root.as_ref(),
+                        ) {
+                            if fast_root.safe_supermana_progress_steps
+                                < normal_root.safe_supermana_progress_steps
+                            {
+                                fast_safer_supermana += 1;
+                            }
+                            if fast_root.safe_opponent_mana_progress_steps
+                                < normal_root.safe_opponent_mana_progress_steps
+                            {
+                                fast_safer_opponent_mana += 1;
+                            }
+                            if normal_root.mana_handoff_to_opponent
+                                && !fast_root.mana_handoff_to_opponent
+                            {
+                                fast_avoids_handoff += 1;
+                            }
+                            if normal_root.has_roundtrip && !fast_root.has_roundtrip {
+                                fast_avoids_roundtrip += 1;
+                            }
+                            if normal_root.own_drainer_vulnerable
+                                && !fast_root.own_drainer_vulnerable
+                            {
+                                fast_avoids_drainer_vulnerability += 1;
+                            }
+                            if fast_root.attacks_opponent_drainer
+                                && !normal_root.attacks_opponent_drainer
+                            {
+                                fast_more_attack += 1;
+                            }
+                            if fast_root.spirit_development && !normal_root.spirit_development {
+                                fast_more_spirit += 1;
+                            }
+                        }
+
+                        eprintln!("  TRACE ply={} fen={}", trace.ply, trace.fen);
+                        print_loss_probe_decision("    normal", &trace.normal);
+                        print_loss_probe_decision("    fast", &trace.fast);
+                        print_loss_probe_decision("    pro", &trace.pro);
+                    }
+
+                    if normal_losses >= loss_limit {
+                        break 'seed_loop;
+                    }
+                }
+            }
+        }
+    }
+
+    eprintln!(
+        "normal-fast loss probe summary: total_games={} normal_losses={} losses_with_disagreement={} disagreements_logged={} pro_matches_fast={} pro_matches_normal={} pro_matches_neither={} fast_safer_supermana={} fast_safer_opponent_mana={} fast_avoids_handoff={} fast_avoids_roundtrip={} fast_avoids_drainer_vulnerability={} fast_more_attack={} fast_more_spirit={}",
+        total_games,
+        normal_losses,
+        losses_with_disagreement,
+        disagreements_logged,
+        pro_matches_fast,
+        pro_matches_normal,
+        pro_matches_neither,
+        fast_safer_supermana,
+        fast_safer_opponent_mana,
+        fast_avoids_handoff,
+        fast_avoids_roundtrip,
+        fast_avoids_drainer_vulnerability,
+        fast_more_attack,
+        fast_more_spirit,
+    );
+
+    assert!(
+        normal_losses > 0,
+        "loss probe found no normal losses; increase SMART_PROBE_GAMES/SMART_PROBE_REPEATS"
+    );
+}
+
 #[test]
 fn smart_automove_pool_profile_registry_resolves_retained_profiles() {
     for profile_id in retained_profile_ids() {
@@ -1609,7 +2063,12 @@ fn assert_runtime_preflight_if_required(
     maybe_run_runtime_preflight_checks(
         skip_runtime_preflight,
         || assert_stage1_cpu_non_regression(candidate_profile_name, candidate_selector),
-        || assert_exact_lite_diagnostics_gate_if_enabled(candidate_profile_name, candidate_selector),
+        || {
+            assert_exact_lite_diagnostics_gate_if_enabled(
+                candidate_profile_name,
+                candidate_selector,
+            )
+        },
     );
 }
 
@@ -1631,6 +2090,9 @@ fn smart_automove_pool_retained_profile_ids_match_active_registry() {
             "runtime_normal_history_heuristic_v1",
             "runtime_pro_history_heuristic_v1",
             "runtime_normal_quiescence_v1",
+            "runtime_normal_tactical_quiescence_v1",
+            "runtime_normal_tactical_quiescence_exact_lite_v1",
+            "runtime_normal_root_breadth_exact_lite_v1",
             "runtime_pro_quiescence_v1",
             "runtime_pro_quiescence_v2",
         ]
@@ -1820,8 +2282,14 @@ fn smart_automove_pool_signal_triage() {
     let baseline_selector = profile_selector_from_name(baseline_profile_name.as_str())
         .unwrap_or_else(|| panic!("baseline '{}' not found", baseline_profile_name));
 
-    assert_tactical_guardrails(CANDIDATE_MODEL.select_inputs, candidate_profile_name.as_str());
-    assert_interview_policy_regressions(CANDIDATE_MODEL.select_inputs, candidate_profile_name.as_str());
+    assert_tactical_guardrails(
+        CANDIDATE_MODEL.select_inputs,
+        candidate_profile_name.as_str(),
+    );
+    assert_interview_policy_regressions(
+        CANDIDATE_MODEL.select_inputs,
+        candidate_profile_name.as_str(),
+    );
 
     match surface {
         TriageSurface::OpeningReply | TriageSurface::PrimaryPro => {
@@ -1831,8 +2299,10 @@ fn smart_automove_pool_signal_triage() {
             );
         }
         TriageSurface::CacheReuse => {
-            let candidate_probe =
-                cache_reuse_triage_probe(candidate_profile_name.as_str(), CANDIDATE_MODEL.select_inputs);
+            let candidate_probe = cache_reuse_triage_probe(
+                candidate_profile_name.as_str(),
+                CANDIDATE_MODEL.select_inputs,
+            );
             let baseline_probe =
                 cache_reuse_triage_probe(baseline_profile_name.as_str(), baseline_selector);
             println!(
@@ -1882,6 +2352,54 @@ fn smart_automove_pool_signal_triage() {
 }
 
 #[test]
+#[ignore = "diagnostic: validate normal_fast_gap fixtures against current fast-vs-normal gap"]
+fn smart_automove_normal_fast_gap_surface_probe() {
+    let fixtures = generic_triage_surface_fixtures(TriageSurface::NormalFastGap);
+    let normal_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_current".into());
+    let fast_profile =
+        env_profile_name("SMART_PROBE_FAST_PROFILE").unwrap_or_else(|| "runtime_current".into());
+
+    assert!(
+        !fixtures.is_empty(),
+        "normal_fast_gap surface should have deterministic fixtures"
+    );
+
+    for fixture in fixtures {
+        let expected = fixture.expected_selected_input_fen.unwrap_or_else(|| {
+            panic!(
+                "normal_fast_gap fixture '{}' must declare expected_selected_input_fen",
+                fixture.id
+            )
+        });
+        let normal = loss_probe_decision(normal_profile.as_str(), fixture.mode, &fixture.game);
+        let fast = loss_probe_decision(
+            fast_profile.as_str(),
+            SmartAutomovePreference::Fast,
+            &fixture.game,
+        );
+        println!(
+            "normal_fast_gap fixture={} expected={} normal_move={} fast_move={} fen={}",
+            fixture.id,
+            expected,
+            normal.move_fen,
+            fast.move_fen,
+            fixture.game.fen()
+        );
+        assert_eq!(
+            fast.move_fen, expected,
+            "normal_fast_gap fixture '{}' no longer matches current Fast",
+            fixture.id
+        );
+        assert_ne!(
+            normal.move_fen, expected,
+            "normal_fast_gap fixture '{}' no longer separates current Normal from current Fast",
+            fixture.id
+        );
+    }
+}
+
+#[test]
 #[ignore = "retained-profile calibration for triage surfaces"]
 fn smart_automove_pool_surface_calibration() {
     let surface = triage_surface_from_env();
@@ -1912,10 +2430,7 @@ fn smart_automove_pool_surface_calibration() {
             let baseline_pick = opponent_mana_calibration_probe(baseline_profile_name.as_str());
             println!(
                 "triage-calibrate surface=opponent_mana candidate={} pick={} baseline={} pick={}",
-                candidate_profile_name,
-                candidate_pick,
-                baseline_profile_name,
-                baseline_pick
+                candidate_profile_name, candidate_pick, baseline_profile_name, baseline_pick
             );
             assert_ne!(
                 candidate_pick, baseline_pick,
@@ -2041,11 +2556,7 @@ fn smart_automove_pro_fixture_position_probe() {
         }
 
         let pro_config = pro_budget.runtime_config_for_game(&game);
-        let ranked = MonsGameModel::ranked_root_moves(
-            &game,
-            game.active_color,
-            pro_config,
-        );
+        let ranked = MonsGameModel::ranked_root_moves(&game, game.active_color, pro_config);
         if ranked.len() < 2 {
             continue;
         }
@@ -2609,8 +3120,12 @@ fn smart_automove_pool_promotion_ladder() {
         .ok()
         .map(|v| v.trim().to_lowercase())
         .and_then(|v| match v.as_str() {
-            "fast" => Some(vec![SearchBudget::from_preference(SmartAutomovePreference::Fast)]),
-            "normal" => Some(vec![SearchBudget::from_preference(SmartAutomovePreference::Normal)]),
+            "fast" => Some(vec![SearchBudget::from_preference(
+                SmartAutomovePreference::Fast,
+            )]),
+            "normal" => Some(vec![SearchBudget::from_preference(
+                SmartAutomovePreference::Normal,
+            )]),
             _ => None,
         })
         .unwrap_or_else(|| budgets.to_vec());
@@ -3005,45 +3520,171 @@ fn smart_automove_human_wins_diagnostic() {
             label: "game1_human_white",
             bot_color: Color::Black,
             moves: vec![
-                "l10,6;l9,7", "l9,7;l8,6", "l8,6;l7,5", "l10,4;l9,4", "l9,4;l8,5",
-                "l0,4;l1,5", "l1,5;l0,7;l1,8", "l1,8;l2,9", "l2,9;l3,10", "l3,10;l4,10",
-                "l4,10;l5,10;mp", "l3,6;l2,7", "l7,5;l5,5;l6,4", "l10,5;l9,4", "l9,4;l8,4",
-                "l7,5;l8,6", "l10,3;l9,2", "l10,7;l9,6", "l6,3;l7,3", "l1,5;l2,4",
-                "l1,5;l2,5", "l2,5;l3,5", "l3,5;l4,4", "l4,4;l6,4;l5,3", "l0,5;l1,5",
-                "l1,5;l2,5", "l3,4;l2,3", "l8,6;l8,4;l7,5", "l7,5;l7,6", "l8,6;l7,5",
-                "l9,2;l8,1", "l8,1;l7,0", "l7,0;l6,1", "l6,7;l7,7", "l0,3;l1,2",
-                "l1,2;l2,1", "l2,1;l3,0", "l3,0;l4,0", "l4,0;l5,0;mb", "l5,0;l6,1",
-                "l4,4;l2,3;l1,2", "l1,2;l0,1", "l7,5;l5,3;l6,3", "l9,6;l8,7",
-                "l8,5;l8,6", "l7,6;l7,7", "l7,5;l8,4", "l8,7;l7,8", "l7,3;l8,2",
-                "l4,4;l5,3", "l5,3;l6,2", "l6,2;l8,2;l9,1", "l6,2;l7,1",
-                "l7,1;l9,1;l10,0", "l2,5;l3,4", "l3,4;l4,3", "l0,1;l0,0", "l7,8;l6,7",
-                "l6,7;l5,6", "l5,6;l4,6", "l4,6;l3,5", "l3,5;l2,5", "l2,5;l4,3",
-                "l7,6;l8,7", "l7,1;l6,3;l5,2", "l0,6;l1,5", "l1,5;l2,4", "l2,4;l3,3",
-                "l3,3;l4,2", "l4,2;l5,1", "l4,3;l3,2", "l8,4;l6,5;l6,4", "l8,4;l8,5",
-                "l2,5;l3,4", "l2,5;l3,4", "l3,4;l4,3", "l7,7;l8,7", "l4,3;l3,3",
-                "l7,4;l8,4", "l7,1;l5,2;l4,1", "l0,5;l1,4", "l1,4;l2,3", "l2,3;l3,2",
-                "l3,2;l4,1", "l5,1;l4,0", "l3,2;l2,2", "l8,5;l7,7;l8,8", "l3,3;l4,2",
-                "l8,6;l7,7", "l8,7;l8,8", "l8,8;l9,9", "l9,9;l10,10", "l8,7;l8,8",
-                "l4,1;l3,0", "l3,0;l2,0", "l2,0;l1,0", "l1,0;l0,0",
+                "l10,6;l9,7",
+                "l9,7;l8,6",
+                "l8,6;l7,5",
+                "l10,4;l9,4",
+                "l9,4;l8,5",
+                "l0,4;l1,5",
+                "l1,5;l0,7;l1,8",
+                "l1,8;l2,9",
+                "l2,9;l3,10",
+                "l3,10;l4,10",
+                "l4,10;l5,10;mp",
+                "l3,6;l2,7",
+                "l7,5;l5,5;l6,4",
+                "l10,5;l9,4",
+                "l9,4;l8,4",
+                "l7,5;l8,6",
+                "l10,3;l9,2",
+                "l10,7;l9,6",
+                "l6,3;l7,3",
+                "l1,5;l2,4",
+                "l1,5;l2,5",
+                "l2,5;l3,5",
+                "l3,5;l4,4",
+                "l4,4;l6,4;l5,3",
+                "l0,5;l1,5",
+                "l1,5;l2,5",
+                "l3,4;l2,3",
+                "l8,6;l8,4;l7,5",
+                "l7,5;l7,6",
+                "l8,6;l7,5",
+                "l9,2;l8,1",
+                "l8,1;l7,0",
+                "l7,0;l6,1",
+                "l6,7;l7,7",
+                "l0,3;l1,2",
+                "l1,2;l2,1",
+                "l2,1;l3,0",
+                "l3,0;l4,0",
+                "l4,0;l5,0;mb",
+                "l5,0;l6,1",
+                "l4,4;l2,3;l1,2",
+                "l1,2;l0,1",
+                "l7,5;l5,3;l6,3",
+                "l9,6;l8,7",
+                "l8,5;l8,6",
+                "l7,6;l7,7",
+                "l7,5;l8,4",
+                "l8,7;l7,8",
+                "l7,3;l8,2",
+                "l4,4;l5,3",
+                "l5,3;l6,2",
+                "l6,2;l8,2;l9,1",
+                "l6,2;l7,1",
+                "l7,1;l9,1;l10,0",
+                "l2,5;l3,4",
+                "l3,4;l4,3",
+                "l0,1;l0,0",
+                "l7,8;l6,7",
+                "l6,7;l5,6",
+                "l5,6;l4,6",
+                "l4,6;l3,5",
+                "l3,5;l2,5",
+                "l2,5;l4,3",
+                "l7,6;l8,7",
+                "l7,1;l6,3;l5,2",
+                "l0,6;l1,5",
+                "l1,5;l2,4",
+                "l2,4;l3,3",
+                "l3,3;l4,2",
+                "l4,2;l5,1",
+                "l4,3;l3,2",
+                "l8,4;l6,5;l6,4",
+                "l8,4;l8,5",
+                "l2,5;l3,4",
+                "l2,5;l3,4",
+                "l3,4;l4,3",
+                "l7,7;l8,7",
+                "l4,3;l3,3",
+                "l7,4;l8,4",
+                "l7,1;l5,2;l4,1",
+                "l0,5;l1,4",
+                "l1,4;l2,3",
+                "l2,3;l3,2",
+                "l3,2;l4,1",
+                "l5,1;l4,0",
+                "l3,2;l2,2",
+                "l8,5;l7,7;l8,8",
+                "l3,3;l4,2",
+                "l8,6;l7,7",
+                "l8,7;l8,8",
+                "l8,8;l9,9",
+                "l9,9;l10,10",
+                "l8,7;l8,8",
+                "l4,1;l3,0",
+                "l3,0;l2,0",
+                "l2,0;l1,0",
+                "l1,0;l0,0",
             ],
         },
         GameSpec {
             label: "game2_human_black",
             bot_color: Color::White,
             moves: vec![
-                "l10,3;l9,2", "l9,2;l8,1", "l8,1;l7,0", "l7,0;l6,0", "l6,0;l5,0;mp",
-                "l0,4;l1,5", "l1,5;l3,6;l2,7", "l0,5;l1,6", "l0,3;l1,3", "l0,7;l1,7",
-                "l1,5;l2,4", "l3,4;l2,3", "l10,6;l9,5", "l9,5;l8,5", "l8,5;l7,5",
-                "l7,5;l5,5;l6,6", "l10,5;l9,5", "l9,5;l8,5", "l7,6;l8,7",
-                "l2,4;l4,3;l3,2", "l1,3;l2,2", "l0,6;l1,5", "l1,6;l2,6", "l1,7;l2,8",
-                "l2,8;l3,7", "l2,3;l1,2", "l7,5;l6,4", "l6,4;l5,3", "l5,3;l4,2",
-                "l4,2;l3,1", "l3,1;l1,2;l1,1", "l3,1;l1,1;l0,0", "l10,4;l9,5",
-                "l8,7;l9,8", "l3,7;l4,8", "l4,8;l4,9", "l4,9;l5,10;mb", "l5,10;l4,9",
-                "l4,9;l5,8", "l5,8;l8,5", "l2,4;l4,5;l3,6", "l2,7;l1,8", "l3,1;l4,2",
-                "l4,2;l5,3", "l5,3;l6,4", "l6,4;l6,6;l7,7", "l6,4;l7,5", "l9,5;l8,5",
-                "l9,8;l10,9", "l2,4;l3,6;l2,6", "l1,5;l1,6", "l2,6;l1,7", "l1,7;l0,8",
-                "l0,8;l0,9", "l0,9;l0,10", "l1,8;l0,9", "l7,5;l7,7;l8,7",
-                "l10,5;l9,6", "l9,6;l8,7", "l8,7;l8,8", "l8,8;l9,9", "l9,9;l10,10",
+                "l10,3;l9,2",
+                "l9,2;l8,1",
+                "l8,1;l7,0",
+                "l7,0;l6,0",
+                "l6,0;l5,0;mp",
+                "l0,4;l1,5",
+                "l1,5;l3,6;l2,7",
+                "l0,5;l1,6",
+                "l0,3;l1,3",
+                "l0,7;l1,7",
+                "l1,5;l2,4",
+                "l3,4;l2,3",
+                "l10,6;l9,5",
+                "l9,5;l8,5",
+                "l8,5;l7,5",
+                "l7,5;l5,5;l6,6",
+                "l10,5;l9,5",
+                "l9,5;l8,5",
+                "l7,6;l8,7",
+                "l2,4;l4,3;l3,2",
+                "l1,3;l2,2",
+                "l0,6;l1,5",
+                "l1,6;l2,6",
+                "l1,7;l2,8",
+                "l2,8;l3,7",
+                "l2,3;l1,2",
+                "l7,5;l6,4",
+                "l6,4;l5,3",
+                "l5,3;l4,2",
+                "l4,2;l3,1",
+                "l3,1;l1,2;l1,1",
+                "l3,1;l1,1;l0,0",
+                "l10,4;l9,5",
+                "l8,7;l9,8",
+                "l3,7;l4,8",
+                "l4,8;l4,9",
+                "l4,9;l5,10;mb",
+                "l5,10;l4,9",
+                "l4,9;l5,8",
+                "l5,8;l8,5",
+                "l2,4;l4,5;l3,6",
+                "l2,7;l1,8",
+                "l3,1;l4,2",
+                "l4,2;l5,3",
+                "l5,3;l6,4",
+                "l6,4;l6,6;l7,7",
+                "l6,4;l7,5",
+                "l9,5;l8,5",
+                "l9,8;l10,9",
+                "l2,4;l3,6;l2,6",
+                "l1,5;l1,6",
+                "l2,6;l1,7",
+                "l1,7;l0,8",
+                "l0,8;l0,9",
+                "l0,9;l0,10",
+                "l1,8;l0,9",
+                "l7,5;l7,7;l8,7",
+                "l10,5;l9,6",
+                "l9,6;l8,7",
+                "l8,7;l8,8",
+                "l8,8;l9,9",
+                "l9,9;l10,10",
                 "l10,9;l10,10",
             ],
         },
@@ -3051,63 +3692,232 @@ fn smart_automove_human_wins_diagnostic() {
             label: "game3_human_white",
             bot_color: Color::Black,
             moves: vec![
-                "l10,5;l9,5", "l9,5;l8,5", "l10,6;l9,6", "l9,6;l8,6", "l10,4;l9,5",
-                "l0,4;l1,5", "l1,5;l0,7;l1,8", "l1,8;l2,9", "l2,9;l3,10", "l3,10;l4,10",
-                "l4,10;l5,10;mp", "l3,6;l2,7", "l8,6;l7,4;l8,5", "l8,5;l8,4", "l8,4;l9,3",
-                "l9,3;l9,2", "l9,2;l9,1", "l9,1;l10,0", "l6,3;l6,4", "l1,5;l2,5",
-                "l2,5;l3,5", "l3,5;l5,5;l4,4", "l0,5;l1,5", "l1,5;l2,5", "l0,6;l1,5",
-                "l3,4;l2,3", "l8,6;l6,7;l7,8", "l10,3;l9,2", "l10,7;l9,8", "l9,2;l8,1",
-                "l8,1;l7,0", "l7,0;l6,0", "l7,8;l8,8", "l0,3;l1,2", "l1,2;l2,2",
-                "l2,2;l3,2", "l3,2;l4,2", "l4,2;l6,0", "l1,5;l2,4", "l2,3;l1,2",
-                "l8,6;l6,5;l6,6", "l9,5;l8,4", "l8,4;l8,3", "l8,3;l8,2", "l8,2;l9,1",
-                "l9,1;l9,0", "l7,6;l7,7", "l3,5;l4,6", "l4,6;l5,7", "l5,7;l6,8",
-                "l6,8;l8,8;l9,9", "l6,8;l7,9", "l7,9;l9,9;l10,10", "l2,5;l3,4",
-                "l4,2;l5,3", "l1,2;l0,1", "l10,3;l9,4", "l8,6;l9,8;l10,8", "l9,4;l8,4",
-                "l8,4;l7,4", "l7,4;l6,5", "l9,0;l9,1", "l7,7;l8,8", "l5,3;l5,2",
-                "l5,2;l5,1", "l5,1;l5,0;mp", "l7,9;l7,10", "l7,10;l8,8;l9,9",
-                "l7,10;l9,9;l10,10", "l0,1;l0,0",
+                "l10,5;l9,5",
+                "l9,5;l8,5",
+                "l10,6;l9,6",
+                "l9,6;l8,6",
+                "l10,4;l9,5",
+                "l0,4;l1,5",
+                "l1,5;l0,7;l1,8",
+                "l1,8;l2,9",
+                "l2,9;l3,10",
+                "l3,10;l4,10",
+                "l4,10;l5,10;mp",
+                "l3,6;l2,7",
+                "l8,6;l7,4;l8,5",
+                "l8,5;l8,4",
+                "l8,4;l9,3",
+                "l9,3;l9,2",
+                "l9,2;l9,1",
+                "l9,1;l10,0",
+                "l6,3;l6,4",
+                "l1,5;l2,5",
+                "l2,5;l3,5",
+                "l3,5;l5,5;l4,4",
+                "l0,5;l1,5",
+                "l1,5;l2,5",
+                "l0,6;l1,5",
+                "l3,4;l2,3",
+                "l8,6;l6,7;l7,8",
+                "l10,3;l9,2",
+                "l10,7;l9,8",
+                "l9,2;l8,1",
+                "l8,1;l7,0",
+                "l7,0;l6,0",
+                "l7,8;l8,8",
+                "l0,3;l1,2",
+                "l1,2;l2,2",
+                "l2,2;l3,2",
+                "l3,2;l4,2",
+                "l4,2;l6,0",
+                "l1,5;l2,4",
+                "l2,3;l1,2",
+                "l8,6;l6,5;l6,6",
+                "l9,5;l8,4",
+                "l8,4;l8,3",
+                "l8,3;l8,2",
+                "l8,2;l9,1",
+                "l9,1;l9,0",
+                "l7,6;l7,7",
+                "l3,5;l4,6",
+                "l4,6;l5,7",
+                "l5,7;l6,8",
+                "l6,8;l8,8;l9,9",
+                "l6,8;l7,9",
+                "l7,9;l9,9;l10,10",
+                "l2,5;l3,4",
+                "l4,2;l5,3",
+                "l1,2;l0,1",
+                "l10,3;l9,4",
+                "l8,6;l9,8;l10,8",
+                "l9,4;l8,4",
+                "l8,4;l7,4",
+                "l7,4;l6,5",
+                "l9,0;l9,1",
+                "l7,7;l8,8",
+                "l5,3;l5,2",
+                "l5,2;l5,1",
+                "l5,1;l5,0;mp",
+                "l7,9;l7,10",
+                "l7,10;l8,8;l9,9",
+                "l7,10;l9,9;l10,10",
+                "l0,1;l0,0",
             ],
         },
         GameSpec {
             label: "game4_human_black",
             bot_color: Color::White,
             moves: vec![
-                "l10,4;l9,5", "l9,5;l8,5", "l8,5;l7,5", "l7,5;l6,4", "l6,4;l5,4",
-                "l0,4;l1,5", "l1,5;l3,6;l2,7", "l0,5;l1,6", "l0,3;l1,3", "l0,7;l1,7",
-                "l1,5;l2,4", "l4,3;l3,2", "l10,5;l9,5", "l9,5;l8,5", "l10,6;l9,7",
-                "l9,7;l8,5;l7,5", "l7,5;l6,5", "l6,5;l5,5", "l7,6;l8,7",
-                "l2,4;l1,6;l2,5", "l0,6;l1,6", "l2,4;l3,3", "l3,3;l4,3", "l1,3;l2,2",
-                "l2,2;l3,1", "l2,7;l1,8", "l5,5;l6,6", "l6,6;l7,7", "l7,7;l8,8",
-                "l8,8;l9,9", "l9,7;l9,9;l10,10", "l9,7;l8,8", "l8,7;l9,8",
-                "l4,3;l3,1;l4,0", "l4,0;l5,0;mp", "l2,5;l2,4", "l4,3;l6,3;l5,2",
-                "l1,6;l2,5", "l1,7;l2,6", "l2,6;l3,5", "l1,8;l0,9", "l8,8;l7,9",
-                "l7,9;l9,8;l10,9", "l7,9;l6,10", "l6,10;l5,10;mp", "l5,10;l5,9",
-                "l5,9;l5,8", "l10,9;l10,10", "l3,5;l4,6", "l4,6;l5,7", "l5,7;l6,8",
-                "l6,8;l7,9", "l7,9;l8,10", "l8,10;l10,10", "l0,9;l0,10", "l10,7;l9,8",
-                "l9,8;l8,8", "l8,8;l10,10", "l5,8;l5,7", "l5,7;l5,6", "l10,3;l9,2",
-                "l5,2;l6,3", "l4,3;l2,4;l3,4", "l3,4;l2,3", "l2,3;l1,2", "l1,2;l0,1",
-                "l0,1;l0,0", "l2,5;l2,4", "l3,2;l2,1", "l5,6;l4,6", "l4,6;l3,5",
-                "l3,5;l3,4", "l3,4;l3,3", "l3,3;l2,1;l1,1", "l3,3;l1,1;l0,0",
+                "l10,4;l9,5",
+                "l9,5;l8,5",
+                "l8,5;l7,5",
+                "l7,5;l6,4",
+                "l6,4;l5,4",
+                "l0,4;l1,5",
+                "l1,5;l3,6;l2,7",
+                "l0,5;l1,6",
+                "l0,3;l1,3",
+                "l0,7;l1,7",
+                "l1,5;l2,4",
+                "l4,3;l3,2",
+                "l10,5;l9,5",
+                "l9,5;l8,5",
+                "l10,6;l9,7",
+                "l9,7;l8,5;l7,5",
+                "l7,5;l6,5",
+                "l6,5;l5,5",
+                "l7,6;l8,7",
+                "l2,4;l1,6;l2,5",
+                "l0,6;l1,6",
+                "l2,4;l3,3",
+                "l3,3;l4,3",
+                "l1,3;l2,2",
+                "l2,2;l3,1",
+                "l2,7;l1,8",
+                "l5,5;l6,6",
+                "l6,6;l7,7",
+                "l7,7;l8,8",
+                "l8,8;l9,9",
+                "l9,7;l9,9;l10,10",
+                "l9,7;l8,8",
+                "l8,7;l9,8",
+                "l4,3;l3,1;l4,0",
+                "l4,0;l5,0;mp",
+                "l2,5;l2,4",
+                "l4,3;l6,3;l5,2",
+                "l1,6;l2,5",
+                "l1,7;l2,6",
+                "l2,6;l3,5",
+                "l1,8;l0,9",
+                "l8,8;l7,9",
+                "l7,9;l9,8;l10,9",
+                "l7,9;l6,10",
+                "l6,10;l5,10;mp",
+                "l5,10;l5,9",
+                "l5,9;l5,8",
+                "l10,9;l10,10",
+                "l3,5;l4,6",
+                "l4,6;l5,7",
+                "l5,7;l6,8",
+                "l6,8;l7,9",
+                "l7,9;l8,10",
+                "l8,10;l10,10",
+                "l0,9;l0,10",
+                "l10,7;l9,8",
+                "l9,8;l8,8",
+                "l8,8;l10,10",
+                "l5,8;l5,7",
+                "l5,7;l5,6",
+                "l10,3;l9,2",
+                "l5,2;l6,3",
+                "l4,3;l2,4;l3,4",
+                "l3,4;l2,3",
+                "l2,3;l1,2",
+                "l1,2;l0,1",
+                "l0,1;l0,0",
+                "l2,5;l2,4",
+                "l3,2;l2,1",
+                "l5,6;l4,6",
+                "l4,6;l3,5",
+                "l3,5;l3,4",
+                "l3,4;l3,3",
+                "l3,3;l2,1;l1,1",
+                "l3,3;l1,1;l0,0",
             ],
         },
         GameSpec {
             label: "game5_human_white",
             bot_color: Color::Black,
             moves: vec![
-                "l10,5;l9,5", "l9,5;l8,5", "l10,3;l9,2", "l10,6;l9,6", "l9,6;l8,7",
-                "l0,4;l1,5", "l1,5;l2,5", "l2,5;l3,5", "l3,5;l5,5;l4,4", "l0,5;l1,5",
-                "l1,5;l2,5", "l3,6;l2,7", "l8,7;l7,8", "l7,8;l6,9", "l6,9;l5,10;mb",
-                "l5,10;l4,9", "l4,9;l4,8", "l4,8;l2,5", "l4,8;l2,7;l3,6", "l7,4;l8,5",
-                "l3,5;l4,3;l3,2", "l0,3;l1,2", "l1,2;l2,1", "l2,1;l3,0", "l3,0;l4,0",
-                "l4,0;l5,0;mp", "l3,2;l2,1", "l4,8;l3,6;l4,6", "l8,5;l9,4", "l9,4;l9,3",
-                "l4,8;l5,7", "l5,7;l6,6", "l10,7;l9,6", "l6,3;l7,2", "l0,5;l1,5",
-                "l0,5;l1,5", "l3,5;l1,5;l2,5", "l2,5;l3,4", "l3,4;l4,4", "l4,4;l3,3",
-                "l3,3;l2,3", "l3,5;l2,3;l1,2", "l3,4;l2,3", "l6,6;l4,7;l5,8",
-                "l9,6;l8,5", "l10,4;l9,4", "l8,5;l7,4", "l7,4;l6,4", "l9,2;l8,1",
-                "l7,2;l8,2", "l1,2;l0,1", "l0,1;l0,0", "l3,5;l2,3;l1,2", "l0,0;l1,1",
-                "l1,1;l2,2", "l2,2;l3,3", "l1,2;l0,1", "l6,4;l5,3", "l5,3;l4,2",
-                "l4,2;l5,1", "l5,1;l3,3", "l9,4;l8,4", "l8,1;l7,0", "l8,2;l9,1",
-                "l3,5;l4,4", "l4,4;l5,3", "l5,3;l6,2", "l6,2;l7,1", "l7,1;l9,1;l10,0",
+                "l10,5;l9,5",
+                "l9,5;l8,5",
+                "l10,3;l9,2",
+                "l10,6;l9,6",
+                "l9,6;l8,7",
+                "l0,4;l1,5",
+                "l1,5;l2,5",
+                "l2,5;l3,5",
+                "l3,5;l5,5;l4,4",
+                "l0,5;l1,5",
+                "l1,5;l2,5",
+                "l3,6;l2,7",
+                "l8,7;l7,8",
+                "l7,8;l6,9",
+                "l6,9;l5,10;mb",
+                "l5,10;l4,9",
+                "l4,9;l4,8",
+                "l4,8;l2,5",
+                "l4,8;l2,7;l3,6",
+                "l7,4;l8,5",
+                "l3,5;l4,3;l3,2",
+                "l0,3;l1,2",
+                "l1,2;l2,1",
+                "l2,1;l3,0",
+                "l3,0;l4,0",
+                "l4,0;l5,0;mp",
+                "l3,2;l2,1",
+                "l4,8;l3,6;l4,6",
+                "l8,5;l9,4",
+                "l9,4;l9,3",
+                "l4,8;l5,7",
+                "l5,7;l6,6",
+                "l10,7;l9,6",
+                "l6,3;l7,2",
+                "l0,5;l1,5",
+                "l0,5;l1,5",
+                "l3,5;l1,5;l2,5",
+                "l2,5;l3,4",
+                "l3,4;l4,4",
+                "l4,4;l3,3",
+                "l3,3;l2,3",
+                "l3,5;l2,3;l1,2",
+                "l3,4;l2,3",
+                "l6,6;l4,7;l5,8",
+                "l9,6;l8,5",
+                "l10,4;l9,4",
+                "l8,5;l7,4",
+                "l7,4;l6,4",
+                "l9,2;l8,1",
+                "l7,2;l8,2",
+                "l1,2;l0,1",
+                "l0,1;l0,0",
+                "l3,5;l2,3;l1,2",
+                "l0,0;l1,1",
+                "l1,1;l2,2",
+                "l2,2;l3,3",
+                "l1,2;l0,1",
+                "l6,4;l5,3",
+                "l5,3;l4,2",
+                "l4,2;l5,1",
+                "l5,1;l3,3",
+                "l9,4;l8,4",
+                "l8,1;l7,0",
+                "l8,2;l9,1",
+                "l3,5;l4,4",
+                "l4,4;l5,3",
+                "l5,3;l6,2",
+                "l6,2;l7,1",
+                "l7,1;l9,1;l10,0",
                 "l0,1;l0,0",
             ],
         },
@@ -3149,13 +3959,11 @@ fn smart_automove_human_wins_diagnostic() {
                     let search_best = MonsGameModel::smart_search_best_inputs(&game, config);
                     let search_best_fen = Input::fen_from_array(&search_best);
 
-                    let ranked = MonsGameModel::ranked_root_moves(
-                        &game, current_color, config,
-                    );
+                    let ranked = MonsGameModel::ranked_root_moves(&game, current_color, config);
                     let top_h = ranked.first().map(|r| r.heuristic).unwrap_or(0);
-                    let search_rank = ranked.iter().position(|r| {
-                        Input::fen_from_array(&r.inputs) == search_best_fen
-                    });
+                    let search_rank = ranked
+                        .iter()
+                        .position(|r| Input::fen_from_array(&r.inputs) == search_best_fen);
                     let search_h = search_rank
                         .and_then(|i| ranked.get(i))
                         .map(|r| r.heuristic)
@@ -3169,7 +3977,9 @@ fn smart_automove_human_wins_diagnostic() {
                     println!(
                         "    search_best={} rank={} h={} | top_h={}",
                         search_best_fen,
-                        search_rank.map(|r| format!("#{}", r + 1)).unwrap_or("?".into()),
+                        search_rank
+                            .map(|r| format!("#{}", r + 1))
+                            .unwrap_or("?".into()),
                         search_h,
                         top_h,
                     );
@@ -3227,7 +4037,10 @@ fn smart_automove_human_wins_diagnostic() {
             }
         }
 
-        println!("\n  Final Score: W={} B={} (bot={:?})", game.white_score, game.black_score, spec.bot_color);
+        println!(
+            "\n  Final Score: W={} B={} (bot={:?})",
+            game.white_score, game.black_score, spec.bot_color
+        );
         println!("  Bot turn divergences: {}", bot_turn_divergences.len());
         for msg in &bot_turn_divergences {
             println!("    {}", msg);
@@ -3258,10 +4071,18 @@ fn smart_automove_pro_fixture_gap_probe() {
             0
         };
 
-        println!("\n--- fixture={} mode={} active={:?} ---", fixture.id, fixture.mode.as_api_value(), game.active_color);
-        println!("  search_best={} rank=#{} gap_1v2={} root_count={}",
+        println!(
+            "\n--- fixture={} mode={} active={:?} ---",
+            fixture.id,
+            fixture.mode.as_api_value(),
+            game.active_color
+        );
+        println!(
+            "  search_best={} rank=#{} gap_1v2={} root_count={}",
             search_best_fen,
-            search_rank.map(|r| format!("{}", r + 1)).unwrap_or("?".into()),
+            search_rank
+                .map(|r| format!("{}", r + 1))
+                .unwrap_or("?".into()),
             gap_1_2,
             ranked.len(),
         );
@@ -3504,7 +4325,10 @@ fn smart_automove_normal_config_sensitivity_probe() {
             );
         }
     }
-    println!("\nTotal sensitive: {}/{}  close_and_sensitive(gap=0): {}", found, positions, close_and_sensitive);
+    println!(
+        "\nTotal sensitive: {}/{}  close_and_sensitive(gap=0): {}",
+        found, positions, close_and_sensitive
+    );
 }
 
 #[test]
@@ -3642,7 +4466,10 @@ fn smart_automove_fast_config_sensitivity_probe() {
             );
         }
     }
-    println!("\nTotal sensitive: {}/{}  close_and_sensitive(gap=0): {}", found, positions, close_and_sensitive);
+    println!(
+        "\nTotal sensitive: {}/{}  close_and_sensitive(gap=0): {}",
+        found, positions, close_and_sensitive
+    );
 }
 
 #[test]
@@ -3718,6 +4545,96 @@ fn smart_automove_normal_depth_disagreement_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: find same-position disagreements between two profiles in one mode"]
+fn smart_automove_profile_mode_disagreement_probe() {
+    use rand::prelude::*;
+
+    let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
+        .unwrap_or_else(|| "runtime_current".into());
+    let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_release_safe_pre_exact".into());
+    let mode = compare_focus_mode_from_env("SMART_PROBE_MODE", SmartAutomovePreference::Normal);
+    let positions = env_usize("SMART_PROBE_POSITIONS").unwrap_or(200).max(1);
+    let plies_per_position = env_usize("SMART_PROBE_PLIES").unwrap_or(20);
+    let seed = env_usize("SMART_PROBE_SEED").unwrap_or(42) as u64;
+    let limit = env_usize("SMART_PROBE_LIMIT").unwrap_or(8).max(1);
+    let openings = generate_opening_fens_cached(seed, positions);
+
+    let mut disagreements = 0usize;
+    let mut candidate_supermana_edges = 0usize;
+    let mut candidate_opponent_mana_edges = 0usize;
+
+    println!(
+        "profile disagreement probe: candidate={} baseline={} mode={} positions={} plies={} seed={} limit={}",
+        candidate_profile,
+        baseline_profile,
+        mode.as_api_value(),
+        positions,
+        plies_per_position,
+        seed,
+        limit
+    );
+
+    for (pos_idx, fen) in openings.iter().enumerate() {
+        let base_game = MonsGame::from_fen(fen.as_str(), false);
+        let Some(base_game) = base_game else { continue };
+        let mut game = base_game.clone_for_simulation();
+        let mut rng = StdRng::seed_from_u64(seed.wrapping_add(pos_idx as u64));
+        for _ in 0..plies_per_position {
+            if !apply_seeded_random_move(&mut game, &mut rng) {
+                break;
+            }
+        }
+        if game.winner_color().is_some() {
+            continue;
+        }
+
+        let candidate = loss_probe_decision(candidate_profile.as_str(), mode, &game);
+        let baseline = loss_probe_decision(baseline_profile.as_str(), mode, &game);
+        if candidate.move_fen == baseline.move_fen {
+            continue;
+        }
+
+        disagreements += 1;
+        if let (Some(candidate_root), Some(baseline_root)) = (
+            candidate.selected_root.as_ref(),
+            baseline.selected_root.as_ref(),
+        ) {
+            if candidate_root.safe_supermana_progress_steps
+                < baseline_root.safe_supermana_progress_steps
+            {
+                candidate_supermana_edges += 1;
+            }
+            if candidate_root.safe_opponent_mana_progress_steps
+                < baseline_root.safe_opponent_mana_progress_steps
+            {
+                candidate_opponent_mana_edges += 1;
+            }
+        }
+
+        println!(
+            "DISAGREE pos={} mode={} candidate_move={} baseline_move={} fen={}",
+            pos_idx,
+            mode.as_api_value(),
+            candidate.move_fen,
+            baseline.move_fen,
+            game.fen()
+        );
+        print_loss_probe_decision("  candidate", &candidate);
+        print_loss_probe_decision("  baseline", &baseline);
+
+        if disagreements >= limit {
+            break;
+        }
+    }
+
+    println!(
+        "\nTotal disagreements: {}  candidate_supermana_edges={}  candidate_opponent_mana_edges={}",
+        disagreements, candidate_supermana_edges, candidate_opponent_mana_edges
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: find close-decision positions in human-win games"]
 fn smart_automove_human_win_close_decision_probe() {
     let max_gap = env_usize("SMART_PROBE_MAX_GAP").unwrap_or(50) as i32;
@@ -3727,45 +4644,170 @@ fn smart_automove_human_win_close_decision_probe() {
         (
             "white",
             &[
-                "l10,6;l9,7", "l9,7;l8,6", "l8,6;l7,5", "l10,4;l9,4", "l9,4;l8,5",
-                "l0,4;l1,5", "l1,5;l0,7;l1,8", "l1,8;l2,9", "l2,9;l3,10", "l3,10;l4,10",
-                "l4,10;l5,10;mp", "l3,6;l2,7", "l7,5;l5,5;l6,4", "l10,5;l9,4", "l9,4;l8,4",
-                "l7,5;l8,6", "l10,3;l9,2", "l10,7;l9,6", "l6,3;l7,3", "l1,5;l2,4",
-                "l1,5;l2,5", "l2,5;l3,5", "l3,5;l4,4", "l4,4;l6,4;l5,3", "l0,5;l1,5",
-                "l1,5;l2,5", "l3,4;l2,3", "l8,6;l8,4;l7,5", "l7,5;l7,6", "l8,6;l7,5",
-                "l9,2;l8,1", "l8,1;l7,0", "l7,0;l6,1", "l6,7;l7,7", "l0,3;l1,2",
-                "l1,2;l2,1", "l2,1;l3,0", "l3,0;l4,0", "l4,0;l5,0;mb", "l5,0;l6,1",
-                "l4,4;l2,3;l1,2", "l1,2;l0,1", "l7,5;l5,3;l6,3", "l9,6;l8,7",
-                "l8,5;l8,6", "l7,6;l7,7", "l7,5;l8,4", "l8,7;l7,8", "l7,3;l8,2",
-                "l4,4;l5,3", "l5,3;l6,2", "l6,2;l8,2;l9,1", "l6,2;l7,1",
-                "l7,1;l9,1;l10,0", "l2,5;l3,4", "l3,4;l4,3", "l0,1;l0,0",
-                "l7,8;l6,7", "l6,7;l5,6", "l5,6;l4,6", "l4,6;l3,5", "l3,5;l2,5",
-                "l2,5;l4,3", "l7,6;l8,7", "l7,1;l6,3;l5,2", "l0,6;l1,5", "l1,5;l2,4",
-                "l2,4;l3,3", "l3,3;l4,2", "l4,2;l5,1", "l4,3;l3,2", "l8,4;l6,5;l6,4",
-                "l8,4;l8,5", "l2,5;l3,4", "l3,4;l4,3", "l7,7;l8,7", "l4,3;l3,3",
-                "l7,4;l8,4", "l7,1;l5,2;l4,1", "l0,5;l1,4", "l1,4;l2,3", "l2,3;l3,2",
-                "l3,2;l4,1", "l5,1;l4,0", "l3,2;l2,2", "l8,5;l7,7;l8,8", "l3,3;l4,2",
-                "l8,6;l7,7", "l8,7;l8,8", "l8,8;l9,9", "l9,9;l10,10", "l8,7;l8,8",
-                "l4,1;l3,0", "l3,0;l2,0", "l2,0;l1,0", "l1,0;l0,0",
+                "l10,6;l9,7",
+                "l9,7;l8,6",
+                "l8,6;l7,5",
+                "l10,4;l9,4",
+                "l9,4;l8,5",
+                "l0,4;l1,5",
+                "l1,5;l0,7;l1,8",
+                "l1,8;l2,9",
+                "l2,9;l3,10",
+                "l3,10;l4,10",
+                "l4,10;l5,10;mp",
+                "l3,6;l2,7",
+                "l7,5;l5,5;l6,4",
+                "l10,5;l9,4",
+                "l9,4;l8,4",
+                "l7,5;l8,6",
+                "l10,3;l9,2",
+                "l10,7;l9,6",
+                "l6,3;l7,3",
+                "l1,5;l2,4",
+                "l1,5;l2,5",
+                "l2,5;l3,5",
+                "l3,5;l4,4",
+                "l4,4;l6,4;l5,3",
+                "l0,5;l1,5",
+                "l1,5;l2,5",
+                "l3,4;l2,3",
+                "l8,6;l8,4;l7,5",
+                "l7,5;l7,6",
+                "l8,6;l7,5",
+                "l9,2;l8,1",
+                "l8,1;l7,0",
+                "l7,0;l6,1",
+                "l6,7;l7,7",
+                "l0,3;l1,2",
+                "l1,2;l2,1",
+                "l2,1;l3,0",
+                "l3,0;l4,0",
+                "l4,0;l5,0;mb",
+                "l5,0;l6,1",
+                "l4,4;l2,3;l1,2",
+                "l1,2;l0,1",
+                "l7,5;l5,3;l6,3",
+                "l9,6;l8,7",
+                "l8,5;l8,6",
+                "l7,6;l7,7",
+                "l7,5;l8,4",
+                "l8,7;l7,8",
+                "l7,3;l8,2",
+                "l4,4;l5,3",
+                "l5,3;l6,2",
+                "l6,2;l8,2;l9,1",
+                "l6,2;l7,1",
+                "l7,1;l9,1;l10,0",
+                "l2,5;l3,4",
+                "l3,4;l4,3",
+                "l0,1;l0,0",
+                "l7,8;l6,7",
+                "l6,7;l5,6",
+                "l5,6;l4,6",
+                "l4,6;l3,5",
+                "l3,5;l2,5",
+                "l2,5;l4,3",
+                "l7,6;l8,7",
+                "l7,1;l6,3;l5,2",
+                "l0,6;l1,5",
+                "l1,5;l2,4",
+                "l2,4;l3,3",
+                "l3,3;l4,2",
+                "l4,2;l5,1",
+                "l4,3;l3,2",
+                "l8,4;l6,5;l6,4",
+                "l8,4;l8,5",
+                "l2,5;l3,4",
+                "l3,4;l4,3",
+                "l7,7;l8,7",
+                "l4,3;l3,3",
+                "l7,4;l8,4",
+                "l7,1;l5,2;l4,1",
+                "l0,5;l1,4",
+                "l1,4;l2,3",
+                "l2,3;l3,2",
+                "l3,2;l4,1",
+                "l5,1;l4,0",
+                "l3,2;l2,2",
+                "l8,5;l7,7;l8,8",
+                "l3,3;l4,2",
+                "l8,6;l7,7",
+                "l8,7;l8,8",
+                "l8,8;l9,9",
+                "l9,9;l10,10",
+                "l8,7;l8,8",
+                "l4,1;l3,0",
+                "l3,0;l2,0",
+                "l2,0;l1,0",
+                "l1,0;l0,0",
             ],
         ),
         (
             "black",
             &[
-                "l10,3;l9,2", "l9,2;l8,1", "l8,1;l7,0", "l7,0;l6,0", "l6,0;l5,0;mp",
-                "l0,4;l1,5", "l1,5;l3,6;l2,7", "l0,5;l1,6", "l0,3;l1,3", "l0,7;l1,7",
-                "l1,5;l2,4", "l3,4;l2,3", "l10,6;l9,5", "l9,5;l8,5", "l8,5;l7,5",
-                "l7,5;l5,5;l6,6", "l10,5;l9,5", "l9,5;l8,5", "l7,6;l8,7",
-                "l2,4;l4,3;l3,2", "l1,3;l2,2", "l0,6;l1,5", "l1,6;l2,6", "l1,7;l2,8",
-                "l2,8;l3,7", "l2,3;l1,2", "l7,5;l6,4", "l6,4;l5,3", "l5,3;l4,2",
-                "l4,2;l3,1", "l3,1;l1,2;l1,1", "l3,1;l1,1;l0,0", "l10,4;l9,5",
-                "l8,7;l9,8", "l3,7;l4,8", "l4,8;l4,9", "l4,9;l5,10;mb", "l5,10;l4,9",
-                "l4,9;l5,8", "l5,8;l8,5", "l2,4;l4,5;l3,6", "l2,7;l1,8",
-                "l3,1;l4,2", "l4,2;l5,3", "l5,3;l6,4", "l6,4;l6,6;l7,7",
-                "l6,4;l7,5", "l9,5;l8,5", "l9,8;l10,9", "l2,4;l3,6;l2,6",
-                "l1,5;l1,6", "l2,6;l1,7", "l1,7;l0,8", "l0,8;l0,9", "l0,9;l0,10",
-                "l1,8;l0,9", "l7,5;l7,7;l8,7", "l10,5;l9,6", "l9,6;l8,7",
-                "l8,7;l8,8", "l8,8;l9,9", "l9,9;l10,10", "l10,9;l10,10",
+                "l10,3;l9,2",
+                "l9,2;l8,1",
+                "l8,1;l7,0",
+                "l7,0;l6,0",
+                "l6,0;l5,0;mp",
+                "l0,4;l1,5",
+                "l1,5;l3,6;l2,7",
+                "l0,5;l1,6",
+                "l0,3;l1,3",
+                "l0,7;l1,7",
+                "l1,5;l2,4",
+                "l3,4;l2,3",
+                "l10,6;l9,5",
+                "l9,5;l8,5",
+                "l8,5;l7,5",
+                "l7,5;l5,5;l6,6",
+                "l10,5;l9,5",
+                "l9,5;l8,5",
+                "l7,6;l8,7",
+                "l2,4;l4,3;l3,2",
+                "l1,3;l2,2",
+                "l0,6;l1,5",
+                "l1,6;l2,6",
+                "l1,7;l2,8",
+                "l2,8;l3,7",
+                "l2,3;l1,2",
+                "l7,5;l6,4",
+                "l6,4;l5,3",
+                "l5,3;l4,2",
+                "l4,2;l3,1",
+                "l3,1;l1,2;l1,1",
+                "l3,1;l1,1;l0,0",
+                "l10,4;l9,5",
+                "l8,7;l9,8",
+                "l3,7;l4,8",
+                "l4,8;l4,9",
+                "l4,9;l5,10;mb",
+                "l5,10;l4,9",
+                "l4,9;l5,8",
+                "l5,8;l8,5",
+                "l2,4;l4,5;l3,6",
+                "l2,7;l1,8",
+                "l3,1;l4,2",
+                "l4,2;l5,3",
+                "l5,3;l6,4",
+                "l6,4;l6,6;l7,7",
+                "l6,4;l7,5",
+                "l9,5;l8,5",
+                "l9,8;l10,9",
+                "l2,4;l3,6;l2,6",
+                "l1,5;l1,6",
+                "l2,6;l1,7",
+                "l1,7;l0,8",
+                "l0,8;l0,9",
+                "l0,9;l0,10",
+                "l1,8;l0,9",
+                "l7,5;l7,7;l8,7",
+                "l10,5;l9,6",
+                "l9,6;l8,7",
+                "l8,7;l8,8",
+                "l8,8;l9,9",
+                "l9,9;l10,10",
+                "l10,9;l10,10",
             ],
         ),
     ];
@@ -3785,8 +4827,7 @@ fn smart_automove_human_win_close_decision_probe() {
             let is_bot_turn = game.active_color == bot_color;
             if is_bot_turn {
                 let pro_config = pro_budget.runtime_config_for_game(&game);
-                let ranked =
-                    MonsGameModel::ranked_root_moves(&game, game.active_color, pro_config);
+                let ranked = MonsGameModel::ranked_root_moves(&game, game.active_color, pro_config);
                 if ranked.len() >= 2 {
                     let gap = ranked[0].heuristic.saturating_sub(ranked[1].heuristic);
                     if gap <= max_gap {
@@ -3808,5 +4849,8 @@ fn smart_automove_human_win_close_decision_probe() {
             let _ = game.process_input(inputs, false, false);
         }
     }
-    println!("\nTotal close-decision bot positions (gap<={}): {}", max_gap, total_close);
+    println!(
+        "\nTotal close-decision bot positions (gap<={}): {}",
+        max_gap, total_close
+    );
 }

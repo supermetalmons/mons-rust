@@ -19,7 +19,7 @@ For `fast` or `normal` candidates:
 ```sh
 ./scripts/run-automove-experiment.sh triage-calibrate <reply_risk|supermana|opponent_mana>
 ./scripts/run-automove-experiment.sh guardrails <candidate>
-SMART_TRIAGE_SURFACE=<reply_risk|supermana|opponent_mana|spirit_setup|drainer_safety|cache_reuse> \
+SMART_TRIAGE_SURFACE=<reply_risk|supermana|opponent_mana|normal_fast_gap|normal_tiebreak|spirit_setup|drainer_safety|cache_reuse> \
   ./scripts/run-automove-experiment.sh triage <candidate>
 # optional audit lane for about 1 in 5 clean triage rejects
 SMART_PROMOTION_TARGET_MODE=<fast|normal> ./scripts/run-automove-experiment.sh audit-screen <candidate>
