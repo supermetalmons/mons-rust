@@ -26,6 +26,7 @@ const PROFILE_RUNTIME_NORMAL_ROOT_BREADTH_EXACT_LITE_V1: &str =
     "runtime_normal_root_breadth_exact_lite_v1";
 const PROFILE_RUNTIME_PRO_QUIESCENCE_V1: &str = "runtime_pro_quiescence_v1";
 const PROFILE_RUNTIME_PRO_QUIESCENCE_V2: &str = "runtime_pro_quiescence_v2";
+const PROFILE_RUNTIME_PRO_PRIMARY_SIGNAL_V2: &str = "runtime_pro_primary_signal_v2";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct ExactLiteBudgets {
@@ -39,7 +40,7 @@ struct AutomoveProfile {
     selector: AutomoveSelector,
 }
 
-const RETAINED_PROFILES: [AutomoveProfile; 24] = [
+const RETAINED_PROFILES: [AutomoveProfile; 25] = [
     AutomoveProfile {
         id: "base",
         selector: model_base_profile,
@@ -135,6 +136,10 @@ const RETAINED_PROFILES: [AutomoveProfile; 24] = [
     AutomoveProfile {
         id: PROFILE_RUNTIME_PRO_QUIESCENCE_V2,
         selector: model_runtime_pro_quiescence_v2,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_PRO_PRIMARY_SIGNAL_V2,
+        selector: model_runtime_pro_primary_signal_v2,
     },
 ];
 
@@ -396,6 +401,9 @@ pub(super) fn profile_runtime_config_for_name(
         }
         PROFILE_RUNTIME_PRO_QUIESCENCE_V1 => configure_runtime_pro_quiescence_v1(config),
         PROFILE_RUNTIME_PRO_QUIESCENCE_V2 => configure_runtime_pro_quiescence_v2(config),
+        PROFILE_RUNTIME_PRO_PRIMARY_SIGNAL_V2 => {
+            configure_runtime_pro_primary_signal_v2(config)
+        }
         "runtime_pre_fast_root_quality_v1_normal_conversion_v3" => {
             configure_runtime_pre_fast_root_quality_v1_normal_conversion_v3(game, config)
         }
@@ -795,6 +803,30 @@ pub(super) fn model_runtime_pro_quiescence_v2(
     config: SmartSearchConfig,
 ) -> Vec<Input> {
     MonsGameModel::smart_search_best_inputs(_game, configure_runtime_pro_quiescence_v2(config))
+}
+
+fn configure_runtime_pro_primary_signal_v2(config: SmartSearchConfig) -> SmartSearchConfig {
+    let mut runtime = MonsGameModel::with_pre_exact_runtime_policy(config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize && runtime.enable_normal_root_safety_deep_floor
+    {
+        // Primary context only: narrower tactical quiescence to reduce noisy deep leaves while
+        // staying within baseline CPU envelope.
+        runtime.enable_quiescence_search = true;
+        runtime.quiescence_node_budget = 120;
+        runtime.enable_quiescence_tactical_children_only = true;
+        runtime.quiescence_tactical_enum_limit = 12;
+    }
+    runtime
+}
+
+pub(super) fn model_runtime_pro_primary_signal_v2(
+    _game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    MonsGameModel::smart_search_best_inputs(
+        _game,
+        configure_runtime_pro_primary_signal_v2(config),
+    )
 }
 
 pub(super) fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {

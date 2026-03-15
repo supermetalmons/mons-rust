@@ -2141,6 +2141,7 @@ fn smart_automove_pool_retained_profile_ids_match_active_registry() {
             "runtime_normal_root_breadth_exact_lite_v1",
             "runtime_pro_quiescence_v1",
             "runtime_pro_quiescence_v2",
+            "runtime_pro_primary_signal_v2",
         ]
     );
 }

@@ -2381,7 +2381,9 @@ impl MonsGameModel {
         config.interview_soft_opponent_mana_progress_bonus = 320;
         config.interview_soft_opponent_mana_score_bonus = 400;
         config.enable_quiescence_search = true;
-        config.quiescence_node_budget = 200;
+        config.quiescence_node_budget = 120;
+        config.enable_quiescence_tactical_children_only = true;
+        config.quiescence_tactical_enum_limit = 12;
         config
     }
 
@@ -11286,6 +11288,10 @@ mod opening_book_tests {
             independent_config.interview_soft_opponent_mana_score_bonus,
             400
         );
+        assert!(independent_config.enable_quiescence_search);
+        assert_eq!(independent_config.quiescence_node_budget, 120);
+        assert!(independent_config.enable_quiescence_tactical_children_only);
+        assert_eq!(independent_config.quiescence_tactical_enum_limit, 12);
 
         let mut opening_game = MonsGame::new(false);
         advance_opening_book_until_black_turn(&mut opening_game);
@@ -11308,6 +11314,7 @@ mod opening_book_tests {
         assert_eq!(opening_config.root_reply_risk_reply_limit, 8);
         assert_eq!(opening_config.root_reply_risk_node_share_bp, 560);
         assert!(!opening_config.enable_normal_root_safety_deep_floor);
+        assert!(!opening_config.enable_quiescence_tactical_children_only);
         assert_eq!(opening_config.root_drainer_safety_score_margin, 4_300);
         assert_eq!(opening_config.selective_extension_node_share_bp, 1_200);
     }

@@ -45,6 +45,8 @@ This document keeps only durable lessons that should shape future automove work.
 - Minimized `pro-ladder` settings can produce false keeps. Treat minimized ladder as directional-only; first real keep/kill must use bounded confirmation settings (`speed_positions=12`, `primary/confirm=3x3`, `max_plies=64`).
 - In the latest Pro wave, retained anchor `runtime_pro_quiescence_v2` and many confirmation-side quiescence splits converged to the same bounded-ladder floor (`vs_fast=-0.1111` vs tolerance `-0.10`). Repeating quiescence-budget splits after this pattern is low value.
 - When Pro passes triage, fast-screen, and progressive but fails bounded confirmation by a tiny consistent margin, the next hypothesis should target confirmation policy behavior directly (opening-book/reply policy), not broad primary-search tuning.
+- Default `pro-progressive` (`max_games=32`, repeats `2`) is too expensive for interactive loops once a candidate is already positive; use bounded progressive first (for example `2->4`, repeats `1`, max plies `64`) and escalate only for final confidence.
+- `runtime_current` versus `runtime_release_safe_pre_exact` is not a reliable `pro-triage` pair for production-mapped runtime edits; triage on explicit candidate profiles, then validate production changes with runtime-context tests and release gates.
 
 ## Interview Guidance That Still Matters
 
