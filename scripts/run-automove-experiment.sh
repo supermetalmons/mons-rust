@@ -20,6 +20,7 @@ stages:
   progressive     duel-only progressive evaluation against the baseline; requires the duel stamp and honors SMART_PROMOTION_TARGET_MODE=fast|normal
   ladder          duel-only promotion ladder against the baseline; requires the duel stamp and honors SMART_PROMOTION_TARGET_MODE=fast|normal
   pro-triage      fixed-cost deterministic triage for pro (requires SMART_TRIAGE_SURFACE)
+  pro-opening-speed-probe diagnostic opening-reply latency compare on fixed pro fixtures
   pro-audit-screen cheap pro duel-only audit for an occasional pro-triage reject
   pro-pre-screen  legacy reject-only pro screen vs normal and fast with tighter budgets
   pro-fast-screen duel-only pro fast screens vs normal and fast; requires the duel stamp
@@ -43,6 +44,7 @@ examples:
   SMART_PROMOTION_TARGET_MODE=fast ./scripts/run-automove-experiment.sh fast-screen runtime_eff_non_exact_v2
   SMART_PROMOTION_TARGET_MODE=fast ./scripts/run-automove-experiment.sh progressive runtime_eff_non_exact_v2
   SMART_TRIAGE_SURFACE=opening_reply ./scripts/run-automove-experiment.sh pro-triage runtime_eff_non_exact_v2
+  ./scripts/run-automove-experiment.sh pro-opening-speed-probe runtime_pro_quiescence_v1 runtime_current
   ./scripts/run-automove-experiment.sh pro-audit-screen runtime_eff_non_exact_v2
   ./scripts/run-automove-experiment.sh pro-ladder runtime_eff_exact_lite_v1 runtime_release_safe_pre_exact
 EOF_HELP
@@ -183,6 +185,14 @@ run_pro_progressive() {
     "${extra_env[@]}"
 }
 
+run_pro_opening_speed_probe() {
+  run_cargo_logged \
+    "pro_opening_speed_probe_${candidate}" \
+    "smart_automove_pool_opening_reply_speed_probe" \
+    "SMART_OPENING_SPEED_COMPARE_PROFILE=${candidate}" \
+    "SMART_OPENING_SPEED_BASELINE_PROFILE=${baseline}"
+}
+
 run_triage_calibration() {
   local surface="${1:-all}"
   local candidate_profile
@@ -304,6 +314,9 @@ case "${stage}" in
       "smart_automove_pool_pro_signal_triage" \
       "SMART_GATE_BASELINE_PROFILE=${baseline}" \
       "SMART_PRO_BASELINE_PROFILE=${baseline}"
+    ;;
+  pro-opening-speed-probe)
+    run_pro_opening_speed_probe
     ;;
   pro-audit-screen)
     run_pro_audit_screens "pro_audit_screen" "SMART_SKIP_RUNTIME_PREFLIGHT=true"

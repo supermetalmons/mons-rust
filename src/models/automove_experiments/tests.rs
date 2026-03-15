@@ -65,6 +65,33 @@ fn median_f64(values: &mut [f64]) -> f64 {
     }
 }
 
+fn opening_reply_speed_probe_avg_ms(
+    profile_name: &str,
+    selector: AutomoveSelector,
+    fixtures: &[TriageFixture],
+) -> f64 {
+    use std::time::Instant;
+
+    with_env_override("SMART_USE_WHITE_OPENING_BOOK", "true", || {
+        let mut total_ms = 0.0;
+        for fixture in fixtures {
+            clear_exact_state_analysis_cache();
+            let base_config =
+                SearchBudget::from_preference(fixture.mode).runtime_config_for_game(&fixture.game);
+            let start = Instant::now();
+            let inputs = select_inputs_with_runtime_fallback(selector, &fixture.game, base_config);
+            total_ms += start.elapsed().as_secs_f64() * 1000.0;
+            assert!(
+                !inputs.is_empty(),
+                "opening reply speed probe profile '{}' produced no legal move for fixture '{}'",
+                profile_name,
+                fixture.id
+            );
+        }
+        total_ms / fixtures.len().max(1) as f64
+    })
+}
+
 #[test]
 fn progressive_stop_rejects_dead_even_first_screen_tier() {
     let budgets = client_budgets().to_vec();
@@ -2195,6 +2222,97 @@ fn smart_automove_pool_profile_speed_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: compare pro opening-reply latency on fixed fixtures"]
+fn smart_automove_pool_opening_reply_speed_probe() {
+    let compare_profile_name = env_profile_name("SMART_OPENING_SPEED_COMPARE_PROFILE")
+        .or_else(|| Some(pro_candidate_profile_name()))
+        .unwrap_or_else(|| "runtime_current".to_string());
+    let baseline_profile_name = env_profile_name("SMART_OPENING_SPEED_BASELINE_PROFILE")
+        .or_else(|| Some(pro_baseline_profile_name()))
+        .unwrap_or_else(|| "runtime_current".to_string());
+    let compare_selector = profile_selector_from_name(compare_profile_name.as_str())
+        .unwrap_or_else(|| panic!("compare profile '{}' not found", compare_profile_name));
+    let baseline_selector = profile_selector_from_name(baseline_profile_name.as_str())
+        .unwrap_or_else(|| panic!("baseline profile '{}' not found", baseline_profile_name));
+    let passes = env_usize("SMART_OPENING_SPEED_PASSES").unwrap_or(5).max(1);
+    let fixtures = opening_reply_triage_fixtures();
+
+    let _ = opening_reply_speed_probe_avg_ms(
+        compare_profile_name.as_str(),
+        compare_selector,
+        fixtures.as_slice(),
+    );
+    let _ = opening_reply_speed_probe_avg_ms(
+        baseline_profile_name.as_str(),
+        baseline_selector,
+        fixtures.as_slice(),
+    );
+    let mut compare_pass_averages = Vec::with_capacity(passes);
+    let mut baseline_pass_averages = Vec::with_capacity(passes);
+    for pass_index in 0..passes {
+        if pass_index.is_multiple_of(2) {
+            compare_pass_averages.push(opening_reply_speed_probe_avg_ms(
+                compare_profile_name.as_str(),
+                compare_selector,
+                fixtures.as_slice(),
+            ));
+            baseline_pass_averages.push(opening_reply_speed_probe_avg_ms(
+                baseline_profile_name.as_str(),
+                baseline_selector,
+                fixtures.as_slice(),
+            ));
+        } else {
+            baseline_pass_averages.push(opening_reply_speed_probe_avg_ms(
+                baseline_profile_name.as_str(),
+                baseline_selector,
+                fixtures.as_slice(),
+            ));
+            compare_pass_averages.push(opening_reply_speed_probe_avg_ms(
+                compare_profile_name.as_str(),
+                compare_selector,
+                fixtures.as_slice(),
+            ));
+        }
+    }
+    let compare_median = median_f64(compare_pass_averages.as_mut_slice());
+    let baseline_median = median_f64(baseline_pass_averages.as_mut_slice());
+    let ratio = compare_median / baseline_median.max(0.001);
+
+    println!(
+        "opening reply speed probe compare={} pass_avg_ms={:?} median_avg_ms={:.2}",
+        compare_profile_name, compare_pass_averages, compare_median
+    );
+    println!(
+        "opening reply speed probe baseline={} pass_avg_ms={:?} median_avg_ms={:.2}",
+        baseline_profile_name, baseline_pass_averages, baseline_median
+    );
+    println!(
+        "opening reply speed probe delta compare={} baseline={} delta_ms={:.2} ratio={:.3}",
+        compare_profile_name,
+        baseline_profile_name,
+        compare_median - baseline_median,
+        ratio
+    );
+
+    if let Some(min_ratio) = env_f64("SMART_OPENING_SPEED_MIN_RATIO") {
+        assert!(
+            ratio >= min_ratio,
+            "opening reply speed probe ratio {:.3} below required minimum {:.3}",
+            ratio,
+            min_ratio
+        );
+    }
+    if let Some(max_ratio) = env_f64("SMART_OPENING_SPEED_MAX_RATIO") {
+        assert!(
+            ratio <= max_ratio,
+            "opening reply speed probe ratio {:.3} above required maximum {:.3}",
+            ratio,
+            max_ratio
+        );
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: compare candidate vs baseline pool deltas per mode/opponent"]
 fn smart_automove_pool_pool_regression_diagnostic() {
     let candidate_profile_name = candidate_profile().as_str().to_string();
@@ -4122,7 +4240,7 @@ fn smart_automove_pro_fixture_gap_probe() {
         let search_best_fen = Input::fen_from_array(&search_best);
 
         let ranked = MonsGameModel::ranked_root_moves(game, game.active_color, config);
-        let top_h = ranked.first().map(|r| r.heuristic).unwrap_or(0);
+        let _top_h = ranked.first().map(|r| r.heuristic).unwrap_or(0);
         let search_rank = ranked
             .iter()
             .position(|r| Input::fen_from_array(&r.inputs) == search_best_fen);

@@ -117,6 +117,40 @@ All scoring weight changes pass triage by inflating heuristic scores but are noi
 - Audit-driven fixture creation from random game positions and human-win games.
 - Depth-disagreement probe for Normal (21/100 positions where Normal≠Pro).
 
+## Wave 4: Pro Confirmation Floor (Mar 14–15, 2026)
+
+This wave focused on recovering Pro strength after the Normal promotion. Two idea families were exhausted and then retired.
+
+### Closed — Pro Opening-Reply Fast-Policy Transplants
+
+- Candidate family: `runtime_pro_opening_reply_fast_policy_v1..v8`.
+- Typical pattern: deterministic `opening_reply` triage movement, clean fast-screen signal, then failure at ladder primary-vs-normal.
+- Best directional outcomes still failed promote gates:
+  - `runtime_pro_opening_reply_fast_policy_v3` passed minimized ladder CPU checks but failed primary gate (`delta 0.0000 < 0.0800`).
+  - `runtime_pro_opening_reply_fast_policy_v2` and `v8` failed CPU ratio on minimized ladder.
+- Decision: close opening-reply-only transplant line for now.
+
+### Closed — Pro Primary Quiescence Shaping
+
+- Retained anchor: `runtime_pro_quiescence_v2`.
+- Split family tested: `runtime_pro_quiescence_v3..v14`.
+- Repeated pattern:
+  - `primary_pro` triage moved (`target_changed=3`, `off_target_changed=0`).
+  - Fast-screen and bounded progressive remained positive.
+  - Bounded ladder (`speed_positions=12`, `primary/confirm=3x3`, `max_plies=64`) failed in confirmation, usually vs fast.
+- Hard blocker reproduced on multiple lines:
+  - `runtime_pro_quiescence_v2` bounded ladder: `vs_normal -0.0556`, `vs_fast -0.1111` (tolerance `-0.10`).
+  - `runtime_pro_quiescence_v11` bounded ladder: same floor (`vs_fast -0.1111`).
+  - `runtime_pro_quiescence_v14` passed minimized ladder but failed bounded ladder (`vs_normal -0.1667`, `vs_fast -0.1111`).
+- Decision: close quiescence-budget shaping line; minimized ladder is directional-only and not a keep gate.
+
+### Workflow Outcome Preserved
+
+- Added candidate-aware Pro opening-reply speed probe:
+  - test: `smart_automove_pool_opening_reply_speed_probe`
+  - stage: `./scripts/run-automove-experiment.sh pro-opening-speed-probe <candidate> [baseline]`
+- This is retained as workflow infrastructure for future `opening_reply` ideas.
+
 ## Mistakes Not To Repeat
 
 - Do not keep historical profiles live in the active registry after their lesson is absorbed.

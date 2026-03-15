@@ -42,6 +42,9 @@ This document keeps only durable lessons that should shape future automove work.
 - Breadth-over-depth (disabling extensions) is fundamentally stronger than extending promising lines. The search wins by evaluating more root candidates at nominal depth rather than extending a few children deeper.
 - Pro CPU ratio gate (1.60x minimum) blocked the strongest candidate ever found (+13% across 1,488 games). The gate ensures Pro "feels premium" but the stronger search is paradoxically cheaper.
 - Pro vs_fast regression is a hard gate. Two Pro candidates with strong vs_normal signals (+12-13%) failed because they regressed against Fast mode baseline.
+- Minimized `pro-ladder` settings can produce false keeps. Treat minimized ladder as directional-only; first real keep/kill must use bounded confirmation settings (`speed_positions=12`, `primary/confirm=3x3`, `max_plies=64`).
+- In the latest Pro wave, retained anchor `runtime_pro_quiescence_v2` and many confirmation-side quiescence splits converged to the same bounded-ladder floor (`vs_fast=-0.1111` vs tolerance `-0.10`). Repeating quiescence-budget splits after this pattern is low value.
+- When Pro passes triage, fast-screen, and progressive but fails bounded confirmation by a tiny consistent margin, the next hypothesis should target confirmation policy behavior directly (opening-book/reply policy), not broad primary-search tuning.
 
 ## Interview Guidance That Still Matters
 

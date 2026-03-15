@@ -28,6 +28,7 @@ SMART_PROMOTION_TARGET_MODE=<fast|normal> ./scripts/run-automove-experiment.sh l
 
 ```sh
 ./scripts/run-automove-experiment.sh guardrails <candidate>
+./scripts/run-automove-experiment.sh pro-opening-speed-probe <candidate>   # optional for opening_reply ideas
 SMART_TRIAGE_SURFACE=<opening_reply|primary_pro> ./scripts/run-automove-experiment.sh pro-triage <candidate>
 ./scripts/run-automove-experiment.sh runtime-preflight <candidate>
 ./scripts/run-automove-experiment.sh pro-fast-screen <candidate>
@@ -48,6 +49,7 @@ cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --
 - Pick one idea and one candidate profile.
 - Confirm whether `triage-calibrate` is required (`reply_risk`, `opponent_mana`, `supermana`).
 - Confirm triage surface exists and is deterministic.
+- For Pro `opening_reply` ideas, decide whether to run `pro-opening-speed-probe` before `pro-triage`.
 - Set `SMART_PROMOTION_TARGET_MODE=<fast|normal>` for mode-targeted duel stages.
 - Confirm baseline profile (default: `runtime_release_safe_pre_exact`; `normal_fast_gap` triage defaults to `runtime_current` unless baseline passed explicitly).
 
@@ -75,6 +77,7 @@ cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --
 - `progressive`
 - `ladder`
 - `pro-triage`
+- `pro-opening-speed-probe`
 - `pro-audit-screen`
 - `pro-pre-screen` (legacy)
 - `pro-fast-screen`

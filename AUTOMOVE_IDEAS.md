@@ -4,11 +4,12 @@ This is the active backlog for upcoming automove iterations.
 
 Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file lean: active hypotheses only. Move long history to `docs/automove-archive.md` and durable lessons to `docs/automove-knowledge.md`.
 
-## Current State (2026-03-14)
+## Current State (2026-03-15)
 
 - Latest promotion: Normal mode moved to a fast-derived core with bounded extra Normal spend.
-- Production now has stronger Normal-vs-Fast head-to-head while staying within release speed gates.
-- Next wave emphasis: Pro-first recovery, then port proven safe wins across modes.
+- Pro recovery status: the opening-reply transplant wave and the primary quiescence-shaping wave are now closed.
+- Current Pro blocker: bounded `pro-ladder` repeatedly fails confirmation-vs-fast by a tiny margin (`-0.1111` vs tolerance `-0.10`) across both retained and split candidates.
+- Workflow update kept: `./scripts/run-automove-experiment.sh pro-opening-speed-probe <candidate> [baseline]` is available for Pro `opening_reply` ideas.
 
 ## Template
 
@@ -31,73 +32,42 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
 
 ## Active Frontier
 
-### Idea: Pro quiescence tactical-only child generation
+### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
 - Target mode: `pro`
-- Triage surface: `opening_reply` (target), `primary_pro` (off-target guard via `pro-triage`)
-- Triage pass signal: `pro-triage` reports `target_changed>=1` with `off_target_changed<=1`.
+- Triage surface: `primary_pro` (off-target guard: `opening_reply`)
+- Triage pass signal: `primary_pro target_changed>0` with `opening_reply off_target_changed<=1`
 - Calibration gate: none
 - Candidate budget: 1
-- Expected upside: keep quiescence tactical signal while removing full `ranked_child_states()` expansion cost.
+- Expected upside: fix the `pro-ladder` confirmation-vs-fast near-miss without reopening broad primary search churn.
 - CPU risk: medium
-- Cheapest falsifier: `guardrails`, then `SMART_TRIAGE_SURFACE=opening_reply ./scripts/run-automove-experiment.sh pro-triage <candidate>`.
-- Escalate only if: `runtime-preflight` passes and `pro-fast-screen` is positive vs both normal and fast baselines.
-- Kill if: no target-surface movement, or either `pro-fast-screen` lane is flat/regressed.
-- Next split if rejected: capture-only tactical child generation.
-- How to test: `guardrails -> pro-triage -> runtime-preflight -> pro-fast-screen -> pro-progressive -> pro-ladder`.
+- Cheapest falsifier: fail `pro-triage` on `primary_pro`, or fail `pro-fast-screen` vs fast.
+- Escalate only if: `guardrails -> pro-triage -> runtime-preflight -> pro-fast-screen -> bounded pro-progressive` is clean.
+- Kill if: bounded `pro-ladder` (`speed_positions=12`, `primary/confirm=3x3`, `max_plies=64`) is flat/negative on confirmation lanes.
+- Next split if rejected: split one confirmation-context policy family at a time (opening-book reply policy or confirmation reply-risk shape), not quiescence budgets.
+- How to test: `guardrails -> SMART_TRIAGE_SURFACE=primary_pro pro-triage -> runtime-preflight -> pro-fast-screen -> pro-progressive -> pro-ladder`.
 - Status: backlog
-- Notes: this is the first strength attempt for the Pro-first recovery wave.
+- Notes:
+  - Keep minimized ladder as directional-only.
+  - First keep/kill ladder should be the bounded `3x3 @64` form.
 
-### Idea: Pro quiescence trigger gating (volatility/frontier)
+### Idea: Pro opening-reply quality with explicit speed envelope
 - Base profile: `runtime_current`
 - Target mode: `pro`
-- Triage surface: `opening_reply`
-- Triage pass signal: `pro-triage` still moves `opening_reply` fixtures while expected quiescence call footprint shrinks.
+- Triage surface: `opening_reply` (off-target guard: `primary_pro`)
+- Triage pass signal: `opening_reply target_changed>0` with `primary_pro off_target_changed<=1`
 - Calibration gate: none
 - Candidate budget: 1
-- Expected upside: reduce unnecessary quiescence activations on quiet leaves while preserving tactical upside.
-- CPU risk: medium
-- Cheapest falsifier: `guardrails`, `pro-triage`, `runtime-preflight`.
-- Escalate only if: first `pro-fast-screen` beats baseline with no lane regression.
-- Kill if: CPU improves but duel signal disappears, or duel signal remains but CPU does not improve.
-- Next split if rejected: combine with tactical-only child generation in one bounded follow-up.
-- How to test: one candidate delta through standard Pro earned path.
+- Expected upside: recover opening-reply quality if the confirmation-rebalance line stalls.
+- CPU risk: low-to-medium
+- Cheapest falsifier: fail `pro-opening-speed-probe` envelope or fail first duel.
+- Escalate only if: `pro-opening-speed-probe` + `pro-triage` both pass.
+- Kill if: first duel (`pro-fast-screen`) is flat/negative.
+- Next split if rejected: close opening-reply-only lane and return to primary confirmation hypotheses.
+- How to test: `guardrails -> pro-opening-speed-probe -> SMART_TRIAGE_SURFACE=opening_reply pro-triage -> runtime-preflight -> pro-fast-screen`.
 - Status: backlog
-- Notes: distinct from tactical-only generation; this changes when quiescence runs.
-
-### Idea: Shared reply-risk/exact-lite cache reuse
-- Base profile: `runtime_current`
-- Target mode: `pro`, then `normal`
-- Triage surface: `cache_reuse`
-- Triage pass signal: deterministic cache-reuse triage improvement (`avg_ms` down or hit-rate up) without guardrail regressions.
-- Calibration gate: none
-- Candidate budget: 1
-- Expected upside: reclaim CPU from duplicated shortlist/exact-lite work, then convert into strength.
-- CPU risk: low to medium
-- Cheapest falsifier: `guardrails`, then `SMART_TRIAGE_SURFACE=cache_reuse ./scripts/run-automove-experiment.sh triage <candidate>`.
-- Escalate only if: `runtime-preflight` passes and first earned duel stage is positive for target mode.
-- Kill if: measurable cache win but first duel stage remains flat.
-- Next split if rejected: isolate cache-sharing to one path (reply-risk only or exact-lite only).
-- How to test: cache triage first, then earned duel path in target mode.
-- Status: backlog
-- Notes: preferred all-modes infrastructure-backed strength direction.
-
-### Idea: Candidate-aware opening-reply speed probe
-- Base profile: workflow-only
-- Target mode: `pro`
-- Triage surface: blocked until probe exists
-- Triage pass signal: new probe shows stable candidate-vs-baseline opening-reply latency deltas on fixed seeds.
-- Calibration gate: none
-- Candidate budget: 1
-- Expected upside: catch opening latency regressions early for `opening_reply` ideas without misusing production-only release gates.
-- CPU risk: low
-- Cheapest falsifier: implement probe and show it cannot separate known retained profiles.
-- Escalate only if: probe is stable enough to become a standard pre-duel diagnostic.
-- Kill if: probe is noisy or does not improve promotion decisions.
-- Next split if rejected: keep release speed gates only; do not add new opening speed diagnostics.
-- How to test: add ignored harness test and compare `runtime_current` with one known slower/faster retained profile.
-- Status: backlog
-- Notes: workflow diagnostic, not a direct strength candidate.
+- Notes:
+  - Previous opening-reply fast-policy family is closed; do not revive old IDs.
 
 ## Workflow Improvements
 
@@ -110,21 +80,22 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
 - CPU risk: low
 - Cheapest falsifier: add fixtures and confirm they reject unsafe candidates immediately.
 - Status: backlog
-- Notes: safety reliability is a release requirement, not optional cleanup.
 
 ### Idea: Promotion-focused artifact summaries
 - Base profile: workflow-only
 - Target mode: workflow
 - Candidate budget: 1
-- Expected upside: faster decisions with less log spelunking and cleaner cleanup cycles.
+- Expected upside: faster promote/kill decisions with less log spelunking.
 - CPU risk: low
-- Cheapest falsifier: add lightweight summary output and verify it does not improve decision speed/quality.
+- Cheapest falsifier: add lightweight summary output and verify no decision-speed improvement.
 - Status: backlog
-- Notes: optimize signal extraction, not logging volume.
 
-## Recently Closed
+## Recently Closed (Compact)
 
-- Normal fast-derived core branch: promoted via `runtime_normal_fast_core_budget_spend_v1` into `runtime_current` on 2026-03-14.
-- Normal release-seed alignment (`normal_release_seed_gap`): completed; retained as active deterministic surface.
-- Earlier long-wave config knob details are archived in `docs/automove-archive.md` (Wave 3 section).
-- Durable cross-wave lessons are kept in `docs/automove-knowledge.md`.
+- Pro opening-reply fast-policy family (`runtime_pro_opening_reply_fast_policy_v1..v8`): closed after repeated ladder primary-vs-normal failures.
+- Pro primary fast-policy family (`runtime_pro_primary_fast_policy_v1..v5`): closed after the same ladder primary-vs-normal failure pattern.
+- Pro primary quiescence shaping family (`runtime_pro_quiescence_v3..v14`): closed; bounded ladder kept failing confirmation lanes (especially vs fast).
+- Retained Pro quiescence anchor (`runtime_pro_quiescence_v2`) remains useful as a reference but is not promotable under bounded ladder settings.
+- Shared reply-risk/exact-lite cache reuse line: closed at `cache_reuse` triage.
+
+Detailed wave history is archived in `docs/automove-archive.md`. Durable guidance is tracked in `docs/automove-knowledge.md`.
