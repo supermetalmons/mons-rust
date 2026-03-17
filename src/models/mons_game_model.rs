@@ -17,8 +17,6 @@ pub struct MonsGameModel {
     game: MonsGame,
     #[cfg(any(target_arch = "wasm32", test))]
     pro_runtime_context_hint: std::cell::Cell<ProRuntimeContext>,
-    #[cfg(target_arch = "wasm32")]
-    smart_search_in_progress: std::rc::Rc<std::cell::Cell<bool>>,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -1621,8 +1619,6 @@ impl MonsGameModel {
             game,
             #[cfg(any(target_arch = "wasm32", test))]
             pro_runtime_context_hint: std::cell::Cell::new(ProRuntimeContext::Unknown),
-            #[cfg(target_arch = "wasm32")]
-            smart_search_in_progress: std::rc::Rc::new(std::cell::Cell::new(false)),
         }
     }
 
@@ -1683,8 +1679,8 @@ impl MonsGameModel {
     }
 
     #[cfg(target_arch = "wasm32")]
-    #[wasm_bindgen(js_name = smartAutomoveAsync)]
-    pub fn smart_automove_async(&self, preference: &str) -> js_sys::Promise {
+    #[wasm_bindgen(js_name = smartAutomove)]
+    pub fn smart_automove(&self, preference: &str) -> Result<OutputModel, JsValue> {
         let Some(preference) = SmartAutomovePreference::from_api_value(preference) else {
             let message = format!(
                 "invalid smart automove mode; expected '{}', '{}', or '{}'",
@@ -1692,19 +1688,10 @@ impl MonsGameModel {
                 SmartAutomovePreference::Normal.as_api_value(),
                 SmartAutomovePreference::Pro.as_api_value(),
             );
-            return js_sys::Promise::reject(&JsValue::from_str(message.as_str()));
+            return Err(JsValue::from_str(message.as_str()));
         };
 
-        if self.smart_search_in_progress.get() {
-            return js_sys::Promise::reject(&JsValue::from_str(
-                "smart automove already in progress",
-            ));
-        }
-
-        self.smart_search_in_progress.set(true);
-        let output = self.smart_automove_output(preference);
-        self.smart_search_in_progress.set(false);
-        js_sys::Promise::resolve(&JsValue::from(output))
+        Ok(self.smart_automove_output(preference))
     }
 
     pub fn automove(&mut self) -> OutputModel {
