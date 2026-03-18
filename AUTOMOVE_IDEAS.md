@@ -4,17 +4,16 @@ This is the active backlog for upcoming automove iterations.
 
 Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file lean: active hypotheses only. Move long history to `docs/automove-archive.md` and durable lessons to `docs/automove-knowledge.md`.
 
-## Current State (2026-03-15)
+## Current State (2026-03-18)
 
-- Latest promotion: Normal mode moved to a fast-derived core with bounded extra Normal spend.
-- Pro recovery status: the opening-reply transplant wave and the primary quiescence-shaping wave are now closed.
-- Latest Pro promotion: primary-context tactical quiescence narrowing landed in production (`quiescence_node_budget=120`, tactical-only quiescence children, enum limit `12`).
-- Promotion validation snapshot:
-  - medium bounded `pro-progressive` (`2->4`, repeats `1`, max plies `64`): vs normal `delta=+0.1944` / vs fast `delta=+0.4444`
-  - bounded `pro-ladder` (`speed=12`, `primary=3x3@64`, `confirm=3x3@64`): pass; confirmation `vs_fast=-0.0556` within `-0.10` tolerance
-  - release speed gates: pass (`mixed median ms fast=5.95, normal=32.00, pro=180.32`)
-- Post-promotion sanity sweep (2026-03-15, 16 games per cell, neutral seeds, `max_plies=80`): `pro` remained ahead of both `fast` and `normal` (`pro-vs-fast delta=+0.250`, `pro-vs-normal delta=+0.3125`).
-- Latest cross-mode directional sweep (2026-03-15, focus `normal`, same quick matrix settings): `normal-vs-fast delta=+0.1875` (`11W-5L`), `normal-vs-pro delta=-0.3750` (`2W-14L`).
+- Latest production promotion: Pro now uses the turn-opportunity planner path in `runtime_current` (full-turn abstract opportunity planning + bounded 2-turn response layer + hash-guarded continuation replay).
+- Production Pro validation snapshot (`runtime_current` vs `runtime_release_safe_pre_exact`, bounded `pro-ladder`):
+  - speed gate ratio: `5.889` (pass under cap `10.0`)
+  - primary summary: `vs_normal delta=+0.1667`, `vs_fast delta=+0.4444`
+  - confirmation summary: `vs_normal delta=0.0000`, `vs_fast delta=+0.2500` (tolerance `-0.10`)
+  - pool summary: candidate `vs_normal=0.0000`, baseline `-0.3000`; candidate `vs_fast=+0.2000`, baseline `0.0000`
+- Release speed gates after promotion: pass (`opening black reply`: fast `3.87ms`, normal `3.99ms`, pro `4.06ms`; `mixed`: fast `5.89ms`, normal `31.82ms`, pro `121.68ms`).
+- Fast/Normal planner port status: still not promotable; repeated mixed-ladder attempts regressed Normal (typical `delta=-0.0556` lane), so planner rollout remains Pro-only.
 - Workflow update kept: `./scripts/run-automove-experiment.sh pro-opening-speed-probe <candidate> [baseline]` is available for Pro `opening_reply` ideas.
 
 ## Template
@@ -37,6 +36,27 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
 - Notes:
 
 ## Active Frontier
+
+### Idea: Pro turn-opportunity planner v1
+- Base profile: `runtime_current`
+- Target mode: `pro`
+- Triage surface: `primary_pro` (off-target guard: `opening_reply`)
+- Triage pass signal: strong bounded `pro-fast-screen` / `pro-progressive` and bounded `pro-ladder` pass with release speed gates green
+- Calibration gate: none
+- Candidate budget: 1
+- Expected upside: replace per-input tree behavior with stronger full-turn tactical conversion
+- CPU risk: medium-to-high (bounded by planner beam/node caps and strict Pro-only activation)
+- Cheapest falsifier: fail bounded `pro-fast-screen` or exceed bounded `pro-ladder` speed ratio cap
+- Escalate only if: `guardrails -> pro-triage -> runtime-preflight -> pro-fast-screen -> pro-progressive` stays positive
+- Kill if: bounded ladder primary/confirm misses or release speed gates regress
+- Next split if rejected: tighten planner route activation and fallback acceptance thresholds before adding new route families
+- How to test: `guardrails -> SMART_TRIAGE_SURFACE=primary_pro pro-triage -> runtime-preflight -> pro-fast-screen -> pro-progressive -> pro-ladder`, then release speed gates
+- Status: closed (promoted to production Pro in `runtime_current`)
+- Notes:
+  - Candidate profile `runtime_pro_turn_planner_v1` cleared bounded Pro ladder and produced stronger pool deltas than baseline.
+  - Production mapping was then transplanted into Pro runtime config (`enable_turn_opportunity_planner=true`, bounded branch/node budget lift, deterministic tie-break + event-ordering bonus).
+  - Opening-book behavior remains unchanged; planner remains gated to non-opening Pro runtime context.
+  - Fast/Normal transplant attempts with the same planner family failed mixed-ladder non-regression; rollout stays Pro-only.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`

@@ -1688,6 +1688,13 @@ struct LossProbeTrace {
     pro: LossProbeDecision,
 }
 
+struct ReliabilityLossProbeTrace {
+    ply: usize,
+    fen: String,
+    candidate: LossProbeDecision,
+    baseline: LossProbeDecision,
+}
+
 fn loss_probe_seed_tags() -> Vec<String> {
     let from_env = env::var("SMART_PROBE_SEED_TAGS")
         .ok()
@@ -1910,6 +1917,82 @@ fn replay_normal_vs_fast_loss_probe_game(
     )
 }
 
+fn replay_pro_reliability_loss_probe_game(
+    candidate_profile: &str,
+    baseline_profile: &str,
+    opening_fen: &str,
+    candidate_is_white: bool,
+    max_plies: usize,
+    trace_limit: usize,
+) -> (MatchResult, Vec<ReliabilityLossProbeTrace>) {
+    let baseline_selector = profile_selector_from_name(baseline_profile).unwrap_or_else(|| {
+        panic!(
+            "profile '{}' not found for reliability probe baseline side",
+            baseline_profile
+        )
+    });
+    let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
+    let mut traces = Vec::new();
+
+    for ply in 0..max_plies {
+        if let Some(winner_color) = game.winner_color() {
+            return (
+                match_result_from_winner(winner_color, candidate_is_white),
+                traces,
+            );
+        }
+
+        let candidate_to_move = if candidate_is_white {
+            game.active_color == Color::White
+        } else {
+            game.active_color == Color::Black
+        };
+
+        let inputs = if candidate_to_move {
+            let candidate = loss_probe_decision(candidate_profile, SmartAutomovePreference::Pro, &game);
+            let baseline = loss_probe_decision(baseline_profile, SmartAutomovePreference::Pro, &game);
+            let candidate_inputs = candidate.inputs.clone();
+            if candidate.move_fen != baseline.move_fen && traces.len() < trace_limit {
+                traces.push(ReliabilityLossProbeTrace {
+                    ply,
+                    fen: game.fen(),
+                    candidate,
+                    baseline,
+                });
+            }
+            candidate_inputs
+        } else {
+            let config =
+                loss_probe_runtime_config(baseline_profile, &game, SmartAutomovePreference::Pro);
+            select_inputs_with_runtime_fallback(baseline_selector, &game, config)
+        };
+
+        if inputs.is_empty() {
+            return if candidate_to_move {
+                (MatchResult::OpponentWin, traces)
+            } else {
+                (MatchResult::CandidateWin, traces)
+            };
+        }
+
+        if !matches!(game.process_input(inputs, false, false), Output::Events(_)) {
+            return if candidate_to_move {
+                (MatchResult::OpponentWin, traces)
+            } else {
+                (MatchResult::CandidateWin, traces)
+            };
+        }
+    }
+
+    (
+        match adjudicate_non_terminal_game(&game) {
+            Some(winner_color) => match_result_from_winner(winner_color, candidate_is_white),
+            None => MatchResult::Draw,
+        },
+        traces,
+    )
+}
+
 #[test]
 #[ignore = "diagnostic: replay Normal losses vs Fast and print same-position move disagreements"]
 fn smart_automove_normal_vs_fast_loss_probe() {
@@ -2079,6 +2162,259 @@ fn smart_automove_normal_vs_fast_loss_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: replay pro reliability smoke losses and print candidate-vs-baseline divergences"]
+fn smart_automove_pro_reliability_loss_probe() {
+    let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
+        .unwrap_or_else(|| "runtime_pro_turn_planner_v1".into());
+    let baseline_profile =
+        env_profile_name("SMART_PROBE_BASELINE_PROFILE").unwrap_or_else(|| "runtime_current".into());
+    let repeats = env_usize("SMART_PRO_RELIABILITY_REPEATS")
+        .unwrap_or(2)
+        .max(1);
+    let games_per_repeat = env_usize("SMART_PRO_RELIABILITY_GAMES")
+        .unwrap_or(2)
+        .max(1);
+    let max_plies = env_usize("SMART_PRO_RELIABILITY_MAX_PLIES")
+        .unwrap_or(12)
+        .max(1);
+    let trace_limit = env_usize("SMART_PROBE_TRACE_LIMIT").unwrap_or(3).max(1);
+    let seed_tag = env_profile_name("SMART_PRO_RELIABILITY_SEED_TAG")
+        .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
+
+    let budget = SearchBudget::from_preference(SmartAutomovePreference::Pro);
+    let mut aggregate = MatchupStats::default();
+    let mut losses = 0usize;
+    let mut losses_with_disagreement = 0usize;
+    let mut disagreements_logged = 0usize;
+    let mut baseline_safer_supermana = 0usize;
+    let mut baseline_safer_opponent_mana = 0usize;
+    let mut baseline_avoids_handoff = 0usize;
+    let mut baseline_avoids_roundtrip = 0usize;
+    let mut baseline_avoids_drainer_vulnerability = 0usize;
+
+    eprintln!(
+        "pro reliability loss probe config: candidate_profile={} baseline_profile={} seed_tag={} repeats={} games_per_repeat={} max_plies={} trace_limit={}",
+        candidate_profile,
+        baseline_profile,
+        seed_tag,
+        repeats,
+        games_per_repeat,
+        max_plies,
+        trace_limit
+    );
+
+    for repeat_index in 0..repeats {
+        let seed =
+            seed_for_budget_duel_repeat_and_tag(budget, budget, repeat_index, seed_tag.as_str());
+        let opening_fens = generate_opening_fens_cached(seed, games_per_repeat);
+
+        for (opening_index, opening_fen) in opening_fens.iter().enumerate() {
+            let candidate_white_ab = opening_index % 2 == 0;
+            for (mirror, candidate_is_white) in
+                [("ab", candidate_white_ab), ("ba", !candidate_white_ab)]
+            {
+                let (result, traces) = replay_pro_reliability_loss_probe_game(
+                    candidate_profile.as_str(),
+                    baseline_profile.as_str(),
+                    opening_fen.as_str(),
+                    candidate_is_white,
+                    max_plies,
+                    trace_limit,
+                );
+                aggregate.record(result);
+
+                if result != MatchResult::OpponentWin {
+                    continue;
+                }
+
+                losses += 1;
+                if !traces.is_empty() {
+                    losses_with_disagreement += 1;
+                }
+
+                eprintln!(
+                    "PRO_LOSS game={} repeat={} opening_index={} mirror={} candidate_is_white={} seed={} opening={}",
+                    losses,
+                    repeat_index,
+                    opening_index,
+                    mirror,
+                    candidate_is_white,
+                    seed,
+                    opening_fen
+                );
+                for trace in &traces {
+                    disagreements_logged += 1;
+                    if let (Some(candidate_root), Some(baseline_root)) = (
+                        trace.candidate.selected_root.as_ref(),
+                        trace.baseline.selected_root.as_ref(),
+                    ) {
+                        if baseline_root.safe_supermana_progress_steps
+                            < candidate_root.safe_supermana_progress_steps
+                        {
+                            baseline_safer_supermana += 1;
+                        }
+                        if baseline_root.safe_opponent_mana_progress_steps
+                            < candidate_root.safe_opponent_mana_progress_steps
+                        {
+                            baseline_safer_opponent_mana += 1;
+                        }
+                        if candidate_root.mana_handoff_to_opponent
+                            && !baseline_root.mana_handoff_to_opponent
+                        {
+                            baseline_avoids_handoff += 1;
+                        }
+                        if candidate_root.has_roundtrip && !baseline_root.has_roundtrip {
+                            baseline_avoids_roundtrip += 1;
+                        }
+                        if candidate_root.own_drainer_vulnerable
+                            && !baseline_root.own_drainer_vulnerable
+                        {
+                            baseline_avoids_drainer_vulnerability += 1;
+                        }
+                    }
+                    eprintln!("  TRACE ply={} fen={}", trace.ply, trace.fen);
+                    print_loss_probe_decision("    candidate", &trace.candidate);
+                    print_loss_probe_decision("    baseline", &trace.baseline);
+                }
+            }
+        }
+    }
+
+    eprintln!(
+        "pro reliability loss probe summary: total_games={} wins={} losses={} draws={} win_rate={:.4} confidence={:.4} losses_with_disagreement={} disagreements_logged={} baseline_safer_supermana={} baseline_safer_opponent_mana={} baseline_avoids_handoff={} baseline_avoids_roundtrip={} baseline_avoids_drainer_vulnerability={}",
+        aggregate.total_games(),
+        aggregate.wins,
+        aggregate.losses,
+        aggregate.draws,
+        aggregate.win_rate_points(),
+        aggregate.confidence_better_than_even(),
+        losses_with_disagreement,
+        disagreements_logged,
+        baseline_safer_supermana,
+        baseline_safer_opponent_mana,
+        baseline_avoids_handoff,
+        baseline_avoids_roundtrip,
+        baseline_avoids_drainer_vulnerability,
+    );
+
+    assert!(losses > 0, "reliability loss probe found no candidate losses");
+}
+
+#[test]
+#[ignore = "diagnostic: compare profile outcomes on known pro-reliability loss openings"]
+fn smart_automove_pro_reliability_loss_opening_profile_shootout() {
+    let openings = [
+        (
+            "loss_a",
+            "0 0 w 0 0 1 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n02E0xn01A0xD0xS0xY0xn03",
+            false,
+        ),
+        (
+            "loss_b",
+            "0 0 w 0 0 0 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n03E0xA0xD0xS0xY0xn03",
+            false,
+        ),
+        (
+            "loss_c",
+            "0 0 w 0 0 2 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n04E0xn01D0xn04/n04A0xn01S0xY0xn03",
+            true,
+        ),
+    ];
+    let candidate_profiles = [
+        "runtime_current",
+        "runtime_release_safe_pre_exact",
+        "runtime_pro_quiescence_v2",
+        "runtime_pro_primary_signal_v2",
+        "runtime_pro_turn_planner_v1",
+    ];
+    let baseline_profile = "runtime_current";
+    let max_plies = env_usize("SMART_PROBE_MAX_PLIES").unwrap_or(12).max(1);
+
+    for (id, opening_fen, candidate_is_white) in openings {
+        println!(
+            "\nshootout opening={} candidate_is_white={} max_plies={} opening={}",
+            id, candidate_is_white, max_plies, opening_fen
+        );
+        for candidate_profile in candidate_profiles {
+            let (result, traces) = replay_pro_reliability_loss_probe_game(
+                candidate_profile,
+                baseline_profile,
+                opening_fen,
+                candidate_is_white,
+                max_plies,
+                4,
+            );
+            let outcome = match result {
+                MatchResult::CandidateWin => "W",
+                MatchResult::OpponentWin => "L",
+                MatchResult::Draw => "D",
+            };
+            println!(
+                "  profile={} outcome={} divergences={}",
+                candidate_profile,
+                outcome,
+                traces.len()
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: probe pro confirmation lane deltas with opening-book enabled"]
+fn smart_automove_pro_confirmation_lane_probe() {
+    let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
+        .unwrap_or_else(|| "runtime_pro_turn_planner_v1".into());
+    let baseline_profile =
+        env_profile_name("SMART_PROBE_BASELINE_PROFILE").unwrap_or_else(|| "runtime_release_safe_pre_exact".into());
+    let repeats = env_usize("SMART_PRO_CONFIRM_PROBE_REPEATS")
+        .unwrap_or(2)
+        .max(1);
+    let games = env_usize("SMART_PRO_CONFIRM_PROBE_GAMES")
+        .unwrap_or(2)
+        .max(1);
+    let max_plies = env_usize("SMART_PRO_CONFIRM_PROBE_MAX_PLIES")
+        .unwrap_or(56)
+        .max(24);
+
+    let vs_normal = run_cross_budget_duel(CrossBudgetDuelConfig {
+        profile_a: candidate_profile.as_str(),
+        mode_a: SmartAutomovePreference::Pro,
+        profile_b: baseline_profile.as_str(),
+        mode_b: SmartAutomovePreference::Normal,
+        seed_tag: "pro_confirm_vs_normal_v1",
+        repeats,
+        games_per_repeat: games,
+        max_plies,
+        use_white_opening_book: true,
+    });
+    let vs_fast = run_cross_budget_duel(CrossBudgetDuelConfig {
+        profile_a: candidate_profile.as_str(),
+        mode_a: SmartAutomovePreference::Pro,
+        profile_b: baseline_profile.as_str(),
+        mode_b: SmartAutomovePreference::Fast,
+        seed_tag: "pro_confirm_vs_fast_v1",
+        repeats,
+        games_per_repeat: games,
+        max_plies,
+        use_white_opening_book: true,
+    });
+    let (vn_delta, vn_conf) = stats_delta_confidence(vs_normal);
+    let (vf_delta, vf_conf) = stats_delta_confidence(vs_fast);
+    println!(
+        "pro confirm probe candidate={} baseline={} repeats={} games={} max_plies={} vs_normal_delta={:.4} vs_normal_conf={:.4} vs_fast_delta={:.4} vs_fast_conf={:.4}",
+        candidate_profile,
+        baseline_profile,
+        repeats,
+        games,
+        max_plies,
+        vn_delta,
+        vn_conf,
+        vf_delta,
+        vf_conf
+    );
+}
+
+#[test]
 fn smart_automove_pool_profile_registry_resolves_retained_profiles() {
     for profile_id in retained_profile_ids() {
         assert!(
@@ -2142,6 +2478,7 @@ fn smart_automove_pool_retained_profile_ids_match_active_registry() {
             "runtime_pro_quiescence_v1",
             "runtime_pro_quiescence_v2",
             "runtime_pro_primary_signal_v2",
+            "runtime_pro_turn_planner_v1",
         ]
     );
 }
@@ -3337,6 +3674,75 @@ fn smart_automove_pool_promotion_ladder() {
 }
 
 #[test]
+#[ignore = "reliability gate: pro turn planner vs runtime_current at pro budget"]
+fn smart_automove_pool_pro_reliability_gate() {
+    let candidate_profile = "runtime_pro_turn_planner_v1";
+    let baseline_profile = "runtime_current";
+    let candidate_selector = profile_selector_from_name(candidate_profile)
+        .unwrap_or_else(|| panic!("candidate '{}' not found", candidate_profile));
+    let baseline_selector = profile_selector_from_name(baseline_profile)
+        .unwrap_or_else(|| panic!("baseline '{}' not found", baseline_profile));
+
+    let skip_guardrails = env_bool("SMART_PRO_RELIABILITY_SKIP_GUARDRAILS").unwrap_or(false);
+    if skip_guardrails {
+        println!("pro reliability gate: guardrails skipped by SMART_PRO_RELIABILITY_SKIP_GUARDRAILS=true");
+    } else {
+        assert_runtime_preflight_if_required(candidate_profile, candidate_selector);
+        assert_tactical_guardrails(candidate_selector, candidate_profile);
+        assert_tactical_guardrails(baseline_selector, baseline_profile);
+    }
+
+    let repeats = env_usize("SMART_PRO_RELIABILITY_REPEATS")
+        .unwrap_or(20)
+        .max(1);
+    let games = env_usize("SMART_PRO_RELIABILITY_GAMES")
+        .unwrap_or(10)
+        .max(1);
+    let max_plies_floor = if skip_guardrails { 8 } else { 56 };
+    let max_plies = env_usize("SMART_PRO_RELIABILITY_MAX_PLIES")
+        .unwrap_or(96)
+        .max(max_plies_floor);
+    let seed_tag = env_profile_name("SMART_PRO_RELIABILITY_SEED_TAG")
+        .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
+
+    let stats = run_cross_budget_duel(CrossBudgetDuelConfig {
+        profile_a: candidate_profile,
+        mode_a: SmartAutomovePreference::Pro,
+        profile_b: baseline_profile,
+        mode_b: SmartAutomovePreference::Pro,
+        seed_tag: seed_tag.as_str(),
+        repeats,
+        games_per_repeat: games,
+        max_plies,
+        use_white_opening_book: false,
+    });
+    let total_games = stats.total_games();
+    let win_rate = stats.win_rate_points();
+    let confidence = stats.confidence_better_than_even();
+    println!(
+        "pro reliability gate: candidate={} baseline={} total_games={} win_rate={:.4} confidence={:.4}",
+        candidate_profile, baseline_profile, total_games, win_rate, confidence
+    );
+
+    let expected_games = repeats.saturating_mul(games).saturating_mul(2);
+    assert_eq!(
+        total_games, expected_games,
+        "pro reliability gate expected {} mirrored games but ran {}",
+        expected_games, total_games
+    );
+    assert!(
+        win_rate >= 0.90,
+        "pro reliability gate failed: win_rate {:.4} < 0.90",
+        win_rate
+    );
+    assert!(
+        confidence >= 0.99,
+        "pro reliability gate confidence failed: {:.4} < 0.99",
+        confidence
+    );
+}
+
+#[test]
 #[ignore = "pro fast screen against runtime normal baseline"]
 fn smart_automove_pool_pro_fast_screen_vs_normal() {
     let candidate_profile = pro_candidate_profile_name();
@@ -3515,6 +3921,16 @@ fn smart_automove_pool_pro_promotion_ladder() {
     .unwrap_or(1.0)
     .max(0.001);
     let speed_ratio = pro_ms / normal_ms;
+    println!(
+        "pro speed gate: candidate={} baseline={} pro_ms={:.2} normal_ms={:.2} ratio={:.3} target=[{:.3}, {:.3}]",
+        candidate_profile,
+        baseline_profile,
+        pro_ms,
+        normal_ms,
+        speed_ratio,
+        SMART_PRO_CPU_RATIO_TARGET_MIN,
+        SMART_PRO_CPU_RATIO_TARGET_MAX
+    );
     assert!(
         speed_ratio >= SMART_PRO_CPU_RATIO_TARGET_MIN,
         "pro cpu gate below target: ratio {:.3} < {:.3}",
@@ -3563,6 +3979,13 @@ fn smart_automove_pool_pro_promotion_ladder() {
     });
     let (vs_normal_delta, vs_normal_confidence) = stats_delta_confidence(vs_normal_stats);
     let (vs_fast_delta, vs_fast_confidence) = stats_delta_confidence(vs_fast_stats);
+    println!(
+        "pro primary summary: vs_normal delta={:.4} confidence={:.3} vs_fast delta={:.4} confidence={:.3}",
+        vs_normal_delta,
+        vs_normal_confidence,
+        vs_fast_delta,
+        vs_fast_confidence
+    );
     assert!(
         vs_normal_delta >= SMART_PRO_PRIMARY_IMPROVEMENT_DELTA_MIN_VS_NORMAL,
         "pro primary vs normal failed: delta {:.4} < {:.4}",
@@ -3678,6 +4101,13 @@ fn smart_automove_pool_pro_promotion_ladder() {
         stats_delta_confidence(candidate_pool_vs_normal).0 + 0.01
             >= stats_delta_confidence(baseline_pool_vs_normal).0,
         "pro pool non-regression vs normal-opponents failed"
+    );
+    println!(
+        "pro pool summary: candidate_vs_normal={:.4} baseline_vs_normal={:.4} candidate_vs_fast={:.4} baseline_vs_fast={:.4}",
+        stats_delta_confidence(candidate_pool_vs_normal).0,
+        stats_delta_confidence(baseline_pool_vs_normal).0,
+        stats_delta_confidence(candidate_pool_vs_fast).0,
+        stats_delta_confidence(baseline_pool_vs_fast).0
     );
     assert!(
         stats_delta_confidence(candidate_pool_vs_fast).0 + 0.01

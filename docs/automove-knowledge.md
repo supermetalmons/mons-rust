@@ -5,6 +5,8 @@ This document keeps only durable lessons that should shape future automove work.
 ## Durable Strategy Signals
 
 - Strong root filtering beats wider raw enumeration when the filters are tactical and cheap.
+- Full-turn opportunity planning can outperform per-input tree expansion when it is anchored to tactical route families and compiled back through existing legality checks.
+- A hash-guarded continuation cache materially improves turn-level planner stability and cost across repeated automove calls, but it must be invalidated on divergence and cleared between duel games in harness runs.
 - Drainer safety needs close-to-hard treatment in production search; soft penalties alone miss obvious blunders.
 - Root reply-risk guards and efficiency tie-breaks are worth keeping because they remove fake-good moves before deeper search.
 - Production wasm must stay single-shot and predictable. Deferred or post-return search is still not release-safe.
@@ -60,6 +62,7 @@ This document keeps only durable lessons that should shape future automove work.
 - Fast non-reply-risk config splits can fail the same way: `drainer_safety` and minimal Fast exact-lite progress were fully non-moving on their own triage surfaces, while a spirit-setup split moved triage but still landed the identical first-duel flat pattern (`fast 2W-2L`, `normal 2W-2L`). Treat this as a broader Fast-config saturation signal.
 - Fast tactical-only quiescence ordering can move `opponent_mana` strongly (`changed=14/18`) yet still fail first duel hard against the promotion baseline (aggregate negative with a large `vs normal` loss lane). Surface movement on tactical fixtures is necessary but not sufficient; duel direction dominates keep/kill.
 - A tiny Fast tactical-quiescence top-off (`budget=8`, tactical-only, enum=8) was fully non-moving on `opponent_mana` (`changed=0/18`) while calibration remained valid, so ultra-light quiescence toggles are also low-yield in this lane.
+- Planner rollout is mode-sensitive: the Pro turn-planner line is promotable with bounded budget and acceptance filters, while direct Fast/Normal transplants currently regress mixed-ladder non-regression (Normal lane around `-0.0556` in bounded runs). Keep planner enablement Pro-first until dedicated Fast/Normal abstractions are proven.
 - Disabling Fast forced tactical prepass alone was also fully non-moving on `opponent_mana` (`changed=0/18`), so this prepass toggle does not provide a useful standalone promotion lane.
 - Fast root/node shape rebalance (narrower root, broader node, root two-pass enabled) can be fully non-moving on `reply_risk` (`changed=0/3`) even when baseline calibration is green, and show only weak tactical movement (`opponent_mana changed=3/18`); treat as non-promising and kill before preflight/duel spend.
 - Fast search-ordering-only tweaks (history heuristic + killer ordering) can also be fully non-moving on both primary and fallback fast surfaces (`reply_risk 0/3`, `opponent_mana 0/18`); no duel budget should be spent on this lane without deterministic surface movement first.

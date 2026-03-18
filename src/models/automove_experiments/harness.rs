@@ -281,6 +281,7 @@ pub(super) fn play_one_game(
     max_plies: usize,
 ) -> MatchResult {
     let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
+    clear_turn_opportunity_plan_cache();
     let use_white_opening_book = env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false);
 
     for _ in 0..max_plies {
@@ -367,6 +368,7 @@ pub(super) fn play_one_game_budget_duel(
     max_plies: usize,
 ) -> MatchResult {
     let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
+    clear_turn_opportunity_plan_cache();
     let use_white_opening_book = env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false);
 
     for _ in 0..max_plies {

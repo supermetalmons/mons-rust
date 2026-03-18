@@ -151,6 +151,33 @@ This wave focused on recovering Pro strength after the Normal promotion. Two ide
   - stage: `./scripts/run-automove-experiment.sh pro-opening-speed-probe <candidate> [baseline]`
 - This is retained as workflow infrastructure for future `opening_reply` ideas.
 
+## Wave 5: Pro Turn-Opportunity Planner (Mar 17–18, 2026)
+
+This wave replaced Pro’s per-input tactical behavior with a turn-opportunity planner that evaluates abstract full-turn routes first and compiles them back into legal inputs using existing game rules.
+
+### Promoted — Pro Turn Planner
+
+- Candidate: `runtime_pro_turn_planner_v1`.
+- Core shipped behavior:
+  - New planner module with route families (`drainer_score`, `drainer_kill`, `spirit_impact`, `drainer_safety`, `mana_move`) and bounded beam assembly.
+  - 2-turn evaluation (`our full turn` + `opponent full response`) with tactical lexicographic utility.
+  - Hash-guarded continuation cache keyed by search-state hash + planner mode.
+  - Planner activation and acceptance are constrained by tactical signals and rooted against legal root candidates.
+- Promotion proof (bounded Pro ladder):
+  - speed ratio `5.889` (cap `10.0`)
+  - primary: `vs_normal +0.1667`, `vs_fast +0.4444`
+  - confirmation: `vs_normal 0.0000`, `vs_fast +0.2500` (tolerance `-0.10`)
+  - pool summary improved over baseline.
+- Production transplant:
+  - Pro runtime in `runtime_current` now enables turn planner in primary Pro context with bounded budget lift and deterministic tie-break/event ordering enabled.
+  - Release speed gates remained green after transplant.
+
+### Closed — Fast/Normal Turn-Planner Port Attempts
+
+- Multiple direct planner transplants into Fast/Normal failed mixed-ladder non-regression.
+- Repeated pattern: Normal lane regressed (typical bounded ladder `delta=-0.0556`) despite local tactical improvements.
+- Decision: keep planner rollout Pro-only for now; treat Fast/Normal as separate future abstractions instead of direct Pro transplant.
+
 ## Mistakes Not To Repeat
 
 - Do not keep historical profiles live in the active registry after their lesson is absorbed.

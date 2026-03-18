@@ -969,6 +969,7 @@ struct SmartSearchConfig {
     enable_root_exact_tactics: bool,
     enable_child_exact_tactics: bool,
     enable_static_exact_evaluation: bool,
+    enable_turn_opportunity_planner: bool,
     enable_exact_lite_progress_checks: bool,
     enable_exact_lite_spirit_window_checks: bool,
     exact_lite_root_call_budget: usize,
@@ -1283,6 +1284,7 @@ impl SmartSearchConfig {
             enable_root_exact_tactics: true,
             enable_child_exact_tactics: true,
             enable_static_exact_evaluation: true,
+            enable_turn_opportunity_planner: false,
             enable_exact_lite_progress_checks: false,
             enable_exact_lite_spirit_window_checks: false,
             exact_lite_root_call_budget: 0,
@@ -2363,6 +2365,12 @@ impl MonsGameModel {
         config.enable_selective_extensions = true;
         config.max_extensions_per_path = 1;
         config.selective_extension_node_share_bp = 1_500;
+        config.enable_interview_deterministic_tiebreak = true;
+        config.enable_event_ordering_bonus = true;
+        config.max_visited_nodes = config.max_visited_nodes.saturating_mul(9) / 8;
+        config.root_branch_limit = config.root_branch_limit.saturating_add(1).min(14);
+        config.node_branch_limit = config.node_branch_limit.saturating_add(1).min(12);
+        config.enable_turn_opportunity_planner = true;
         config.scoring_weights =
             Self::runtime_phase_adaptive_attacker_proximity_scoring_weights(game, config.depth);
         config.interview_soft_opponent_mana_progress_bonus = 320;
@@ -5941,6 +5949,272 @@ impl MonsGameModel {
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
+    fn turn_planner_search_config(config: SmartSearchConfig) -> TurnPlannerSearchConfig {
+        TurnPlannerSearchConfig {
+            max_nodes: (config.max_visited_nodes / 64).clamp(32, 192),
+            beam_width: (config.root_branch_limit / 10).clamp(2, 4),
+            response_beam_width: 1,
+            step_cap: (Config::MONS_MOVES_PER_TURN as usize + 2).clamp(5, 7),
+            route_cap: config.root_enum_limit.clamp(6, 12),
+            per_node_route_cap: config.node_branch_limit.clamp(2, 4),
+            scoring_weights: config.scoring_weights,
+            allow_exact_static_evaluation: config.enable_static_exact_evaluation,
+        }
+    }
+
+    #[cfg(any(target_arch = "wasm32", test))]
+    fn accept_turn_planner_choice(root_moves: &[ScoredRootMove], planner_inputs: &[Input]) -> bool {
+        let Some(index) = root_moves
+            .iter()
+            .position(|candidate| candidate.inputs.as_slice() == planner_inputs)
+        else {
+            return false;
+        };
+        let Some(top) = root_moves.first() else {
+            return false;
+        };
+        let top_unsafe = top.mana_handoff_to_opponent
+            || (top.own_drainer_vulnerable
+                && !top.classes.drainer_safety_recover
+                && !top.attacks_opponent_drainer
+                && top.same_turn_score_window_value <= 0);
+        if index == 0 {
+            let top_is_tactical = top.wins_immediately
+                || top.attacks_opponent_drainer
+                || top.scores_supermana_this_turn
+                || top.scores_opponent_mana_this_turn
+                || top.safe_supermana_pickup_now
+                || top.safe_opponent_mana_pickup_now
+                || top.supermana_progress
+                || top.opponent_mana_progress
+                || top.same_turn_score_window_value > 0
+                || top.spirit_same_turn_score_setup_now
+                || top.spirit_development
+                || top.classes.drainer_safety_recover;
+            return top_is_tactical && !top_unsafe;
+        }
+        let candidate = &root_moves[index];
+        if candidate.wins_immediately {
+            return true;
+        }
+        if top.wins_immediately {
+            return false;
+        }
+
+        let decisive_tactical = candidate.attacks_opponent_drainer
+            || candidate.scores_supermana_this_turn
+            || candidate.scores_opponent_mana_this_turn
+            || candidate.safe_supermana_pickup_now
+            || candidate.safe_opponent_mana_pickup_now;
+        let soft_tactical =
+            candidate.same_turn_score_window_value > 0 || candidate.spirit_same_turn_score_setup_now;
+        let candidate_unsafe = candidate.mana_handoff_to_opponent
+            || (candidate.own_drainer_vulnerable
+                && !candidate.classes.drainer_safety_recover
+                && !candidate.attacks_opponent_drainer
+                && candidate.same_turn_score_window_value <= 0);
+        if candidate_unsafe {
+            return false;
+        }
+
+        let heuristic_gap = top.heuristic.saturating_sub(candidate.heuristic);
+
+        let material_advantage = (candidate.attacks_opponent_drainer && !top.attacks_opponent_drainer)
+            || ((candidate.scores_supermana_this_turn || candidate.scores_opponent_mana_this_turn)
+                && !(top.scores_supermana_this_turn || top.scores_opponent_mana_this_turn))
+            || ((candidate.safe_supermana_pickup_now || candidate.safe_opponent_mana_pickup_now)
+                && !(top.safe_supermana_pickup_now || top.safe_opponent_mana_pickup_now))
+            || (candidate.classes.drainer_safety_recover
+                && !top.classes.drainer_safety_recover
+                && top.own_drainer_vulnerable
+                && !candidate.own_drainer_vulnerable)
+            || (candidate.same_turn_score_window_value
+                > top.same_turn_score_window_value.saturating_add(1));
+
+        let candidate_progress_better = candidate.safe_supermana_progress_steps
+            < top.safe_supermana_progress_steps
+            || candidate.safe_opponent_mana_progress_steps < top.safe_opponent_mana_progress_steps;
+        let candidate_safer = (!candidate.own_drainer_vulnerable && top.own_drainer_vulnerable)
+            || (!candidate.mana_handoff_to_opponent && top.mana_handoff_to_opponent);
+        let progress_signal =
+            candidate.supermana_progress || candidate.opponent_mana_progress || candidate_progress_better;
+        let progress_only = progress_signal
+            && !decisive_tactical
+            && !soft_tactical
+            && !candidate.classes.drainer_safety_recover
+            && !candidate.spirit_same_turn_score_setup_now;
+        let tactical_or_progress = decisive_tactical
+            || soft_tactical
+            || candidate.classes.drainer_safety_recover
+            || candidate.spirit_same_turn_score_setup_now
+            || progress_signal;
+
+        if progress_only {
+            if !(candidate_safer || top_unsafe) {
+                return false;
+            }
+            if index <= 4 && heuristic_gap <= 180 {
+                return true;
+            }
+            return false;
+        }
+
+        if tactical_or_progress {
+            if candidate.own_drainer_vulnerable && !candidate.classes.drainer_safety_recover {
+                return false;
+            }
+            let tactical_signal = material_advantage
+                || (candidate_progress_better && (candidate_safer || top_unsafe))
+                || (candidate.classes.drainer_safety_recover
+                    && top.own_drainer_vulnerable
+                    && !candidate.own_drainer_vulnerable)
+                || (candidate.spirit_same_turn_score_setup_now
+                    && candidate.same_turn_score_window_value > top.same_turn_score_window_value);
+            if tactical_signal && index <= 6 && heuristic_gap <= 520 {
+                return true;
+            }
+            if material_advantage && index <= 8 && heuristic_gap <= 640 {
+                return true;
+            }
+            return false;
+        }
+
+        if (candidate_safer && candidate_progress_better) && index <= 5 && heuristic_gap <= 220 {
+            return true;
+        }
+
+        false
+    }
+
+    #[cfg(any(target_arch = "wasm32", test))]
+    fn should_invoke_turn_planner(root_moves: &[ScoredRootMove]) -> bool {
+        let Some(top) = root_moves.first() else {
+            return false;
+        };
+        if top.wins_immediately
+            || top.attacks_opponent_drainer
+            || top.same_turn_score_window_value >= 2
+            || top.scores_supermana_this_turn
+            || top.scores_opponent_mana_this_turn
+            || top.safe_supermana_pickup_now
+            || top.safe_opponent_mana_pickup_now
+            || top.supermana_progress
+            || top.opponent_mana_progress
+            || top.spirit_same_turn_score_setup_now
+            || top.spirit_development
+            || top.classes.drainer_safety_recover
+        {
+            return true;
+        }
+
+        root_moves.iter().take(3).any(|candidate| {
+            candidate.attacks_opponent_drainer
+                || candidate.scores_supermana_this_turn
+                || candidate.scores_opponent_mana_this_turn
+                || candidate.safe_supermana_pickup_now
+                || candidate.safe_opponent_mana_pickup_now
+                || candidate.supermana_progress
+                || candidate.opponent_mana_progress
+                || candidate.same_turn_score_window_value >= 2
+                || candidate.spirit_same_turn_score_setup_now
+                || candidate.spirit_development
+                || candidate.classes.drainer_safety_recover
+        })
+    }
+
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub(crate) fn turn_planner_targeted_inputs(
+        game: &MonsGame,
+        perspective: Color,
+        max_candidates: usize,
+    ) -> Vec<Vec<Input>> {
+        if max_candidates == 0 || game.active_color != perspective {
+            return Vec::new();
+        }
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config = Self::with_runtime_scoring_weights(game, config);
+        config.enable_turn_opportunity_planner = false;
+        config.root_enum_limit = config.root_enum_limit.min(72);
+        config.node_enum_limit = config.node_enum_limit.min(54);
+        config.root_branch_limit = config.root_branch_limit.clamp(6, 12);
+        config.node_branch_limit = config.node_branch_limit.clamp(4, 10);
+
+        let per_surface = max_candidates.clamp(2, 8);
+        let mut transitions: Vec<LegalInputTransition> = Vec::new();
+
+        transitions.extend(Self::collect_targeted_same_turn_score_window_inputs(
+            game,
+            perspective,
+            config,
+            per_surface,
+        ));
+        transitions.extend(Self::collect_targeted_safe_drainer_pickup_inputs(
+            game,
+            perspective,
+            per_surface,
+            Mana::Supermana,
+        ));
+        transitions.extend(Self::collect_targeted_safe_drainer_pickup_inputs(
+            game,
+            perspective,
+            per_surface,
+            Mana::Regular(perspective.other()),
+        ));
+        transitions.extend(Self::collect_targeted_exact_progress_inputs(
+            game,
+            perspective,
+            config,
+            per_surface,
+            Mana::Supermana,
+        ));
+        transitions.extend(Self::collect_targeted_exact_progress_inputs(
+            game,
+            perspective,
+            config,
+            per_surface,
+            Mana::Regular(perspective.other()),
+        ));
+        transitions.extend(Self::collect_targeted_drainer_attack_inputs(
+            game,
+            perspective,
+            config,
+            per_surface,
+        ));
+        transitions.extend(Self::collect_targeted_drainer_safety_inputs(
+            game,
+            perspective,
+            config,
+            per_surface,
+            true,
+        ));
+        transitions.extend(Self::collect_targeted_spirit_score_inputs(
+            game,
+            perspective,
+            per_surface,
+            false,
+        ));
+        transitions.extend(Self::collect_targeted_spirit_score_inputs(
+            game,
+            perspective,
+            per_surface,
+            true,
+        ));
+
+        let mut seen = std::collections::HashSet::new();
+        let mut inputs = Vec::new();
+        for transition in transitions {
+            if seen.insert(transition.inputs.clone()) {
+                inputs.push(transition.inputs);
+                if inputs.len() >= max_candidates {
+                    break;
+                }
+            }
+        }
+        inputs
+    }
+
+    #[cfg(any(target_arch = "wasm32", test))]
     fn smart_search_best_inputs_internal(
         game: &MonsGame,
         config: SmartSearchConfig,
@@ -5951,6 +6225,27 @@ impl MonsGameModel {
         let root_moves = Self::ranked_root_moves(game, perspective, config);
         if root_moves.is_empty() {
             return Vec::new();
+        }
+        if config.enable_turn_opportunity_planner
+            && root_moves.len() > 1
+            && Self::should_invoke_turn_planner(root_moves.as_slice())
+        {
+            let planner_config = Self::turn_planner_search_config(config);
+            let allowed_root_steps = root_moves
+                .iter()
+                .map(|candidate| candidate.inputs.clone())
+                .collect::<Vec<_>>();
+            if let Some(inputs) = turn_opportunity_planner_next_inputs_from_allowed(
+                game,
+                perspective,
+                TurnPlannerMode::ProV1,
+                planner_config,
+                allowed_root_steps.as_slice(),
+            ) {
+                if Self::accept_turn_planner_choice(root_moves.as_slice(), inputs.as_slice()) {
+                    return inputs;
+                }
+            }
         }
         if let Some(forced_inputs) =
             Self::forced_tactical_prepass_choice(game, perspective, root_moves.as_slice(), config)
@@ -11258,8 +11553,9 @@ mod opening_book_tests {
             independent_model.runtime_config_for_preference(SmartAutomovePreference::Pro);
         assert_eq!(
             independent_config.max_visited_nodes,
-            SMART_AUTOMOVE_PRO_MAX_VISITED_NODES as usize
+            (SMART_AUTOMOVE_PRO_MAX_VISITED_NODES as usize).saturating_mul(9) / 8
         );
+        assert!(independent_config.enable_turn_opportunity_planner);
         assert_eq!(independent_config.root_reply_risk_score_margin, 165);
         assert_eq!(independent_config.root_reply_risk_shortlist_max, 9);
         assert_eq!(independent_config.root_reply_risk_reply_limit, 24);
