@@ -2449,6 +2449,176 @@ fn smart_automove_pro_confirmation_lane_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: probe pro pool non-regression lanes without ladder asserts"]
+fn smart_automove_pro_pool_lane_probe() {
+    let candidate_profile = pro_candidate_profile_name();
+    let baseline_profile = pro_baseline_profile_name();
+    let pool_games = env_usize("SMART_PRO_GATE_POOL_GAMES").unwrap_or(1).max(1);
+    let pool_max_plies = env_usize("SMART_PRO_GATE_POOL_MAX_PLIES")
+        .unwrap_or(80)
+        .max(56);
+    let pro_vs_normal_tag = env::var("SMART_PRO_POOL_PROBE_CANDIDATE_NORMAL_TAG")
+        .unwrap_or_else(|_| "pro_pool_vs_normal".to_string());
+    let baseline_vs_normal_tag = env::var("SMART_PRO_POOL_PROBE_BASELINE_NORMAL_TAG")
+        .unwrap_or_else(|_| "baseline_pool_vs_normal".to_string());
+    let pro_vs_fast_tag = env::var("SMART_PRO_POOL_PROBE_CANDIDATE_FAST_TAG")
+        .unwrap_or_else(|_| "pro_pool_vs_fast".to_string());
+    let baseline_vs_fast_tag = env::var("SMART_PRO_POOL_PROBE_BASELINE_FAST_TAG")
+        .unwrap_or_else(|_| "baseline_pool_vs_fast".to_string());
+
+    let candidate_pool_vs_normal = run_profile_vs_pool_cross_budget(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Pro,
+        SmartAutomovePreference::Normal,
+        pool_games,
+        pool_max_plies,
+        pro_vs_normal_tag.as_str(),
+    );
+    let baseline_pool_vs_normal = run_profile_vs_pool_cross_budget(
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Normal,
+        SmartAutomovePreference::Normal,
+        pool_games,
+        pool_max_plies,
+        baseline_vs_normal_tag.as_str(),
+    );
+    let candidate_pool_vs_fast = run_profile_vs_pool_cross_budget(
+        candidate_profile.as_str(),
+        SmartAutomovePreference::Pro,
+        SmartAutomovePreference::Fast,
+        pool_games,
+        pool_max_plies,
+        pro_vs_fast_tag.as_str(),
+    );
+    let baseline_pool_vs_fast = run_profile_vs_pool_cross_budget(
+        baseline_profile.as_str(),
+        SmartAutomovePreference::Fast,
+        SmartAutomovePreference::Fast,
+        pool_games,
+        pool_max_plies,
+        baseline_vs_fast_tag.as_str(),
+    );
+
+    let candidate_vs_normal = stats_delta_confidence(candidate_pool_vs_normal).0;
+    let baseline_vs_normal = stats_delta_confidence(baseline_pool_vs_normal).0;
+    let candidate_vs_fast = stats_delta_confidence(candidate_pool_vs_fast).0;
+    let baseline_vs_fast = stats_delta_confidence(baseline_pool_vs_fast).0;
+
+    println!(
+        "pro pool probe candidate={} baseline={} games={} max_plies={} candidate_vs_normal={:.4} baseline_vs_normal={:.4} margin_vs_normal={:.4} candidate_vs_fast={:.4} baseline_vs_fast={:.4} margin_vs_fast={:.4}",
+        candidate_profile,
+        baseline_profile,
+        pool_games,
+        pool_max_plies,
+        candidate_vs_normal,
+        baseline_vs_normal,
+        candidate_vs_normal - baseline_vs_normal,
+        candidate_vs_fast,
+        baseline_vs_fast,
+        candidate_vs_fast - baseline_vs_fast,
+    );
+
+    if env_bool("SMART_PRO_POOL_PROBE_BREAKDOWN").unwrap_or(false) {
+        let Some(candidate_selector) = profile_selector_from_name(candidate_profile.as_str()) else {
+            panic!(
+                "candidate selector '{}' should exist for pool probe breakdown",
+                candidate_profile
+            );
+        };
+        let Some(baseline_selector) = profile_selector_from_name(baseline_profile.as_str()) else {
+            panic!(
+                "baseline selector '{}' should exist for pool probe breakdown",
+                baseline_profile
+            );
+        };
+        let candidate_model = AutomoveModel {
+            id: "pro_pool_probe_candidate",
+            select_inputs: candidate_selector,
+        };
+        let baseline_model = AutomoveModel {
+            id: "pro_pool_probe_baseline",
+            select_inputs: baseline_selector,
+        };
+        let pro_budget = SearchBudget::from_preference(SmartAutomovePreference::Pro);
+        let normal_budget = SearchBudget::from_preference(SmartAutomovePreference::Normal);
+        let opponents = selected_pool_models();
+
+        let original_opening_book = env::var("SMART_USE_WHITE_OPENING_BOOK").ok();
+        env::set_var("SMART_USE_WHITE_OPENING_BOOK", "false");
+        for (opponent_index, opponent) in opponents.iter().copied().enumerate() {
+            let candidate_seed = seed_for_budget_duel_repeat_and_tag(
+                pro_budget,
+                normal_budget,
+                opponent_index,
+                format!("{}:pool_{}", pro_vs_normal_tag, opponent_index).as_str(),
+            );
+            let baseline_seed = seed_for_budget_duel_repeat_and_tag(
+                normal_budget,
+                normal_budget,
+                opponent_index,
+                format!("{}:pool_{}", baseline_vs_normal_tag, opponent_index).as_str(),
+            );
+
+            let candidate_ab = run_budget_duel_series(
+                candidate_model,
+                pro_budget,
+                opponent,
+                normal_budget,
+                pool_games,
+                candidate_seed,
+                pool_max_plies,
+            );
+            let candidate_ba = run_budget_duel_series(
+                opponent,
+                normal_budget,
+                candidate_model,
+                pro_budget,
+                pool_games,
+                candidate_seed,
+                pool_max_plies,
+            );
+            let baseline_ab = run_budget_duel_series(
+                baseline_model,
+                normal_budget,
+                opponent,
+                normal_budget,
+                pool_games,
+                baseline_seed,
+                pool_max_plies,
+            );
+            let baseline_ba = run_budget_duel_series(
+                opponent,
+                normal_budget,
+                baseline_model,
+                normal_budget,
+                pool_games,
+                baseline_seed,
+                pool_max_plies,
+            );
+
+            let candidate_stats = mirrored_candidate_stats(candidate_ab, candidate_ba);
+            let baseline_stats = mirrored_candidate_stats(baseline_ab, baseline_ba);
+            let candidate_delta = candidate_stats.win_rate_points() - 0.5;
+            let baseline_delta = baseline_stats.win_rate_points() - 0.5;
+            println!(
+                "pro pool probe breakdown opponent={} candidate_delta={:.4} baseline_delta={:.4} margin={:.4} candidate_stats={:?} baseline_stats={:?}",
+                opponent.id,
+                candidate_delta,
+                baseline_delta,
+                candidate_delta - baseline_delta,
+                candidate_stats,
+                baseline_stats,
+            );
+        }
+        if let Some(previous) = original_opening_book {
+            env::set_var("SMART_USE_WHITE_OPENING_BOOK", previous);
+        } else {
+            env::remove_var("SMART_USE_WHITE_OPENING_BOOK");
+        }
+    }
+}
+
+#[test]
 fn smart_automove_pool_profile_registry_resolves_retained_profiles() {
     for profile_id in retained_profile_ids() {
         assert!(

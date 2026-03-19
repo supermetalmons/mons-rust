@@ -844,9 +844,6 @@ fn configure_runtime_pro_turn_planner_v1(config: SmartSearchConfig) -> SmartSear
     {
         runtime.enable_interview_deterministic_tiebreak = true;
         runtime.enable_event_ordering_bonus = true;
-        runtime.max_visited_nodes = runtime.max_visited_nodes.saturating_mul(9) / 8;
-        runtime.root_branch_limit = runtime.root_branch_limit.saturating_add(1).min(14);
-        runtime.node_branch_limit = runtime.node_branch_limit.saturating_add(1).min(12);
         runtime.enable_quiescence_search = true;
         runtime.quiescence_node_budget = 120;
         runtime.enable_quiescence_tactical_children_only = true;
@@ -857,10 +854,12 @@ fn configure_runtime_pro_turn_planner_v1(config: SmartSearchConfig) -> SmartSear
 }
 
 fn configure_runtime_pro_intent_planner_v2(config: SmartSearchConfig) -> SmartSearchConfig {
-    let mut runtime = configure_runtime_pro_turn_planner_v1(config);
+    let mut runtime = configure_runtime_release_safe_pre_exact(config);
     if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
         && runtime.enable_normal_root_safety_deep_floor
     {
+        runtime.prefer_clean_reply_risk_roots = true;
+        runtime.root_reply_risk_score_margin = runtime.root_reply_risk_score_margin.max(175);
         runtime.enable_turn_planner_intent_root_injection = true;
         runtime.turn_planner_intent_root_injection_limit = 1;
         runtime.turn_planner_intent_root_max_heuristic_gap = 200;
@@ -874,13 +873,6 @@ pub(super) fn model_runtime_pro_turn_planner_v1(
     game: &MonsGame,
     config: SmartSearchConfig,
 ) -> Vec<Input> {
-    if config.depth < SMART_AUTOMOVE_NORMAL_DEPTH as usize {
-        return runtime_selector_inputs(game, configure_runtime_eff_non_exact_v2(game, config));
-    }
-    if config.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
-        return runtime_selector_inputs(game, configure_runtime_release_safe_pre_exact(config));
-    }
-
     let opening_book_mode = std::env::var("SMART_USE_WHITE_OPENING_BOOK")
         .ok()
         .map(|value| {
@@ -906,13 +898,6 @@ pub(super) fn model_runtime_pro_intent_planner_v2(
     game: &MonsGame,
     config: SmartSearchConfig,
 ) -> Vec<Input> {
-    if config.depth < SMART_AUTOMOVE_NORMAL_DEPTH as usize {
-        return runtime_selector_inputs(game, configure_runtime_eff_non_exact_v2(game, config));
-    }
-    if config.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
-        return runtime_selector_inputs(game, configure_runtime_release_safe_pre_exact(config));
-    }
-
     let opening_book_mode = std::env::var("SMART_USE_WHITE_OPENING_BOOK")
         .ok()
         .map(|value| {

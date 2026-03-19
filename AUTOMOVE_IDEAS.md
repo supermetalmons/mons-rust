@@ -113,6 +113,27 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - bounded progressive unchanged (`vs normal +0.3333`, `vs fast +0.5000`)
       - reliability-loss probe sample (`repeats=1`, `games=3`, `max_plies=24`) remained `win_rate=0.5000` with `losses_with_disagreement=0`.
     - Split B reverted; keep prior stable emergency-only strict candidate shape.
+  - 2026-03-20 update:
+    - Selector-order fix (opening-book fallback before Pro depth handling) removed the confirmation blocker in this branch:
+      - `smart_automove_pro_confirmation_lane_probe`: `vs_normal 0.0000`, `vs_fast +0.2500`.
+    - Added diagnostic `smart_automove_pro_pool_lane_probe` (optional `SMART_PRO_POOL_PROBE_BREAKDOWN=true`) to inspect pool non-regression lanes directly.
+    - Pool diagnostics isolated remaining deficit to one opponent lane:
+      - `runtime_pre_fast_root_quality_v1_normal_conversion_v3` (`candidate 1-1` vs `baseline 2-0`).
+    - Accepted micro-split to recover bounded pool non-regression:
+      - keep emergency-only injection (`limit=1`, `max_heuristic_gap=200`)
+      - add Pro-depth reply-risk tightening (`root_reply_risk_score_margin >= 175`)
+      - keep Pro selectors on Pro config path (with opening-book fallback retained).
+    - Latest bounded earned-path snapshot on this shape:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - `pro-fast-screen`: vs normal `0.0000`, vs fast `+0.1250`
+      - bounded `pro-progressive (1x1 @56)`: vs normal `+0.3333`, vs fast `+0.3333`
+      - bounded `pro-ladder (2x2 @56, pool 1 @56)`: pass
+        - speed ratio `6.071`
+        - primary `vs_normal +0.1667`, `vs_fast +0.4167`
+        - confirmation `vs_normal 0.0000`, `vs_fast +0.2500`
+        - pool `candidate_vs_normal=-0.1000`, `baseline_vs_normal=-0.1000`.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`

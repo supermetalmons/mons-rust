@@ -167,3 +167,41 @@ Candidate profile: `runtime_pro_intent_planner_v2`
 - Keep candidate on prior stable emergency-only strict shape from `36d92ae926`.
 - Latest bounded ladder speed-gate checks remained green (`ratio ~8.55`).
 - Remaining blocker is still stable full-capture reporting for `pro-fast-screen vs normal` and full ladder summaries in this environment.
+
+## Iteration update (2026-03-20, confirmation fix + pool gate recovery)
+
+### What changed in this loop
+- Reordered Pro selector flow so opening-book fallback is applied before any Pro depth-branch handling.
+  - Effect: confirmation lane recovered from `vs_normal delta=-0.1250` to `0.0000` (with `vs_fast` unchanged positive).
+- Added Pro pool diagnostics:
+  - new ignored test: `smart_automove_pro_pool_lane_probe`
+  - optional per-opponent breakdown via `SMART_PRO_POOL_PROBE_BREAKDOWN=true`
+  - optional seed-tag overrides via `SMART_PRO_POOL_PROBE_*_TAG` envs
+- Tightened candidate reply-risk shape in Pro primary context:
+  - `root_reply_risk_score_margin = max(current, 175)` inside `configure_runtime_pro_intent_planner_v2`.
+
+### Diagnostic findings that drove the split
+- Initial pool blocker after confirmation fix:
+  - `candidate_vs_normal=-0.2000`, `baseline_vs_normal=-0.1000` (margin `-0.1000`) on ladder seed tags.
+- Per-opponent breakdown isolated the miss to one lane:
+  - `runtime_pre_fast_root_quality_v1_normal_conversion_v3`:
+    - candidate `1-1` (`delta=0.0000`)
+    - baseline `2-0` (`delta=+0.5000`)
+- Reply-risk retune recovered the single-game deficit in this bounded pool setup:
+  - updated pool probe: `candidate_vs_normal=-0.1000`, `baseline_vs_normal=-0.1000` (margin `0.0000`).
+
+### Current bounded gate snapshot (latest loop)
+- `guardrails`: pass
+- `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+- `runtime-preflight`: pass
+- `pro-fast-screen`:
+  - vs normal: `delta=0.0000`
+  - vs fast: `delta=+0.1250`
+- `pro-progressive` (bounded `1x1 @56`):
+  - vs normal: `delta=+0.3333`
+  - vs fast: `delta=+0.3333`
+- `pro-ladder` (bounded `2x2 @56`, pool `1 @56`): pass
+  - speed ratio: `6.071`
+  - primary: `vs_normal +0.1667`, `vs_fast +0.4167`
+  - confirmation: `vs_normal 0.0000`, `vs_fast +0.2500`
+  - pool summary: `candidate_vs_normal=-0.1000`, `baseline_vs_normal=-0.1000`, `candidate_vs_fast=0.0000`, `baseline_vs_fast=0.0000`.
