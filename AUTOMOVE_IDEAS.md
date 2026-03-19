@@ -58,6 +58,29 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
   - Opening-book behavior remains unchanged; planner remains gated to non-opening Pro runtime context.
   - Fast/Normal transplant attempts with the same planner family failed mixed-ladder non-regression; rollout stays Pro-only.
 
+### Idea: Pro intent planner v2 stabilization
+- Base profile: `runtime_release_safe_pre_exact`
+- Target mode: `pro`
+- Triage surface: `primary_pro` (off-target guard: `opening_reply`)
+- Triage pass signal: `primary_pro target_changed>0` with `opening_reply off_target_changed<=1`
+- Calibration gate: none
+- Candidate budget: 1
+- Expected upside: keep intent-planner tactical signal while preserving pro fast-screen non-regression
+- CPU risk: high (progressive/ladder runtime fit remains the main risk)
+- Cheapest falsifier: fail `pro-fast-screen` vs fast or lose `primary_pro` movement
+- Escalate only if: `guardrails -> pro-triage -> runtime-preflight -> pro-fast-screen` stays green and runtime remains practical
+- Kill if: progressive/ladder runtime cliff persists or first duel regresses
+- Next split if rejected: selectively re-enable injected roots only in explicit emergency states; keep `limit=0` baseline as control
+- How to test: `guardrails -> SMART_TRIAGE_SURFACE=primary_pro pro-triage -> runtime-preflight -> pro-fast-screen -> bounded pro-progressive/ladder`, then full gates only if runtime-fit is stable
+- Status: in_progress
+- Notes:
+  - 2026-03-19: active injected-root settings (`turn_planner_intent_root_injection_limit>0`) repeatedly failed first duel vs fast (`delta=-0.1250` to `-0.2500`).
+  - 2026-03-19: `runtime_pro_turn_planner_v1` control passed fast-screen vs fast (`delta=+0.1250`), isolating the regression to active injection behavior.
+  - 2026-03-19: current candidate shape with intent flag on and injection effectively disabled (`limit=0`) restored first-duel signal while keeping triage movement:
+    - `pro-triage primary_pro`: `target_changed=1`, `off_target_changed=0`
+    - `pro-fast-screen`: vs normal `delta=0.0000`, vs fast `delta=+0.1250`
+  - Bounded directional progressive probes (`initial=1`, `max=1`, `repeats=1`, `max_plies=40`) were positive (`vs normal +0.3333`, `vs fast +0.5000`) but default progressive/ladder runtime remains expensive and unresolved.
+
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
 - Target mode: `pro`

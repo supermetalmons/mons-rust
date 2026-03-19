@@ -3104,19 +3104,25 @@ impl MonsGameModel {
         let intent_profile_bonus = if config.enable_turn_planner_intent_root_injection {
             let mut bonus: i32 = 0;
             if classes.drainer_safety_recover {
-                bonus = bonus.saturating_add(180);
+                bonus = bonus.saturating_add(40);
             }
             if attacks_opponent_drainer {
-                bonus = bonus.saturating_add(160);
+                bonus = bonus.saturating_add(40);
             }
             if spirit_same_turn_score_setup_now {
-                bonus = bonus.saturating_add(120);
+                bonus = bonus.saturating_add(30);
             }
-            if opponent_mana_progress {
-                bonus = bonus.saturating_add(100);
+            if own_drainer_vulnerable && !classes.drainer_safety_recover {
+                bonus = bonus.saturating_sub(80);
             }
-            if supermana_progress {
-                bonus = bonus.saturating_add(80);
+            if own_drainer_walk_vulnerable {
+                bonus = bonus.saturating_sub(50);
+            }
+            if mana_handoff_to_opponent {
+                bonus = bonus.saturating_sub(80);
+            }
+            if has_roundtrip {
+                bonus = bonus.saturating_sub(40);
             }
             bonus
         } else {

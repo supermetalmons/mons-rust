@@ -862,8 +862,8 @@ fn configure_runtime_pro_intent_planner_v2(config: SmartSearchConfig) -> SmartSe
         && runtime.enable_normal_root_safety_deep_floor
     {
         runtime.enable_turn_planner_intent_root_injection = true;
-        runtime.turn_planner_intent_root_injection_limit = 8;
-        runtime.turn_planner_intent_root_max_heuristic_gap = 1_800;
+        runtime.turn_planner_intent_root_injection_limit = 0;
+        runtime.turn_planner_intent_root_max_heuristic_gap = 320;
         runtime.enable_turn_opportunity_planner = true;
     }
     runtime
