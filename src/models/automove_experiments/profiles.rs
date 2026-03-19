@@ -28,6 +28,7 @@ const PROFILE_RUNTIME_PRO_QUIESCENCE_V1: &str = "runtime_pro_quiescence_v1";
 const PROFILE_RUNTIME_PRO_QUIESCENCE_V2: &str = "runtime_pro_quiescence_v2";
 const PROFILE_RUNTIME_PRO_PRIMARY_SIGNAL_V2: &str = "runtime_pro_primary_signal_v2";
 const PROFILE_RUNTIME_PRO_TURN_PLANNER_V1: &str = "runtime_pro_turn_planner_v1";
+const PROFILE_RUNTIME_PRO_INTENT_PLANNER_V2: &str = "runtime_pro_intent_planner_v2";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct ExactLiteBudgets {
@@ -41,7 +42,7 @@ struct AutomoveProfile {
     selector: AutomoveSelector,
 }
 
-const RETAINED_PROFILES: [AutomoveProfile; 26] = [
+const RETAINED_PROFILES: [AutomoveProfile; 27] = [
     AutomoveProfile {
         id: "base",
         selector: model_base_profile,
@@ -145,6 +146,10 @@ const RETAINED_PROFILES: [AutomoveProfile; 26] = [
     AutomoveProfile {
         id: PROFILE_RUNTIME_PRO_TURN_PLANNER_V1,
         selector: model_runtime_pro_turn_planner_v1,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_PRO_INTENT_PLANNER_V2,
+        selector: model_runtime_pro_intent_planner_v2,
     },
 ];
 
@@ -408,6 +413,7 @@ pub(super) fn profile_runtime_config_for_name(
         PROFILE_RUNTIME_PRO_QUIESCENCE_V2 => configure_runtime_pro_quiescence_v2(config),
         PROFILE_RUNTIME_PRO_PRIMARY_SIGNAL_V2 => configure_runtime_pro_primary_signal_v2(config),
         PROFILE_RUNTIME_PRO_TURN_PLANNER_V1 => configure_runtime_pro_turn_planner_v1(config),
+        PROFILE_RUNTIME_PRO_INTENT_PLANNER_V2 => configure_runtime_pro_intent_planner_v2(config),
         "runtime_pre_fast_root_quality_v1_normal_conversion_v3" => {
             configure_runtime_pre_fast_root_quality_v1_normal_conversion_v3(game, config)
         }
@@ -850,6 +856,19 @@ fn configure_runtime_pro_turn_planner_v1(config: SmartSearchConfig) -> SmartSear
     runtime
 }
 
+fn configure_runtime_pro_intent_planner_v2(config: SmartSearchConfig) -> SmartSearchConfig {
+    let mut runtime = configure_runtime_pro_turn_planner_v1(config);
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
+        && runtime.enable_normal_root_safety_deep_floor
+    {
+        runtime.enable_turn_planner_intent_root_injection = true;
+        runtime.turn_planner_intent_root_injection_limit = 8;
+        runtime.turn_planner_intent_root_max_heuristic_gap = 1_800;
+        runtime.enable_turn_opportunity_planner = true;
+    }
+    runtime
+}
+
 pub(super) fn model_runtime_pro_turn_planner_v1(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -880,6 +899,38 @@ pub(super) fn model_runtime_pro_turn_planner_v1(
     }
 
     runtime_selector_inputs(game, configure_runtime_pro_turn_planner_v1(config))
+}
+
+pub(super) fn model_runtime_pro_intent_planner_v2(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if config.depth < SMART_AUTOMOVE_NORMAL_DEPTH as usize {
+        return runtime_selector_inputs(game, configure_runtime_eff_non_exact_v2(game, config));
+    }
+    if config.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
+        return runtime_selector_inputs(game, configure_runtime_release_safe_pre_exact(config));
+    }
+
+    let opening_book_mode = std::env::var("SMART_USE_WHITE_OPENING_BOOK")
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes"
+            )
+        })
+        .unwrap_or(false);
+    if opening_book_mode {
+        let opening_runtime = SearchBudget::from_preference(SmartAutomovePreference::Normal)
+            .runtime_config_for_game(game);
+        return runtime_selector_inputs(
+            game,
+            configure_runtime_release_safe_pre_exact(opening_runtime),
+        );
+    }
+
+    runtime_selector_inputs(game, configure_runtime_pro_intent_planner_v2(config))
 }
 
 pub(super) fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {

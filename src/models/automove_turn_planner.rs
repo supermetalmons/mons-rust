@@ -10,8 +10,11 @@ use std::collections::{HashMap, HashSet};
 
 const TURN_PLANNER_CACHE_MAX_ENTRIES: usize = 4096;
 const TURN_PLANNER_CHAIN_LIMIT: usize = 8;
+const TURN_PLANNER_EMERGENCY_NODE_CAP: usize = 256;
+const TURN_PLANNER_INTENT_CAP: usize = 16;
 const TURN_PLANNER_ROUTE_CAP: usize = 24;
 const TURN_PLANNER_SPIRIT_TOP_K: usize = 6;
+const TURN_PLANNER_UTILITY_MEMO_MAX_ENTRIES: usize = 8192;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum TurnPlannerMode {
@@ -43,7 +46,7 @@ struct PlannerRoute {
     priority: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum PlannerRouteKind {
     ModelTactical,
     DrainerScore,
@@ -51,7 +54,108 @@ enum PlannerRouteKind {
     SpiritImpact,
     DrainerSafety,
     ManaMove,
+    TacticalDeny,
     Fallback,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TurnResourceBudget {
+    remaining_mon_moves: i32,
+    can_use_action: bool,
+    can_move_mana: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TurnResourceRequirement {
+    mon_moves_needed: i32,
+    needs_action: bool,
+    needs_mana_move: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SecureManaIntent {
+    actor: Location,
+    wanted: Mana,
+    next_step: Option<Location>,
+    estimated_gain: i32,
+    safety_delta: i32,
+    resources: TurnResourceRequirement,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DrainerKillIntent {
+    actor: Location,
+    target: Location,
+    setup_step: Option<Location>,
+    estimated_gain: i32,
+    safety_delta: i32,
+    resources: TurnResourceRequirement,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SafetyRecoverIntent {
+    actor: Location,
+    target_step: Location,
+    estimated_gain: i32,
+    safety_delta: i32,
+    resources: TurnResourceRequirement,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SpiritImpactIntent {
+    actor: Location,
+    target: Location,
+    destination: Location,
+    estimated_gain: i32,
+    safety_delta: i32,
+    resources: TurnResourceRequirement,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ManaTempoIntent {
+    actor: Location,
+    destination: Location,
+    estimated_gain: i32,
+    safety_delta: i32,
+    resources: TurnResourceRequirement,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TacticalDenyIntent {
+    actor: Location,
+    target: Location,
+    setup_step: Option<Location>,
+    estimated_gain: i32,
+    safety_delta: i32,
+    resources: TurnResourceRequirement,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PlannerIntent {
+    SecureMana(SecureManaIntent),
+    DrainerKill(DrainerKillIntent),
+    SafetyRecover(SafetyRecoverIntent),
+    SpiritImpact(SpiritImpactIntent),
+    ManaTempo(ManaTempoIntent),
+    TacticalDeny(TacticalDenyIntent),
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct TurnPlannerDiagnostics {
+    pub intent_generation_calls: usize,
+    pub intent_generation_hits: usize,
+    pub compile_fallbacks: usize,
+    pub injected_root_attempts: usize,
+    pub injected_root_accepts: usize,
+    pub route_model_tactical: usize,
+    pub route_drainer_score: usize,
+    pub route_drainer_kill: usize,
+    pub route_spirit_impact: usize,
+    pub route_drainer_safety: usize,
+    pub route_mana_move: usize,
+    pub route_tactical_deny: usize,
+    pub route_fallback: usize,
+    pub expansions: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -64,6 +168,13 @@ struct PlannerNode {
 struct TurnPlan {
     game: MonsGame,
     steps: Vec<Vec<Input>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct UtilityMemoKey {
+    game_hash: u64,
+    start_hash: u64,
+    perspective: Color,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,13 +220,49 @@ enum PlanBuildStatus {
     BudgetExceeded,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum IntentCompileMode {
+    Path,
+    Spirit,
+    Attack,
+}
+
 thread_local! {
     static TURN_PLANNER_CONTINUATION_CACHE: RefCell<HashMap<TurnPlannerCacheKey, Vec<Input>>> =
         RefCell::new(HashMap::new());
+    static TURN_PLANNER_DIAGNOSTICS: RefCell<TurnPlannerDiagnostics> =
+        RefCell::new(TurnPlannerDiagnostics::default());
 }
 
 pub(crate) fn clear_turn_opportunity_plan_cache() {
     TURN_PLANNER_CONTINUATION_CACHE.with(|cache| cache.borrow_mut().clear());
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn clear_turn_planner_diagnostics() {
+    TURN_PLANNER_DIAGNOSTICS.with(|diagnostics| {
+        *diagnostics.borrow_mut() = TurnPlannerDiagnostics::default();
+    });
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn turn_planner_diagnostics_snapshot() -> TurnPlannerDiagnostics {
+    TURN_PLANNER_DIAGNOSTICS.with(|diagnostics| *diagnostics.borrow())
+}
+
+#[inline]
+fn update_turn_planner_diagnostics(update: impl FnOnce(&mut TurnPlannerDiagnostics)) {
+    TURN_PLANNER_DIAGNOSTICS.with(|diagnostics| update(&mut diagnostics.borrow_mut()));
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn record_turn_planner_injected_root_attempt(accepted: bool) {
+    update_turn_planner_diagnostics(|diagnostics| {
+        diagnostics.injected_root_attempts = diagnostics.injected_root_attempts.saturating_add(1);
+        if accepted {
+            diagnostics.injected_root_accepts = diagnostics.injected_root_accepts.saturating_add(1);
+        }
+    });
 }
 
 #[cfg(test)]
@@ -173,6 +320,32 @@ pub(crate) fn turn_opportunity_planner_next_inputs_from_allowed(
     )
 }
 
+pub(crate) fn turn_opportunity_planner_intent_root_candidates(
+    game: &MonsGame,
+    perspective: Color,
+    _mode: TurnPlannerMode,
+    config: TurnPlannerSearchConfig,
+    limit: usize,
+) -> Vec<Vec<Input>> {
+    if limit == 0 || game.active_color != perspective || !planner_should_activate(game, perspective)
+    {
+        return Vec::new();
+    }
+
+    let mut routes = intent_first_routes(game, perspective, config);
+    routes.sort_by(|a, b| {
+        b.priority
+            .cmp(&a.priority)
+            .then_with(|| a.inputs.cmp(&b.inputs))
+    });
+    let mut seen = HashSet::new();
+    routes
+        .into_iter()
+        .filter_map(|route| seen.insert(route.inputs.clone()).then_some(route.inputs))
+        .take(limit)
+        .collect()
+}
+
 fn turn_opportunity_planner_next_inputs_filtered(
     game: &MonsGame,
     perspective: Color,
@@ -184,12 +357,12 @@ fn turn_opportunity_planner_next_inputs_filtered(
         return None;
     }
 
-    let allowed_set = allowed_first_steps.map(|steps| {
-        steps
-            .iter()
-            .cloned()
-            .collect::<HashSet<Vec<Input>>>()
+    update_turn_planner_diagnostics(|diagnostics| {
+        diagnostics.expansions = 0;
     });
+
+    let allowed_set =
+        allowed_first_steps.map(|steps| steps.iter().cloned().collect::<HashSet<Vec<Input>>>());
     let allowed_rank = allowed_first_steps.map(|steps| {
         steps
             .iter()
@@ -212,22 +385,39 @@ fn turn_opportunity_planner_next_inputs_filtered(
         return None;
     }
 
+    let mut adaptive = config;
+    if planner_tactical_emergency_state(game, perspective) {
+        adaptive.max_nodes = adaptive
+            .max_nodes
+            .saturating_mul(4)
+            .checked_div(3)
+            .unwrap_or(adaptive.max_nodes)
+            .max(adaptive.max_nodes)
+            .min(TURN_PLANNER_EMERGENCY_NODE_CAP)
+            .max(32);
+        adaptive.beam_width = adaptive.beam_width.saturating_add(1).clamp(2, 6);
+        adaptive.response_beam_width = adaptive.response_beam_width.saturating_add(1).clamp(1, 2);
+    }
+    let mut utility_memo: HashMap<UtilityMemoKey, PlannerUtility> = HashMap::new();
+
     let plan_build_result = if let Some(allowed_steps) = allowed_first_steps {
         generate_turn_plans_from_allowed_first_steps(
             game,
             perspective,
-            config,
-            config.max_nodes.max(1),
-            config.beam_width.max(1),
+            adaptive,
+            adaptive.max_nodes.max(1),
+            adaptive.beam_width.max(1),
             allowed_steps,
+            &mut utility_memo,
         )
     } else {
         generate_turn_plans(
             game,
             perspective,
-            config,
-            config.max_nodes.max(1),
-            config.beam_width.max(1),
+            adaptive,
+            adaptive.max_nodes.max(1),
+            adaptive.beam_width.max(1),
+            &mut utility_memo,
         )
     };
     let plans = match plan_build_result {
@@ -256,7 +446,8 @@ fn turn_opportunity_planner_next_inputs_filtered(
             continue;
         }
 
-        let utility = evaluate_plan_with_response(game, plan, perspective, config);
+        let utility =
+            evaluate_plan_with_response(game, plan, perspective, adaptive, &mut utility_memo);
         let rank_bonus = allowed_rank
             .as_ref()
             .and_then(|rank_map| rank_map.get(first_step))
@@ -264,8 +455,8 @@ fn turn_opportunity_planner_next_inputs_filtered(
                 let span = allowed_len.saturating_sub(*rank).min(96) as i32;
                 span.saturating_mul(12)
             });
-        let first_step_safety_penalty =
-            apply_inputs_for_planner(game, first_step.as_slice()).map_or(0, |(after, _)| {
+        let first_step_safety_penalty = apply_inputs_for_planner(game, first_step.as_slice())
+            .map_or(0, |(after, _)| {
                 let safety = own_drainer_safety_score(&after.board, perspective);
                 let safety_penalty = if safety < 0 {
                     safety.saturating_abs().saturating_mul(2_400)
@@ -332,6 +523,26 @@ fn planner_should_activate(game: &MonsGame, perspective: Color) -> bool {
     false
 }
 
+fn planner_tactical_emergency_state(game: &MonsGame, perspective: Color) -> bool {
+    if opponent_can_win_immediately(game, perspective) {
+        return true;
+    }
+
+    if own_drainer_safety_score(&game.board, perspective) <= -2 {
+        return true;
+    }
+
+    let needed = Config::TARGET_SCORE.saturating_sub(score_for_color(game, perspective));
+    if needed > 0 {
+        let same_turn = exact_turn_summary(game, perspective).same_turn_score_window_value;
+        if same_turn >= needed {
+            return true;
+        }
+    }
+
+    false
+}
+
 fn cached_step_if_legal(game: &MonsGame, mode: TurnPlannerMode) -> Option<Vec<Input>> {
     let key = TurnPlannerCacheKey {
         state_hash: MonsGameModel::search_state_hash(game),
@@ -391,6 +602,7 @@ fn generate_turn_plans(
     config: TurnPlannerSearchConfig,
     node_budget: usize,
     beam_width: usize,
+    utility_memo: &mut HashMap<UtilityMemoKey, PlannerUtility>,
 ) -> Result<Vec<TurnPlan>, PlanBuildStatus> {
     let mut expansions = 0usize;
     let mut frontier = vec![PlannerNode {
@@ -425,6 +637,9 @@ fn generate_turn_plans(
             for route in routes.into_iter().take(config.per_node_route_cap.max(1)) {
                 expansions = expansions.saturating_add(1);
                 if expansions > node_budget.max(1) {
+                    update_turn_planner_diagnostics(|diagnostics| {
+                        diagnostics.expansions = diagnostics.expansions.saturating_add(expansions);
+                    });
                     return Err(PlanBuildStatus::BudgetExceeded);
                 }
 
@@ -444,6 +659,7 @@ fn generate_turn_plans(
                     route.kind,
                     route.priority,
                     config,
+                    utility_memo,
                 );
                 candidates.push((order, PlannerNode { game: after, steps }));
                 expanded_any = true;
@@ -475,11 +691,17 @@ fn generate_turn_plans(
     }
 
     terminal.sort_by(|a, b| {
-        let a_utility = utility_for_perspective(&a.game, game, perspective, config);
-        let b_utility = utility_for_perspective(&b.game, game, perspective, config);
+        let a_utility =
+            utility_for_perspective_cached(&a.game, game, perspective, config, utility_memo);
+        let b_utility =
+            utility_for_perspective_cached(&b.game, game, perspective, config, utility_memo);
         b_utility
             .cmp(&a_utility)
             .then_with(|| compare_step_chains(a.steps.as_slice(), b.steps.as_slice()))
+    });
+
+    update_turn_planner_diagnostics(|diagnostics| {
+        diagnostics.expansions = diagnostics.expansions.saturating_add(expansions);
     });
 
     Ok(terminal)
@@ -492,6 +714,7 @@ fn generate_turn_plans_from_allowed_first_steps(
     node_budget: usize,
     beam_width: usize,
     allowed_first_steps: &[Vec<Input>],
+    utility_memo: &mut HashMap<UtilityMemoKey, PlannerUtility>,
 ) -> Result<Vec<TurnPlan>, PlanBuildStatus> {
     if allowed_first_steps.is_empty() {
         return Err(PlanBuildStatus::NoPlan);
@@ -509,6 +732,9 @@ fn generate_turn_plans_from_allowed_first_steps(
     for (seed_rank, step) in allowed_first_steps.iter().take(seed_limit).enumerate() {
         expansions = expansions.saturating_add(1);
         if expansions > node_budget.max(1) {
+            update_turn_planner_diagnostics(|diagnostics| {
+                diagnostics.expansions = diagnostics.expansions.saturating_add(expansions);
+            });
             return Err(PlanBuildStatus::BudgetExceeded);
         }
         let Some((after, _)) = apply_inputs_for_planner(game, step.as_slice()) else {
@@ -523,6 +749,7 @@ fn generate_turn_plans_from_allowed_first_steps(
             PlannerRouteKind::Fallback,
             rank_bonus,
             config,
+            utility_memo,
         );
         seeded.push((
             order,
@@ -575,6 +802,9 @@ fn generate_turn_plans_from_allowed_first_steps(
             for route in routes.into_iter().take(config.per_node_route_cap.max(1)) {
                 expansions = expansions.saturating_add(1);
                 if expansions > node_budget.max(1) {
+                    update_turn_planner_diagnostics(|diagnostics| {
+                        diagnostics.expansions = diagnostics.expansions.saturating_add(expansions);
+                    });
                     return Err(PlanBuildStatus::BudgetExceeded);
                 }
 
@@ -594,6 +824,7 @@ fn generate_turn_plans_from_allowed_first_steps(
                     route.kind,
                     route.priority,
                     config,
+                    utility_memo,
                 );
                 candidates.push((order, PlannerNode { game: after, steps }));
                 expanded_any = true;
@@ -625,11 +856,17 @@ fn generate_turn_plans_from_allowed_first_steps(
     }
 
     terminal.sort_by(|a, b| {
-        let a_utility = utility_for_perspective(&a.game, game, perspective, config);
-        let b_utility = utility_for_perspective(&b.game, game, perspective, config);
+        let a_utility =
+            utility_for_perspective_cached(&a.game, game, perspective, config, utility_memo);
+        let b_utility =
+            utility_for_perspective_cached(&b.game, game, perspective, config, utility_memo);
         b_utility
             .cmp(&a_utility)
             .then_with(|| compare_step_chains(a.steps.as_slice(), b.steps.as_slice()))
+    });
+
+    update_turn_planner_diagnostics(|diagnostics| {
+        diagnostics.expansions = diagnostics.expansions.saturating_add(expansions);
     });
 
     Ok(terminal)
@@ -640,13 +877,26 @@ fn evaluate_plan_with_response(
     plan: &TurnPlan,
     perspective: Color,
     config: TurnPlannerSearchConfig,
+    utility_memo: &mut HashMap<UtilityMemoKey, PlannerUtility>,
 ) -> PlannerUtility {
     if plan.game.winner_color().is_some() {
-        return utility_for_perspective(&plan.game, root_game, perspective, config);
+        return utility_for_perspective_cached(
+            &plan.game,
+            root_game,
+            perspective,
+            config,
+            utility_memo,
+        );
     }
 
     if plan.game.active_color != perspective.other() {
-        return utility_for_perspective(&plan.game, root_game, perspective, config);
+        return utility_for_perspective_cached(
+            &plan.game,
+            root_game,
+            perspective,
+            config,
+            utility_memo,
+        );
     }
 
     let response_budget = (config.max_nodes / 3).max(20);
@@ -656,20 +906,37 @@ fn evaluate_plan_with_response(
         config,
         response_budget,
         config.response_beam_width.max(1),
+        utility_memo,
     ) {
         Ok(plans) if !plans.is_empty() => plans,
         _ => {
-            return utility_for_perspective(&plan.game, root_game, perspective, config);
+            return utility_for_perspective_cached(
+                &plan.game,
+                root_game,
+                perspective,
+                config,
+                utility_memo,
+            );
         }
     };
 
     let mut best_response = &response_plans[0];
-    let mut best_response_utility =
-        utility_for_perspective(&best_response.game, &plan.game, perspective.other(), config);
+    let mut best_response_utility = utility_for_perspective_cached(
+        &best_response.game,
+        &plan.game,
+        perspective.other(),
+        config,
+        utility_memo,
+    );
 
     for response in response_plans.iter().skip(1) {
-        let response_utility =
-            utility_for_perspective(&response.game, &plan.game, perspective.other(), config);
+        let response_utility = utility_for_perspective_cached(
+            &response.game,
+            &plan.game,
+            perspective.other(),
+            config,
+            utility_memo,
+        );
         if response_utility > best_response_utility {
             best_response_utility = response_utility;
             best_response = response;
@@ -681,7 +948,13 @@ fn evaluate_plan_with_response(
         }
     }
 
-    utility_for_perspective(&best_response.game, root_game, perspective, config)
+    utility_for_perspective_cached(
+        &best_response.game,
+        root_game,
+        perspective,
+        config,
+        utility_memo,
+    )
 }
 
 fn utility_for_perspective(
@@ -724,6 +997,17 @@ fn utility_for_perspective(
     } else {
         0
     };
+    let opponent = perspective.other();
+    let opponent_window_before = exact_turn_summary(start, opponent).same_turn_score_window_value;
+    let opponent_window_after = exact_turn_summary(game, opponent).same_turn_score_window_value;
+    let opponent_window_deny_gain = opponent_window_before.saturating_sub(opponent_window_after);
+    let opponent_needed_before =
+        Config::TARGET_SCORE.saturating_sub(score_for_color(start, opponent));
+    let opponent_needed_after =
+        Config::TARGET_SCORE.saturating_sub(score_for_color(game, opponent));
+    let denied_immediate_window = opponent_needed_before > 0
+        && opponent_window_before >= opponent_needed_before
+        && (opponent_needed_after <= 0 || opponent_window_after < opponent_needed_after);
 
     let high_value_progress = score_delta
         .saturating_mul(2_400)
@@ -731,6 +1015,8 @@ fn utility_for_perspective(
         .saturating_add(immediate_bonus)
         .saturating_add(safe_supermana_bonus)
         .saturating_add(safe_opponent_mana_bonus)
+        .saturating_add(opponent_window_deny_gain.saturating_mul(210))
+        .saturating_add(if denied_immediate_window { 1_500 } else { 0 })
         .saturating_sub(unsafe_progress_penalty);
 
     let drainer_attack = if find_awake_drainer_location(&game.board, perspective.other()).is_none()
@@ -759,6 +1045,30 @@ fn utility_for_perspective(
         drainer_safety,
         eval_score,
     }
+}
+
+fn utility_for_perspective_cached(
+    game: &MonsGame,
+    start: &MonsGame,
+    perspective: Color,
+    config: TurnPlannerSearchConfig,
+    utility_memo: &mut HashMap<UtilityMemoKey, PlannerUtility>,
+) -> PlannerUtility {
+    let key = UtilityMemoKey {
+        game_hash: MonsGameModel::search_state_hash(game),
+        start_hash: MonsGameModel::search_state_hash(start),
+        perspective,
+    };
+    if let Some(cached) = utility_memo.get(&key) {
+        return *cached;
+    }
+
+    let computed = utility_for_perspective(game, start, perspective, config);
+    if utility_memo.len() >= TURN_PLANNER_UTILITY_MEMO_MAX_ENTRIES {
+        utility_memo.clear();
+    }
+    utility_memo.insert(key, computed);
+    computed
 }
 
 fn winner_state(game: &MonsGame, perspective: Color) -> i32 {
@@ -829,12 +1139,14 @@ fn quick_node_order_score(
     route_kind: PlannerRouteKind,
     route_priority: i32,
     config: TurnPlannerSearchConfig,
+    utility_memo: &mut HashMap<UtilityMemoKey, PlannerUtility>,
 ) -> i64 {
-    let utility = utility_for_perspective(game, root, perspective, config);
+    let utility = utility_for_perspective_cached(game, root, perspective, config, utility_memo);
     let kind_bonus = match route_kind {
         PlannerRouteKind::ModelTactical => 980,
         PlannerRouteKind::DrainerScore => 900,
         PlannerRouteKind::DrainerKill => 860,
+        PlannerRouteKind::TacticalDeny => 830,
         PlannerRouteKind::SpiritImpact => 740,
         PlannerRouteKind::DrainerSafety => 700,
         PlannerRouteKind::ManaMove => 520,
@@ -861,9 +1173,11 @@ fn collect_atomic_routes(
     config: TurnPlannerSearchConfig,
 ) -> Vec<PlannerRoute> {
     let mut routes = Vec::new();
+    routes.extend(intent_first_routes(game, perspective, config));
     routes.extend(model_tactical_routes(game, perspective, config));
     routes.extend(drainer_score_routes(game, perspective));
     routes.extend(drainer_kill_routes(game, perspective));
+    routes.extend(tactical_deny_routes(game, perspective, config));
     routes.extend(spirit_impact_routes(game, perspective));
     routes.extend(drainer_safety_routes(game, perspective));
     routes.extend(mana_move_routes(game, perspective));
@@ -888,6 +1202,782 @@ fn collect_atomic_routes(
     });
     if routes.len() > config.route_cap.max(1).min(TURN_PLANNER_ROUTE_CAP) {
         routes.truncate(config.route_cap.max(1).min(TURN_PLANNER_ROUTE_CAP));
+    }
+    record_route_family_contribution(routes.as_slice());
+    routes
+}
+
+fn record_route_family_contribution(routes: &[PlannerRoute]) {
+    let mut model_tactical = 0usize;
+    let mut drainer_score = 0usize;
+    let mut drainer_kill = 0usize;
+    let mut spirit_impact = 0usize;
+    let mut drainer_safety = 0usize;
+    let mut mana_move = 0usize;
+    let mut tactical_deny = 0usize;
+    let mut fallback = 0usize;
+
+    for route in routes {
+        match route.kind {
+            PlannerRouteKind::ModelTactical => model_tactical = model_tactical.saturating_add(1),
+            PlannerRouteKind::DrainerScore => drainer_score = drainer_score.saturating_add(1),
+            PlannerRouteKind::DrainerKill => drainer_kill = drainer_kill.saturating_add(1),
+            PlannerRouteKind::SpiritImpact => spirit_impact = spirit_impact.saturating_add(1),
+            PlannerRouteKind::DrainerSafety => drainer_safety = drainer_safety.saturating_add(1),
+            PlannerRouteKind::ManaMove => mana_move = mana_move.saturating_add(1),
+            PlannerRouteKind::TacticalDeny => tactical_deny = tactical_deny.saturating_add(1),
+            PlannerRouteKind::Fallback => fallback = fallback.saturating_add(1),
+        }
+    }
+
+    update_turn_planner_diagnostics(|diagnostics| {
+        diagnostics.route_model_tactical = diagnostics
+            .route_model_tactical
+            .saturating_add(model_tactical);
+        diagnostics.route_drainer_score = diagnostics
+            .route_drainer_score
+            .saturating_add(drainer_score);
+        diagnostics.route_drainer_kill =
+            diagnostics.route_drainer_kill.saturating_add(drainer_kill);
+        diagnostics.route_spirit_impact = diagnostics
+            .route_spirit_impact
+            .saturating_add(spirit_impact);
+        diagnostics.route_drainer_safety = diagnostics
+            .route_drainer_safety
+            .saturating_add(drainer_safety);
+        diagnostics.route_mana_move = diagnostics.route_mana_move.saturating_add(mana_move);
+        diagnostics.route_tactical_deny = diagnostics
+            .route_tactical_deny
+            .saturating_add(tactical_deny);
+        diagnostics.route_fallback = diagnostics.route_fallback.saturating_add(fallback);
+    });
+}
+
+fn current_turn_resource_budget(game: &MonsGame, perspective: Color) -> TurnResourceBudget {
+    if game.active_color != perspective {
+        return TurnResourceBudget {
+            remaining_mon_moves: 0,
+            can_use_action: false,
+            can_move_mana: false,
+        };
+    }
+
+    TurnResourceBudget {
+        remaining_mon_moves: remaining_moves_for_color(game, perspective),
+        can_use_action: game.player_can_use_action(),
+        can_move_mana: game.player_can_move_mana(),
+    }
+}
+
+fn budget_satisfies_requirement(
+    budget: TurnResourceBudget,
+    requirement: TurnResourceRequirement,
+) -> bool {
+    requirement.mon_moves_needed <= budget.remaining_mon_moves
+        && (!requirement.needs_action || budget.can_use_action)
+        && (!requirement.needs_mana_move || budget.can_move_mana)
+}
+
+fn intent_first_routes(
+    game: &MonsGame,
+    perspective: Color,
+    config: TurnPlannerSearchConfig,
+) -> Vec<PlannerRoute> {
+    let budget = current_turn_resource_budget(game, perspective);
+    let mut intents = planner_intents(game, perspective, budget);
+    if intents.is_empty() {
+        update_turn_planner_diagnostics(|diagnostics| {
+            diagnostics.intent_generation_calls =
+                diagnostics.intent_generation_calls.saturating_add(1);
+        });
+        return Vec::new();
+    }
+
+    intents.sort_by(|left, right| {
+        intent_priority(*right)
+            .cmp(&intent_priority(*left))
+            .then_with(|| intent_stable_key(*left).cmp(&intent_stable_key(*right)))
+    });
+    if intents.len() > TURN_PLANNER_INTENT_CAP {
+        intents.truncate(TURN_PLANNER_INTENT_CAP);
+    }
+
+    update_turn_planner_diagnostics(|diagnostics| {
+        diagnostics.intent_generation_calls = diagnostics.intent_generation_calls.saturating_add(1);
+        diagnostics.intent_generation_hits = diagnostics
+            .intent_generation_hits
+            .saturating_add(intents.len());
+    });
+
+    let route_cap = config.route_cap.max(1).min(TURN_PLANNER_ROUTE_CAP);
+    let mut routes = Vec::new();
+    for intent in intents {
+        if routes.len() >= route_cap {
+            break;
+        }
+        if !budget_satisfies_requirement(budget, intent_requirement(intent)) {
+            continue;
+        }
+        if let Some(route) = compile_intent_route(game, perspective, intent) {
+            routes.push(route);
+        }
+    }
+    routes
+}
+
+fn intent_requirement(intent: PlannerIntent) -> TurnResourceRequirement {
+    match intent {
+        PlannerIntent::SecureMana(intent) => intent.resources,
+        PlannerIntent::DrainerKill(intent) => intent.resources,
+        PlannerIntent::SafetyRecover(intent) => intent.resources,
+        PlannerIntent::SpiritImpact(intent) => intent.resources,
+        PlannerIntent::ManaTempo(intent) => intent.resources,
+        PlannerIntent::TacticalDeny(intent) => intent.resources,
+    }
+}
+
+fn intent_stable_key(
+    intent: PlannerIntent,
+) -> (
+    PlannerRouteKind,
+    Location,
+    Option<Location>,
+    Option<Location>,
+) {
+    match intent {
+        PlannerIntent::SecureMana(intent) => (
+            PlannerRouteKind::DrainerScore,
+            intent.actor,
+            intent.next_step,
+            None,
+        ),
+        PlannerIntent::DrainerKill(intent) => (
+            PlannerRouteKind::DrainerKill,
+            intent.actor,
+            Some(intent.target),
+            intent.setup_step,
+        ),
+        PlannerIntent::SafetyRecover(intent) => (
+            PlannerRouteKind::DrainerSafety,
+            intent.actor,
+            Some(intent.target_step),
+            None,
+        ),
+        PlannerIntent::SpiritImpact(intent) => (
+            PlannerRouteKind::SpiritImpact,
+            intent.actor,
+            Some(intent.target),
+            Some(intent.destination),
+        ),
+        PlannerIntent::ManaTempo(intent) => (
+            PlannerRouteKind::ManaMove,
+            intent.actor,
+            Some(intent.destination),
+            None,
+        ),
+        PlannerIntent::TacticalDeny(intent) => (
+            PlannerRouteKind::TacticalDeny,
+            intent.actor,
+            Some(intent.target),
+            intent.setup_step,
+        ),
+    }
+}
+
+fn intent_priority(intent: PlannerIntent) -> i32 {
+    match intent {
+        PlannerIntent::SecureMana(intent) => {
+            9_200
+                + intent.estimated_gain.saturating_mul(240)
+                + intent.safety_delta.saturating_mul(80)
+        }
+        PlannerIntent::DrainerKill(intent) => {
+            8_900
+                + intent.estimated_gain.saturating_mul(260)
+                + intent.safety_delta.saturating_mul(60)
+        }
+        PlannerIntent::SafetyRecover(intent) => {
+            8_300
+                + intent.estimated_gain.saturating_mul(220)
+                + intent.safety_delta.saturating_mul(180)
+        }
+        PlannerIntent::SpiritImpact(intent) => {
+            7_600
+                + intent.estimated_gain.saturating_mul(200)
+                + intent.safety_delta.saturating_mul(60)
+        }
+        PlannerIntent::ManaTempo(intent) => {
+            6_900
+                + intent.estimated_gain.saturating_mul(180)
+                + intent.safety_delta.saturating_mul(60)
+        }
+        PlannerIntent::TacticalDeny(intent) => {
+            9_100
+                + intent.estimated_gain.saturating_mul(250)
+                + intent.safety_delta.saturating_mul(90)
+        }
+    }
+}
+
+fn planner_intents(
+    game: &MonsGame,
+    perspective: Color,
+    budget: TurnResourceBudget,
+) -> Vec<PlannerIntent> {
+    let mut intents = Vec::new();
+    intents.extend(secure_mana_intents(game, perspective));
+    intents.extend(drainer_kill_intents(game, perspective, budget));
+    intents.extend(safety_recover_intents(game, perspective));
+    intents.extend(spirit_impact_intents(game, perspective));
+    intents.extend(mana_tempo_intents(game, perspective));
+    intents.extend(tactical_deny_intents(game, perspective, budget));
+    intents
+}
+
+fn secure_mana_intents(game: &MonsGame, perspective: Color) -> Vec<PlannerIntent> {
+    let mut intents = Vec::new();
+    let Some(drainer_location) = find_awake_drainer_location(&game.board, perspective) else {
+        return intents;
+    };
+    let safety_before = own_drainer_safety_score(&game.board, perspective);
+    let wanted_manas = [Mana::Supermana, Mana::Regular(perspective.other())];
+
+    for wanted in wanted_manas {
+        let Some(path) =
+            exact_secure_specific_mana_path_from(game, perspective, drainer_location, wanted)
+        else {
+            continue;
+        };
+        let estimated_gain = if wanted == Mana::Supermana { 6 } else { 5 };
+        let safety_delta = if safety_before < 0 { 1 } else { 0 };
+        let next_step = path.first().copied();
+        intents.push(PlannerIntent::SecureMana(SecureManaIntent {
+            actor: drainer_location,
+            wanted,
+            next_step,
+            estimated_gain,
+            safety_delta,
+            resources: TurnResourceRequirement {
+                mon_moves_needed: if next_step.is_some() { 1 } else { 0 },
+                needs_action: false,
+                needs_mana_move: false,
+            },
+        }));
+    }
+
+    intents
+}
+
+fn drainer_kill_intents(
+    game: &MonsGame,
+    perspective: Color,
+    budget: TurnResourceBudget,
+) -> Vec<PlannerIntent> {
+    let mut intents = Vec::new();
+    let Some(target_drainer) = find_awake_drainer_location(&game.board, perspective.other()) else {
+        return intents;
+    };
+    if !budget.can_use_action {
+        return intents;
+    }
+
+    for (actor, item) in game.board.occupied() {
+        let Some(mon) = item.mon().copied() else {
+            continue;
+        };
+        if mon.color != perspective || mon.is_fainted() {
+            continue;
+        }
+
+        if can_attack_target_on_board(
+            &game.board,
+            perspective,
+            perspective.other(),
+            target_drainer,
+            remaining_moves_for_color(game, perspective),
+            budget.can_use_action,
+        ) {
+            intents.push(PlannerIntent::DrainerKill(DrainerKillIntent {
+                actor,
+                target: target_drainer,
+                setup_step: None,
+                estimated_gain: 7,
+                safety_delta: 1,
+                resources: TurnResourceRequirement {
+                    mon_moves_needed: 0,
+                    needs_action: true,
+                    needs_mana_move: false,
+                },
+            }));
+        }
+
+        if budget.remaining_mon_moves <= 0 {
+            continue;
+        }
+        for &next in actor.nearby_locations_ref() {
+            let Some(inputs) = compile_seeded_inputs_with_mode(
+                game,
+                vec![Input::Location(actor), Input::Location(next)],
+                IntentCompileMode::Path,
+            ) else {
+                continue;
+            };
+            let Some((after, _)) = apply_inputs_for_planner(game, inputs.as_slice()) else {
+                continue;
+            };
+            if after.active_color != perspective {
+                continue;
+            }
+            if can_attack_target_on_board(
+                &after.board,
+                perspective,
+                perspective.other(),
+                target_drainer,
+                remaining_moves_for_color(&after, perspective),
+                after.player_can_use_action(),
+            ) {
+                intents.push(PlannerIntent::DrainerKill(DrainerKillIntent {
+                    actor,
+                    target: target_drainer,
+                    setup_step: Some(next),
+                    estimated_gain: 6,
+                    safety_delta: 0,
+                    resources: TurnResourceRequirement {
+                        mon_moves_needed: 1,
+                        needs_action: true,
+                        needs_mana_move: false,
+                    },
+                }));
+            }
+        }
+    }
+
+    intents
+}
+
+fn safety_recover_intents(game: &MonsGame, perspective: Color) -> Vec<PlannerIntent> {
+    let mut intents = Vec::new();
+    let Some(drainer_location) = find_awake_drainer_location(&game.board, perspective) else {
+        return intents;
+    };
+    let safety_before = own_drainer_safety_score(&game.board, perspective);
+    if safety_before >= 2 {
+        return intents;
+    }
+
+    for &next in drainer_location.nearby_locations_ref() {
+        let Some(inputs) = compile_seeded_inputs_with_mode(
+            game,
+            vec![Input::Location(drainer_location), Input::Location(next)],
+            IntentCompileMode::Path,
+        ) else {
+            continue;
+        };
+        let Some((after, _)) = apply_inputs_for_planner(game, inputs.as_slice()) else {
+            continue;
+        };
+        let safety_after = own_drainer_safety_score(&after.board, perspective);
+        if safety_after <= safety_before {
+            continue;
+        }
+        intents.push(PlannerIntent::SafetyRecover(SafetyRecoverIntent {
+            actor: drainer_location,
+            target_step: next,
+            estimated_gain: safety_after.saturating_sub(safety_before),
+            safety_delta: safety_after.saturating_sub(safety_before),
+            resources: TurnResourceRequirement {
+                mon_moves_needed: 1,
+                needs_action: false,
+                needs_mana_move: false,
+            },
+        }));
+    }
+
+    intents
+}
+
+fn spirit_impact_intents(game: &MonsGame, perspective: Color) -> Vec<PlannerIntent> {
+    if !game.player_can_use_action() {
+        return Vec::new();
+    }
+
+    let opponent_drainer = find_awake_drainer_location(&game.board, perspective.other());
+    let mut spirit_intents: Vec<SpiritImpactIntent> = Vec::new();
+    for (spirit_location, item) in game.board.occupied() {
+        let Some(mon) = item.mon().copied() else {
+            continue;
+        };
+        if mon.color != perspective || mon.kind != MonKind::Spirit || mon.is_fainted() {
+            continue;
+        }
+
+        for &target in spirit_location.reachable_by_spirit_action_ref() {
+            for &destination in target.nearby_locations_ref() {
+                let mut estimated_gain: i32 = 2;
+                let mut safety_delta: i32 = 0;
+                if opponent_drainer == Some(target) {
+                    estimated_gain = estimated_gain.saturating_add(4);
+                }
+                if let Some(item) = game.board.item(target) {
+                    if let Some(mon) = item.mon() {
+                        if mon.color == perspective.other() {
+                            estimated_gain = estimated_gain.saturating_add(2);
+                        }
+                    }
+                    if matches!(item, Item::MonWithMana { mon, .. } if mon.color == perspective.other())
+                    {
+                        estimated_gain = estimated_gain.saturating_add(2);
+                        safety_delta = safety_delta.saturating_add(1);
+                    }
+                }
+                spirit_intents.push(SpiritImpactIntent {
+                    actor: spirit_location,
+                    target,
+                    destination,
+                    estimated_gain,
+                    safety_delta,
+                    resources: TurnResourceRequirement {
+                        mon_moves_needed: 0,
+                        needs_action: true,
+                        needs_mana_move: false,
+                    },
+                });
+            }
+        }
+    }
+
+    spirit_intents.sort_by(|left, right| {
+        right
+            .estimated_gain
+            .cmp(&left.estimated_gain)
+            .then_with(|| left.actor.cmp(&right.actor))
+            .then_with(|| left.target.cmp(&right.target))
+            .then_with(|| left.destination.cmp(&right.destination))
+    });
+    if spirit_intents.len() > TURN_PLANNER_SPIRIT_TOP_K {
+        spirit_intents.truncate(TURN_PLANNER_SPIRIT_TOP_K);
+    }
+    spirit_intents
+        .into_iter()
+        .map(PlannerIntent::SpiritImpact)
+        .collect()
+}
+
+fn mana_tempo_intents(game: &MonsGame, perspective: Color) -> Vec<PlannerIntent> {
+    if !game.player_can_move_mana() {
+        return Vec::new();
+    }
+
+    let mut intents = Vec::new();
+    for (mana_location, item) in game.board.occupied() {
+        let Item::Mana { mana } = item else {
+            continue;
+        };
+        if *mana != Mana::Regular(perspective) {
+            continue;
+        }
+
+        for &destination in mana_location.nearby_locations_ref() {
+            let own_before = distance_to_nearest_pool(mana_location, perspective);
+            let own_after = distance_to_nearest_pool(destination, perspective);
+            let opp_before = distance_to_nearest_pool(mana_location, perspective.other());
+            let opp_after = distance_to_nearest_pool(destination, perspective.other());
+            let own_gain = own_before.saturating_sub(own_after);
+            let opp_gain = opp_before.saturating_sub(opp_after);
+            if own_gain <= 0 || opp_gain > 0 {
+                continue;
+            }
+
+            intents.push(PlannerIntent::ManaTempo(ManaTempoIntent {
+                actor: mana_location,
+                destination,
+                estimated_gain: own_gain.saturating_sub(opp_gain.min(0)),
+                safety_delta: 0,
+                resources: TurnResourceRequirement {
+                    mon_moves_needed: 0,
+                    needs_action: false,
+                    needs_mana_move: true,
+                },
+            }));
+        }
+    }
+    intents
+}
+
+fn tactical_deny_intents(
+    game: &MonsGame,
+    perspective: Color,
+    budget: TurnResourceBudget,
+) -> Vec<PlannerIntent> {
+    if !planner_tactical_emergency_state(game, perspective) {
+        return Vec::new();
+    }
+
+    let mut intents = Vec::new();
+    let Some(target_drainer) = find_awake_drainer_location(&game.board, perspective.other()) else {
+        return intents;
+    };
+    let deny_pressure = exact_turn_summary(game, perspective.other()).same_turn_score_window_value;
+
+    for (actor, item) in game.board.occupied() {
+        let Some(mon) = item.mon().copied() else {
+            continue;
+        };
+        if mon.color != perspective || mon.is_fainted() {
+            continue;
+        }
+
+        if budget.can_use_action
+            && can_attack_target_on_board(
+                &game.board,
+                perspective,
+                perspective.other(),
+                target_drainer,
+                remaining_moves_for_color(game, perspective),
+                budget.can_use_action,
+            )
+        {
+            intents.push(PlannerIntent::TacticalDeny(TacticalDenyIntent {
+                actor,
+                target: target_drainer,
+                setup_step: None,
+                estimated_gain: deny_pressure.saturating_add(5),
+                safety_delta: 1,
+                resources: TurnResourceRequirement {
+                    mon_moves_needed: 0,
+                    needs_action: true,
+                    needs_mana_move: false,
+                },
+            }));
+        }
+
+        if budget.remaining_mon_moves <= 0 || !budget.can_use_action {
+            continue;
+        }
+        for &next in actor.nearby_locations_ref() {
+            let Some(inputs) = compile_seeded_inputs_with_mode(
+                game,
+                vec![Input::Location(actor), Input::Location(next)],
+                IntentCompileMode::Path,
+            ) else {
+                continue;
+            };
+            let Some((after, _)) = apply_inputs_for_planner(game, inputs.as_slice()) else {
+                continue;
+            };
+            if after.active_color != perspective {
+                continue;
+            }
+            if can_attack_target_on_board(
+                &after.board,
+                perspective,
+                perspective.other(),
+                target_drainer,
+                remaining_moves_for_color(&after, perspective),
+                after.player_can_use_action(),
+            ) {
+                intents.push(PlannerIntent::TacticalDeny(TacticalDenyIntent {
+                    actor,
+                    target: target_drainer,
+                    setup_step: Some(next),
+                    estimated_gain: deny_pressure.saturating_add(4),
+                    safety_delta: 0,
+                    resources: TurnResourceRequirement {
+                        mon_moves_needed: 1,
+                        needs_action: true,
+                        needs_mana_move: false,
+                    },
+                }));
+            }
+        }
+    }
+
+    intents
+}
+
+fn compile_intent_route(
+    game: &MonsGame,
+    perspective: Color,
+    intent: PlannerIntent,
+) -> Option<PlannerRoute> {
+    let (kind, priority, inputs) = match intent {
+        PlannerIntent::SecureMana(intent) => {
+            let inputs = if let Some(step) = intent.next_step {
+                compile_intent_inputs_with_mode(
+                    game,
+                    vec![Input::Location(intent.actor), Input::Location(step)],
+                    IntentCompileMode::Path,
+                )
+            } else {
+                best_drainer_pool_step(game, perspective, intent.actor, intent.wanted)
+            }?;
+            (
+                PlannerRouteKind::DrainerScore,
+                intent_priority(PlannerIntent::SecureMana(intent)),
+                inputs,
+            )
+        }
+        PlannerIntent::DrainerKill(intent) => {
+            let seed = if let Some(step) = intent.setup_step {
+                vec![Input::Location(intent.actor), Input::Location(step)]
+            } else {
+                vec![
+                    Input::Location(intent.actor),
+                    Input::Location(intent.target),
+                ]
+            };
+            let inputs = compile_intent_inputs_with_mode(game, seed, IntentCompileMode::Attack)?;
+            (
+                PlannerRouteKind::DrainerKill,
+                intent_priority(PlannerIntent::DrainerKill(intent)),
+                inputs,
+            )
+        }
+        PlannerIntent::SafetyRecover(intent) => {
+            let inputs = compile_intent_inputs_with_mode(
+                game,
+                vec![
+                    Input::Location(intent.actor),
+                    Input::Location(intent.target_step),
+                ],
+                IntentCompileMode::Path,
+            )?;
+            (
+                PlannerRouteKind::DrainerSafety,
+                intent_priority(PlannerIntent::SafetyRecover(intent)),
+                inputs,
+            )
+        }
+        PlannerIntent::SpiritImpact(intent) => {
+            let inputs = compile_intent_inputs_with_mode(
+                game,
+                vec![
+                    Input::Location(intent.actor),
+                    Input::Location(intent.target),
+                    Input::Location(intent.destination),
+                ],
+                IntentCompileMode::Spirit,
+            )?;
+            (
+                PlannerRouteKind::SpiritImpact,
+                intent_priority(PlannerIntent::SpiritImpact(intent)),
+                inputs,
+            )
+        }
+        PlannerIntent::ManaTempo(intent) => {
+            let inputs = compile_intent_inputs_with_mode(
+                game,
+                vec![
+                    Input::Location(intent.actor),
+                    Input::Location(intent.destination),
+                ],
+                IntentCompileMode::Path,
+            )?;
+            (
+                PlannerRouteKind::ManaMove,
+                intent_priority(PlannerIntent::ManaTempo(intent)),
+                inputs,
+            )
+        }
+        PlannerIntent::TacticalDeny(intent) => {
+            let seed = if let Some(step) = intent.setup_step {
+                vec![Input::Location(intent.actor), Input::Location(step)]
+            } else {
+                vec![
+                    Input::Location(intent.actor),
+                    Input::Location(intent.target),
+                ]
+            };
+            let inputs = compile_intent_inputs_with_mode(game, seed, IntentCompileMode::Attack)?;
+            (
+                PlannerRouteKind::TacticalDeny,
+                intent_priority(PlannerIntent::TacticalDeny(intent)),
+                inputs,
+            )
+        }
+    };
+
+    Some(PlannerRoute {
+        inputs,
+        kind,
+        priority,
+    })
+}
+
+fn compile_intent_inputs_with_mode(
+    game: &MonsGame,
+    seed: Vec<Input>,
+    mode: IntentCompileMode,
+) -> Option<Vec<Input>> {
+    if let Some(inputs) = compile_seeded_inputs_with_mode(game, seed.clone(), mode) {
+        if apply_inputs_for_planner(game, inputs.as_slice()).is_some() {
+            return Some(inputs);
+        }
+    }
+
+    update_turn_planner_diagnostics(|diagnostics| {
+        diagnostics.compile_fallbacks = diagnostics.compile_fallbacks.saturating_add(1);
+    });
+    let fallback = compile_seeded_inputs(game, seed)?;
+    apply_inputs_for_planner(game, fallback.as_slice())?;
+    Some(fallback)
+}
+
+fn tactical_deny_routes(
+    game: &MonsGame,
+    perspective: Color,
+    config: TurnPlannerSearchConfig,
+) -> Vec<PlannerRoute> {
+    if !planner_tactical_emergency_state(game, perspective) {
+        return Vec::new();
+    }
+
+    let mut seeds = Vec::new();
+    seeds.extend(model_tactical_routes(
+        game,
+        perspective,
+        TurnPlannerSearchConfig {
+            route_cap: config.route_cap.clamp(2, 8),
+            per_node_route_cap: config.per_node_route_cap.clamp(2, 4),
+            ..config
+        },
+    ));
+    seeds.extend(drainer_kill_routes(game, perspective));
+    seeds.extend(drainer_safety_routes(game, perspective));
+
+    let opponent_window_before =
+        exact_turn_summary(game, perspective.other()).same_turn_score_window_value;
+    let mut routes = Vec::new();
+    let mut seen = HashSet::new();
+    for seed in seeds {
+        if !seen.insert(seed.inputs.clone()) {
+            continue;
+        }
+        let Some((after, _)) = apply_inputs_for_planner(game, seed.inputs.as_slice()) else {
+            continue;
+        };
+        let opponent_window_after =
+            exact_turn_summary(&after, perspective.other()).same_turn_score_window_value;
+        let deny_gain = opponent_window_before.saturating_sub(opponent_window_after);
+        if deny_gain <= 0
+            && opponent_can_win_immediately(game, perspective)
+                == opponent_can_win_immediately(&after, perspective)
+        {
+            continue;
+        }
+        routes.push(PlannerRoute {
+            inputs: seed.inputs,
+            kind: PlannerRouteKind::TacticalDeny,
+            priority: 8_600
+                + deny_gain.saturating_mul(260)
+                + if opponent_can_win_immediately(game, perspective)
+                    && !opponent_can_win_immediately(&after, perspective)
+                {
+                    1_400
+                } else {
+                    0
+                },
+        });
     }
     routes
 }
@@ -921,11 +2011,9 @@ fn model_tactical_routes(
         } else {
             0
         };
-        let priority = 8_200
-            + score_gain.saturating_mul(220)
-            + safety.saturating_mul(140)
-            + kill_bonus
-            - immediate_reply_penalty;
+        let priority =
+            8_200 + score_gain.saturating_mul(220) + safety.saturating_mul(140) + kill_bonus
+                - immediate_reply_penalty;
         routes.push(PlannerRoute {
             inputs,
             kind: PlannerRouteKind::ModelTactical,
@@ -1356,11 +2444,67 @@ fn compile_seeded_inputs(game: &MonsGame, mut inputs: Vec<Input>) -> Option<Vec<
     None
 }
 
+fn compile_seeded_inputs_with_mode(
+    game: &MonsGame,
+    mut inputs: Vec<Input>,
+    mode: IntentCompileMode,
+) -> Option<Vec<Input>> {
+    let mut probe = game.clone_for_simulation();
+    let start_options = Some(SuggestedStartInputOptions::for_automove());
+
+    for _ in 0..TURN_PLANNER_CHAIN_LIMIT {
+        match probe.process_input_with_start_options_slice(
+            inputs.as_slice(),
+            true,
+            false,
+            start_options,
+        ) {
+            Output::InvalidInput => return None,
+            Output::Events(_) => return Some(inputs),
+            Output::LocationsToStartFrom(locations) => {
+                let mut sorted = locations;
+                sorted.sort_unstable();
+                let next = sorted.first().copied()?;
+                inputs.push(Input::Location(next));
+            }
+            Output::NextInputOptions(options) => {
+                let next = choose_followup_input_with_mode(options.as_slice(), mode)?;
+                inputs.push(next);
+            }
+        }
+    }
+
+    None
+}
+
 fn choose_followup_input(options: &[NextInput]) -> Option<Input> {
     let mut best: Option<(i32, Input)> = None;
 
     for option in options {
         let priority = followup_priority(option.input);
+        match best {
+            Some((best_priority, best_input)) => {
+                if priority > best_priority
+                    || (priority == best_priority && option.input < best_input)
+                {
+                    best = Some((priority, option.input));
+                }
+            }
+            None => best = Some((priority, option.input)),
+        }
+    }
+
+    best.map(|(_, input)| input)
+}
+
+fn choose_followup_input_with_mode(
+    options: &[NextInput],
+    mode: IntentCompileMode,
+) -> Option<Input> {
+    let mut best: Option<(i32, Input)> = None;
+
+    for option in options {
+        let priority = followup_priority_for_mode(option.input, mode);
         match best {
             Some((best_priority, best_input)) => {
                 if priority > best_priority
@@ -1383,6 +2527,32 @@ fn followup_priority(input: Input) -> i32 {
         Input::Location(_) => 200,
         Input::Modifier(Modifier::Cancel) => 0,
         Input::Takeback => -100,
+    }
+}
+
+fn followup_priority_for_mode(input: Input, mode: IntentCompileMode) -> i32 {
+    match mode {
+        IntentCompileMode::Path => match input {
+            Input::Location(_) => 320,
+            Input::Modifier(Modifier::SelectPotion) => 180,
+            Input::Modifier(Modifier::SelectBomb) => 140,
+            Input::Modifier(Modifier::Cancel) => 0,
+            Input::Takeback => -120,
+        },
+        IntentCompileMode::Spirit => match input {
+            Input::Location(_) => 340,
+            Input::Modifier(Modifier::SelectPotion) => 120,
+            Input::Modifier(Modifier::SelectBomb) => 110,
+            Input::Modifier(Modifier::Cancel) => 0,
+            Input::Takeback => -120,
+        },
+        IntentCompileMode::Attack => match input {
+            Input::Modifier(Modifier::SelectBomb) => 330,
+            Input::Location(_) => 300,
+            Input::Modifier(Modifier::SelectPotion) => 160,
+            Input::Modifier(Modifier::Cancel) => 0,
+            Input::Takeback => -120,
+        },
     }
 }
 
@@ -1707,6 +2877,65 @@ mod tests {
         assert!(
             killed_drainer || !opponent_can_win_immediately(&state, Color::White),
             "planner continuation must either kill the scoring drainer or avoid immediate reply loss"
+        );
+    }
+
+    #[test]
+    fn turn_planner_diagnostics_capture_intent_and_route_activity() {
+        clear_turn_opportunity_plan_cache();
+        clear_turn_planner_diagnostics();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(10, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        let selected = turn_opportunity_planner_next_inputs(
+            &game,
+            Color::White,
+            TurnPlannerMode::ProV1,
+            planner_config(),
+        );
+        assert!(selected.is_some(), "planner should produce a move");
+
+        let diagnostics = turn_planner_diagnostics_snapshot();
+        assert!(diagnostics.intent_generation_calls > 0);
+        assert!(diagnostics.intent_generation_hits > 0);
+        assert!(diagnostics.expansions > 0);
+        assert!(
+            diagnostics.route_model_tactical
+                + diagnostics.route_drainer_score
+                + diagnostics.route_drainer_kill
+                + diagnostics.route_spirit_impact
+                + diagnostics.route_drainer_safety
+                + diagnostics.route_mana_move
+                + diagnostics.route_tactical_deny
+                + diagnostics.route_fallback
+                > 0
         );
     }
 }

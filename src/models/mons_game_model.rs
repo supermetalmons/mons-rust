@@ -970,6 +970,9 @@ struct SmartSearchConfig {
     enable_child_exact_tactics: bool,
     enable_static_exact_evaluation: bool,
     enable_turn_opportunity_planner: bool,
+    enable_turn_planner_intent_root_injection: bool,
+    turn_planner_intent_root_injection_limit: usize,
+    turn_planner_intent_root_max_heuristic_gap: i32,
     enable_exact_lite_progress_checks: bool,
     enable_exact_lite_spirit_window_checks: bool,
     exact_lite_root_call_budget: usize,
@@ -1285,6 +1288,9 @@ impl SmartSearchConfig {
             enable_child_exact_tactics: true,
             enable_static_exact_evaluation: true,
             enable_turn_opportunity_planner: false,
+            enable_turn_planner_intent_root_injection: false,
+            turn_planner_intent_root_injection_limit: 0,
+            turn_planner_intent_root_max_heuristic_gap: 0,
             enable_exact_lite_progress_checks: false,
             enable_exact_lite_spirit_window_checks: false,
             exact_lite_root_call_budget: 0,
@@ -2409,6 +2415,9 @@ impl MonsGameModel {
         config.enable_selective_extensions = true;
         config.max_extensions_per_path = 1;
         config.selective_extension_node_share_bp = 1_200;
+        config.enable_turn_planner_intent_root_injection = false;
+        config.turn_planner_intent_root_injection_limit = 0;
+        config.turn_planner_intent_root_max_heuristic_gap = 0;
         config
     }
 
@@ -3092,6 +3101,28 @@ impl MonsGameModel {
             })
             .saturating_sub(potion_spend_penalty)
             .saturating_sub(drainer_exposure_penalty);
+        let intent_profile_bonus = if config.enable_turn_planner_intent_root_injection {
+            let mut bonus: i32 = 0;
+            if classes.drainer_safety_recover {
+                bonus = bonus.saturating_add(180);
+            }
+            if attacks_opponent_drainer {
+                bonus = bonus.saturating_add(160);
+            }
+            if spirit_same_turn_score_setup_now {
+                bonus = bonus.saturating_add(120);
+            }
+            if opponent_mana_progress {
+                bonus = bonus.saturating_add(100);
+            }
+            if supermana_progress {
+                bonus = bonus.saturating_add(80);
+            }
+            bonus
+        } else {
+            0
+        };
+        let heuristic_with_policy = heuristic_with_policy.saturating_add(intent_profile_bonus);
 
         Some(ScoredRootMove {
             inputs,
@@ -5950,7 +5981,7 @@ impl MonsGameModel {
 
     #[cfg(any(target_arch = "wasm32", test))]
     fn turn_planner_search_config(config: SmartSearchConfig) -> TurnPlannerSearchConfig {
-        TurnPlannerSearchConfig {
+        let mut planner = TurnPlannerSearchConfig {
             max_nodes: (config.max_visited_nodes / 64).clamp(32, 192),
             beam_width: (config.root_branch_limit / 10).clamp(2, 4),
             response_beam_width: 1,
@@ -5959,7 +5990,15 @@ impl MonsGameModel {
             per_node_route_cap: config.node_branch_limit.clamp(2, 4),
             scoring_weights: config.scoring_weights,
             allow_exact_static_evaluation: config.enable_static_exact_evaluation,
+        };
+        if config.enable_turn_planner_intent_root_injection {
+            planner.max_nodes = (planner.max_nodes.saturating_mul(3) / 2).clamp(48, 256);
+            planner.beam_width = planner.beam_width.saturating_add(1).clamp(2, 5);
+            planner.response_beam_width = planner.response_beam_width.saturating_add(1).clamp(1, 2);
+            planner.route_cap = planner.route_cap.saturating_add(2).clamp(8, 16);
+            planner.per_node_route_cap = planner.per_node_route_cap.saturating_add(1).clamp(3, 6);
         }
+        planner
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
@@ -6006,8 +6045,8 @@ impl MonsGameModel {
             || candidate.scores_opponent_mana_this_turn
             || candidate.safe_supermana_pickup_now
             || candidate.safe_opponent_mana_pickup_now;
-        let soft_tactical =
-            candidate.same_turn_score_window_value > 0 || candidate.spirit_same_turn_score_setup_now;
+        let soft_tactical = candidate.same_turn_score_window_value > 0
+            || candidate.spirit_same_turn_score_setup_now;
         let candidate_unsafe = candidate.mana_handoff_to_opponent
             || (candidate.own_drainer_vulnerable
                 && !candidate.classes.drainer_safety_recover
@@ -6019,7 +6058,8 @@ impl MonsGameModel {
 
         let heuristic_gap = top.heuristic.saturating_sub(candidate.heuristic);
 
-        let material_advantage = (candidate.attacks_opponent_drainer && !top.attacks_opponent_drainer)
+        let material_advantage = (candidate.attacks_opponent_drainer
+            && !top.attacks_opponent_drainer)
             || ((candidate.scores_supermana_this_turn || candidate.scores_opponent_mana_this_turn)
                 && !(top.scores_supermana_this_turn || top.scores_opponent_mana_this_turn))
             || ((candidate.safe_supermana_pickup_now || candidate.safe_opponent_mana_pickup_now)
@@ -6036,8 +6076,9 @@ impl MonsGameModel {
             || candidate.safe_opponent_mana_progress_steps < top.safe_opponent_mana_progress_steps;
         let candidate_safer = (!candidate.own_drainer_vulnerable && top.own_drainer_vulnerable)
             || (!candidate.mana_handoff_to_opponent && top.mana_handoff_to_opponent);
-        let progress_signal =
-            candidate.supermana_progress || candidate.opponent_mana_progress || candidate_progress_better;
+        let progress_signal = candidate.supermana_progress
+            || candidate.opponent_mana_progress
+            || candidate_progress_better;
         let progress_only = progress_signal
             && !decisive_tactical
             && !soft_tactical
@@ -6084,6 +6125,138 @@ impl MonsGameModel {
         }
 
         false
+    }
+
+    #[cfg(any(target_arch = "wasm32", test))]
+    fn accept_turn_planner_injected_root_candidate(
+        top: &ScoredRootMove,
+        candidate: &ScoredRootMove,
+        max_heuristic_gap: i32,
+    ) -> bool {
+        if candidate.wins_immediately {
+            return true;
+        }
+        if top.wins_immediately {
+            return false;
+        }
+
+        let candidate_unsafe = candidate.mana_handoff_to_opponent
+            || (candidate.own_drainer_vulnerable
+                && !candidate.classes.drainer_safety_recover
+                && !candidate.attacks_opponent_drainer
+                && candidate.same_turn_score_window_value <= 0);
+        if candidate_unsafe {
+            return false;
+        }
+
+        let top_unsafe = top.mana_handoff_to_opponent
+            || (top.own_drainer_vulnerable
+                && !top.classes.drainer_safety_recover
+                && !top.attacks_opponent_drainer
+                && top.same_turn_score_window_value <= 0);
+        let decisive_tactical = candidate.attacks_opponent_drainer
+            || candidate.scores_supermana_this_turn
+            || candidate.scores_opponent_mana_this_turn
+            || candidate.safe_supermana_pickup_now
+            || candidate.safe_opponent_mana_pickup_now;
+        let deny_window_signal = top.same_turn_score_window_value >= 2
+            && candidate.same_turn_score_window_value < top.same_turn_score_window_value;
+        let safety_upgrade = (candidate.classes.drainer_safety_recover
+            && !top.classes.drainer_safety_recover)
+            || (!candidate.own_drainer_vulnerable && top.own_drainer_vulnerable);
+        let progress_signal = candidate.supermana_progress
+            || candidate.opponent_mana_progress
+            || candidate.safe_supermana_progress_steps < top.safe_supermana_progress_steps
+            || candidate.safe_opponent_mana_progress_steps < top.safe_opponent_mana_progress_steps;
+        let tactical_signal =
+            decisive_tactical || deny_window_signal || safety_upgrade || progress_signal;
+        if !tactical_signal {
+            return false;
+        }
+
+        let heuristic_gap = top.heuristic.saturating_sub(candidate.heuristic);
+        if heuristic_gap <= max_heuristic_gap.max(0) {
+            return true;
+        }
+
+        decisive_tactical
+            && (safety_upgrade || top_unsafe)
+            && heuristic_gap <= max_heuristic_gap.saturating_add(220)
+    }
+
+    #[cfg(any(target_arch = "wasm32", test))]
+    fn inject_turn_planner_intent_root_candidates(
+        game: &MonsGame,
+        perspective: Color,
+        config: SmartSearchConfig,
+        root_moves: &mut Vec<ScoredRootMove>,
+    ) {
+        if !config.enable_turn_planner_intent_root_injection
+            || config.turn_planner_intent_root_injection_limit == 0
+            || root_moves.is_empty()
+            || game.active_color != perspective
+        {
+            return;
+        }
+
+        let planner_config = Self::turn_planner_search_config(config);
+        let planner_candidates = turn_opportunity_planner_intent_root_candidates(
+            game,
+            perspective,
+            TurnPlannerMode::ProV1,
+            planner_config,
+            config.turn_planner_intent_root_injection_limit,
+        );
+        if planner_candidates.is_empty() {
+            return;
+        }
+
+        let own_drainer_vulnerable_before = if config.enable_move_class_coverage {
+            Self::is_own_drainer_vulnerable_next_turn(
+                game,
+                perspective,
+                config.enable_enhanced_drainer_vulnerability,
+            )
+        } else {
+            false
+        };
+        let top = root_moves[0].clone();
+        let mut seen_inputs = root_moves
+            .iter()
+            .map(|candidate| candidate.inputs.clone())
+            .collect::<std::collections::HashSet<_>>();
+        let mut injected_any = false;
+
+        for inputs in planner_candidates {
+            if !seen_inputs.insert(inputs.clone()) {
+                continue;
+            }
+            let Some(candidate) = Self::build_scored_root_move(
+                game,
+                perspective,
+                config,
+                own_drainer_vulnerable_before,
+                inputs.as_slice(),
+            ) else {
+                record_turn_planner_injected_root_attempt(false);
+                continue;
+            };
+            let accepted = Self::accept_turn_planner_injected_root_candidate(
+                &top,
+                &candidate,
+                config.turn_planner_intent_root_max_heuristic_gap,
+            );
+            record_turn_planner_injected_root_attempt(accepted);
+            if !accepted {
+                continue;
+            }
+            root_moves.push(candidate);
+            injected_any = true;
+        }
+
+        if injected_any {
+            Self::sort_root_candidates_by_search_priority(root_moves.as_mut_slice());
+        }
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
@@ -6222,9 +6395,17 @@ impl MonsGameModel {
     ) -> Vec<Input> {
         clear_exact_state_analysis_cache();
         let perspective = game.active_color;
-        let root_moves = Self::ranked_root_moves(game, perspective, config);
+        let mut root_moves = Self::ranked_root_moves(game, perspective, config);
         if root_moves.is_empty() {
             return Vec::new();
+        }
+        if config.enable_turn_planner_intent_root_injection {
+            Self::inject_turn_planner_intent_root_candidates(
+                game,
+                perspective,
+                config,
+                &mut root_moves,
+            );
         }
         if config.enable_turn_opportunity_planner
             && root_moves.len() > 1
@@ -11575,6 +11756,15 @@ mod opening_book_tests {
         assert_eq!(independent_config.quiescence_node_budget, 120);
         assert!(independent_config.enable_quiescence_tactical_children_only);
         assert_eq!(independent_config.quiescence_tactical_enum_limit, 12);
+        assert!(!independent_config.enable_turn_planner_intent_root_injection);
+        assert_eq!(
+            independent_config.turn_planner_intent_root_injection_limit,
+            0
+        );
+        assert_eq!(
+            independent_config.turn_planner_intent_root_max_heuristic_gap,
+            0
+        );
 
         let mut opening_game = MonsGame::new(false);
         advance_opening_book_until_black_turn(&mut opening_game);
@@ -11594,12 +11784,137 @@ mod opening_book_tests {
         assert!(!opening_config.enable_selective_extensions);
         assert_eq!(opening_config.root_reply_risk_score_margin, 155);
         assert_eq!(opening_config.root_reply_risk_shortlist_max, 7);
+        assert!(!opening_config.enable_turn_planner_intent_root_injection);
         assert_eq!(opening_config.root_reply_risk_reply_limit, 8);
         assert_eq!(opening_config.root_reply_risk_node_share_bp, 560);
         assert!(!opening_config.enable_normal_root_safety_deep_floor);
         assert!(!opening_config.enable_quiescence_tactical_children_only);
         assert_eq!(opening_config.root_drainer_safety_score_margin, 4_300);
         assert_eq!(opening_config.selective_extension_node_share_bp, 1_200);
+    }
+
+    #[test]
+    fn turn_planner_intent_root_injection_guard_rejects_unsafe_non_tactical_candidate() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config = MonsGameModel::with_runtime_scoring_weights(&game, config);
+        let root_moves = MonsGameModel::ranked_root_moves(&game, Color::White, config);
+        let top = root_moves
+            .first()
+            .expect("expected at least one root move")
+            .clone();
+
+        let mut candidate = top.clone();
+        candidate.inputs = vec![Input::Takeback];
+        candidate.wins_immediately = false;
+        candidate.attacks_opponent_drainer = false;
+        candidate.scores_supermana_this_turn = false;
+        candidate.scores_opponent_mana_this_turn = false;
+        candidate.safe_supermana_pickup_now = false;
+        candidate.safe_opponent_mana_pickup_now = false;
+        candidate.supermana_progress = false;
+        candidate.opponent_mana_progress = false;
+        candidate.same_turn_score_window_value = 0;
+        candidate.classes = MoveClassFlags::default();
+        candidate.own_drainer_vulnerable = true;
+        candidate.mana_handoff_to_opponent = true;
+        candidate.heuristic = top.heuristic.saturating_sub(20);
+
+        assert!(!MonsGameModel::accept_turn_planner_injected_root_candidate(
+            &top, &candidate, 640
+        ));
+    }
+
+    #[test]
+    fn turn_planner_intent_root_injection_remains_deterministic() {
+        crate::models::automove_turn_planner::clear_turn_planner_diagnostics();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(10, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config = MonsGameModel::with_runtime_scoring_weights(&game, config);
+        config.enable_turn_opportunity_planner = false;
+        config.enable_turn_planner_intent_root_injection = true;
+        config.turn_planner_intent_root_injection_limit = 4;
+        config.turn_planner_intent_root_max_heuristic_gap = 640;
+
+        let mut roots_a = MonsGameModel::ranked_root_moves(&game, Color::White, config);
+        MonsGameModel::inject_turn_planner_intent_root_candidates(
+            &game,
+            Color::White,
+            config,
+            &mut roots_a,
+        );
+        let outputs_a = roots_a
+            .iter()
+            .map(|candidate| candidate.inputs.clone())
+            .collect::<Vec<_>>();
+
+        let mut roots_b = MonsGameModel::ranked_root_moves(&game, Color::White, config);
+        MonsGameModel::inject_turn_planner_intent_root_candidates(
+            &game,
+            Color::White,
+            config,
+            &mut roots_b,
+        );
+        let outputs_b = roots_b
+            .iter()
+            .map(|candidate| candidate.inputs.clone())
+            .collect::<Vec<_>>();
+
+        assert_eq!(outputs_a, outputs_b);
+        let diagnostics = crate::models::automove_turn_planner::turn_planner_diagnostics_snapshot();
+        assert!(diagnostics.injected_root_attempts >= diagnostics.injected_root_accepts);
     }
 
     #[test]

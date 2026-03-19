@@ -5,6 +5,9 @@ use crate::models::automove_exact::{
     clear_exact_query_diagnostics, clear_exact_state_analysis_cache,
     exact_query_diagnostics_snapshot,
 };
+use crate::models::automove_turn_planner::{
+    clear_turn_planner_diagnostics, turn_planner_diagnostics_snapshot,
+};
 
 fn stage1_cpu_budgets() -> Vec<SearchBudget> {
     let mut budgets = client_budgets().to_vec();
@@ -1423,6 +1426,11 @@ struct CacheReuseProbe {
     calls: usize,
     hits: usize,
     hit_rate: f64,
+    intent_generation_calls: usize,
+    intent_generation_hits: usize,
+    compile_fallbacks: usize,
+    injected_root_attempts: usize,
+    injected_root_accepts: usize,
 }
 
 fn env_f64(name: &str) -> Option<f64> {
@@ -1447,6 +1455,7 @@ fn cache_reuse_triage_probe(_profile_name: &str, selector: AutomoveSelector) -> 
 
     clear_exact_state_analysis_cache();
     clear_exact_query_diagnostics();
+    clear_turn_planner_diagnostics();
     let repeats = env_usize("SMART_TRIAGE_CACHE_REPEATS").unwrap_or(2).max(1);
     for _ in 0..repeats {
         for opening in openings.iter() {
@@ -1458,8 +1467,10 @@ fn cache_reuse_triage_probe(_profile_name: &str, selector: AutomoveSelector) -> 
         }
     }
     let (calls, hits) = exact_lite_cache_totals();
+    let planner_diag = turn_planner_diagnostics_snapshot();
     clear_exact_state_analysis_cache();
     clear_exact_query_diagnostics();
+    clear_turn_planner_diagnostics();
 
     CacheReuseProbe {
         avg_ms,
@@ -1470,6 +1481,11 @@ fn cache_reuse_triage_probe(_profile_name: &str, selector: AutomoveSelector) -> 
         } else {
             hits as f64 / calls as f64
         },
+        intent_generation_calls: planner_diag.intent_generation_calls,
+        intent_generation_hits: planner_diag.intent_generation_hits,
+        compile_fallbacks: planner_diag.compile_fallbacks,
+        injected_root_attempts: planner_diag.injected_root_attempts,
+        injected_root_accepts: planner_diag.injected_root_accepts,
     }
 }
 
@@ -1477,7 +1493,21 @@ fn cache_reuse_triage_passes(candidate: CacheReuseProbe, baseline: CacheReusePro
     let faster = candidate.avg_ms <= baseline.avg_ms * 0.97;
     let better_cache =
         candidate.calls > 0 && baseline.calls > 0 && candidate.hit_rate >= baseline.hit_rate + 0.05;
-    faster || better_cache
+    let candidate_accept_rate = if candidate.injected_root_attempts == 0 {
+        0.0
+    } else {
+        candidate.injected_root_accepts as f64 / candidate.injected_root_attempts as f64
+    };
+    let baseline_accept_rate = if baseline.injected_root_attempts == 0 {
+        0.0
+    } else {
+        baseline.injected_root_accepts as f64 / baseline.injected_root_attempts as f64
+    };
+    let stronger_planner_signal = candidate.intent_generation_calls > 0
+        && candidate.intent_generation_hits >= baseline.intent_generation_hits
+        && candidate.compile_fallbacks <= baseline.compile_fallbacks.saturating_add(8)
+        && candidate_accept_rate >= baseline_accept_rate;
+    faster || better_cache || stronger_planner_signal
 }
 
 fn assert_exact_lite_diagnostics_gate_if_enabled(
@@ -1949,8 +1979,10 @@ fn replay_pro_reliability_loss_probe_game(
         };
 
         let inputs = if candidate_to_move {
-            let candidate = loss_probe_decision(candidate_profile, SmartAutomovePreference::Pro, &game);
-            let baseline = loss_probe_decision(baseline_profile, SmartAutomovePreference::Pro, &game);
+            let candidate =
+                loss_probe_decision(candidate_profile, SmartAutomovePreference::Pro, &game);
+            let baseline =
+                loss_probe_decision(baseline_profile, SmartAutomovePreference::Pro, &game);
             let candidate_inputs = candidate.inputs.clone();
             if candidate.move_fen != baseline.move_fen && traces.len() < trace_limit {
                 traces.push(ReliabilityLossProbeTrace {
@@ -2165,15 +2197,13 @@ fn smart_automove_normal_vs_fast_loss_probe() {
 #[ignore = "diagnostic: replay pro reliability smoke losses and print candidate-vs-baseline divergences"]
 fn smart_automove_pro_reliability_loss_probe() {
     let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
-        .unwrap_or_else(|| "runtime_pro_turn_planner_v1".into());
-    let baseline_profile =
-        env_profile_name("SMART_PROBE_BASELINE_PROFILE").unwrap_or_else(|| "runtime_current".into());
+        .unwrap_or_else(|| "runtime_pro_intent_planner_v2".into());
+    let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_current".into());
     let repeats = env_usize("SMART_PRO_RELIABILITY_REPEATS")
         .unwrap_or(2)
         .max(1);
-    let games_per_repeat = env_usize("SMART_PRO_RELIABILITY_GAMES")
-        .unwrap_or(2)
-        .max(1);
+    let games_per_repeat = env_usize("SMART_PRO_RELIABILITY_GAMES").unwrap_or(2).max(1);
     let max_plies = env_usize("SMART_PRO_RELIABILITY_MAX_PLIES")
         .unwrap_or(12)
         .max(1);
@@ -2297,7 +2327,10 @@ fn smart_automove_pro_reliability_loss_probe() {
         baseline_avoids_drainer_vulnerability,
     );
 
-    assert!(losses > 0, "reliability loss probe found no candidate losses");
+    assert!(
+        losses > 0,
+        "reliability loss probe found no candidate losses"
+    );
 }
 
 #[test]
@@ -2326,6 +2359,7 @@ fn smart_automove_pro_reliability_loss_opening_profile_shootout() {
         "runtime_pro_quiescence_v2",
         "runtime_pro_primary_signal_v2",
         "runtime_pro_turn_planner_v1",
+        "runtime_pro_intent_planner_v2",
     ];
     let baseline_profile = "runtime_current";
     let max_plies = env_usize("SMART_PROBE_MAX_PLIES").unwrap_or(12).max(1);
@@ -2363,9 +2397,9 @@ fn smart_automove_pro_reliability_loss_opening_profile_shootout() {
 #[ignore = "diagnostic: probe pro confirmation lane deltas with opening-book enabled"]
 fn smart_automove_pro_confirmation_lane_probe() {
     let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
-        .unwrap_or_else(|| "runtime_pro_turn_planner_v1".into());
-    let baseline_profile =
-        env_profile_name("SMART_PROBE_BASELINE_PROFILE").unwrap_or_else(|| "runtime_release_safe_pre_exact".into());
+        .unwrap_or_else(|| "runtime_pro_intent_planner_v2".into());
+    let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_release_safe_pre_exact".into());
     let repeats = env_usize("SMART_PRO_CONFIRM_PROBE_REPEATS")
         .unwrap_or(2)
         .max(1);
@@ -2479,6 +2513,7 @@ fn smart_automove_pool_retained_profile_ids_match_active_registry() {
             "runtime_pro_quiescence_v2",
             "runtime_pro_primary_signal_v2",
             "runtime_pro_turn_planner_v1",
+            "runtime_pro_intent_planner_v2",
         ]
     );
 }
@@ -3676,7 +3711,7 @@ fn smart_automove_pool_promotion_ladder() {
 #[test]
 #[ignore = "reliability gate: pro turn planner vs runtime_current at pro budget"]
 fn smart_automove_pool_pro_reliability_gate() {
-    let candidate_profile = "runtime_pro_turn_planner_v1";
+    let candidate_profile = "runtime_pro_intent_planner_v2";
     let baseline_profile = "runtime_current";
     let candidate_selector = profile_selector_from_name(candidate_profile)
         .unwrap_or_else(|| panic!("candidate '{}' not found", candidate_profile));
