@@ -114,3 +114,28 @@ Candidate profile: `runtime_pro_intent_planner_v2`
 ### Current takeaway
 - Keep the existing emergency-only injection shape from commit `36d92ae926`; the attempted budget-cut split weakened tactical conversion.
 - Remaining blocker is still stable, full-capture ladder/normal-lane reporting in this environment, not early-gate signal quality.
+
+## Iteration update (2026-03-19, reliability probe + rerun)
+
+### Gate revalidation
+- Re-ran early earned path on unchanged candidate shape:
+  - `guardrails`: pass
+  - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+  - `runtime-preflight`: pass
+- Re-ran full `pro-fast-screen vs fast` directly:
+  - pass (`delta=+0.1250`, `confidence=0.637`)
+- Re-ran bounded progressive (`1x1 @56`) directly:
+  - vs normal: `delta=+0.3333`
+  - vs fast: `delta=+0.5000`
+- Re-ran bounded ladder speed gate:
+  - `ratio=8.650` (`< 10.0`)
+
+### Reliability-loss probe signal
+- Probe: `smart_automove_pro_reliability_loss_probe`
+  - candidate: `runtime_pro_intent_planner_v2`
+  - baseline: `runtime_release_safe_pre_exact`
+  - config sample (`repeats=1`, `games=2`, `max_plies=24`)
+- Summary:
+  - `total_games=4`, `wins=2`, `losses=2`, `win_rate=0.5000`
+  - `losses_with_disagreement=0`, `disagreements_logged=0`
+- Interpretation: sampled losses in this probe did not come from candidate-vs-baseline root-choice divergence in traced positions.

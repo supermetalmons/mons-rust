@@ -97,6 +97,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
     - full `pro-fast-screen vs fast` recheck still passed (`delta=+0.1250`)
     - bounded progressive recheck remained positive (`vs normal +0.3333`, `vs fast +0.5000`)
     - bounded ladder speed gate remained under cap (`ratio=8.650`)
+    - full `pro-fast-screen vs normal` and full ladder summary capture are still flaky in this environment; keep using direct lane runs + bounded summaries for signal until capture is stable.
+  - Reliability probe update (`smart_automove_pro_reliability_loss_probe`, candidate=`runtime_pro_intent_planner_v2`, baseline=`runtime_release_safe_pre_exact`, `repeats=1`, `games=2`, `max_plies=24`):
+    - summary: `total_games=4`, `wins=2`, `losses=2`, `win_rate=0.5000`
+    - `losses_with_disagreement=0` and no trace disagreements logged, so sampled losses were not caused by traced root-choice divergence against baseline.
   - Rejected micro-split in same loop:
     - attempted lower planner budget uplift under `turn_planner_intent_root_emergency_only`
     - killed immediately after repeated directional `vs fast` failures (`delta=-0.5000` in `1x1` fast-screen probes)
