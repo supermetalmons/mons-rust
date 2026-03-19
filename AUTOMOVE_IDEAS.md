@@ -158,6 +158,17 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - bounded `pro-confirmation-lane-probe (1x1 @56)`: `vs_normal 0.0000`, `vs_fast +0.5000`
       - bounded `pro-progressive (1x1 @56)`: vs normal `+0.3333`, vs fast `+0.3333`
       - minimal bounded `pro-ladder` speed gate (`positions=6`, `1x1 @40`) remained under cap (`ratio=6.400`), but full ladder summary capture remained too slow in this environment and was deferred.
+  - 2026-03-20 follow-up split C (rejected):
+    - Tried a crisis-only injection-budget bump:
+      - when emergency mode is active and opponent has immediate win pressure, temporarily raise injected intent-root limit from `1` to `2`.
+    - Sampled gate checks were unchanged on directional lanes:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen (1x1 @56)`: vs normal `0.0000`, vs fast `0.0000`
+      - bounded `pro-confirmation-lane-probe (1x1 @56)`: `vs_normal 0.0000`, `vs_fast +0.5000`
+      - bounded `pro-progressive (1x1 @56)`: vs normal `+0.3333`, vs fast `+0.3333`
+    - Decision: reverted; no measurable first-duel improvement for added complexity.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
