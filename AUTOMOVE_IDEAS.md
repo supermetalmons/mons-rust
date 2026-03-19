@@ -92,6 +92,15 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
     - bounded progressive (`1x1 @56`) stayed positive (`vs normal +0.3333`, `vs fast +0.5000`)
     - bounded ladder speed gate remained under cap (`ratio=8.589`)
   - Remaining blocker: still need stable full-capture `pro-fast-screen vs normal` and ladder summaries in this environment before promotion decision.
+  - 2026-03-19 rerun:
+    - revalidated `guardrails -> pro-triage -> runtime-preflight` (all pass; `primary_pro target_changed=1`, `off_target_changed=0`)
+    - full `pro-fast-screen vs fast` recheck still passed (`delta=+0.1250`)
+    - bounded progressive recheck remained positive (`vs normal +0.3333`, `vs fast +0.5000`)
+    - bounded ladder speed gate remained under cap (`ratio=8.650`)
+  - Rejected micro-split in same loop:
+    - attempted lower planner budget uplift under `turn_planner_intent_root_emergency_only`
+    - killed immediately after repeated directional `vs fast` failures (`delta=-0.5000` in `1x1` fast-screen probes)
+    - reverted; keep current candidate shape.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`

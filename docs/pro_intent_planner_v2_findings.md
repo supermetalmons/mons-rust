@@ -91,3 +91,26 @@ Candidate profile: `runtime_pro_intent_planner_v2`
 
 ### Remaining risk
 - Need stable full-capture runs for default `pro-fast-screen vs normal` and bounded/full ladder summaries; long-running wrapper/session capture remains flaky in this environment.
+
+## Iteration update (2026-03-19, rerun + failed micro-split)
+
+### Rerun status on current shape
+- Fresh earned-path early gates stayed green:
+  - `guardrails`: pass
+  - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+  - `runtime-preflight`: pass
+- Direct full lane recheck:
+  - `pro-fast-screen vs fast`: pass (`delta=+0.1250`, `confidence=0.637`)
+- Directional bounded rechecks stayed positive:
+  - `pro-progressive vs normal` (`1x1 @56`): `delta=+0.3333`
+  - `pro-progressive vs fast` (`1x1 @56`): `delta=+0.5000`
+- Bounded ladder speed gate stayed under cap:
+  - `ratio=8.650` (`< 10.0`)
+
+### Rejected tweak in this loop
+- Tried reducing planner budget uplift specifically for `turn_planner_intent_root_emergency_only`.
+- Result: directional `pro-fast-screen vs fast` (`1x1`) failed repeatedly (`delta=-0.5000`), so the tweak was reverted immediately.
+
+### Current takeaway
+- Keep the existing emergency-only injection shape from commit `36d92ae926`; the attempted budget-cut split weakened tactical conversion.
+- Remaining blocker is still stable, full-capture ladder/normal-lane reporting in this environment, not early-gate signal quality.
