@@ -134,6 +134,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
         - primary `vs_normal +0.1667`, `vs_fast +0.4167`
         - confirmation `vs_normal 0.0000`, `vs_fast +0.2500`
         - pool `candidate_vs_normal=-0.1000`, `baseline_vs_normal=-0.1000`.
+  - 2026-03-20 follow-up split:
+    - Added emergency-injection hardening in root acceptance:
+      - reject emergency injected roots that still leave immediate opponent win available after the step.
+      - added unit coverage: `turn_planner_intent_emergency_injection_rejects_unresolved_immediate_loss`.
+    - Sampled gate checks on this split:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen (1x1 @56)`: vs normal `0.0000`, vs fast `0.0000`
+      - bounded `pro-confirmation-lane-probe (1x1 @56)`: `vs_normal 0.0000`, `vs_fast +0.5000`
+      - bounded `pro-progressive (1x1 @56)`: vs normal `+0.3333`, vs fast `+0.3333`
+      - bounded `pro-ladder` speed gate remained under cap (`ratio=5.905`), but full ladder summary capture in this environment remains slow/flaky and was deferred.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`

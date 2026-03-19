@@ -6228,11 +6228,16 @@ impl MonsGameModel {
     fn accept_turn_planner_emergency_injected_root_candidate(
         top: &ScoredRootMove,
         candidate: &ScoredRootMove,
+        opponent_can_win_immediately_after: bool,
     ) -> bool {
         if candidate.wins_immediately {
             return true;
         }
         if top.wins_immediately {
+            return false;
+        }
+        if opponent_can_win_immediately_after {
+            // Emergency injections should not preserve or introduce immediate-loss states.
             return false;
         }
 
@@ -6302,7 +6307,6 @@ impl MonsGameModel {
             .map(|candidate| candidate.inputs.clone())
             .collect::<std::collections::HashSet<_>>();
         let mut injected_any = false;
-
         for inputs in planner_candidates {
             if !seen_inputs.insert(inputs.clone()) {
                 continue;
@@ -6318,7 +6322,20 @@ impl MonsGameModel {
                 continue;
             };
             if config.turn_planner_intent_root_emergency_only
-                && !Self::accept_turn_planner_emergency_injected_root_candidate(&top, &candidate)
+                && !Self::accept_turn_planner_emergency_injected_root_candidate(
+                    &top,
+                    &candidate,
+                    {
+                        let opponent = perspective.other();
+                        let needed = Config::TARGET_SCORE
+                            .saturating_sub(Self::score_for_color(&candidate.game, opponent));
+                        needed <= 0
+                            || (candidate.game.active_color == opponent
+                                && exact_turn_summary(&candidate.game, opponent)
+                                    .same_turn_score_window_value
+                                    >= needed)
+                    },
+                )
             {
                 record_turn_planner_injected_root_attempt(false);
                 continue;
@@ -11929,6 +11946,55 @@ mod opening_book_tests {
 
         assert!(!MonsGameModel::accept_turn_planner_injected_root_candidate(
             &top, &candidate, 640
+        ));
+    }
+
+    #[test]
+    fn turn_planner_intent_emergency_injection_rejects_unresolved_immediate_loss() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(10, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config = MonsGameModel::with_runtime_scoring_weights(&game, config);
+        let mut top = MonsGameModel::ranked_root_moves(&game, Color::White, config)
+            .first()
+            .expect("expected at least one root move")
+            .clone();
+        top.wins_immediately = false;
+
+        let mut candidate = top.clone();
+        candidate.wins_immediately = false;
+        candidate.attacks_opponent_drainer = true;
+        candidate.classes.drainer_attack = true;
+        candidate.mana_handoff_to_opponent = false;
+        candidate.own_drainer_vulnerable = false;
+
+        assert!(!MonsGameModel::accept_turn_planner_emergency_injected_root_candidate(
+            &top, &candidate, true
+        ));
+        assert!(MonsGameModel::accept_turn_planner_emergency_injected_root_candidate(
+            &top, &candidate, false
         ));
     }
 
