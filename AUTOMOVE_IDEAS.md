@@ -146,6 +146,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - bounded `pro-confirmation-lane-probe (1x1 @56)`: `vs_normal 0.0000`, `vs_fast +0.5000`
       - bounded `pro-progressive (1x1 @56)`: vs normal `+0.3333`, vs fast `+0.3333`
       - bounded `pro-ladder` speed gate remained under cap (`ratio=5.905`), but full ladder summary capture in this environment remains slow/flaky and was deferred.
+  - 2026-03-20 follow-up split B:
+    - Refined emergency-injection hardening to reject only *introduced* immediate-loss states:
+      - allow injected roots that keep immediate-loss status unchanged when top root is already immediate-loss, but reject roots that newly introduce immediate-loss.
+      - updated unit coverage: `turn_planner_intent_emergency_injection_rejects_introduced_immediate_loss`.
+    - Sampled gate checks on this split:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen (1x1 @56)`: vs normal `0.0000`, vs fast `0.0000`
+      - bounded `pro-confirmation-lane-probe (1x1 @56)`: `vs_normal 0.0000`, `vs_fast +0.5000`
+      - bounded `pro-progressive (1x1 @56)`: vs normal `+0.3333`, vs fast `+0.3333`
+      - minimal bounded `pro-ladder` speed gate (`positions=6`, `1x1 @40`) remained under cap (`ratio=6.400`), but full ladder summary capture remained too slow in this environment and was deferred.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
