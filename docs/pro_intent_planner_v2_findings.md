@@ -139,3 +139,31 @@ Candidate profile: `runtime_pro_intent_planner_v2`
   - `total_games=4`, `wins=2`, `losses=2`, `win_rate=0.5000`
   - `losses_with_disagreement=0`, `disagreements_logged=0`
 - Interpretation: sampled losses in this probe did not come from candidate-vs-baseline root-choice divergence in traced positions.
+
+## Iteration update (2026-03-19, split checks and reverts)
+
+### Split A (rejected): broader emergency injection
+- Change tested:
+  - `turn_planner_intent_root_injection_limit: 1 -> 2`
+  - `turn_planner_intent_root_max_heuristic_gap: 200 -> 220`
+- Result:
+  - `pro-triage primary_pro`: still pass (`target_changed=1`)
+  - directional `pro-fast-screen vs fast` (`1x1`) failed immediately (`delta=-0.5000`)
+- Action: reverted.
+
+### Split B (rejected): emergency acceptance safety-upgrade expansion
+- Change tested:
+  - allowed emergency injected roots with strict safety-upgrade signal over top root as additional crisis criterion.
+- Result:
+  - no observable improvement in sampled gates:
+    - `pro-triage primary_pro`: unchanged (`target_changed=1`)
+    - full `pro-fast-screen vs fast`: pass but unchanged (`delta=+0.1250`)
+    - bounded progressive unchanged (`vs normal +0.3333`, `vs fast +0.5000`)
+  - reliability probe at slightly larger sample (`repeats=1`, `games=3`, `max_plies=24`) remained:
+    - `total_games=6`, `wins=3`, `losses=3`, `losses_with_disagreement=0`
+- Action: reverted.
+
+### Current standing
+- Keep candidate on prior stable emergency-only strict shape from `36d92ae926`.
+- Latest bounded ladder speed-gate checks remained green (`ratio ~8.55`).
+- Remaining blocker is still stable full-capture reporting for `pro-fast-screen vs normal` and full ladder summaries in this environment.

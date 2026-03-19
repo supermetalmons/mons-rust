@@ -105,6 +105,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
     - attempted lower planner budget uplift under `turn_planner_intent_root_emergency_only`
     - killed immediately after repeated directional `vs fast` failures (`delta=-0.5000` in `1x1` fast-screen probes)
     - reverted; keep current candidate shape.
+  - 2026-03-19 additional split checks:
+    - Split A (broader emergency injection: `limit=2`, `max_heuristic_gap=220`) was killed immediately after directional `vs fast` failure (`delta=-0.5000` in `1x1` probe), then reverted.
+    - Split B (allow emergency injected roots on strict safety-upgrade signal over top root) showed no measurable gain in sampled gates:
+      - `pro-triage primary_pro` unchanged (`target_changed=1`)
+      - full `pro-fast-screen vs fast` unchanged pass (`delta=+0.1250`)
+      - bounded progressive unchanged (`vs normal +0.3333`, `vs fast +0.5000`)
+      - reliability-loss probe sample (`repeats=1`, `games=3`, `max_plies=24`) remained `win_rate=0.5000` with `losses_with_disagreement=0`.
+    - Split B reverted; keep prior stable emergency-only strict candidate shape.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
