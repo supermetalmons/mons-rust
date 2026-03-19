@@ -80,6 +80,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
     - `pro-triage primary_pro`: `target_changed=1`, `off_target_changed=0`
     - `pro-fast-screen`: vs normal `delta=0.0000`, vs fast `delta=+0.1250`
   - Bounded directional progressive probes (`initial=1`, `max=1`, `repeats=1`, `max_plies=40`) were positive (`vs normal +0.3333`, `vs fast +0.5000`) but default progressive/ladder runtime remains expensive and unresolved.
+  - 2026-03-19: new split implemented emergency-only injection instead of global injection:
+    - profile now uses `limit=1`, `max_heuristic_gap=200`, `turn_planner_intent_root_emergency_only=true`
+    - injected roots in emergency mode now require crisis-resolving tactical content (drainer kill/safety recover/immediate score conversion) and reject vulnerable handoff lines.
+  - Current gate checks on this split:
+    - `guardrails`: pass
+    - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+    - `runtime-preflight`: pass
+    - direct full `pro-fast-screen vs fast`: pass (`delta=+0.1250`, `confidence=0.637`)
+    - bounded `pro-fast-screen vs normal` (`1x1`) stayed non-negative (`delta=0.0000`)
+    - bounded progressive (`1x1 @56`) stayed positive (`vs normal +0.3333`, `vs fast +0.5000`)
+    - bounded ladder speed gate remained under cap (`ratio=8.589`)
+  - Remaining blocker: still need stable full-capture `pro-fast-screen vs normal` and ladder summaries in this environment before promotion decision.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`

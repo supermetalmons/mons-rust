@@ -62,3 +62,32 @@ Candidate profile: `runtime_pro_intent_planner_v2`
 - Runtime-fit at higher duel stages remains the open risk:
   - default `pro-progressive` spent many minutes on `vs normal` before completion in multiple runs.
   - bounded ladder probe showed acceptable speed ratio early (`8.586 < 10.0`) but remained too slow to complete quickly in this loop.
+
+## Iteration update (2026-03-19, emergency-only strict injection)
+
+### Candidate shape now
+- `configure_runtime_pro_intent_planner_v2`:
+  - `enable_turn_planner_intent_root_injection = true`
+  - `turn_planner_intent_root_injection_limit = 1`
+  - `turn_planner_intent_root_max_heuristic_gap = 200`
+  - `turn_planner_intent_root_emergency_only = true`
+- Added planner bridge gate: root-intent injection is only active when planner tactical emergency state is true.
+- Added emergency-only injected-root acceptance filter:
+  - only crisis-resolving roots are allowed (drainer kill, drainer safety recover, or immediate score conversion),
+  - explicit reject of handoff/vulnerable non-recover lines.
+
+### Current signals
+- `guardrails`: pass.
+- `pro-triage` (`primary_pro`): pass with movement (`target_changed=1`, `off_target_changed=0`).
+- `runtime-preflight`: pass.
+- First duel lanes (direct cargo run):
+  - `pro-fast-screen vs fast`: pass (`delta=+0.1250`, `confidence=0.637`).
+  - `pro-fast-screen vs normal`: bounded directional probe (`1x1`) is non-negative (`delta=0.0000`).
+- Bounded progressive probes (`1x1 @56`):
+  - vs normal: `delta=+0.3333`
+  - vs fast: `delta=+0.5000`
+- Bounded ladder probe (`2x2`, `max_plies=56`) speed gate still passes:
+  - `ratio=8.589` under cap `10.0`.
+
+### Remaining risk
+- Need stable full-capture runs for default `pro-fast-screen vs normal` and bounded/full ladder summaries; long-running wrapper/session capture remains flaky in this environment.

@@ -973,6 +973,7 @@ struct SmartSearchConfig {
     enable_turn_planner_intent_root_injection: bool,
     turn_planner_intent_root_injection_limit: usize,
     turn_planner_intent_root_max_heuristic_gap: i32,
+    turn_planner_intent_root_emergency_only: bool,
     enable_exact_lite_progress_checks: bool,
     enable_exact_lite_spirit_window_checks: bool,
     exact_lite_root_call_budget: usize,
@@ -1291,6 +1292,7 @@ impl SmartSearchConfig {
             enable_turn_planner_intent_root_injection: false,
             turn_planner_intent_root_injection_limit: 0,
             turn_planner_intent_root_max_heuristic_gap: 0,
+            turn_planner_intent_root_emergency_only: false,
             enable_exact_lite_progress_checks: false,
             enable_exact_lite_spirit_window_checks: false,
             exact_lite_root_call_budget: 0,
@@ -2418,6 +2420,7 @@ impl MonsGameModel {
         config.enable_turn_planner_intent_root_injection = false;
         config.turn_planner_intent_root_injection_limit = 0;
         config.turn_planner_intent_root_max_heuristic_gap = 0;
+        config.turn_planner_intent_root_emergency_only = false;
         config
     }
 
@@ -3101,7 +3104,9 @@ impl MonsGameModel {
             })
             .saturating_sub(potion_spend_penalty)
             .saturating_sub(drainer_exposure_penalty);
-        let intent_profile_bonus = if config.enable_turn_planner_intent_root_injection {
+        let intent_profile_bonus = if config.enable_turn_planner_intent_root_injection
+            && config.turn_planner_intent_root_injection_limit > 0
+        {
             let mut bonus: i32 = 0;
             if classes.drainer_safety_recover {
                 bonus = bonus.saturating_add(40);
@@ -5997,7 +6002,9 @@ impl MonsGameModel {
             scoring_weights: config.scoring_weights,
             allow_exact_static_evaluation: config.enable_static_exact_evaluation,
         };
-        if config.enable_turn_planner_intent_root_injection {
+        if config.enable_turn_planner_intent_root_injection
+            && config.turn_planner_intent_root_injection_limit > 0
+        {
             planner.max_nodes = (planner.max_nodes.saturating_mul(3) / 2).clamp(48, 256);
             planner.beam_width = planner.beam_width.saturating_add(1).clamp(2, 5);
             planner.response_beam_width = planner.response_beam_width.saturating_add(1).clamp(1, 2);
@@ -6191,17 +6198,80 @@ impl MonsGameModel {
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
+    fn turn_planner_intent_root_injection_limit(
+        game: &MonsGame,
+        perspective: Color,
+        config: SmartSearchConfig,
+        root_moves: &[ScoredRootMove],
+    ) -> usize {
+        if !config.enable_turn_planner_intent_root_injection
+            || config.turn_planner_intent_root_injection_limit == 0
+            || root_moves.is_empty()
+            || game.active_color != perspective
+        {
+            return 0;
+        }
+
+        if config.turn_planner_intent_root_emergency_only
+            && !crate::models::automove_turn_planner::planner_tactical_emergency_state(
+                game,
+                perspective,
+            )
+        {
+            return 0;
+        }
+
+        config.turn_planner_intent_root_injection_limit
+    }
+
+    #[cfg(any(target_arch = "wasm32", test))]
+    fn accept_turn_planner_emergency_injected_root_candidate(
+        top: &ScoredRootMove,
+        candidate: &ScoredRootMove,
+    ) -> bool {
+        if candidate.wins_immediately {
+            return true;
+        }
+        if top.wins_immediately {
+            return false;
+        }
+
+        let crisis_resolving = candidate.attacks_opponent_drainer
+            || candidate.classes.drainer_safety_recover
+            || candidate.scores_supermana_this_turn
+            || candidate.scores_opponent_mana_this_turn;
+        if !crisis_resolving {
+            return false;
+        }
+
+        if candidate.mana_handoff_to_opponent {
+            return false;
+        }
+
+        if candidate.own_drainer_vulnerable
+            && !candidate.classes.drainer_safety_recover
+            && !candidate.attacks_opponent_drainer
+        {
+            return false;
+        }
+
+        true
+    }
+
+    #[cfg(any(target_arch = "wasm32", test))]
     fn inject_turn_planner_intent_root_candidates(
         game: &MonsGame,
         perspective: Color,
         config: SmartSearchConfig,
         root_moves: &mut Vec<ScoredRootMove>,
     ) {
-        if !config.enable_turn_planner_intent_root_injection
-            || config.turn_planner_intent_root_injection_limit == 0
-            || root_moves.is_empty()
-            || game.active_color != perspective
-        {
+        let injection_limit = Self::turn_planner_intent_root_injection_limit(
+            game,
+            perspective,
+            config,
+            root_moves.as_slice(),
+        );
+        if injection_limit == 0 {
             return;
         }
 
@@ -6211,7 +6281,7 @@ impl MonsGameModel {
             perspective,
             TurnPlannerMode::ProV1,
             planner_config,
-            config.turn_planner_intent_root_injection_limit,
+            injection_limit,
         );
         if planner_candidates.is_empty() {
             return;
@@ -6247,6 +6317,12 @@ impl MonsGameModel {
                 record_turn_planner_injected_root_attempt(false);
                 continue;
             };
+            if config.turn_planner_intent_root_emergency_only
+                && !Self::accept_turn_planner_emergency_injected_root_candidate(&top, &candidate)
+            {
+                record_turn_planner_injected_root_attempt(false);
+                continue;
+            }
             let accepted = Self::accept_turn_planner_injected_root_candidate(
                 &top,
                 &candidate,
@@ -11771,6 +11847,7 @@ mod opening_book_tests {
             independent_config.turn_planner_intent_root_max_heuristic_gap,
             0
         );
+        assert!(!independent_config.turn_planner_intent_root_emergency_only);
 
         let mut opening_game = MonsGame::new(false);
         advance_opening_book_until_black_turn(&mut opening_game);
@@ -11791,6 +11868,7 @@ mod opening_book_tests {
         assert_eq!(opening_config.root_reply_risk_score_margin, 155);
         assert_eq!(opening_config.root_reply_risk_shortlist_max, 7);
         assert!(!opening_config.enable_turn_planner_intent_root_injection);
+        assert!(!opening_config.turn_planner_intent_root_emergency_only);
         assert_eq!(opening_config.root_reply_risk_reply_limit, 8);
         assert_eq!(opening_config.root_reply_risk_node_share_bp, 560);
         assert!(!opening_config.enable_normal_root_safety_deep_floor);
@@ -11852,6 +11930,68 @@ mod opening_book_tests {
         assert!(!MonsGameModel::accept_turn_planner_injected_root_candidate(
             &top, &candidate, 640
         ));
+    }
+
+    #[test]
+    fn turn_planner_intent_root_injection_limit_respects_emergency_gate() {
+        let calm_game = game_with_items(
+            vec![
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(10, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config = MonsGameModel::with_runtime_scoring_weights(&calm_game, config);
+        config.enable_turn_planner_intent_root_injection = true;
+        config.turn_planner_intent_root_injection_limit = 2;
+        config.turn_planner_intent_root_max_heuristic_gap = 260;
+        config.turn_planner_intent_root_emergency_only = true;
+
+        let calm_roots = MonsGameModel::ranked_root_moves(&calm_game, Color::White, config);
+        assert_eq!(
+            MonsGameModel::turn_planner_intent_root_injection_limit(
+                &calm_game,
+                Color::White,
+                config,
+                calm_roots.as_slice(),
+            ),
+            0
+        );
+
+        config.turn_planner_intent_root_emergency_only = false;
+        assert_eq!(
+            MonsGameModel::turn_planner_intent_root_injection_limit(
+                &calm_game,
+                Color::White,
+                config,
+                calm_roots.as_slice(),
+            ),
+            config.turn_planner_intent_root_injection_limit
+        );
     }
 
     #[test]

@@ -523,7 +523,7 @@ fn planner_should_activate(game: &MonsGame, perspective: Color) -> bool {
     false
 }
 
-fn planner_tactical_emergency_state(game: &MonsGame, perspective: Color) -> bool {
+pub(crate) fn planner_tactical_emergency_state(game: &MonsGame, perspective: Color) -> bool {
     if opponent_can_win_immediately(game, perspective) {
         return true;
     }
