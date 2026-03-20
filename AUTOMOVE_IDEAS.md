@@ -476,6 +476,31 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - `candidate_vs_fast=+0.1000` vs baseline `-0.1000` (margin `+0.2000`)
     - per-opponent breakdown still shows one weak lane to target in next split:
       - `swift_2024_eval_reference`: candidate `-0.5000` vs baseline `0.0000` (margin `-0.5000`).
+  - 2026-03-20 diagnostics enhancement retained:
+    - `TurnPlannerDiagnostics` now tracks compile fallback mode breakdown (`path`/`spirit`/`attack`).
+    - `smart_automove_pro_planner_activity_probe` now prints full route-family contribution counters (`model_tactical`, `drainer_score`, `drainer_kill`, `spirit_impact`, `drainer_safety`, `mana_move`, `tactical_deny`, `fallback`).
+  - 2026-03-20 follow-up split AC (rejected):
+    - Tried strict spirit intent compile for `runtime_pro_intent_planner_v2` (drop generic fallback when `IntentCompileMode::Spirit` fails).
+    - Probe effect (1x1 @56):
+      - compile fallback noise dropped materially (`normal 240 -> 39`, `fast 113 -> 72`), with spirit fallback reduced to `0`.
+      - duel activity signal unchanged (`vs_normal_delta=0.0000`, `vs_fast_delta=+0.5000`).
+    - Gate snapshot:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded `pro-fast-screen (1x1 @56)`: flat on both lanes (`vs normal 0.0000`, `vs fast 0.0000`)
+    - Decision: reverted profile toggle; no first-duel movement despite cleaner compile behavior.
+  - 2026-03-20 follow-up split AD (rejected):
+    - Tried disabling `ManaTempo` intents for `runtime_pro_intent_planner_v2` intent-first routing.
+    - Probe effect (1x1 @56):
+      - intent hits dropped (`normal 633 -> 270`, `fast 517 -> 216`), but route mix still carried high `mana_move` from legacy route family.
+      - activity deltas unchanged (`vs_normal_delta=0.0000`, `vs_fast_delta=+0.5000`).
+    - Gate snapshot:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded `pro-fast-screen (1x1 @56)`: flat on both lanes (`vs normal 0.0000`, `vs fast 0.0000`)
+    - Decision: reverted profile toggle; no deterministic first-duel lift.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`

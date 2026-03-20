@@ -995,6 +995,8 @@ struct SmartSearchConfig {
     turn_planner_intent_root_injection_limit: usize,
     turn_planner_intent_root_max_heuristic_gap: i32,
     turn_planner_intent_root_emergency_only: bool,
+    turn_planner_strict_spirit_intent_compile: bool,
+    turn_planner_disable_mana_tempo_intents: bool,
     enable_exact_lite_progress_checks: bool,
     enable_exact_lite_spirit_window_checks: bool,
     exact_lite_root_call_budget: usize,
@@ -1314,6 +1316,8 @@ impl SmartSearchConfig {
             turn_planner_intent_root_injection_limit: 0,
             turn_planner_intent_root_max_heuristic_gap: 0,
             turn_planner_intent_root_emergency_only: false,
+            turn_planner_strict_spirit_intent_compile: false,
+            turn_planner_disable_mana_tempo_intents: false,
             enable_exact_lite_progress_checks: false,
             enable_exact_lite_spirit_window_checks: false,
             exact_lite_root_call_budget: 0,
@@ -6022,6 +6026,8 @@ impl MonsGameModel {
             per_node_route_cap: config.node_branch_limit.clamp(2, 4),
             scoring_weights: config.scoring_weights,
             allow_exact_static_evaluation: config.enable_static_exact_evaluation,
+            strict_spirit_intent_compile: config.turn_planner_strict_spirit_intent_compile,
+            disable_mana_tempo_intents: config.turn_planner_disable_mana_tempo_intents,
         };
         if config.enable_turn_planner_intent_root_injection
             && config.turn_planner_intent_root_injection_limit > 0

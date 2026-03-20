@@ -31,6 +31,8 @@ pub(crate) struct TurnPlannerSearchConfig {
     pub per_node_route_cap: usize,
     pub scoring_weights: &'static ScoringWeights,
     pub allow_exact_static_evaluation: bool,
+    pub strict_spirit_intent_compile: bool,
+    pub disable_mana_tempo_intents: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -145,6 +147,9 @@ pub(crate) struct TurnPlannerDiagnostics {
     pub intent_generation_calls: usize,
     pub intent_generation_hits: usize,
     pub compile_fallbacks: usize,
+    pub compile_fallbacks_path: usize,
+    pub compile_fallbacks_spirit: usize,
+    pub compile_fallbacks_attack: usize,
     pub injected_root_attempts: usize,
     pub injected_root_accepts: usize,
     pub injected_root_candidates_seen: usize,
@@ -1394,7 +1399,7 @@ fn intent_first_routes(
     config: TurnPlannerSearchConfig,
 ) -> Vec<PlannerRoute> {
     let budget = current_turn_resource_budget(game, perspective);
-    let mut intents = planner_intents(game, perspective, budget);
+    let mut intents = planner_intents(game, perspective, budget, config);
     if intents.is_empty() {
         update_turn_planner_diagnostics(|diagnostics| {
             diagnostics.intent_generation_calls =
@@ -1428,7 +1433,7 @@ fn intent_first_routes(
         if !budget_satisfies_requirement(budget, intent_requirement(intent)) {
             continue;
         }
-        if let Some(route) = compile_intent_route(game, perspective, intent) {
+        if let Some(route) = compile_intent_route(game, perspective, intent, config) {
             routes.push(route);
         }
     }
@@ -1533,13 +1538,16 @@ fn planner_intents(
     game: &MonsGame,
     perspective: Color,
     budget: TurnResourceBudget,
+    config: TurnPlannerSearchConfig,
 ) -> Vec<PlannerIntent> {
     let mut intents = Vec::new();
     intents.extend(secure_mana_intents(game, perspective));
     intents.extend(drainer_kill_intents(game, perspective, budget));
     intents.extend(safety_recover_intents(game, perspective));
     intents.extend(spirit_impact_intents(game, perspective));
-    intents.extend(mana_tempo_intents(game, perspective));
+    if !config.disable_mana_tempo_intents {
+        intents.extend(mana_tempo_intents(game, perspective));
+    }
     intents.extend(tactical_deny_intents(game, perspective, budget));
     intents
 }
@@ -1909,6 +1917,7 @@ fn compile_intent_route(
     game: &MonsGame,
     perspective: Color,
     intent: PlannerIntent,
+    config: TurnPlannerSearchConfig,
 ) -> Option<PlannerRoute> {
     let (kind, priority, inputs) = match intent {
         PlannerIntent::SecureMana(intent) => {
@@ -1917,6 +1926,7 @@ fn compile_intent_route(
                     game,
                     vec![Input::Location(intent.actor), Input::Location(step)],
                     IntentCompileMode::Path,
+                    config,
                 )
             } else {
                 best_drainer_pool_step(game, perspective, intent.actor, intent.wanted)
@@ -1936,7 +1946,8 @@ fn compile_intent_route(
                     Input::Location(intent.target),
                 ]
             };
-            let inputs = compile_intent_inputs_with_mode(game, seed, IntentCompileMode::Attack)?;
+            let inputs =
+                compile_intent_inputs_with_mode(game, seed, IntentCompileMode::Attack, config)?;
             (
                 PlannerRouteKind::DrainerKill,
                 intent_priority(PlannerIntent::DrainerKill(intent)),
@@ -1951,6 +1962,7 @@ fn compile_intent_route(
                     Input::Location(intent.target_step),
                 ],
                 IntentCompileMode::Path,
+                config,
             )?;
             (
                 PlannerRouteKind::DrainerSafety,
@@ -1967,6 +1979,7 @@ fn compile_intent_route(
                     Input::Location(intent.destination),
                 ],
                 IntentCompileMode::Spirit,
+                config,
             )?;
             (
                 PlannerRouteKind::SpiritImpact,
@@ -1982,6 +1995,7 @@ fn compile_intent_route(
                     Input::Location(intent.destination),
                 ],
                 IntentCompileMode::Path,
+                config,
             )?;
             (
                 PlannerRouteKind::ManaMove,
@@ -1998,7 +2012,8 @@ fn compile_intent_route(
                     Input::Location(intent.target),
                 ]
             };
-            let inputs = compile_intent_inputs_with_mode(game, seed, IntentCompileMode::Attack)?;
+            let inputs =
+                compile_intent_inputs_with_mode(game, seed, IntentCompileMode::Attack, config)?;
             (
                 PlannerRouteKind::TacticalDeny,
                 intent_priority(PlannerIntent::TacticalDeny(intent)),
@@ -2018,6 +2033,7 @@ fn compile_intent_inputs_with_mode(
     game: &MonsGame,
     seed: Vec<Input>,
     mode: IntentCompileMode,
+    config: TurnPlannerSearchConfig,
 ) -> Option<Vec<Input>> {
     if let Some(inputs) = compile_seeded_inputs_with_mode(game, seed.clone(), mode) {
         if apply_inputs_for_planner(game, inputs.as_slice()).is_some() {
@@ -2025,8 +2041,26 @@ fn compile_intent_inputs_with_mode(
         }
     }
 
+    if matches!(mode, IntentCompileMode::Spirit) && config.strict_spirit_intent_compile {
+        return None;
+    }
+
     update_turn_planner_diagnostics(|diagnostics| {
         diagnostics.compile_fallbacks = diagnostics.compile_fallbacks.saturating_add(1);
+        match mode {
+            IntentCompileMode::Path => {
+                diagnostics.compile_fallbacks_path =
+                    diagnostics.compile_fallbacks_path.saturating_add(1);
+            }
+            IntentCompileMode::Spirit => {
+                diagnostics.compile_fallbacks_spirit =
+                    diagnostics.compile_fallbacks_spirit.saturating_add(1);
+            }
+            IntentCompileMode::Attack => {
+                diagnostics.compile_fallbacks_attack =
+                    diagnostics.compile_fallbacks_attack.saturating_add(1);
+            }
+        }
     });
     let fallback = compile_seeded_inputs(game, seed)?;
     apply_inputs_for_planner(game, fallback.as_slice())?;
@@ -2734,6 +2768,8 @@ mod tests {
             per_node_route_cap: 6,
             scoring_weights: &DEFAULT_SCORING_WEIGHTS,
             allow_exact_static_evaluation: true,
+            strict_spirit_intent_compile: false,
+            disable_mana_tempo_intents: false,
         }
     }
 
