@@ -609,6 +609,13 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - normal lane still rejected on `planner_rej_progress_gate=1`,
       - planner attempts/accepts and duel deltas were identical to baseline activity sample.
     - Decision: reverted immediately as another dormant/non-engaging acceptance split.
+  - 2026-03-20 follow-up split AO (rejected):
+    - Tried candidate-scoped drop of non-tactical safe top planner seed:
+      - for `runtime_pro_intent_planner_v2`, removed top root from planner allowed shortlist when top root was both safe and non-tactical (a known fast-lane reject pattern).
+    - Probe effect (`1x1 @56`):
+      - new counter `planner_drop_nontactical_top` stayed `0` on both lanes, so the condition did not engage in sampled activity.
+      - activity and duel signal remained unchanged (`vs_normal 0.0000`, `vs_fast +0.5000`).
+    - Decision: reverted immediately as dormant/non-engaging split.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
