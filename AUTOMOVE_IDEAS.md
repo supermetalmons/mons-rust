@@ -616,6 +616,17 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - new counter `planner_drop_nontactical_top` stayed `0` on both lanes, so the condition did not engage in sampled activity.
       - activity and duel signal remained unchanged (`vs_normal 0.0000`, `vs_fast +0.5000`).
     - Decision: reverted immediately as dormant/non-engaging split.
+  - 2026-03-20 follow-up split AP (rejected):
+    - Tried inactive-gate forced mini-planner probe for `runtime_pro_intent_planner_v2`:
+      - when planner returned `NoPlan` from activation gate, ran a bounded forced-activation probe (`max_nodes<=16`, `beam=1`, `step_cap<=3`).
+    - Key diagnostics finding (kept):
+      - `planner_no_plan` was overwhelmingly `inactive_gate` in sampled lanes (`normal=24`, `fast=24`; other no-plan reasons `0`).
+    - Behavior variants and outcomes:
+      - broad forced probe on top roots: engagement increased but bounded first-duel lanes were flat (`vs_normal 0.0000`, `vs_fast 0.0000`) and `vs_normal` runtime rose materially (about `58s` for `1x1 @56`).
+      - crisis-only trigger: forced probe never engaged (`calls=0`), so it was a no-op.
+      - non-top-only forced probe (`skip(1)` roots): engagement returned (`calls normal=7, fast=8`, accepts mostly `0`), but bounded first-duel lanes remained flat and `vs_normal` runtime worsened further (about `68s` for `1x1 @56`).
+    - Decision:
+      - reverted forced-probe behavior; kept only the no-plan reason diagnostics counters/prints for future triage.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`

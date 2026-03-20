@@ -176,6 +176,12 @@ pub(crate) struct TurnPlannerDiagnostics {
     pub planner_choice_reject_progress_gate: usize,
     pub planner_choice_reject_tactical_gate: usize,
     pub planner_choice_reject_safety_progress_gate: usize,
+    pub planner_no_plan_inactive_gate: usize,
+    pub planner_no_plan_empty_plans: usize,
+    pub planner_no_plan_build_no_plan: usize,
+    pub planner_no_plan_budget_exceeded: usize,
+    pub planner_no_plan_no_best_plan: usize,
+    pub planner_no_plan_empty_best_plan: usize,
     pub route_model_tactical: usize,
     pub route_drainer_score: usize,
     pub route_drainer_kill: usize,
@@ -598,6 +604,11 @@ fn turn_opportunity_planner_next_inputs_filtered(
     }
 
     if !planner_should_activate(game, perspective) {
+        update_turn_planner_diagnostics(|diagnostics| {
+            diagnostics.planner_no_plan_inactive_gate = diagnostics
+                .planner_no_plan_inactive_gate
+                .saturating_add(1);
+        });
         return None;
     }
 
@@ -638,7 +649,29 @@ fn turn_opportunity_planner_next_inputs_filtered(
     };
     let plans = match plan_build_result {
         Ok(plans) if !plans.is_empty() => plans,
-        Ok(_) | Err(PlanBuildStatus::NoPlan) | Err(PlanBuildStatus::BudgetExceeded) => return None,
+        Ok(_) => {
+            update_turn_planner_diagnostics(|diagnostics| {
+                diagnostics.planner_no_plan_empty_plans =
+                    diagnostics.planner_no_plan_empty_plans.saturating_add(1);
+            });
+            return None;
+        }
+        Err(PlanBuildStatus::NoPlan) => {
+            update_turn_planner_diagnostics(|diagnostics| {
+                diagnostics.planner_no_plan_build_no_plan = diagnostics
+                    .planner_no_plan_build_no_plan
+                    .saturating_add(1);
+            });
+            return None;
+        }
+        Err(PlanBuildStatus::BudgetExceeded) => {
+            update_turn_planner_diagnostics(|diagnostics| {
+                diagnostics.planner_no_plan_budget_exceeded = diagnostics
+                    .planner_no_plan_budget_exceeded
+                    .saturating_add(1);
+            });
+            return None;
+        }
     };
 
     let mut best_plan_index: Option<usize> = None;
@@ -709,10 +742,20 @@ fn turn_opportunity_planner_next_inputs_filtered(
     }
 
     let Some(best_plan_index) = best_plan_index else {
+        update_turn_planner_diagnostics(|diagnostics| {
+            diagnostics.planner_no_plan_no_best_plan = diagnostics
+                .planner_no_plan_no_best_plan
+                .saturating_add(1);
+        });
         return None;
     };
     let best_plan = &plans[best_plan_index];
     if best_plan.steps.is_empty() {
+        update_turn_planner_diagnostics(|diagnostics| {
+            diagnostics.planner_no_plan_empty_best_plan = diagnostics
+                .planner_no_plan_empty_best_plan
+                .saturating_add(1);
+        });
         return None;
     }
 

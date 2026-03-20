@@ -2615,6 +2615,21 @@ fn smart_automove_pro_planner_activity_probe() {
         diag_vs_fast.route_fallback,
         diag_vs_fast.expansions
     );
+    println!(
+        "pro planner no-plan reasons normal(inactive_gate={} empty_plans={} build_no_plan={} budget_exceeded={} no_best_plan={} empty_best_plan={}) fast(inactive_gate={} empty_plans={} build_no_plan={} budget_exceeded={} no_best_plan={} empty_best_plan={})",
+        diag_vs_normal.planner_no_plan_inactive_gate,
+        diag_vs_normal.planner_no_plan_empty_plans,
+        diag_vs_normal.planner_no_plan_build_no_plan,
+        diag_vs_normal.planner_no_plan_budget_exceeded,
+        diag_vs_normal.planner_no_plan_no_best_plan,
+        diag_vs_normal.planner_no_plan_empty_best_plan,
+        diag_vs_fast.planner_no_plan_inactive_gate,
+        diag_vs_fast.planner_no_plan_empty_plans,
+        diag_vs_fast.planner_no_plan_build_no_plan,
+        diag_vs_fast.planner_no_plan_budget_exceeded,
+        diag_vs_fast.planner_no_plan_no_best_plan,
+        diag_vs_fast.planner_no_plan_empty_best_plan,
+    );
 }
 
 #[test]
