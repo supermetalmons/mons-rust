@@ -401,8 +401,16 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
         - emergency reject reason stayed concentrated in `reject_emerg_no_signal=4`.
       - bounded `pro-fast-screen (1x1 @56)` remained unchanged:
         - `vs normal delta=0.0000`
-        - `vs fast delta=+0.1250`.
+      - `vs fast delta=+0.1250`.
     - Decision: reverted; no deterministic first-duel movement.
+  - 2026-03-20 follow-up split V (rejected):
+    - Tried emergency-only tactical route sourcing for injected roots:
+      - emergency-only injection scanned a bounded wider planner pool (`limit*4`, cap `8`).
+      - intent-root sourcing switched to tactical route families in emergency context (`ModelTactical` / `DrainerScore` / `DrainerKill` / `DrainerSafety` / `TacticalDeny`) with fallback to intent-first routes.
+    - Diagnostic result (`smart_automove_pro_planner_activity_probe`, `1x1 @56`):
+      - injection became fully dormant on sampled lanes (`injected_root_attempts=0`, `injected_root_accepts=0` for both normal/fast lanes).
+      - no duel-signal movement (`vs_normal_delta=0.0000`, `vs_fast_delta=+0.5000`).
+    - Decision: reverted immediately; no injected-root engagement and no deterministic strength movement.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
