@@ -2449,6 +2449,78 @@ fn smart_automove_pro_confirmation_lane_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: probe pro planner diagnostics counters on duel lanes"]
+fn smart_automove_pro_planner_activity_probe() {
+    let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
+        .unwrap_or_else(|| "runtime_pro_intent_planner_v2".into());
+    let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_release_safe_pre_exact".into());
+    let repeats = env_usize("SMART_PRO_ACTIVITY_REPEATS").unwrap_or(1).max(1);
+    let games = env_usize("SMART_PRO_ACTIVITY_GAMES").unwrap_or(1).max(1);
+    let max_plies = env_usize("SMART_PRO_ACTIVITY_MAX_PLIES")
+        .unwrap_or(56)
+        .max(24);
+
+    clear_turn_planner_diagnostics();
+    let vs_normal = run_cross_budget_duel(CrossBudgetDuelConfig {
+        profile_a: candidate_profile.as_str(),
+        mode_a: SmartAutomovePreference::Pro,
+        profile_b: baseline_profile.as_str(),
+        mode_b: SmartAutomovePreference::Normal,
+        seed_tag: "pro_activity_vs_normal_v1",
+        repeats,
+        games_per_repeat: games,
+        max_plies,
+        use_white_opening_book: false,
+    });
+    let diag_vs_normal = turn_planner_diagnostics_snapshot();
+
+    clear_turn_planner_diagnostics();
+    let vs_fast = run_cross_budget_duel(CrossBudgetDuelConfig {
+        profile_a: candidate_profile.as_str(),
+        mode_a: SmartAutomovePreference::Pro,
+        profile_b: baseline_profile.as_str(),
+        mode_b: SmartAutomovePreference::Fast,
+        seed_tag: "pro_activity_vs_fast_v1",
+        repeats,
+        games_per_repeat: games,
+        max_plies,
+        use_white_opening_book: false,
+    });
+    let diag_vs_fast = turn_planner_diagnostics_snapshot();
+    clear_turn_planner_diagnostics();
+
+    let (vn_delta, vn_conf) = stats_delta_confidence(vs_normal);
+    let (vf_delta, vf_conf) = stats_delta_confidence(vs_fast);
+    println!(
+        "pro planner activity candidate={} baseline={} repeats={} games={} max_plies={} vs_normal_delta={:.4} vs_normal_conf={:.4} vs_fast_delta={:.4} vs_fast_conf={:.4} normal(intent_calls={} intent_hits={} compile_fallbacks={} injected_attempts={} injected_accepts={} route_tactical_deny={} expansions={}) fast(intent_calls={} intent_hits={} compile_fallbacks={} injected_attempts={} injected_accepts={} route_tactical_deny={} expansions={})",
+        candidate_profile,
+        baseline_profile,
+        repeats,
+        games,
+        max_plies,
+        vn_delta,
+        vn_conf,
+        vf_delta,
+        vf_conf,
+        diag_vs_normal.intent_generation_calls,
+        diag_vs_normal.intent_generation_hits,
+        diag_vs_normal.compile_fallbacks,
+        diag_vs_normal.injected_root_attempts,
+        diag_vs_normal.injected_root_accepts,
+        diag_vs_normal.route_tactical_deny,
+        diag_vs_normal.expansions,
+        diag_vs_fast.intent_generation_calls,
+        diag_vs_fast.intent_generation_hits,
+        diag_vs_fast.compile_fallbacks,
+        diag_vs_fast.injected_root_attempts,
+        diag_vs_fast.injected_root_accepts,
+        diag_vs_fast.route_tactical_deny,
+        diag_vs_fast.expansions
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: probe pro pool non-regression lanes without ladder asserts"]
 fn smart_automove_pro_pool_lane_probe() {
     let candidate_profile = pro_candidate_profile_name();
@@ -2986,25 +3058,46 @@ fn smart_automove_pool_signal_triage() {
             let baseline_probe =
                 cache_reuse_triage_probe(baseline_profile_name.as_str(), baseline_selector);
             println!(
-                "triage surface=cache_reuse candidate={} avg_ms={:.2} hit_rate={:.3} hits={} calls={} baseline={} avg_ms={:.2} hit_rate={:.3} hits={} calls={}",
+                "triage surface=cache_reuse candidate={} avg_ms={:.2} hit_rate={:.3} hits={} calls={} intent_calls={} intent_hits={} compile_fallbacks={} injected_attempts={} injected_accepts={} baseline={} avg_ms={:.2} hit_rate={:.3} hits={} calls={} intent_calls={} intent_hits={} compile_fallbacks={} injected_attempts={} injected_accepts={}",
                 candidate_profile_name,
                 candidate_probe.avg_ms,
                 candidate_probe.hit_rate,
                 candidate_probe.hits,
                 candidate_probe.calls,
+                candidate_probe.intent_generation_calls,
+                candidate_probe.intent_generation_hits,
+                candidate_probe.compile_fallbacks,
+                candidate_probe.injected_root_attempts,
+                candidate_probe.injected_root_accepts,
                 baseline_profile_name,
                 baseline_probe.avg_ms,
                 baseline_probe.hit_rate,
                 baseline_probe.hits,
                 baseline_probe.calls
+                ,
+                baseline_probe.intent_generation_calls,
+                baseline_probe.intent_generation_hits,
+                baseline_probe.compile_fallbacks,
+                baseline_probe.injected_root_attempts,
+                baseline_probe.injected_root_accepts
             );
             assert!(
                 cache_reuse_triage_passes(candidate_probe, baseline_probe),
-                "cache_reuse triage found no deterministic evidence change: candidate avg_ms={:.2} hit_rate={:.3}, baseline avg_ms={:.2} hit_rate={:.3}",
+                "cache_reuse triage found no deterministic evidence change: candidate avg_ms={:.2} hit_rate={:.3} intent_calls={} intent_hits={} compile_fallbacks={} injected_attempts={} injected_accepts={}, baseline avg_ms={:.2} hit_rate={:.3} intent_calls={} intent_hits={} compile_fallbacks={} injected_attempts={} injected_accepts={}",
                 candidate_probe.avg_ms,
                 candidate_probe.hit_rate,
+                candidate_probe.intent_generation_calls,
+                candidate_probe.intent_generation_hits,
+                candidate_probe.compile_fallbacks,
+                candidate_probe.injected_root_attempts,
+                candidate_probe.injected_root_accepts,
                 baseline_probe.avg_ms,
-                baseline_probe.hit_rate
+                baseline_probe.hit_rate,
+                baseline_probe.intent_generation_calls,
+                baseline_probe.intent_generation_hits,
+                baseline_probe.compile_fallbacks,
+                baseline_probe.injected_root_attempts,
+                baseline_probe.injected_root_accepts
             );
         }
         _ => {

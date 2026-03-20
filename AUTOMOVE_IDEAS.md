@@ -289,6 +289,25 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
         - vs normal `delta=0.0000`
         - vs fast `delta=0.0000`
     - Decision: reverted; still flat on first-duel movement.
+  - 2026-03-20 diagnostics update:
+    - Added `smart_automove_pro_planner_activity_probe` to expose planner diagnostics counters on actual Pro duel lanes (`vs normal` / `vs fast`) instead of cache-only surfaces.
+    - Probe snapshot (`repeats=1`, `games=1`, `max_plies=56`):
+      - `vs_normal_delta=0.0000`, `vs_fast_delta=+0.5000`
+      - `intent_generation_calls`: non-zero (`57` normal lane, `45` fast lane)
+      - `compile_fallbacks`: high (`240` normal lane, `113` fast lane)
+      - `injected_root_attempts=0`, `injected_root_accepts=0` on both lanes.
+    - Takeaway: recent injected-root tuning splits were targeting mostly dormant behavior in sampled Pro duel lanes.
+  - 2026-03-20 follow-up split N (rejected):
+    - Tried stricter attack-intent compilation:
+      - in `compile_intent_inputs_with_mode`, disabled generic fallback for `Attack` intents so only mode-constrained attack compiles are accepted.
+    - Gate snapshot:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen` (`repeats=1`, `games=1`, `max_plies=56`):
+        - vs normal `delta=0.0000`
+        - vs fast `delta=0.0000`
+    - Decision: reverted; no first-duel movement.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
