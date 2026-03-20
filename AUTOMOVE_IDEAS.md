@@ -336,6 +336,19 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
     - Diagnostic follow-up (`smart_automove_pro_planner_activity_probe`, same bounds):
       - counters stayed at baseline shape (`injected_root_attempts=0`, `injected_root_accepts=0`), so this acceptance widening did not materially engage in sampled lanes.
     - Decision: reverted; no first-duel movement.
+  - 2026-03-20 follow-up split Q (rejected):
+    - Tried broader planner candidate pool for intent-root injection:
+      - in `inject_turn_planner_intent_root_candidates`, sampled up to `min(max(limit*4, limit), 8)` planner candidates while still capping accepted injected roots to the configured `injection_limit`.
+    - Gate snapshot:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen` (`repeats=1`, `games=1`, `max_plies=56`):
+        - vs normal `delta=0.0000`
+        - vs fast `delta=0.0000`
+    - Diagnostic follow-up (`smart_automove_pro_planner_activity_probe`, same bounds):
+      - fast lane `injected_root_attempts` increased (`0 -> 4`) but `injected_root_accepts` remained `0`, indicating novelty improved but acceptance guard still blocked promotion of injected candidates.
+    - Decision: reverted; no first-duel movement.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
