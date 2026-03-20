@@ -501,6 +501,28 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - `runtime-preflight`: pass
       - bounded `pro-fast-screen (1x1 @56)`: flat on both lanes (`vs normal 0.0000`, `vs fast 0.0000`)
     - Decision: reverted profile toggle; no deterministic first-duel lift.
+  - 2026-03-20 follow-up split AE (rejected):
+    - Tried emergency-only full-plan seed backfill for injected roots:
+      - when emergency intent-root candidates had no novelty vs root shortlist, sourced one additional first step from full turn planner search.
+    - Probe effect (1x1 @56):
+      - fast-lane planner activity rose sharply (`intent_calls 45 -> 139`, `compile_fallbacks 113 -> 552`, `route_drainer_kill 0 -> 328`) but still no injected acceptance (`attempts=0`, `accepts=0`) because candidates remained duplicate/no-safe.
+      - activity deltas unchanged (`vs_normal_delta=0.0000`, `vs_fast_delta=+0.5000`).
+    - Gate snapshot:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded `pro-fast-screen (1x1 @56)`: flat on both lanes (`vs normal 0.0000`, `vs fast 0.0000`)
+    - Decision: reverted; higher planner workload with no first-duel gain.
+  - 2026-03-20 follow-up split AF (rejected):
+    - Tried non-emergency full-plan seed injection:
+      - kept injected-root acceptance safety guards, but allowed full-plan seed path outside emergency-only gate.
+    - Probe effect (1x1 @56):
+      - injected attempts finally engaged (`normal attempts=1`, `fast attempts=1`) but still no accepts (`normal reject_no_tactical=1`, `fast reject_unsafe=1`).
+      - bounded `pro-fast-screen (1x1 @56)` remained flat on both lanes.
+    - Full `pro-fast-screen` recheck (default sample) was non-promotable:
+      - `vs normal`: `delta=+0.1250` but runtime spiked (`~226s` for lane test).
+      - `vs fast`: failed gate (`delta=-0.1250 < 0.0`) with high runtime (`~191s`).
+    - Decision: reverted; mixed strength and clear runtime-fit regression.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
