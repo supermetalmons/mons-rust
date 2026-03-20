@@ -169,6 +169,17 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - bounded `pro-confirmation-lane-probe (1x1 @56)`: `vs_normal 0.0000`, `vs_fast +0.5000`
       - bounded `pro-progressive (1x1 @56)`: vs normal `+0.3333`, vs fast `+0.3333`
     - Decision: reverted; no measurable first-duel improvement for added complexity.
+  - 2026-03-20 follow-up split D (rejected):
+    - Tried easing reply-risk strictness in Pro intent profile:
+      - `root_reply_risk_score_margin` floor `175 -> 170` under `runtime_pro_intent_planner_v2`.
+    - Sampled gate checks were unchanged:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen (1x1 @56)`: vs normal `0.0000`, vs fast `0.0000`
+      - bounded `pro-confirmation-lane-probe (1x1 @56)`: `vs_normal 0.0000`, `vs_fast +0.5000`
+      - bounded `pro-progressive (1x1 @56)`: vs normal `+0.3333`, vs fast `+0.3333`
+    - Decision: reverted; no measurable lift versus the current candidate shape.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
