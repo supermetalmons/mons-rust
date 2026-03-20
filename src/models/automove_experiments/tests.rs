@@ -2489,6 +2489,10 @@ fn smart_automove_pro_planner_activity_probe() {
     let max_plies = env_usize("SMART_PRO_ACTIVITY_MAX_PLIES")
         .unwrap_or(56)
         .max(24);
+    let seed_tag_vs_normal = env_profile_name("SMART_PRO_ACTIVITY_VS_NORMAL_SEED_TAG")
+        .unwrap_or_else(|| "pro_activity_vs_normal_v1".to_string());
+    let seed_tag_vs_fast = env_profile_name("SMART_PRO_ACTIVITY_VS_FAST_SEED_TAG")
+        .unwrap_or_else(|| "pro_activity_vs_fast_v1".to_string());
 
     clear_turn_planner_diagnostics();
     let vs_normal = run_cross_budget_duel(CrossBudgetDuelConfig {
@@ -2496,7 +2500,7 @@ fn smart_automove_pro_planner_activity_probe() {
         mode_a: SmartAutomovePreference::Pro,
         profile_b: baseline_profile.as_str(),
         mode_b: SmartAutomovePreference::Normal,
-        seed_tag: "pro_activity_vs_normal_v1",
+        seed_tag: seed_tag_vs_normal.as_str(),
         repeats,
         games_per_repeat: games,
         max_plies,
@@ -2510,7 +2514,7 @@ fn smart_automove_pro_planner_activity_probe() {
         mode_a: SmartAutomovePreference::Pro,
         profile_b: baseline_profile.as_str(),
         mode_b: SmartAutomovePreference::Fast,
-        seed_tag: "pro_activity_vs_fast_v1",
+        seed_tag: seed_tag_vs_fast.as_str(),
         repeats,
         games_per_repeat: games,
         max_plies,

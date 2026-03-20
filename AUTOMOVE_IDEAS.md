@@ -639,6 +639,47 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - `pro-triage primary_pro` unchanged (`target_changed=1`, `off_target_changed=0`).
     - Decision:
       - reverted immediately as dormant/non-engaging activation split.
+  - 2026-03-20 follow-up split AR (rejected):
+    - Tried bounded progress-only acceptance override in planner choice:
+      - for `progress_only` candidates, added a guarded accept path requiring stronger progress-step gain (`>=2`), bounded rank/gap (`index<=6`, `heuristic_gap<=320`), and no mana handoff.
+      - added a dedicated diagnostics counter for this override path.
+    - Probe outcome (`smart_automove_pro_planner_activity_probe`, `1x1 @56`):
+      - override counter stayed `0` on both lanes (`normal=0`, `fast=0`), so the new path did not engage.
+      - all key activity metrics remained unchanged from baseline sample (`planner_no_plan=24` on both lanes, unchanged attempts/accepts/reject reasons, unchanged sampled deltas).
+    - Decision:
+      - reverted immediately as dormant/non-engaging acceptance split.
+  - 2026-03-20 follow-up split AS (rejected):
+    - Tried candidate-only planner activation widening using tactical emergency state:
+      - added `turn_planner_activate_on_tactical_emergency`, allowing activation when `planner_tactical_emergency_state(...)` is true.
+    - Probe outcome (`smart_automove_pro_planner_activity_probe`, `1x1 @56`):
+      - no measurable engagement change: `planner_no_plan`, no-plan reason mix (`inactive_gate=24` on both lanes), attempts/accepts, and sampled deltas were unchanged from baseline sample.
+    - Decision:
+      - reverted immediately as dormant/non-engaging activation split.
+  - 2026-03-20 follow-up split AT (rejected):
+    - Tried candidate-only activation from top-root decisive tactical hint:
+      - propagated top-root tactical hint into planner activation gate to bypass `inactive_gate` only when shortlist top move had strong tactical markers.
+    - Runtime-fit outcome:
+      - `smart_automove_pro_planner_activity_probe` runtime regressed sharply (run crossed multiple minutes without completion).
+      - bounded rerun with `SMART_PRO_ACTIVITY_MAX_PLIES=24` also crossed the 60s marker and was terminated.
+    - Decision:
+      - reverted immediately on runtime-fit cliff before duel escalation.
+  - 2026-03-20 follow-up split AU (rejected):
+    - Tried low-budget progress-hint activation:
+      - activated planner only when top root had non-decisive progress hint (progress/development without decisive tactical markers),
+      - when activation came from this hint, clamped planner budget hard (`max_nodes<=18`, `beam=1`, `response=1`, `route_cap<=6`, `step_cap<=4`).
+    - Probe outcome (`smart_automove_pro_planner_activity_probe`, `1x1 @56`):
+      - engagement increased with controlled runtime (`inactive_gate normal/fast: 24 -> 13/15`, planner attempts `normal/fast: 2/1 -> 12/6`, accepts `1/0 -> 8/4`).
+      - sampled activity deltas shifted to `vs_normal +0.5000`, `vs_fast 0.0000`.
+    - First-duel keep/kill gate (bounded `1x1 @56`):
+      - `pro-fast-screen vs normal`: `delta=0.0000`
+      - `pro-fast-screen vs fast`: `delta=0.0000`
+    - Decision:
+      - reverted; engagement gain did not convert to first-duel movement.
+  - 2026-03-20 diagnostics enhancement retained:
+    - `smart_automove_pro_planner_activity_probe` now supports configurable seed tags:
+      - `SMART_PRO_ACTIVITY_VS_NORMAL_SEED_TAG`
+      - `SMART_PRO_ACTIVITY_VS_FAST_SEED_TAG`
+    - This allows lane-targeted planner diagnostics without adding new probe tests.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
