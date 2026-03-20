@@ -349,6 +349,21 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
     - Diagnostic follow-up (`smart_automove_pro_planner_activity_probe`, same bounds):
       - fast lane `injected_root_attempts` increased (`0 -> 4`) but `injected_root_accepts` remained `0`, indicating novelty improved but acceptance guard still blocked promotion of injected candidates.
     - Decision: reverted; no first-duel movement.
+  - 2026-03-20 follow-up split R (rejected):
+    - Tried combined novelty+acceptance relaxation:
+      - kept broader planner candidate pool for injection (`limit*4`, capped at `8`) while preserving accepted-root cap at configured `injection_limit`.
+      - widened injected-root heuristic-gap allowance when top root is unsafe and candidate gives explicit safety upgrade.
+      - added temporary unit coverage for this acceptance branch.
+    - Gate snapshot:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen` (`repeats=1`, `games=1`, `max_plies=56`):
+        - vs normal `delta=0.0000`
+        - vs fast `delta=0.0000`
+    - Diagnostic follow-up (`smart_automove_pro_planner_activity_probe`, same bounds):
+      - fast lane still showed attempts but no accepts (`injected_root_attempts=4`, `injected_root_accepts=0`).
+    - Decision: reverted; no first-duel movement.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
