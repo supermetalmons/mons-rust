@@ -191,6 +191,17 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - bounded `pro-confirmation-lane-probe (1x1 @56)`: `vs_normal 0.0000`, `vs_fast +0.5000`
       - bounded `pro-progressive (1x1 @56)`: vs normal `+0.3333`, vs fast `+0.3333`
     - Decision: reverted; no measurable duel/progressive lift.
+  - 2026-03-20 follow-up split F (rejected):
+    - Tried broader planner activation:
+      - in `planner_should_activate`, lowered exact same-turn gate from `same_turn_score_window_value >= 2` to `>= 1`.
+    - Sampled gates before rollback:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen (1x1 @56)`: vs normal `0.0000`, vs fast `0.0000` (no duel lift)
+      - bounded `pro-confirmation-lane-probe (1x1 @56)`: `vs_normal 0.0000`, `vs_fast +0.5000`
+    - Runtime fit: degraded materially (`pro-fast-screen vs normal` runtime rose to ~212s in sampled run; bounded progressive vs-normal became impractically slow and was terminated).
+    - Decision: reverted; no strength gain and clear runtime regression.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
