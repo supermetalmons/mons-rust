@@ -267,6 +267,28 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
         - vs normal `delta=0.0000`
         - vs fast `delta=0.0000`
     - Decision: reverted; still flat on first duel despite broader crisis coverage.
+  - 2026-03-20 follow-up split L (rejected):
+    - Tried planner-choice acceptance widening for decisive tactical lines:
+      - in `accept_turn_planner_choice`, added a late-rank tactical accept path (`index<=10`, `heuristic_gap<=760`) when `decisive_tactical` is true and candidate is safer / top is unsafe / material advantage exists.
+    - Gate snapshot:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen` (`repeats=1`, `games=1`, `max_plies=56`):
+        - vs normal `delta=0.0000`
+        - vs fast `delta=0.0000`
+    - Decision: reverted; no first-duel movement.
+  - 2026-03-20 follow-up split M (rejected):
+    - Tried actor-feasible attack filtering in intent generation:
+      - in `drainer_kill_intents` and `tactical_deny_intents`, replaced board-global attack checks with actor-specific compiled attack feasibility/effect checks to avoid non-feasible direct/setup intents consuming route budget.
+    - Gate snapshot:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen` (`repeats=1`, `games=1`, `max_plies=56`):
+        - vs normal `delta=0.0000`
+        - vs fast `delta=0.0000`
+    - Decision: reverted; still flat on first-duel movement.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
