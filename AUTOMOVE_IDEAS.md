@@ -364,6 +364,21 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
     - Diagnostic follow-up (`smart_automove_pro_planner_activity_probe`, same bounds):
       - fast lane still showed attempts but no accepts (`injected_root_attempts=4`, `injected_root_accepts=0`).
     - Decision: reverted; no first-duel movement.
+  - 2026-03-20 follow-up split S (rejected):
+    - Tried combined handoff-safety acceptance + broader candidate sampling:
+      - broadened candidate pool in injection sourcing (`limit*4`, capped at `8`) while preserving accepted-root cap.
+      - treated `mana_handoff_to_opponent` removal as safety-upgrade signal in injected-root acceptance.
+      - added temporary unit coverage for handoff-safety acceptance path.
+    - Gate snapshot:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen` (`repeats=1`, `games=1`, `max_plies=56`):
+        - vs normal `delta=0.0000`
+        - vs fast `delta=0.0000`
+    - Diagnostic follow-up (`smart_automove_pro_planner_activity_probe`, same bounds):
+      - fast lane remained at attempts-without-accepts (`injected_root_attempts=4`, `injected_root_accepts=0`), so added handoff-safety acceptance still did not engage on sampled lanes.
+    - Decision: reverted; no first-duel movement.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
