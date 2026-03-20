@@ -6656,8 +6656,16 @@ impl MonsGameModel {
                 allowed_root_steps.as_slice(),
             ) {
                 if Self::accept_turn_planner_choice(root_moves.as_slice(), inputs.as_slice()) {
+                    record_turn_planner_choice_attempt(
+                        TurnPlannerChoiceAttemptOutcome::Accepted,
+                    );
                     return inputs;
                 }
+                record_turn_planner_choice_attempt(
+                    TurnPlannerChoiceAttemptOutcome::RejectedAcceptance,
+                );
+            } else {
+                record_turn_planner_choice_attempt(TurnPlannerChoiceAttemptOutcome::NoPlan);
             }
         }
         if let Some(forced_inputs) =

@@ -546,6 +546,21 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - bounded `pro-fast-screen`: unchanged (`vs normal 0.0000`, `vs fast +0.1250`)
       - bounded `pro-pool-lane-probe` (`games=1`, `max_plies=56`) flattened aggregate margin (`vs_normal 0.0000`, `vs_fast 0.0000`) and regressed one lane (`runtime_pre_fast_root_quality_v1_normal_conversion_v3 margin=-0.5000`).
     - Decision: reverted; route mix improved but strength signal did not improve and pool-lane tradeoff was unfavorable in sampled bounds.
+  - 2026-03-20 diagnostics enhancement retained:
+    - Added planner-choice diagnostics counters and probe output:
+      - `planner_no_plan`, `planner_attempts`, `planner_accepts`, `planner_rejects`.
+    - Baseline probe snapshot (`1x1 @56`, candidate=`runtime_pro_intent_planner_v2`, baseline=`runtime_release_safe_pre_exact`):
+      - normal lane: `planner_no_plan=24`, `planner_attempts=2`, `planner_accepts=1`, `planner_rejects=1`
+      - fast lane: `planner_no_plan=24`, `planner_attempts=1`, `planner_accepts=0`, `planner_rejects=1`.
+    - Takeaway: sampled lanes are dominated by planner `NoPlan` outcomes; acceptance-path tuning is mostly targeting a low-frequency path.
+  - 2026-03-20 follow-up split AI (rejected):
+    - Tried removing the internal planner activation gate when called with allowed root shortlist (to convert `NoPlan` calls into full plan attempts).
+    - Probe effect (`1x1 @56`) showed engagement increase but no duel lift:
+      - `planner_no_plan` dropped to `0`, attempts rose (`normal 22`, `fast 20`), accepts rose (`normal 10`, `fast 7`),
+      - but duel deltas stayed unchanged (`vs_normal 0.0000`, `vs_fast +0.5000`).
+    - Runtime fit regressed hard:
+      - activity probe wall time increased from ~42s to ~366s with expanded planner workload (`intent_calls`, fallbacks, route counts all spiked).
+    - Decision: reverted immediately; clear CPU cliff without strength gain.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`

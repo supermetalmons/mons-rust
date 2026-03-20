@@ -164,6 +164,10 @@ pub(crate) struct TurnPlannerDiagnostics {
     pub injected_root_reject_candidate_unsafe: usize,
     pub injected_root_reject_no_tactical_signal: usize,
     pub injected_root_reject_heuristic_gap: usize,
+    pub planner_choice_no_plan: usize,
+    pub planner_choice_attempts: usize,
+    pub planner_choice_accepts: usize,
+    pub planner_choice_rejects: usize,
     pub route_model_tactical: usize,
     pub route_drainer_score: usize,
     pub route_drainer_kill: usize,
@@ -258,6 +262,14 @@ pub(crate) enum TurnPlannerInjectedRootAttemptOutcome {
     RejectedCandidateUnsafe,
     RejectedNoTacticalSignal,
     RejectedHeuristicGap,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TurnPlannerChoiceAttemptOutcome {
+    NoPlan,
+    Accepted,
+    RejectedAcceptance,
 }
 
 thread_local! {
@@ -377,6 +389,28 @@ pub(crate) fn record_turn_planner_injected_root_duplicate() {
     update_turn_planner_diagnostics(|diagnostics| {
         diagnostics.injected_root_duplicates =
             diagnostics.injected_root_duplicates.saturating_add(1);
+    });
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn record_turn_planner_choice_attempt(outcome: TurnPlannerChoiceAttemptOutcome) {
+    update_turn_planner_diagnostics(|diagnostics| match outcome {
+        TurnPlannerChoiceAttemptOutcome::NoPlan => {
+            diagnostics.planner_choice_no_plan =
+                diagnostics.planner_choice_no_plan.saturating_add(1);
+        }
+        TurnPlannerChoiceAttemptOutcome::Accepted => {
+            diagnostics.planner_choice_attempts =
+                diagnostics.planner_choice_attempts.saturating_add(1);
+            diagnostics.planner_choice_accepts =
+                diagnostics.planner_choice_accepts.saturating_add(1);
+        }
+        TurnPlannerChoiceAttemptOutcome::RejectedAcceptance => {
+            diagnostics.planner_choice_attempts =
+                diagnostics.planner_choice_attempts.saturating_add(1);
+            diagnostics.planner_choice_rejects =
+                diagnostics.planner_choice_rejects.saturating_add(1);
+        }
     });
 }
 
