@@ -147,6 +147,8 @@ pub(crate) struct TurnPlannerDiagnostics {
     pub compile_fallbacks: usize,
     pub injected_root_attempts: usize,
     pub injected_root_accepts: usize,
+    pub injected_root_candidates_seen: usize,
+    pub injected_root_duplicates: usize,
     pub injected_root_reject_build: usize,
     pub injected_root_reject_emergency_guard: usize,
     pub injected_root_reject_emergency_introduced_loss: usize,
@@ -353,6 +355,23 @@ pub(crate) fn record_turn_planner_injected_root_attempt(
                     .saturating_add(1);
             }
         }
+    });
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn record_turn_planner_injected_root_candidates(count: usize) {
+    update_turn_planner_diagnostics(|diagnostics| {
+        diagnostics.injected_root_candidates_seen = diagnostics
+            .injected_root_candidates_seen
+            .saturating_add(count);
+    });
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn record_turn_planner_injected_root_duplicate() {
+    update_turn_planner_diagnostics(|diagnostics| {
+        diagnostics.injected_root_duplicates =
+            diagnostics.injected_root_duplicates.saturating_add(1);
     });
 }
 

@@ -1431,6 +1431,8 @@ struct CacheReuseProbe {
     compile_fallbacks: usize,
     injected_root_attempts: usize,
     injected_root_accepts: usize,
+    injected_root_candidates_seen: usize,
+    injected_root_duplicates: usize,
     injected_root_reject_build: usize,
     injected_root_reject_emergency_guard: usize,
     injected_root_reject_emergency_introduced_loss: usize,
@@ -1496,6 +1498,8 @@ fn cache_reuse_triage_probe(_profile_name: &str, selector: AutomoveSelector) -> 
         compile_fallbacks: planner_diag.compile_fallbacks,
         injected_root_attempts: planner_diag.injected_root_attempts,
         injected_root_accepts: planner_diag.injected_root_accepts,
+        injected_root_candidates_seen: planner_diag.injected_root_candidates_seen,
+        injected_root_duplicates: planner_diag.injected_root_duplicates,
         injected_root_reject_build: planner_diag.injected_root_reject_build,
         injected_root_reject_emergency_guard: planner_diag.injected_root_reject_emergency_guard,
         injected_root_reject_emergency_introduced_loss: planner_diag
@@ -2518,7 +2522,7 @@ fn smart_automove_pro_planner_activity_probe() {
     let (vn_delta, vn_conf) = stats_delta_confidence(vs_normal);
     let (vf_delta, vf_conf) = stats_delta_confidence(vs_fast);
     println!(
-        "pro planner activity candidate={} baseline={} repeats={} games={} max_plies={} vs_normal_delta={:.4} vs_normal_conf={:.4} vs_fast_delta={:.4} vs_fast_conf={:.4} normal(intent_calls={} intent_hits={} compile_fallbacks={} injected_attempts={} injected_accepts={} reject_build={} reject_emergency={} reject_emerg_loss={} reject_emerg_no_signal={} reject_emerg_handoff={} reject_emerg_drainer={} reject_top_wins={} reject_unsafe={} reject_no_tactical={} reject_gap={} route_tactical_deny={} expansions={}) fast(intent_calls={} intent_hits={} compile_fallbacks={} injected_attempts={} injected_accepts={} reject_build={} reject_emergency={} reject_emerg_loss={} reject_emerg_no_signal={} reject_emerg_handoff={} reject_emerg_drainer={} reject_top_wins={} reject_unsafe={} reject_no_tactical={} reject_gap={} route_tactical_deny={} expansions={})",
+        "pro planner activity candidate={} baseline={} repeats={} games={} max_plies={} vs_normal_delta={:.4} vs_normal_conf={:.4} vs_fast_delta={:.4} vs_fast_conf={:.4} normal(intent_calls={} intent_hits={} compile_fallbacks={} injected_candidates={} injected_duplicates={} injected_attempts={} injected_accepts={} reject_build={} reject_emergency={} reject_emerg_loss={} reject_emerg_no_signal={} reject_emerg_handoff={} reject_emerg_drainer={} reject_top_wins={} reject_unsafe={} reject_no_tactical={} reject_gap={} route_tactical_deny={} expansions={}) fast(intent_calls={} intent_hits={} compile_fallbacks={} injected_candidates={} injected_duplicates={} injected_attempts={} injected_accepts={} reject_build={} reject_emergency={} reject_emerg_loss={} reject_emerg_no_signal={} reject_emerg_handoff={} reject_emerg_drainer={} reject_top_wins={} reject_unsafe={} reject_no_tactical={} reject_gap={} route_tactical_deny={} expansions={})",
         candidate_profile,
         baseline_profile,
         repeats,
@@ -2531,6 +2535,8 @@ fn smart_automove_pro_planner_activity_probe() {
         diag_vs_normal.intent_generation_calls,
         diag_vs_normal.intent_generation_hits,
         diag_vs_normal.compile_fallbacks,
+        diag_vs_normal.injected_root_candidates_seen,
+        diag_vs_normal.injected_root_duplicates,
         diag_vs_normal.injected_root_attempts,
         diag_vs_normal.injected_root_accepts,
         diag_vs_normal.injected_root_reject_build,
@@ -2548,6 +2554,8 @@ fn smart_automove_pro_planner_activity_probe() {
         diag_vs_fast.intent_generation_calls,
         diag_vs_fast.intent_generation_hits,
         diag_vs_fast.compile_fallbacks,
+        diag_vs_fast.injected_root_candidates_seen,
+        diag_vs_fast.injected_root_duplicates,
         diag_vs_fast.injected_root_attempts,
         diag_vs_fast.injected_root_accepts,
         diag_vs_fast.injected_root_reject_build,
@@ -3103,7 +3111,7 @@ fn smart_automove_pool_signal_triage() {
             let baseline_probe =
                 cache_reuse_triage_probe(baseline_profile_name.as_str(), baseline_selector);
             println!(
-                "triage surface=cache_reuse candidate={} avg_ms={:.2} hit_rate={:.3} hits={} calls={} intent_calls={} intent_hits={} compile_fallbacks={} injected_attempts={} injected_accepts={} reject_build={} reject_emergency={} reject_emerg_loss={} reject_emerg_no_signal={} reject_emerg_handoff={} reject_emerg_drainer={} reject_top_wins={} reject_unsafe={} reject_no_tactical={} reject_gap={} baseline={} avg_ms={:.2} hit_rate={:.3} hits={} calls={} intent_calls={} intent_hits={} compile_fallbacks={} injected_attempts={} injected_accepts={} reject_build={} reject_emergency={} reject_emerg_loss={} reject_emerg_no_signal={} reject_emerg_handoff={} reject_emerg_drainer={} reject_top_wins={} reject_unsafe={} reject_no_tactical={} reject_gap={}",
+                "triage surface=cache_reuse candidate={} avg_ms={:.2} hit_rate={:.3} hits={} calls={} intent_calls={} intent_hits={} compile_fallbacks={} injected_candidates={} injected_duplicates={} injected_attempts={} injected_accepts={} reject_build={} reject_emergency={} reject_emerg_loss={} reject_emerg_no_signal={} reject_emerg_handoff={} reject_emerg_drainer={} reject_top_wins={} reject_unsafe={} reject_no_tactical={} reject_gap={} baseline={} avg_ms={:.2} hit_rate={:.3} hits={} calls={} intent_calls={} intent_hits={} compile_fallbacks={} injected_candidates={} injected_duplicates={} injected_attempts={} injected_accepts={} reject_build={} reject_emergency={} reject_emerg_loss={} reject_emerg_no_signal={} reject_emerg_handoff={} reject_emerg_drainer={} reject_top_wins={} reject_unsafe={} reject_no_tactical={} reject_gap={}",
                 candidate_profile_name,
                 candidate_probe.avg_ms,
                 candidate_probe.hit_rate,
@@ -3112,6 +3120,8 @@ fn smart_automove_pool_signal_triage() {
                 candidate_probe.intent_generation_calls,
                 candidate_probe.intent_generation_hits,
                 candidate_probe.compile_fallbacks,
+                candidate_probe.injected_root_candidates_seen,
+                candidate_probe.injected_root_duplicates,
                 candidate_probe.injected_root_attempts,
                 candidate_probe.injected_root_accepts,
                 candidate_probe.injected_root_reject_build,
@@ -3133,6 +3143,8 @@ fn smart_automove_pool_signal_triage() {
                 baseline_probe.intent_generation_calls,
                 baseline_probe.intent_generation_hits,
                 baseline_probe.compile_fallbacks,
+                baseline_probe.injected_root_candidates_seen,
+                baseline_probe.injected_root_duplicates,
                 baseline_probe.injected_root_attempts,
                 baseline_probe.injected_root_accepts,
                 baseline_probe.injected_root_reject_build,
@@ -3148,12 +3160,14 @@ fn smart_automove_pool_signal_triage() {
             );
             assert!(
                 cache_reuse_triage_passes(candidate_probe, baseline_probe),
-                "cache_reuse triage found no deterministic evidence change: candidate avg_ms={:.2} hit_rate={:.3} intent_calls={} intent_hits={} compile_fallbacks={} injected_attempts={} injected_accepts={} reject_build={} reject_emergency={} reject_emerg_loss={} reject_emerg_no_signal={} reject_emerg_handoff={} reject_emerg_drainer={} reject_top_wins={} reject_unsafe={} reject_no_tactical={} reject_gap={}, baseline avg_ms={:.2} hit_rate={:.3} intent_calls={} intent_hits={} compile_fallbacks={} injected_attempts={} injected_accepts={} reject_build={} reject_emergency={} reject_emerg_loss={} reject_emerg_no_signal={} reject_emerg_handoff={} reject_emerg_drainer={} reject_top_wins={} reject_unsafe={} reject_no_tactical={} reject_gap={}",
+                "cache_reuse triage found no deterministic evidence change: candidate avg_ms={:.2} hit_rate={:.3} intent_calls={} intent_hits={} compile_fallbacks={} injected_candidates={} injected_duplicates={} injected_attempts={} injected_accepts={} reject_build={} reject_emergency={} reject_emerg_loss={} reject_emerg_no_signal={} reject_emerg_handoff={} reject_emerg_drainer={} reject_top_wins={} reject_unsafe={} reject_no_tactical={} reject_gap={}, baseline avg_ms={:.2} hit_rate={:.3} intent_calls={} intent_hits={} compile_fallbacks={} injected_candidates={} injected_duplicates={} injected_attempts={} injected_accepts={} reject_build={} reject_emergency={} reject_emerg_loss={} reject_emerg_no_signal={} reject_emerg_handoff={} reject_emerg_drainer={} reject_top_wins={} reject_unsafe={} reject_no_tactical={} reject_gap={}",
                 candidate_probe.avg_ms,
                 candidate_probe.hit_rate,
                 candidate_probe.intent_generation_calls,
                 candidate_probe.intent_generation_hits,
                 candidate_probe.compile_fallbacks,
+                candidate_probe.injected_root_candidates_seen,
+                candidate_probe.injected_root_duplicates,
                 candidate_probe.injected_root_attempts,
                 candidate_probe.injected_root_accepts,
                 candidate_probe.injected_root_reject_build,
@@ -3171,6 +3185,8 @@ fn smart_automove_pool_signal_triage() {
                 baseline_probe.intent_generation_calls,
                 baseline_probe.intent_generation_hits,
                 baseline_probe.compile_fallbacks,
+                baseline_probe.injected_root_candidates_seen,
+                baseline_probe.injected_root_duplicates,
                 baseline_probe.injected_root_attempts,
                 baseline_probe.injected_root_accepts,
                 baseline_probe.injected_root_reject_build,

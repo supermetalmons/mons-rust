@@ -411,6 +411,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - injection became fully dormant on sampled lanes (`injected_root_attempts=0`, `injected_root_accepts=0` for both normal/fast lanes).
       - no duel-signal movement (`vs_normal_delta=0.0000`, `vs_fast_delta=+0.5000`).
     - Decision: reverted immediately; no injected-root engagement and no deterministic strength movement.
+  - 2026-03-20 follow-up split W (rejected):
+    - Tried novelty-first injected-root sourcing:
+      - root candidate sourcing skipped planner outputs already present in root shortlist (novel candidates only).
+    - Diagnostics + gate snapshot:
+      - activity probe showed engagement improvement (`fast lane: injected_candidates=3`, `duplicates=0`, `attempts=3`) but all novel attempts were blocked by emergency guard (`reject_emerg_no_signal=3`, accepts `0`).
+      - bounded `pro-fast-screen (1x1 @56)` stayed unchanged:
+        - `vs normal delta=0.0000`
+        - `vs fast delta=+0.1250`.
+    - Decision: reverted runtime novelty filter; no first-duel movement.
+  - 2026-03-20 diagnostics finding retained:
+    - Added injected-root source diagnostics (`injected_candidates`, `injected_duplicates`) and integrated into Pro activity/cache-reuse probes.
+    - Baseline sampled fast-lane behavior now explicitly shows why injection is dormant in this lane: candidates exist (`3`) but are all duplicates (`3`), yielding zero attempts.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`

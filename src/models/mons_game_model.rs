@@ -6360,6 +6360,7 @@ impl MonsGameModel {
         if planner_candidates.is_empty() {
             return;
         }
+        record_turn_planner_injected_root_candidates(planner_candidates.len());
 
         let own_drainer_vulnerable_before = if config.enable_move_class_coverage {
             Self::is_own_drainer_vulnerable_next_turn(
@@ -6385,6 +6386,7 @@ impl MonsGameModel {
         };
         for inputs in planner_candidates {
             if !seen_inputs.insert(inputs.clone()) {
+                record_turn_planner_injected_root_duplicate();
                 continue;
             }
             let Some(candidate) = Self::build_scored_root_move(
