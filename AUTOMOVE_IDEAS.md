@@ -583,6 +583,15 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - planner rejection reason counters stayed the same (`planner_rej_progress_gate=1` in normal lane),
       - activity and duel deltas unchanged (`vs_normal 0.0000`, `vs_fast +0.5000` in activity probe).
     - Decision: reverted immediately as a dormant/non-engaging split.
+  - 2026-03-20 follow-up split AL (rejected):
+    - Tried lower allowed-root rank bias for intent planner candidate:
+      - introduced a planner config knob for allowed-step rank bonus scale,
+      - set `runtime_pro_intent_planner_v2` from `12 -> 6` to reduce shortlist-order anchoring.
+    - Probe + gate snapshot:
+      - `smart_automove_pro_planner_activity_probe (1x1 @56)`: effectively unchanged counters and deltas (`vs_normal 0.0000`, `vs_fast +0.5000`).
+      - `runtime-preflight`: pass.
+      - bounded `pro-fast-screen (1x1 @56)`: unchanged (`vs normal 0.0000`, `vs fast +0.1250`).
+    - Decision: reverted; no deterministic first-duel movement.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
