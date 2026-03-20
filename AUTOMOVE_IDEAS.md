@@ -592,6 +592,16 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - `runtime-preflight`: pass.
       - bounded `pro-fast-screen (1x1 @56)`: unchanged (`vs normal 0.0000`, `vs fast +0.1250`).
     - Decision: reverted; no deterministic first-duel movement.
+  - 2026-03-20 follow-up split AM (rejected):
+    - Tried selective planner retry only for `TopNotTacticalOrUnsafe` rejection:
+      - when planner first-step acceptance failed for this reason, reran planner once with that one step removed from allowed shortlist.
+    - Probe effect (`1x1 @56`):
+      - retry path engaged in fast lane (`planner_attempts 1 -> 2`, second rejection shifted to `planner_rej_candidate_unsafe=1`),
+      - but activity duel deltas remained unchanged (`vs_normal 0.0000`, `vs_fast +0.5000`).
+    - Gate snapshot:
+      - `runtime-preflight`: pass
+      - bounded `pro-fast-screen (1x1 @56)`: unchanged (`vs normal 0.0000`, `vs fast +0.1250`).
+    - Decision: reverted; targeted retry increased planner work but did not convert to first-duel movement.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
