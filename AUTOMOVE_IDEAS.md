@@ -460,6 +460,16 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
         - `vs normal delta=0.0000`
         - `vs fast delta=+0.1250`
     - Decision: reverted; no deterministic first-duel movement.
+  - 2026-03-20 follow-up split AB (rejected):
+    - Tried intent compiler noise reduction:
+      - in `compile_intent_inputs_with_mode`, disabled generic fallback compile for `Path` intents (kept fallback for `Attack`/`Spirit`) so failed path seeds are dropped instead of compiled generically.
+    - Motivation:
+      - `swift_2024_eval_reference` directional activity sample showed high planner fallback volume (`compile_fallbacks=496`) with no injected-root conversion.
+    - Gate snapshot:
+      - targeted `swift_2024_eval_reference` confirmation probe (`1x1 @56`) unchanged (`vs_normal_delta=0.0000`).
+      - `runtime-preflight`: pass.
+      - bounded `pro-fast-screen (1x1 @56)` unchanged (`vs normal 0.0000`, `vs fast +0.1250`).
+    - Decision: reverted; no first-duel movement.
   - 2026-03-20 pool-lane recheck (`runtime_pro_intent_planner_v2` vs `runtime_release_safe_pre_exact`, `smart_automove_pro_pool_lane_probe`, `games=1`, `max_plies=80`):
     - aggregate margin remained positive in this sample:
       - `candidate_vs_normal=0.0000` vs baseline `-0.1000` (margin `+0.1000`)
