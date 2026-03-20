@@ -534,6 +534,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - `runtime-preflight`: pass
       - bounded `pro-fast-screen`: `vs normal delta=0.0000`, `vs fast delta=+0.1250` (unchanged).
     - Decision: reverted; no deterministic first-duel movement and deny family remained dormant.
+  - 2026-03-20 follow-up split AH (rejected):
+    - Tried candidate-scoped tactical-focus mode for planner route families:
+      - under `runtime_pro_intent_planner_v2`, enabled `turn_planner_disable_mana_tempo_intents=true`,
+      - and used that mode to cap legacy `ManaMove` route family contribution when tactical families were present.
+    - Probe effect (1x1 @56) showed strong route-mix change but no duel lift:
+      - default activity probe: `route_mana_move` dropped (`normal 308 -> 73`, `fast 205 -> 56`), but `pro` lane deltas were unchanged (`vs_normal 0.0000`, `vs_fast +0.5000`).
+      - swift-lane activity probe: `route_mana_move` dropped (`534 -> 79`) with unchanged sampled delta (`vs_normal 0.0000`).
+    - Gate + bounded pool snapshot:
+      - `runtime-preflight`: pass
+      - bounded `pro-fast-screen`: unchanged (`vs normal 0.0000`, `vs fast +0.1250`)
+      - bounded `pro-pool-lane-probe` (`games=1`, `max_plies=56`) flattened aggregate margin (`vs_normal 0.0000`, `vs_fast 0.0000`) and regressed one lane (`runtime_pre_fast_root_quality_v1_normal_conversion_v3 margin=-0.5000`).
+    - Decision: reverted; route mix improved but strength signal did not improve and pool-lane tradeoff was unfavorable in sampled bounds.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
