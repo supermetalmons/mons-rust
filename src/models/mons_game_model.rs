@@ -6145,6 +6145,7 @@ impl MonsGameModel {
         top: &ScoredRootMove,
         candidate: &ScoredRootMove,
         max_heuristic_gap: i32,
+        emergency_resolves_immediate_loss: bool,
     ) -> bool {
         if candidate.wins_immediately {
             return true;
@@ -6187,14 +6188,19 @@ impl MonsGameModel {
             return false;
         }
 
+        let effective_heuristic_gap = if emergency_resolves_immediate_loss {
+            max_heuristic_gap.saturating_add(260)
+        } else {
+            max_heuristic_gap
+        };
         let heuristic_gap = top.heuristic.saturating_sub(candidate.heuristic);
-        if heuristic_gap <= max_heuristic_gap.max(0) {
+        if heuristic_gap <= effective_heuristic_gap.max(0) {
             return true;
         }
 
         decisive_tactical
             && (safety_upgrade || top_unsafe)
-            && heuristic_gap <= max_heuristic_gap.saturating_add(220)
+            && heuristic_gap <= effective_heuristic_gap.saturating_add(220)
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
@@ -6329,30 +6335,34 @@ impl MonsGameModel {
                 record_turn_planner_injected_root_attempt(false);
                 continue;
             };
+            let opponent_can_win_immediately_after = {
+                let opponent = perspective.other();
+                let needed =
+                    Config::TARGET_SCORE.saturating_sub(Self::score_for_color(&candidate.game, opponent));
+                needed <= 0
+                    || (candidate.game.active_color == opponent
+                        && exact_turn_summary(&candidate.game, opponent).same_turn_score_window_value
+                            >= needed)
+            };
             if config.turn_planner_intent_root_emergency_only
                 && !Self::accept_turn_planner_emergency_injected_root_candidate(
                     &top,
                     &candidate,
                     top_opponent_can_win_immediately_after,
-                    {
-                        let opponent = perspective.other();
-                        let needed = Config::TARGET_SCORE
-                            .saturating_sub(Self::score_for_color(&candidate.game, opponent));
-                        needed <= 0
-                            || (candidate.game.active_color == opponent
-                                && exact_turn_summary(&candidate.game, opponent)
-                                    .same_turn_score_window_value
-                                    >= needed)
-                    },
+                    opponent_can_win_immediately_after,
                 )
             {
                 record_turn_planner_injected_root_attempt(false);
                 continue;
             }
+            let emergency_resolves_immediate_loss = config.turn_planner_intent_root_emergency_only
+                && top_opponent_can_win_immediately_after
+                && !opponent_can_win_immediately_after;
             let accepted = Self::accept_turn_planner_injected_root_candidate(
                 &top,
                 &candidate,
                 config.turn_planner_intent_root_max_heuristic_gap,
+                emergency_resolves_immediate_loss,
             );
             record_turn_planner_injected_root_attempt(accepted);
             if !accepted {
@@ -11954,7 +11964,56 @@ mod opening_book_tests {
         candidate.heuristic = top.heuristic.saturating_sub(20);
 
         assert!(!MonsGameModel::accept_turn_planner_injected_root_candidate(
-            &top, &candidate, 640
+            &top, &candidate, 640, false
+        ));
+    }
+
+    #[test]
+    fn turn_planner_intent_injection_widens_gap_when_emergency_resolves_immediate_loss() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(10, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config = MonsGameModel::with_runtime_scoring_weights(&game, config);
+        let top = MonsGameModel::ranked_root_moves(&game, Color::White, config)
+            .first()
+            .expect("expected at least one root move")
+            .clone();
+
+        let mut candidate = top.clone();
+        candidate.wins_immediately = false;
+        candidate.attacks_opponent_drainer = true;
+        candidate.classes.drainer_attack = true;
+        candidate.mana_handoff_to_opponent = false;
+        candidate.own_drainer_vulnerable = false;
+        candidate.heuristic = top.heuristic.saturating_sub(300);
+
+        assert!(!MonsGameModel::accept_turn_planner_injected_root_candidate(
+            &top, &candidate, 200, false
+        ));
+        assert!(MonsGameModel::accept_turn_planner_injected_root_candidate(
+            &top, &candidate, 200, true
         ));
     }
 

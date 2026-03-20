@@ -225,6 +225,24 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - bounded directional `pro-fast-screen (1x1 @56)`: vs normal `0.0000`, vs fast `0.0000`
       - bounded `pro-confirmation-lane-probe (1x1 @56)`: `vs_normal 0.0000`, `vs_fast +0.5000`
     - Decision: reverted; no measurable first-duel lift.
+  - 2026-03-20 follow-up split I (kept for next cycle):
+    - Added emergency-injection crisis-resolution gap allowance:
+      - in `accept_turn_planner_injected_root_candidate`, widen acceptable heuristic gap only when emergency-only injection resolves an immediate-loss state (`+260` on configured max gap).
+      - in root injection loop, compute and pass `emergency_resolves_immediate_loss` from top/candidate immediate-loss states.
+      - added unit test: `turn_planner_intent_injection_widens_gap_when_emergency_resolves_immediate_loss`.
+    - Gate snapshot on this split:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen` (`repeats=1`, `games=1`, `max_plies=56`):
+        - vs normal `delta=0.0000`
+        - vs fast `delta=+0.2500`
+      - bounded `pro-progressive` (`initial=1`, `max=1`, `repeats=1`, `max_plies=56`):
+        - vs normal `delta=+0.3333`
+        - vs fast `delta=+0.3333`
+      - bounded `pro-confirmation-lane-probe` (`1x1 @56`): `vs_normal 0.0000`, `vs_fast +0.5000`.
+    - Runtime snapshot:
+      - sampled `pro-ladder` speed gate before terminating long run: `ratio=6.399` (under cap `10.0`), but full bounded ladder summaries were not captured in this environment yet.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
