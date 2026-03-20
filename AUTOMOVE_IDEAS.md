@@ -446,8 +446,20 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
     - Gates + diagnostics:
       - `runtime-preflight`: pass.
       - `smart_automove_pro_planner_activity_probe`: no duel-signal movement (`vs_normal 0.0000`, `vs_fast +0.5000`).
-      - bounded `pro-fast-screen (1x1 @56)`: unchanged (`vs normal 0.0000`, `vs fast +0.1250`).
+    - bounded `pro-fast-screen (1x1 @56)`: unchanged (`vs normal 0.0000`, `vs fast +0.1250`).
     - Decision: reverted; no first-duel movement.
+  - 2026-03-20 follow-up split AA (rejected):
+    - Tried unsafe-top planner-choice rescue acceptance:
+      - in `accept_turn_planner_choice`, added explicit unsafe-top accept path for safer/progress/deny alternatives deeper in shortlist (`index<=10`, bounded heuristic gap).
+      - added unit coverage for this acceptance shape.
+    - Gate snapshot:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded `pro-fast-screen (1x1 @56)`: unchanged
+        - `vs normal delta=0.0000`
+        - `vs fast delta=+0.1250`
+    - Decision: reverted; no deterministic first-duel movement.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
