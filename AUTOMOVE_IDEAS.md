@@ -438,6 +438,16 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - sampled fast lane planner workload increased materially (`intent_calls: 45 -> 135`, `compile_fallbacks: 113 -> 537`) with no injected-root conversion change.
     - Bounded `pro-fast-screen (1x1 @56)` stayed unchanged (`vs normal 0.0000`, `vs fast +0.1250`).
     - Decision: reverted; no deterministic strength gain for added runtime work.
+  - 2026-03-20 follow-up split Z (rejected):
+    - Tried CPU-neutral planner utility retune for opponent score-window denial:
+      - increased deny-window gain weight under immediate opponent pressure,
+      - raised denied-immediate-window bonus,
+      - added penalty when plan increases opponent same-turn score window.
+    - Gates + diagnostics:
+      - `runtime-preflight`: pass.
+      - `smart_automove_pro_planner_activity_probe`: no duel-signal movement (`vs_normal 0.0000`, `vs_fast +0.5000`).
+      - bounded `pro-fast-screen (1x1 @56)`: unchanged (`vs normal 0.0000`, `vs fast +0.1250`).
+    - Decision: reverted; no first-duel movement.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
