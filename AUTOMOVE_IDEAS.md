@@ -460,6 +460,12 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
         - `vs normal delta=0.0000`
         - `vs fast delta=+0.1250`
     - Decision: reverted; no deterministic first-duel movement.
+  - 2026-03-20 pool-lane recheck (`runtime_pro_intent_planner_v2` vs `runtime_release_safe_pre_exact`, `smart_automove_pro_pool_lane_probe`, `games=1`, `max_plies=80`):
+    - aggregate margin remained positive in this sample:
+      - `candidate_vs_normal=0.0000` vs baseline `-0.1000` (margin `+0.1000`)
+      - `candidate_vs_fast=+0.1000` vs baseline `-0.1000` (margin `+0.2000`)
+    - per-opponent breakdown still shows one weak lane to target in next split:
+      - `swift_2024_eval_reference`: candidate `-0.5000` vs baseline `0.0000` (margin `-0.5000`).
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
