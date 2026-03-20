@@ -391,6 +391,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
         - then: `reject_unsafe=4` (after deferring emergency drainer gate to acceptance).
       - bounded `pro-fast-screen (1x1 @56)` remained unchanged (`vs normal 0.0000`, `vs fast +0.1250`).
     - Decision: reverted all runtime behavior tweaks from this split; kept diagnostics instrumentation and tests only.
+  - 2026-03-20 follow-up split U (rejected):
+    - Tried emergency-only intent sourcing bias for root injection:
+      - emergency-only injection now scanned a bounded wider planner candidate pool (`limit*4`, capped at `8`) while keeping accepted-root cap unchanged.
+      - emergency-root candidate sort was reweighted to prefer crisis intents (`DrainerKill` / `SafetyRecover` / `TacticalDeny`) before low-urgency mana-tempo/secure lines.
+    - Diagnostics + gate snapshot:
+      - `smart_automove_pro_planner_activity_probe` still showed no conversion improvement:
+        - fast lane `injected_root_attempts=4`, `injected_root_accepts=0`
+        - emergency reject reason stayed concentrated in `reject_emerg_no_signal=4`.
+      - bounded `pro-fast-screen (1x1 @56)` remained unchanged:
+        - `vs normal delta=0.0000`
+        - `vs fast delta=+0.1250`.
+    - Decision: reverted; no deterministic first-duel movement.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
