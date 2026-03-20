@@ -379,6 +379,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
     - Diagnostic follow-up (`smart_automove_pro_planner_activity_probe`, same bounds):
       - fast lane remained at attempts-without-accepts (`injected_root_attempts=4`, `injected_root_accepts=0`), so added handoff-safety acceptance still did not engage on sampled lanes.
     - Decision: reverted; no first-duel movement.
+  - 2026-03-20 follow-up split T (rejected):
+    - Added diagnostics-first rejection instrumentation for injected-root acceptance:
+      - planner diagnostics now track explicit injected-root rejection reasons (`build`, `emergency`, `top_wins`, `unsafe`, `no_tactical`, `gap`) and emergency subreasons (`introduced_loss`, `no_crisis_signal`, `mana_handoff`, `drainer_unsafe`).
+      - wired counters into `smart_automove_pro_planner_activity_probe` and cache-reuse triage logging.
+    - Temporary runtime probes (not kept) used diagnostics to isolate bottlenecks:
+      - broader planner candidate scan for injection (`limit*4`, cap `8`) produced fast-lane attempts (`injected_root_attempts=4`) but `injected_root_accepts=0`.
+      - reject-path progression under targeted guard relax probes:
+        - first: `reject_emergency_no_signal=4`
+        - then: `reject_emerg_drainer=4`
+        - then: `reject_unsafe=4` (after deferring emergency drainer gate to acceptance).
+      - bounded `pro-fast-screen (1x1 @56)` remained unchanged (`vs normal 0.0000`, `vs fast +0.1250`).
+    - Decision: reverted all runtime behavior tweaks from this split; kept diagnostics instrumentation and tests only.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`

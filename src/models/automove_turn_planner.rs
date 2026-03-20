@@ -147,6 +147,16 @@ pub(crate) struct TurnPlannerDiagnostics {
     pub compile_fallbacks: usize,
     pub injected_root_attempts: usize,
     pub injected_root_accepts: usize,
+    pub injected_root_reject_build: usize,
+    pub injected_root_reject_emergency_guard: usize,
+    pub injected_root_reject_emergency_introduced_loss: usize,
+    pub injected_root_reject_emergency_no_crisis_signal: usize,
+    pub injected_root_reject_emergency_mana_handoff: usize,
+    pub injected_root_reject_emergency_drainer_unsafe: usize,
+    pub injected_root_reject_top_wins: usize,
+    pub injected_root_reject_candidate_unsafe: usize,
+    pub injected_root_reject_no_tactical_signal: usize,
+    pub injected_root_reject_heuristic_gap: usize,
     pub route_model_tactical: usize,
     pub route_drainer_score: usize,
     pub route_drainer_kill: usize,
@@ -227,6 +237,22 @@ enum IntentCompileMode {
     Attack,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TurnPlannerInjectedRootAttemptOutcome {
+    Accepted,
+    RejectedBuild,
+    RejectedEmergencyGuard,
+    RejectedEmergencyIntroducedImmediateLoss,
+    RejectedEmergencyNoCrisisSignal,
+    RejectedEmergencyManaHandoff,
+    RejectedEmergencyDrainerUnsafe,
+    RejectedTopWins,
+    RejectedCandidateUnsafe,
+    RejectedNoTacticalSignal,
+    RejectedHeuristicGap,
+}
+
 thread_local! {
     static TURN_PLANNER_CONTINUATION_CACHE: RefCell<HashMap<TurnPlannerCacheKey, Vec<Input>>> =
         RefCell::new(HashMap::new());
@@ -256,11 +282,76 @@ fn update_turn_planner_diagnostics(update: impl FnOnce(&mut TurnPlannerDiagnosti
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-pub(crate) fn record_turn_planner_injected_root_attempt(accepted: bool) {
+pub(crate) fn record_turn_planner_injected_root_attempt(
+    outcome: TurnPlannerInjectedRootAttemptOutcome,
+) {
     update_turn_planner_diagnostics(|diagnostics| {
         diagnostics.injected_root_attempts = diagnostics.injected_root_attempts.saturating_add(1);
-        if accepted {
-            diagnostics.injected_root_accepts = diagnostics.injected_root_accepts.saturating_add(1);
+        match outcome {
+            TurnPlannerInjectedRootAttemptOutcome::Accepted => {
+                diagnostics.injected_root_accepts =
+                    diagnostics.injected_root_accepts.saturating_add(1);
+            }
+            TurnPlannerInjectedRootAttemptOutcome::RejectedBuild => {
+                diagnostics.injected_root_reject_build =
+                    diagnostics.injected_root_reject_build.saturating_add(1);
+            }
+            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyGuard => {
+                diagnostics.injected_root_reject_emergency_guard = diagnostics
+                    .injected_root_reject_emergency_guard
+                    .saturating_add(1);
+            }
+            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyIntroducedImmediateLoss => {
+                diagnostics.injected_root_reject_emergency_guard = diagnostics
+                    .injected_root_reject_emergency_guard
+                    .saturating_add(1);
+                diagnostics.injected_root_reject_emergency_introduced_loss = diagnostics
+                    .injected_root_reject_emergency_introduced_loss
+                    .saturating_add(1);
+            }
+            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyNoCrisisSignal => {
+                diagnostics.injected_root_reject_emergency_guard = diagnostics
+                    .injected_root_reject_emergency_guard
+                    .saturating_add(1);
+                diagnostics.injected_root_reject_emergency_no_crisis_signal = diagnostics
+                    .injected_root_reject_emergency_no_crisis_signal
+                    .saturating_add(1);
+            }
+            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyManaHandoff => {
+                diagnostics.injected_root_reject_emergency_guard = diagnostics
+                    .injected_root_reject_emergency_guard
+                    .saturating_add(1);
+                diagnostics.injected_root_reject_emergency_mana_handoff = diagnostics
+                    .injected_root_reject_emergency_mana_handoff
+                    .saturating_add(1);
+            }
+            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyDrainerUnsafe => {
+                diagnostics.injected_root_reject_emergency_guard = diagnostics
+                    .injected_root_reject_emergency_guard
+                    .saturating_add(1);
+                diagnostics.injected_root_reject_emergency_drainer_unsafe = diagnostics
+                    .injected_root_reject_emergency_drainer_unsafe
+                    .saturating_add(1);
+            }
+            TurnPlannerInjectedRootAttemptOutcome::RejectedTopWins => {
+                diagnostics.injected_root_reject_top_wins =
+                    diagnostics.injected_root_reject_top_wins.saturating_add(1);
+            }
+            TurnPlannerInjectedRootAttemptOutcome::RejectedCandidateUnsafe => {
+                diagnostics.injected_root_reject_candidate_unsafe = diagnostics
+                    .injected_root_reject_candidate_unsafe
+                    .saturating_add(1);
+            }
+            TurnPlannerInjectedRootAttemptOutcome::RejectedNoTacticalSignal => {
+                diagnostics.injected_root_reject_no_tactical_signal = diagnostics
+                    .injected_root_reject_no_tactical_signal
+                    .saturating_add(1);
+            }
+            TurnPlannerInjectedRootAttemptOutcome::RejectedHeuristicGap => {
+                diagnostics.injected_root_reject_heuristic_gap = diagnostics
+                    .injected_root_reject_heuristic_gap
+                    .saturating_add(1);
+            }
         }
     });
 }

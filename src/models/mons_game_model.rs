@@ -27,6 +27,27 @@ enum ProRuntimeContext {
     Independent,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TurnPlannerInjectedRootAcceptance {
+    Accepted,
+    RejectedTopWins,
+    RejectedCandidateUnsafe,
+    RejectedNoTacticalSignal,
+    RejectedHeuristicGap,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TurnPlannerEmergencyInjectedRootAcceptance {
+    Accepted,
+    RejectedTopWins,
+    RejectedIntroducedImmediateLoss,
+    RejectedNoCrisisSignal,
+    RejectedManaHandoff,
+    RejectedDrainerUnsafe,
+}
+
 impl Clone for MonsGameModel {
     fn clone(&self) -> Self {
         let cloned = Self::with_game(self.game.clone());
@@ -6141,17 +6162,17 @@ impl MonsGameModel {
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
-    fn accept_turn_planner_injected_root_candidate(
+    fn classify_turn_planner_injected_root_candidate(
         top: &ScoredRootMove,
         candidate: &ScoredRootMove,
         max_heuristic_gap: i32,
         emergency_resolves_immediate_loss: bool,
-    ) -> bool {
+    ) -> TurnPlannerInjectedRootAcceptance {
         if candidate.wins_immediately {
-            return true;
+            return TurnPlannerInjectedRootAcceptance::Accepted;
         }
         if top.wins_immediately {
-            return false;
+            return TurnPlannerInjectedRootAcceptance::RejectedTopWins;
         }
 
         let candidate_unsafe = candidate.mana_handoff_to_opponent
@@ -6160,7 +6181,7 @@ impl MonsGameModel {
                 && !candidate.attacks_opponent_drainer
                 && candidate.same_turn_score_window_value <= 0);
         if candidate_unsafe {
-            return false;
+            return TurnPlannerInjectedRootAcceptance::RejectedCandidateUnsafe;
         }
 
         let top_unsafe = top.mana_handoff_to_opponent
@@ -6185,7 +6206,7 @@ impl MonsGameModel {
         let tactical_signal =
             decisive_tactical || deny_window_signal || safety_upgrade || progress_signal;
         if !tactical_signal {
-            return false;
+            return TurnPlannerInjectedRootAcceptance::RejectedNoTacticalSignal;
         }
 
         let effective_heuristic_gap = if emergency_resolves_immediate_loss {
@@ -6195,12 +6216,35 @@ impl MonsGameModel {
         };
         let heuristic_gap = top.heuristic.saturating_sub(candidate.heuristic);
         if heuristic_gap <= effective_heuristic_gap.max(0) {
-            return true;
+            return TurnPlannerInjectedRootAcceptance::Accepted;
         }
 
-        decisive_tactical
+        if decisive_tactical
             && (safety_upgrade || top_unsafe)
             && heuristic_gap <= effective_heuristic_gap.saturating_add(220)
+        {
+            return TurnPlannerInjectedRootAcceptance::Accepted;
+        }
+
+        TurnPlannerInjectedRootAcceptance::RejectedHeuristicGap
+    }
+
+    #[cfg(any(target_arch = "wasm32", test))]
+    fn accept_turn_planner_injected_root_candidate(
+        top: &ScoredRootMove,
+        candidate: &ScoredRootMove,
+        max_heuristic_gap: i32,
+        emergency_resolves_immediate_loss: bool,
+    ) -> bool {
+        matches!(
+            Self::classify_turn_planner_injected_root_candidate(
+                top,
+                candidate,
+                max_heuristic_gap,
+                emergency_resolves_immediate_loss,
+            ),
+            TurnPlannerInjectedRootAcceptance::Accepted
+        )
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
@@ -6231,21 +6275,21 @@ impl MonsGameModel {
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
-    fn accept_turn_planner_emergency_injected_root_candidate(
+    fn classify_turn_planner_emergency_injected_root_candidate(
         top: &ScoredRootMove,
         candidate: &ScoredRootMove,
         top_opponent_can_win_immediately_after: bool,
         opponent_can_win_immediately_after: bool,
-    ) -> bool {
+    ) -> TurnPlannerEmergencyInjectedRootAcceptance {
         if candidate.wins_immediately {
-            return true;
+            return TurnPlannerEmergencyInjectedRootAcceptance::Accepted;
         }
         if top.wins_immediately {
-            return false;
+            return TurnPlannerEmergencyInjectedRootAcceptance::RejectedTopWins;
         }
         if opponent_can_win_immediately_after && !top_opponent_can_win_immediately_after {
             // Emergency injections should never introduce a new immediate-loss state.
-            return false;
+            return TurnPlannerEmergencyInjectedRootAcceptance::RejectedIntroducedImmediateLoss;
         }
 
         let crisis_resolving = candidate.attacks_opponent_drainer
@@ -6253,21 +6297,39 @@ impl MonsGameModel {
             || candidate.scores_supermana_this_turn
             || candidate.scores_opponent_mana_this_turn;
         if !crisis_resolving {
-            return false;
+            return TurnPlannerEmergencyInjectedRootAcceptance::RejectedNoCrisisSignal;
         }
 
         if candidate.mana_handoff_to_opponent {
-            return false;
+            return TurnPlannerEmergencyInjectedRootAcceptance::RejectedManaHandoff;
         }
 
         if candidate.own_drainer_vulnerable
             && !candidate.classes.drainer_safety_recover
             && !candidate.attacks_opponent_drainer
         {
-            return false;
+            return TurnPlannerEmergencyInjectedRootAcceptance::RejectedDrainerUnsafe;
         }
 
-        true
+        TurnPlannerEmergencyInjectedRootAcceptance::Accepted
+    }
+
+    #[cfg(any(target_arch = "wasm32", test))]
+    fn accept_turn_planner_emergency_injected_root_candidate(
+        top: &ScoredRootMove,
+        candidate: &ScoredRootMove,
+        top_opponent_can_win_immediately_after: bool,
+        opponent_can_win_immediately_after: bool,
+    ) -> bool {
+        matches!(
+            Self::classify_turn_planner_emergency_injected_root_candidate(
+                top,
+                candidate,
+                top_opponent_can_win_immediately_after,
+                opponent_can_win_immediately_after,
+            ),
+            TurnPlannerEmergencyInjectedRootAcceptance::Accepted
+        )
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
@@ -6332,7 +6394,9 @@ impl MonsGameModel {
                 own_drainer_vulnerable_before,
                 inputs.as_slice(),
             ) else {
-                record_turn_planner_injected_root_attempt(false);
+                record_turn_planner_injected_root_attempt(
+                    TurnPlannerInjectedRootAttemptOutcome::RejectedBuild,
+                );
                 continue;
             };
             let opponent_can_win_immediately_after = {
@@ -6344,28 +6408,70 @@ impl MonsGameModel {
                         && exact_turn_summary(&candidate.game, opponent).same_turn_score_window_value
                             >= needed)
             };
-            if config.turn_planner_intent_root_emergency_only
-                && !Self::accept_turn_planner_emergency_injected_root_candidate(
-                    &top,
-                    &candidate,
-                    top_opponent_can_win_immediately_after,
-                    opponent_can_win_immediately_after,
-                )
-            {
-                record_turn_planner_injected_root_attempt(false);
-                continue;
+            if config.turn_planner_intent_root_emergency_only {
+                let emergency_acceptance =
+                    Self::classify_turn_planner_emergency_injected_root_candidate(
+                        &top,
+                        &candidate,
+                        top_opponent_can_win_immediately_after,
+                        opponent_can_win_immediately_after,
+                    );
+                if !matches!(
+                    emergency_acceptance,
+                    TurnPlannerEmergencyInjectedRootAcceptance::Accepted
+                ) {
+                    let emergency_outcome = match emergency_acceptance {
+                        TurnPlannerEmergencyInjectedRootAcceptance::Accepted => {
+                            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyGuard
+                        }
+                        TurnPlannerEmergencyInjectedRootAcceptance::RejectedTopWins => {
+                            TurnPlannerInjectedRootAttemptOutcome::RejectedTopWins
+                        }
+                        TurnPlannerEmergencyInjectedRootAcceptance::RejectedIntroducedImmediateLoss => {
+                            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyIntroducedImmediateLoss
+                        }
+                        TurnPlannerEmergencyInjectedRootAcceptance::RejectedNoCrisisSignal => {
+                            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyNoCrisisSignal
+                        }
+                        TurnPlannerEmergencyInjectedRootAcceptance::RejectedManaHandoff => {
+                            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyManaHandoff
+                        }
+                        TurnPlannerEmergencyInjectedRootAcceptance::RejectedDrainerUnsafe => {
+                            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyDrainerUnsafe
+                        }
+                    };
+                    record_turn_planner_injected_root_attempt(emergency_outcome);
+                    continue;
+                }
             }
             let emergency_resolves_immediate_loss = config.turn_planner_intent_root_emergency_only
                 && top_opponent_can_win_immediately_after
                 && !opponent_can_win_immediately_after;
-            let accepted = Self::accept_turn_planner_injected_root_candidate(
+            let acceptance = Self::classify_turn_planner_injected_root_candidate(
                 &top,
                 &candidate,
                 config.turn_planner_intent_root_max_heuristic_gap,
                 emergency_resolves_immediate_loss,
             );
-            record_turn_planner_injected_root_attempt(accepted);
-            if !accepted {
+            let attempt_outcome = match acceptance {
+                TurnPlannerInjectedRootAcceptance::Accepted => {
+                    TurnPlannerInjectedRootAttemptOutcome::Accepted
+                }
+                TurnPlannerInjectedRootAcceptance::RejectedTopWins => {
+                    TurnPlannerInjectedRootAttemptOutcome::RejectedTopWins
+                }
+                TurnPlannerInjectedRootAcceptance::RejectedCandidateUnsafe => {
+                    TurnPlannerInjectedRootAttemptOutcome::RejectedCandidateUnsafe
+                }
+                TurnPlannerInjectedRootAcceptance::RejectedNoTacticalSignal => {
+                    TurnPlannerInjectedRootAttemptOutcome::RejectedNoTacticalSignal
+                }
+                TurnPlannerInjectedRootAcceptance::RejectedHeuristicGap => {
+                    TurnPlannerInjectedRootAttemptOutcome::RejectedHeuristicGap
+                }
+            };
+            record_turn_planner_injected_root_attempt(attempt_outcome);
+            if !matches!(acceptance, TurnPlannerInjectedRootAcceptance::Accepted) {
                 continue;
             }
             root_moves.push(candidate);
@@ -12198,6 +12304,16 @@ mod opening_book_tests {
         assert_eq!(outputs_a, outputs_b);
         let diagnostics = crate::models::automove_turn_planner::turn_planner_diagnostics_snapshot();
         assert!(diagnostics.injected_root_attempts >= diagnostics.injected_root_accepts);
+        let total_rejects = diagnostics.injected_root_reject_build
+            + diagnostics.injected_root_reject_emergency_guard
+            + diagnostics.injected_root_reject_top_wins
+            + diagnostics.injected_root_reject_candidate_unsafe
+            + diagnostics.injected_root_reject_no_tactical_signal
+            + diagnostics.injected_root_reject_heuristic_gap;
+        assert_eq!(
+            diagnostics.injected_root_attempts,
+            diagnostics.injected_root_accepts + total_rejects
+        );
     }
 
     #[test]
