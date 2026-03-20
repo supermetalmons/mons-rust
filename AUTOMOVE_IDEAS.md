@@ -180,6 +180,17 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - bounded `pro-confirmation-lane-probe (1x1 @56)`: `vs_normal 0.0000`, `vs_fast +0.5000`
       - bounded `pro-progressive (1x1 @56)`: vs normal `+0.3333`, vs fast `+0.3333`
     - Decision: reverted; no measurable lift versus the current candidate shape.
+  - 2026-03-20 follow-up split E (rejected):
+    - Tried wider emergency injected-root heuristic allowance (while keeping `limit=1`):
+      - `turn_planner_intent_root_max_heuristic_gap: 200 -> 220`.
+    - Sampled gate checks were unchanged:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen (1x1 @56)`: vs normal `0.0000`, vs fast `0.0000`
+      - bounded `pro-confirmation-lane-probe (1x1 @56)`: `vs_normal 0.0000`, `vs_fast +0.5000`
+      - bounded `pro-progressive (1x1 @56)`: vs normal `+0.3333`, vs fast `+0.3333`
+    - Decision: reverted; no measurable duel/progressive lift.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
