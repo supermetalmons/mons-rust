@@ -308,6 +308,20 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
         - vs normal `delta=0.0000`
         - vs fast `delta=0.0000`
     - Decision: reverted; no first-duel movement.
+  - 2026-03-20 follow-up split O (rejected):
+    - Tried unsafe-top emergency trigger for intent-root injection:
+      - in `turn_planner_intent_root_injection_limit`, allowed emergency-only injection when top root itself signals tactical crisis (`mana_handoff_to_opponent` / unrecovered vulnerable drainer), even if `planner_tactical_emergency_state` is false.
+      - added unit coverage in `turn_planner_intent_root_injection_limit_respects_emergency_gate` for unsafe-top override.
+    - Gate snapshot:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen` (`repeats=1`, `games=1`, `max_plies=56`):
+        - vs normal `delta=0.0000`
+        - vs fast `delta=0.0000`
+    - Diagnostic follow-up (`smart_automove_pro_planner_activity_probe`, same bounds):
+      - fast lane moved from `injected_root_attempts=0` to `injected_root_attempts=1` (still `injected_root_accepts=0`), so activation increased but acceptance still blocked.
+    - Decision: reverted; no first-duel movement.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
