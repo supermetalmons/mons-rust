@@ -627,6 +627,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - non-top-only forced probe (`skip(1)` roots): engagement returned (`calls normal=7, fast=8`, accepts mostly `0`), but bounded first-duel lanes remained flat and `vs_normal` runtime worsened further (about `68s` for `1x1 @56`).
     - Decision:
       - reverted forced-probe behavior; kept only the no-plan reason diagnostics counters/prints for future triage.
+  - 2026-03-20 follow-up split AQ (rejected):
+    - Tried candidate-only planner activation widening on opponent pressure:
+      - added `turn_planner_activate_on_opponent_window` for `runtime_pro_intent_planner_v2`,
+      - planner activation accepted opponent `same_turn_score_window_value >= 1` when this flag was enabled.
+    - Probe + triage outcome:
+      - `smart_automove_pro_planner_activity_probe (1x1 @56)` was unchanged vs pre-split sample:
+        - `planner_no_plan` and no-plan reasons unchanged (`inactive_gate=24` on both lanes),
+        - planner attempts/accepts unchanged,
+        - sampled activity deltas unchanged (`vs_normal 0.0000`, `vs_fast +0.5000`).
+      - `pro-triage primary_pro` unchanged (`target_changed=1`, `off_target_changed=0`).
+    - Decision:
+      - reverted immediately as dormant/non-engaging activation split.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
