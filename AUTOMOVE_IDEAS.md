@@ -549,9 +549,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
   - 2026-03-20 diagnostics enhancement retained:
     - Added planner-choice diagnostics counters and probe output:
       - `planner_no_plan`, `planner_attempts`, `planner_accepts`, `planner_rejects`.
+    - Added planner-choice reject-reason diagnostics:
+      - `planner_rej_not_in_root`, `planner_rej_missing_top`, `planner_rej_top_not_tactical_or_unsafe`,
+        `planner_rej_top_wins`, `planner_rej_candidate_unsafe`, `planner_rej_progress_gate`,
+        `planner_rej_tactical_gate`, `planner_rej_safety_progress_gate`.
     - Baseline probe snapshot (`1x1 @56`, candidate=`runtime_pro_intent_planner_v2`, baseline=`runtime_release_safe_pre_exact`):
       - normal lane: `planner_no_plan=24`, `planner_attempts=2`, `planner_accepts=1`, `planner_rejects=1`
       - fast lane: `planner_no_plan=24`, `planner_attempts=1`, `planner_accepts=0`, `planner_rejects=1`.
+      - reject reasons in sampled lanes: normal rejection concentrated in `planner_rej_progress_gate=1`; fast rejection in `planner_rej_top_not_tactical_or_unsafe=1`.
     - Takeaway: sampled lanes are dominated by planner `NoPlan` outcomes; acceptance-path tuning is mostly targeting a low-frequency path.
   - 2026-03-20 follow-up split AI (rejected):
     - Tried removing the internal planner activation gate when called with allowed root shortlist (to convert `NoPlan` calls into full plan attempts).
@@ -561,6 +566,23 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
     - Runtime fit regressed hard:
       - activity probe wall time increased from ~42s to ~366s with expanded planner workload (`intent_calls`, fallbacks, route counts all spiked).
     - Decision: reverted immediately; clear CPU cliff without strength gain.
+  - 2026-03-20 follow-up split AJ (rejected):
+    - Tried planner retry-on-reject loop (bounded):
+      - when planner returned an allowed-root step rejected by root acceptance, reran planner with that step removed (max 2 retries).
+    - Probe effect (`1x1 @56`):
+      - engagement increased (`planner_attempts`: normal `2 -> 4`, fast `1 -> 3`; normal accepts `1 -> 2`), but `planner_no_plan` remained unchanged (`24`).
+      - duel probe deltas stayed unchanged (`vs_normal 0.0000`, `vs_fast +0.5000`).
+    - Bounded first-duel gate:
+      - `pro-fast-screen vs normal`: unchanged `delta=0.0000`
+      - `pro-fast-screen vs fast`: regressed from `+0.1250` to `0.0000`.
+    - Decision: reverted; additional planner retries increased work and flattened first-duel fast lane.
+  - 2026-03-20 follow-up split AK (rejected):
+    - Tried narrow progress-gate relaxation in planner-choice acceptance:
+      - allowed a strict top-rank/high-heuristic-quality progress-only upgrade path when safety delta was not explicitly better.
+    - Probe effect (`1x1 @56`) was fully unchanged:
+      - planner rejection reason counters stayed the same (`planner_rej_progress_gate=1` in normal lane),
+      - activity and duel deltas unchanged (`vs_normal 0.0000`, `vs_fast +0.5000` in activity probe).
+    - Decision: reverted immediately as a dormant/non-engaging split.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`

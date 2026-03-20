@@ -168,6 +168,14 @@ pub(crate) struct TurnPlannerDiagnostics {
     pub planner_choice_attempts: usize,
     pub planner_choice_accepts: usize,
     pub planner_choice_rejects: usize,
+    pub planner_choice_reject_not_in_root: usize,
+    pub planner_choice_reject_missing_top: usize,
+    pub planner_choice_reject_top_not_tactical_or_unsafe: usize,
+    pub planner_choice_reject_top_wins: usize,
+    pub planner_choice_reject_candidate_unsafe: usize,
+    pub planner_choice_reject_progress_gate: usize,
+    pub planner_choice_reject_tactical_gate: usize,
+    pub planner_choice_reject_safety_progress_gate: usize,
     pub route_model_tactical: usize,
     pub route_drainer_score: usize,
     pub route_drainer_kill: usize,
@@ -270,6 +278,19 @@ pub(crate) enum TurnPlannerChoiceAttemptOutcome {
     NoPlan,
     Accepted,
     RejectedAcceptance,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TurnPlannerChoiceRejectReason {
+    NotInRoot,
+    MissingTop,
+    TopNotTacticalOrUnsafe,
+    TopWins,
+    CandidateUnsafe,
+    ProgressGate,
+    TacticalGate,
+    SafetyProgressGate,
 }
 
 thread_local! {
@@ -410,6 +431,52 @@ pub(crate) fn record_turn_planner_choice_attempt(outcome: TurnPlannerChoiceAttem
                 diagnostics.planner_choice_attempts.saturating_add(1);
             diagnostics.planner_choice_rejects =
                 diagnostics.planner_choice_rejects.saturating_add(1);
+        }
+    });
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn record_turn_planner_choice_reject_reason(reason: TurnPlannerChoiceRejectReason) {
+    update_turn_planner_diagnostics(|diagnostics| match reason {
+        TurnPlannerChoiceRejectReason::NotInRoot => {
+            diagnostics.planner_choice_reject_not_in_root = diagnostics
+                .planner_choice_reject_not_in_root
+                .saturating_add(1);
+        }
+        TurnPlannerChoiceRejectReason::MissingTop => {
+            diagnostics.planner_choice_reject_missing_top = diagnostics
+                .planner_choice_reject_missing_top
+                .saturating_add(1);
+        }
+        TurnPlannerChoiceRejectReason::TopNotTacticalOrUnsafe => {
+            diagnostics.planner_choice_reject_top_not_tactical_or_unsafe = diagnostics
+                .planner_choice_reject_top_not_tactical_or_unsafe
+                .saturating_add(1);
+        }
+        TurnPlannerChoiceRejectReason::TopWins => {
+            diagnostics.planner_choice_reject_top_wins = diagnostics
+                .planner_choice_reject_top_wins
+                .saturating_add(1);
+        }
+        TurnPlannerChoiceRejectReason::CandidateUnsafe => {
+            diagnostics.planner_choice_reject_candidate_unsafe = diagnostics
+                .planner_choice_reject_candidate_unsafe
+                .saturating_add(1);
+        }
+        TurnPlannerChoiceRejectReason::ProgressGate => {
+            diagnostics.planner_choice_reject_progress_gate = diagnostics
+                .planner_choice_reject_progress_gate
+                .saturating_add(1);
+        }
+        TurnPlannerChoiceRejectReason::TacticalGate => {
+            diagnostics.planner_choice_reject_tactical_gate = diagnostics
+                .planner_choice_reject_tactical_gate
+                .saturating_add(1);
+        }
+        TurnPlannerChoiceRejectReason::SafetyProgressGate => {
+            diagnostics.planner_choice_reject_safety_progress_gate = diagnostics
+                .planner_choice_reject_safety_progress_gate
+                .saturating_add(1);
         }
     });
 }

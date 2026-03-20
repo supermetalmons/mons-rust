@@ -48,6 +48,13 @@ enum TurnPlannerEmergencyInjectedRootAcceptance {
     RejectedDrainerUnsafe,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TurnPlannerChoiceAcceptance {
+    Accepted,
+    Rejected(crate::models::automove_turn_planner::TurnPlannerChoiceRejectReason),
+}
+
 impl Clone for MonsGameModel {
     fn clone(&self) -> Self {
         let cloned = Self::with_game(self.game.clone());
@@ -6042,15 +6049,22 @@ impl MonsGameModel {
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
-    fn accept_turn_planner_choice(root_moves: &[ScoredRootMove], planner_inputs: &[Input]) -> bool {
+    fn classify_turn_planner_choice(
+        root_moves: &[ScoredRootMove],
+        planner_inputs: &[Input],
+    ) -> TurnPlannerChoiceAcceptance {
         let Some(index) = root_moves
             .iter()
             .position(|candidate| candidate.inputs.as_slice() == planner_inputs)
         else {
-            return false;
+            return TurnPlannerChoiceAcceptance::Rejected(
+                crate::models::automove_turn_planner::TurnPlannerChoiceRejectReason::NotInRoot,
+            );
         };
         let Some(top) = root_moves.first() else {
-            return false;
+            return TurnPlannerChoiceAcceptance::Rejected(
+                crate::models::automove_turn_planner::TurnPlannerChoiceRejectReason::MissingTop,
+            );
         };
         let top_unsafe = top.mana_handoff_to_opponent
             || (top.own_drainer_vulnerable
@@ -6070,14 +6084,22 @@ impl MonsGameModel {
                 || top.spirit_same_turn_score_setup_now
                 || top.spirit_development
                 || top.classes.drainer_safety_recover;
-            return top_is_tactical && !top_unsafe;
+            return if top_is_tactical && !top_unsafe {
+                TurnPlannerChoiceAcceptance::Accepted
+            } else {
+                TurnPlannerChoiceAcceptance::Rejected(
+                    crate::models::automove_turn_planner::TurnPlannerChoiceRejectReason::TopNotTacticalOrUnsafe,
+                )
+            };
         }
         let candidate = &root_moves[index];
         if candidate.wins_immediately {
-            return true;
+            return TurnPlannerChoiceAcceptance::Accepted;
         }
         if top.wins_immediately {
-            return false;
+            return TurnPlannerChoiceAcceptance::Rejected(
+                crate::models::automove_turn_planner::TurnPlannerChoiceRejectReason::TopWins,
+            );
         }
 
         let decisive_tactical = candidate.attacks_opponent_drainer
@@ -6093,7 +6115,9 @@ impl MonsGameModel {
                 && !candidate.attacks_opponent_drainer
                 && candidate.same_turn_score_window_value <= 0);
         if candidate_unsafe {
-            return false;
+            return TurnPlannerChoiceAcceptance::Rejected(
+                crate::models::automove_turn_planner::TurnPlannerChoiceRejectReason::CandidateUnsafe,
+            );
         }
 
         let heuristic_gap = top.heuristic.saturating_sub(candidate.heuristic);
@@ -6132,17 +6156,23 @@ impl MonsGameModel {
 
         if progress_only {
             if !(candidate_safer || top_unsafe) {
-                return false;
+                return TurnPlannerChoiceAcceptance::Rejected(
+                    crate::models::automove_turn_planner::TurnPlannerChoiceRejectReason::ProgressGate,
+                );
             }
             if index <= 4 && heuristic_gap <= 180 {
-                return true;
+                return TurnPlannerChoiceAcceptance::Accepted;
             }
-            return false;
+            return TurnPlannerChoiceAcceptance::Rejected(
+                crate::models::automove_turn_planner::TurnPlannerChoiceRejectReason::ProgressGate,
+            );
         }
 
         if tactical_or_progress {
             if candidate.own_drainer_vulnerable && !candidate.classes.drainer_safety_recover {
-                return false;
+                return TurnPlannerChoiceAcceptance::Rejected(
+                    crate::models::automove_turn_planner::TurnPlannerChoiceRejectReason::CandidateUnsafe,
+                );
             }
             let tactical_signal = material_advantage
                 || (candidate_progress_better && (candidate_safer || top_unsafe))
@@ -6152,19 +6182,23 @@ impl MonsGameModel {
                 || (candidate.spirit_same_turn_score_setup_now
                     && candidate.same_turn_score_window_value > top.same_turn_score_window_value);
             if tactical_signal && index <= 6 && heuristic_gap <= 520 {
-                return true;
+                return TurnPlannerChoiceAcceptance::Accepted;
             }
             if material_advantage && index <= 8 && heuristic_gap <= 640 {
-                return true;
+                return TurnPlannerChoiceAcceptance::Accepted;
             }
-            return false;
+            return TurnPlannerChoiceAcceptance::Rejected(
+                crate::models::automove_turn_planner::TurnPlannerChoiceRejectReason::TacticalGate,
+            );
         }
 
         if (candidate_safer && candidate_progress_better) && index <= 5 && heuristic_gap <= 220 {
-            return true;
+            return TurnPlannerChoiceAcceptance::Accepted;
         }
 
-        false
+        TurnPlannerChoiceAcceptance::Rejected(
+            crate::models::automove_turn_planner::TurnPlannerChoiceRejectReason::SafetyProgressGate,
+        )
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
@@ -6655,15 +6689,18 @@ impl MonsGameModel {
                 planner_config,
                 allowed_root_steps.as_slice(),
             ) {
-                if Self::accept_turn_planner_choice(root_moves.as_slice(), inputs.as_slice()) {
-                    record_turn_planner_choice_attempt(
-                        TurnPlannerChoiceAttemptOutcome::Accepted,
-                    );
-                    return inputs;
+                match Self::classify_turn_planner_choice(root_moves.as_slice(), inputs.as_slice()) {
+                    TurnPlannerChoiceAcceptance::Accepted => {
+                        record_turn_planner_choice_attempt(TurnPlannerChoiceAttemptOutcome::Accepted);
+                        return inputs;
+                    }
+                    TurnPlannerChoiceAcceptance::Rejected(reason) => {
+                        record_turn_planner_choice_attempt(
+                            TurnPlannerChoiceAttemptOutcome::RejectedAcceptance,
+                        );
+                        record_turn_planner_choice_reject_reason(reason);
+                    }
                 }
-                record_turn_planner_choice_attempt(
-                    TurnPlannerChoiceAttemptOutcome::RejectedAcceptance,
-                );
             } else {
                 record_turn_planner_choice_attempt(TurnPlannerChoiceAttemptOutcome::NoPlan);
             }
