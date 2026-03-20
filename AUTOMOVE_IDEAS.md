@@ -322,6 +322,20 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
     - Diagnostic follow-up (`smart_automove_pro_planner_activity_probe`, same bounds):
       - fast lane moved from `injected_root_attempts=0` to `injected_root_attempts=1` (still `injected_root_accepts=0`), so activation increased but acceptance still blocked.
     - Decision: reverted; no first-duel movement.
+  - 2026-03-20 follow-up split P (rejected):
+    - Tried injected-root acceptance widening for unsafe-top safety upgrades:
+      - in `accept_turn_planner_injected_root_candidate`, added intermediate heuristic-gap allowance (`+120`) when top root is unsafe and candidate provides safety upgrade.
+      - added temporary unit coverage for this acceptance branch.
+    - Gate snapshot:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen` (`repeats=1`, `games=1`, `max_plies=56`):
+        - vs normal `delta=0.0000`
+        - vs fast `delta=0.0000`
+    - Diagnostic follow-up (`smart_automove_pro_planner_activity_probe`, same bounds):
+      - counters stayed at baseline shape (`injected_root_attempts=0`, `injected_root_accepts=0`), so this acceptance widening did not materially engage in sampled lanes.
+    - Decision: reverted; no first-duel movement.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
