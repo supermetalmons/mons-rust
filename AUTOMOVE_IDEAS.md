@@ -215,6 +215,16 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - `pro-fast-screen vs normal`: `delta=0.0000`
       - `pro-fast-screen vs fast`: `delta=0.0000`
     - Decision: reverted early by stop condition (flat first duel).
+  - 2026-03-20 follow-up split H (rejected):
+    - Tried planner-choice acceptance softening for same-turn window growth:
+      - in `accept_turn_planner_choice`, treated any increase in `same_turn_score_window_value` as material (instead of requiring `+2` over top root).
+    - Gate results stayed unchanged on sampled lanes:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen (1x1 @56)`: vs normal `0.0000`, vs fast `0.0000`
+      - bounded `pro-confirmation-lane-probe (1x1 @56)`: `vs_normal 0.0000`, `vs_fast +0.5000`
+    - Decision: reverted; no measurable first-duel lift.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
