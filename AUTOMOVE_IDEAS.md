@@ -423,6 +423,21 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
   - 2026-03-20 diagnostics finding retained:
     - Added injected-root source diagnostics (`injected_candidates`, `injected_duplicates`) and integrated into Pro activity/cache-reuse probes.
     - Baseline sampled fast-lane behavior now explicitly shows why injection is dormant in this lane: candidates exist (`3`) but are all duplicates (`3`), yielding zero attempts.
+  - 2026-03-20 follow-up split X (rejected):
+    - Tried novelty+emergency broadening in one pass:
+      - keep novelty-first candidate sourcing (`disallow` existing root shortlist inputs) with emergency scan breadth (`limit*4`, cap `8`),
+      - broaden emergency crisis signal to include deny-window / safety-upgrade / progress lines.
+    - Diagnostics (`smart_automove_pro_planner_activity_probe`, `1x1 @56`) showed engagement but no conversion:
+      - fast lane: `injected_candidates=10`, `injected_attempts=10`, `injected_accepts=0`.
+      - rejection concentration shifted from `reject_emerg_no_signal=10` to `reject_emerg_drainer=10` after crisis-signal broadening fallback, still zero accepts.
+    - Bounded `pro-fast-screen (1x1 @56)` remained unchanged (`vs normal 0.0000`, `vs fast +0.1250`).
+    - Decision: reverted; no first-duel movement.
+  - 2026-03-20 follow-up split Y (rejected):
+    - Tried activating turn planner in explicit unsafe-top/root crisis states (without changing injection acceptance) by extending `should_invoke_turn_planner` unsafe triggers for top and top-3 roots.
+    - Diagnostics impact:
+      - sampled fast lane planner workload increased materially (`intent_calls: 45 -> 135`, `compile_fallbacks: 113 -> 537`) with no injected-root conversion change.
+    - Bounded `pro-fast-screen (1x1 @56)` stayed unchanged (`vs normal 0.0000`, `vs fast +0.1250`).
+    - Decision: reverted; no deterministic strength gain for added runtime work.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
