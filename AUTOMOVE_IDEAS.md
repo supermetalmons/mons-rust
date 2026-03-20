@@ -602,6 +602,13 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - `runtime-preflight`: pass
       - bounded `pro-fast-screen (1x1 @56)`: unchanged (`vs normal 0.0000`, `vs fast +0.1250`).
     - Decision: reverted; targeted retry increased planner work but did not convert to first-duel movement.
+  - 2026-03-20 follow-up split AN (rejected):
+    - Tried broader bounded `progress_only` acceptance override:
+      - allowed non-safer progress-only planner candidates if `candidate_progress_better`, `index<=2`, and `heuristic_gap<=140`.
+    - Probe effect (`1x1 @56`) was unchanged:
+      - normal lane still rejected on `planner_rej_progress_gate=1`,
+      - planner attempts/accepts and duel deltas were identical to baseline activity sample.
+    - Decision: reverted immediately as another dormant/non-engaging acceptance split.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
