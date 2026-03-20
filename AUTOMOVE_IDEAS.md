@@ -523,6 +523,17 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - `vs normal`: `delta=+0.1250` but runtime spiked (`~226s` for lane test).
       - `vs fast`: failed gate (`delta=-0.1250 < 0.0`) with high runtime (`~191s`).
     - Decision: reverted; mixed strength and clear runtime-fit regression.
+  - 2026-03-20 follow-up split AG (rejected):
+    - Tried threat-window deny activation + mana-route throttling:
+      - expanded tactical-deny route/intent gate from immediate emergency to near-score-window pressure,
+      - throttled `ManaMove` routes under tactical pressure so planner budget would prefer tactical families.
+    - Probe effect:
+      - `smart_automove_pro_planner_activity_probe` stayed effectively unchanged on default lanes (`route_tactical_deny=0`, `route_mana_move` unchanged in sampled lanes).
+      - targeted `swift_2024_eval_reference` activity probe also stayed effectively unchanged (`route_tactical_deny=0`; `route_mana_move` only tiny noise shift `534 -> 531`).
+    - Gate snapshot:
+      - `runtime-preflight`: pass
+      - bounded `pro-fast-screen`: `vs normal delta=0.0000`, `vs fast delta=+0.1250` (unchanged).
+    - Decision: reverted; no deterministic first-duel movement and deny family remained dormant.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
