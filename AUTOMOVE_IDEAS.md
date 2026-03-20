@@ -243,6 +243,30 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - bounded `pro-confirmation-lane-probe` (`1x1 @56`): `vs_normal 0.0000`, `vs_fast +0.5000`.
     - Runtime snapshot:
       - sampled `pro-ladder` speed gate before terminating long run: `ratio=6.399` (under cap `10.0`), but full bounded ladder summaries were not captured in this environment yet.
+  - 2026-03-20 follow-up split J (rejected):
+    - Tried emergency-guard broadening for non-attack crisis lines:
+      - in `accept_turn_planner_emergency_injected_root_candidate`, allowed emergency roots that resolve immediate-loss state even without direct attack/score/recover flags.
+      - added temporary unit coverage for this behavior.
+    - Gate snapshot:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen` (`repeats=1`, `games=1`, `max_plies=56`):
+        - vs normal `delta=0.0000`
+        - vs fast `delta=0.0000`
+    - Decision: reverted; failed first-duel movement stop condition (flat on both lanes).
+  - 2026-03-20 follow-up split K (rejected):
+    - Tried crisis-only root coverage broadening:
+      - in `turn_planner_intent_root_injection_limit`, attempted to activate emergency-only injection when top root indicates immediate-loss pressure, and bump injected intent roots from `1` to `2` only in that top-root crisis case.
+      - added temporary unit updates around the emergency gate/limit path.
+    - Gate snapshot:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+      - bounded directional `pro-fast-screen` (`repeats=1`, `games=1`, `max_plies=56`):
+        - vs normal `delta=0.0000`
+        - vs fast `delta=0.0000`
+    - Decision: reverted; still flat on first duel despite broader crisis coverage.
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
