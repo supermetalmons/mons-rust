@@ -202,6 +202,19 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
       - bounded `pro-confirmation-lane-probe (1x1 @56)`: `vs_normal 0.0000`, `vs_fast +0.5000`
     - Runtime fit: degraded materially (`pro-fast-screen vs normal` runtime rose to ~212s in sampled run; bounded progressive vs-normal became impractically slow and was terminated).
     - Decision: reverted; no strength gain and clear runtime regression.
+  - 2026-03-20 follow-up split G (rejected):
+    - Tried strict non-emergency intent-root injection:
+      - `turn_planner_intent_root_emergency_only=false`
+      - keep `turn_planner_intent_root_injection_limit=1`
+      - tighten `turn_planner_intent_root_max_heuristic_gap=120`.
+    - Early gates stayed green:
+      - `guardrails`: pass
+      - `pro-triage primary_pro`: pass (`target_changed=1`, `off_target_changed=0`)
+      - `runtime-preflight`: pass
+    - First-duel signal remained flat in bounded directional checks (`1x1 @56`):
+      - `pro-fast-screen vs normal`: `delta=0.0000`
+      - `pro-fast-screen vs fast`: `delta=0.0000`
+    - Decision: reverted early by stop condition (flat first duel).
 
 ### Idea: Pro confirmation reply-policy rebalance
 - Base profile: `runtime_current`
