@@ -1,19 +1,20 @@
 # How To Iterate On Automove
 
-This is the operator playbook for fast, safe automove iteration and promotion.
+This is the canonical operator playbook for automove work.
 
-Goal: produce a stronger, promotable runtime change. If a candidate is not promotable, compress the lesson and move on quickly.
+Goal: produce one stronger, promotable change at a time. If a candidate is not promotable, compress the lesson, clean the artifacts, and move on.
 
 ## Quick Reference
 
-1. Pick one target mode (`pro`, `normal`, or `fast`).
-2. Pick exactly one idea from `AUTOMOVE_IDEAS.md` (`Candidate budget: 1`).
-3. Confirm the triage surface and calibration requirement.
-4. Run the earned path in strict order.
-5. Kill flat/noisy candidates early.
-6. Promote only after duel gates and release speed gates pass.
+1. Pick one target mode: `pro`, `normal`, or `fast`.
+2. Pick exactly one active idea from `AUTOMOVE_IDEAS.md`.
+3. Run the earned path in order.
+4. Kill flat or noisy candidates early.
+5. Record the outcome before cleaning artifacts.
 
-### Fast/Normal earned path
+## Earned Paths
+
+### Fast / Normal
 
 ```sh
 ./scripts/run-automove-experiment.sh guardrails <candidate>
@@ -24,7 +25,7 @@ SMART_PROMOTION_TARGET_MODE=<fast|normal> ./scripts/run-automove-experiment.sh p
 SMART_PROMOTION_TARGET_MODE=<fast|normal> ./scripts/run-automove-experiment.sh ladder <candidate>
 ```
 
-### Pro earned path
+### Pro
 
 ```sh
 ./scripts/run-automove-experiment.sh guardrails <candidate>
@@ -36,7 +37,7 @@ SMART_TRIAGE_SURFACE=<opening_reply|primary_pro> ./scripts/run-automove-experime
 ./scripts/run-automove-experiment.sh pro-ladder <candidate>
 ```
 
-### Release speed gates (promotion-time only)
+### Promotion-Time Only
 
 ```sh
 cargo test --release --lib smart_automove_release_opening_black_reply_speed_gate -- --ignored --nocapture
@@ -45,94 +46,95 @@ cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --
 
 ## Session Start Checklist
 
-- Pick one target mode for this session.
-- Pick one idea and one candidate profile.
-- Confirm whether `triage-calibrate` is required (`reply_risk`, `opponent_mana`, `supermana`).
-- Confirm triage surface exists and is deterministic.
-- For Pro `opening_reply` ideas, decide whether to run `pro-opening-speed-probe` before `pro-triage`.
-- Set `SMART_PROMOTION_TARGET_MODE=<fast|normal>` for mode-targeted duel stages.
-- Confirm baseline profile (default: `runtime_release_safe_pre_exact`; `normal_fast_gap` triage defaults to `runtime_current` unless baseline passed explicitly).
+- Pick one target mode, one idea, and one candidate profile.
+- Default the baseline to `runtime_current` for new work unless the idea explicitly needs another reference.
+- For `reply_risk`, `opponent_mana`, and `supermana`, run `triage-calibrate` before candidate work if the surface is not already known-good.
+- For Pro `opening_reply` ideas, decide whether the optional `pro-opening-speed-probe` should run before `pro-triage`.
+- Confirm the first earned duel stage before budgeting progressive or ladder time.
 
-## Stop Conditions (Kill Fast)
+## Artifact Layout
 
-- `guardrails` fail: kill candidate.
-- `triage`/`pro-triage` fail: kill candidate (or run one audit spot-check if explicitly chosen).
-- `runtime-preflight` fail: kill candidate.
-- First duel stage (`fast-screen` / `pro-fast-screen`) is flat or negative: kill candidate.
-- `progressive` fading/weak signal: kill candidate; do not escalate to ladder.
-- No clear story after one focused diagnostic: kill candidate and split idea.
-
-## Supported Script Names (Source of Truth)
-
-### Stages
-
-- `guardrails`
-- `runtime-preflight`
-- `preflight` (legacy wrapper)
-- `triage-calibrate`
-- `triage`
-- `audit-screen`
-- `pre-screen` (legacy)
-- `fast-screen`
-- `progressive`
-- `ladder`
-- `pro-triage`
-- `pro-opening-speed-probe`
-- `pro-audit-screen`
-- `pro-pre-screen` (legacy)
-- `pro-fast-screen`
-- `pro-progressive`
-- `pro-ladder`
-
-### Triage surfaces in script flow
-
-- `opening_reply`
-- `primary_pro`
-- `reply_risk`
-- `supermana`
-- `opponent_mana`
-- `normal_fast_gap`
-- `normal_release_seed_gap`
-- `spirit_setup`
-- `drainer_safety`
-- `cache_reuse`
-
-## Cross-Mode Campaign Rule
-
-After any production promotion:
-
-1. Run a quick mode-comparison sanity sweep on `runtime_current`.
-2. Confirm target-mode gain story still holds.
-3. Re-pick the next target mode (default: `pro` first, then port safe wins).
-4. Start again from one idea / one candidate.
-
-## Session End Checklist
-
-- Record candidate outcome in `AUTOMOVE_IDEAS.md` immediately.
-- Move durable lessons to `docs/automove-knowledge.md`.
-- Keep long wave history in `docs/automove-archive.md`.
-- Clean local artifacts:
+- Candidate logs default to `target/experiment-runs/<candidate>/`.
+- Calibration and workflow-only runs default to `target/experiment-runs/misc/`.
+- Runtime-preflight stamps live in `target/experiment-stamps/`.
+- Use the cleaner intentionally:
 
 ```sh
 ./scripts/clean-experiment-artifacts.sh --dry-run
+./scripts/clean-experiment-artifacts.sh --candidate <candidate> --logs-only --dry-run
+./scripts/clean-experiment-artifacts.sh --candidate <candidate> --stamps-only --dry-run
 ./scripts/clean-experiment-artifacts.sh
 ```
 
-## Promotion Checklist
+- Logs and stamps are disposable evidence, not durable memory.
 
-- Candidate cleared: `guardrails -> triage/pro-triage -> runtime-preflight -> first duel -> progressive -> ladder`.
-- Release speed gates passed.
-- Production runtime updated in `src/models/mons_game_model.rs`.
-- Docs updated (`AUTOMOVE_IDEAS.md` + archive/knowledge notes).
-- Commit includes runtime + docs + any required surface/workflow updates.
+## Release Checklist
+
+- Review `git status` before publish.
+- Confirm `runtime_current` is still the shipping automove path.
+- Confirm `runtime_pro_turn_engine_v1` is still a retained experiment profile and not wired into production runtime.
+- Run:
+
+```sh
+cargo test
+cargo test --release --lib --no-run
+cargo test --release --lib smart_automove_release_opening_black_reply_speed_gate -- --ignored --nocapture
+cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --ignored --nocapture
+```
+
+- Commit valuable changes before version bump / publish.
+- Clean disposable experiment artifacts after validation.
+
+Production blockers:
+
+- build/test failures
+- release speed gate failures
+- any regression that enables turn-engine in shipping `runtime_current`
+
+Retained but non-blocking experiment state:
+
+- `runtime_pro_turn_engine_v1` code, probes, and fixtures
+- ignored experiment-only tests and scripts
+- backlog, archive, and durable knowledge updates
+
+## Stop Conditions
+
+- `guardrails` fail: kill the candidate.
+- `triage` or `pro-triage` fail: kill the candidate, unless you deliberately spend one audit spot check.
+- `runtime-preflight` fail: kill the candidate.
+- First earned duel stage is flat or negative: kill the candidate.
+- Progressive fades, stalls, or hits a runtime cliff: kill the candidate.
+- No clear story after one focused diagnostic split: kill the candidate and split the idea differently.
+
+## Compatibility Surface
+
+These still exist, but they are not the default workflow:
+
+- `preflight`: legacy combined wrapper.
+- `pre-screen` and `pro-pre-screen`: legacy reject-only diagnostics.
+- `audit-screen` and `pro-audit-screen`: occasional spot checks for clean triage rejects.
+- `docs/automove-experiments.md`: compatibility pointer only.
+
+Do not treat any of the compatibility paths as promotion evidence unless the canonical earned path also passes.
+
+## Session End Checklist
+
+1. Record the result in `AUTOMOVE_IDEAS.md`.
+2. Move durable lessons into `docs/automove-knowledge.md`.
+3. Move wave history or retired branch context into `docs/automove-archive.md`.
+4. Clean logs and stamps intentionally.
+5. Start the next session with one fresh idea and one fresh candidate, not with raw artifact spelunking.
 
 ## Files That Matter
 
 - `src/models/mons_game_model.rs`
+- `src/models/automove_turn_engine.rs`
+- `src/models/automove_turn_planner.rs`
 - `src/models/automove_experiments/profiles.rs`
 - `src/models/automove_experiments/tests.rs`
 - `src/models/automove_experiments/harness.rs`
 - `scripts/run-automove-experiment.sh`
+- `scripts/run-experiment-logged.sh`
 - `scripts/clean-experiment-artifacts.sh`
 - `AUTOMOVE_IDEAS.md`
 - `docs/automove-knowledge.md`

@@ -1,5 +1,7 @@
 pub(crate) mod automove_exact;
 #[cfg(any(target_arch = "wasm32", test))]
+pub(crate) mod automove_turn_engine;
+#[cfg(any(target_arch = "wasm32", test))]
 pub(crate) mod automove_turn_planner;
 pub mod available_move_kind;
 pub mod board;
@@ -20,6 +22,8 @@ pub mod output;
 pub mod scoring;
 pub mod square;
 pub(crate) use automove_exact::*;
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) use automove_turn_engine::*;
 #[cfg(any(target_arch = "wasm32", test))]
 pub(crate) use automove_turn_planner::*;
 pub use available_move_kind::*;

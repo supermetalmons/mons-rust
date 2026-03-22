@@ -460,9 +460,8 @@ pub(crate) fn record_turn_planner_choice_reject_reason(reason: TurnPlannerChoice
                 .saturating_add(1);
         }
         TurnPlannerChoiceRejectReason::TopWins => {
-            diagnostics.planner_choice_reject_top_wins = diagnostics
-                .planner_choice_reject_top_wins
-                .saturating_add(1);
+            diagnostics.planner_choice_reject_top_wins =
+                diagnostics.planner_choice_reject_top_wins.saturating_add(1);
         }
         TurnPlannerChoiceRejectReason::CandidateUnsafe => {
             diagnostics.planner_choice_reject_candidate_unsafe = diagnostics
@@ -605,9 +604,8 @@ fn turn_opportunity_planner_next_inputs_filtered(
 
     if !planner_should_activate(game, perspective) {
         update_turn_planner_diagnostics(|diagnostics| {
-            diagnostics.planner_no_plan_inactive_gate = diagnostics
-                .planner_no_plan_inactive_gate
-                .saturating_add(1);
+            diagnostics.planner_no_plan_inactive_gate =
+                diagnostics.planner_no_plan_inactive_gate.saturating_add(1);
         });
         return None;
     }
@@ -658,9 +656,8 @@ fn turn_opportunity_planner_next_inputs_filtered(
         }
         Err(PlanBuildStatus::NoPlan) => {
             update_turn_planner_diagnostics(|diagnostics| {
-                diagnostics.planner_no_plan_build_no_plan = diagnostics
-                    .planner_no_plan_build_no_plan
-                    .saturating_add(1);
+                diagnostics.planner_no_plan_build_no_plan =
+                    diagnostics.planner_no_plan_build_no_plan.saturating_add(1);
             });
             return None;
         }
@@ -743,9 +740,8 @@ fn turn_opportunity_planner_next_inputs_filtered(
 
     let Some(best_plan_index) = best_plan_index else {
         update_turn_planner_diagnostics(|diagnostics| {
-            diagnostics.planner_no_plan_no_best_plan = diagnostics
-                .planner_no_plan_no_best_plan
-                .saturating_add(1);
+            diagnostics.planner_no_plan_no_best_plan =
+                diagnostics.planner_no_plan_no_best_plan.saturating_add(1);
         });
         return None;
     };

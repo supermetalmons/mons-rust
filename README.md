@@ -7,35 +7,36 @@ or
 
 ## automove
 
-The active automove workflow lives here:
+Canonical automove workflow:
 
-- canonical workflow: `HOW_TO_ITERATE_ON_AUTOMOVE.md`
-- ideas backlog: `AUTOMOVE_IDEAS.md`
-- compatibility entrypoint: `docs/automove-experiments.md`
+- runbook: `HOW_TO_ITERATE_ON_AUTOMOVE.md`
+- active backlog: `AUTOMOVE_IDEAS.md`
 - durable lessons: `docs/automove-knowledge.md`
-- retired profile archive: `docs/automove-archive.md`
+- archive: `docs/automove-archive.md`
+- compatibility pointer: `docs/automove-experiments.md`
 
-Useful scripts:
+Session-start commands:
 
 - `./scripts/run-automove-experiment.sh guardrails <candidate>`
-- `./scripts/run-automove-experiment.sh runtime-preflight <candidate>`
-- `./scripts/run-automove-experiment.sh triage-calibrate [reply_risk|opponent_mana|supermana|all]`
-- `./scripts/run-automove-experiment.sh preflight <candidate>`
 - `SMART_TRIAGE_SURFACE=<surface> ./scripts/run-automove-experiment.sh triage <candidate>`
-- `SMART_PROMOTION_TARGET_MODE=<fast|normal> ./scripts/run-automove-experiment.sh audit-screen <candidate>`
-- `SMART_PROMOTION_TARGET_MODE=<fast|normal> ./scripts/run-automove-experiment.sh fast-screen <candidate>`
-- `SMART_PROMOTION_TARGET_MODE=<fast|normal> ./scripts/run-automove-experiment.sh progressive <candidate>`
-- `SMART_PROMOTION_TARGET_MODE=<fast|normal> ./scripts/run-automove-experiment.sh ladder <candidate>`
 - `SMART_TRIAGE_SURFACE=<opening_reply|primary_pro> ./scripts/run-automove-experiment.sh pro-triage <candidate>`
-- `./scripts/run-automove-experiment.sh pro-audit-screen <candidate>`
+- `./scripts/run-automove-experiment.sh runtime-preflight <candidate>`
+- `SMART_PROMOTION_TARGET_MODE=<fast|normal> ./scripts/run-automove-experiment.sh fast-screen <candidate>`
 - `./scripts/run-automove-experiment.sh pro-fast-screen <candidate>`
-- `./scripts/run-automove-experiment.sh pro-progressive <candidate>`
-- `./scripts/run-automove-experiment.sh pro-ladder <candidate>`
-- `./scripts/run-automove-experiment.sh pre-screen <candidate>`
-- `./scripts/run-automove-experiment.sh pro-pre-screen <candidate>`
-- `./scripts/clean-experiment-artifacts.sh`
+- `./scripts/clean-experiment-artifacts.sh --dry-run`
 
-Run `triage-calibrate` before candidate work on `reply_risk`, `opponent_mana`, or `supermana`. Then use `guardrails -> triage -> runtime-preflight` so weak ideas die before the expensive CPU gate. `preflight` still exists as the old all-in-one wrapper. Most candidates should die at `triage`, `pro-triage`, or the first earned duel stage. For mode-specific `fast` or `normal` ideas, run duel stages with `SMART_PROMOTION_TARGET_MODE=<fast|normal>` so the target mode is the improvement bar and the other client mode is only a non-regression check. Use `audit-screen` or `pro-audit-screen` only as occasional spot checks for clean triage rejects. `pre-screen` and `pro-pre-screen` remain available only as legacy noise diagnostics. Unless documented otherwise, new candidates should be deltas on `runtime_current`.
+Default artifact layout:
+
+- logs: `target/experiment-runs/<candidate>/`
+- workflow-only logs: `target/experiment-runs/misc/`
+- runtime-preflight stamps: `target/experiment-stamps/`
+
+Compatibility notes:
+
+- `preflight`, `pre-screen`, and `pro-pre-screen` still exist, but they are legacy diagnostics.
+- `audit-screen` and `pro-audit-screen` are spot checks for clean triage rejects, not promotion evidence.
+- Unless a note says otherwise, new candidates should branch from `runtime_current`.
+- Shipping runtime note: the package release ships `runtime_current`; `runtime_pro_turn_engine_v1` is retained experiment work, not production.
 
 ## rules-tests runner
 
@@ -70,3 +71,26 @@ Pack a directory back into chunks:
 ## publishing to npm
 
 `./publish.sh`
+
+Release checklist:
+
+- Review `git status` before publish and confirm only intentional committed changes are present.
+- Confirm `runtime_current` is still the shipping automove path.
+- Confirm `runtime_pro_turn_engine_v1` remains fenced off from production.
+- Run `cargo test`.
+- Run `cargo test --release --lib smart_automove_release_opening_black_reply_speed_gate -- --ignored --nocapture`.
+- Run `cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --ignored --nocapture`.
+- Commit valuable changes before version bump / publish.
+- Clean disposable experiment artifacts after validation with `./scripts/clean-experiment-artifacts.sh`.
+
+Production blockers:
+
+- build/test failures
+- release speed gate failures
+- any regression that enables turn-engine in shipping `runtime_current`
+
+Non-blocking retained experiment state:
+
+- `runtime_pro_turn_engine_v1` profile and ignored probes
+- experiment workflow/logging helpers
+- compressed automove backlog / knowledge / archive docs
