@@ -2,6 +2,49 @@
 
 This document keeps compressed history for retired automove profiles and experiment waves. These IDs are archived context only. They are not part of the active experiment registry and should not be used for new promotion decisions.
 
+## Wave 6: Pro Intent Planner V2 Stabilization (Mar 19-20, 2026)
+
+- Candidate: `runtime_pro_intent_planner_v2`.
+- What changed:
+  - hybrid intent-first planner work in `automove_turn_planner`
+  - candidate-only root injection hooks
+  - emergency-only injected-root acceptance and diagnostics
+  - additional Pro pool and reliability probes
+- Stable shape that survived the loop:
+  - `turn_planner_intent_root_injection_limit=1`
+  - `turn_planner_intent_root_max_heuristic_gap=200`
+  - `turn_planner_intent_root_emergency_only=true`
+- What passed:
+  - `guardrails`
+  - `pro-triage primary_pro`
+  - `runtime-preflight`
+  - bounded first-duel and bounded ladder speed checks
+- Why it left the live frontier:
+  - direct reliability samples against the baseline stayed flat
+  - sampled losses showed `losses_with_disagreement=0`
+  - the branch consumed a lot of operator attention without proving direct selector value
+- Compressed lesson:
+  - crisis-gated injection is safer than global injection
+  - opening-book fallback ordering must stay ahead of Pro-specific branching
+  - do not keep a long-form branch diary live once the branch stops being the main frontier
+
+## Parked Campaign: Fast Tactical Uplift Against Current Normal (Mar 18-20, 2026)
+
+- Goal: recover the `normal` vs `fast` gap without violating Fast latency.
+- What was tried:
+  - reply-risk envelope and tiebreak retunes
+  - spirit-setup and drainer-safety top-offs
+  - attacker-proximity and scoring-only lanes
+  - exact-lite and tactical quiescence top-offs
+  - no-reply-risk-guard safety variants
+- Repeated pattern:
+  - many splits failed triage outright
+  - the ones that moved triage often stayed flat at the first earned duel
+  - the strongest first-duel lanes hit progressive runtime cliffs and were still not promotable
+- Decision:
+  - no live Fast split remains from this wave
+  - reopen Fast only with a genuinely new code path, not another micro-retune in the exhausted families
+
 ## Retired Runtime Snapshots
 
 - `runtime_historical_0_1_109`
@@ -182,5 +225,6 @@ This wave replaced Pro’s per-input tactical behavior with a turn-opportunity p
 
 - Do not keep historical profiles live in the active registry after their lesson is absorbed.
 - Do not treat `target/experiment-runs` as durable memory.
+- Do not treat `target/experiment-stamps` as durable memory.
 - Do not revive archived candidates unless there is a specific new hypothesis that cannot be tested with the active profile surface.
 - Do not widen the active experiment surface faster than you can maintain the runbook and guardrail tests.

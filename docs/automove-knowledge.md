@@ -5,130 +5,38 @@ This document keeps only durable lessons that should shape future automove work.
 ## Durable Strategy Signals
 
 - Strong root filtering beats wider raw enumeration when the filters are tactical and cheap.
-- Full-turn opportunity planning can outperform per-input tree expansion when it is anchored to tactical route families and compiled back through existing legality checks.
-- A hash-guarded continuation cache materially improves turn-level planner stability and cost across repeated automove calls, but it must be invalidated on divergence and cleared between duel games in harness runs.
-- Drainer safety needs close-to-hard treatment in production search; soft penalties alone miss obvious blunders.
-- Root reply-risk guards and efficiency tie-breaks are worth keeping because they remove fake-good moves before deeper search.
-- Production wasm must stay single-shot and predictable. Deferred or post-return search is still not release-safe.
+- Full-turn planning can outperform per-input tree expansion when it is routed through existing legality checks and accepted against the real ranked root surface.
+- A hash-guarded continuation cache materially improves turn-level planner stability and cost, but it must be invalidated on divergence and cleared between duel games in harness runs.
+- Drainer safety needs near-hard treatment in production search; soft penalties alone miss obvious blunders.
+- Root reply-risk guards and efficiency tie-breaks still earn their keep because they eliminate fake-good roots before deeper search.
 - Opening-specific latency guardrails matter. A stronger search that stalls on the first real black reply is not promotable.
-- Immutable reference baselines are useful even when weaker than the current runtime because they keep calibration honest.
+- Production wasm must stay single-shot and predictable. Deferred or post-return search is still not release-safe.
+- Default new code candidates to `runtime_current`; use retained non-production profiles only for calibration, references, or explicit audits.
+- Config knob space is exhausted. Future gains need new code, not more `SmartSearchConfig` permutations.
 
-## Repeated Failure Modes
+## Durable Workflow Rules
 
-- Large candidate catalogs slow iteration and hide the actual question. Keep the active registry small.
-- Raw logs are not knowledge. If a run matters, promote the conclusion into docs immediately.
-- Reject fast, archive fast, and keep only promotable signal in the live experiment surface.
-- If retained profiles cannot move a triage surface in `triage-calibrate`, the fixture pack is not ready for candidate work yet.
-- Calibration probes need to target the actual helper or budget lever for the surface. Whole-board selected-root equality can hide real reply-risk, shortlist, or exact-lite differences.
-- If `reply_risk` audit-screen contradicts triage, patch the surface before trying more candidates. The right fix is candidate-resolved shortlist evidence, not a weaker global triage bar.
-- After a confirmed audit contradiction is fixed, replay the candidate from the earned duel stage. Do not pay the audit lane twice on the same candidate.
-- Once a surface is calibrated, do not pay the stage-1 CPU gate until after triage. The CPU gate is too expensive to sit in front of an instant surface reject.
-- After splitting preflight from duel stages, treat any remaining audit slowness as duel-budget cost. The next workflow cut is duel-budget reduction or screen deduplication, not more preflight reshuffling.
-- Pooled client aggregate can falsely reject a mode-specific lead. For `fast` or `normal` promotion attempts, the target mode should be the only improvement bar and the other client mode should stay a non-regression check.
-- Even after fixing the pooled false reject, the first earned duel stage can still stall on a borderline fast-only lead. If the target-aware `fast-screen` cannot return promptly, the next workflow cut is cached top-off or a cheaper target-aware screen, not another candidate retry.
-- Default new candidates to `runtime_current`. Use retained non-production profiles only for calibration, references, or explicit audit lanes.
-- Keep ignored harness test names unique. `cargo test` filters by substring, so overlapping names can accidentally run extra stages and distort the loop.
-- The generic release opening black-reply speed gate measures production runtime only. Do not use it as a candidate filter before `pro-triage`; keep it for promotion time unless a candidate-aware opening speed probe exists.
-- Keep one audit lane, not a weaker default. Spot-check roughly every fifth clean triage reject with a cheap duel so the false-negative rate is measured instead of guessed.
-- A preflight-free audit helped, but it was still expensive in practice: the reply-risk audit dropped from about `347s` to about `292s` once stage-1 CPU and exact-lite checks were removed. That proved the split worked and also showed that duel cost now dominates.
-- For `reply_risk`, selected-root equality is too coarse. Compare candidate-resolved shortlist evidence, including reply-floor snapshots on the shortlisted roots, so clean-ordering and shortlist-width changes are visible in triage.
-- Heavy exact evaluation on both colors in every node is too expensive for production-facing turns.
-- Client-mode experiment gating gets noisy if `pro` is mixed into the default speed check. Default stage-1 gating to `fast` and `normal`, use repeated probes, and gate on the median ratio.
-- Shipping experiment code before it clears the promotion pipeline is too risky.
-- Generic meta-tooling for automated iteration helped less than direct code, direct gates, and short written lessons.
-- Scoring weight changes (±30 tweaks, dormant feature activation, multi-path activation, mana-race fields) consistently pass triage by inflating heuristic scores but are pure noise at duel scale. Do not invest duel budget on scoring-only candidates.
-- Search-structure-only changes (futility pruning, PVS, quiet reductions, aspirations) at Normal depth-3 are invisible to triage because fixture positions have dominant top moves unaffected by ordering or pruning efficiency.
-- History heuristic is dominated by TT best-child (+2400) and killer (+1200) bonuses at both Normal and Pro depth. The additional history bonus (capped at 800) cannot change ordering in any position that matters.
-- The config knob space is completely exhausted across all three modes (Mar 2026). Every SmartSearchConfig structural feature has been individually tested. Future improvement requires new code (new evaluation features, new search algorithms), not config permutations.
-- Quiescence search concept is proven (Normal 46W-26L, δ=0.139) but `ranked_child_states()` per activation is too expensive. Need cheaper move generation for quiescence or structural redesign before it can ship.
-- Breadth-over-depth (disabling extensions) is fundamentally stronger than extending promising lines. The search wins by evaluating more root candidates at nominal depth rather than extending a few children deeper.
-- Pro CPU ratio gate (1.60x minimum) blocked the strongest candidate ever found (+13% across 1,488 games). The gate ensures Pro "feels premium" but the stronger search is paradoxically cheaper.
-- Pro vs_fast regression is a hard gate. Two Pro candidates with strong vs_normal signals (+12-13%) failed because they regressed against Fast mode baseline.
-- Minimized `pro-ladder` settings can produce false keeps. Treat minimized ladder as directional-only; first real keep/kill must use bounded confirmation settings (`speed_positions=12`, `primary/confirm=3x3`, `max_plies=64`).
-- In the latest Pro wave, retained anchor `runtime_pro_quiescence_v2` and many confirmation-side quiescence splits converged to the same bounded-ladder floor (`vs_fast=-0.1111` vs tolerance `-0.10`). Repeating quiescence-budget splits after this pattern is low value.
-- When Pro passes triage, fast-screen, and progressive but fails bounded confirmation by a tiny consistent margin, the next hypothesis should target confirmation policy behavior directly (opening-book/reply policy), not broad primary-search tuning.
-- Default `pro-progressive` (`max_games=32`, repeats `2`) is too expensive for interactive loops once a candidate is already positive; use bounded progressive first (for example `2->4`, repeats `1`, max plies `64`) and escalate only for final confidence.
-- `runtime_current` versus `runtime_release_safe_pre_exact` is not a reliable `pro-triage` pair for production-mapped runtime edits; triage on explicit candidate profiles, then validate production changes with runtime-context tests and release gates.
-- Confirmation-context tactical quiescence-only top-offs can be completely non-moving on `opening_reply` fixtures (`target_changed=0`) even when opening speed stays within envelope; kill quickly unless fixtures are expanded.
-- Tiny exact-lite top-offs (`root/static 1/1`) on top of the promoted Pro primary tactical quiescence core can also be non-moving on `primary_pro` fixtures (`target_changed=0`); do not spend duel budget without deterministic surface movement.
-- Even when a Pro candidate moves `primary_pro` triage (`target_changed>0`) and passes preflight, a flat first duel lane (`pro-fast-screen` vs fast `delta=0.0000`) is still an immediate kill under the playbook.
-- On the promoted Pro primary tactical core, small primary-only follow-ups (moderate reply-risk top-off, tactical enum/budget lift) can stay fully non-moving on `primary_pro` (`target_changed=0`) even when they change runtime cost. Treat as immediate kill unless a recalibrated surface proves movement first.
-- A one-off `pro-audit-screen` contradiction is not enough to revive a triage reject when the tiny sample is mixed-sign (for example `+0.500` vs normal and `-0.500` vs fast at 1x1 settings); keep the kill and avoid escalation.
-- Fast-mode reply-risk widening can move `reply_risk` triage and even pass bounded `fast-screen`, then immediately flip to `EarlyReject` in bounded progressive. Treat fast-screen as a keep gate, not a promotion proxy.
-- A Fast candidate can clear bounded `fast-screen` and still be non-promotable if bounded progressive opens flat (`delta=0.000`) while taking multi-minute runtime; treat this as immediate kill on flat + runtime-fit risk instead of waiting for full progressive completion.
-- In the widened Fast reply-risk branch, adding `prefer_clean_reply_risk_roots=true` produced the same fast-screen and progressive outcomes as the base widened profile (no conversion lift). Treat this clean-preference toggle as low-value in this lane.
-- In the same Fast reply-risk family, changing to a margin-focused envelope (`margin=150`, `6/14/1100`) still reproduced the identical fast-screen/progressive path. Treat medium reply-risk envelope retunes as saturated against `runtime_release_safe_pre_exact`.
-- If multiple Fast reply-risk variants repeatedly land the exact same first-duel flat pattern (`fast 2W-2L`, `normal 2W-2L`, aggregate `delta=0.0000`), treat that lane as saturated against the promotion baseline and pivot to a different policy family instead of adding more reply-risk micro-splits.
-- Fast non-reply-risk config splits can fail the same way: `drainer_safety` and minimal Fast exact-lite progress were fully non-moving on their own triage surfaces, while a spirit-setup split moved triage but still landed the identical first-duel flat pattern (`fast 2W-2L`, `normal 2W-2L`). Treat this as a broader Fast-config saturation signal.
-- Fast tactical-only quiescence ordering can move `opponent_mana` strongly (`changed=14/18`) yet still fail first duel hard against the promotion baseline (aggregate negative with a large `vs normal` loss lane). Surface movement on tactical fixtures is necessary but not sufficient; duel direction dominates keep/kill.
-- A tiny Fast tactical-quiescence top-off (`budget=8`, tactical-only, enum=8) was fully non-moving on `opponent_mana` (`changed=0/18`) while calibration remained valid, so ultra-light quiescence toggles are also low-yield in this lane.
-- Planner rollout is mode-sensitive: the Pro turn-planner line is promotable with bounded budget and acceptance filters, while direct Fast/Normal transplants currently regress mixed-ladder non-regression (Normal lane around `-0.0556` in bounded runs). Keep planner enablement Pro-first until dedicated Fast/Normal abstractions are proven.
-- Disabling Fast forced tactical prepass alone was also fully non-moving on `opponent_mana` (`changed=0/18`), so this prepass toggle does not provide a useful standalone promotion lane.
-- Fast root/node shape rebalance (narrower root, broader node, root two-pass enabled) can be fully non-moving on `reply_risk` (`changed=0/3`) even when baseline calibration is green, and show only weak tactical movement (`opponent_mana changed=3/18`); treat as non-promising and kill before preflight/duel spend.
-- Fast search-ordering-only tweaks (history heuristic + killer ordering) can also be fully non-moving on both primary and fallback fast surfaces (`reply_risk 0/3`, `opponent_mana 0/18`); no duel budget should be spent on this lane without deterministic surface movement first.
-- Fast single-lever tactical toggles (`hard_spirit_deploy` only and `walk_threat_prefilter` only) were fully non-moving on their dedicated surfaces (`spirit_setup 0/2`, `drainer_safety 0/2`); treat them as low-yield standalone lanes unless paired with new code that changes root evidence.
-- Fast drainer-attack fallback toggles (`enable_per_mon_drainer_attack_fallback` plus drainer-priority enum boost) were also non-moving on `drainer_safety` (`changed=0/2`); a follow-up code-path split that tried to backfill safer attack roots still stayed non-moving (`changed=0/2`). Treat this family as low-value for Fast without new tactical evidence generation code.
-- A Fast code split that let forced-attack lanes apply drainer-safety prefiltering (`runtime_fast_forced_attack_safety_v1`) still stayed non-moving on `drainer_safety` (`changed=0/2`), so this prefilter placement change alone is also low-yield without stronger tactical evidence changes.
-- Fast targeted forced-attack fallback (`enable_targeted_drainer_attack_fallback=true`) was also non-moving on `reply_risk` (`changed=0/3`), so targeted fallback routing alone is low-impact in current Fast fixture packs.
-- Fast drainer exposure penalty top-off (`root_drainer_exposure_penalty=900`) was non-moving on `reply_risk` (`changed=0/3`), so vulnerability-penalty-only scoring nudges are also low-impact in current Fast fixture packs.
-- Disabling Fast strict anti-help filtering (`enable_strict_anti_help_filter=false`) was also non-moving on `reply_risk` (`changed=0/3`), so this anti-help gate is not currently deciding roots in the Fast fixture pack.
-- A Fast code split that tried to prefer safe forced-attack roots inside the forced-attack lane was also non-moving on `drainer_safety` (`changed=0/2`), so this safety preference does not activate on current drainer-safety fixtures.
-- Fast opponent-mana tactical prepass exception (`enable_opponent_mana_prepass_exception=true`) was also non-moving on `opponent_mana` (`changed=0/18`), so this prepass exception is not activating in current Fast fixture packs.
-- Fast conditional forced-drainer gating (`enable_conditional_forced_drainer_attack` with tie-only margin) was non-moving on `reply_risk` (`changed=0/3`) while `triage-calibrate reply_risk` remained green; treat this switch as low-impact for current Fast fixture packs.
-- Retained `runtime_eff_non_exact` references can move `reply_risk` strongly, but one variant (`v2`) over-moved off-target `supermana` (`changed=3/3`) and the narrower variant (`v1`) still opened first duel exactly flat (`fast-screen delta=0.0000`, `4W-4L` on both fast and normal lanes). Treat this lane as non-converting against `runtime_release_safe_pre_exact`.
-- A root-ordering-only follow-up on that same lane (`event_ordering_bonus=false` over `runtime_eff_non_exact_v1`) reproduced the exact same first-duel flat outcome after clean triage/preflight (`fast-screen delta=0.0000`, `4W-4L` on both lanes). Treat this branch as saturated against the current baseline.
-- Fast `enable_drainer_attack_full_pool` was fully non-moving on `reply_risk` (`changed=0/3`) while calibration remained valid; treating forced-attack filtering as optional does not currently produce a useful Fast signal.
-- A medium Fast reply-risk envelope (`margin=130`, `shortlist=5`, `reply_limit=10`, `node_share=900`) can keep off-target surfaces clean and show a positive tier-0 fast-screen signal, but runtime can balloon enough to block practical first-duel completion. Treat this as runtime-fit risk unless the same signal is reproduced under bounded duel budgets.
-- Fast `enable_drainer_attack_minimax_selection` was also non-moving on `reply_risk` (`changed=0/3`) with calibration still green; minimax-style drainer prepass selection is low-impact in current Fast fixture packs.
-- A lighter medium reply-risk variant (`node_share=780`) can pass bounded `fast-screen` (`+0.0833`) yet still collapse to exact flat in bounded `progressive` (`delta=0.0000`, symmetric 9W-9L on both fast and normal lanes). Treat this as another non-converting reply-risk envelope split.
-- Fast reply-risk hard-floor variants (soft-prior suppression and candidate-only shortlist floor guards) either fail to move the `reply_risk` surface or move `reply_risk` cleanly while still landing the exact first-duel flat reject (`fast 2W-2L`, `normal 2W-2L`, `delta=0.0000`). Treat shortlist/floor-only reply-risk policy edits as saturated against `runtime_release_safe_pre_exact`.
-- A Fast code split that added a lightweight counter-response probe inside reply-risk snapshots (`runtime_fast_reply_risk_counter_probe_v1`) moved `reply_risk` triage (`changed=3/3`) and passed runtime preflight, but first duel stayed exactly flat (`fast 4W-4L`, `normal 4W-4L`, `delta=0.0000`); treat this as another non-converting reply-risk micro-policy variant.
-- A Fast code split that filtered forced-attack roots through a quick reply-risk safety check (`runtime_fast_forced_attack_reply_risk_v1`) also moved `reply_risk` triage (`changed=3/3`) and passed runtime preflight, but first duel stayed exactly flat (`fast 4W-4L`, `normal 4W-4L`, `delta=0.0000`); treat forced-attack reply-risk micro-filtering as non-converting in the current lane.
-- A Fast code split that added a non-losing override for forced-attack filtering (`runtime_fast_forced_attack_non_losing_v1`) also moved `reply_risk` triage (`changed=3/3`) and passed runtime preflight, but first duel stayed exactly flat (`fast 4W-4L`, `normal 4W-4L`, `delta=0.0000`); treat forced-attack non-losing micro-overrides as non-converting in the current lane.
-- A Fast code split that let safe immediate-score non-attack roots override forced-attack filtering (`runtime_fast_forced_attack_immediate_score_v1`) was fully non-moving on `reply_risk` (`changed=0/3`); this forced-attack immediate-score override is low-impact on the current Fast fixture pack.
-- A Fast code split that score-gated forced-attack filtering (`runtime_fast_forced_attack_score_guard_v1`) moved `reply_risk` triage (`changed=3/3`) and passed runtime preflight, but first duel stayed exactly flat (`fast 4W-4L`, `normal 4W-4L`, `delta=0.0000`); treat forced-attack score-guard micro-policy as non-converting in this lane.
-- Disabling Fast reply-risk guard can look positive at bounded fast-screen and then immediately flip negative at bounded progressive (`delta=-0.0833`, fast lane `-0.1667`), so keep the guard in the default branch and treat no-guard as non-promotable.
-- A Fast follow-up that paired reply-risk guard disable with clean-root preference (`runtime_fast_no_reply_risk_guard_clean_v1`) improved first duel strongly (`fast-screen delta=+0.1458`, fast lane `+0.2917`) but still flipped to immediate bounded progressive reject (`delta=-0.0833`, fast lane `-0.1667`); clean preference does not rescue the no-guard branch.
-- A stronger no-guard follow-up that added an anti-help top-off on top of clean-root preference (`runtime_fast_no_reply_risk_guard_clean_antihelp_v1`) replayed the exact same path (strong first duel, then immediate bounded progressive reject at `delta=-0.0833`, fast lane `-0.1667`); anti-help tuning also does not rescue the no-guard branch.
-- A no-guard Fast blend with stronger drainer-safety penalties (`runtime_fast_no_reply_risk_guard_drainer_safety_v1`) can still pass full `fast-screen` with strong signal (`delta=+0.1458`, fast lane `+0.2917`) and then hit a practical progressive runtime cliff (only tier-0 completed after about 11 minutes, fast lane `+0.1667`). Sampling showed hot-path churn in exact attack-reach checks; treat this family as non-promotable on runtime-fit.
-- Turning off enhanced drainer-vulnerability scoring in that same branch (`runtime_fast_no_reply_risk_guard_drainer_safety_light_v1`) did not change first-duel/progressive signal and did not materially improve throughput (still multi-minute to progressive tier-0). Treat this as a duplicate non-fix for the runtime cliff.
-- A Fast code split that kept reply-risk guard enabled but added a narrow safe drainer-attack bypass (`runtime_fast_reply_risk_guard_safe_attack_bypass_v1`) was non-moving on `reply_risk` triage (`changed=0/3`); this bypass path does not activate on the current reply-risk fixture pack.
-- A Fast code split that kept reply-risk guard enabled and added safe score-led overrides (`runtime_fast_reply_risk_safe_score_override_v1`) was also non-moving on `reply_risk` triage (`changed=0/3`); this safe-score override path likewise does not activate on the current fixture pack.
-- A Fast tactical-quiescence midpoint top-off (`runtime_fast_tactical_quiescence_mid_v1`, budget `20`, tactical-only, enum `12`) was fully non-moving on `opponent_mana` (`changed=0/18`) while `triage-calibrate opponent_mana` stayed green; this lane remains all-or-nothing (tiny and midpoint budgets non-moving, larger ordered variant over-moves and loses duels).
-- A Fast spirit soft-priority top-off (`runtime_fast_spirit_soft_priority_v1`) can move `spirit_setup` deterministically (`changed=1/2`) and pass runtime preflight, but still hit an exact first-duel flat reject (`fast-screen delta=0.0000`, `4W-4L` on both fast and normal lanes); spirit-priority-only scoring boosts are non-converting against the current promotion baseline.
-- A Fast attacker-proximity scoring transplant (`runtime_fast_attacker_proximity_v1`) moved `opponent_mana` (`changed=2/18`) and passed runtime preflight, but first duel rejected negative (`fast-screen delta=-0.1250`, fast lane `2W-6L`); this scoring lane currently hurts Fast-target matchups despite deterministic surface movement.
-- Adding a Fast drainer-safety top-off on top of the attacker-proximity lane (`runtime_fast_attacker_proximity_safety_v1`) increased deterministic `opponent_mana` movement (`changed=4/18`) while keeping off-target `supermana` clean (`0/3`), but first duel stayed exactly as negative (`delta=-0.1250`, fast lane `2W-6L`); safety penalties do not currently fix attacker-proximity regressions.
-- Disabling Fast potion-progress compensation (`runtime_fast_no_potion_compensation_v1`) was fully non-moving on `opponent_mana` (`changed=0/18`); this compensation toggle does not currently influence the tactical fixture pack.
-- A Fast handoff/backtrack penalty top-off (`runtime_fast_handoff_backtrack_penalty_v1`, `handoff=380`, `backtrack=300`) was non-moving on `reply_risk` (`changed=0/3`); higher handoff/roundtrip penalties alone are not deciding roots on the current fast fixture pack.
-- A Fast reply-risk code split that tiebroke toward progress roots on tight worst-reply floors (`runtime_fast_reply_risk_progress_tiebreak_v1`) was also non-moving on `reply_risk` (`changed=0/3`); this progress-aware tie-break path does not activate on the current fixture pack.
-- Adding Fast two-pass root allocation/focus on top of a reply-risk-moving base (`runtime_eff_non_exact_v1`) still reproduced the exact first-duel flat reject (`fast 2W-2L`, `normal 2W-2L`). Treat this as another saturated split in the same lane.
-- A Fast code split that guarded reply-floor overrides with a heuristic-score support margin (`runtime_fast_reply_risk_floor_score_guard_v1`) still reproduced the exact first-duel flat reject (`fast 2W-2L`, `normal 2W-2L`) after clean triage and preflight. Treat this as another non-converting reply-risk micro-policy variant.
-- A Fast tighter reply-risk envelope (`runtime_fast_reply_risk_narrow_margin_v1`: `margin=80`, shortlist `3`, reply limit `8`, node share `500`) still moved `reply_risk` triage cleanly (`changed=3/3`) but remained first-duel flat (`fast 2W-2L`, `delta=0.0000`, `EarlyReject`). Treat narrower shortlist/margin retunes as saturated in this lane.
-- A Fast code split that conditionally relaxed forced-attack filtering when safe high-value pickups were available (`runtime_fast_conditional_forced_attack_pickup_v1`) was fully non-moving on `opponent_mana` (`changed=0/18`), so this conditional forced-attack lane is low-impact on current Fast fixtures.
-- A Fast code split that unconditionally allowed safe high-value pickup roots to bypass forced-attack-only filtering under targeted-fallback gating (`runtime_fast_pickup_override_v1`) was also fully non-moving on `opponent_mana` (`changed=0/18`), confirming this forced-attack relaxation family is currently low-impact on the Fast fixture pack.
-- A Fast conditional forced-attack safety escape (`runtime_fast_conditional_forced_attack_safety_v2`) that skipped attack-only filtering when only unsafe attack roots were available was also non-moving on `drainer_safety` (`changed=0/2`); this forced-attack safety branch remains low-impact on current fixtures.
-- Enabling Normal-style root safety rerank/deep-floor directly in Fast (`runtime_fast_safety_rerank_v1`) was also non-moving on `drainer_safety` (`changed=0/2`), so this safety-rerank transplant does not currently activate on the Fast fixture pack.
-- A Fast clean-reply/tiebreak-only retune (`runtime_fast_clean_reply_tiebreak_v1`) was fully non-moving on `reply_risk` (`changed=0/3`); this tie-break cleanliness lane is low-impact in current Fast fixtures.
-- Extending the opponent-mana prepass exception to include safe opponent-mana-progress lines (`runtime_fast_opponent_mana_prepass_progress_v2`) still produced no deterministic `opponent_mana` movement (`changed=0/18`), so this prepass branch is also low-impact on current Fast fixtures.
-- A Fast search-structure bundle (aspiration/PVS/futility/killer/history/TT-depth toggles) was non-moving on `reply_risk` (`changed=0/3`) and only weakly moving on fallback `opponent_mana` (`changed=2/18`); do not spend duel budget on this lane without stronger deterministic surface movement.
-- Pro primary tactical-child ordering on top of the promoted core showed a brittle tradeoff: lighter influence was non-moving on `primary_pro`, while stronger influence moved triage but regressed first duel vs fast. Treat this ordering lever as currently non-promotable without a separate CPU-neutral counterbalance.
-- A Pro candidate can be strongly positive through first duel and bounded progressive (`runtime_pro_primary_signal_no_ext_v1`) yet still fail bounded ladder primary-vs-normal hard (`delta=-0.0833` vs required `+0.0800`). Treat ladder primary as the decisive gate, not progressive momentum.
-- When a follow-up compensation tweak (`runtime_pro_primary_signal_no_ext_eff_v1`) reproduces the same first-duel/progressive gains and the same ladder primary miss (`-0.0833`), treat the underlying no-extension core as the failing factor and close that branch.
+- Keep the active frontier small: one live idea, one candidate, one earned path.
+- Run `guardrails -> triage/pro-triage -> runtime-preflight` before paying duel budget.
+- If a surface is calibrated, do not move the CPU gate back in front of triage.
+- `audit-screen` and `pro-audit-screen` are spot checks for clean rejects, not promotion proof.
+- Compress the lesson immediately when a run matters. Raw logs and stamps are disposable evidence, not memory.
+- Keep ignored harness test names unique; `cargo test` substring filters can accidentally run the wrong stage.
+- Candidate logs belong under `target/experiment-runs/<candidate>/`; runtime-preflight state belongs under `target/experiment-stamps/`.
 
-## Interview Guidance That Still Matters
+## Mistakes Not To Repeat
 
-- Attack the opponent drainer whenever a real same-turn attack exists.
-- Safe supermana and safe opponent-mana captures outrank routine tactical pressure.
-- Do not leave your own drainer vulnerable unless the move wins immediately or scores decisive mana.
-- Move spirit off base aggressively when it creates score, denial, or real setup.
-- Avoid mana movement that helps the opponent’s side of the board.
-- Prefer short real routes and punish roundtrips or handoff-like progress that lose tempo.
+- Do not keep historical profiles live in the active registry after their lesson is absorbed.
+- Do not treat `target/experiment-runs` or `target/experiment-stamps` as durable memory.
+- Do not reopen a branch just because it had a good bounded screen; reopen only with a new hypothesis.
+- Do not spend ladder budget on branches that are still flat in the first earned duel stage.
+- Do not trust pooled or sampled losses as selector evidence when direct reliability tracing shows `disagreements=0`.
+- Do not let Pro-specific selector flow bypass opening-book fallback ordering; that ordering mistake already produced confirmation regressions.
+- Do not inject planner roots globally. Crisis-only gating is safer, and even then the branch must prove direct value against `runtime_current`.
 
 ## Current Improvement Direction
 
-- Config knob space is exhausted. All future candidates must involve new code, not config permutations.
-- Pro quiescence search is the most promising active path: concept proven at Normal (46W-26L), Pro has 5x more CPU headroom.
-- Cheaper move generation for quiescence (avoiding full `ranked_child_states()`) could unlock Normal quiescence too.
-- Shared tactical/exact-lite cache reuse could reclaim duplicated work across root ranking and tactical prepasses.
-- Safety fixtures (stuck-state, bounded-progress) remain backlog infrastructure work.
-- Promote only candidates that pass `preflight`, prove a deterministic surface in `triage` or `pro-triage`, and then clear the earned duel path plus the release speed gates.
+- The live frontier is `runtime_pro_turn_engine_v1`.
+- The current problem is not "can the engine plan?" but "does the engine create beneficial disagreements against `runtime_current`?"
+- Next code should either increase direct selector impact on the remaining `NoPlan` / selected-mismatch fixtures or improve disagreement tracing so the failure mode is explicit.
+- Keep Fast work parked until there is a genuinely new code path; reply-risk, scoring-only, and minor search-order retunes are already saturated.

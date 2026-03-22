@@ -60,27 +60,43 @@ fi
 run_logged() {
   local run_name="$1"
   shift
-  ./scripts/run-experiment-logged.sh "${run_name}" -- "$@"
+  local candidate_meta="${candidate-}"
+  local baseline_meta="${baseline-}"
+  local target_mode_meta="${SMART_PROMOTION_TARGET_MODE-}"
+  SMART_EXPERIMENT_CANDIDATE="${candidate_meta}" \
+    SMART_EXPERIMENT_STAGE="${stage}" \
+    SMART_EXPERIMENT_BASELINE="${baseline_meta}" \
+    SMART_EXPERIMENT_TARGET_MODE="${target_mode_meta}" \
+    ./scripts/run-experiment-logged.sh "${run_name}" -- "$@"
 }
 
 sanitize() {
   printf '%s' "$1" | tr '[:space:]/:' '_' | tr -cd '[:alnum:]_.-'
 }
 
-experiment_log_dir() {
-  echo "${SMART_EXPERIMENT_LOG_DIR:-target/experiment-runs}"
+experiment_stamp_dir() {
+  echo "${SMART_EXPERIMENT_STAMP_DIR:-target/experiment-stamps}"
 }
 
 preflight_stamp_path() {
   local safe_candidate
   safe_candidate="$(sanitize "$1")"
-  echo "$(experiment_log_dir)/runtime_preflight_${safe_candidate}.stamp"
+  echo "$(experiment_stamp_dir)/runtime_preflight_${safe_candidate}.stamp"
+}
+
+legacy_preflight_stamp_path() {
+  local safe_candidate
+  safe_candidate="$(sanitize "$1")"
+  echo "target/experiment-runs/runtime_preflight_${safe_candidate}.stamp"
 }
 
 clear_preflight_stamp() {
   local stamp_path
   stamp_path="$(preflight_stamp_path "$1")"
+  local legacy_stamp_path
+  legacy_stamp_path="$(legacy_preflight_stamp_path "$1")"
   rm -f "${stamp_path}"
+  rm -f "${legacy_stamp_path}"
 }
 
 write_preflight_stamp() {
@@ -100,14 +116,25 @@ require_fresh_preflight_stamp() {
   local candidate_name="$1"
   local stamp_path
   stamp_path="$(preflight_stamp_path "${candidate_name}")"
+  local dependency_paths=(
+    "src/models/mons_game.rs"
+    "src/models/scoring.rs"
+    "src/models/automove_exact.rs"
+    "src/models/automove_turn_planner.rs"
+    "src/models/automove_turn_engine.rs"
+    "src/models/mons_game_model.rs"
+    "src/models/automove_experiments/profiles.rs"
+  )
   if [ ! -f "${stamp_path}" ]; then
     echo "missing runtime-preflight stamp for '${candidate_name}': run './scripts/run-automove-experiment.sh runtime-preflight ${candidate_name}' first" >&2
     exit 2
   fi
-  if [ src/models/mons_game_model.rs -nt "${stamp_path}" ] || [ src/models/automove_experiments/profiles.rs -nt "${stamp_path}" ]; then
-    echo "stale runtime-preflight stamp for '${candidate_name}': rerun './scripts/run-automove-experiment.sh runtime-preflight ${candidate_name}' because the runtime or experiment profiles changed" >&2
-    exit 2
-  fi
+  for dependency_path in "${dependency_paths[@]}"; do
+    if [ "${dependency_path}" -nt "${stamp_path}" ]; then
+      echo "stale runtime-preflight stamp for '${candidate_name}': rerun './scripts/run-automove-experiment.sh runtime-preflight ${candidate_name}' because the runtime or experiment profiles changed" >&2
+      exit 2
+    fi
+  done
 }
 
 run_cargo_logged() {
