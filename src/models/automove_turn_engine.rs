@@ -3412,11 +3412,58 @@ fn safe_progress_seeds(
     family: TurnPlanFamily,
     base_priority: i32,
 ) -> Vec<ActionSeed> {
+    #[derive(Clone, Copy)]
+    struct SafeProgressExactSnapshot {
+        progress_steps: Option<i32>,
+        score_path_best_steps: Option<i32>,
+        same_turn_score_window_value: i32,
+    }
+
+    fn safe_progress_exact_snapshot(
+        game: &MonsGame,
+        perspective: Color,
+        wanted: Mana,
+        state_hash: u64,
+    ) -> SafeProgressExactSnapshot {
+        let tactical_flags = match wanted {
+            Mana::Supermana => {
+                EXACT_TURN_TACTICAL_NEED_SUPERMANA_PROGRESS | EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW
+            }
+            Mana::Regular(color) if color == perspective.other() => {
+                EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS
+            }
+            Mana::Regular(_) => 0,
+        };
+        let projection = exact_turn_tactical_projection_with_search_hash(
+            game,
+            perspective,
+            state_hash,
+            tactical_flags,
+        );
+        let progress_steps = match wanted {
+            Mana::Supermana => projection.safe_supermana_progress_steps,
+            Mana::Regular(color) if color == perspective.other() => {
+                projection.safe_opponent_mana_progress_steps
+            }
+            Mana::Regular(_) => None,
+        };
+
+        SafeProgressExactSnapshot {
+            progress_steps,
+            score_path_best_steps: crate::models::automove_exact::exact_best_score_steps_on_board(
+                &game.board,
+                perspective,
+            ),
+            same_turn_score_window_value: projection.same_turn_score_window_value,
+        }
+    }
+
     let Some(drainer) = find_awake_drainer_location(&game.board, perspective) else {
         return Vec::new();
     };
     let mut seeds = Vec::new();
-    let before_turn = exact_turn_summary(game, perspective);
+    let before_state_hash = MonsGameModel::search_state_hash(game);
+    let before_exact = safe_progress_exact_snapshot(game, perspective, wanted, before_state_hash);
     let before_safety = own_drainer_safety_score(&game.board, perspective);
     if let Some(path) = exact_secure_specific_mana_path_from(game, perspective, drainer, wanted) {
         if let Some(step) = path.first().copied() {
@@ -3435,9 +3482,10 @@ fn safe_progress_seeds(
     if remaining_moves_for_color(game, perspective) > 0 {
         if let Some(target_mana) = nearest_wanted_mana_location(&game.board, wanted) {
             let before_dist = drainer.distance(&target_mana);
-            let before_exact_steps = wanted_progress_steps(before_turn, wanted, perspective)
+            let before_exact_steps = before_exact
+                .progress_steps
                 .unwrap_or(Config::BOARD_SIZE * 3);
-            let before_score_path = before_turn
+            let before_score_path = before_exact
                 .score_path_best_steps
                 .unwrap_or(Config::BOARD_SIZE * 3);
             for &next in drainer.nearby_locations_ref() {
@@ -3453,11 +3501,16 @@ fn safe_progress_seeds(
                 if opponent_can_win_immediately(&after, perspective) {
                     continue;
                 }
-                let after_turn = exact_turn_summary(&after, perspective);
+                let after_exact = safe_progress_exact_snapshot(
+                    &after,
+                    perspective,
+                    wanted,
+                    MonsGameModel::search_state_hash(&after),
+                );
                 let after_safety = own_drainer_safety_score(&after.board, perspective);
-                let after_exact_steps = wanted_progress_steps(after_turn, wanted, perspective)
-                    .unwrap_or(Config::BOARD_SIZE * 3);
-                let after_score_path = after_turn
+                let after_exact_steps =
+                    after_exact.progress_steps.unwrap_or(Config::BOARD_SIZE * 3);
+                let after_score_path = after_exact
                     .score_path_best_steps
                     .unwrap_or(Config::BOARD_SIZE * 3);
                 let exact_improved = after_exact_steps < before_exact_steps
@@ -3487,9 +3540,9 @@ fn safe_progress_seeds(
                             .saturating_mul(180),
                     );
                 }
-                if wanted == Mana::Supermana && after_turn.same_turn_score_window_value > 0 {
+                if wanted == Mana::Supermana && after_exact.same_turn_score_window_value > 0 {
                     priority = priority.saturating_add(
-                        after_turn.same_turn_score_window_value.saturating_mul(260),
+                        after_exact.same_turn_score_window_value.saturating_mul(260),
                     );
                 }
                 seeds.push(ActionSeed {
@@ -4008,7 +4061,7 @@ fn spirit_impact_seeds(
     if !game.player_can_use_action() {
         return Vec::new();
     }
-    let tactical_flags = tactical_projection_flags(true, true, true, true);
+    let tactical_flags = tactical_projection_flags(true, true, true, true, true);
     let mut seeds = Vec::new();
     let before_turn = exact_turn_tactical_projection_with_search_hash(
         game,
@@ -4147,7 +4200,8 @@ impl OracleWalkActorCapabilities {
 fn tactical_projection_flags(
     need_supermana_progress: bool,
     need_opponent_mana_progress: bool,
-    need_spirit: bool,
+    need_spirit_score: bool,
+    need_spirit_denial: bool,
     need_score_window: bool,
 ) -> u8 {
     let mut flags = 0u8;
@@ -4157,8 +4211,11 @@ fn tactical_projection_flags(
     if need_opponent_mana_progress {
         flags |= EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS;
     }
-    if need_spirit {
-        flags |= EXACT_TURN_TACTICAL_NEED_SPIRIT;
+    if need_spirit_score {
+        flags |= EXACT_TURN_TACTICAL_NEED_SPIRIT_SCORE;
+    }
+    if need_spirit_denial {
+        flags |= EXACT_TURN_TACTICAL_NEED_SPIRIT_DENIAL;
     }
     if need_score_window {
         flags |= EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW;
@@ -4180,7 +4237,8 @@ fn oracle_walk_actor_capabilities(
     let tactical_flags = tactical_projection_flags(
         can_emit_supermana,
         can_emit_opponent_mana,
-        allow_spirit && (mon_kind == MonKind::Spirit || can_emit_opponent_mana),
+        can_emit_spirit,
+        allow_spirit && can_emit_opponent_mana,
         can_emit_supermana || can_emit_spirit,
     );
 
@@ -4190,16 +4248,6 @@ fn oracle_walk_actor_capabilities(
         can_emit_safety,
         can_emit_spirit,
         tactical_flags,
-    }
-}
-
-fn wanted_progress_steps(turn: ExactTurnSummary, wanted: Mana, perspective: Color) -> Option<i32> {
-    match wanted {
-        Mana::Supermana => turn.safe_supermana_progress_steps,
-        Mana::Regular(color) if color == perspective.other() => {
-            turn.safe_opponent_mana_progress_steps
-        }
-        Mana::Regular(_) => None,
     }
 }
 
@@ -5225,7 +5273,22 @@ mod tests {
         assert!(capabilities.can_emit_opponent_mana);
         assert_eq!(
             capabilities.tactical_flags,
-            EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS | EXACT_TURN_TACTICAL_NEED_SPIRIT
+            EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS
+                | EXACT_TURN_TACTICAL_NEED_SPIRIT_DENIAL
+        );
+    }
+
+    #[test]
+    fn oracle_walk_actor_capabilities_keep_spirit_walks_score_only() {
+        let capabilities = oracle_walk_actor_capabilities(MonKind::Spirit, true, true, false, true);
+        assert!(capabilities.any_seed());
+        assert!(capabilities.can_emit_spirit);
+        assert!(!capabilities.can_emit_opponent_mana);
+        assert_eq!(
+            capabilities.tactical_flags,
+            EXACT_TURN_TACTICAL_NEED_SUPERMANA_PROGRESS
+                | EXACT_TURN_TACTICAL_NEED_SPIRIT_SCORE
+                | EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW
         );
     }
 

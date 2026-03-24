@@ -11651,7 +11651,8 @@ impl MonsGameModel {
         let tactical_flags =
             crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_SUPERMANA_PROGRESS
                 | crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS
-                | crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_SPIRIT
+                | crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_SPIRIT_SCORE
+                | crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_SPIRIT_DENIAL
                 | crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW;
         let my_turn_summary = if include_tactical_exact && game.active_color == perspective {
             crate::models::automove_exact::exact_turn_tactical_projection_with_search_hash(
