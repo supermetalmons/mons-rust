@@ -3789,6 +3789,16 @@ fn oracle_walk_seeds(
         if own_drainer == Some(actor) {
             continue;
         }
+        let actor_capabilities = oracle_walk_actor_capabilities(
+            mon.kind,
+            allow_supermana,
+            allow_opponent_mana,
+            allow_safety,
+            allow_spirit,
+        );
+        if !actor_capabilities.any_seed() {
+            continue;
+        }
         for &to in actor.nearby_locations_ref() {
             if !walk_destination_plausible(&game.board, actor, to) {
                 continue;
@@ -3803,18 +3813,19 @@ fn oracle_walk_seeds(
                 continue;
             }
 
-            let need_after_turn = allow_supermana || allow_opponent_mana || allow_spirit;
-            let need_after_spirit = allow_spirit && mon.kind == MonKind::Spirit;
+            let need_after_turn = actor_capabilities.tactical_flags != 0;
+            let need_after_spirit = actor_capabilities.can_emit_spirit;
             let after_state_hash = if need_after_turn || need_after_spirit {
                 Some(MonsGameModel::search_state_hash(&after))
             } else {
                 None
             };
             let after_turn = if need_after_turn {
-                Some(exact_turn_summary_with_search_hash(
+                Some(exact_turn_tactical_projection_with_search_hash(
                     &after,
                     perspective,
                     after_state_hash.expect("after_state_hash present when after_turn is needed"),
+                    actor_capabilities.tactical_flags,
                 ))
             } else {
                 None
@@ -3828,11 +3839,12 @@ fn oracle_walk_seeds(
             } else {
                 (0, 0)
             };
-            let after_safety = if allow_supermana || allow_safety {
-                own_drainer_safety_score(&after.board, perspective)
-            } else {
-                before_safety
-            };
+            let after_safety =
+                if actor_capabilities.can_emit_supermana || actor_capabilities.can_emit_safety {
+                    own_drainer_safety_score(&after.board, perspective)
+                } else {
+                    before_safety
+                };
             let after_super_steps = after_turn
                 .map(|summary| {
                     summary
@@ -3848,7 +3860,7 @@ fn oracle_walk_seeds(
                 })
                 .unwrap_or(before_opponent_steps);
 
-            if allow_supermana && after_super_steps < before_super_steps {
+            if actor_capabilities.can_emit_supermana && after_super_steps < before_super_steps {
                 seeds.push(ActionSeed {
                     family: TurnPlanFamily::SafeSupermanaProgress,
                     action: TurnAction::Walk { actor, to },
@@ -3866,8 +3878,11 @@ fn oracle_walk_seeds(
                 });
             }
 
-            let opponent_progress_improved = after_opponent_steps < before_opponent_steps;
+            let opponent_progress_improved = actor_capabilities.can_emit_opponent_mana
+                && after_opponent_steps < before_opponent_steps;
             let spirit_denial_improved = allow_spirit
+                && (actor_capabilities.can_emit_spirit
+                    || actor_capabilities.can_emit_opponent_mana)
                 && after_turn.map_or(false, |summary| {
                     summary.spirit_assisted_denial_value > before_turn.spirit_assisted_denial_value
                 });
@@ -3899,7 +3914,7 @@ fn oracle_walk_seeds(
                 }
             }
 
-            let spirit_score_improved = allow_spirit
+            let spirit_score_improved = actor_capabilities.can_emit_spirit
                 && after_turn.map_or(false, |summary| {
                     summary.spirit_assisted_score_value > before_turn.spirit_assisted_score_value
                         || summary.same_turn_score_window_value
@@ -3908,8 +3923,7 @@ fn oracle_walk_seeds(
             let spirit_setup_gain_delta = after_spirit.0.saturating_sub(before_spirit.0);
             let spirit_utility_delta = after_spirit.1.saturating_sub(before_spirit.1);
             let spirit_setup_improved = spirit_setup_gain_delta > 0 || spirit_utility_delta > 0;
-            if allow_spirit
-                && mon.kind == MonKind::Spirit
+            if actor_capabilities.can_emit_spirit
                 && (spirit_score_improved || spirit_setup_improved)
             {
                 seeds.push(ActionSeed {
@@ -3931,7 +3945,7 @@ fn oracle_walk_seeds(
                 });
             }
 
-            if allow_safety && after_safety > before_safety {
+            if actor_capabilities.can_emit_safety && after_safety > before_safety {
                 seeds.push(ActionSeed {
                     family: TurnPlanFamily::DrainerSafetyRecovery,
                     action: TurnAction::Walk { actor, to },
@@ -3994,11 +4008,13 @@ fn spirit_impact_seeds(
     if !game.player_can_use_action() {
         return Vec::new();
     }
+    let tactical_flags = tactical_projection_flags(true, true, true, true);
     let mut seeds = Vec::new();
-    let before_turn = exact_turn_summary_with_search_hash(
+    let before_turn = exact_turn_tactical_projection_with_search_hash(
         game,
         perspective,
         MonsGameModel::search_state_hash(game),
+        tactical_flags,
     );
     let before_safety = own_drainer_safety_score(&game.board, perspective);
     for (spirit_location, item) in game.board.occupied() {
@@ -4046,7 +4062,12 @@ fn spirit_impact_seeds(
                 {
                     priority += 460;
                 }
-                let after_turn = exact_turn_summary(&after, perspective);
+                let after_turn = exact_turn_tactical_projection_with_search_hash(
+                    &after,
+                    perspective,
+                    MonsGameModel::search_state_hash(&after),
+                    tactical_flags,
+                );
                 if after_turn.same_turn_score_window_value
                     > before_turn.same_turn_score_window_value
                 {
@@ -4102,6 +4123,74 @@ fn spirit_impact_seeds(
     seeds.truncate(12);
     update_turn_engine_diagnostics(|diagnostics| diagnostics.seed_spirit_impact += seeds.len());
     seeds
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct OracleWalkActorCapabilities {
+    can_emit_supermana: bool,
+    can_emit_opponent_mana: bool,
+    can_emit_safety: bool,
+    can_emit_spirit: bool,
+    tactical_flags: u8,
+}
+
+impl OracleWalkActorCapabilities {
+    #[inline]
+    fn any_seed(self) -> bool {
+        self.can_emit_supermana
+            || self.can_emit_opponent_mana
+            || self.can_emit_safety
+            || self.can_emit_spirit
+    }
+}
+
+fn tactical_projection_flags(
+    need_supermana_progress: bool,
+    need_opponent_mana_progress: bool,
+    need_spirit: bool,
+    need_score_window: bool,
+) -> u8 {
+    let mut flags = 0u8;
+    if need_supermana_progress {
+        flags |= EXACT_TURN_TACTICAL_NEED_SUPERMANA_PROGRESS;
+    }
+    if need_opponent_mana_progress {
+        flags |= EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS;
+    }
+    if need_spirit {
+        flags |= EXACT_TURN_TACTICAL_NEED_SPIRIT;
+    }
+    if need_score_window {
+        flags |= EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW;
+    }
+    flags
+}
+
+fn oracle_walk_actor_capabilities(
+    mon_kind: MonKind,
+    allow_supermana: bool,
+    allow_opponent_mana: bool,
+    allow_safety: bool,
+    allow_spirit: bool,
+) -> OracleWalkActorCapabilities {
+    let can_emit_supermana = allow_supermana;
+    let can_emit_opponent_mana = allow_opponent_mana && mon_kind != MonKind::Spirit;
+    let can_emit_safety = allow_safety;
+    let can_emit_spirit = allow_spirit && mon_kind == MonKind::Spirit;
+    let tactical_flags = tactical_projection_flags(
+        can_emit_supermana,
+        can_emit_opponent_mana,
+        allow_spirit && (mon_kind == MonKind::Spirit || can_emit_opponent_mana),
+        can_emit_supermana || can_emit_spirit,
+    );
+
+    OracleWalkActorCapabilities {
+        can_emit_supermana,
+        can_emit_opponent_mana,
+        can_emit_safety,
+        can_emit_spirit,
+        tactical_flags,
+    }
 }
 
 fn wanted_progress_steps(turn: ExactTurnSummary, wanted: Mana, perspective: Color) -> Option<i32> {
@@ -5109,6 +5198,35 @@ mod tests {
             scoring_weights: &DEFAULT_SCORING_WEIGHTS,
             allow_exact_static_evaluation: false,
         }
+    }
+
+    #[test]
+    fn oracle_walk_actor_capabilities_skip_non_spirit_spirit_only_work() {
+        let capabilities =
+            oracle_walk_actor_capabilities(MonKind::Mystic, false, false, false, true);
+        assert!(!capabilities.any_seed());
+        assert_eq!(capabilities.tactical_flags, 0);
+    }
+
+    #[test]
+    fn oracle_walk_actor_capabilities_skip_spirit_only_opponent_progress_family() {
+        let capabilities =
+            oracle_walk_actor_capabilities(MonKind::Spirit, false, true, false, false);
+        assert!(!capabilities.any_seed());
+        assert_eq!(capabilities.tactical_flags, 0);
+    }
+
+    #[test]
+    fn oracle_walk_actor_capabilities_keep_non_spirit_spirit_denial_when_progress_allowed() {
+        let capabilities =
+            oracle_walk_actor_capabilities(MonKind::Mystic, false, true, false, true);
+        assert!(capabilities.any_seed());
+        assert!(!capabilities.can_emit_spirit);
+        assert!(capabilities.can_emit_opponent_mana);
+        assert_eq!(
+            capabilities.tactical_flags,
+            EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS | EXACT_TURN_TACTICAL_NEED_SPIRIT
+        );
     }
 
     fn exhaustive_same_turn_reachable<F>(game: &MonsGame, color: Color, predicate: F) -> bool
