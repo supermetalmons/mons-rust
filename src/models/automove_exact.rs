@@ -1667,8 +1667,7 @@ fn actor_payload_after_move(
     destination: Location,
     allow_pick_bomb: bool,
 ) -> Option<ExactActorPayload> {
-    let item = board.item(destination).copied();
-    let square = board.square(destination);
+    let item = board.items[destination.index()];
     match payload {
         ExactActorPayload::None => match item {
             Some(Item::Mon { .. })
@@ -1692,6 +1691,7 @@ fn actor_payload_after_move(
             }
             Some(Item::Consumable { .. }) => None,
             None => {
+                let square = Config::square_at(destination);
                 if square_allows_empty_mon(square, mon_kind, color) {
                     Some(ExactActorPayload::None)
                 } else {
@@ -1709,6 +1709,7 @@ fn actor_payload_after_move(
             }) => Some(payload),
             Some(Item::Consumable { .. }) => None,
             None => {
+                let square = Config::square_at(destination);
                 if square_allows_mana_carrier(square, payload.mana().unwrap()) {
                     Some(payload)
                 } else {
@@ -1726,6 +1727,7 @@ fn actor_payload_after_move(
             }) => Some(ExactActorPayload::Bomb),
             Some(Item::Consumable { .. }) => None,
             None => {
+                let square = Config::square_at(destination);
                 if matches!(
                     square,
                     Square::Regular
@@ -2118,22 +2120,24 @@ fn exact_secure_specific_mana_steps_in_game_uncached_at_mut(
 
     let mut best = None;
     for &next in drainer_location.nearby_locations_ref() {
-        let Some(transition) =
-            exact_apply_secure_drainer_walk_in_place(game, state_key, drainer_location, next)
-        else {
+        let Some(transition) = exact_apply_secure_drainer_walk_in_place(
+            game,
+            state_key,
+            drainer_location,
+            next,
+            ExactSecureDrainerWalkTurnEndMode::SameTurnSearch,
+        ) else {
             continue;
         };
         let candidate = if transition.scored_mana == Some(wanted) {
             Some(1)
-        } else {
+        } else if let Some(after_key) = transition.after_key {
             exact_secure_specific_mana_steps_in_game_with_key_at_mut(
-                game,
-                color,
-                next,
-                wanted,
-                transition.after_key,
+                game, color, next, wanted, after_key,
             )
             .map(|next_steps| next_steps.saturating_add(1))
+        } else {
+            None
         };
         exact_undo_secure_drainer_walk(game, transition.undo);
         if let Some(candidate) = candidate {
@@ -2340,9 +2344,16 @@ struct ExactSecureDrainerWalkUndo {
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy)]
 struct ExactSecureDrainerWalkMutation {
-    after_key: ExactSecureManaStateKey,
+    after_key: Option<ExactSecureManaStateKey>,
     scored_mana: Option<Mana>,
     undo: ExactSecureDrainerWalkUndo,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExactSecureDrainerWalkTurnEndMode {
+    FullTransition,
+    SameTurnSearch,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -2359,7 +2370,7 @@ fn exact_secure_board_hash_after_touched_items(
         if let Some(item) = entry.before {
             after_hash ^= exact_secure_board_entry_hash(index, item);
         }
-        if let Some(item) = board.item(entry.location).copied() {
+        if let Some(item) = board.items[index] {
             after_hash ^= exact_secure_board_entry_hash(index, item);
         }
     }
@@ -2394,6 +2405,7 @@ fn exact_apply_secure_drainer_walk_in_place(
     state_key: ExactSecureManaStateKey,
     from: Location,
     to: Location,
+    turn_end_mode: ExactSecureDrainerWalkTurnEndMode,
 ) -> Option<ExactSecureDrainerWalkMutation> {
     if !exact_walk_destination_plausible(&game.board, from, to) {
         return None;
@@ -2479,12 +2491,25 @@ fn exact_apply_secure_drainer_walk_in_place(
     let first_turn = game.turn_number == 1;
     let player_can_move_mon = game.mons_moves_count < Config::MONS_MOVES_PER_TURN;
     let player_can_move_mana = !first_turn && game.mana_moves_count < Config::MANA_MOVES_PER_TURN;
-    if game.white_score < Config::TARGET_SCORE
+    let should_end_turn = game.white_score < Config::TARGET_SCORE
         && game.black_score < Config::TARGET_SCORE
         && (first_turn && !player_can_move_mon
             || !first_turn && !player_can_move_mana
-            || !first_turn && !player_can_move_mon && game.board.find_mana(game.active_color).is_none())
-    {
+            || !first_turn
+                && !player_can_move_mon
+                && game.board.find_mana(game.active_color).is_none());
+    if should_end_turn {
+        if turn_end_mode == ExactSecureDrainerWalkTurnEndMode::SameTurnSearch {
+            return Some(ExactSecureDrainerWalkMutation {
+                after_key: None,
+                scored_mana,
+                undo: ExactSecureDrainerWalkUndo {
+                    snapshot,
+                    touched_items,
+                },
+            });
+        }
+
         let next_active_color = game.active_color.other();
         game.active_color = next_active_color;
         game.turn_number += 1;
@@ -2507,7 +2532,7 @@ fn exact_apply_secure_drainer_walk_in_place(
         }
     }
 
-    let after_key = ExactSecureManaStateKey {
+    let after_key = Some(ExactSecureManaStateKey {
         board_hash: exact_secure_board_hash_after_touched_items(
             state_key.board_hash,
             &game.board,
@@ -2515,7 +2540,7 @@ fn exact_apply_secure_drainer_walk_in_place(
         ),
         active_color: game.active_color,
         mons_moves_count: game.mons_moves_count,
-    };
+    });
     Some(ExactSecureDrainerWalkMutation {
         after_key,
         scored_mana,
@@ -2534,10 +2559,16 @@ fn exact_apply_secure_drainer_walk(
     to: Location,
 ) -> Option<ExactSecureDrainerWalkTransition> {
     let mut after = game.clone_for_simulation();
-    let mutation = exact_apply_secure_drainer_walk_in_place(&mut after, state_key, from, to)?;
+    let mutation = exact_apply_secure_drainer_walk_in_place(
+        &mut after,
+        state_key,
+        from,
+        to,
+        ExactSecureDrainerWalkTurnEndMode::FullTransition,
+    )?;
     Some(ExactSecureDrainerWalkTransition {
         after,
-        after_key: mutation.after_key,
+        after_key: mutation.after_key.expect("full transition should retain exact state key"),
         scored_mana: mutation.scored_mana,
     })
 }
