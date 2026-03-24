@@ -985,6 +985,7 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                         mon.color,
                         location,
                         use_legacy_formula,
+                        weights.drainer_walk_threat_boolean != 0,
                     );
                     score += my_mon_multiplier * weights.drainer_close_to_mana / safety.min_mana;
                     score += my_mon_multiplier * weights.drainer_close_to_own_pool
@@ -1021,21 +1022,23 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                         }
                     }
 
-                    let (action_threats, bomb_threats) = drainer_immediate_threats(
-                        &game.board,
-                        mon.color,
-                        location,
-                        use_legacy_formula,
-                    );
-                    let immediate_threats = if safety.angel_nearby {
-                        bomb_threats
-                    } else {
-                        action_threats + bomb_threats
-                    };
-                    if immediate_threats > 0 {
-                        score += my_mon_multiplier
-                            * weights.drainer_immediate_threat
-                            * immediate_threats;
+                    if weights.drainer_immediate_threat != 0 {
+                        let (action_threats, bomb_threats) = drainer_immediate_threats(
+                            &game.board,
+                            mon.color,
+                            location,
+                            use_legacy_formula,
+                        );
+                        let immediate_threats = if safety.angel_nearby {
+                            bomb_threats
+                        } else {
+                            action_threats + bomb_threats
+                        };
+                        if immediate_threats > 0 {
+                            score += my_mon_multiplier
+                                * weights.drainer_immediate_threat
+                                * immediate_threats;
+                        }
                     }
 
                     let evaluate_drainer_danger = weights.drainer_danger_boolean != 0
@@ -1121,6 +1124,7 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                         mon.color,
                         location,
                         use_legacy_formula,
+                        weights.drainer_walk_threat_boolean != 0,
                     );
                     score += my_mon_multiplier * weights.drainer_close_to_mana / safety.min_mana;
                     score += my_mon_multiplier * weights.drainer_close_to_own_pool
@@ -1133,21 +1137,23 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                         score += my_mon_multiplier * weights.angel_guarding_drainer;
                     }
 
-                    let (action_threats, bomb_threats) = drainer_immediate_threats(
-                        &game.board,
-                        mon.color,
-                        location,
-                        use_legacy_formula,
-                    );
-                    let immediate_threats = if safety.angel_nearby {
-                        bomb_threats
-                    } else {
-                        action_threats + bomb_threats
-                    };
-                    if immediate_threats > 0 {
-                        score += my_mon_multiplier
-                            * weights.drainer_immediate_threat
-                            * immediate_threats;
+                    if weights.drainer_immediate_threat != 0 {
+                        let (action_threats, bomb_threats) = drainer_immediate_threats(
+                            &game.board,
+                            mon.color,
+                            location,
+                            use_legacy_formula,
+                        );
+                        let immediate_threats = if safety.angel_nearby {
+                            bomb_threats
+                        } else {
+                            action_threats + bomb_threats
+                        };
+                        if immediate_threats > 0 {
+                            score += my_mon_multiplier
+                                * weights.drainer_immediate_threat
+                                * immediate_threats;
+                        }
                     }
 
                     let evaluate_drainer_danger = weights.drainer_danger_boolean != 0
@@ -1334,16 +1340,23 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                     }
                 }
 
-                let safety =
-                    drainer_safety_snapshot(&game.board, mon.color, location, use_legacy_formula);
+                let carries_high_value_mana = !use_legacy_formula
+                    && mon.kind == MonKind::Drainer
+                    && (matches!(mana, Mana::Supermana)
+                        || matches!(mana, Mana::Regular(owner) if *owner != mon.color));
+                let safety = drainer_safety_snapshot(
+                    &game.board,
+                    mon.color,
+                    location,
+                    use_legacy_formula,
+                    weights.mana_carrier_walk_threat_boolean != 0 || carries_high_value_mana,
+                );
                 score += my_mon_multiplier * weights.mana_carrier_at_risk / safety.risk_danger;
                 if safety.guarded_against_exact_attack() {
                     score += my_mon_multiplier * weights.mana_carrier_guarded;
                 }
 
                 if !use_legacy_formula && mon.kind == MonKind::Drainer {
-                    let carries_high_value_mana = matches!(mana, Mana::Supermana)
-                        || matches!(mana, Mana::Regular(owner) if *owner != mon.color);
                     if carries_high_value_mana {
                         let virtual_score_bp = match mana {
                             Mana::Supermana => weights
@@ -2216,13 +2229,15 @@ fn drainer_safety_snapshot(
     color: Color,
     location: Location,
     use_legacy_formula: bool,
+    include_walk_threat: bool,
 ) -> DrainerSafetySnapshot {
     let (raw_danger, min_mana, angel_nearby) =
         drainer_distances(board, color, location, use_legacy_formula);
     let exact_danger_threat =
         is_drainer_under_danger_threat(board, color, location, angel_nearby, use_legacy_formula);
-    let walk_threat =
-        !exact_danger_threat && is_drainer_under_walk_threat(board, color, location, angel_nearby);
+    let walk_threat = include_walk_threat
+        && !exact_danger_threat
+        && is_drainer_under_walk_threat(board, color, location, angel_nearby);
     let risk_danger = if use_legacy_formula {
         raw_danger.max(1)
     } else if exact_danger_threat {

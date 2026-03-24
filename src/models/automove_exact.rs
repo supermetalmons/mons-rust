@@ -457,6 +457,15 @@ struct ExactSpiritTacticalSummaryCache {
     entries: ExactHashMap<ExactTacticalSpiritSummaryKey, ExactSpiritSummary>,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ExactTacticalSpiritAfterWindowKey {
+    board_hash: u64,
+    remaining_mon_moves: i32,
+    need_score: bool,
+    need_denial: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ExactSpiritReachQueryKey {
     board_hash: u64,
@@ -3016,6 +3025,10 @@ fn exact_tactical_spirit_summary_uncached(
         0
     };
     let mut best = ExactSpiritSummary::default();
+    let mut after_window_cache: ExactHashMap<
+        ExactTacticalSpiritAfterWindowKey,
+        ExactImmediateTacticalWindow,
+    > = ExactHashMap::default();
 
     for (location, item) in board.occupied() {
         let Some(mon) = item.mon() else {
@@ -3057,13 +3070,31 @@ fn exact_tactical_spirit_summary_uncached(
                         need_score && best.same_turn_score_value < max_same_turn_score;
                     let need_after_denial = need_denial
                         && best.same_turn_opponent_mana_score_value < max_same_turn_opponent_score;
-                    let after_window = exact_best_immediate_tactical_window_on_board(
-                        &after_board,
-                        color,
-                        remaining_after_action,
-                        need_after_score,
-                        need_after_denial,
-                    );
+                    let after_window = if need_after_score || need_after_denial {
+                        let after_board_hash = exact_board_hash(&after_board);
+                        let key = ExactTacticalSpiritAfterWindowKey {
+                            board_hash: after_board_hash,
+                            remaining_mon_moves: remaining_after_action,
+                            need_score: need_after_score,
+                            need_denial: need_after_denial,
+                        };
+                        if let Some(cached) = after_window_cache.get(&key).copied() {
+                            cached
+                        } else {
+                            let window = exact_best_immediate_tactical_window_on_board_with_hash(
+                                &after_board,
+                                color,
+                                remaining_after_action,
+                                need_after_score,
+                                need_after_denial,
+                                after_board_hash,
+                            );
+                            after_window_cache.insert(key, window);
+                            window
+                        }
+                    } else {
+                        ExactImmediateTacticalWindow::default()
+                    };
                     let after_same_turn_score = if need_after_score {
                         score_delta.max(after_window.best_score)
                     } else {
@@ -3635,24 +3666,6 @@ fn exact_best_score_steps_on_board_with_hash(
 struct ExactImmediateTacticalWindow {
     best_score: i32,
     best_opponent_mana_score: i32,
-}
-
-#[cfg(any(target_arch = "wasm32", test))]
-fn exact_best_immediate_tactical_window_on_board(
-    board: &Board,
-    color: Color,
-    move_budget: i32,
-    need_score: bool,
-    need_denial: bool,
-) -> ExactImmediateTacticalWindow {
-    exact_best_immediate_tactical_window_on_board_with_hash(
-        board,
-        color,
-        move_budget,
-        need_score,
-        need_denial,
-        exact_board_hash(board),
-    )
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
