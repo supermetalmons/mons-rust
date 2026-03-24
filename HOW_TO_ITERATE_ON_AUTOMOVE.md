@@ -57,6 +57,7 @@ cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --
 
 - Candidate logs default to `target/experiment-runs/<candidate>/`.
 - Calibration and workflow-only runs default to `target/experiment-runs/misc/`.
+- Manual profiler samples should go under `target/experiment-runs/misc/samples/` via `./scripts/capture-process-sample.sh <pid> [duration] [label]`.
 - Runtime-preflight stamps live in `target/experiment-stamps/`.
 - Use the cleaner intentionally:
 
@@ -65,6 +66,8 @@ cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --
 ./scripts/clean-experiment-artifacts.sh --candidate <candidate> --logs-only --dry-run
 ./scripts/clean-experiment-artifacts.sh --candidate <candidate> --stamps-only --dry-run
 ./scripts/clean-experiment-artifacts.sh
+./scripts/clean-process-samples.sh --dry-run
+./scripts/clean-process-samples.sh
 ```
 
 - Logs and stamps are disposable evidence, not durable memory.
