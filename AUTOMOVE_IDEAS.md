@@ -57,7 +57,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
   - `runtime_pro_turn_engine_v30` is the retained frontier after the compressed `v2`..`v30` wave
   - earlier wrapper splits and branch-specific clutter have been archived out of the active registry
 - Current blocker: the frontier still has not completed the full earned path under the restored strict direct gate and progressive/ladder proof remains incomplete
-- Next split: harvest the next exact live loss from `runtime_pro_turn_engine_v30` on the canonical earned path instead of reopening branch proliferation
+- Recent outcome:
+  - the stronger macro-head acceptance blockers (`primary_spirit_setup`, `primary_black_loss_opening_a_ply19`, `human_win_pro_a`) are now covered by direct regressions and stay green on the v30 suite
+  - the practical earned-path blocker is now CPU spend in duel-scale `pro-reliability`, with hot samples concentrated in `oracle_walk_seeds` / exact turn-summary work during main head planning
+- Next split: keep the single v30 frontier and cut duel-scale CPU from the remaining `oracle_walk_seeds` / exact-summary path before retrying the full earned path
 - How to test:
   - `guardrails -> SMART_TRIAGE_SURFACE=primary_pro pro-triage -> runtime-preflight`
   - `pro-reliability` against `runtime_current`
