@@ -616,6 +616,10 @@ pub fn evaluate_preferability_breakdown_with_weights(
     let next_turn_window_scale_bp = weights.next_turn_window_scale_bp.clamp(0, 20_000);
     let remaining_mon_moves_for_active =
         (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
+    let exact_analysis = (!use_legacy_formula).then(|| exact_strategic_analysis(game));
+    let my_exact_summary = exact_analysis.map(|analysis| analysis.color_summary(color));
+    let opponent_exact_summary =
+        exact_analysis.map(|analysis| analysis.color_summary(color.other()));
     let offense_scale_bp = 10_000;
     let defense_scale_bp = 10_000;
 
@@ -664,10 +668,10 @@ pub fn evaluate_preferability_breakdown_with_weights(
             include_regular_mana_move_windows,
         )
     } else {
-        exact_score_path_window_for_game(
-            game,
+        exact_score_path_window_from_summary(
             &mana_snapshot,
             color,
+            my_exact_summary.expect("exact strategic analysis should be available"),
             include_regular_mana_move_windows,
         )
     };
@@ -680,10 +684,10 @@ pub fn evaluate_preferability_breakdown_with_weights(
             include_regular_mana_move_windows,
         )
     } else {
-        exact_score_path_window_for_game(
-            game,
+        exact_score_path_window_from_summary(
             &mana_snapshot,
             color.other(),
+            opponent_exact_summary.expect("exact strategic analysis should be available"),
             include_regular_mana_move_windows,
         )
     };
@@ -729,10 +733,10 @@ pub fn evaluate_preferability_breakdown_with_weights(
                 include_regular_mana_move_windows && game.player_can_move_mana(),
             )
         } else {
-            exact_immediate_score_window_for_game(
-                game,
+            exact_immediate_score_window_from_summary(
                 &mana_snapshot,
                 color,
+                my_exact_summary.expect("exact strategic analysis should be available"),
                 include_regular_mana_move_windows && game.player_can_move_mana(),
             )
         };
@@ -757,10 +761,10 @@ pub fn evaluate_preferability_breakdown_with_weights(
                     include_regular_mana_move_windows,
                 )
             } else {
-                exact_immediate_score_window_for_game(
-                    game,
+                exact_immediate_score_window_from_summary(
                     &mana_snapshot,
                     color.other(),
+                    opponent_exact_summary.expect("exact strategic analysis should be available"),
                     include_regular_mana_move_windows,
                 )
             };
@@ -801,10 +805,10 @@ pub fn evaluate_preferability_breakdown_with_weights(
                 include_regular_mana_move_windows && game.player_can_move_mana(),
             )
         } else {
-            exact_immediate_score_window_for_game(
-                game,
+            exact_immediate_score_window_from_summary(
                 &mana_snapshot,
                 color.other(),
+                opponent_exact_summary.expect("exact strategic analysis should be available"),
                 include_regular_mana_move_windows && game.player_can_move_mana(),
             )
         };
@@ -830,10 +834,10 @@ pub fn evaluate_preferability_breakdown_with_weights(
                     include_regular_mana_move_windows,
                 )
             } else {
-                exact_immediate_score_window_for_game(
-                    game,
+                exact_immediate_score_window_from_summary(
                     &mana_snapshot,
                     color,
+                    my_exact_summary.expect("exact strategic analysis should be available"),
                     include_regular_mana_move_windows,
                 )
             };
@@ -928,6 +932,9 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
         (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
     let mana_snapshot = ManaPathSnapshot::from_board(&game.board);
     let exact_analysis = (!use_legacy_formula).then(|| exact_strategic_analysis(game));
+    let my_exact_summary = exact_analysis.map(|analysis| analysis.color_summary(color));
+    let opponent_exact_summary =
+        exact_analysis.map(|analysis| analysis.color_summary(color.other()));
 
     let mons_bases = Config::mons_bases_ref();
     let my_score_now = if color == Color::White {
@@ -1066,10 +1073,14 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                             0,
                         )
                     } else {
-                        let spirit = spirit_summary_for_scoring(
-                            exact_analysis.expect("exact strategic analysis should be available"),
+                        let spirit = exact_summary_for_scoring(
+                            my_exact_summary.expect("exact strategic analysis should be available"),
+                            opponent_exact_summary
+                                .expect("exact strategic analysis should be available"),
                             mon.color,
-                        );
+                            color,
+                        )
+                        .spirit;
                         (spirit.utility, exact_spirit_pressure_bonus(spirit, weights))
                     };
                     let spirit_utility = spirit_utility.min(spirit_utility_cap);
@@ -1194,10 +1205,14 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                             0,
                         )
                     } else {
-                        let spirit = spirit_summary_for_scoring(
-                            exact_analysis.expect("exact strategic analysis should be available"),
+                        let spirit = exact_summary_for_scoring(
+                            my_exact_summary.expect("exact strategic analysis should be available"),
+                            opponent_exact_summary
+                                .expect("exact strategic analysis should be available"),
                             mon.color,
-                        );
+                            color,
+                        )
+                        .spirit;
                         (spirit.utility, exact_spirit_pressure_bonus(spirit, weights))
                     };
                     let spirit_utility = spirit_utility.min(spirit_utility_cap);
@@ -1429,10 +1444,14 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                             0,
                         )
                     } else {
-                        let spirit = exact_analysis
-                            .expect("exact strategic analysis should be available")
-                            .color_summary(mon.color)
-                            .spirit;
+                        let spirit = exact_summary_for_scoring(
+                            my_exact_summary.expect("exact strategic analysis should be available"),
+                            opponent_exact_summary
+                                .expect("exact strategic analysis should be available"),
+                            mon.color,
+                            color,
+                        )
+                        .spirit;
                         (spirit.utility, exact_spirit_pressure_bonus(spirit, weights))
                     };
                     let spirit_utility = spirit_utility.min(spirit_utility_cap);
@@ -1457,10 +1476,10 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
             include_regular_mana_move_windows,
         )
     } else {
-        exact_score_path_window_for_game(
-            game,
+        exact_score_path_window_from_summary(
             &mana_snapshot,
             color,
+            my_exact_summary.expect("exact strategic analysis should be available"),
             include_regular_mana_move_windows,
         )
     };
@@ -1473,10 +1492,10 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
             include_regular_mana_move_windows,
         )
     } else {
-        exact_score_path_window_for_game(
-            game,
+        exact_score_path_window_from_summary(
             &mana_snapshot,
             color.other(),
+            opponent_exact_summary.expect("exact strategic analysis should be available"),
             include_regular_mana_move_windows,
         )
     };
@@ -1518,10 +1537,10 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                 include_regular_mana_move_windows && game.player_can_move_mana(),
             )
         } else {
-            exact_immediate_score_window_for_game(
-                game,
+            exact_immediate_score_window_from_summary(
                 &mana_snapshot,
                 color,
+                my_exact_summary.expect("exact strategic analysis should be available"),
                 include_regular_mana_move_windows && game.player_can_move_mana(),
             )
         };
@@ -1546,10 +1565,10 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                     include_regular_mana_move_windows,
                 )
             } else {
-                exact_immediate_score_window_for_game(
-                    game,
+                exact_immediate_score_window_from_summary(
                     &mana_snapshot,
                     color.other(),
+                    opponent_exact_summary.expect("exact strategic analysis should be available"),
                     include_regular_mana_move_windows,
                 )
             };
@@ -1589,10 +1608,10 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                 include_regular_mana_move_windows && game.player_can_move_mana(),
             )
         } else {
-            exact_immediate_score_window_for_game(
-                game,
+            exact_immediate_score_window_from_summary(
                 &mana_snapshot,
                 color.other(),
+                opponent_exact_summary.expect("exact strategic analysis should be available"),
                 include_regular_mana_move_windows && game.player_can_move_mana(),
             )
         };
@@ -1619,10 +1638,10 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                     include_regular_mana_move_windows,
                 )
             } else {
-                exact_immediate_score_window_for_game(
-                    game,
+                exact_immediate_score_window_from_summary(
                     &mana_snapshot,
                     color,
+                    my_exact_summary.expect("exact strategic analysis should be available"),
                     include_regular_mana_move_windows,
                 )
             };
@@ -1659,11 +1678,17 @@ fn scale_by_bp(value: i32, basis_points: i32) -> i32 {
     ((value as i64 * basis_points as i64) / 10_000) as i32
 }
 
-fn spirit_summary_for_scoring(
-    exact_analysis: ExactStrategicAnalysis,
-    color: Color,
-) -> ExactSpiritSummary {
-    exact_analysis.color_summary(color).spirit
+fn exact_summary_for_scoring(
+    my_summary: ExactColorSummary,
+    opponent_summary: ExactColorSummary,
+    actor_color: Color,
+    perspective: Color,
+) -> ExactColorSummary {
+    if actor_color == perspective {
+        my_summary
+    } else {
+        opponent_summary
+    }
 }
 
 fn spirit_on_own_base_penalty(board: &Board, mon: Mon, location: Location, penalty: i32) -> i32 {
@@ -1674,15 +1699,13 @@ fn spirit_on_own_base_penalty(board: &Board, mon: Mon, location: Location, penal
     }
 }
 
-fn exact_score_path_window_for_game(
-    game: &MonsGame,
+fn exact_score_path_window_from_summary(
     mana_snapshot: &ManaPathSnapshot,
     color: Color,
+    exact_summary: ExactColorSummary,
     include_regular_mana_move_windows: bool,
 ) -> ScorePathWindow {
-    let exact = exact_strategic_analysis(game)
-        .color_summary(color)
-        .score_path_window;
+    let exact = exact_summary.score_path_window;
     let mut best_steps = exact.best_steps;
     if include_regular_mana_move_windows {
         for candidate in &mana_snapshot.candidates {
@@ -1699,15 +1722,13 @@ fn exact_score_path_window_for_game(
     }
 }
 
-fn exact_immediate_score_window_for_game(
-    game: &MonsGame,
+fn exact_immediate_score_window_from_summary(
     mana_snapshot: &ManaPathSnapshot,
     color: Color,
+    exact_summary: ExactColorSummary,
     allow_mana_move: bool,
 ) -> ImmediateScoreWindow {
-    let exact = exact_strategic_analysis(game)
-        .color_summary(color)
-        .immediate_window;
+    let exact = exact_summary.immediate_window;
     let mut best_score = exact.best_score;
     if allow_mana_move {
         best_score = best_score.max(best_regular_mana_move_score_window_with_snapshot(

@@ -219,6 +219,10 @@ const SMART_AUTOMOVE_PRO_DEPTH: i32 = 4;
 #[cfg(any(target_arch = "wasm32", test))]
 const SMART_AUTOMOVE_PRO_MAX_VISITED_NODES: i32 =
     SMART_AUTOMOVE_NORMAL_MAX_VISITED_NODES * 369 / 100;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_MOVE_EFFICIENCY_SNAPSHOT_CACHE_MAX_ENTRIES: usize = 16_384;
+#[cfg(any(target_arch = "wasm32", test))]
+const SMART_SEARCH_PREFERABILITY_CACHE_MAX_ENTRIES: usize = 32_768;
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Default)]
@@ -252,6 +256,9 @@ type U64HashMap<V> = std::collections::HashMap<u64, V, U64BuildHasher>;
 
 #[cfg(any(target_arch = "wasm32", test))]
 type U64HashSet = std::collections::HashSet<u64, U64BuildHasher>;
+
+#[cfg(any(target_arch = "wasm32", test))]
+type FastHashMap<K, V> = std::collections::HashMap<K, V, U64BuildHasher>;
 const WHITE_OPENING_BOOK: [[&str; 5]; 9] = [
     [
         "l10,3;l9,2",
@@ -1660,6 +1667,24 @@ struct TurnEngineSelectedOverrideCacheKey {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct MoveEfficiencySnapshotCacheKey {
+    state_hash: u64,
+    perspective: Color,
+    include_tactical_exact: bool,
+    include_strategic_exact: bool,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct SearchPreferabilityCacheKey {
+    state_hash: u64,
+    perspective: Color,
+    scoring_weights_key: u64,
+    allow_exact_static_evaluation: bool,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
 thread_local! {
     static TURN_ENGINE_SELECTOR_FOLLOWUP_FLOOR_CACHE: std::cell::RefCell<
         std::collections::HashMap<TurnEngineSelectorFollowupFloorCacheKey, i32>
@@ -1667,12 +1692,20 @@ thread_local! {
     static TURN_ENGINE_SELECTED_OVERRIDE_UTILITY_CACHE: std::cell::RefCell<
         std::collections::HashMap<TurnEngineSelectedOverrideCacheKey, TurnEngineUtility>
     > = std::cell::RefCell::new(std::collections::HashMap::new());
+    static MOVE_EFFICIENCY_SNAPSHOT_CACHE: std::cell::RefCell<
+        FastHashMap<MoveEfficiencySnapshotCacheKey, MoveEfficiencySnapshot>
+    > = std::cell::RefCell::new(FastHashMap::default());
+    static SEARCH_PREFERABILITY_CACHE: std::cell::RefCell<
+        FastHashMap<SearchPreferabilityCacheKey, i32>
+    > = std::cell::RefCell::new(FastHashMap::default());
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
 fn clear_turn_engine_selector_followup_floor_cache() {
     TURN_ENGINE_SELECTOR_FOLLOWUP_FLOOR_CACHE.with(|cache| cache.borrow_mut().clear());
     TURN_ENGINE_SELECTED_OVERRIDE_UTILITY_CACHE.with(|cache| cache.borrow_mut().clear());
+    MOVE_EFFICIENCY_SNAPSHOT_CACHE.with(|cache| cache.borrow_mut().clear());
+    SEARCH_PREFERABILITY_CACHE.with(|cache| cache.borrow_mut().clear());
 }
 
 #[cfg(test)]
@@ -1686,6 +1719,16 @@ pub(crate) fn clear_turn_engine_selector_diagnostics() {
 #[cfg(test)]
 pub(crate) fn turn_engine_selector_diagnostics_snapshot() -> TurnEngineSelectorDiagnostics {
     TURN_ENGINE_SELECTOR_DIAGNOSTICS.with(|diagnostics| *diagnostics.borrow())
+}
+
+#[cfg(test)]
+fn move_efficiency_snapshot_cache_len() -> usize {
+    MOVE_EFFICIENCY_SNAPSHOT_CACHE.with(|cache| cache.borrow().len())
+}
+
+#[cfg(test)]
+fn search_preferability_cache_len() -> usize {
+    SEARCH_PREFERABILITY_CACHE.with(|cache| cache.borrow().len())
 }
 
 #[cfg(test)]
@@ -11430,6 +11473,18 @@ impl MonsGameModel {
         include_tactical_exact: bool,
         include_strategic_exact: bool,
     ) -> MoveEfficiencySnapshot {
+        let cache_key = MoveEfficiencySnapshotCacheKey {
+            state_hash: Self::search_state_hash(game),
+            perspective,
+            include_tactical_exact,
+            include_strategic_exact,
+        };
+        if let Some(cached) =
+            MOVE_EFFICIENCY_SNAPSHOT_CACHE.with(|cache| cache.borrow().get(&cache_key).copied())
+        {
+            return cached;
+        }
+
         let unknown_steps = Config::BOARD_SIZE + 4;
         let strategic = include_strategic_exact.then(|| exact_strategic_analysis(game));
         let my_summary = strategic.map(|analysis| analysis.color_summary(perspective));
@@ -11581,6 +11636,16 @@ impl MonsGameModel {
                 Item::Mana { .. } | Item::Consumable { .. } => {}
             }
         }
+
+        MOVE_EFFICIENCY_SNAPSHOT_CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            if cache.len() >= SMART_MOVE_EFFICIENCY_SNAPSHOT_CACHE_MAX_ENTRIES
+                && !cache.contains_key(&cache_key)
+            {
+                cache.clear();
+            }
+            cache.insert(cache_key, snapshot);
+        });
 
         snapshot
     }
@@ -17163,12 +17228,48 @@ impl MonsGameModel {
         perspective: Color,
         config: SmartSearchConfig,
     ) -> i32 {
-        evaluate_preferability_with_weights_and_exact_policy(
+        Self::cached_search_preferability_score(
             game,
             perspective,
             config.scoring_weights,
             config.enable_static_exact_evaluation,
         )
+    }
+
+    fn cached_search_preferability_score(
+        game: &MonsGame,
+        perspective: Color,
+        scoring_weights: &'static ScoringWeights,
+        allow_exact_static_evaluation: bool,
+    ) -> i32 {
+        let cache_key = SearchPreferabilityCacheKey {
+            state_hash: Self::search_state_hash(game),
+            perspective,
+            scoring_weights_key: scoring_weights as *const ScoringWeights as usize as u64,
+            allow_exact_static_evaluation,
+        };
+        if let Some(cached) =
+            SEARCH_PREFERABILITY_CACHE.with(|cache| cache.borrow().get(&cache_key).copied())
+        {
+            return cached;
+        }
+
+        let score = evaluate_preferability_with_weights_and_exact_policy(
+            game,
+            perspective,
+            scoring_weights,
+            allow_exact_static_evaluation,
+        );
+        SEARCH_PREFERABILITY_CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            if cache.len() >= SMART_SEARCH_PREFERABILITY_CACHE_MAX_ENTRIES
+                && !cache.contains_key(&cache_key)
+            {
+                cache.clear();
+            }
+            cache.insert(cache_key, score);
+        });
+        score
     }
 
     fn is_better_normal_root_safety_candidate(
@@ -17205,6 +17306,103 @@ impl MonsGameModel {
 #[cfg(test)]
 #[path = "automove_experiments/mod.rs"]
 mod smart_automove_pool_tests;
+
+#[cfg(test)]
+mod evaluation_cache_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn game_with_items(items: Vec<(Location, Item)>, active_color: Color) -> MonsGame {
+        let mut game = MonsGame::new(false);
+        game.board = Board::new_with_items(items.into_iter().collect::<HashMap<_, _>>());
+        game.active_color = active_color;
+        game.turn_number = 2;
+        game.actions_used_count = 0;
+        game.mana_moves_count = 0;
+        game.mons_moves_count = 0;
+        game.white_score = 0;
+        game.black_score = 0;
+        game.white_potions_count = 0;
+        game.black_potions_count = 0;
+        game
+    }
+
+    #[test]
+    fn move_efficiency_snapshot_cache_reuses_repeated_state() {
+        clear_turn_engine_selector_followup_floor_cache();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(8, 8),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        let first = MonsGameModel::move_efficiency_snapshot(&game, Color::White, true, true);
+        let second = MonsGameModel::move_efficiency_snapshot(&game, Color::White, true, true);
+
+        assert_eq!(move_efficiency_snapshot_cache_len(), 1);
+        assert_eq!(first.my_best_drainer_to_mana_steps, second.my_best_drainer_to_mana_steps);
+        assert_eq!(first.my_same_turn_score_value, second.my_same_turn_score_value);
+    }
+
+    #[test]
+    fn search_preferability_cache_reuses_repeated_state() {
+        clear_turn_engine_selector_followup_floor_cache();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(9, 1),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let (config, _) = MonsGameModel::runtime_config_for_game_with_context(
+            &game,
+            SmartAutomovePreference::Pro,
+            ProRuntimeContext::Independent,
+        );
+
+        let first = MonsGameModel::evaluate_search_preferability(&game, Color::White, config);
+        let second = MonsGameModel::evaluate_search_preferability(&game, Color::White, config);
+
+        assert_eq!(search_preferability_cache_len(), 1);
+        assert_eq!(first, second);
+    }
+
+}
 
 #[cfg(test)]
 mod opening_book_tests {

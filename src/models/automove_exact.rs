@@ -2476,28 +2476,34 @@ fn exact_apply_secure_drainer_walk_in_place(
         }
     }
 
-    if game.winner_color().is_none()
-        && (game.is_first_turn() && !game.player_can_move_mon()
-            || !game.is_first_turn() && !game.player_can_move_mana()
-            || !game.is_first_turn()
-                && !game.player_can_move_mon()
-                && game.board.find_mana(game.active_color).is_none())
+    let first_turn = game.turn_number == 1;
+    let player_can_move_mon = game.mons_moves_count < Config::MONS_MOVES_PER_TURN;
+    let player_can_move_mana = !first_turn && game.mana_moves_count < Config::MANA_MOVES_PER_TURN;
+    if game.white_score < Config::TARGET_SCORE
+        && game.black_score < Config::TARGET_SCORE
+        && (first_turn && !player_can_move_mon
+            || !first_turn && !player_can_move_mana
+            || !first_turn && !player_can_move_mon && game.board.find_mana(game.active_color).is_none())
     {
-        game.active_color = game.active_color.other();
+        let next_active_color = game.active_color.other();
+        game.active_color = next_active_color;
         game.turn_number += 1;
         game.actions_used_count = 0;
         game.mana_moves_count = 0;
         game.mons_moves_count = 0;
 
-        let awake_locations = game.board.fainted_mons_locations(game.active_color);
-        for mon_location in awake_locations {
-            touched_items.push_once(&game.board, mon_location);
-            if let Some(item) = game.board.item(mon_location).copied() {
-                if let Some(mut mon) = item.mon().copied() {
-                    mon.decrease_cooldown();
-                    game.board.put(Item::Mon { mon }, mon_location);
-                }
+        for index in 0..game.board.items.len() {
+            let Some(Item::Mon { mon }) = game.board.items[index] else {
+                continue;
+            };
+            if mon.color != next_active_color || !mon.is_fainted() {
+                continue;
             }
+            let mon_location = Location::from_index(index);
+            touched_items.push_once(&game.board, mon_location);
+            let mut mon = mon;
+            mon.decrease_cooldown();
+            game.board.items[index] = Some(Item::Mon { mon });
         }
     }
 
