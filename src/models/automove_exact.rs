@@ -397,10 +397,26 @@ struct ExactWalkThreatCache {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ExactSecureManaStateKey {
+    board_hash: u64,
+    active_color: Color,
+    mons_moves_count: i32,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ExactSecureManaQueryKey {
+    state: ExactSecureManaStateKey,
+    color: Color,
+    wanted: Mana,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Default)]
 struct ExactSecureManaCache {
-    entries: ExactHashMap<(u64, Mana), Option<i32>>,
-    visiting: ExactHashSet<(u64, Mana)>,
+    entries: ExactHashMap<ExactSecureManaQueryKey, Option<i32>>,
+    visiting: ExactHashSet<ExactSecureManaQueryKey>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -993,6 +1009,63 @@ fn exact_search_mix_u64(mut value: u64) -> u64 {
     value = (value ^ (value >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
     value = (value ^ (value >> 27)).wrapping_mul(0x94d049bb133111eb);
     value ^ (value >> 31)
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_secure_board_entry_hash(index: usize, item: Item) -> u64 {
+    let entry = ((index as u64)
+        .wrapping_add(1)
+        .wrapping_mul(0x94d049bb133111eb))
+        ^ exact_search_hash_item(item).wrapping_mul(0x9e3779b185ebca87);
+    exact_search_mix_u64(entry)
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_secure_board_hash(board: &Board) -> u64 {
+    let mut state = 0xa0761d6478bd642fu64;
+    for (index, item) in board.items.iter().enumerate() {
+        let Some(item) = item else { continue };
+        state ^= exact_secure_board_entry_hash(index, *item);
+    }
+    state
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_secure_mana_state_key(game: &MonsGame) -> ExactSecureManaStateKey {
+    ExactSecureManaStateKey {
+        board_hash: exact_secure_board_hash(&game.board),
+        active_color: game.active_color,
+        mons_moves_count: game.mons_moves_count,
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_secure_push_location_once(locations: &mut Vec<Location>, location: Location) {
+    if !locations.contains(&location) {
+        locations.push(location);
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_secure_board_hash_after_locations(
+    before_board: &Board,
+    before_hash: u64,
+    after_board: &Board,
+    locations: &[Location],
+) -> u64 {
+    let mut after_hash = before_hash;
+    for &location in locations {
+        let index = location.index();
+        if let Some(item) = before_board.item(location).copied() {
+            after_hash ^= exact_secure_board_entry_hash(index, item);
+        }
+        if let Some(item) = after_board.item(location).copied() {
+            after_hash ^= exact_secure_board_entry_hash(index, item);
+        }
+    }
+    after_hash
 }
 
 #[inline]
@@ -1901,8 +1974,26 @@ fn exact_secure_specific_mana_steps_in_game(
     wanted: Mana,
 ) -> Option<i32> {
     update_exact_query_diagnostics(|diagnostics| diagnostics.exact_secure_mana_calls += 1);
-    let state_hash = exact_search_state_hash(game);
-    let key = (state_hash, wanted);
+    exact_secure_specific_mana_steps_in_game_with_key(
+        game,
+        color,
+        wanted,
+        exact_secure_mana_state_key(game),
+    )
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_secure_specific_mana_steps_in_game_with_key(
+    game: &MonsGame,
+    color: Color,
+    wanted: Mana,
+    state: ExactSecureManaStateKey,
+) -> Option<i32> {
+    let key = ExactSecureManaQueryKey {
+        state,
+        color,
+        wanted,
+    };
     if let Some(cached) =
         EXACT_SECURE_MANA_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
     {
@@ -1915,7 +2006,7 @@ fn exact_secure_specific_mana_steps_in_game(
         return None;
     }
 
-    let result = exact_secure_specific_mana_steps_in_game_uncached(game, color, wanted);
+    let result = exact_secure_specific_mana_steps_in_game_uncached(game, color, wanted, state);
     EXACT_SECURE_MANA_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         cache.visiting.remove(&key);
@@ -1935,6 +2026,7 @@ fn exact_secure_specific_mana_steps_in_game_uncached(
     game: &MonsGame,
     color: Color,
     wanted: Mana,
+    state_key: ExactSecureManaStateKey,
 ) -> Option<i32> {
     let Some(drainer_location) = find_awake_drainer(&game.board, color) else {
         return None;
@@ -1955,27 +2047,23 @@ fn exact_secure_specific_mana_steps_in_game_uncached(
 
     let mut best = None;
     for &next in drainer_location.nearby_locations_ref() {
-        if !exact_walk_destination_plausible(&game.board, drainer_location, next) {
-            continue;
-        }
-        let mut after = game.clone_for_simulation();
-        let Output::Events(events) = after.process_input(
-            vec![Input::Location(drainer_location), Input::Location(next)],
-            false,
-            false,
-        ) else {
+        let Some(transition) =
+            exact_apply_secure_drainer_walk(game, state_key, drainer_location, next)
+        else {
             continue;
         };
-        if events.iter().any(|event| {
-            matches!(
-                event,
-                Event::ManaScored { mana, .. } if *mana == wanted
-            )
-        }) {
+        if transition.scored_mana == Some(wanted) {
             best = Some(best.map_or(1, |current: i32| current.min(1)));
-            continue;
+            break;
         }
-        if let Some(next_steps) = exact_secure_specific_mana_steps_in_game(&after, color, wanted) {
+        if let Some(next_steps) =
+            exact_secure_specific_mana_steps_in_game_with_key(
+                &transition.after,
+                color,
+                wanted,
+                transition.after_key,
+            )
+        {
             let candidate = next_steps.saturating_add(1);
             best = Some(best.map_or(candidate, |current: i32| current.min(candidate)));
         }
@@ -1993,7 +2081,14 @@ pub(crate) fn exact_secure_specific_mana_path_from(
 ) -> Option<Vec<Location>> {
     let mut visiting =
         ExactHashSet::with_capacity_and_hasher(EXACT_BFS_CAPACITY, ExactBuildHasher::default());
-    exact_secure_specific_mana_path_from_uncached(game, color, start, wanted, &mut visiting)
+    exact_secure_specific_mana_path_from_uncached(
+        game,
+        color,
+        start,
+        wanted,
+        exact_secure_mana_state_key(game),
+        &mut visiting,
+    )
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -2002,11 +2097,10 @@ fn exact_secure_specific_mana_path_from_uncached(
     color: Color,
     start: Location,
     wanted: Mana,
-    visiting: &mut ExactHashSet<(u64, Mana)>,
+    state_key: ExactSecureManaStateKey,
+    visiting: &mut ExactHashSet<ExactSecureManaStateKey>,
 ) -> Option<Vec<Location>> {
-    let state_hash = exact_search_state_hash(game);
-    let key = (state_hash, wanted);
-    if !visiting.insert(key) {
+    if !visiting.insert(state_key) {
         return None;
     }
 
@@ -2022,31 +2116,32 @@ fn exact_secure_specific_mana_path_from_uncached(
         let mut best_path: Option<Vec<Location>> = None;
 
         for &next in start.nearby_locations_ref() {
-            if !exact_walk_destination_plausible(&game.board, start, next) {
-                continue;
-            }
-            let mut after = game.clone_for_simulation();
-            let Output::Events(events) = after.process_input(
-                vec![Input::Location(start), Input::Location(next)],
-                false,
-                false,
-            ) else {
+            let Some(transition) =
+                exact_apply_secure_drainer_walk(game, state_key, start, next)
+            else {
                 continue;
             };
 
-            let candidate_path = if events.iter().any(|event| {
-                matches!(
-                    event,
-                    Event::ManaScored { mana, .. } if *mana == wanted
-                )
-            }) {
+            let candidate_path = if transition.scored_mana == Some(wanted) {
                 Some(vec![next])
-            } else if exact_secure_specific_mana_steps_in_game(&after, color, wanted).is_some() {
-                let Some(next_start) = find_awake_drainer(&after.board, color) else {
+            } else if exact_secure_specific_mana_steps_in_game_with_key(
+                &transition.after,
+                color,
+                wanted,
+                transition.after_key,
+            )
+            .is_some()
+            {
+                let Some(next_start) = find_awake_drainer(&transition.after.board, color) else {
                     continue;
                 };
                 let Some(mut suffix) = exact_secure_specific_mana_path_from_uncached(
-                    &after, color, next_start, wanted, visiting,
+                    &transition.after,
+                    color,
+                    next_start,
+                    wanted,
+                    transition.after_key,
+                    visiting,
                 ) else {
                     continue;
                 };
@@ -2073,8 +2168,146 @@ fn exact_secure_specific_mana_path_from_uncached(
         best_path
     };
 
-    visiting.remove(&key);
+    visiting.remove(&state_key);
     result
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone)]
+struct ExactSecureDrainerWalkTransition {
+    after: MonsGame,
+    after_key: ExactSecureManaStateKey,
+    scored_mana: Option<Mana>,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_apply_secure_drainer_walk(
+    game: &MonsGame,
+    state_key: ExactSecureManaStateKey,
+    from: Location,
+    to: Location,
+) -> Option<ExactSecureDrainerWalkTransition> {
+    if !exact_walk_destination_plausible(&game.board, from, to) {
+        return None;
+    }
+
+    let start_item = game.board.item(from).copied()?;
+    let start_mon = start_item.mon().copied()?;
+    if start_mon.kind != MonKind::Drainer || start_mon.is_fainted() {
+        return None;
+    }
+
+    let target_item = game.board.item(to).copied();
+    let mut touched_locations = Vec::with_capacity(8);
+    exact_secure_push_location_once(&mut touched_locations, from);
+    exact_secure_push_location_once(&mut touched_locations, to);
+
+    let mut after = game.clone_for_simulation();
+    after.mons_moves_count += 1;
+    after.board.remove_item(from);
+    after.board.put(start_item, to);
+
+    match target_item {
+        Some(Item::Mon { .. })
+        | Some(Item::MonWithMana { .. })
+        | Some(Item::MonWithConsumable { .. }) => return None,
+        Some(Item::Mana { mana }) => {
+            if let Some(start_mana) = start_item.mana() {
+                after.board.put(Item::Mana { mana: *start_mana }, from);
+            }
+            after.board.put(
+                Item::MonWithMana {
+                    mon: start_mon,
+                    mana,
+                },
+                to,
+            );
+        }
+        Some(Item::Consumable { consumable }) => match consumable {
+            Consumable::Bomb | Consumable::Potion => return None,
+            Consumable::BombOrPotion => {
+                if start_item.consumable().is_some() || start_item.mana().is_some() {
+                    if start_mon.color == Color::White {
+                        after.white_potions_count += 1;
+                    } else {
+                        after.black_potions_count += 1;
+                    }
+                    after.board.put(start_item, to);
+                } else {
+                    return None;
+                }
+            }
+        },
+        None => {}
+    }
+
+    let scored_mana = match game.board.square(to) {
+        Square::ManaPool { .. } => start_item.mana().copied(),
+        Square::Regular
+        | Square::ConsumableBase
+        | Square::ManaBase { .. }
+        | Square::SupermanaBase
+        | Square::MonBase { .. } => None,
+    };
+    if let Some(mana) = scored_mana {
+        let score = mana.score(after.active_color);
+        if after.active_color == Color::White {
+            after.white_score += score;
+        } else {
+            after.black_score += score;
+        }
+        match after.board.item(to).copied() {
+            Some(Item::Mon { mon })
+            | Some(Item::MonWithMana { mon, .. })
+            | Some(Item::MonWithConsumable { mon, .. }) => {
+                after.board.put(Item::Mon { mon }, to);
+            }
+            Some(Item::Mana { .. }) | Some(Item::Consumable { .. }) | None => {
+                after.board.remove_item(to);
+            }
+        }
+    }
+
+    if after.winner_color().is_none()
+        && (after.is_first_turn() && !after.player_can_move_mon()
+            || !after.is_first_turn() && !after.player_can_move_mana()
+            || !after.is_first_turn()
+                && !after.player_can_move_mon()
+                && after.board.find_mana(after.active_color).is_none())
+    {
+        after.active_color = after.active_color.other();
+        after.turn_number += 1;
+        after.actions_used_count = 0;
+        after.mana_moves_count = 0;
+        after.mons_moves_count = 0;
+
+        let awake_locations = after.board.fainted_mons_locations(after.active_color);
+        for mon_location in awake_locations {
+            exact_secure_push_location_once(&mut touched_locations, mon_location);
+            if let Some(item) = after.board.item(mon_location).copied() {
+                if let Some(mut mon) = item.mon().copied() {
+                    mon.decrease_cooldown();
+                    after.board.put(Item::Mon { mon }, mon_location);
+                }
+            }
+        }
+    }
+
+    let after_key = ExactSecureManaStateKey {
+        board_hash: exact_secure_board_hash_after_locations(
+            &game.board,
+            state_key.board_hash,
+            &after.board,
+            touched_locations.as_slice(),
+        ),
+        active_color: after.active_color,
+        mons_moves_count: after.mons_moves_count,
+    };
+    Some(ExactSecureDrainerWalkTransition {
+        after,
+        after_key,
+        scored_mana,
+    })
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -2989,6 +3222,59 @@ mod tests {
         game
     }
 
+    fn assert_secure_drainer_walk_matches_process_input(
+        game: &MonsGame,
+        from: Location,
+        to: Location,
+    ) {
+        let helper = exact_apply_secure_drainer_walk(game, exact_secure_mana_state_key(game), from, to);
+        let mut slow = game.clone_for_simulation();
+        let inputs = [Input::Location(from), Input::Location(to)];
+        match slow.process_input_slice(inputs.as_slice(), false, false) {
+            Output::Events(events) => {
+                let helper = helper.expect("helper should match legal drainer walk");
+                let scored_mana = events.iter().find_map(|event| match event {
+                    Event::ManaScored { mana, .. } => Some(*mana),
+                    Event::MonMove { .. }
+                    | Event::ManaMove { .. }
+                    | Event::MysticAction { .. }
+                    | Event::DemonAction { .. }
+                    | Event::DemonAdditionalStep { .. }
+                    | Event::SpiritTargetMove { .. }
+                    | Event::PickupBomb { .. }
+                    | Event::PickupPotion { .. }
+                    | Event::PickupMana { .. }
+                    | Event::MonFainted { .. }
+                    | Event::ManaDropped { .. }
+                    | Event::SupermanaBackToBase { .. }
+                    | Event::BombAttack { .. }
+                    | Event::BombExplosion { .. }
+                    | Event::MonAwake { .. }
+                    | Event::GameOver { .. }
+                    | Event::NextTurn { .. }
+                    | Event::Takeback
+                    | Event::UsePotion { .. } => None,
+                });
+                assert_eq!(helper.scored_mana, scored_mana);
+                assert_eq!(
+                    MonsGameModel::search_state_hash(&helper.after),
+                    MonsGameModel::search_state_hash(&slow)
+                );
+                assert_eq!(
+                    helper.after_key.board_hash,
+                    exact_secure_board_hash(&helper.after.board)
+                );
+                assert_eq!(helper.after_key.active_color, helper.after.active_color);
+                assert_eq!(helper.after_key.mons_moves_count, helper.after.mons_moves_count);
+            }
+            Output::InvalidInput
+            | Output::LocationsToStartFrom(_)
+            | Output::NextInputOptions(_) => {
+                assert!(helper.is_none());
+            }
+        }
+    }
+
     #[test]
     fn exact_pickup_path_finds_same_turn_supermana_score() {
         let game = game_with_items(
@@ -3109,6 +3395,150 @@ mod tests {
                 Mana::Supermana,
             ),
             Some(vec![Location::new(5, 5)])
+        );
+    }
+
+    #[test]
+    fn exact_secure_drainer_walk_matches_process_input_for_pickup() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        assert_secure_drainer_walk_matches_process_input(
+            &game,
+            Location::new(6, 5),
+            Location::new(5, 5),
+        );
+    }
+
+    #[test]
+    fn exact_secure_drainer_walk_matches_process_input_for_score() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(9, 1),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        assert_secure_drainer_walk_matches_process_input(
+            &game,
+            Location::new(9, 1),
+            Location::new(10, 0),
+        );
+    }
+
+    #[test]
+    fn exact_secure_drainer_walk_matches_process_input_for_invalid_consumable_pickup() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Consumable {
+                        consumable: Consumable::BombOrPotion,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        assert_secure_drainer_walk_matches_process_input(
+            &game,
+            Location::new(6, 5),
+            Location::new(5, 5),
+        );
+    }
+
+    #[test]
+    fn exact_secure_drainer_walk_tracks_next_turn_state_key() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(9, 1),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 1),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        let transition = exact_apply_secure_drainer_walk(
+            &game,
+            exact_secure_mana_state_key(&game),
+            Location::new(9, 1),
+            Location::new(10, 0),
+        )
+        .expect("score move should be legal");
+
+        assert_eq!(transition.scored_mana, Some(Mana::Regular(Color::White)));
+        assert_eq!(transition.after.active_color, Color::Black);
+        assert_eq!(transition.after.mons_moves_count, 0);
+        assert_eq!(
+            transition.after_key.board_hash,
+            exact_secure_board_hash(&transition.after.board)
+        );
+        assert_eq!(transition.after_key.active_color, transition.after.active_color);
+        assert_eq!(
+            transition.after_key.mons_moves_count,
+            transition.after.mons_moves_count
         );
     }
 
