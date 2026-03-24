@@ -1500,6 +1500,7 @@ fn build_color_summary(
         (Config::MONS_MOVES_PER_TURN, true)
     };
 
+    let board_hash = exact_board_hash(&game.board);
     let mut carrier_steps = Vec::new();
     let mut best_carrier_steps = None;
     for (location, item) in game.board.occupied() {
@@ -1509,15 +1510,25 @@ fn build_color_summary(
         if mon.color != color || mon.is_fainted() {
             continue;
         }
-        if let Some(steps) = exact_carrier_steps_to_any_pool(&game.board, location, *mana) {
+        if let Some(steps) =
+            exact_carrier_steps_to_any_pool_with_hash(&game.board, location, *mana, board_hash)
+        {
             best_carrier_steps =
                 Some(best_carrier_steps.map_or(steps, |best: i32| best.min(steps)));
             carrier_steps.push(steps);
         }
     }
 
-    let best_drainer_pickup = find_awake_drainer(&game.board, color)
-        .and_then(|location| exact_best_drainer_pickup_path(&game.board, color, location));
+    let best_drainer_pickup = find_awake_drainer(&game.board, color).and_then(|location| {
+        exact_best_drainer_pickup_path_filtered_with_hash(
+            &game.board,
+            color,
+            location,
+            None,
+            ExactPickupFilter::Any,
+            board_hash,
+        )
+    });
     #[cfg(any(target_arch = "wasm32", test))]
     let best_drainer_to_mana_steps = find_awake_drainer(&game.board, color)
         .and_then(|location| exact_drainer_to_any_mana_steps(&game.board, color, location));
@@ -1541,7 +1552,9 @@ fn build_color_summary(
         if mon.color != color || mon.is_fainted() {
             continue;
         }
-        if let Some(steps) = exact_carrier_steps_to_any_pool(&game.board, location, *mana) {
+        if let Some(steps) =
+            exact_carrier_steps_to_any_pool_with_hash(&game.board, location, *mana, board_hash)
+        {
             if steps <= full_turn_moves {
                 immediate_scores.push(mana.score(color));
             }
@@ -1875,9 +1888,15 @@ fn square_allows_mana_carrier(square: Square, mana: Mana) -> bool {
     }
 }
 
-fn exact_carrier_steps_to_any_pool(board: &Board, start: Location, mana: Mana) -> Option<i32> {
+#[inline]
+fn exact_carrier_steps_to_any_pool_with_hash(
+    board: &Board,
+    start: Location,
+    mana: Mana,
+    board_hash: u64,
+) -> Option<i32> {
     let key = ExactCarrierStepsQueryKey {
-        board_hash: exact_board_hash(board),
+        board_hash,
         start,
         mana,
     };
@@ -1914,12 +1933,8 @@ fn exact_carrier_steps_to_any_pool(board: &Board, start: Location, mana: Mana) -
     result
 }
 
-fn exact_best_drainer_pickup_path(
-    board: &Board,
-    color: Color,
-    start: Location,
-) -> Option<ExactDrainerPickupPath> {
-    exact_best_drainer_pickup_path_filtered(board, color, start, None, ExactPickupFilter::Any)
+fn exact_carrier_steps_to_any_pool(board: &Board, start: Location, mana: Mana) -> Option<i32> {
+    exact_carrier_steps_to_any_pool_with_hash(board, start, mana, exact_board_hash(board))
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -1997,16 +2012,18 @@ fn exact_drainer_pickup_window_uncached(
     best
 }
 
-fn exact_best_drainer_pickup_path_filtered(
+#[inline]
+fn exact_best_drainer_pickup_path_filtered_with_hash(
     board: &Board,
     color: Color,
     start: Location,
     max_steps: Option<i32>,
     mana_filter: ExactPickupFilter,
+    board_hash: u64,
 ) -> Option<ExactDrainerPickupPath> {
     update_exact_query_diagnostics(|diagnostics| diagnostics.pickup_path_calls += 1);
     let key = ExactPickupPathQueryKey {
-        board_hash: exact_board_hash(board),
+        board_hash,
         color,
         start,
         max_steps,
@@ -2069,6 +2086,23 @@ fn exact_best_drainer_pickup_path_filtered(
         cache.entries.insert(key, best);
     });
     best
+}
+
+fn exact_best_drainer_pickup_path_filtered(
+    board: &Board,
+    color: Color,
+    start: Location,
+    max_steps: Option<i32>,
+    mana_filter: ExactPickupFilter,
+) -> Option<ExactDrainerPickupPath> {
+    exact_best_drainer_pickup_path_filtered_with_hash(
+        board,
+        color,
+        start,
+        max_steps,
+        mana_filter,
+        exact_board_hash(board),
+    )
 }
 
 fn find_awake_drainer(board: &Board, color: Color) -> Option<Location> {
@@ -2831,6 +2865,7 @@ fn exact_tactical_spirit_summary(
         remaining_mon_moves,
         can_use_action,
         fields,
+        key.board_hash,
     );
     EXACT_SPIRIT_TACTICAL_SUMMARY_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
@@ -2951,6 +2986,7 @@ fn exact_tactical_spirit_summary_uncached(
     remaining_mon_moves: i32,
     can_use_action: bool,
     fields: u8,
+    board_hash: u64,
 ) -> ExactSpiritSummary {
     if !can_use_action {
         return ExactSpiritSummary::default();
@@ -2959,12 +2995,13 @@ fn exact_tactical_spirit_summary_uncached(
     let need_score = fields & EXACT_TACTICAL_SPIRIT_NEED_SCORE != 0;
     let need_denial = fields & EXACT_TACTICAL_SPIRIT_NEED_DENIAL != 0;
     let need_progress = fields & EXACT_TACTICAL_SPIRIT_NEED_PROGRESS != 0;
-    let before_window = exact_best_immediate_tactical_window_on_board(
+    let before_window = exact_best_immediate_tactical_window_on_board_with_hash(
         board,
         color,
         remaining_mon_moves,
         need_score,
         need_denial,
+        board_hash,
     );
     let before_same_turn_score = before_window.best_score;
     let before_same_turn_opponent_score = before_window.best_opponent_mana_score;
@@ -3237,8 +3274,9 @@ fn exact_followup_summary(
         return ExactFollowupSummary::default();
     }
 
+    let board_hash = exact_board_hash(board);
     let key = ExactFollowupSummaryKey {
-        board_hash: exact_board_hash(board),
+        board_hash,
         color,
         remaining_moves,
     };
@@ -3252,13 +3290,23 @@ fn exact_followup_summary(
     }
 
     let summary = ExactFollowupSummary {
-        best_score_steps: exact_best_score_steps_on_board(board, color),
-        opponent_best_score_steps: exact_best_score_steps_on_board(board, color.other()),
-        immediate_score: exact_best_immediate_score_on_board(board, color, remaining_moves),
-        immediate_opponent_mana_score: exact_best_immediate_opponent_mana_score_on_board(
+        best_score_steps: exact_best_score_steps_on_board_with_hash(board, color, board_hash),
+        opponent_best_score_steps: exact_best_score_steps_on_board_with_hash(
+            board,
+            color.other(),
+            board_hash,
+        ),
+        immediate_score: exact_best_immediate_score_on_board_with_hash(
             board,
             color,
             remaining_moves,
+            board_hash,
+        ),
+        immediate_opponent_mana_score: exact_best_immediate_opponent_mana_score_on_board_with_hash(
+            board,
+            color,
+            remaining_moves,
+            board_hash,
         ),
         secure_supermana: can_secure_specific_mana_on_board(
             board,
@@ -3541,18 +3589,36 @@ fn exact_spirit_utility_score(score_delta: i32, opponent_score_delta: i32, setup
 
 #[cfg(any(target_arch = "wasm32", test))]
 pub(crate) fn exact_best_score_steps_on_board(board: &Board, color: Color) -> Option<i32> {
+    exact_best_score_steps_on_board_with_hash(board, color, exact_board_hash(board))
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_best_score_steps_on_board_with_hash(
+    board: &Board,
+    color: Color,
+    board_hash: u64,
+) -> Option<i32> {
     let mut best = None;
     for (location, item) in board.occupied() {
         match item {
             Item::MonWithMana { mon, mana } if mon.color == color && !mon.is_fainted() => {
-                if let Some(steps) = exact_carrier_steps_to_any_pool(board, location, *mana) {
+                if let Some(steps) =
+                    exact_carrier_steps_to_any_pool_with_hash(board, location, *mana, board_hash)
+                {
                     best = Some(best.map_or(steps, |current: i32| current.min(steps)));
                 }
             }
             Item::Mon { mon } | Item::MonWithConsumable { mon, .. }
                 if mon.color == color && mon.kind == MonKind::Drainer && !mon.is_fainted() =>
             {
-                if let Some(path) = exact_best_drainer_pickup_path(board, color, location) {
+                if let Some(path) = exact_best_drainer_pickup_path_filtered_with_hash(
+                    board,
+                    color,
+                    location,
+                    None,
+                    ExactPickupFilter::Any,
+                    board_hash,
+                ) {
                     best = Some(best.map_or(path.total_moves, |current: i32| {
                         current.min(path.total_moves)
                     }));
@@ -3579,16 +3645,45 @@ fn exact_best_immediate_tactical_window_on_board(
     need_score: bool,
     need_denial: bool,
 ) -> ExactImmediateTacticalWindow {
+    exact_best_immediate_tactical_window_on_board_with_hash(
+        board,
+        color,
+        move_budget,
+        need_score,
+        need_denial,
+        exact_board_hash(board),
+    )
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_best_immediate_tactical_window_on_board_with_hash(
+    board: &Board,
+    color: Color,
+    move_budget: i32,
+    need_score: bool,
+    need_denial: bool,
+    board_hash: u64,
+) -> ExactImmediateTacticalWindow {
     if move_budget < 0 || (!need_score && !need_denial) {
         return ExactImmediateTacticalWindow::default();
     }
 
     let opponent_mana = Mana::Regular(color.other());
+    let max_score = if need_score {
+        Mana::Supermana.score(color)
+    } else {
+        0
+    };
+    let max_opponent_mana_score = if need_denial {
+        opponent_mana.score(color)
+    } else {
+        0
+    };
     let mut best = ExactImmediateTacticalWindow::default();
     for (location, item) in board.occupied() {
         match item {
             Item::MonWithMana { mon, mana } if mon.color == color && !mon.is_fainted() => {
-                if exact_carrier_steps_to_any_pool(board, location, *mana)
+                if exact_carrier_steps_to_any_pool_with_hash(board, location, *mana, board_hash)
                     .map_or(false, |steps| steps <= move_budget)
                 {
                     let mana_value = mana.score(color);
@@ -3620,22 +3715,24 @@ fn exact_best_immediate_tactical_window_on_board(
                             best.best_opponent_mana_score.max(path.mana_value);
                     }
                 } else if need_score {
-                    if let Some(path) = exact_best_drainer_pickup_path_filtered(
+                    if let Some(path) = exact_best_drainer_pickup_path_filtered_with_hash(
                         board,
                         color,
                         location,
                         Some(move_budget),
                         ExactPickupFilter::Any,
+                        board_hash,
                     ) {
                         best.best_score = best.best_score.max(path.mana_value);
                     }
                 } else if need_denial {
-                    if let Some(path) = exact_best_drainer_pickup_path_filtered(
+                    if let Some(path) = exact_best_drainer_pickup_path_filtered_with_hash(
                         board,
                         color,
                         location,
                         Some(move_budget),
                         ExactPickupFilter::Wanted(opponent_mana),
+                        board_hash,
                     ) {
                         best.best_opponent_mana_score =
                             best.best_opponent_mana_score.max(path.mana_value);
@@ -3644,21 +3741,43 @@ fn exact_best_immediate_tactical_window_on_board(
             }
             _ => {}
         }
+
+        let score_done = !need_score || best.best_score >= max_score;
+        let denial_done = !need_denial || best.best_opponent_mana_score >= max_opponent_mana_score;
+        if score_done && denial_done {
+            return best;
+        }
     }
     best
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
 fn exact_best_immediate_score_on_board(board: &Board, color: Color, move_budget: i32) -> i32 {
+    exact_best_immediate_score_on_board_with_hash(
+        board,
+        color,
+        move_budget,
+        exact_board_hash(board),
+    )
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_best_immediate_score_on_board_with_hash(
+    board: &Board,
+    color: Color,
+    move_budget: i32,
+    board_hash: u64,
+) -> i32 {
     if move_budget < 0 {
         return 0;
     }
 
+    let max_score = Mana::Supermana.score(color);
     let mut best = 0;
     for (location, item) in board.occupied() {
         match item {
             Item::MonWithMana { mon, mana } if mon.color == color && !mon.is_fainted() => {
-                if exact_carrier_steps_to_any_pool(board, location, *mana)
+                if exact_carrier_steps_to_any_pool_with_hash(board, location, *mana, board_hash)
                     .map_or(false, |steps| steps <= move_budget)
                 {
                     best = best.max(mana.score(color));
@@ -3667,17 +3786,22 @@ fn exact_best_immediate_score_on_board(board: &Board, color: Color, move_budget:
             Item::Mon { mon } | Item::MonWithConsumable { mon, .. }
                 if mon.color == color && mon.kind == MonKind::Drainer && !mon.is_fainted() =>
             {
-                if let Some(path) = exact_best_drainer_pickup_path_filtered(
+                if let Some(path) = exact_best_drainer_pickup_path_filtered_with_hash(
                     board,
                     color,
                     location,
                     Some(move_budget),
                     ExactPickupFilter::Any,
+                    board_hash,
                 ) {
                     best = best.max(path.mana_value);
                 }
             }
             _ => {}
+        }
+
+        if best >= max_score {
+            return best;
         }
     }
     best
@@ -3689,18 +3813,34 @@ fn exact_best_immediate_opponent_mana_score_on_board(
     color: Color,
     move_budget: i32,
 ) -> i32 {
+    exact_best_immediate_opponent_mana_score_on_board_with_hash(
+        board,
+        color,
+        move_budget,
+        exact_board_hash(board),
+    )
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_best_immediate_opponent_mana_score_on_board_with_hash(
+    board: &Board,
+    color: Color,
+    move_budget: i32,
+    board_hash: u64,
+) -> i32 {
     if move_budget < 0 {
         return 0;
     }
 
     let mut best = 0;
     let opponent_mana = Mana::Regular(color.other());
+    let max_opponent_score = opponent_mana.score(color);
     for (location, item) in board.occupied() {
         match item {
             Item::MonWithMana { mon, mana }
                 if mon.color == color && !mon.is_fainted() && *mana == opponent_mana =>
             {
-                if exact_carrier_steps_to_any_pool(board, location, *mana)
+                if exact_carrier_steps_to_any_pool_with_hash(board, location, *mana, board_hash)
                     .map_or(false, |steps| steps <= move_budget)
                 {
                     best = best.max(mana.score(color));
@@ -3709,17 +3849,22 @@ fn exact_best_immediate_opponent_mana_score_on_board(
             Item::Mon { mon } | Item::MonWithConsumable { mon, .. }
                 if mon.color == color && mon.kind == MonKind::Drainer && !mon.is_fainted() =>
             {
-                if let Some(path) = exact_best_drainer_pickup_path_filtered(
+                if let Some(path) = exact_best_drainer_pickup_path_filtered_with_hash(
                     board,
                     color,
                     location,
                     Some(move_budget),
                     ExactPickupFilter::Wanted(opponent_mana),
+                    board_hash,
                 ) {
                     best = best.max(path.mana_value);
                 }
             }
             _ => {}
+        }
+
+        if best >= max_opponent_score {
+            return best;
         }
     }
     best
