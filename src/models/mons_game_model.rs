@@ -1767,6 +1767,13 @@ struct MoveEfficiencySnapshot {
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Clone, Copy)]
+struct CarrierProgressSnapshot {
+    carrier_count: i32,
+    best_carrier_steps: i32,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone, Copy)]
 struct NormalRootSafetySnapshot {
     allows_immediate_opponent_win: bool,
     opponent_reaches_match_point: bool,
@@ -3181,12 +3188,26 @@ impl MonsGameModel {
         simulated_game: MonsGame,
         events: Vec<Event>,
     ) -> Option<ScoredRootMove> {
+        let before_state_hash = Self::search_state_hash(game);
+        let simulated_state_hash = Self::search_state_hash(&simulated_game);
+        let before_efficiency_snapshot = config.enable_root_efficiency.then(|| {
+            Self::move_efficiency_snapshot_with_hash(
+                game,
+                perspective,
+                config.enable_root_exact_tactics && game.active_color == perspective,
+                config.enable_static_exact_evaluation,
+                before_state_hash,
+            )
+        });
         let efficiency = if config.enable_root_efficiency {
-            Self::move_efficiency_delta(
+            Self::move_efficiency_delta_from_before_snapshot(
                 game,
                 &simulated_game,
                 perspective,
                 &events,
+                before_efficiency_snapshot
+                    .expect("snapshot should exist when root efficiency is enabled"),
+                simulated_state_hash,
                 true,
                 config.enable_backtrack_penalty,
                 config.enable_root_mana_handoff_guard,
@@ -6302,14 +6323,42 @@ impl MonsGameModel {
     }
 
     fn has_actor_carrier_progress(before: &MonsGame, after: &MonsGame, actor_color: Color) -> bool {
-        let before_snapshot = Self::move_efficiency_snapshot(before, actor_color, false, false);
-        let after_snapshot = Self::move_efficiency_snapshot(after, actor_color, false, false);
-        if after_snapshot.my_carrier_count > before_snapshot.my_carrier_count {
+        let before_snapshot = Self::carrier_progress_snapshot(before, actor_color);
+        let after_snapshot = Self::carrier_progress_snapshot(after, actor_color);
+        Self::has_actor_carrier_progress_from_snapshots(before_snapshot, after_snapshot)
+    }
+
+    fn has_actor_carrier_progress_from_snapshots(
+        before: CarrierProgressSnapshot,
+        after: CarrierProgressSnapshot,
+    ) -> bool {
+        if after.carrier_count > before.carrier_count {
             return true;
         }
         let unknown_steps = Config::BOARD_SIZE + 4;
-        after_snapshot.my_best_carrier_steps < before_snapshot.my_best_carrier_steps
-            && after_snapshot.my_best_carrier_steps < unknown_steps
+        after.best_carrier_steps < before.best_carrier_steps
+            && after.best_carrier_steps < unknown_steps
+    }
+
+    fn carrier_progress_snapshot(game: &MonsGame, color: Color) -> CarrierProgressSnapshot {
+        let unknown_steps = Config::BOARD_SIZE + 4;
+        let mut snapshot = CarrierProgressSnapshot {
+            carrier_count: 0,
+            best_carrier_steps: unknown_steps,
+        };
+        for (location, item) in game.board.occupied() {
+            let Item::MonWithMana { mon, .. } = item else {
+                continue;
+            };
+            if mon.color != color || mon.is_fainted() {
+                continue;
+            }
+            snapshot.carrier_count += 1;
+            snapshot.best_carrier_steps = snapshot
+                .best_carrier_steps
+                .min(Self::distance_to_any_pool_steps_for_efficiency(location).saturating_sub(1));
+        }
+        snapshot
     }
 
     fn root_volatility_score(candidate: &ScoredRootMove) -> i32 {
@@ -10518,6 +10567,16 @@ impl MonsGameModel {
     ) -> Vec<RankedChildState> {
         let mut scored_states: Vec<(i32, RankedChildState)> = Vec::new();
         let actor_color = game.active_color;
+        let before_state_hash = Self::search_state_hash(game);
+        let before_efficiency_snapshot = config.enable_root_efficiency.then(|| {
+            Self::move_efficiency_snapshot_with_hash(
+                game,
+                perspective,
+                config.enable_child_exact_tactics && game.active_color == perspective,
+                config.enable_static_exact_evaluation,
+                before_state_hash,
+            )
+        });
         let own_drainer_vulnerable_before = if config.enable_child_move_class_coverage {
             Self::is_own_drainer_vulnerable_next_turn(
                 game,
@@ -10603,11 +10662,14 @@ impl MonsGameModel {
             );
 
             let ordering_efficiency = if config.enable_root_efficiency {
-                Self::move_efficiency_delta(
+                Self::move_efficiency_delta_from_before_snapshot(
                     game,
                     &simulated_game,
                     actor_color,
                     &events,
+                    before_efficiency_snapshot
+                        .expect("snapshot should exist when root efficiency is enabled"),
+                    child_hash,
                     false,
                     false,
                     false,
@@ -11291,17 +11353,53 @@ impl MonsGameModel {
         root_backtrack_penalty: i32,
         root_mana_handoff_penalty: i32,
     ) -> i32 {
-        let before = Self::move_efficiency_snapshot(
+        let before_hash = Self::search_state_hash(game);
+        let after_hash = Self::search_state_hash(simulated_game);
+        let before = Self::move_efficiency_snapshot_with_hash(
             game,
             perspective,
             include_tactical_exact && game.active_color == perspective,
             include_strategic_exact,
+            before_hash,
         );
-        let after = Self::move_efficiency_snapshot(
+        Self::move_efficiency_delta_from_before_snapshot(
+            game,
+            simulated_game,
+            perspective,
+            events,
+            before,
+            after_hash,
+            is_root,
+            apply_backtrack_penalty,
+            apply_root_mana_handoff_guard,
+            include_tactical_exact,
+            include_strategic_exact,
+            root_backtrack_penalty,
+            root_mana_handoff_penalty,
+        )
+    }
+
+    fn move_efficiency_delta_from_before_snapshot(
+        game: &MonsGame,
+        simulated_game: &MonsGame,
+        perspective: Color,
+        events: &[Event],
+        before: MoveEfficiencySnapshot,
+        simulated_state_hash: u64,
+        is_root: bool,
+        apply_backtrack_penalty: bool,
+        apply_root_mana_handoff_guard: bool,
+        include_tactical_exact: bool,
+        include_strategic_exact: bool,
+        root_backtrack_penalty: i32,
+        root_mana_handoff_penalty: i32,
+    ) -> i32 {
+        let after = Self::move_efficiency_snapshot_uncached_with_hash(
             simulated_game,
             perspective,
             include_tactical_exact && simulated_game.active_color == perspective,
             include_strategic_exact,
+            simulated_state_hash,
         );
         let unknown_steps = Config::BOARD_SIZE + 4;
 
@@ -11473,8 +11571,24 @@ impl MonsGameModel {
         include_tactical_exact: bool,
         include_strategic_exact: bool,
     ) -> MoveEfficiencySnapshot {
+        Self::move_efficiency_snapshot_with_hash(
+            game,
+            perspective,
+            include_tactical_exact,
+            include_strategic_exact,
+            Self::search_state_hash(game),
+        )
+    }
+
+    fn move_efficiency_snapshot_with_hash(
+        game: &MonsGame,
+        perspective: Color,
+        include_tactical_exact: bool,
+        include_strategic_exact: bool,
+        state_hash: u64,
+    ) -> MoveEfficiencySnapshot {
         let cache_key = MoveEfficiencySnapshotCacheKey {
-            state_hash: Self::search_state_hash(game),
+            state_hash,
             perspective,
             include_tactical_exact,
             include_strategic_exact,
@@ -11485,35 +11599,94 @@ impl MonsGameModel {
             return cached;
         }
 
+        let snapshot = Self::build_move_efficiency_snapshot(
+            game,
+            perspective,
+            include_tactical_exact,
+            include_strategic_exact,
+            state_hash,
+        );
+
+        MOVE_EFFICIENCY_SNAPSHOT_CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            if cache.len() >= SMART_MOVE_EFFICIENCY_SNAPSHOT_CACHE_MAX_ENTRIES
+                && !cache.contains_key(&cache_key)
+            {
+                cache.clear();
+            }
+            cache.insert(cache_key, snapshot);
+        });
+
+        snapshot
+    }
+
+    fn move_efficiency_snapshot_uncached_with_hash(
+        game: &MonsGame,
+        perspective: Color,
+        include_tactical_exact: bool,
+        include_strategic_exact: bool,
+        state_hash: u64,
+    ) -> MoveEfficiencySnapshot {
+        Self::build_move_efficiency_snapshot(
+            game,
+            perspective,
+            include_tactical_exact,
+            include_strategic_exact,
+            state_hash,
+        )
+    }
+
+    fn build_move_efficiency_snapshot(
+        game: &MonsGame,
+        perspective: Color,
+        include_tactical_exact: bool,
+        include_strategic_exact: bool,
+        state_hash: u64,
+    ) -> MoveEfficiencySnapshot {
         let unknown_steps = Config::BOARD_SIZE + 4;
         let strategic = include_strategic_exact.then(|| exact_strategic_analysis(game));
         let my_summary = strategic.map(|analysis| analysis.color_summary(perspective));
         let opponent_summary =
             strategic.map(|analysis| analysis.color_summary(perspective.other()));
+        let tactical_flags =
+            crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_SUPERMANA_PROGRESS
+                | crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS
+                | crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_SPIRIT
+                | crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW;
         let my_turn_summary = if include_tactical_exact && game.active_color == perspective {
-            exact_turn_summary(game, perspective)
+            crate::models::automove_exact::exact_turn_tactical_projection_with_search_hash(
+                game,
+                perspective,
+                state_hash,
+                tactical_flags,
+            )
         } else {
-            ExactTurnSummary {
+            ExactTurnTacticalProjection {
                 same_turn_score_window_value: my_summary
                     .map(|summary| summary.immediate_window.best_score)
                     .unwrap_or_else(|| {
                         Self::approximate_same_turn_score_window_value(game, perspective)
                     }),
-                ..ExactTurnSummary::default()
+                ..ExactTurnTacticalProjection::default()
             }
         };
         let opponent_turn_summary = if include_tactical_exact
             && game.active_color == perspective.other()
         {
-            exact_turn_summary(game, perspective.other())
+            crate::models::automove_exact::exact_turn_tactical_projection_with_search_hash(
+                game,
+                perspective.other(),
+                state_hash,
+                tactical_flags,
+            )
         } else {
-            ExactTurnSummary {
+            ExactTurnTacticalProjection {
                 same_turn_score_window_value: opponent_summary
                     .map(|summary| summary.immediate_window.best_score)
                     .unwrap_or_else(|| {
                         Self::approximate_same_turn_score_window_value(game, perspective.other())
                     }),
-                ..ExactTurnSummary::default()
+                ..ExactTurnTacticalProjection::default()
             }
         };
 
@@ -11636,16 +11809,6 @@ impl MonsGameModel {
                 Item::Mana { .. } | Item::Consumable { .. } => {}
             }
         }
-
-        MOVE_EFFICIENCY_SNAPSHOT_CACHE.with(|cache| {
-            let mut cache = cache.borrow_mut();
-            if cache.len() >= SMART_MOVE_EFFICIENCY_SNAPSHOT_CACHE_MAX_ENTRIES
-                && !cache.contains_key(&cache_key)
-            {
-                cache.clear();
-            }
-            cache.insert(cache_key, snapshot);
-        });
 
         snapshot
     }
@@ -17242,8 +17405,24 @@ impl MonsGameModel {
         scoring_weights: &'static ScoringWeights,
         allow_exact_static_evaluation: bool,
     ) -> i32 {
+        Self::cached_search_preferability_score_with_hash(
+            game,
+            perspective,
+            scoring_weights,
+            allow_exact_static_evaluation,
+            Self::search_state_hash(game),
+        )
+    }
+
+    fn cached_search_preferability_score_with_hash(
+        game: &MonsGame,
+        perspective: Color,
+        scoring_weights: &'static ScoringWeights,
+        allow_exact_static_evaluation: bool,
+        state_hash: u64,
+    ) -> i32 {
         let cache_key = SearchPreferabilityCacheKey {
-            state_hash: Self::search_state_hash(game),
+            state_hash,
             perspective,
             scoring_weights_key: scoring_weights as *const ScoringWeights as usize as u64,
             allow_exact_static_evaluation,
@@ -17364,8 +17543,14 @@ mod evaluation_cache_tests {
         let second = MonsGameModel::move_efficiency_snapshot(&game, Color::White, true, true);
 
         assert_eq!(move_efficiency_snapshot_cache_len(), 1);
-        assert_eq!(first.my_best_drainer_to_mana_steps, second.my_best_drainer_to_mana_steps);
-        assert_eq!(first.my_same_turn_score_value, second.my_same_turn_score_value);
+        assert_eq!(
+            first.my_best_drainer_to_mana_steps,
+            second.my_best_drainer_to_mana_steps
+        );
+        assert_eq!(
+            first.my_same_turn_score_value,
+            second.my_same_turn_score_value
+        );
     }
 
     #[test]
@@ -17402,6 +17587,61 @@ mod evaluation_cache_tests {
         assert_eq!(first, second);
     }
 
+    #[test]
+    fn move_efficiency_snapshot_uses_tactical_projection_for_active_exact_fields() {
+        clear_turn_engine_selector_followup_floor_cache();
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        let snapshot = MonsGameModel::move_efficiency_snapshot(&game, Color::White, true, true);
+        let diagnostics = exact_query_diagnostics_snapshot();
+        let turn = exact_turn_summary(&game, Color::White);
+
+        assert_eq!(diagnostics.exact_turn_summary_builds, 0);
+        assert_eq!(
+            snapshot.my_same_turn_score_value,
+            turn.spirit_assisted_score_value
+        );
+        assert_eq!(
+            snapshot.my_same_turn_opponent_mana_score_value,
+            turn.spirit_assisted_denial_value
+        );
+        assert_eq!(
+            snapshot.my_safe_supermana_progress,
+            turn.safe_supermana_progress
+        );
+        assert_eq!(
+            snapshot.my_safe_supermana_progress_steps,
+            turn.safe_supermana_progress_steps
+                .unwrap_or(Config::BOARD_SIZE + 4)
+        );
+        assert_eq!(
+            snapshot.my_safe_opponent_mana_progress,
+            turn.safe_opponent_mana_progress
+        );
+        assert_eq!(
+            snapshot.my_safe_opponent_mana_progress_steps,
+            turn.safe_opponent_mana_progress_steps
+                .unwrap_or(Config::BOARD_SIZE + 4)
+        );
+    }
 }
 
 #[cfg(test)]

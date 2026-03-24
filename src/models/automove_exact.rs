@@ -213,6 +213,12 @@ pub(crate) const EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS: u8 = 1 << 1;
 pub(crate) const EXACT_TURN_TACTICAL_NEED_SPIRIT: u8 = 1 << 2;
 #[cfg(any(target_arch = "wasm32", test))]
 pub(crate) const EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW: u8 = 1 << 3;
+#[cfg(any(target_arch = "wasm32", test))]
+const EXACT_TACTICAL_SPIRIT_NEED_SCORE: u8 = 1 << 0;
+#[cfg(any(target_arch = "wasm32", test))]
+const EXACT_TACTICAL_SPIRIT_NEED_DENIAL: u8 = 1 << 1;
+#[cfg(any(target_arch = "wasm32", test))]
+const EXACT_TACTICAL_SPIRIT_NEED_PROGRESS: u8 = 1 << 2;
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, Default)]
@@ -434,9 +440,19 @@ struct ExactSpiritSummaryCache {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ExactTacticalSpiritSummaryKey {
+    board_hash: u64,
+    color: Color,
+    remaining_mon_moves: i32,
+    can_use_action: bool,
+    fields: u8,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Default)]
 struct ExactSpiritTacticalSummaryCache {
-    entries: ExactHashMap<ExactSpiritSummaryKey, ExactSpiritSummary>,
+    entries: ExactHashMap<ExactTacticalSpiritSummaryKey, ExactSpiritSummary>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1575,8 +1591,15 @@ fn build_exact_turn_summary(game: &MonsGame) -> ExactTurnSummary {
     let color = game.active_color;
     let remaining_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
     let can_use_action = game.player_can_use_action();
-    let tactical_spirit =
-        exact_tactical_spirit_summary(&game.board, color, remaining_moves, can_use_action);
+    let tactical_spirit = exact_tactical_spirit_summary(
+        &game.board,
+        color,
+        remaining_moves,
+        can_use_action,
+        EXACT_TACTICAL_SPIRIT_NEED_SCORE
+            | EXACT_TACTICAL_SPIRIT_NEED_DENIAL
+            | EXACT_TACTICAL_SPIRIT_NEED_PROGRESS,
+    );
     let safe_supermana_progress_steps =
         exact_secure_specific_mana_steps_this_turn(game, color, Mana::Supermana);
     let safe_opponent_mana_progress_steps =
@@ -1613,9 +1636,19 @@ fn build_exact_turn_tactical_projection(game: &MonsGame, flags: u8) -> ExactTurn
     let need_opponent_mana = flags & EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS != 0;
     let need_spirit = flags & EXACT_TURN_TACTICAL_NEED_SPIRIT != 0;
     let need_score_window = flags & EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW != 0;
-    let need_tactical_spirit = need_spirit || need_score_window;
-    let tactical_spirit = if need_tactical_spirit {
-        exact_tactical_spirit_summary(&game.board, color, remaining_moves, can_use_action)
+    let tactical_spirit_fields = if need_spirit || need_score_window {
+        EXACT_TACTICAL_SPIRIT_NEED_SCORE | EXACT_TACTICAL_SPIRIT_NEED_DENIAL
+    } else {
+        0
+    };
+    let tactical_spirit = if tactical_spirit_fields != 0 {
+        exact_tactical_spirit_summary(
+            &game.board,
+            color,
+            remaining_moves,
+            can_use_action,
+            tactical_spirit_fields,
+        )
     } else {
         ExactSpiritSummary::default()
     };
@@ -1878,6 +1911,81 @@ fn exact_best_drainer_pickup_path(
     exact_best_drainer_pickup_path_filtered(board, color, start, None, ExactPickupFilter::Any)
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, Default)]
+struct ExactDrainerPickupWindow {
+    any: Option<ExactDrainerPickupPath>,
+    opponent: Option<ExactDrainerPickupPath>,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_pickup_path_beats(
+    candidate: ExactDrainerPickupPath,
+    current: Option<ExactDrainerPickupPath>,
+) -> bool {
+    match current {
+        None => true,
+        Some(current) => {
+            let candidate_metric = candidate.path_steps * 3 - candidate.mana_value;
+            let current_metric = current.path_steps * 3 - current.mana_value;
+            candidate_metric < current_metric
+                || (candidate_metric == current_metric && candidate.mana_value > current.mana_value)
+        }
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_drainer_pickup_window_uncached(
+    board: &Board,
+    color: Color,
+    start: Location,
+    max_steps: Option<i32>,
+    opponent_mana: Mana,
+) -> ExactDrainerPickupWindow {
+    update_exact_query_diagnostics(|diagnostics| diagnostics.pickup_path_calls += 1);
+
+    let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
+    let mut seen = ExactPayloadSeen::new();
+    queue.push_back((start, ExactActorPayload::None, 0));
+    seen.insert(start, ExactActorPayload::None);
+    let mut best = ExactDrainerPickupWindow::default();
+
+    while let Some((location, payload, steps)) = queue.pop_front() {
+        if max_steps.map_or(false, |limit| steps > limit) {
+            continue;
+        }
+        if let ExactActorPayload::Mana(mana) = payload {
+            if matches!(board.square(location), Square::ManaPool { .. }) {
+                let candidate = ExactDrainerPickupPath {
+                    path_steps: steps.saturating_sub(1),
+                    total_moves: steps,
+                    mana_value: mana.score(color),
+                    mana,
+                };
+                if exact_pickup_path_beats(candidate, best.any) {
+                    best.any = Some(candidate);
+                }
+                if mana == opponent_mana && exact_pickup_path_beats(candidate, best.opponent) {
+                    best.opponent = Some(candidate);
+                }
+            }
+        }
+
+        for &next in location.nearby_locations_ref() {
+            if let Some(next_payload) =
+                actor_payload_after_move(board, MonKind::Drainer, color, payload, next, false)
+            {
+                if seen.insert(next, next_payload) {
+                    queue.push_back((next, next_payload, steps + 1));
+                }
+            }
+        }
+    }
+
+    best
+}
+
 fn exact_best_drainer_pickup_path_filtered(
     board: &Board,
     color: Color,
@@ -1916,25 +2024,14 @@ fn exact_best_drainer_pickup_path_filtered(
             if mana_filter.matches(mana)
                 && matches!(board.square(location), Square::ManaPool { .. })
             {
-                let total_moves: i32 = steps;
                 let candidate = ExactDrainerPickupPath {
-                    path_steps: total_moves.saturating_sub(1),
-                    total_moves,
+                    path_steps: steps.saturating_sub(1),
+                    total_moves: steps,
                     mana_value: mana.score(color),
                     #[cfg(any(target_arch = "wasm32", test))]
                     mana,
                 };
-                let replace = match best {
-                    None => true,
-                    Some(current) => {
-                        let candidate_metric = candidate.path_steps * 3 - candidate.mana_value;
-                        let current_metric = current.path_steps * 3 - current.mana_value;
-                        candidate_metric < current_metric
-                            || (candidate_metric == current_metric
-                                && candidate.mana_value > current.mana_value)
-                    }
-                };
-                if replace {
+                if exact_pickup_path_beats(candidate, best) {
                     best = Some(candidate);
                 }
             }
@@ -2695,16 +2792,18 @@ fn exact_tactical_spirit_summary(
     color: Color,
     remaining_mon_moves: i32,
     can_use_action: bool,
+    fields: u8,
 ) -> ExactSpiritSummary {
     update_exact_query_diagnostics(|diagnostics| diagnostics.tactical_spirit_summary_calls += 1);
-    if remaining_mon_moves < 0 {
+    if remaining_mon_moves < 0 || fields == 0 {
         return ExactSpiritSummary::default();
     }
-    let key = ExactSpiritSummaryKey {
+    let key = ExactTacticalSpiritSummaryKey {
         board_hash: exact_board_hash(board),
         color,
         remaining_mon_moves,
         can_use_action,
+        fields,
     };
     if let Some(cached) =
         EXACT_SPIRIT_TACTICAL_SUMMARY_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
@@ -2715,8 +2814,13 @@ fn exact_tactical_spirit_summary(
         return cached;
     }
 
-    let summary =
-        exact_tactical_spirit_summary_uncached(board, color, remaining_mon_moves, can_use_action);
+    let summary = exact_tactical_spirit_summary_uncached(
+        board,
+        color,
+        remaining_mon_moves,
+        can_use_action,
+        fields,
+    );
     EXACT_SPIRIT_TACTICAL_SUMMARY_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         if cache.entries.len() >= EXACT_SPIRIT_SUMMARY_CACHE_MAX_ENTRIES
@@ -2835,17 +2939,34 @@ fn exact_tactical_spirit_summary_uncached(
     color: Color,
     remaining_mon_moves: i32,
     can_use_action: bool,
+    fields: u8,
 ) -> ExactSpiritSummary {
     if !can_use_action {
         return ExactSpiritSummary::default();
     }
 
-    let before_same_turn_score =
-        exact_best_immediate_score_on_board(board, color, remaining_mon_moves);
-    let before_same_turn_opponent_score =
-        exact_best_immediate_opponent_mana_score_on_board(board, color, remaining_mon_moves);
-    let max_same_turn_score = Mana::Supermana.score(color);
-    let max_same_turn_opponent_score = Mana::Regular(color.other()).score(color);
+    let need_score = fields & EXACT_TACTICAL_SPIRIT_NEED_SCORE != 0;
+    let need_denial = fields & EXACT_TACTICAL_SPIRIT_NEED_DENIAL != 0;
+    let need_progress = fields & EXACT_TACTICAL_SPIRIT_NEED_PROGRESS != 0;
+    let before_window = exact_best_immediate_tactical_window_on_board(
+        board,
+        color,
+        remaining_mon_moves,
+        need_score,
+        need_denial,
+    );
+    let before_same_turn_score = before_window.best_score;
+    let before_same_turn_opponent_score = before_window.best_opponent_mana_score;
+    let max_same_turn_score = if need_score {
+        Mana::Supermana.score(color)
+    } else {
+        0
+    };
+    let max_same_turn_opponent_score = if need_denial {
+        Mana::Regular(color.other()).score(color)
+    } else {
+        0
+    };
     let mut best = ExactSpiritSummary::default();
 
     for (location, item) in board.occupied() {
@@ -2884,38 +3005,38 @@ fn exact_tactical_spirit_summary_uncached(
                     }
                     let (after_board, score_delta, opponent_mana_score_delta) =
                         apply_spirit_move_preview(action_board, target, target_item, dest, color);
-                    let after_same_turn_score = if best.same_turn_score_value < max_same_turn_score
-                    {
-                        score_delta.max(exact_best_immediate_score_on_board(
-                            &after_board,
-                            color,
-                            remaining_after_action,
-                        ))
+                    let need_after_score =
+                        need_score && best.same_turn_score_value < max_same_turn_score;
+                    let need_after_denial = need_denial
+                        && best.same_turn_opponent_mana_score_value < max_same_turn_opponent_score;
+                    let after_window = exact_best_immediate_tactical_window_on_board(
+                        &after_board,
+                        color,
+                        remaining_after_action,
+                        need_after_score,
+                        need_after_denial,
+                    );
+                    let after_same_turn_score = if need_after_score {
+                        score_delta.max(after_window.best_score)
                     } else {
                         best.same_turn_score_value
                     };
-                    let after_same_turn_opponent_score = if best.same_turn_opponent_mana_score_value
-                        < max_same_turn_opponent_score
-                    {
-                        opponent_mana_score_delta.max(
-                            exact_best_immediate_opponent_mana_score_on_board(
-                                &after_board,
-                                color,
-                                remaining_after_action,
-                            ),
-                        )
+                    let after_same_turn_opponent_score = if need_after_denial {
+                        opponent_mana_score_delta.max(after_window.best_opponent_mana_score)
                     } else {
                         best.same_turn_opponent_mana_score_value
                     };
 
-                    if best.same_turn_score_value < max_same_turn_score
+                    if need_score
+                        && best.same_turn_score_value < max_same_turn_score
                         && (score_delta > 0 || after_same_turn_score > before_same_turn_score)
                     {
                         best.same_turn_score = true;
                         best.same_turn_score_value =
                             best.same_turn_score_value.max(after_same_turn_score);
                     }
-                    if best.same_turn_opponent_mana_score_value < max_same_turn_opponent_score
+                    if need_denial
+                        && best.same_turn_opponent_mana_score_value < max_same_turn_opponent_score
                         && (opponent_mana_score_delta > 0
                             || after_same_turn_opponent_score > before_same_turn_opponent_score)
                     {
@@ -2924,7 +3045,8 @@ fn exact_tactical_spirit_summary_uncached(
                             .same_turn_opponent_mana_score_value
                             .max(after_same_turn_opponent_score);
                     }
-                    if !best.supermana_progress
+                    if need_progress
+                        && !best.supermana_progress
                         && ((matches!(
                             target_item,
                             Item::Mana {
@@ -2940,7 +3062,8 @@ fn exact_tactical_spirit_summary_uncached(
                     {
                         best.supermana_progress = true;
                     }
-                    if !best.opponent_mana_progress
+                    if need_progress
+                        && !best.opponent_mana_progress
                         && (opponent_mana_score_delta > 0
                             || can_secure_specific_mana_on_board(
                                 &after_board,
@@ -2951,10 +3074,12 @@ fn exact_tactical_spirit_summary_uncached(
                     {
                         best.opponent_mana_progress = true;
                     }
-                    if best.same_turn_score_value >= max_same_turn_score
-                        && best.same_turn_opponent_mana_score_value >= max_same_turn_opponent_score
-                        && best.supermana_progress
-                        && best.opponent_mana_progress
+                    if (!need_score || best.same_turn_score_value >= max_same_turn_score)
+                        && (!need_denial
+                            || best.same_turn_opponent_mana_score_value
+                                >= max_same_turn_opponent_score)
+                        && (!need_progress
+                            || (best.supermana_progress && best.opponent_mana_progress))
                     {
                         return best;
                     }
@@ -3420,6 +3545,90 @@ fn exact_best_score_steps_on_board(board: &Board, color: Color) -> Option<i32> {
                     best = Some(best.map_or(path.total_moves, |current: i32| {
                         current.min(path.total_moves)
                     }));
+                }
+            }
+            _ => {}
+        }
+    }
+    best
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, Default)]
+struct ExactImmediateTacticalWindow {
+    best_score: i32,
+    best_opponent_mana_score: i32,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_best_immediate_tactical_window_on_board(
+    board: &Board,
+    color: Color,
+    move_budget: i32,
+    need_score: bool,
+    need_denial: bool,
+) -> ExactImmediateTacticalWindow {
+    if move_budget < 0 || (!need_score && !need_denial) {
+        return ExactImmediateTacticalWindow::default();
+    }
+
+    let opponent_mana = Mana::Regular(color.other());
+    let mut best = ExactImmediateTacticalWindow::default();
+    for (location, item) in board.occupied() {
+        match item {
+            Item::MonWithMana { mon, mana } if mon.color == color && !mon.is_fainted() => {
+                if exact_carrier_steps_to_any_pool(board, location, *mana)
+                    .map_or(false, |steps| steps <= move_budget)
+                {
+                    let mana_value = mana.score(color);
+                    if need_score {
+                        best.best_score = best.best_score.max(mana_value);
+                    }
+                    if need_denial && *mana == opponent_mana {
+                        best.best_opponent_mana_score =
+                            best.best_opponent_mana_score.max(mana_value);
+                    }
+                }
+            }
+            Item::Mon { mon } | Item::MonWithConsumable { mon, .. }
+                if mon.color == color && mon.kind == MonKind::Drainer && !mon.is_fainted() =>
+            {
+                if need_score && need_denial {
+                    let pickup = exact_drainer_pickup_window_uncached(
+                        board,
+                        color,
+                        location,
+                        Some(move_budget),
+                        opponent_mana,
+                    );
+                    if let Some(path) = pickup.any {
+                        best.best_score = best.best_score.max(path.mana_value);
+                    }
+                    if let Some(path) = pickup.opponent {
+                        best.best_opponent_mana_score =
+                            best.best_opponent_mana_score.max(path.mana_value);
+                    }
+                } else if need_score {
+                    if let Some(path) = exact_best_drainer_pickup_path_filtered(
+                        board,
+                        color,
+                        location,
+                        Some(move_budget),
+                        ExactPickupFilter::Any,
+                    ) {
+                        best.best_score = best.best_score.max(path.mana_value);
+                    }
+                } else if need_denial {
+                    if let Some(path) = exact_best_drainer_pickup_path_filtered(
+                        board,
+                        color,
+                        location,
+                        Some(move_budget),
+                        ExactPickupFilter::Wanted(opponent_mana),
+                    ) {
+                        best.best_opponent_mana_score =
+                            best.best_opponent_mana_score.max(path.mana_value);
+                    }
                 }
             }
             _ => {}
@@ -5303,6 +5512,44 @@ mod tests {
         );
         assert!(!projection.safe_opponent_mana_progress);
         assert_eq!(projection.safe_opponent_mana_progress_steps, None);
+    }
+
+    #[test]
+    fn exact_turn_tactical_projection_skips_spirit_progress_queries_for_score_only_projection() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        let projection = exact_turn_tactical_projection(
+            &game,
+            Color::White,
+            EXACT_TURN_TACTICAL_NEED_SPIRIT | EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW,
+        );
+        let diagnostics = exact_query_diagnostics_snapshot();
+
+        assert!(diagnostics.tactical_spirit_summary_calls > 0);
+        assert_eq!(
+            diagnostics.exact_secure_mana_calls, 0,
+            "score-only tactical projection should not pay spirit progress secure-mana queries"
+        );
+        assert!(projection.spirit_assisted_denial || projection.same_turn_score_window_value >= 0);
     }
 
     #[test]
