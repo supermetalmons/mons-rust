@@ -23,6 +23,7 @@ stages:
   pro-opening-speed-probe diagnostic opening-reply latency compare on fixed pro fixtures
   pro-audit-screen cheap pro duel-only audit for an occasional pro-triage reject
   pro-pre-screen  legacy reject-only pro screen vs normal and fast with tighter budgets
+  pro-reliability direct pro-vs-pro reliability gate against the baseline; requires the duel stamp
   pro-fast-screen duel-only pro fast screens vs normal and fast; requires the duel stamp
   pro-progressive duel-only pro progressive duels vs normal and fast; requires the duel stamp
   pro-ladder      duel-only strict pro promotion ladder; requires the duel stamp
@@ -46,6 +47,7 @@ examples:
   SMART_TRIAGE_SURFACE=opening_reply ./scripts/run-automove-experiment.sh pro-triage runtime_eff_non_exact_v2
   ./scripts/run-automove-experiment.sh pro-opening-speed-probe runtime_pro_quiescence_v1 runtime_current
   ./scripts/run-automove-experiment.sh pro-audit-screen runtime_eff_non_exact_v2
+  ./scripts/run-automove-experiment.sh pro-reliability runtime_pro_turn_engine_v30 runtime_current
   ./scripts/run-automove-experiment.sh pro-ladder runtime_eff_exact_lite_v1 runtime_release_safe_pre_exact
 EOF_HELP
 }
@@ -212,6 +214,18 @@ run_pro_progressive() {
     "${extra_env[@]}"
 }
 
+run_pro_reliability_gate() {
+  local extra_env=("$@")
+  run_cargo_logged \
+    "pro_reliability_${candidate}" \
+    "smart_automove_pool_pro_reliability_gate" \
+    "SMART_GATE_BASELINE_PROFILE=${baseline}" \
+    "SMART_PRO_BASELINE_PROFILE=${baseline}" \
+    "SMART_PRO_RELIABILITY_CANDIDATE_PROFILE=${candidate}" \
+    "SMART_PRO_RELIABILITY_BASELINE_PROFILE=${baseline}" \
+    "${extra_env[@]}"
+}
+
 run_pro_opening_speed_probe() {
   run_cargo_logged \
     "pro_opening_speed_probe_${candidate}" \
@@ -286,14 +300,22 @@ case "${stage}" in
     ;;
   runtime-preflight)
     clear_preflight_stamp "${candidate}"
-    run_cargo_logged "stage1_cpu_${candidate}" "smart_automove_pool_stage1_cpu_non_regression_gate"
+    stage1_extra_env=()
+    if [[ "${candidate}" == runtime_pro_* ]]; then
+      stage1_extra_env+=("SMART_STAGE1_INCLUDE_PRO=true")
+    fi
+    run_cargo_logged "stage1_cpu_${candidate}" "smart_automove_pool_stage1_cpu_non_regression_gate" "${stage1_extra_env[@]}"
     run_cargo_logged "exact_lite_diag_${candidate}" "smart_automove_pool_exact_lite_diagnostics_gate"
     write_preflight_stamp "${candidate}"
     ;;
   preflight)
     clear_preflight_stamp "${candidate}"
     run_cargo_logged "tactical_${candidate}" "smart_automove_tactical_candidate_profile"
-    run_cargo_logged "stage1_cpu_${candidate}" "smart_automove_pool_stage1_cpu_non_regression_gate"
+    stage1_extra_env=()
+    if [[ "${candidate}" == runtime_pro_* ]]; then
+      stage1_extra_env+=("SMART_STAGE1_INCLUDE_PRO=true")
+    fi
+    run_cargo_logged "stage1_cpu_${candidate}" "smart_automove_pool_stage1_cpu_non_regression_gate" "${stage1_extra_env[@]}"
     run_cargo_logged "exact_lite_diag_${candidate}" "smart_automove_pool_exact_lite_diagnostics_gate"
     write_preflight_stamp "${candidate}"
     ;;
@@ -350,6 +372,10 @@ case "${stage}" in
     ;;
   pro-pre-screen)
     run_pro_audit_screens "pro_pre_screen" "SMART_SKIP_RUNTIME_PREFLIGHT=true"
+    ;;
+  pro-reliability)
+    require_fresh_preflight_stamp "${candidate}"
+    run_pro_reliability_gate "SMART_SKIP_RUNTIME_PREFLIGHT=true"
     ;;
   pro-fast-screen)
     require_fresh_preflight_stamp "${candidate}"

@@ -122,6 +122,36 @@ pub(crate) struct ExactTurnSummary {
     pub score_path_best_steps: Option<i32>,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ExactOpportunityBudget {
+    pub remaining_mon_moves: i32,
+    pub can_use_action: bool,
+    pub can_move_mana: bool,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ExactOpportunityDelta {
+    pub same_turn_score_window_value: i32,
+    pub spirit_gain: i32,
+    pub opponent_window_deny_gain: i32,
+    pub drainer_attack_available: bool,
+    pub drainer_safety: i32,
+    pub safe_supermana_progress_steps: Option<i32>,
+    pub safe_opponent_mana_progress_steps: Option<i32>,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ExactOpportunityContext {
+    pub budget: ExactOpportunityBudget,
+    #[allow(dead_code)]
+    pub turn: ExactTurnSummary,
+    pub delta: ExactOpportunityDelta,
+    pub opponent_can_win_immediately: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExactColorSummaryMode {
     #[cfg(any(target_arch = "wasm32", test))]
@@ -514,6 +544,81 @@ pub(crate) fn exact_turn_summary(game: &MonsGame, color: Color) -> ExactTurnSumm
 #[cfg(any(target_arch = "wasm32", test))]
 pub(crate) fn can_attack_opponent_drainer_this_turn(game: &MonsGame, color: Color) -> bool {
     exact_turn_summary(game, color).can_attack_opponent_drainer
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn exact_opportunity_context(
+    game: &MonsGame,
+    color: Color,
+) -> ExactOpportunityContext {
+    if game.active_color != color {
+        return ExactOpportunityContext::default();
+    }
+
+    let budget = ExactOpportunityBudget {
+        remaining_mon_moves: (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0),
+        can_use_action: game.player_can_use_action(),
+        can_move_mana: game.player_can_move_mana(),
+    };
+    let turn = exact_turn_summary(game, color);
+    let drainer_safety = exact_own_drainer_safety_score(&game.board, color);
+    let opponent = color.other();
+    let opponent_score = if opponent == Color::White {
+        game.white_score
+    } else {
+        game.black_score
+    };
+    let opponent_needed = Config::TARGET_SCORE.saturating_sub(opponent_score);
+    let opponent_immediate = exact_strategic_analysis(game)
+        .color_summary(opponent)
+        .immediate_window
+        .best_score;
+    let opponent_can_win_immediately = opponent_needed > 0 && opponent_immediate >= opponent_needed;
+    let opponent_window_deny_gain = if opponent_needed > 0 && turn.same_turn_score_window_value > 0 {
+        turn.same_turn_score_window_value.min(opponent_needed)
+    } else {
+        0
+    };
+
+    ExactOpportunityContext {
+        budget,
+        turn,
+        delta: ExactOpportunityDelta {
+            same_turn_score_window_value: turn.same_turn_score_window_value,
+            spirit_gain: turn
+                .spirit_assisted_score_value
+                .max(turn.spirit_assisted_denial_value),
+            opponent_window_deny_gain,
+            drainer_attack_available: turn.can_attack_opponent_drainer,
+            drainer_safety,
+            safe_supermana_progress_steps: turn.safe_supermana_progress_steps,
+            safe_opponent_mana_progress_steps: turn.safe_opponent_mana_progress_steps,
+        },
+        opponent_can_win_immediately,
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_own_drainer_safety_score(board: &Board, color: Color) -> i32 {
+    let Some(drainer_location) = find_awake_drainer(board, color) else {
+        return 0;
+    };
+    let angel_nearby = board
+        .find_awake_angel(color)
+        .map_or(false, |angel| angel.distance(&drainer_location) == 1);
+    let immediate = is_drainer_under_immediate_threat(board, color, drainer_location, angel_nearby);
+    let walk = is_drainer_under_walk_threat(board, color, drainer_location, angel_nearby);
+    let exact_safe = is_drainer_exactly_safe_next_turn_on_board(board, color, drainer_location);
+
+    if exact_safe && !immediate && !walk {
+        2
+    } else if exact_safe {
+        1
+    } else if immediate || walk {
+        -2
+    } else {
+        -1
+    }
 }
 
 pub(crate) fn can_attack_target_on_board(

@@ -30,6 +30,7 @@ const PROFILE_RUNTIME_PRO_PRIMARY_SIGNAL_V2: &str = "runtime_pro_primary_signal_
 const PROFILE_RUNTIME_PRO_TURN_PLANNER_V1: &str = "runtime_pro_turn_planner_v1";
 const PROFILE_RUNTIME_PRO_INTENT_PLANNER_V2: &str = "runtime_pro_intent_planner_v2";
 const PROFILE_RUNTIME_PRO_TURN_ENGINE_V1: &str = "runtime_pro_turn_engine_v1";
+const PROFILE_RUNTIME_PRO_TURN_ENGINE_V30: &str = "runtime_pro_turn_engine_v30";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct ExactLiteBudgets {
@@ -43,7 +44,7 @@ struct AutomoveProfile {
     selector: AutomoveSelector,
 }
 
-const RETAINED_PROFILES: [AutomoveProfile; 28] = [
+const RETAINED_PROFILES: [AutomoveProfile; 29] = [
     AutomoveProfile {
         id: "base",
         selector: model_base_profile,
@@ -155,6 +156,10 @@ const RETAINED_PROFILES: [AutomoveProfile; 28] = [
     AutomoveProfile {
         id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V1,
         selector: model_runtime_pro_turn_engine_v1,
+    },
+    AutomoveProfile {
+        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V30,
+        selector: model_runtime_pro_turn_engine_v30,
     },
 ];
 
@@ -420,6 +425,7 @@ pub(super) fn profile_runtime_config_for_name(
         PROFILE_RUNTIME_PRO_TURN_PLANNER_V1 => configure_runtime_pro_turn_planner_v1(config),
         PROFILE_RUNTIME_PRO_INTENT_PLANNER_V2 => configure_runtime_pro_intent_planner_v2(config),
         PROFILE_RUNTIME_PRO_TURN_ENGINE_V1 => configure_runtime_pro_turn_engine_v1(config),
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V30 => configure_runtime_pro_turn_engine_v30(config),
         "runtime_pre_fast_root_quality_v1_normal_conversion_v3" => {
             configure_runtime_pre_fast_root_quality_v1_normal_conversion_v3(game, config)
         }
@@ -881,6 +887,7 @@ fn configure_runtime_pro_turn_engine_v1(config: SmartSearchConfig) -> SmartSearc
         && runtime.enable_normal_root_safety_deep_floor
     {
         runtime.enable_turn_engine = true;
+        runtime.turn_engine_mode = TurnEngineMode::ProV1;
         runtime.turn_engine_seed_cap = 16;
         runtime.turn_engine_beam_width = 6;
         runtime.turn_engine_per_node_family_cap = 4;
@@ -891,6 +898,33 @@ fn configure_runtime_pro_turn_engine_v1(config: SmartSearchConfig) -> SmartSearc
         runtime.turn_engine_reply_beam_width = 2;
         runtime.turn_engine_expansion_cap = 192;
         runtime.turn_engine_enable_spirit_family = true;
+    }
+    runtime
+}
+
+fn configure_runtime_pro_turn_engine_v30(config: SmartSearchConfig) -> SmartSearchConfig {
+    let mut runtime = config;
+    runtime.enable_turn_opportunity_planner = false;
+    runtime.turn_engine_mode = TurnEngineMode::ProV2;
+    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
+        && runtime.enable_normal_root_safety_deep_floor
+    {
+        runtime.enable_turn_engine = true;
+        runtime.turn_engine_seed_cap = 14;
+        runtime.turn_engine_beam_width = 5;
+        runtime.turn_engine_per_node_family_cap = 4;
+        runtime.turn_engine_step_cap = 6;
+        runtime.turn_engine_opponent_seed_cap = 6;
+        runtime.turn_engine_opponent_beam_width = 2;
+        runtime.turn_engine_reply_seed_cap = 3;
+        runtime.turn_engine_reply_beam_width = 1;
+        runtime.turn_engine_expansion_cap = 176;
+        runtime.turn_engine_enable_spirit_family = true;
+        runtime.root_reply_risk_reply_limit = runtime.root_reply_risk_reply_limit.min(24);
+        runtime.root_reply_risk_node_share_bp = runtime.root_reply_risk_node_share_bp.min(2_000);
+        runtime.enable_turn_engine_low_budget_guard = true;
+        runtime.enable_turn_engine_mid_turn_tactical_guard = true;
+        runtime.enable_turn_engine_late_safe_mana_root_preference = true;
     }
     runtime
 }
@@ -965,6 +999,100 @@ pub(super) fn model_runtime_pro_turn_engine_v1(
     }
 
     runtime_selector_inputs(game, configure_runtime_pro_turn_engine_v1(config))
+}
+
+pub(super) fn model_runtime_pro_turn_engine_v30(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let opening_book_mode = std::env::var("SMART_USE_WHITE_OPENING_BOOK")
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes"
+            )
+        })
+        .unwrap_or(false);
+    if opening_book_mode {
+        let opening_runtime = SearchBudget::from_preference(SmartAutomovePreference::Normal)
+            .runtime_config_for_game(game);
+        return runtime_selector_inputs(
+            game,
+            configure_runtime_release_safe_pre_exact(opening_runtime),
+        );
+    }
+
+    let early_white_turn_start = game.active_color == Color::White
+        && game.turn_number <= 3
+        && !game.player_can_use_action()
+        && !game.player_can_move_mana()
+        && matches!(game.mons_moves_count, 0 | 3);
+    if early_white_turn_start {
+        let fast_runtime = SearchBudget::from_preference(SmartAutomovePreference::Fast)
+            .runtime_config_for_game(game);
+        return runtime_selector_inputs(
+            game,
+            configure_runtime_release_safe_pre_exact(fast_runtime),
+        );
+    }
+
+    let white_turn_one_late_opening_tail = game.active_color == Color::White
+        && game.turn_number == 1
+        && game.mons_moves_count == 2
+        && !game.player_can_use_action()
+        && !game.player_can_move_mana();
+    if white_turn_one_late_opening_tail {
+        let fast_runtime = SearchBudget::from_preference(SmartAutomovePreference::Fast)
+            .runtime_config_for_game(game);
+        return runtime_selector_inputs(
+            game,
+            configure_runtime_release_safe_pre_exact(fast_runtime),
+        );
+    }
+
+    let white_turn_three_turn_start_action_mana = game.active_color == Color::White
+        && game.turn_number == 3
+        && game.mons_moves_count == 0
+        && game.player_can_use_action()
+        && game.player_can_move_mana();
+    if white_turn_three_turn_start_action_mana {
+        let fast_runtime = SearchBudget::from_preference(SmartAutomovePreference::Fast)
+            .runtime_config_for_game(game);
+        return runtime_selector_inputs(
+            game,
+            configure_runtime_release_safe_pre_exact(fast_runtime),
+        );
+    }
+
+    let white_turn_three_mana_only = game.active_color == Color::White
+        && game.turn_number == 3
+        && game.mons_moves_count == 1
+        && !game.player_can_use_action()
+        && game.player_can_move_mana();
+    if white_turn_three_mana_only {
+        let normal_runtime = SearchBudget::from_preference(SmartAutomovePreference::Normal)
+            .runtime_config_for_game(game);
+        return runtime_selector_inputs(
+            game,
+            configure_runtime_release_safe_pre_exact(normal_runtime),
+        );
+    }
+
+    let white_turn_three_mid_turn = game.active_color == Color::White
+        && game.turn_number == 3
+        && game.mons_moves_count > 0
+        && (game.player_can_use_action() || game.player_can_move_mana());
+    if white_turn_three_mid_turn {
+        let fast_runtime = SearchBudget::from_preference(SmartAutomovePreference::Fast)
+            .runtime_config_for_game(game);
+        return runtime_selector_inputs(
+            game,
+            configure_runtime_release_safe_pre_exact(fast_runtime),
+        );
+    }
+
+    runtime_selector_inputs(game, configure_runtime_pro_turn_engine_v30(config))
 }
 
 pub(super) fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {

@@ -1,5 +1,8 @@
 use super::profiles::{profile_selector_from_name, selected_pool_models};
 use super::*;
+use crate::models::automove_exact::clear_exact_state_analysis_cache;
+use crate::models::automove_turn_engine::clear_turn_engine_plan_cache;
+use crate::models::mons_game_model::clear_turn_engine_selector_diagnostics;
 use std::collections::HashMap;
 
 type OpeningFensCacheKey = (u64, usize);
@@ -281,7 +284,10 @@ pub(super) fn play_one_game(
     max_plies: usize,
 ) -> MatchResult {
     let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
+    clear_exact_state_analysis_cache();
     clear_turn_opportunity_plan_cache();
+    clear_turn_engine_plan_cache();
+    clear_turn_engine_selector_diagnostics();
     let use_white_opening_book = env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false);
 
     for _ in 0..max_plies {
@@ -368,7 +374,10 @@ pub(super) fn play_one_game_budget_duel(
     max_plies: usize,
 ) -> MatchResult {
     let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
+    clear_exact_state_analysis_cache();
     clear_turn_opportunity_plan_cache();
+    clear_turn_engine_plan_cache();
+    clear_turn_engine_selector_diagnostics();
     let use_white_opening_book = env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false);
 
     for _ in 0..max_plies {
@@ -646,6 +655,7 @@ pub(super) fn run_pro_matchup_across_seeds(
     config: ProMatchupAcrossSeedsConfig<'_>,
 ) -> MatchupStats {
     let mut aggregate = MatchupStats::default();
+    let progress = env_bool("SMART_DUEL_PROGRESS").unwrap_or(false);
     for seed_tag in config.seed_tags {
         let tagged = format!("{}:{}", config.seed_tag_prefix, seed_tag);
         aggregate.merge(run_cross_budget_duel(CrossBudgetDuelConfig {
@@ -659,6 +669,19 @@ pub(super) fn run_pro_matchup_across_seeds(
             max_plies: config.max_plies,
             use_white_opening_book: config.use_white_opening_book,
         }));
+        if progress {
+            let (delta, confidence) = stats_delta_confidence(aggregate);
+            println!(
+                "pro seed progress: candidate={} baseline={}({}) seed={} games={} delta={:.4} confidence={:.3}",
+                config.candidate_profile,
+                config.baseline_profile,
+                config.baseline_mode.as_api_value(),
+                tagged,
+                aggregate.total_games(),
+                delta,
+                confidence,
+            );
+        }
     }
     aggregate
 }
@@ -720,7 +743,10 @@ pub(super) fn run_pro_progressive_matchup(
         {
             meaningful_lift = true;
         }
-        if delta < -0.05 || games_per_seed >= max_games {
+        if delta < -0.05
+            || games_per_seed >= max_games
+            || (meaningful_lift && delta >= 0.0)
+        {
             break;
         }
         games_per_seed = (games_per_seed * 2).min(max_games);
@@ -775,6 +801,7 @@ pub(super) fn run_cross_budget_duel(config: CrossBudgetDuelConfig<'_>) -> Matchu
     );
 
     let mut aggregate = MatchupStats::default();
+    let progress = env_bool("SMART_DUEL_PROGRESS").unwrap_or(false);
     for repeat_index in 0..config.repeats.max(1) {
         let seed =
             seed_for_budget_duel_repeat_and_tag(budget_a, budget_b, repeat_index, config.seed_tag);
@@ -797,6 +824,22 @@ pub(super) fn run_cross_budget_duel(config: CrossBudgetDuelConfig<'_>) -> Matchu
             config.max_plies,
         );
         aggregate.merge(mirrored_candidate_stats(ab, ba));
+        if progress {
+            let (delta, confidence) = stats_delta_confidence(aggregate);
+            println!(
+                "cross-budget progress: {}({}) vs {}({}) seed={} repeat={}/{} games={} delta={:.4} confidence={:.3}",
+                config.profile_a,
+                config.mode_a.as_api_value(),
+                config.profile_b,
+                config.mode_b.as_api_value(),
+                config.seed_tag,
+                repeat_index + 1,
+                config.repeats.max(1),
+                aggregate.total_games(),
+                delta,
+                confidence,
+            );
+        }
     }
 
     if let Some(previous) = original_max_plies {
@@ -2362,6 +2405,412 @@ fn extension_sensitive_more_ext_b_triage_game() -> MonsGame {
     .expect("extension_sensitive_more_ext_b: valid fen")
 }
 
+fn harvested_black_override_loss_a_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 1 0 4 0 0 2 n05d0xa0xn04/n05s0xn01e0xn03/n03y0xn03xxmn03/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n05D0xn05/n04A0xn01S0xn01Y0xn02/n03E0xn07",
+        false,
+    )
+    .expect("harvested_black_override_loss_a: valid fen")
+}
+
+fn harvested_black_override_loss_b_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 1 0 4 0 0 2 n05d0xa0xn04/n05s0xn01e0xn03/n03y0xn03xxmn03/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n06S0xn04/n03E0xD0xn03Y0xn02/n04A0xn06",
+        false,
+    )
+    .expect("harvested_black_override_loss_b: valid fen")
+}
+
+fn harvested_black_late_kill_loss_a_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "1 0 b 0 0 4 0 0 4 n05d0xn05/n05s0xa0xe0xn03/n07xxmn03/n03xxmn07/n03xxmn01xxmn01xxmn03/n05xxUn04xxQ/n01y0Bn03xxMn01xxMn03/n03xxMn02xxMn04/n05S0xn05/n04A0xn03Y0xn02/D0xn02E0xn07",
+        false,
+    )
+    .expect("harvested_black_late_kill_loss_a: valid fen")
+}
+
+fn harvested_black_late_kill_loss_b_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "1 0 b 0 0 4 0 0 4 n05d0xn05/n05s0xa0xe0xn03/n07xxmn03/n03xxmn07/n03xxmn01xxmn01xxmn03/n05xxUn04xxQ/n01y0Bn03xxMn01xxMn03/n03xxMn02xxMn04/n06S0xn04/n03E0xA0xn03Y0xn02/D0xn10",
+        false,
+    )
+    .expect("harvested_black_late_kill_loss_b: valid fen")
+}
+
+fn harvested_white_score_route_win_a_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 w 0 0 1 0 0 3 n05d0xn05/n05s0xa0xe0xn03/n03y0xn03xxmn03/n03xxmn07/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04D0Mn01xxMn04/n11/n04A0xn01S0xn01Y0xn02/n03E0xn07",
+        false,
+    )
+    .expect("harvested_white_score_route_win_a: valid fen")
+}
+
+fn harvested_white_score_route_win_b_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 w 0 0 0 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n03E0xA0xD0xS0xY0xn03",
+        false,
+    )
+    .expect("harvested_white_score_route_win_b: valid fen")
+}
+
+fn derived_triage_game_after_inputs(
+    start_fen: &str,
+    input_fen: &str,
+    label: &str,
+) -> MonsGame {
+    let game = MonsGame::from_fen(start_fen, false)
+        .unwrap_or_else(|| panic!("{}: valid start fen", label));
+    let inputs = Input::array_from_fen(input_fen);
+    let (after, _) = MonsGameModel::apply_inputs_for_search_with_events(&game, inputs.as_slice())
+        .unwrap_or_else(|| panic!("{}: inputs apply cleanly", label));
+    after
+}
+
+fn black_loss_opening_a_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 w 0 0 1 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n02E0xn01A0xD0xS0xY0xn03",
+        false,
+    )
+    .expect("black_loss_opening_a: valid fen")
+}
+
+fn black_loss_opening_b_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 w 0 0 0 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n03E0xA0xD0xS0xY0xn03",
+        false,
+    )
+    .expect("black_loss_opening_b: valid fen")
+}
+
+fn black_loss_opening_a_after_white_triage_game() -> MonsGame {
+    derived_triage_game_after_inputs(
+        "0 0 w 0 0 1 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n02E0xn01A0xD0xS0xY0xn03",
+        "l10,6;l9,6",
+        "black_loss_opening_a_after_white",
+    )
+}
+
+fn black_loss_opening_b_after_white_triage_game() -> MonsGame {
+    derived_triage_game_after_inputs(
+        "0 0 w 0 0 0 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n03E0xA0xD0xS0xY0xn03",
+        "l10,7;l9,8",
+        "black_loss_opening_b_after_white",
+    )
+}
+
+fn derived_triage_game_after_white_opening_turn(start_fen: &str, label: &str) -> MonsGame {
+    let mut game = MonsGame::from_fen(start_fen, false)
+        .unwrap_or_else(|| panic!("{}: valid start fen", label));
+    let start_turn = game.turn_number;
+    let mut applied_steps = 0usize;
+
+    while game.active_color == Color::White && game.turn_number == start_turn && applied_steps < 12
+    {
+        let opening_inputs = MonsGameModel::white_first_turn_opening_next_inputs(&game)
+            .or_else(|| {
+                let selector = profile_selector_from_name("runtime_current")
+                    .unwrap_or_else(|| panic!("{}: runtime_current selector available", label));
+                let config = SearchBudget::from_preference(SmartAutomovePreference::Pro)
+                    .runtime_config_for_game(&game);
+                Some(select_inputs_with_runtime_fallback(selector, &game, config))
+            })
+            .filter(|inputs| !inputs.is_empty())
+            .unwrap_or_else(|| panic!("{}: white opening turn available", label));
+        let (after, _) =
+            MonsGameModel::apply_inputs_for_search_with_events(&game, opening_inputs.as_slice())
+                .unwrap_or_else(|| panic!("{}: white opening turn applies", label));
+        game = after;
+        applied_steps += 1;
+    }
+
+    assert_eq!(
+        game.active_color,
+        Color::Black,
+        "{}: expected black to move after white opening turn",
+        label
+    );
+    assert!(
+        game.turn_number > start_turn,
+        "{}: expected opening turn to advance turn number",
+        label
+    );
+    game
+}
+
+fn black_loss_opening_a_black_turn_triage_game() -> MonsGame {
+    derived_triage_game_after_white_opening_turn(
+        "0 0 w 0 0 1 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n02E0xn01A0xD0xS0xY0xn03",
+        "black_loss_opening_a_black_turn",
+    )
+}
+
+fn black_loss_opening_b_black_turn_triage_game() -> MonsGame {
+    derived_triage_game_after_white_opening_turn(
+        "0 0 w 0 0 0 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n03E0xA0xD0xS0xY0xn03",
+        "black_loss_opening_b_black_turn",
+    )
+}
+
+fn black_reduced_gate_opening_1_black_turn_triage_game() -> MonsGame {
+    derived_triage_game_after_white_opening_turn(
+        "0 0 w 0 0 2 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n04D0xA0xn05/n03E0xn02S0xY0xn03",
+        "black_reduced_gate_opening_1_black_turn",
+    )
+}
+
+fn black_reliability_opening_0_ba_black_turn_triage_game() -> MonsGame {
+    derived_triage_game_after_white_opening_turn(
+        "0 0 w 0 0 3 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n05D0xn05/n06S0xn04/n03E0xA0xn02Y0xn03",
+        "black_reliability_opening_0_ba_black_turn",
+    )
+}
+
+fn derived_live_triage_game_after_white_baseline_turn(start_fen: &str, label: &str) -> MonsGame {
+    let selector = profile_selector_from_name("runtime_current")
+        .unwrap_or_else(|| panic!("{}: runtime_current selector available", label));
+    let mut game = MonsGame::from_fen(start_fen, false)
+        .unwrap_or_else(|| panic!("{}: valid start fen", label));
+    let start_turn = game.turn_number;
+    let mut applied_steps = 0usize;
+
+    while game.active_color == Color::White && game.turn_number == start_turn && applied_steps < 12
+    {
+        let config = SearchBudget::from_preference(SmartAutomovePreference::Pro)
+            .runtime_config_for_game(&game);
+        let inputs = select_inputs_with_runtime_fallback(selector, &game, config);
+        assert!(
+            !inputs.is_empty(),
+            "{}: white baseline opening turn available",
+            label
+        );
+        assert!(
+            matches!(game.process_input(inputs, false, false), Output::Events(_)),
+            "{}: white baseline opening turn applies",
+            label
+        );
+        applied_steps += 1;
+    }
+
+    assert_eq!(
+        game.active_color,
+        Color::Black,
+        "{}: expected black to move after white baseline opening turn",
+        label
+    );
+    assert!(
+        game.turn_number > start_turn,
+        "{}: expected live opening turn to advance turn number",
+        label
+    );
+    game
+}
+
+fn black_reliability_opening_0_ba_live_black_turn_triage_game() -> MonsGame {
+    derived_live_triage_game_after_white_baseline_turn(
+        "0 0 w 0 0 3 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n05D0xn05/n06S0xn04/n03E0xA0xn02Y0xn03",
+        "black_reliability_opening_0_ba_live_black_turn",
+    )
+}
+
+fn black_reliability_opening_1_ab_live_black_turn_triage_game() -> MonsGame {
+    derived_live_triage_game_after_white_baseline_turn(
+        "0 0 w 0 0 2 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n04D0xA0xn05/n03E0xn02S0xY0xn03",
+        "black_reliability_opening_1_ab_live_black_turn",
+    )
+}
+
+fn black_loss_runtime_b_ply3_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 0 0 0 2 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n04D0xn06/n05A0xS0xn01Y0xn02/n03E0xn07",
+        false,
+    )
+    .expect("black_loss_runtime_b_ply3: valid fen")
+}
+
+fn black_harvest_loss_a_ply2_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 0 0 0 2 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n05D0xn05/n04A0xn01S0xn01Y0xn02/n03E0xn07",
+        false,
+    )
+    .expect("black_harvest_loss_a_ply2: valid fen")
+}
+
+fn black_harvest_loss_b_ply3_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 0 0 0 2 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n06S0xn04/n03E0xD0xn03Y0xn02/n04A0xn06",
+        false,
+    )
+    .expect("black_harvest_loss_b_ply3: valid fen")
+}
+
+fn black_reliability_opening_3_ply4_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 1 0 0 2 n03y0xn01d0xa0xe0xn03/n03s0xn07/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n03E0xA0xD0xS0xn01Y0xn02/n11",
+        false,
+    )
+    .expect("black_reliability_opening_3_ply4: valid fen")
+}
+
+fn black_reliability_opening_3_ply3_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 0 0 0 2 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n03E0xA0xD0xS0xn01Y0xn02/n11",
+        false,
+    )
+    .expect("black_reliability_opening_3_ply3: valid fen")
+}
+
+fn black_gate_loss_a_ply4_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 0 0 0 2 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n04D0xA0xS0xn01Y0xn02/n02E0xn08",
+        false,
+    )
+    .expect("black_gate_loss_a_ply4: valid fen")
+}
+
+fn black_gate_loss_a_ply5_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 1 0 1 0 0 2 n03y0xn01d0xa0xe0xn03/n05s0xn05/n07xxmn03/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n04D0xn06/n05A0xS0xn01Y0xn02/n03E0xn07",
+        false,
+    )
+    .expect("black_gate_loss_a_ply5: valid fen")
+}
+
+fn black_gate_loss_b_ply3_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 0 0 0 2 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n04D0xn06/n05A0xS0xn01Y0xn02/n03E0xn07",
+        false,
+    )
+    .expect("black_gate_loss_b_ply3: valid fen")
+}
+
+fn black_loss_opening_a_ply6_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 2 0 0 2 n05d0xa0xe0xn03/n02y0xn01s0xn06/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n04D0xA0xS0xn01Y0xn02/n02E0xn08",
+        false,
+    )
+    .expect("black_loss_opening_a_ply6: valid fen")
+}
+
+fn black_loss_opening_a_ply3_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 w 0 0 4 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n04D0xn01S0xn01Y0xn02/n02E0xn01A0xn06",
+        false,
+    )
+    .expect("black_loss_opening_a_ply3: valid fen")
+}
+
+fn black_loss_opening_b_ply5_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 0 0 0 2 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n02E0xn01D0xA0xS0xn01Y0xn02/n11",
+        false,
+    )
+    .expect("black_loss_opening_b_ply5: valid fen")
+}
+
+fn black_loss_opening_a_ply7_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 1 0 2 0 0 2 n05d0xa0xe0xn03/n03y0xn01s0xn05/n07xxmn03/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n04D0xA0xS0xn01Y0xn02/n02E0xn08",
+        false,
+    )
+    .expect("black_loss_opening_a_ply7: valid fen")
+}
+
+fn black_loss_opening_c_ply6_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 1 0 2 0 0 2 n05d0xa0xe0xn03/n03y0xn01s0xn05/n07xxmn03/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n04D0xn06/n05A0xS0xn01Y0xn02/n03E0xn07",
+        false,
+    )
+    .expect("black_loss_opening_c_ply6: valid fen")
+}
+
+fn black_loss_opening_a_ply19_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "1 0 b 1 0 0 0 0 4 n07e0xn03/n03y0xn01s0xa0xn04/n05d0mn01xxmn03/n02xxmn08/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n11/n05S0xn01xxMn03/n05A0xn02Y0xn02/D0xn01E0xn08",
+        false,
+    )
+    .expect("black_loss_opening_a_ply19: valid fen")
+}
+
+fn black_reduced_gate_opening_1_ply19_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "1 0 b 1 0 1 0 0 4 n11/n04d0xs0xa0xe0xn03/n03y0xn03xxmn03/n02xxmxxmn07/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn05/n06xxMn01xxMn02/n11/n05A0xS0xn01Y0xn02/D0xn02E0xn07",
+        false,
+    )
+    .expect("black_reduced_gate_opening_1_ply19: valid fen")
+}
+
+fn black_reduced_gate_opening_1_ply21_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "1 0 b 1 0 3 0 0 4 n11/n05s0xa0xe0xn03/n05d0xn01xxmn03/n02xxmxxmy0xn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn05/n06xxMn01xxMn02/n11/n05A0xS0xn01Y0xn02/D0xn02E0xn07",
+        false,
+    )
+    .expect("black_reduced_gate_opening_1_ply21: valid fen")
+}
+
+fn black_reduced_gate_opening_1_ply31_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "1 0 b 0 0 0 0 0 6 n11/n05s0xn01e0xxxmn02/n06a0xn04/n02xxmxxmy0xd0xn05/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n05xxMn05/n02xxMn03xxMn04/n02E0xn01A0xn01S0xn01xxMn02/n08Y0xn02/D0xn10",
+        false,
+    )
+    .expect("black_reduced_gate_opening_1_ply31: valid fen")
+}
+
+fn black_loss_opening_c_ply17_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "1 0 b 0 0 0 0 0 4 n07e0xn03/n03y0xn01s0xa0xn04/n05d0xn01xxmn03/n02xxmn01xxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn05/n06xxMn01xxMn02/n11/n05A0xS0xn01Y0xn02/D0xn02E0xn07",
+        false,
+    )
+    .expect("black_loss_opening_c_ply17: valid fen")
+}
+
+fn white_harvest_loss_a_ply2_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 w 0 0 4 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n06S0xn04/n04D0xn03Y0xn02/n03E0xA0xn06",
+        false,
+    )
+    .expect("white_harvest_loss_a_ply2: valid fen")
+}
+
+fn white_harvest_loss_b_ply10_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 w 0 0 0 0 0 3 n03y0xn07/n05s0xn01e0xn01d0mn01/n07a0xn03/n04xxmn06/n03xxmn01xxmn05/xxQn09xxQ/n05xxMxxUxxMn03/n02E0xxxMxxMn01xxMS0xn03/n11/n04D0xn03Y0xn02/n03E0xA0xn06",
+        false,
+    )
+    .expect("white_harvest_loss_b_ply10: valid fen")
+}
+
+fn white_harvest_loss_c_ply24_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 1 w 0 0 0 0 0 5 n03y0xn07/n05s0xn01e0xn01d0mn01/n07a0xn03/n04xxmn06/n03xxmn01xxmn05/xxQn09xxQ/n05xxMxxUxxMn03/n02E0xxxMxxMn01xxMS0xn03/n05D0xn05/n05A0xn02Y0xn02/n11",
+        false,
+    )
+    .expect("white_harvest_loss_c_ply24: valid fen")
+}
+
+fn white_harvest_loss_d_ply25_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 1 w 1 0 0 0 0 5 n03y0xn07/n05s0xn01e0xn01d0mn01/n07a0xn03/n04xxmn06/n03xxmn01xxmn05/xxQn09xxQ/n05xxMxxUxxMn03/n02E0xxxMxxMn01D0MS0xn03/n11/n05A0xn02Y0xn02/n11",
+        false,
+    )
+    .expect("white_harvest_loss_d_ply25: valid fen")
+}
+
+fn white_fast_screen_opening_0_ply9_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "1 0 w 0 0 0 0 0 3 n06a0xn04/n03y0xn01d0xxxmn01e0xn02/n04s0xn06/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn01xxMn02/n11/n05D0xS0xn01Y0xn02/n02E0xn01A0xn06",
+        false,
+    )
+    .expect("white_fast_screen_opening_0_ply9: valid fen")
+}
+
+fn black_gate_loss_b_ply31_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 b 0 0 0 0 0 6 n11/n06a0xn01e0xn02/n02xxmn01s0xd0mn05/n02xxmn08/n02y0xn02xxmn01xxmn03/xxQn04xxUn04xxQ/n07xxMn03/n05xxMxxMn04/n02xxMn08/n03A0xE0xn01S0xn01Y0xn02/D0xn10",
+        false,
+    )
+    .expect("black_gate_loss_b_ply31: valid fen")
+}
+
 fn normal_ext_sensitive_a_triage_game() -> MonsGame {
     MonsGame::from_fen(
         "0 0 b 1 0 3 0 0 4 n02y0xn02d0xn05/n05s0xe0xa0xn03/n06xxmn04/n04xxmn06/n03xxmxxmn02xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n05xxMxxMn04/n05S0xn05/n07Y0xD0xn02/n03E0xA0xn06",
@@ -3265,7 +3714,7 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,
-            expected_selected_input_fen: None,
+            expected_selected_input_fen: Some("l0,5;l1,5"),
         },
         TriageFixture {
             id: "primary_ext_sensitive_no_ext_a",
@@ -3273,7 +3722,7 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,
-            expected_selected_input_fen: None,
+            expected_selected_input_fen: Some("l2,6;l3,7"),
         },
         TriageFixture {
             id: "primary_ext_sensitive_more_ext_a",
@@ -3289,11 +3738,331 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,
-            expected_selected_input_fen: None,
+            expected_selected_input_fen: Some("l3,6;l2,6"),
         },
         TriageFixture {
             id: "primary_ext_sensitive_more_ext_b",
             game: extension_sensitive_more_ext_b_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: None,
+        },
+        TriageFixture {
+            id: "primary_harvest_black_override_loss_a",
+            game: harvested_black_override_loss_a_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l0,6;l1,6"),
+        },
+        TriageFixture {
+            id: "primary_harvest_black_override_loss_b",
+            game: harvested_black_override_loss_b_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l0,6;l1,6"),
+        },
+        TriageFixture {
+            id: "primary_harvest_black_late_kill_loss_a",
+            game: harvested_black_late_kill_loss_a_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l6,1;l7,2"),
+        },
+        TriageFixture {
+            id: "primary_harvest_black_late_kill_loss_b",
+            game: harvested_black_late_kill_loss_b_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l6,1;l7,2"),
+        },
+        TriageFixture {
+            id: "primary_harvest_white_score_route_win_a",
+            game: harvested_white_score_route_win_a_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l7,4;l8,3"),
+        },
+        TriageFixture {
+            id: "primary_harvest_white_score_route_win_b",
+            game: harvested_white_score_route_win_b_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l10,5;l9,4"),
+        },
+        TriageFixture {
+            id: "primary_black_loss_opening_a",
+            game: black_loss_opening_a_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l10,6;l9,6"),
+        },
+        TriageFixture {
+            id: "primary_black_loss_opening_b",
+            game: black_loss_opening_b_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: None,
+        },
+        TriageFixture {
+            id: "primary_black_loss_opening_a_after_white",
+            game: black_loss_opening_a_after_white_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: None,
+        },
+        TriageFixture {
+            id: "primary_black_loss_opening_b_after_white",
+            game: black_loss_opening_b_after_white_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: None,
+        },
+        TriageFixture {
+            id: "primary_black_loss_opening_a_black_turn",
+            game: black_loss_opening_a_black_turn_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l0,4;l1,5"),
+        },
+        TriageFixture {
+            id: "primary_black_reliability_opening_0_ba_black_turn",
+            game: black_reliability_opening_0_ba_black_turn_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l0,4;l1,5"),
+        },
+        TriageFixture {
+            id: "primary_black_reliability_opening_0_ba_live_black_turn",
+            game: black_reliability_opening_0_ba_live_black_turn_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l0,4;l1,5"),
+        },
+        TriageFixture {
+            id: "primary_black_reliability_opening_1_ab_live_black_turn",
+            game: black_reliability_opening_1_ab_live_black_turn_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: None,
+        },
+        TriageFixture {
+            id: "primary_black_loss_opening_b_black_turn",
+            game: black_loss_opening_b_black_turn_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l0,4;l1,4"),
+        },
+        TriageFixture {
+            id: "primary_black_reduced_gate_opening_1_black_turn",
+            game: black_reduced_gate_opening_1_black_turn_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l0,4;l1,5"),
+        },
+        TriageFixture {
+            id: "primary_black_loss_runtime_b_ply3",
+            game: black_loss_runtime_b_ply3_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: None,
+        },
+        TriageFixture {
+            id: "primary_black_harvest_loss_a_ply2",
+            game: black_harvest_loss_a_ply2_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l0,3;l1,2"),
+        },
+        TriageFixture {
+            id: "primary_black_harvest_loss_b_ply3",
+            game: black_harvest_loss_b_ply3_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l0,4;l1,5"),
+        },
+        TriageFixture {
+            id: "primary_black_reliability_opening_3_ply4",
+            game: black_reliability_opening_3_ply4_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: None,
+        },
+        TriageFixture {
+            id: "primary_black_reliability_opening_3_ply3",
+            game: black_reliability_opening_3_ply3_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: None,
+        },
+        TriageFixture {
+            id: "primary_black_gate_loss_a_ply4",
+            game: black_gate_loss_a_ply4_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l0,4;l1,5"),
+        },
+        TriageFixture {
+            id: "primary_black_gate_loss_a_ply5",
+            game: black_gate_loss_a_ply5_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l0,3;l1,3"),
+        },
+        TriageFixture {
+            id: "primary_black_gate_loss_b_ply3",
+            game: black_gate_loss_b_ply3_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l0,3;l1,2"),
+        },
+        TriageFixture {
+            id: "primary_black_loss_opening_a_ply6",
+            game: black_loss_opening_a_ply6_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l0,5;l1,6"),
+        },
+        TriageFixture {
+            id: "primary_black_loss_opening_a_ply3",
+            game: black_loss_opening_a_ply3_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l10,4;l9,5"),
+        },
+        TriageFixture {
+            id: "primary_black_loss_opening_b_ply5",
+            game: black_loss_opening_b_ply5_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l0,4;l1,5"),
+        },
+        TriageFixture {
+            id: "primary_black_loss_opening_a_ply7",
+            game: black_loss_opening_a_ply7_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l0,7;l1,7"),
+        },
+        TriageFixture {
+            id: "primary_black_loss_opening_c_ply6",
+            game: black_loss_opening_c_ply6_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l0,7;l1,7"),
+        },
+        TriageFixture {
+            id: "primary_black_loss_opening_a_ply19",
+            game: black_loss_opening_a_ply19_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l2,5;l1,4"),
+        },
+        TriageFixture {
+            id: "primary_black_reduced_gate_opening_1_ply19",
+            game: black_reduced_gate_opening_1_ply19_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l1,4;l2,5"),
+        },
+        TriageFixture {
+            id: "primary_black_reduced_gate_opening_1_ply21",
+            game: black_reduced_gate_opening_1_ply21_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l1,6;l2,6"),
+        },
+        TriageFixture {
+            id: "primary_black_reduced_gate_opening_1_ply31",
+            game: black_reduced_gate_opening_1_ply31_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l1,5;l3,5;l3,6"),
+        },
+        TriageFixture {
+            id: "primary_black_loss_opening_c_ply17",
+            game: black_loss_opening_c_ply17_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l1,5;l3,4;l2,5"),
+        },
+        TriageFixture {
+            id: "primary_white_harvest_loss_a_ply2",
+            game: white_harvest_loss_a_ply2_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: None,
+        },
+        TriageFixture {
+            id: "primary_white_harvest_loss_b_ply10",
+            game: white_harvest_loss_b_ply10_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: None,
+        },
+        TriageFixture {
+            id: "primary_white_harvest_loss_c_ply24",
+            game: white_harvest_loss_c_ply24_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: None,
+        },
+        TriageFixture {
+            id: "primary_white_harvest_loss_d_ply25",
+            game: white_harvest_loss_d_ply25_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: None,
+        },
+        TriageFixture {
+            id: "primary_white_fast_screen_opening_0_ply9",
+            game: white_fast_screen_opening_0_ply9_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: None,
+        },
+        TriageFixture {
+            id: "primary_black_gate_loss_b_ply31",
+            game: black_gate_loss_b_ply31_triage_game(),
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,

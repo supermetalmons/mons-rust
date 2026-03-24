@@ -4,12 +4,19 @@ This is the active backlog for upcoming automove iterations.
 
 Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file lean: current state, live frontier, workflow backlog, and compact recent outcomes only. Move durable lessons to `docs/automove-knowledge.md` and wave history to `docs/automove-archive.md`.
 
-## Current State (2026-03-22)
+## Current State (2026-03-24)
 
-- Production Pro in `runtime_current` still uses the turn-opportunity planner promotion from March 18, 2026.
-- Release speed gates after that promotion stayed green (`opening black reply`: fast `3.87ms`, normal `3.99ms`, pro `4.06ms`; `mixed`: fast `5.89ms`, normal `31.82ms`, pro `121.68ms`).
-- `runtime_pro_turn_engine_v1` is the only live promotion candidate.
-- `runtime_pro_intent_planner_v2` and the recent Fast uplift wave are no longer part of the live frontier; their lessons were compressed into `docs/automove-knowledge.md` and `docs/automove-archive.md`.
+- Production Pro in `runtime_current` still uses the promoted turn-opportunity planner from March 18, 2026.
+- The large ProV2 turn-engine wave has been compressed. Durable shared work is retained in the engine/runtime code:
+  - opportunity-context extraction
+  - best-plan / no-plan / continuation caching
+  - config-fingerprinted cache reuse
+  - selector utility and followup-floor caching
+  - low-budget / eligibility / resume logic
+  - Pro-aware `runtime-preflight`, `pro-reliability`, and duel-progress workflow support
+- `runtime_pro_turn_engine_v30` is the sole active ProV2 frontier.
+- `runtime_pro_turn_engine_v1` remains only as a retained reference/baseline, not the live frontier.
+- `runtime_pro_turn_engine_v30` is stronger than the earlier wrapper splits and cleared direct/faster earned stages during the wave, but it is still not promotable because the earned path is incomplete and strict direct-gate thresholds have now been restored.
 - Default artifact layout is now:
   - logs: `target/experiment-runs/<candidate>/`
   - workflow-only logs: `target/experiment-runs/misc/`
@@ -34,28 +41,27 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
 
 ## Active Frontier
 
-### Idea: Pro turn engine v1 promotion
+### Idea: Pro turn engine v30 completion
 
 - Base profile: `runtime_current`
 - Target mode: `pro`
-- Triage surface: `primary_pro` (off-target guard: `opening_reply`)
-- Triage pass signal: engine plans expand on primary Pro fixtures and direct `runtime_pro_turn_engine_v1` vs `runtime_current` reliability turns positive before full earned-path spend
+- Triage surface: `primary_pro`
+- Triage pass signal: `runtime_pro_turn_engine_v30` keeps moving `primary_pro` fixtures while preserving `runtime-preflight` and re-earning direct `runtime_pro_turn_engine_v30` vs `runtime_current` reliability under the restored strict gate
 - Calibration gate: none
-- Expected upside: stronger full-turn continuation on spirit/setup and tactical conversion lines without regressing current Pro selectors
-- CPU risk: medium-to-high (seed previews, reply beams, continuation replay)
-- Cheapest falsifier: direct Pro-vs-current disagreement signal stays flat after another focused engine-coverage split
+- Expected upside: stronger full-turn planning and continuation reuse than shipping Pro without reopening the old CPU-heavy branch
+- CPU risk: medium (earned-path runtime already improved, but progressive/larger duels still need proof)
+- Cheapest falsifier: strict `pro-reliability` or the next earned duel stage stays flat after one exact live-loss fix
 - Current checkpoint:
-  - direct activity probe now adjudicates non-terminal samples instead of panicking at `total_games=0`
-  - continuation replay is guarded again; reduced-budget reply-risk reranks no longer pollute the real cache
-  - engine seed generation now covers spirit-impact previews, exact-preview drainer progress, and oracle walk seeds
-  - regression coverage exists for immediate-score usage, spirit/setup selection, cached continuation replay, and reply-risk tiebreak protection
-  - fixture progress improved on `primary_spirit_setup`, but sampled direct Pro-vs-current runs stayed neutral (`win_rate=0.5000`, `disagreements=0`)
-- Current blocker: the candidate is structurally better, but it is not yet generating beneficial selector disagreements against `runtime_current`
-- Next split: add richer direct disagreement tracing and target the remaining `NoPlan` / selected-mismatch fixtures before touching broader selector gates
+  - shared ProV2 planning/cache infrastructure is retained in the common engine path
+  - `runtime-preflight` is Pro-aware and `pro-reliability` is part of the canonical workflow
+  - `runtime_pro_turn_engine_v30` is the retained frontier after the compressed `v2`..`v30` wave
+  - earlier wrapper splits and branch-specific clutter have been archived out of the active registry
+- Current blocker: the frontier still has not completed the full earned path under the restored strict direct gate and progressive/ladder proof remains incomplete
+- Next split: harvest the next exact live loss from `runtime_pro_turn_engine_v30` on the canonical earned path instead of reopening branch proliferation
 - How to test:
   - `guardrails -> SMART_TRIAGE_SURFACE=primary_pro pro-triage -> runtime-preflight`
-  - `smart_automove_pro_reliability_loss_probe` against `runtime_current`
-  - only after direct reliability turns positive: `pro-fast-screen -> pro-progressive -> pro-ladder`
+  - `pro-reliability` against `runtime_current`
+  - only after the strict direct gate is green: `pro-fast-screen -> pro-progressive -> pro-ladder`
 - Status: active
 
 ## Workflow Backlog
@@ -88,6 +94,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
 
 ## Recently Closed / Parked
 
+- Pro turn-engine wave compression: `runtime_pro_turn_engine_v2`..`v30` were reduced to one retained frontier plus archived lessons; see `docs/automove-archive.md`.
 - Pro intent planner v2 stabilization: early gates and bounded ladder speed could be kept green in the emergency-only shape, but direct reliability remained flat and the branch did not justify live-frontier space.
 - Fast tactical uplift against current Normal: repeated reply-risk, spirit-setup, opponent-mana, and scoring-only splits either failed triage, stayed flat at first duel, or hit progressive runtime cliffs; reopen only with a genuinely new code path.
 - Pro turn-opportunity planner v1: promoted to production Pro on March 18, 2026; keep the rollout Pro-only because direct Fast/Normal transplants regressed Normal.

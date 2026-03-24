@@ -28,6 +28,44 @@ This document keeps compressed history for retired automove profiles and experim
   - opening-book fallback ordering must stay ahead of Pro-specific branching
   - do not keep a long-form branch diary live once the branch stops being the main frontier
 
+## Wave 7: Pro Turn-Engine Compression (Mar 20-24, 2026)
+
+- Scope: `runtime_pro_turn_engine_v2` through `runtime_pro_turn_engine_v30`.
+- Why this wave happened:
+  - the original `runtime_pro_turn_engine_v1` frontier proved the turn-engine direction but stayed too weak
+  - the next wave tried to recover strength with a ProV2 engine, richer caching, selector diagnostics, and many narrow cross-budget wrappers
+- Durable shared work retained from the wave:
+  - opportunity-context extraction
+  - best-plan / no-plan / continuation caching
+  - config-fingerprinted cache reuse
+  - selector utility and followup-floor caching
+  - low-budget / eligibility / resume logic
+  - Pro-aware `runtime-preflight`
+  - `pro-reliability` as a canonical workflow stage
+  - duel-progress logging and reusable selector / forced-root probes
+- Compressed branch story:
+  - `runtime_pro_turn_engine_v2`
+    - first branch that showed the new ProV2 line could be materially stronger
+    - main lesson: strength alone was not enough; the branch was too CPU-heavy to retain as the live selectable frontier
+  - `runtime_pro_turn_engine_v25`
+    - stable wrapper base that first cleared the fast-screen blocker family cleanly
+    - main lesson: a small number of wrapper exceptions can recover real cross-budget lanes, but the family saturates quickly
+  - `runtime_pro_turn_engine_v28` / `runtime_pro_turn_engine_v29` and similar neighbors
+    - mostly narrow wrapper splits around traced openings
+    - main lesson: keep the branch-local proof, archive the IDs, and do not leave these live in the active registry
+  - `runtime_pro_turn_engine_v30`
+    - retained frontier after the compression
+    - cleared the earlier direct and fast-screen gates in the wave
+    - did not finish the full earned path because progressive/larger proof was still incomplete
+- Why the wave was compressed instead of promoted:
+  - too many branch IDs accumulated
+  - useful lessons had already moved into shared engine/workflow code
+  - the next iteration needed one clear frontier, not another wrapper split family
+- Retained decision:
+  - archive `v2`..`v29`
+  - keep `runtime_pro_turn_engine_v30` as the sole active ProV2 frontier
+  - keep `runtime_pro_turn_engine_v1` only as reference history
+
 ## Parked Campaign: Fast Tactical Uplift Against Current Normal (Mar 18-20, 2026)
 
 - Goal: recover the `normal` vs `fast` gap without violating Fast latency.

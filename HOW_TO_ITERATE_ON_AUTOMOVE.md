@@ -32,6 +32,7 @@ SMART_PROMOTION_TARGET_MODE=<fast|normal> ./scripts/run-automove-experiment.sh l
 ./scripts/run-automove-experiment.sh pro-opening-speed-probe <candidate>   # optional for opening_reply ideas
 SMART_TRIAGE_SURFACE=<opening_reply|primary_pro> ./scripts/run-automove-experiment.sh pro-triage <candidate>
 ./scripts/run-automove-experiment.sh runtime-preflight <candidate>
+./scripts/run-automove-experiment.sh pro-reliability <candidate>
 ./scripts/run-automove-experiment.sh pro-fast-screen <candidate>
 ./scripts/run-automove-experiment.sh pro-progressive <candidate>
 ./scripts/run-automove-experiment.sh pro-ladder <candidate>
@@ -72,7 +73,8 @@ cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --
 
 - Review `git status` before publish.
 - Confirm `runtime_current` is still the shipping automove path.
-- Confirm `runtime_pro_turn_engine_v1` is still a retained experiment profile and not wired into production runtime.
+- Confirm `runtime_pro_turn_engine_v30` is still the retained ProV2 frontier and not wired into production runtime.
+- Confirm `runtime_pro_turn_engine_v1` remains reference-only retained history, not the live frontier.
 - Run:
 
 ```sh
@@ -93,7 +95,8 @@ Production blockers:
 
 Retained but non-blocking experiment state:
 
-- `runtime_pro_turn_engine_v1` code, probes, and fixtures
+- `runtime_pro_turn_engine_v30` code, probes, and fixtures
+- `runtime_pro_turn_engine_v1` reference-only code and shared regression coverage
 - ignored experiment-only tests and scripts
 - backlog, archive, and durable knowledge updates
 
