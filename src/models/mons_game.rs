@@ -127,25 +127,53 @@ impl MonsGame {
         }
     }
 
-    pub fn clone_for_simulation(&self) -> Self {
+    pub(crate) fn new_simulation_state(
+        board: Board,
+        white_score: i32,
+        black_score: i32,
+        active_color: Color,
+        actions_used_count: i32,
+        mana_moves_count: i32,
+        mons_moves_count: i32,
+        white_potions_count: i32,
+        black_potions_count: i32,
+        turn_number: i32,
+    ) -> Self {
         Self {
-            board: self.board.clone(),
-            white_score: self.white_score,
-            black_score: self.black_score,
-            active_color: self.active_color,
-            actions_used_count: self.actions_used_count,
-            mana_moves_count: self.mana_moves_count,
-            mons_moves_count: self.mons_moves_count,
-            white_potions_count: self.white_potions_count,
-            black_potions_count: self.black_potions_count,
-            turn_number: self.turn_number,
+            board,
+            white_score,
+            black_score,
+            active_color,
+            actions_used_count,
+            mana_moves_count,
+            mons_moves_count,
+            white_potions_count,
+            black_potions_count,
+            turn_number,
             takeback_fens: vec![],
-            is_moves_verified: self.is_moves_verified,
+            is_moves_verified: true,
             with_verbose_tracking: false,
             verbose_tracking_entities: vec![],
             track_takeback_history: false,
             process_input_cache: ProcessInputCache::default(),
         }
+    }
+
+    pub fn clone_for_simulation(&self) -> Self {
+        let mut simulation = Self::new_simulation_state(
+            self.board.clone(),
+            self.white_score,
+            self.black_score,
+            self.active_color,
+            self.actions_used_count,
+            self.mana_moves_count,
+            self.mons_moves_count,
+            self.white_potions_count,
+            self.black_potions_count,
+            self.turn_number,
+        );
+        simulation.is_moves_verified = self.is_moves_verified;
+        simulation
     }
 
     pub(crate) fn set_takeback_history_tracking(&mut self, enabled: bool) {
