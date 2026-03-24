@@ -2601,17 +2601,18 @@ fn quick_order_score(
 }
 
 fn turn_oracle_context(game: &MonsGame, perspective: Color) -> TurnOracleContext {
+    let state_hash = MonsGameModel::search_state_hash(game);
     let key = TurnOracleCacheKey {
-        state_hash: MonsGameModel::search_state_hash(game),
+        state_hash,
         perspective,
     };
     if let Some(cached) = TURN_ENGINE_ORACLE_CACHE.with(|cache| cache.borrow().get(&key).copied()) {
         return cached;
     }
 
-    let strategic_analysis = exact_strategic_analysis(game);
+    let strategic_analysis = exact_strategic_analysis_with_search_hash(game, state_hash);
     let built = TurnOracleContext {
-        opportunity: exact_opportunity_context(game, perspective),
+        opportunity: exact_opportunity_context_with_search_hash(game, perspective, state_hash),
         strategic: strategic_analysis.color_summary(perspective),
         opponent_immediate_window: strategic_analysis
             .color_summary(perspective.other())
@@ -2916,7 +2917,8 @@ fn discover_turn_opportunities_v2(
         return Vec::new();
     }
 
-    let context = exact_opportunity_context(game, perspective);
+    let state_hash = MonsGameModel::search_state_hash(game);
+    let context = exact_opportunity_context_with_search_hash(game, perspective, state_hash);
     let emergency = context.opponent_can_win_immediately || context.delta.drainer_safety < 0;
     let mut seeds = Vec::new();
     if family_allowed(allowed_families, TurnPlanFamily::ImmediateScore) {
@@ -3085,7 +3087,11 @@ fn generate_action_seeds_v1(
     seeds.extend(oracle_walk_seeds(
         game,
         perspective,
-        exact_opportunity_context(game, perspective),
+        exact_opportunity_context_with_search_hash(
+            game,
+            perspective,
+            MonsGameModel::search_state_hash(game),
+        ),
         None,
     ));
     seeds.extend(spirit_impact_seeds(game, perspective, config));
@@ -3212,7 +3218,9 @@ fn immediate_score_seeds(game: &MonsGame, perspective: Color) -> Vec<ActionSeed>
 
 fn deny_window_seeds(game: &MonsGame, perspective: Color) -> Vec<ActionSeed> {
     let opponent = perspective.other();
-    let deny_pressure = exact_turn_summary(game, opponent).same_turn_score_window_value;
+    let deny_pressure =
+        exact_turn_summary_with_search_hash(game, opponent, MonsGameModel::search_state_hash(game))
+            .same_turn_score_window_value;
     if deny_pressure <= 0 && !opponent_can_win_immediately(game, perspective) {
         return Vec::new();
     }
@@ -3751,8 +3759,9 @@ fn oracle_walk_seeds(
     }
 
     let before_turn = context.turn;
+    let before_state_hash = MonsGameModel::search_state_hash(game);
     let before_spirit = if allow_spirit {
-        strategic_spirit_signal(game, perspective)
+        strategic_spirit_signal_with_search_hash(game, perspective, before_state_hash)
     } else {
         (0, 0)
     };
@@ -3794,13 +3803,28 @@ fn oracle_walk_seeds(
                 continue;
             }
 
-            let after_turn = if allow_supermana || allow_opponent_mana || allow_spirit {
-                Some(exact_turn_summary(&after, perspective))
+            let need_after_turn = allow_supermana || allow_opponent_mana || allow_spirit;
+            let need_after_spirit = allow_spirit && mon.kind == MonKind::Spirit;
+            let after_state_hash = if need_after_turn || need_after_spirit {
+                Some(MonsGameModel::search_state_hash(&after))
             } else {
                 None
             };
-            let after_spirit = if allow_spirit && mon.kind == MonKind::Spirit {
-                strategic_spirit_signal(&after, perspective)
+            let after_turn = if need_after_turn {
+                Some(exact_turn_summary_with_search_hash(
+                    &after,
+                    perspective,
+                    after_state_hash.expect("after_state_hash present when after_turn is needed"),
+                ))
+            } else {
+                None
+            };
+            let after_spirit = if need_after_spirit {
+                strategic_spirit_signal_with_search_hash(
+                    &after,
+                    perspective,
+                    after_state_hash.expect("after_state_hash present when after_spirit is needed"),
+                )
             } else {
                 (0, 0)
             };
@@ -3948,8 +3972,12 @@ fn oracle_walk_seeds(
     seeds
 }
 
-fn strategic_spirit_signal(game: &MonsGame, perspective: Color) -> (i32, i32) {
-    let spirit = exact_strategic_analysis(game)
+fn strategic_spirit_signal_with_search_hash(
+    game: &MonsGame,
+    perspective: Color,
+    state_hash: u64,
+) -> (i32, i32) {
+    let spirit = exact_strategic_analysis_with_search_hash(game, state_hash)
         .color_summary(perspective)
         .spirit;
     (spirit.next_turn_setup_gain, spirit.utility)
@@ -3967,7 +3995,11 @@ fn spirit_impact_seeds(
         return Vec::new();
     }
     let mut seeds = Vec::new();
-    let before_turn = exact_turn_summary(game, perspective);
+    let before_turn = exact_turn_summary_with_search_hash(
+        game,
+        perspective,
+        MonsGameModel::search_state_hash(game),
+    );
     let before_safety = own_drainer_safety_score(&game.board, perspective);
     for (spirit_location, item) in game.board.occupied() {
         let Some(mon) = item.mon().copied() else {
@@ -4798,14 +4830,16 @@ fn should_attempt_pro_v2_turn_engine(game: &MonsGame, perspective: Color) -> boo
 
     let is_turn_start =
         game.mons_moves_count == 0 && game.player_can_use_action() && game.player_can_move_mana();
-    let context = exact_opportunity_context(game, perspective);
+    let state_hash = key.state_hash;
+    let context = exact_opportunity_context_with_search_hash(game, perspective, state_hash);
     let has_meaningful_budget = context.budget.remaining_mon_moves >= 2
         || context.budget.can_use_action
         || context.budget.can_move_mana;
     let allowed = if !has_meaningful_budget {
         false
     } else {
-        let strategic = exact_strategic_analysis(game).color_summary(perspective);
+        let strategic =
+            exact_strategic_analysis_with_search_hash(game, state_hash).color_summary(perspective);
         let spirit_setup_gain = strategic.spirit.next_turn_setup_gain;
         let turn_start_strategic_surface = is_turn_start
             && (spirit_setup_gain > 0

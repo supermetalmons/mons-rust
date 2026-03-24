@@ -59,8 +59,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
 - Current blocker: the frontier still has not completed the full earned path under the restored strict direct gate and progressive/ladder proof remains incomplete
 - Recent outcome:
   - the stronger macro-head acceptance blockers (`primary_spirit_setup`, `primary_black_loss_opening_a_ply19`, `human_win_pro_a`) are now covered by direct regressions and stay green on the v30 suite
-  - the practical earned-path blocker is now CPU spend in duel-scale `pro-reliability`, with hot samples concentrated in `oracle_walk_seeds` / exact turn-summary work during main head planning
-- Next split: keep the single v30 frontier and cut duel-scale CPU from the remaining `oracle_walk_seeds` / exact-summary path before retrying the full earned path
+  - shared-hash exact helpers now feed the turn oracle / eligibility gate, and secure-mana recursion prunes impossible drainer walks before `process_input`
+  - `guardrails`, `SMART_TRIAGE_SURFACE=primary_pro pro-triage`, and `runtime-preflight` still pass after those cuts, with `primary_pro` unchanged at `target_changed=14` and `off_target_changed=0`
+  - the practical earned-path blocker is still CPU spend in duel-scale `pro-reliability`; fresh samples remain concentrated in `oracle_walk_seeds -> build_exact_turn_summary -> exact_secure_specific_mana_steps_in_game`, with `exact_search_state_hash` still topping the hot stack
+- Next split: keep the single v30 frontier and either (1) add a cheaper family-specific screen before `oracle_walk_seeds` pays exact turn-summary cost for non-drainer walks, or (2) cut repeated hash / secure-mana work inside exact turn-summary itself before retrying the full earned path
 - How to test:
   - `guardrails -> SMART_TRIAGE_SURFACE=primary_pro pro-triage -> runtime-preflight`
   - `pro-reliability` against `runtime_current`

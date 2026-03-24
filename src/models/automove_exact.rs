@@ -481,6 +481,14 @@ pub(crate) fn clear_exact_state_analysis_cache() {
 #[cfg(any(target_arch = "wasm32", test))]
 pub(crate) fn exact_state_analysis(game: &MonsGame) -> ExactStateAnalysis {
     let key = exact_search_state_hash(game);
+    exact_state_analysis_with_search_hash(game, key)
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn exact_state_analysis_with_search_hash(
+    game: &MonsGame,
+    key: u64,
+) -> ExactStateAnalysis {
     EXACT_STATE_ANALYSIS_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         if let Some(cached) = cache.entries.get(&key).copied() {
@@ -499,6 +507,13 @@ pub(crate) fn exact_state_analysis(game: &MonsGame) -> ExactStateAnalysis {
 
 pub(crate) fn exact_strategic_analysis(game: &MonsGame) -> ExactStrategicAnalysis {
     let key = exact_search_state_hash(game);
+    exact_strategic_analysis_with_search_hash(game, key)
+}
+
+pub(crate) fn exact_strategic_analysis_with_search_hash(
+    game: &MonsGame,
+    key: u64,
+) -> ExactStrategicAnalysis {
     EXACT_STRATEGIC_ANALYSIS_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         if let Some(cached) = cache.entries.get(&key).copied() {
@@ -518,12 +533,22 @@ pub(crate) fn exact_strategic_analysis(game: &MonsGame) -> ExactStrategicAnalysi
 #[cfg(any(target_arch = "wasm32", test))]
 #[inline]
 pub(crate) fn exact_turn_summary(game: &MonsGame, color: Color) -> ExactTurnSummary {
+    let key = exact_search_state_hash(game);
+    exact_turn_summary_with_search_hash(game, color, key)
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+pub(crate) fn exact_turn_summary_with_search_hash(
+    game: &MonsGame,
+    color: Color,
+    key: u64,
+) -> ExactTurnSummary {
     if game.active_color != color {
         ExactTurnSummary {
             ..ExactTurnSummary::default()
         }
     } else {
-        let key = exact_search_state_hash(game);
         EXACT_TURN_SUMMARY_CACHE.with(|cache| {
             let mut cache = cache.borrow_mut();
             if let Some(cached) = cache.entries.get(&key).copied() {
@@ -547,9 +572,16 @@ pub(crate) fn can_attack_opponent_drainer_this_turn(game: &MonsGame, color: Colo
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-pub(crate) fn exact_opportunity_context(
+pub(crate) fn exact_opportunity_context(game: &MonsGame, color: Color) -> ExactOpportunityContext {
+    let key = exact_search_state_hash(game);
+    exact_opportunity_context_with_search_hash(game, color, key)
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn exact_opportunity_context_with_search_hash(
     game: &MonsGame,
     color: Color,
+    key: u64,
 ) -> ExactOpportunityContext {
     if game.active_color != color {
         return ExactOpportunityContext::default();
@@ -560,7 +592,7 @@ pub(crate) fn exact_opportunity_context(
         can_use_action: game.player_can_use_action(),
         can_move_mana: game.player_can_move_mana(),
     };
-    let turn = exact_turn_summary(game, color);
+    let turn = exact_turn_summary_with_search_hash(game, color, key);
     let drainer_safety = exact_own_drainer_safety_score(&game.board, color);
     let opponent = color.other();
     let opponent_score = if opponent == Color::White {
@@ -569,12 +601,13 @@ pub(crate) fn exact_opportunity_context(
         game.black_score
     };
     let opponent_needed = Config::TARGET_SCORE.saturating_sub(opponent_score);
-    let opponent_immediate = exact_strategic_analysis(game)
+    let opponent_immediate = exact_strategic_analysis_with_search_hash(game, key)
         .color_summary(opponent)
         .immediate_window
         .best_score;
     let opponent_can_win_immediately = opponent_needed > 0 && opponent_immediate >= opponent_needed;
-    let opponent_window_deny_gain = if opponent_needed > 0 && turn.same_turn_score_window_value > 0 {
+    let opponent_window_deny_gain = if opponent_needed > 0 && turn.same_turn_score_window_value > 0
+    {
         turn.same_turn_score_window_value.min(opponent_needed)
     } else {
         0
@@ -780,6 +813,30 @@ fn exact_search_state_hash(game: &MonsGame) -> u64 {
     state ^= exact_search_mix_u64(game.black_potions_count as i64 as u64 ^ 0x8f);
     state ^= exact_search_mix_u64(game.turn_number as i64 as u64 ^ 0xa1);
     exact_search_mix_u64(state)
+}
+
+#[inline]
+fn exact_walk_destination_plausible(board: &Board, actor: Location, destination: Location) -> bool {
+    let Some(actor_mon) = board.item(actor).and_then(|item| item.mon()).copied() else {
+        return false;
+    };
+    match board.item(destination) {
+        Some(Item::Mon { .. })
+        | Some(Item::MonWithMana { .. })
+        | Some(Item::MonWithConsumable { .. }) => false,
+        Some(Item::Mana { .. }) | Some(Item::Consumable { .. }) | None => {
+            match board.square(destination) {
+                Square::Regular
+                | Square::ConsumableBase
+                | Square::ManaBase { .. }
+                | Square::ManaPool { .. } => true,
+                Square::SupermanaBase => actor_mon.kind == MonKind::Drainer,
+                Square::MonBase { kind, color } => {
+                    actor_mon.kind == kind && actor_mon.color == color
+                }
+            }
+        }
+    }
 }
 
 #[inline]
@@ -1761,6 +1818,9 @@ fn exact_secure_specific_mana_steps_in_game_uncached(
 
     let mut best = None;
     for &next in drainer_location.nearby_locations_ref() {
+        if !exact_walk_destination_plausible(&game.board, drainer_location, next) {
+            continue;
+        }
         let mut after = game.clone_for_simulation();
         let Output::Events(events) = after.process_input(
             vec![Input::Location(drainer_location), Input::Location(next)],
@@ -1825,6 +1885,9 @@ fn exact_secure_specific_mana_path_from_uncached(
         let mut best_path: Option<Vec<Location>> = None;
 
         for &next in start.nearby_locations_ref() {
+            if !exact_walk_destination_plausible(&game.board, start, next) {
+                continue;
+            }
             let mut after = game.clone_for_simulation();
             let Output::Events(events) = after.process_input(
                 vec![Input::Location(start), Input::Location(next)],
