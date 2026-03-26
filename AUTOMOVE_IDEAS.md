@@ -13,6 +13,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
 - `runtime_pro_turn_engine_v31` through `runtime_pro_turn_engine_v52` are archived roadmap follow-through, not separate live frontiers.
 - No extra Pro candidate is retained as active after the latest follow-up loop.
 - The latest archived follow-up is `runtime_pro_turn_engine_v54_tactical_window_cache_v1`, built on the `v53` exact preview fast path.
+- Fresh March 26, 2026 secure-recursion follow-ups `runtime_pro_turn_engine_v55_secure_mana_precheck_v1` and `runtime_pro_turn_engine_v56_secure_drainer_walk_cache_v1` were both killed at the bounded hotspot stage and discarded; `v54` remains the latest useful archived code follow-up.
 - Default artifact layout is:
   - logs: `target/experiment-runs/<candidate>/`
   - workflow-only logs: `target/experiment-runs/misc/`
@@ -61,10 +62,12 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file le
   - Focused parity coverage exists for the spirit-preview helper, tactical spirit summary score-only parity, denial-only parity, full score+denial+progress parity, tactical projection parity, and immediate tactical-window parity.
   - The bounded hotspot probe shows that `v54` is useful but not decisive: on `primary_spirit_setup`, wall-clock improved from `337.10ms` on `v53` to `321.98ms` with `immediate_window_hits=21927`; on `human_win_pro_a`, it stayed effectively flat (`1300.71ms -> 1292.17ms`) even with `immediate_window_hits=35008`.
   - A follow-up `v55` fast-lookup attempt cut counted immediate-window queries further, but it did not improve the hotspot wall enough to justify keeping the code, so it was discarded.
+  - The March 26, 2026 `v55` secure-mana precheck follow-up proved the current wall is not at the wrapper boundary: it produced large `secure_mana_precheck_hits`, but the hotspot stayed flat or worse (`primary_spirit_setup 322.20ms -> 324.37ms`, `human_win_pro_a 1273.92ms -> 1327.95ms`), so the code was discarded without spending earned-path stages.
+  - The March 26, 2026 `v56` secure drainer-walk metadata fast path also lost early. Even with heavy `secure_drainer_walk_hits`, the bounded probe regressed the returned boards (`primary_spirit_setup 322.20ms -> 407.55ms`, `human_win_pro_a 1273.92ms -> 1525.18ms`, `spirit_development 464.54ms -> 612.71ms`), so that code was also discarded.
   - A clean `pro-reliability` run for `v54` still did not complete in a practical window and was manually stopped after roughly 80 seconds with no completion summary. Until that changes, `runtime_pro_turn_engine_v30` remains the retained frontier and `v54` stays archived-only.
 - Next split:
-  - Stay inside the returned exact-oracle wall first, but move below the immediate-window cache layer: cut secure drainer recursion and touched-state churn inside `exact_apply_secure_drainer_walk_in_place` / `exact_secure_specific_mana_steps_in_game_with_key_at_mut`, or avoid paying that work from the tactical spirit path when the caller only needs score or denial.
-  - If another bounded exact cut stays flat on `human_win_pro_a`, reopen shared search-side reuse in `ranked_child_states`, reply-risk scoring, and `move_efficiency_snapshot` rather than spending more time on preview-local window caching variants.
+  - Do not spend more time on wrapper-local or transition-metadata exact caches around secure-mana recursion. `v55` and `v56` falsified that family.
+  - The next live split should either go deeper into the secure drainer recursion itself (`exact_apply_secure_drainer_walk_in_place` / `exact_secure_specific_mana_steps_in_game_with_key_at_mut`) or move back up to shared search-side reuse in `ranked_child_states`, reply-risk scoring, and `move_efficiency_snapshot`.
   - If the `v30` line still cannot earn a practical `pro-reliability` finish after 2–3 more focused splits, use the roadmap’s remaining structural fallbacks: a guarded hybrid overlay or a cheaper distilled online signal learned from `v30` decisions.
 - How to test:
   - `guardrails -> SMART_TRIAGE_SURFACE=primary_pro pro-triage -> runtime-preflight`

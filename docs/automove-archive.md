@@ -98,6 +98,21 @@ This document keeps compressed history for retired automove profiles and experim
   - neither `v53` nor `v54` finished `pro-reliability` in a practical window
   - the returned direct wall remained deeper in secure drainer recursion, payload churn, and remaining uncached exact-window work, so the retained frontier stayed `runtime_pro_turn_engine_v30`
 
+## Wave 10: Exact Secure-Recursion Cache Follow-Ups (Mar 26, 2026)
+
+- Scope: `runtime_pro_turn_engine_v55` through `runtime_pro_turn_engine_v56`.
+- Why this wave happened:
+  - `v54` proved the immediate tactical-window cache was real but not decisive
+  - the next bounded question was whether the remaining wall was still mostly wrapper/setup work around secure drainer recursion
+- What was tried:
+  - `v55` added a secure-mana precheck against the existing exact secure-mana cache before synthetic game setup
+  - `v56` added a secure drainer-walk metadata fast path to reuse cached transition results before reapplying the move
+- Compressed lesson:
+  - `v55` showed the wrapper was not the bottleneck: it generated many precheck hits, but hotspot wall time stayed flat or regressed (`primary_spirit_setup 322.20ms -> 324.37ms`, `human_win_pro_a 1273.92ms -> 1327.95ms`)
+  - `v56` showed cached drainer-walk metadata was still the wrong cut for the returned boards (`primary_spirit_setup 407.55ms`, `human_win_pro_a 1525.18ms`, `spirit_development 612.71ms`)
+  - both candidates were killed at the bounded hotspot stage and the code was discarded
+  - next work should either go deeper into secure drainer recursion itself or shift back to search-side reuse; do not reopen the same exact cache-layer family without a materially different cut
+
 ## Parked Campaign: Fast Tactical Uplift Against Current Normal (Mar 18-20, 2026)
 
 - Goal: recover the `normal` vs `fast` gap without violating Fast latency.
