@@ -1061,18 +1061,53 @@ pub(crate) fn attack_reach_summary_with_hash(
     remaining_moves: i32,
     can_use_action: bool,
 ) -> AttackReachSummary {
+    let targets = attack_reach_summary_target_locations(board, target_color);
+    attack_reach_summary_for_targets_with_hash(
+        board,
+        board_hash,
+        attacker_color,
+        remaining_moves,
+        can_use_action,
+        targets.as_slice(),
+    )
+}
+
+pub(crate) fn attack_reach_summary_target_locations(
+    board: &Board,
+    target_color: Color,
+) -> Vec<Location> {
+    board
+        .occupied()
+        .filter_map(|(location, item)| {
+            item.mon()
+                .filter(|mon| mon.color == target_color)
+                .map(|_| location)
+        })
+        .collect()
+}
+
+pub(crate) fn attack_reach_summary_for_targets_with_hash(
+    board: &Board,
+    board_hash: u64,
+    attacker_color: Color,
+    remaining_moves: i32,
+    can_use_action: bool,
+    targets: &[Location],
+) -> AttackReachSummary {
     update_exact_query_diagnostics(|diagnostics| diagnostics.attack_reach_summary_builds += 1);
 
     let mut summary = AttackReachSummary::default();
-    if remaining_moves < 0 || !can_use_action {
+    if remaining_moves < 0 || !can_use_action || targets.is_empty() {
         return summary;
     }
 
-    let occupied_targets: Vec<Location> = board.occupied().map(|(location, _)| location).collect();
-    for &target in &occupied_targets {
+    for &target in targets {
+        let Some(target_mon) = board.item(target).and_then(|item| item.mon()) else {
+            continue;
+        };
         summary.mark_guarded(
             target,
-            exact_is_location_guarded_by_angel(board, target_color, target),
+            exact_is_location_guarded_by_angel(board, target_mon.color, target),
         );
     }
 
@@ -1107,7 +1142,7 @@ pub(crate) fn attack_reach_summary_with_hash(
             }
 
             if payload == ExactActorPayload::Bomb {
-                for &target in &occupied_targets {
+                for &target in targets {
                     if location.distance(&target) <= 3 {
                         summary.add_bomb_threat(target);
                     }
@@ -1117,7 +1152,7 @@ pub(crate) fn attack_reach_summary_with_hash(
             if !matches!(board.square(location), Square::MonBase { .. }) {
                 match mon.kind {
                     MonKind::Mystic => {
-                        for &target in &occupied_targets {
+                        for &target in targets {
                             if (location.i - target.i).abs() == 2
                                 && (location.j - target.j).abs() == 2
                             {
@@ -1126,7 +1161,7 @@ pub(crate) fn attack_reach_summary_with_hash(
                         }
                     }
                     MonKind::Demon => {
-                        for &target in &occupied_targets {
+                        for &target in targets {
                             if demon_has_line_attack(board, location, target) {
                                 summary.add_action_threat(target);
                             }
@@ -4781,6 +4816,18 @@ mod tests {
                     Location::new(4, 7),
                     Item::Mon {
                         mon: Mon::new(MonKind::Mystic, Color::Black, 1),
+                    },
+                ),
+                (
+                    Location::new(8, 8),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(1, 1),
+                    Item::Consumable {
+                        consumable: Consumable::Potion,
                     },
                 ),
             ],

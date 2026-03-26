@@ -42,19 +42,22 @@ pub(crate) struct ScoringEvalContext {
     mana_snapshot: OnceCell<ManaPathSnapshot>,
     exact_analysis: OnceCell<ExactStrategicAnalysis>,
     enable_attack_reach_summary: bool,
+    enable_attack_reach_target_narrowing: bool,
+    attack_reach_targets: OnceCell<[Vec<Location>; 2]>,
     drainer_immediate_threat_memo: RefCell<[Option<(i32, i32)>; BOARD_CELLS * 2]>,
     attack_reach_summary_memo: RefCell<AttackReachSummaryMemo>,
 }
 
 impl ScoringEvalContext {
     pub(crate) fn new(game: &MonsGame, allow_exact_strategic: bool) -> Self {
-        Self::new_with_flags(game, allow_exact_strategic, false)
+        Self::new_with_flags(game, allow_exact_strategic, false, false)
     }
 
     pub(crate) fn new_with_flags(
         game: &MonsGame,
         allow_exact_strategic: bool,
         enable_attack_reach_summary: bool,
+        enable_attack_reach_target_narrowing: bool,
     ) -> Self {
         Self {
             board_hash: crate::models::automove_exact::exact_board_hash(&game.board),
@@ -62,6 +65,8 @@ impl ScoringEvalContext {
             mana_snapshot: OnceCell::new(),
             exact_analysis: OnceCell::new(),
             enable_attack_reach_summary,
+            enable_attack_reach_target_narrowing,
+            attack_reach_targets: OnceCell::new(),
             drainer_immediate_threat_memo: RefCell::new([None; BOARD_CELLS * 2]),
             attack_reach_summary_memo: RefCell::new(AttackReachSummaryMemo::default()),
         }
@@ -85,6 +90,27 @@ impl ScoringEvalContext {
                 .exact_analysis
                 .get_or_init(|| exact_strategic_analysis(game))
         })
+    }
+
+    #[inline]
+    fn attack_reach_targets(&self, board: &Board, target_color: Color) -> &[Location] {
+        let targets = self.attack_reach_targets.get_or_init(|| {
+            [
+                crate::models::automove_exact::attack_reach_summary_target_locations(
+                    board,
+                    Color::White,
+                ),
+                crate::models::automove_exact::attack_reach_summary_target_locations(
+                    board,
+                    Color::Black,
+                ),
+            ]
+        });
+        if target_color == Color::White {
+            targets[0].as_slice()
+        } else {
+            targets[1].as_slice()
+        }
     }
 
     fn attack_reach_summary(
@@ -112,14 +138,25 @@ impl ScoringEvalContext {
             return *summary;
         }
 
-        let summary = crate::models::automove_exact::attack_reach_summary_with_hash(
-            board,
-            self.board_hash,
-            attacker_color,
-            target_color,
-            remaining_moves,
-            can_use_action,
-        );
+        let summary = if self.enable_attack_reach_target_narrowing {
+            crate::models::automove_exact::attack_reach_summary_for_targets_with_hash(
+                board,
+                self.board_hash,
+                attacker_color,
+                remaining_moves,
+                can_use_action,
+                self.attack_reach_targets(board, target_color),
+            )
+        } else {
+            crate::models::automove_exact::attack_reach_summary_with_hash(
+                board,
+                self.board_hash,
+                attacker_color,
+                target_color,
+                remaining_moves,
+                can_use_action,
+            )
+        };
         self.attack_reach_summary_memo
             .borrow_mut()
             .entries
@@ -2781,7 +2818,7 @@ mod tests {
             ],
             Color::White,
         );
-        let context = ScoringEvalContext::new_with_flags(&game, true, true);
+        let context = ScoringEvalContext::new_with_flags(&game, true, true, true);
 
         let first =
             context.drainer_immediate_threats(&game.board, Color::White, Location::new(6, 5));
@@ -2852,7 +2889,7 @@ mod tests {
             Color::White,
         );
         let plain_context = ScoringEvalContext::new(&game, true);
-        let summary_context = ScoringEvalContext::new_with_flags(&game, true, true);
+        let summary_context = ScoringEvalContext::new_with_flags(&game, true, true, true);
 
         assert_eq!(
             evaluate_preferability_with_context(
