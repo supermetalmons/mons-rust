@@ -1,4 +1,5 @@
 use crate::*;
+use std::cell::RefCell;
 
 const PROTECTED_HIGH_VALUE_CARRIER_SAFE_DANGER_MIN: i32 = 3;
 const PROTECTED_HIGH_VALUE_CARRIER_SUPERMANA_SCALE_BP: i32 = 2_500;
@@ -24,6 +25,55 @@ impl DrainerSafetySnapshot {
     #[inline]
     fn guarded_against_exact_attack(self) -> bool {
         self.angel_nearby && !self.exact_danger_threat
+    }
+}
+
+pub(crate) struct ScoringEvalContext {
+    board_hash: u64,
+    mana_snapshot: ManaPathSnapshot,
+    exact_analysis: Option<ExactStrategicAnalysis>,
+    drainer_immediate_threat_memo: RefCell<[Option<(i32, i32)>; BOARD_CELLS * 2]>,
+}
+
+impl ScoringEvalContext {
+    pub(crate) fn new(game: &MonsGame, allow_exact_strategic: bool) -> Self {
+        Self {
+            board_hash: crate::models::automove_exact::exact_board_hash(&game.board),
+            mana_snapshot: ManaPathSnapshot::from_board(&game.board),
+            exact_analysis: allow_exact_strategic.then(|| exact_strategic_analysis(game)),
+            drainer_immediate_threat_memo: RefCell::new([None; BOARD_CELLS * 2]),
+        }
+    }
+
+    #[inline]
+    fn board_hash(&self) -> u64 {
+        self.board_hash
+    }
+
+    fn drainer_immediate_threats(
+        &self,
+        board: &Board,
+        color: Color,
+        location: Location,
+    ) -> (i32, i32) {
+        let memo_index = location.index()
+            + if color == Color::Black {
+                BOARD_CELLS
+            } else {
+                0
+            };
+        if let Some(cached) = self.drainer_immediate_threat_memo.borrow()[memo_index] {
+            return cached;
+        }
+
+        let threats = crate::models::automove_exact::drainer_immediate_threats_with_hash(
+            board,
+            color,
+            location,
+            self.board_hash,
+        );
+        self.drainer_immediate_threat_memo.borrow_mut()[memo_index] = Some(threats);
+        threats
     }
 }
 
@@ -917,6 +967,17 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
     weights: &ScoringWeights,
     allow_exact_strategic: bool,
 ) -> i32 {
+    let context = ScoringEvalContext::new(game, allow_exact_strategic);
+    evaluate_preferability_with_context(game, color, weights, allow_exact_strategic, &context)
+}
+
+pub(crate) fn evaluate_preferability_with_context(
+    game: &MonsGame,
+    color: Color,
+    weights: &ScoringWeights,
+    allow_exact_strategic: bool,
+    context: &ScoringEvalContext,
+) -> i32 {
     let mut effective_weights = *weights;
     if !allow_exact_strategic {
         effective_weights.use_legacy_formula = true;
@@ -930,8 +991,14 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
     let supermana_base = game.board.supermana_base();
     let remaining_mon_moves_for_active =
         (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
-    let mana_snapshot = ManaPathSnapshot::from_board(&game.board);
-    let exact_analysis = (!use_legacy_formula).then(|| exact_strategic_analysis(game));
+    let mana_snapshot = &context.mana_snapshot;
+    let exact_analysis = if use_legacy_formula {
+        None
+    } else {
+        context
+            .exact_analysis
+            .or_else(|| Some(exact_strategic_analysis(game)))
+    };
     let my_exact_summary = exact_analysis.map(|analysis| analysis.color_summary(color));
     let opponent_exact_summary =
         exact_analysis.map(|analysis| analysis.color_summary(color.other()));
@@ -980,12 +1047,13 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                         });
                     score += my_mon_multiplier * weights.fainted_cooldown_step * mon.cooldown;
                 } else if is_drainer {
-                    let safety = drainer_safety_snapshot(
+                    let safety = drainer_safety_snapshot_with_context(
                         &game.board,
                         mon.color,
                         location,
                         use_legacy_formula,
                         weights.drainer_walk_threat_boolean != 0,
+                        Some(context),
                     );
                     score += my_mon_multiplier * weights.drainer_close_to_mana / safety.min_mana;
                     score += my_mon_multiplier * weights.drainer_close_to_own_pool
@@ -1023,11 +1091,12 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                     }
 
                     if weights.drainer_immediate_threat != 0 {
-                        let (action_threats, bomb_threats) = drainer_immediate_threats(
+                        let (action_threats, bomb_threats) = drainer_immediate_threats_with_context(
                             &game.board,
                             mon.color,
                             location,
                             use_legacy_formula,
+                            Some(context),
                         );
                         let immediate_threats = if safety.angel_nearby {
                             bomb_threats
@@ -1119,12 +1188,13 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                 score += my_mon_multiplier * weights.has_consumable;
 
                 if is_drainer {
-                    let safety = drainer_safety_snapshot(
+                    let safety = drainer_safety_snapshot_with_context(
                         &game.board,
                         mon.color,
                         location,
                         use_legacy_formula,
                         weights.drainer_walk_threat_boolean != 0,
+                        Some(context),
                     );
                     score += my_mon_multiplier * weights.drainer_close_to_mana / safety.min_mana;
                     score += my_mon_multiplier * weights.drainer_close_to_own_pool
@@ -1138,11 +1208,12 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                     }
 
                     if weights.drainer_immediate_threat != 0 {
-                        let (action_threats, bomb_threats) = drainer_immediate_threats(
+                        let (action_threats, bomb_threats) = drainer_immediate_threats_with_context(
                             &game.board,
                             mon.color,
                             location,
                             use_legacy_formula,
+                            Some(context),
                         );
                         let immediate_threats = if safety.angel_nearby {
                             bomb_threats
@@ -1344,12 +1415,13 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                     && mon.kind == MonKind::Drainer
                     && (matches!(mana, Mana::Supermana)
                         || matches!(mana, Mana::Regular(owner) if *owner != mon.color));
-                let safety = drainer_safety_snapshot(
+                let safety = drainer_safety_snapshot_with_context(
                     &game.board,
                     mon.color,
                     location,
                     use_legacy_formula,
                     weights.mana_carrier_walk_threat_boolean != 0 || carries_high_value_mana,
+                    Some(context),
                 );
                 score += my_mon_multiplier * weights.mana_carrier_at_risk / safety.risk_danger;
                 if safety.guarded_against_exact_attack() {
@@ -1408,11 +1480,12 @@ pub(crate) fn evaluate_preferability_with_weights_and_exact_policy(
                     score += my_mon_multiplier * weights.drainer_close_to_own_pool
                         / distance(location, Destination::ClosestPool(mon.color));
 
-                    let (action_threats, bomb_threats) = drainer_immediate_threats(
+                    let (action_threats, bomb_threats) = drainer_immediate_threats_with_context(
                         &game.board,
                         mon.color,
                         location,
                         use_legacy_formula,
+                        Some(context),
                     );
                     let immediate_threats = if safety.angel_nearby {
                         bomb_threats
@@ -2224,6 +2297,7 @@ fn drainer_distances(
     }
 }
 
+#[allow(dead_code)]
 fn drainer_safety_snapshot(
     board: &Board,
     color: Color,
@@ -2231,13 +2305,37 @@ fn drainer_safety_snapshot(
     use_legacy_formula: bool,
     include_walk_threat: bool,
 ) -> DrainerSafetySnapshot {
+    drainer_safety_snapshot_with_context(
+        board,
+        color,
+        location,
+        use_legacy_formula,
+        include_walk_threat,
+        None,
+    )
+}
+
+fn drainer_safety_snapshot_with_context(
+    board: &Board,
+    color: Color,
+    location: Location,
+    use_legacy_formula: bool,
+    include_walk_threat: bool,
+    context: Option<&ScoringEvalContext>,
+) -> DrainerSafetySnapshot {
     let (raw_danger, min_mana, angel_nearby) =
         drainer_distances(board, color, location, use_legacy_formula);
-    let exact_danger_threat =
-        is_drainer_under_danger_threat(board, color, location, angel_nearby, use_legacy_formula);
+    let exact_danger_threat = is_drainer_under_danger_threat_with_context(
+        board,
+        color,
+        location,
+        angel_nearby,
+        use_legacy_formula,
+        context,
+    );
     let walk_threat = include_walk_threat
         && !exact_danger_threat
-        && is_drainer_under_walk_threat(board, color, location, angel_nearby);
+        && is_drainer_under_walk_threat_with_context(board, color, location, angel_nearby, context);
     let risk_danger = if use_legacy_formula {
         raw_danger.max(1)
     } else if exact_danger_threat {
@@ -2435,6 +2533,94 @@ mod tests {
         mirrored.white_potions_count = game.black_potions_count;
         mirrored.black_potions_count = game.white_potions_count;
         mirrored
+    }
+
+    #[test]
+    fn scoring_eval_context_matches_wrapper_evaluation() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(8, 6),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let context = ScoringEvalContext::new(&game, true);
+        let with_wrapper = evaluate_preferability_with_weights_and_exact_policy(
+            &game,
+            Color::White,
+            &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
+            true,
+        );
+        let with_context = evaluate_preferability_with_context(
+            &game,
+            Color::White,
+            &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
+            true,
+            &context,
+        );
+
+        assert_eq!(with_wrapper, with_context);
+    }
+
+    #[test]
+    fn scoring_eval_context_reuses_drainer_immediate_threat_memo() {
+        crate::models::automove_exact::clear_exact_query_diagnostics();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 5),
+                    Item::MonWithConsumable {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                        consumable: Consumable::Bomb,
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let context = ScoringEvalContext::new(&game, true);
+
+        let first =
+            context.drainer_immediate_threats(&game.board, Color::White, Location::new(6, 5));
+        let second =
+            context.drainer_immediate_threats(&game.board, Color::White, Location::new(6, 5));
+        let diagnostics = crate::models::automove_exact::exact_query_diagnostics_snapshot();
+
+        assert_eq!(first, second);
+        assert_eq!(diagnostics.drainer_immediate_threat_calls, 1);
     }
 
     #[test]
@@ -3433,29 +3619,61 @@ mod tests {
     }
 }
 
+#[allow(dead_code)]
 fn drainer_immediate_threats(
     board: &Board,
     color: Color,
     location: Location,
     _use_legacy_formula: bool,
 ) -> (i32, i32) {
-    crate::models::automove_exact::drainer_immediate_threats(board, color, location)
+    drainer_immediate_threats_with_context(board, color, location, false, None)
 }
 
+fn drainer_immediate_threats_with_context(
+    board: &Board,
+    color: Color,
+    location: Location,
+    _use_legacy_formula: bool,
+    context: Option<&ScoringEvalContext>,
+) -> (i32, i32) {
+    if let Some(context) = context {
+        context.drainer_immediate_threats(board, color, location)
+    } else {
+        crate::models::automove_exact::drainer_immediate_threats(board, color, location)
+    }
+}
+
+#[allow(dead_code)]
 fn is_drainer_under_walk_threat(
     board: &Board,
     color: Color,
     location: Location,
     angel_nearby: bool,
 ) -> bool {
-    crate::models::automove_exact::is_drainer_under_walk_threat(
+    is_drainer_under_walk_threat_with_context(board, color, location, angel_nearby, None)
+}
+
+fn is_drainer_under_walk_threat_with_context(
+    board: &Board,
+    color: Color,
+    location: Location,
+    angel_nearby: bool,
+    context: Option<&ScoringEvalContext>,
+) -> bool {
+    let board_hash = context.map_or_else(
+        || crate::models::automove_exact::exact_board_hash(board),
+        ScoringEvalContext::board_hash,
+    );
+    crate::models::automove_exact::is_drainer_under_walk_threat_with_hash(
         board,
+        board_hash,
         color,
         location,
         angel_nearby,
     )
 }
 
+#[allow(dead_code)]
 fn is_drainer_under_danger_threat(
     board: &Board,
     color: Color,
@@ -3463,12 +3681,35 @@ fn is_drainer_under_danger_threat(
     angel_nearby: bool,
     use_legacy_formula: bool,
 ) -> bool {
+    is_drainer_under_danger_threat_with_context(
+        board,
+        color,
+        location,
+        angel_nearby,
+        use_legacy_formula,
+        None,
+    )
+}
+
+fn is_drainer_under_danger_threat_with_context(
+    board: &Board,
+    color: Color,
+    location: Location,
+    angel_nearby: bool,
+    use_legacy_formula: bool,
+    context: Option<&ScoringEvalContext>,
+) -> bool {
     if use_legacy_formula {
         return is_drainer_under_immediate_threat(board, color, location, angel_nearby);
     }
 
-    crate::models::automove_exact::can_attack_target_on_board(
+    let board_hash = context.map_or_else(
+        || crate::models::automove_exact::exact_board_hash(board),
+        ScoringEvalContext::board_hash,
+    );
+    crate::models::automove_exact::can_attack_target_on_board_with_hash(
         board,
+        board_hash,
         color.other(),
         color,
         location,

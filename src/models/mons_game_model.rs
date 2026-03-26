@@ -1,7 +1,7 @@
 #[cfg(any(target_arch = "wasm32", test))]
 use crate::models::scoring::{
-    evaluate_preferability_with_weights_and_exact_policy, ScoringWeights,
-    BALANCED_DISTANCE_SCORING_WEIGHTS, DEFAULT_SCORING_WEIGHTS,
+    evaluate_preferability_with_context, evaluate_preferability_with_weights_and_exact_policy,
+    ScoringEvalContext, ScoringWeights, BALANCED_DISTANCE_SCORING_WEIGHTS, DEFAULT_SCORING_WEIGHTS,
     FINISHER_BALANCED_SOFT_AGGRESSIVE_SCORING_WEIGHTS, FINISHER_BALANCED_SOFT_SCORING_WEIGHTS,
     MANA_RACE_LITE_D2_TUNED_SCORING_WEIGHTS, RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS,
     RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF,
@@ -1042,6 +1042,11 @@ pub(crate) struct SmartSearchConfig {
     root_reply_risk_shortlist_max: usize,
     root_reply_risk_reply_limit: usize,
     root_reply_risk_node_share_bp: i32,
+    enable_child_eval_bundle: bool,
+    enable_local_scoring_eval_ctx: bool,
+    enable_two_stage_child_ordering: bool,
+    child_ordering_shortlist_multiplier: usize,
+    child_ordering_tactical_reserve: usize,
     enable_move_class_coverage: bool,
     enable_child_move_class_coverage: bool,
     enable_strict_tactical_class_coverage: bool,
@@ -1383,6 +1388,11 @@ impl SmartSearchConfig {
             root_reply_risk_shortlist_max: SMART_ROOT_REPLY_RISK_SHORTLIST_FAST,
             root_reply_risk_reply_limit: SMART_ROOT_REPLY_RISK_REPLY_LIMIT_FAST,
             root_reply_risk_node_share_bp: SMART_ROOT_REPLY_RISK_NODE_SHARE_BP_FAST,
+            enable_child_eval_bundle: false,
+            enable_local_scoring_eval_ctx: false,
+            enable_two_stage_child_ordering: false,
+            child_ordering_shortlist_multiplier: 2,
+            child_ordering_tactical_reserve: 2,
             enable_move_class_coverage: false,
             enable_child_move_class_coverage: false,
             enable_strict_tactical_class_coverage: false,
@@ -1626,7 +1636,7 @@ pub(crate) struct RootSearchProbe {
     pub final_selected_move_fen: String,
 }
 
-#[cfg(test)]
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct TurnEngineSelectorDiagnostics {
     pub head_plan_calls: usize,
@@ -1643,6 +1653,15 @@ pub(crate) struct TurnEngineSelectorDiagnostics {
     pub reply_projection_plan_calls: usize,
     pub reply_projection_plan_hits: usize,
     pub followup_floor_calls: usize,
+    pub ranked_child_states_calls: usize,
+    pub ranked_child_states_children_enumerated: usize,
+    pub ranked_child_states_children_fully_scored: usize,
+    pub child_ordering_shortlist_children: usize,
+    pub child_ordering_full_pass_children: usize,
+    pub move_efficiency_snapshot_builds: usize,
+    pub move_efficiency_snapshot_cache_hits: usize,
+    pub search_preferability_builds: usize,
+    pub search_preferability_cache_hits: usize,
     pub last_return_stage: &'static str,
 }
 
@@ -1738,8 +1757,12 @@ fn update_turn_engine_selector_diagnostics(
     TURN_ENGINE_SELECTOR_DIAGNOSTICS.with(|diagnostics| update(&mut diagnostics.borrow_mut()));
 }
 
+#[cfg(not(test))]
+#[inline]
+fn update_turn_engine_selector_diagnostics(_: impl FnOnce(&mut TurnEngineSelectorDiagnostics)) {}
+
 #[cfg(any(target_arch = "wasm32", test))]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct MoveEfficiencySnapshot {
     my_best_carrier_steps: i32,
     opponent_best_carrier_steps: i32,
@@ -1863,6 +1886,35 @@ struct RankedChildState {
     tactical_extension_trigger: bool,
     quiet_reduction_candidate: bool,
     classes: MoveClassFlags,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone, Copy)]
+struct ChildEvalBundle {
+    child_hash: u64,
+    heuristic: i32,
+    after_efficiency_snapshot: Option<MoveEfficiencySnapshot>,
+    ordering_efficiency: i32,
+    own_drainer_vulnerable_after: bool,
+    tactical_extension_trigger: bool,
+    quiet_reduction_candidate: bool,
+    classes: MoveClassFlags,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone)]
+struct CheapChildOrderingEntry {
+    transition: LegalInputTransition,
+    child_hash: u64,
+    heuristic: i32,
+    force_full: bool,
+    eventful_reserve: bool,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+struct ChildOrderingScratch {
+    before_efficiency_snapshot: Option<MoveEfficiencySnapshot>,
+    own_drainer_vulnerable_before: bool,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -6537,8 +6589,8 @@ impl MonsGameModel {
         let mut engine = Self::turn_engine_search_config(config);
         let clamp_early_white_turn_start =
             Self::turn_engine_mode_uses_macro_plans(config.turn_engine_mode)
-            && config.enable_turn_engine_low_budget_guard
-            && Self::pro_v2_is_early_white_turn_start(game);
+                && config.enable_turn_engine_low_budget_guard
+                && Self::pro_v2_is_early_white_turn_start(game);
         if clamp_early_white_turn_start {
             engine.own_seed_cap = engine.own_seed_cap.min(14).max(1);
             engine.own_beam = engine.own_beam.min(5).max(1);
@@ -7196,8 +7248,10 @@ impl MonsGameModel {
                 && !candidate_spirit_tactical
                 && !candidate.spirit_same_turn_score_setup_now
                 && !candidate.spirit_own_mana_setup_now
-                && !(pro_v3_mode && plan_has_concrete_package && !plan.package_meta.spirit_only_setup)
-                {
+                && !(pro_v3_mode
+                    && plan_has_concrete_package
+                    && !plan.package_meta.spirit_only_setup)
+            {
                 return None;
             }
         }
@@ -7206,10 +7260,9 @@ impl MonsGameModel {
             && !candidate_spirit_tactical
             && !utility_override
         {
-            let allow_pro_v2_spirit_setup =
-                macro_mode
-                    && (candidate.spirit_same_turn_score_setup_now
-                        || candidate.spirit_own_mana_setup_now);
+            let allow_pro_v2_spirit_setup = macro_mode
+                && (candidate.spirit_same_turn_score_setup_now
+                    || candidate.spirit_own_mana_setup_now);
             if !allow_pro_v2_spirit_setup {
                 return None;
             }
@@ -7383,27 +7436,26 @@ impl MonsGameModel {
                 plan.utility,
                 selected_utility_value(),
             ) != std::cmp::Ordering::Less;
-        let projected_completed_plan_override =
-            macro_mode
-                && projected_end_safe
-                && !selected.wins_immediately
-                && !matches!(plan.goal_family, TurnPlanFamily::ManaTempo)
-                && candidate_index
-                    <= if plan.compiled_chunks.len() > 1 {
-                        16
-                    } else {
-                        10
-                    }
-                && projected_reply_floor_not_worse
-                && (plan.utility.passes_override_guard(selected_utility_value())
-                    || plan
-                        .utility
-                        .supports_primary_axes_eval_tolerance(selected_utility_value(), 96))
-                && (candidate_unsafe
-                    || plan.compiled_chunks.len() > 1
-                    || plan
-                        .utility
-                        .improves_non_score_override_axes(selected_utility_value()));
+        let projected_completed_plan_override = macro_mode
+            && projected_end_safe
+            && !selected.wins_immediately
+            && !matches!(plan.goal_family, TurnPlanFamily::ManaTempo)
+            && candidate_index
+                <= if plan.compiled_chunks.len() > 1 {
+                    16
+                } else {
+                    10
+                }
+            && projected_reply_floor_not_worse
+            && (plan.utility.passes_override_guard(selected_utility_value())
+                || plan
+                    .utility
+                    .supports_primary_axes_eval_tolerance(selected_utility_value(), 96))
+            && (candidate_unsafe
+                || plan.compiled_chunks.len() > 1
+                || plan
+                    .utility
+                    .improves_non_score_override_axes(selected_utility_value()));
         let opening_black_single_chunk_head = pro_v3_mode
             && game.active_color == Color::Black
             && game.turn_number >= 6
@@ -7450,23 +7502,21 @@ impl MonsGameModel {
         if candidate_unsafe && !selected_unsafe && !projected_completed_plan_override {
             return false;
         }
-        let allow_non_concrete_white_progress_head =
-            macro_mode
-                && matches!(
-                    plan.head_family,
-                    TurnPlanFamily::SafeSupermanaProgress
-                        | TurnPlanFamily::SafeOpponentManaProgress
-                )
-                && !candidate_progress_surface
-                && Self::pro_v2_is_early_white_turn_start(game)
-                && Self::is_plain_spirit_development_root(selected)
-                && !selected_unsafe
-                && (!candidate_unsafe || projected_completed_plan_override)
-                && candidate_index <= 3
-                && candidate.score >= selected.score
-                && plan
-                    .utility
-                    .supports_primary_axes_eval_tolerance(selected_utility_value(), 64);
+        let allow_non_concrete_white_progress_head = macro_mode
+            && matches!(
+                plan.head_family,
+                TurnPlanFamily::SafeSupermanaProgress | TurnPlanFamily::SafeOpponentManaProgress
+            )
+            && !candidate_progress_surface
+            && Self::pro_v2_is_early_white_turn_start(game)
+            && Self::is_plain_spirit_development_root(selected)
+            && !selected_unsafe
+            && (!candidate_unsafe || projected_completed_plan_override)
+            && candidate_index <= 3
+            && candidate.score >= selected.score
+            && plan
+                .utility
+                .supports_primary_axes_eval_tolerance(selected_utility_value(), 64);
         if macro_mode
             && crate::models::automove_turn_engine::compare_utility_primary_axes(
                 selected_utility_value(),
@@ -7604,25 +7654,22 @@ impl MonsGameModel {
                 TurnPlanFamily::ImmediateScore => {
                     !competing_immediate_score_carrier_tie
                         && !blocked_opening_black_immediate_score_spirit_override
-                        && (
-                    (candidate.wins_immediately
-                        || scores_now_better
-                        || same_turn_window_better
-                        || (pro_v3_mode
-                            && plan.package_meta.score_gain > 0
-                            && plan_safe_package)
-                        || (candidate_index <= 16
-                            && plan.utility.passes_override_guard(selected_utility_value())
-                            && (!candidate_unsafe || selected_unsafe)))
-                        && score_gap <= 360)
+                        && ((candidate.wins_immediately
+                            || scores_now_better
+                            || same_turn_window_better
+                            || (pro_v3_mode
+                                && plan.package_meta.score_gain > 0
+                                && plan_safe_package)
+                            || (candidate_index <= 16
+                                && plan.utility.passes_override_guard(selected_utility_value())
+                                && (!candidate_unsafe || selected_unsafe)))
+                            && score_gap <= 360)
                 }
                 TurnPlanFamily::DenyOpponentWindow => {
                     same_turn_window_better
                         || safety_recover_better
                         || drainer_attack_better
-                        || (pro_v3_mode
-                            && plan.package_meta.deny_gain > 0
-                            && plan_safe_package)
+                        || (pro_v3_mode && plan.package_meta.deny_gain > 0 && plan_safe_package)
                         || (candidate_index <= 16
                             && score_gap <= 220
                             && !candidate_unsafe
@@ -7810,8 +7857,7 @@ impl MonsGameModel {
                             || strategic_override_axes_better
                             || pickup_upgrade
                             || (progress_better && !selected_spirit_phase)
-                            || plan_has_positive_package_gain
-                        )
+                            || plan_has_positive_package_gain)
                         && !blocked_plain_progress_spirit_phase_override;
                     let positive_package_gain_override = pro_v3_mode
                         && plan_has_positive_package_gain
@@ -10780,17 +10826,12 @@ impl MonsGameModel {
         value
     }
 
-    fn ranked_child_states(
+    fn build_child_ordering_scratch(
         game: &MonsGame,
         perspective: Color,
-        maximizing: bool,
-        preferred_child_hash: Option<u64>,
-        killer_hashes: [u64; 2],
+        actor_color: Color,
         config: SmartSearchConfig,
-        history_table: &HistoryTable,
-    ) -> Vec<RankedChildState> {
-        let mut scored_states: Vec<(i32, RankedChildState)> = Vec::new();
-        let actor_color = game.active_color;
+    ) -> ChildOrderingScratch {
         let before_state_hash = Self::search_state_hash(game);
         let before_efficiency_snapshot = config.enable_root_efficiency.then(|| {
             Self::move_efficiency_snapshot_with_hash(
@@ -10810,21 +10851,344 @@ impl MonsGameModel {
         } else {
             false
         };
+
+        ChildOrderingScratch {
+            before_efficiency_snapshot,
+            own_drainer_vulnerable_before,
+        }
+    }
+
+    fn build_child_eval_bundle(
+        game: &MonsGame,
+        simulated_game: &MonsGame,
+        perspective: Color,
+        actor_color: Color,
+        events: &[Event],
+        preferred_child_hash: Option<u64>,
+        killer_hashes: [u64; 2],
+        config: SmartSearchConfig,
+        history_table: &HistoryTable,
+        scratch: &ChildOrderingScratch,
+    ) -> ChildEvalBundle {
+        let child_hash = Self::search_state_hash(simulated_game);
+        let scoring_context = config.enable_local_scoring_eval_ctx.then(|| {
+            ScoringEvalContext::new(simulated_game, config.enable_static_exact_evaluation)
+        });
+        let mut heuristic = Self::score_state_with_context(
+            simulated_game,
+            perspective,
+            0,
+            config.depth,
+            config.scoring_weights,
+            config.enable_static_exact_evaluation,
+            scoring_context.as_ref(),
+        );
+
+        let after_efficiency_snapshot = config.enable_root_efficiency.then(|| {
+            Self::move_efficiency_snapshot_uncached_with_hash(
+                simulated_game,
+                perspective,
+                config.enable_child_exact_tactics && simulated_game.active_color == perspective,
+                config.enable_static_exact_evaluation,
+                child_hash,
+            )
+        });
+        let ordering_efficiency = if let (Some(before), Some(after)) = (
+            scratch.before_efficiency_snapshot,
+            after_efficiency_snapshot,
+        ) {
+            Self::move_efficiency_delta_from_before_snapshot_with_after_snapshot(
+                game,
+                simulated_game,
+                perspective,
+                events,
+                before,
+                after,
+                false,
+                false,
+                false,
+                config.root_backtrack_penalty,
+                config.root_mana_handoff_penalty,
+            )
+        } else {
+            0
+        };
+
+        if config.enable_root_efficiency
+            && SMART_NO_EFFECT_CHILD_PENALTY != 0
+            && Self::is_no_effect_state_transition(game, simulated_game)
+        {
+            heuristic -= SMART_NO_EFFECT_CHILD_PENALTY;
+        }
+        if config.enable_event_ordering_bonus {
+            heuristic = heuristic.saturating_add(Self::ordering_event_bonus(
+                game.active_color,
+                perspective,
+                events,
+            ));
+        }
+        if config.enable_tt_best_child_ordering
+            && preferred_child_hash.is_some()
+            && preferred_child_hash == Some(child_hash)
+        {
+            heuristic = heuristic.saturating_add(SMART_TT_BEST_CHILD_BONUS);
+        }
+        if config.enable_killer_move_ordering
+            && (killer_hashes[0] == child_hash || killer_hashes[1] == child_hash)
+            && child_hash != 0
+            && preferred_child_hash != Some(child_hash)
+        {
+            heuristic = heuristic.saturating_add(SMART_KILLER_MOVE_BONUS);
+        }
+        if config.enable_history_heuristic && child_hash != 0 {
+            if let Some(&history_score) = history_table.get(&child_hash) {
+                heuristic = heuristic.saturating_add(history_score.min(SMART_HISTORY_BONUS_CAP));
+            }
+        }
+
+        let own_drainer_vulnerable_after = if config.enable_child_move_class_coverage {
+            Self::is_own_drainer_vulnerable_next_turn(
+                simulated_game,
+                actor_color,
+                config.enable_enhanced_drainer_vulnerability,
+            )
+        } else {
+            false
+        };
+        let own_drainer_vulnerability_transition =
+            scratch.own_drainer_vulnerable_before != own_drainer_vulnerable_after;
+        let tactical_extension_trigger = Self::events_include_any_drainer_fainted(events)
+            || own_drainer_vulnerability_transition
+            || events
+                .iter()
+                .any(|event| matches!(event, Event::ManaScored { .. }));
+        let classes = if config.enable_child_move_class_coverage {
+            Self::classify_move_classes(
+                game,
+                simulated_game,
+                actor_color,
+                events,
+                scratch.own_drainer_vulnerable_before,
+                own_drainer_vulnerable_after,
+            )
+        } else {
+            MoveClassFlags::default()
+        };
+        let quiet_reduction_candidate = Self::is_quiet_reduction_candidate(
+            ordering_efficiency,
+            tactical_extension_trigger,
+            classes,
+        );
+
+        ChildEvalBundle {
+            child_hash,
+            heuristic,
+            after_efficiency_snapshot,
+            ordering_efficiency,
+            own_drainer_vulnerable_after,
+            tactical_extension_trigger,
+            quiet_reduction_candidate,
+            classes,
+        }
+    }
+
+    fn cheap_child_ordering_heuristic(
+        game: &MonsGame,
+        simulated_game: &MonsGame,
+        perspective: Color,
+        child_hash: u64,
+        events: &[Event],
+        preferred_child_hash: Option<u64>,
+        killer_hashes: [u64; 2],
+        config: SmartSearchConfig,
+        history_table: &HistoryTable,
+    ) -> i32 {
+        let mut heuristic = Self::score_state(
+            simulated_game,
+            perspective,
+            0,
+            config.depth,
+            config.scoring_weights,
+            false,
+        );
+        if config.enable_event_ordering_bonus {
+            heuristic = heuristic.saturating_add(Self::ordering_event_bonus(
+                game.active_color,
+                perspective,
+                events,
+            ));
+        }
+        if config.enable_tt_best_child_ordering
+            && preferred_child_hash.is_some()
+            && preferred_child_hash == Some(child_hash)
+        {
+            heuristic = heuristic.saturating_add(SMART_TT_BEST_CHILD_BONUS);
+        }
+        if config.enable_killer_move_ordering
+            && (killer_hashes[0] == child_hash || killer_hashes[1] == child_hash)
+            && child_hash != 0
+            && preferred_child_hash != Some(child_hash)
+        {
+            heuristic = heuristic.saturating_add(SMART_KILLER_MOVE_BONUS);
+        }
+        if config.enable_history_heuristic && child_hash != 0 {
+            if let Some(&history_score) = history_table.get(&child_hash) {
+                heuristic = heuristic.saturating_add(history_score.min(SMART_HISTORY_BONUS_CAP));
+            }
+        }
+        heuristic
+    }
+
+    fn compare_cheap_child_ordering_entries(
+        a: &CheapChildOrderingEntry,
+        b: &CheapChildOrderingEntry,
+        maximizing: bool,
+    ) -> std::cmp::Ordering {
+        let heuristic_cmp = if maximizing {
+            b.heuristic.cmp(&a.heuristic)
+        } else {
+            a.heuristic.cmp(&b.heuristic)
+        };
+        heuristic_cmp.then_with(|| b.child_hash.cmp(&a.child_hash))
+    }
+
+    fn child_requires_full_ordering_pass(
+        transition: &LegalInputTransition,
+        perspective: Color,
+        actor_color: Color,
+        child_hash: u64,
+        preferred_child_hash: Option<u64>,
+        killer_hashes: [u64; 2],
+        config: SmartSearchConfig,
+        scratch: &ChildOrderingScratch,
+        retain_supermana_progress: bool,
+        retain_opponent_mana_progress: bool,
+    ) -> (bool, bool) {
+        let wins_immediately = transition.game.winner_color() == Some(perspective);
+        let scores_now = transition
+            .events
+            .iter()
+            .any(|event| matches!(event, Event::ManaScored { .. }));
+        let any_drainer_fainted = Self::events_include_any_drainer_fainted(&transition.events);
+        let faints_opponent_drainer =
+            Self::events_include_opponent_drainer_fainted(&transition.events, perspective);
+        let tt_or_killer = preferred_child_hash == Some(child_hash)
+            || killer_hashes[0] == child_hash
+            || killer_hashes[1] == child_hash;
+        let resolves_own_drainer_exposure = scratch.own_drainer_vulnerable_before
+            && config.enable_child_move_class_coverage
+            && !Self::is_own_drainer_vulnerable_next_turn(
+                &transition.game,
+                actor_color,
+                config.enable_enhanced_drainer_vulnerability,
+            );
+        let preserves_exact_progress = (retain_supermana_progress
+            && Self::transition_preserves_exact_progress(transition, perspective, Mana::Supermana))
+            || (retain_opponent_mana_progress
+                && Self::transition_preserves_exact_progress(
+                    transition,
+                    perspective,
+                    Mana::Regular(perspective.other()),
+                ));
+        let obvious_tactical_trigger = scores_now || any_drainer_fainted;
+        let force_full = wins_immediately
+            || faints_opponent_drainer
+            || tt_or_killer
+            || resolves_own_drainer_exposure
+            || preserves_exact_progress
+            || obvious_tactical_trigger;
+        let eventful_reserve = !force_full && !transition.events.is_empty();
+        (force_full, eventful_reserve)
+    }
+
+    fn child_ordering_shortlist_limit(config: SmartSearchConfig, total_children: usize) -> usize {
+        if total_children == 0 {
+            return 0;
+        }
+        let multiplier = config.child_ordering_shortlist_multiplier.max(1);
+        let minimum = config.node_branch_limit.min(total_children).max(1);
+        (config.node_branch_limit.saturating_mul(multiplier)).clamp(minimum, total_children)
+    }
+
+    fn selected_two_stage_child_ordering_indices(
+        cheap_entries: &[CheapChildOrderingEntry],
+        maximizing: bool,
+        config: SmartSearchConfig,
+    ) -> Vec<usize> {
+        if cheap_entries.is_empty() {
+            return Vec::new();
+        }
+
+        let shortlist_limit = Self::child_ordering_shortlist_limit(config, cheap_entries.len());
+        let reserve_limit = config.child_ordering_tactical_reserve;
+        let mut ordered_indices: Vec<usize> = (0..cheap_entries.len()).collect();
+        ordered_indices.sort_by(|a, b| {
+            Self::compare_cheap_child_ordering_entries(
+                &cheap_entries[*a],
+                &cheap_entries[*b],
+                maximizing,
+            )
+        });
+
+        let mut selected = vec![false; cheap_entries.len()];
+        for index in ordered_indices.iter().copied().take(shortlist_limit) {
+            selected[index] = true;
+        }
+        for (index, entry) in cheap_entries.iter().enumerate() {
+            if entry.force_full {
+                selected[index] = true;
+            }
+        }
+
+        let mut reserve_used = 0usize;
+        for index in ordered_indices.iter().copied() {
+            if reserve_used >= reserve_limit {
+                break;
+            }
+            if selected[index] || !cheap_entries[index].eventful_reserve {
+                continue;
+            }
+            selected[index] = true;
+            reserve_used += 1;
+        }
+
+        ordered_indices
+            .into_iter()
+            .filter(|index| selected[*index])
+            .collect()
+    }
+
+    fn ranked_child_states(
+        game: &MonsGame,
+        perspective: Color,
+        maximizing: bool,
+        preferred_child_hash: Option<u64>,
+        killer_hashes: [u64; 2],
+        config: SmartSearchConfig,
+        history_table: &HistoryTable,
+    ) -> Vec<RankedChildState> {
+        update_turn_engine_selector_diagnostics(|diagnostics| {
+            diagnostics.ranked_child_states_calls += 1;
+        });
+        let mut scored_states: Vec<(i32, RankedChildState)> = Vec::new();
+        let actor_color = game.active_color;
+        let scratch = Self::build_child_ordering_scratch(game, perspective, actor_color, config);
         let start_options = Self::automove_start_input_options(config);
         let mut child_transitions =
             Self::enumerate_legal_transitions(game, config.node_enum_limit, start_options);
+        let mut exact_turn_before = None;
         if config.enable_child_move_class_coverage
             && config.enable_child_exact_tactics
             && Self::should_probe_exact_child_progress(game, actor_color)
         {
-            let exact_turn_before = exact_turn_summary(game, actor_color);
+            let exact_turn = exact_turn_summary(game, actor_color);
+            exact_turn_before = Some(exact_turn);
             let fallback_limit = Self::child_exact_progress_fallback_candidates_limit(config);
             let mut seen_inputs = child_transitions
                 .iter()
                 .map(|transition| transition.inputs.clone())
                 .collect::<std::collections::HashSet<_>>();
-            if (exact_turn_before.safe_supermana_progress
-                || exact_turn_before.spirit_assisted_supermana_progress)
+            if (exact_turn.safe_supermana_progress || exact_turn.spirit_assisted_supermana_progress)
                 && !child_transitions.iter().any(|transition| {
                     Self::transition_preserves_exact_progress(
                         transition,
@@ -10846,9 +11210,9 @@ impl MonsGameModel {
                     }
                 }
             }
-            if (exact_turn_before.safe_opponent_mana_progress
-                || exact_turn_before.spirit_assisted_opponent_mana_progress
-                || exact_turn_before.spirit_assisted_denial)
+            if (exact_turn.safe_opponent_mana_progress
+                || exact_turn.spirit_assisted_opponent_mana_progress
+                || exact_turn.spirit_assisted_denial)
                 && !child_transitions.iter().any(|transition| {
                     Self::transition_preserves_exact_progress(
                         transition,
@@ -10871,118 +11235,248 @@ impl MonsGameModel {
                 }
             }
         }
+        update_turn_engine_selector_diagnostics(|diagnostics| {
+            diagnostics.ranked_child_states_children_enumerated += child_transitions.len();
+        });
+        let retain_supermana_progress = exact_turn_before.map_or(false, |turn| {
+            turn.safe_supermana_progress || turn.spirit_assisted_supermana_progress
+        });
+        let retain_opponent_mana_progress = exact_turn_before.map_or(false, |turn| {
+            turn.safe_opponent_mana_progress
+                || turn.spirit_assisted_opponent_mana_progress
+                || turn.spirit_assisted_denial
+        });
 
-        for transition in child_transitions {
-            let simulated_game = transition.game;
-            let events = transition.events;
-            let child_hash = Self::search_state_hash(&simulated_game);
-            let mut heuristic = Self::score_state(
-                &simulated_game,
-                perspective,
-                0,
-                config.depth,
-                config.scoring_weights,
-                config.enable_static_exact_evaluation,
-            );
+        if config.enable_child_eval_bundle && config.enable_two_stage_child_ordering {
+            let cheap_entries = child_transitions
+                .into_iter()
+                .map(|transition| {
+                    let child_hash = Self::search_state_hash(&transition.game);
+                    let heuristic = Self::cheap_child_ordering_heuristic(
+                        game,
+                        &transition.game,
+                        perspective,
+                        child_hash,
+                        transition.events.as_slice(),
+                        preferred_child_hash,
+                        killer_hashes,
+                        config,
+                        history_table,
+                    );
+                    let (force_full, eventful_reserve) = Self::child_requires_full_ordering_pass(
+                        &transition,
+                        perspective,
+                        actor_color,
+                        child_hash,
+                        preferred_child_hash,
+                        killer_hashes,
+                        config,
+                        &scratch,
+                        retain_supermana_progress,
+                        retain_opponent_mana_progress,
+                    );
 
-            let ordering_efficiency = if config.enable_root_efficiency {
-                Self::move_efficiency_delta_from_before_snapshot(
+                    CheapChildOrderingEntry {
+                        transition,
+                        child_hash,
+                        heuristic,
+                        force_full,
+                        eventful_reserve,
+                    }
+                })
+                .collect::<Vec<_>>();
+            let shortlisted_indices =
+                Self::selected_two_stage_child_ordering_indices(&cheap_entries, maximizing, config);
+            let shortlisted_count = shortlisted_indices.len();
+            let shortlisted_set = shortlisted_indices
+                .into_iter()
+                .collect::<std::collections::HashSet<_>>();
+            update_turn_engine_selector_diagnostics(|diagnostics| {
+                diagnostics.child_ordering_shortlist_children += shortlisted_count;
+            });
+
+            for (index, entry) in cheap_entries.into_iter().enumerate() {
+                if !shortlisted_set.contains(&index) {
+                    continue;
+                }
+
+                let transition = entry.transition;
+                let bundle = Self::build_child_eval_bundle(
                     game,
-                    &simulated_game,
-                    actor_color,
-                    &events,
-                    before_efficiency_snapshot
-                        .expect("snapshot should exist when root efficiency is enabled"),
-                    child_hash,
-                    false,
-                    false,
-                    false,
-                    config.enable_child_exact_tactics,
-                    config.enable_static_exact_evaluation,
-                    config.root_backtrack_penalty,
-                    config.root_mana_handoff_penalty,
-                )
-            } else {
-                0
-            };
-            if config.enable_root_efficiency
-                && SMART_NO_EFFECT_CHILD_PENALTY != 0
-                && Self::is_no_effect_state_transition(game, &simulated_game)
-            {
-                heuristic -= SMART_NO_EFFECT_CHILD_PENALTY;
-            }
-            if config.enable_event_ordering_bonus {
-                heuristic = heuristic.saturating_add(Self::ordering_event_bonus(
-                    game.active_color,
+                    &transition.game,
                     perspective,
-                    &events,
+                    actor_color,
+                    transition.events.as_slice(),
+                    preferred_child_hash,
+                    killer_hashes,
+                    config,
+                    history_table,
+                    &scratch,
+                );
+                update_turn_engine_selector_diagnostics(|diagnostics| {
+                    diagnostics.ranked_child_states_children_fully_scored += 1;
+                    diagnostics.child_ordering_full_pass_children += 1;
+                });
+
+                scored_states.push((
+                    bundle.heuristic,
+                    RankedChildState {
+                        game: transition.game,
+                        hash: bundle.child_hash,
+                        ordering_efficiency: bundle.ordering_efficiency,
+                        tactical_extension_trigger: bundle.tactical_extension_trigger,
+                        quiet_reduction_candidate: bundle.quiet_reduction_candidate,
+                        classes: bundle.classes,
+                    },
                 ));
             }
-            if config.enable_tt_best_child_ordering
-                && preferred_child_hash.is_some()
-                && preferred_child_hash == Some(child_hash)
-            {
-                heuristic = heuristic.saturating_add(SMART_TT_BEST_CHILD_BONUS);
-            }
-            if config.enable_killer_move_ordering
-                && (killer_hashes[0] == child_hash || killer_hashes[1] == child_hash)
-                && child_hash != 0
-                && preferred_child_hash != Some(child_hash)
-            {
-                heuristic = heuristic.saturating_add(SMART_KILLER_MOVE_BONUS);
-            }
-            if config.enable_history_heuristic && child_hash != 0 {
-                if let Some(&history_score) = history_table.get(&child_hash) {
-                    heuristic =
-                        heuristic.saturating_add(history_score.min(SMART_HISTORY_BONUS_CAP));
-                }
-            }
+        } else {
+            for transition in child_transitions {
+                let simulated_game = transition.game;
+                let events = transition.events;
+                let bundle = if config.enable_child_eval_bundle {
+                    Self::build_child_eval_bundle(
+                        game,
+                        &simulated_game,
+                        perspective,
+                        actor_color,
+                        &events,
+                        preferred_child_hash,
+                        killer_hashes,
+                        config,
+                        history_table,
+                        &scratch,
+                    )
+                } else {
+                    let child_hash = Self::search_state_hash(&simulated_game);
+                    let mut heuristic = Self::score_state(
+                        &simulated_game,
+                        perspective,
+                        0,
+                        config.depth,
+                        config.scoring_weights,
+                        config.enable_static_exact_evaluation,
+                    );
 
-            let own_drainer_vulnerable_after = if config.enable_child_move_class_coverage {
-                Self::is_own_drainer_vulnerable_next_turn(
-                    &simulated_game,
-                    actor_color,
-                    config.enable_enhanced_drainer_vulnerability,
-                )
-            } else {
-                false
-            };
-            let own_drainer_vulnerability_transition =
-                own_drainer_vulnerable_before != own_drainer_vulnerable_after;
-            let tactical_extension_trigger = Self::events_include_any_drainer_fainted(&events)
-                || own_drainer_vulnerability_transition
-                || events
-                    .iter()
-                    .any(|event| matches!(event, Event::ManaScored { .. }));
-            let classes = if config.enable_child_move_class_coverage {
-                Self::classify_move_classes(
-                    game,
-                    &simulated_game,
-                    actor_color,
-                    &events,
-                    own_drainer_vulnerable_before,
-                    own_drainer_vulnerable_after,
-                )
-            } else {
-                MoveClassFlags::default()
-            };
-            let quiet_reduction_candidate = Self::is_quiet_reduction_candidate(
-                ordering_efficiency,
-                tactical_extension_trigger,
-                classes,
-            );
+                    let ordering_efficiency = if config.enable_root_efficiency {
+                        Self::move_efficiency_delta_from_before_snapshot(
+                            game,
+                            &simulated_game,
+                            actor_color,
+                            &events,
+                            scratch
+                                .before_efficiency_snapshot
+                                .expect("snapshot should exist when root efficiency is enabled"),
+                            child_hash,
+                            false,
+                            false,
+                            false,
+                            config.enable_child_exact_tactics,
+                            config.enable_static_exact_evaluation,
+                            config.root_backtrack_penalty,
+                            config.root_mana_handoff_penalty,
+                        )
+                    } else {
+                        0
+                    };
+                    if config.enable_root_efficiency
+                        && SMART_NO_EFFECT_CHILD_PENALTY != 0
+                        && Self::is_no_effect_state_transition(game, &simulated_game)
+                    {
+                        heuristic -= SMART_NO_EFFECT_CHILD_PENALTY;
+                    }
+                    if config.enable_event_ordering_bonus {
+                        heuristic = heuristic.saturating_add(Self::ordering_event_bonus(
+                            game.active_color,
+                            perspective,
+                            &events,
+                        ));
+                    }
+                    if config.enable_tt_best_child_ordering
+                        && preferred_child_hash.is_some()
+                        && preferred_child_hash == Some(child_hash)
+                    {
+                        heuristic = heuristic.saturating_add(SMART_TT_BEST_CHILD_BONUS);
+                    }
+                    if config.enable_killer_move_ordering
+                        && (killer_hashes[0] == child_hash || killer_hashes[1] == child_hash)
+                        && child_hash != 0
+                        && preferred_child_hash != Some(child_hash)
+                    {
+                        heuristic = heuristic.saturating_add(SMART_KILLER_MOVE_BONUS);
+                    }
+                    if config.enable_history_heuristic && child_hash != 0 {
+                        if let Some(&history_score) = history_table.get(&child_hash) {
+                            heuristic = heuristic
+                                .saturating_add(history_score.min(SMART_HISTORY_BONUS_CAP));
+                        }
+                    }
 
-            scored_states.push((
-                heuristic,
-                RankedChildState {
-                    game: simulated_game,
-                    hash: child_hash,
-                    ordering_efficiency,
-                    tactical_extension_trigger,
-                    quiet_reduction_candidate,
-                    classes,
-                },
-            ));
+                    let own_drainer_vulnerable_before = scratch.own_drainer_vulnerable_before;
+                    let own_drainer_vulnerable_after = if config.enable_child_move_class_coverage {
+                        Self::is_own_drainer_vulnerable_next_turn(
+                            &simulated_game,
+                            actor_color,
+                            config.enable_enhanced_drainer_vulnerability,
+                        )
+                    } else {
+                        false
+                    };
+                    let own_drainer_vulnerability_transition =
+                        own_drainer_vulnerable_before != own_drainer_vulnerable_after;
+                    let tactical_extension_trigger =
+                        Self::events_include_any_drainer_fainted(&events)
+                            || own_drainer_vulnerability_transition
+                            || events
+                                .iter()
+                                .any(|event| matches!(event, Event::ManaScored { .. }));
+                    let classes = if config.enable_child_move_class_coverage {
+                        Self::classify_move_classes(
+                            game,
+                            &simulated_game,
+                            actor_color,
+                            &events,
+                            own_drainer_vulnerable_before,
+                            own_drainer_vulnerable_after,
+                        )
+                    } else {
+                        MoveClassFlags::default()
+                    };
+                    let quiet_reduction_candidate = Self::is_quiet_reduction_candidate(
+                        ordering_efficiency,
+                        tactical_extension_trigger,
+                        classes,
+                    );
+
+                    ChildEvalBundle {
+                        child_hash,
+                        heuristic,
+                        after_efficiency_snapshot: None,
+                        ordering_efficiency,
+                        own_drainer_vulnerable_after,
+                        tactical_extension_trigger,
+                        quiet_reduction_candidate,
+                        classes,
+                    }
+                };
+                update_turn_engine_selector_diagnostics(|diagnostics| {
+                    diagnostics.ranked_child_states_children_fully_scored += 1;
+                    diagnostics.child_ordering_full_pass_children += 1;
+                    diagnostics.child_ordering_shortlist_children += 1;
+                });
+
+                scored_states.push((
+                    bundle.heuristic,
+                    RankedChildState {
+                        game: simulated_game,
+                        hash: bundle.child_hash,
+                        ordering_efficiency: bundle.ordering_efficiency,
+                        tactical_extension_trigger: bundle.tactical_extension_trigger,
+                        quiet_reduction_candidate: bundle.quiet_reduction_candidate,
+                        classes: bundle.classes,
+                    },
+                ));
+            }
         }
 
         scored_states.sort_by(|a, b| Self::compare_ranked_child_entries(a, b, maximizing));
@@ -11625,6 +12119,34 @@ impl MonsGameModel {
             include_strategic_exact,
             simulated_state_hash,
         );
+        Self::move_efficiency_delta_from_before_snapshot_with_after_snapshot(
+            game,
+            simulated_game,
+            perspective,
+            events,
+            before,
+            after,
+            is_root,
+            apply_backtrack_penalty,
+            apply_root_mana_handoff_guard,
+            root_backtrack_penalty,
+            root_mana_handoff_penalty,
+        )
+    }
+
+    fn move_efficiency_delta_from_before_snapshot_with_after_snapshot(
+        game: &MonsGame,
+        simulated_game: &MonsGame,
+        perspective: Color,
+        events: &[Event],
+        before: MoveEfficiencySnapshot,
+        after: MoveEfficiencySnapshot,
+        is_root: bool,
+        apply_backtrack_penalty: bool,
+        apply_root_mana_handoff_guard: bool,
+        root_backtrack_penalty: i32,
+        root_mana_handoff_penalty: i32,
+    ) -> i32 {
         let unknown_steps = Config::BOARD_SIZE + 4;
 
         let mut delta = 0i32;
@@ -11820,6 +12342,9 @@ impl MonsGameModel {
         if let Some(cached) =
             MOVE_EFFICIENCY_SNAPSHOT_CACHE.with(|cache| cache.borrow().get(&cache_key).copied())
         {
+            update_turn_engine_selector_diagnostics(|diagnostics| {
+                diagnostics.move_efficiency_snapshot_cache_hits += 1;
+            });
             return cached;
         }
 
@@ -11867,6 +12392,9 @@ impl MonsGameModel {
         include_strategic_exact: bool,
         state_hash: u64,
     ) -> MoveEfficiencySnapshot {
+        update_turn_engine_selector_diagnostics(|diagnostics| {
+            diagnostics.move_efficiency_snapshot_builds += 1;
+        });
         let unknown_steps = Config::BOARD_SIZE + 4;
         let strategic = include_strategic_exact.then(|| exact_strategic_analysis(game));
         let my_summary = strategic.map(|analysis| analysis.color_summary(perspective));
@@ -12181,8 +12709,39 @@ impl MonsGameModel {
         scoring_weights: &'static ScoringWeights,
         allow_exact_static_evaluation: bool,
     ) -> i32 {
+        Self::score_state_with_context(
+            game,
+            perspective,
+            depth,
+            search_depth,
+            scoring_weights,
+            allow_exact_static_evaluation,
+            None,
+        )
+    }
+
+    fn score_state_with_context(
+        game: &MonsGame,
+        perspective: Color,
+        depth: usize,
+        search_depth: usize,
+        scoring_weights: &'static ScoringWeights,
+        allow_exact_static_evaluation: bool,
+        scoring_context: Option<&ScoringEvalContext>,
+    ) -> i32 {
         if let Some(terminal_score) = Self::terminal_score(game, perspective, depth, search_depth) {
             terminal_score
+        } else if let Some(context) = scoring_context {
+            update_turn_engine_selector_diagnostics(|diagnostics| {
+                diagnostics.search_preferability_builds += 1;
+            });
+            evaluate_preferability_with_context(
+                game,
+                perspective,
+                scoring_weights,
+                allow_exact_static_evaluation,
+                context,
+            )
         } else {
             evaluate_preferability_with_weights_and_exact_policy(
                 game,
@@ -17655,9 +18214,15 @@ impl MonsGameModel {
         if let Some(cached) =
             SEARCH_PREFERABILITY_CACHE.with(|cache| cache.borrow().get(&cache_key).copied())
         {
+            update_turn_engine_selector_diagnostics(|diagnostics| {
+                diagnostics.search_preferability_cache_hits += 1;
+            });
             return cached;
         }
 
+        update_turn_engine_selector_diagnostics(|diagnostics| {
+            diagnostics.search_preferability_builds += 1;
+        });
         let score = evaluate_preferability_with_weights_and_exact_policy(
             game,
             perspective,
@@ -17866,6 +18431,619 @@ mod evaluation_cache_tests {
             turn.safe_opponent_mana_progress_steps
                 .unwrap_or(Config::BOARD_SIZE + 4)
         );
+    }
+
+    #[test]
+    fn move_efficiency_delta_after_snapshot_helper_matches_existing_path() {
+        clear_turn_engine_selector_followup_floor_cache();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.enable_child_eval_bundle = true;
+        config.enable_local_scoring_eval_ctx = true;
+        let transition = MonsGameModel::enumerate_legal_transitions(
+            &game,
+            config.node_enum_limit,
+            MonsGameModel::automove_start_input_options(config),
+        )
+        .into_iter()
+        .find(|transition| !transition.events.is_empty())
+        .expect("expected at least one legal transition");
+        let child_hash = MonsGameModel::search_state_hash(&transition.game);
+        let before_hash = MonsGameModel::search_state_hash(&game);
+        let before = MonsGameModel::move_efficiency_snapshot_with_hash(
+            &game,
+            Color::White,
+            config.enable_child_exact_tactics && game.active_color == Color::White,
+            config.enable_static_exact_evaluation,
+            before_hash,
+        );
+        let after = MonsGameModel::move_efficiency_snapshot_uncached_with_hash(
+            &transition.game,
+            Color::White,
+            config.enable_child_exact_tactics && transition.game.active_color == Color::White,
+            config.enable_static_exact_evaluation,
+            child_hash,
+        );
+
+        let legacy = MonsGameModel::move_efficiency_delta_from_before_snapshot(
+            &game,
+            &transition.game,
+            Color::White,
+            transition.events.as_slice(),
+            before,
+            child_hash,
+            false,
+            false,
+            false,
+            config.enable_child_exact_tactics,
+            config.enable_static_exact_evaluation,
+            config.root_backtrack_penalty,
+            config.root_mana_handoff_penalty,
+        );
+        let reused = MonsGameModel::move_efficiency_delta_from_before_snapshot_with_after_snapshot(
+            &game,
+            &transition.game,
+            Color::White,
+            transition.events.as_slice(),
+            before,
+            after,
+            false,
+            false,
+            false,
+            config.root_backtrack_penalty,
+            config.root_mana_handoff_penalty,
+        );
+
+        assert_eq!(legacy, reused);
+    }
+
+    #[test]
+    fn child_eval_bundle_matches_legacy_child_analysis() {
+        clear_turn_engine_selector_followup_floor_cache();
+        clear_exact_state_analysis_cache();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(8, 6),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.enable_child_eval_bundle = true;
+        config.enable_local_scoring_eval_ctx = true;
+        config.enable_child_move_class_coverage = true;
+        let history_table: HistoryTable = HistoryTable::default();
+        let transition = MonsGameModel::enumerate_legal_transitions(
+            &game,
+            config.node_enum_limit,
+            MonsGameModel::automove_start_input_options(config),
+        )
+        .into_iter()
+        .find(|transition| !transition.events.is_empty())
+        .expect("expected at least one legal transition");
+        let scratch = MonsGameModel::build_child_ordering_scratch(
+            &game,
+            Color::White,
+            game.active_color,
+            config,
+        );
+        let bundle = MonsGameModel::build_child_eval_bundle(
+            &game,
+            &transition.game,
+            Color::White,
+            game.active_color,
+            transition.events.as_slice(),
+            None,
+            [0, 0],
+            config,
+            &history_table,
+            &scratch,
+        );
+        let expected_hash = MonsGameModel::search_state_hash(&transition.game);
+        let expected_score = MonsGameModel::score_state(
+            &transition.game,
+            Color::White,
+            0,
+            config.depth,
+            config.scoring_weights,
+            config.enable_static_exact_evaluation,
+        );
+        let expected_after_snapshot =
+            Some(MonsGameModel::move_efficiency_snapshot_uncached_with_hash(
+                &transition.game,
+                Color::White,
+                config.enable_child_exact_tactics && transition.game.active_color == Color::White,
+                config.enable_static_exact_evaluation,
+                expected_hash,
+            ));
+        let expected_ordering = MonsGameModel::move_efficiency_delta_from_before_snapshot(
+            &game,
+            &transition.game,
+            Color::White,
+            transition.events.as_slice(),
+            scratch
+                .before_efficiency_snapshot
+                .expect("expected before snapshot when root efficiency is enabled"),
+            expected_hash,
+            false,
+            false,
+            false,
+            config.enable_child_exact_tactics,
+            config.enable_static_exact_evaluation,
+            config.root_backtrack_penalty,
+            config.root_mana_handoff_penalty,
+        );
+        let expected_own_drainer_vulnerable_after =
+            MonsGameModel::is_own_drainer_vulnerable_next_turn(
+                &transition.game,
+                game.active_color,
+                config.enable_enhanced_drainer_vulnerability,
+            );
+        let expected_tactical_trigger =
+            MonsGameModel::events_include_any_drainer_fainted(transition.events.as_slice())
+                || (scratch.own_drainer_vulnerable_before != expected_own_drainer_vulnerable_after)
+                || transition
+                    .events
+                    .iter()
+                    .any(|event| matches!(event, Event::ManaScored { .. }));
+        let expected_classes = MonsGameModel::classify_move_classes(
+            &game,
+            &transition.game,
+            game.active_color,
+            transition.events.as_slice(),
+            scratch.own_drainer_vulnerable_before,
+            expected_own_drainer_vulnerable_after,
+        );
+        let expected_quiet = MonsGameModel::is_quiet_reduction_candidate(
+            expected_ordering,
+            expected_tactical_trigger,
+            expected_classes,
+        );
+
+        assert_eq!(bundle.child_hash, expected_hash);
+        assert_eq!(bundle.heuristic, expected_score);
+        assert_eq!(bundle.after_efficiency_snapshot, expected_after_snapshot);
+        assert_eq!(bundle.ordering_efficiency, expected_ordering);
+        assert_eq!(
+            bundle.own_drainer_vulnerable_after,
+            expected_own_drainer_vulnerable_after
+        );
+        assert_eq!(bundle.tactical_extension_trigger, expected_tactical_trigger);
+        assert_eq!(bundle.quiet_reduction_candidate, expected_quiet);
+        assert_eq!(
+            bundle.classes.immediate_score,
+            expected_classes.immediate_score
+        );
+        assert_eq!(
+            bundle.classes.drainer_attack,
+            expected_classes.drainer_attack
+        );
+        assert_eq!(
+            bundle.classes.drainer_safety_recover,
+            expected_classes.drainer_safety_recover
+        );
+        assert_eq!(
+            bundle.classes.carrier_progress,
+            expected_classes.carrier_progress
+        );
+        assert_eq!(bundle.classes.material, expected_classes.material);
+        assert_eq!(bundle.classes.quiet, expected_classes.quiet);
+    }
+
+    fn child_ordering_shortlist_config() -> SmartSearchConfig {
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.enable_child_eval_bundle = true;
+        config.enable_local_scoring_eval_ctx = true;
+        config.enable_two_stage_child_ordering = true;
+        config.node_enum_limit = 128;
+        config.node_branch_limit = 1;
+        config.child_ordering_shortlist_multiplier = 1;
+        config.child_ordering_tactical_reserve = 0;
+        config
+    }
+
+    fn cheap_child_entries_for_test(
+        game: &MonsGame,
+        perspective: Color,
+        config: SmartSearchConfig,
+        preferred_child_hash: Option<u64>,
+        killer_hashes: [u64; 2],
+        retain_supermana_progress: bool,
+        retain_opponent_mana_progress: bool,
+    ) -> Vec<CheapChildOrderingEntry> {
+        let actor_color = game.active_color;
+        let scratch =
+            MonsGameModel::build_child_ordering_scratch(game, perspective, actor_color, config);
+        let history_table: HistoryTable = HistoryTable::default();
+        MonsGameModel::enumerate_legal_transitions(
+            game,
+            config.node_enum_limit,
+            MonsGameModel::automove_start_input_options(config),
+        )
+        .into_iter()
+        .map(|transition| {
+            let child_hash = MonsGameModel::search_state_hash(&transition.game);
+            let heuristic = MonsGameModel::cheap_child_ordering_heuristic(
+                game,
+                &transition.game,
+                perspective,
+                child_hash,
+                transition.events.as_slice(),
+                preferred_child_hash,
+                killer_hashes,
+                config,
+                &history_table,
+            );
+            let (force_full, eventful_reserve) = MonsGameModel::child_requires_full_ordering_pass(
+                &transition,
+                perspective,
+                actor_color,
+                child_hash,
+                preferred_child_hash,
+                killer_hashes,
+                config,
+                &scratch,
+                retain_supermana_progress,
+                retain_opponent_mana_progress,
+            );
+
+            CheapChildOrderingEntry {
+                transition,
+                child_hash,
+                heuristic,
+                force_full,
+                eventful_reserve,
+            }
+        })
+        .collect()
+    }
+
+    fn cheap_child_entry_for_selection_test(
+        child_hash: u64,
+        heuristic: i32,
+        force_full: bool,
+        eventful_reserve: bool,
+    ) -> CheapChildOrderingEntry {
+        CheapChildOrderingEntry {
+            transition: LegalInputTransition {
+                inputs: Vec::new(),
+                game: game_with_items(vec![], Color::White),
+                events: Vec::new(),
+            },
+            child_hash,
+            heuristic,
+            force_full,
+            eventful_reserve,
+        }
+    }
+
+    #[test]
+    fn two_stage_child_ordering_selection_keeps_exact_supermana_progress_child() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(0, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+        let config = child_ordering_shortlist_config();
+        let exact_turn_before = exact_turn_summary(&game, Color::White);
+        let entries = cheap_child_entries_for_test(
+            &game,
+            Color::White,
+            config,
+            None,
+            [0; 2],
+            exact_turn_before.safe_supermana_progress
+                || exact_turn_before.spirit_assisted_supermana_progress,
+            false,
+        );
+        let target_index = entries
+            .iter()
+            .position(|entry| {
+                MonsGameModel::transition_preserves_exact_progress(
+                    &entry.transition,
+                    Color::White,
+                    Mana::Supermana,
+                )
+            })
+            .expect("expected an exact safe supermana progress child");
+        let selected =
+            MonsGameModel::selected_two_stage_child_ordering_indices(&entries, true, config);
+
+        assert!(
+            entries[target_index].force_full,
+            "exact safe supermana progress child should be forced through the shortlist"
+        );
+        assert!(
+            selected.contains(&target_index),
+            "exact safe supermana progress child should survive shortlist selection"
+        );
+    }
+
+    #[test]
+    fn two_stage_child_ordering_selection_keeps_exact_opponent_mana_progress_child() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(0, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 4),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+        let config = child_ordering_shortlist_config();
+        let exact_turn_before = exact_turn_summary(&game, Color::White);
+        let entries = cheap_child_entries_for_test(
+            &game,
+            Color::White,
+            config,
+            None,
+            [0; 2],
+            false,
+            exact_turn_before.safe_opponent_mana_progress
+                || exact_turn_before.spirit_assisted_opponent_mana_progress
+                || exact_turn_before.spirit_assisted_denial,
+        );
+        let target_index = entries
+            .iter()
+            .position(|entry| {
+                MonsGameModel::transition_preserves_exact_progress(
+                    &entry.transition,
+                    Color::White,
+                    Mana::Regular(Color::Black),
+                )
+            })
+            .expect("expected an exact safe opponent-mana progress child");
+        let selected =
+            MonsGameModel::selected_two_stage_child_ordering_indices(&entries, true, config);
+
+        assert!(
+            entries[target_index].force_full,
+            "exact safe opponent-mana progress child should be forced through the shortlist"
+        );
+        assert!(
+            selected.contains(&target_index),
+            "exact safe opponent-mana progress child should survive shortlist selection"
+        );
+    }
+
+    #[test]
+    fn two_stage_child_ordering_selection_keeps_drainer_faint_child() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(5, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let config = child_ordering_shortlist_config();
+        let entries =
+            cheap_child_entries_for_test(&game, Color::White, config, None, [0; 2], false, false);
+        let target_index = entries
+            .iter()
+            .position(|entry| {
+                MonsGameModel::events_include_opponent_drainer_fainted(
+                    entry.transition.events.as_slice(),
+                    Color::White,
+                )
+            })
+            .expect("expected an opponent drainer-faint child");
+        let selected =
+            MonsGameModel::selected_two_stage_child_ordering_indices(&entries, true, config);
+
+        assert!(
+            entries[target_index].force_full,
+            "drainer-faint child should be forced through the shortlist"
+        );
+        assert!(
+            selected.contains(&target_index),
+            "drainer-faint child should survive shortlist selection"
+        );
+    }
+
+    #[test]
+    fn two_stage_child_ordering_selection_keeps_tt_and_killer_children() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(8, 6),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let config = child_ordering_shortlist_config();
+        let plain_entries =
+            cheap_child_entries_for_test(&game, Color::White, config, None, [0; 2], false, false);
+        let target_index = plain_entries
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, entry)| entry.heuristic)
+            .map(|(index, _)| index)
+            .expect("expected at least one child");
+        let target_hash = plain_entries[target_index].child_hash;
+        let plain_selected =
+            MonsGameModel::selected_two_stage_child_ordering_indices(&plain_entries, true, config);
+        assert!(
+            !plain_selected.contains(&target_index),
+            "test target should start outside the narrow shortlist without TT/killer protection"
+        );
+
+        let tt_entries = cheap_child_entries_for_test(
+            &game,
+            Color::White,
+            config,
+            Some(target_hash),
+            [0; 2],
+            false,
+            false,
+        );
+        let tt_selected =
+            MonsGameModel::selected_two_stage_child_ordering_indices(&tt_entries, true, config);
+        assert!(tt_entries[target_index].force_full);
+        assert!(
+            tt_selected.contains(&target_index),
+            "TT-best child should survive shortlist selection"
+        );
+
+        let killer_entries = cheap_child_entries_for_test(
+            &game,
+            Color::White,
+            config,
+            None,
+            [target_hash, 0],
+            false,
+            false,
+        );
+        let killer_selected =
+            MonsGameModel::selected_two_stage_child_ordering_indices(&killer_entries, true, config);
+        assert!(killer_entries[target_index].force_full);
+        assert!(
+            killer_selected.contains(&target_index),
+            "killer child should survive shortlist selection"
+        );
+    }
+
+    #[test]
+    fn two_stage_child_ordering_selection_adds_eventful_reserve_for_tactical_top2_coverage() {
+        let mut config = child_ordering_shortlist_config();
+        config.child_ordering_tactical_reserve = 1;
+        let entries = vec![
+            cheap_child_entry_for_selection_test(5, 100, false, false),
+            cheap_child_entry_for_selection_test(4, 90, false, false),
+            cheap_child_entry_for_selection_test(3, 80, false, true),
+            cheap_child_entry_for_selection_test(2, 70, false, false),
+        ];
+
+        let selected =
+            MonsGameModel::selected_two_stage_child_ordering_indices(&entries, true, config);
+
+        assert_eq!(selected, vec![0, 2]);
     }
 }
 

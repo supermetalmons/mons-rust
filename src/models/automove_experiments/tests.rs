@@ -5254,6 +5254,283 @@ fn smart_automove_pro_turn_engine_selector_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: bounded selector/exact hotspot probe for pro reliability corpus"]
+fn smart_automove_pro_reliability_hotspot_probe() {
+    use std::collections::HashMap;
+    use std::time::Instant;
+
+    #[derive(Clone)]
+    struct ProbeCase {
+        label: &'static str,
+        game: MonsGame,
+        mode: SmartAutomovePreference,
+        opening_book_driven: bool,
+        config_tweak: Option<fn(SmartSearchConfig) -> SmartSearchConfig>,
+    }
+
+    fn probe_case_from_fixture(label: &'static str, fixture: TriageFixture) -> ProbeCase {
+        ProbeCase {
+            label,
+            game: fixture.game,
+            mode: fixture.mode,
+            opening_book_driven: fixture.opening_book_driven,
+            config_tweak: fixture.config_tweak,
+        }
+    }
+
+    fn game_with_items(items: Vec<(Location, Item)>, active_color: Color) -> MonsGame {
+        let mut game = MonsGame::new(false);
+        game.board = Board::new_with_items(items.into_iter().collect::<HashMap<_, _>>());
+        game.active_color = active_color;
+        game.turn_number = 2;
+        game.actions_used_count = 0;
+        game.mana_moves_count = 0;
+        game.mons_moves_count = 0;
+        game.white_score = 0;
+        game.black_score = 0;
+        game.white_potions_count = 0;
+        game.black_potions_count = 0;
+        game
+    }
+
+    let profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
+        .unwrap_or_else(|| "runtime_pro_turn_engine_v30".to_string());
+    let selector = profile_selector_from_name(profile.as_str())
+        .unwrap_or_else(|| panic!("profile '{}' not found", profile));
+
+    let cases = vec![
+        probe_case_from_fixture(
+            "primary_spirit_setup",
+            primary_pro_fixture_by_id("primary_spirit_setup"),
+        ),
+        probe_case_from_fixture(
+            "primary_black_loss_opening_a_ply19",
+            primary_pro_fixture_by_id("primary_black_loss_opening_a_ply19"),
+        ),
+        probe_case_from_fixture("human_win_pro_a", primary_pro_fixture_by_id("human_win_pro_a")),
+        ProbeCase {
+            label: "loss_opening_a",
+            game: MonsGame::from_fen(
+                "0 0 w 0 0 1 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n02E0xn01A0xD0xS0xY0xn03",
+                false,
+            )
+            .expect("loss opening a fen should be valid"),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+        },
+        ProbeCase {
+            label: "loss_opening_b",
+            game: MonsGame::from_fen(
+                "0 0 w 0 0 0 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n03E0xA0xD0xS0xY0xn03",
+                false,
+            )
+            .expect("loss opening b fen should be valid"),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+        },
+        ProbeCase {
+            label: "quiet_positional",
+            game: game_with_items(
+                vec![
+                    (
+                        Location::new(10, 5),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(8, 5),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(0, 5),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                        },
+                    ),
+                ],
+                Color::White,
+            ),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+        },
+        ProbeCase {
+            label: "drainer_risk",
+            game: game_with_items(
+                vec![
+                    (
+                        Location::new(7, 5),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(5, 3),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                        },
+                    ),
+                    (
+                        Location::new(0, 10),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                        },
+                    ),
+                ],
+                Color::White,
+            ),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+        },
+        ProbeCase {
+            label: "exact_progress",
+            game: game_with_items(
+                vec![
+                    (
+                        Location::new(7, 5),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(6, 5),
+                        Item::Mana {
+                            mana: Mana::Supermana,
+                        },
+                    ),
+                    (
+                        Location::new(0, 10),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                        },
+                    ),
+                ],
+                Color::White,
+            ),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+        },
+        ProbeCase {
+            label: "spirit_development",
+            game: game_with_items(
+                vec![
+                    (
+                        Location::new(10, 5),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(10, 6),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(1, 5),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                        },
+                    ),
+                ],
+                Color::White,
+            ),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+        },
+    ];
+
+    println!(
+        "pro reliability hotspot probe: profile={} positions={}",
+        profile,
+        cases.len()
+    );
+    for case in cases {
+        with_env_override(
+            "SMART_USE_WHITE_OPENING_BOOK",
+            if case.opening_book_driven {
+                "true"
+            } else {
+                "false"
+            },
+            || {
+                clear_exact_state_analysis_cache();
+                clear_exact_query_diagnostics();
+                clear_turn_engine_plan_cache();
+                clear_turn_engine_diagnostics();
+                clear_turn_engine_selector_diagnostics();
+
+                let base_config = case
+                    .config_tweak
+                    .map(|tweak| {
+                        tweak(
+                            SearchBudget::from_preference(case.mode)
+                                .runtime_config_for_game(&case.game),
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        SearchBudget::from_preference(case.mode).runtime_config_for_game(&case.game)
+                    });
+                let start = Instant::now();
+                let inputs = select_inputs_with_runtime_fallback(selector, &case.game, base_config);
+                let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+                let selector_diag = turn_engine_selector_diagnostics_snapshot();
+                let engine_diag = turn_engine_diagnostics_snapshot();
+                let exact_diag = exact_query_diagnostics_snapshot();
+
+                println!(
+                    "HOTSPOT label={} move={} ms={:.2} selector(child_calls={} children={} fully_scored={} shortlist={} full_pass={} move_eff_builds={} move_eff_hits={} prefer_builds={} prefer_hits={} head_calls={} head_hits={} last_stage={}) exact(attack_calls={} attack_hits={} threat_calls={} payload_calls={} tactical_spirit_calls={} tactical_spirit_hits={} secure_mana_calls={} secure_mana_hits={} pickup_calls={} pickup_hits={}) engine(cache_hits={} cache_misses={} accepted={} reply_calls={}) fen={}",
+                    case.label,
+                    Input::fen_from_array(&inputs),
+                    elapsed_ms,
+                    selector_diag.ranked_child_states_calls,
+                    selector_diag.ranked_child_states_children_enumerated,
+                    selector_diag.ranked_child_states_children_fully_scored,
+                    selector_diag.child_ordering_shortlist_children,
+                    selector_diag.child_ordering_full_pass_children,
+                    selector_diag.move_efficiency_snapshot_builds,
+                    selector_diag.move_efficiency_snapshot_cache_hits,
+                    selector_diag.search_preferability_builds,
+                    selector_diag.search_preferability_cache_hits,
+                    selector_diag.head_plan_calls,
+                    selector_diag.head_plan_hits,
+                    selector_diag.last_return_stage,
+                    exact_diag.attack_reach_calls,
+                    exact_diag.attack_reach_cache_hits,
+                    exact_diag.drainer_immediate_threat_calls,
+                    exact_diag.actor_payload_after_move_calls,
+                    exact_diag.tactical_spirit_summary_calls,
+                    exact_diag.tactical_spirit_summary_cache_hits,
+                    exact_diag.exact_secure_mana_calls,
+                    exact_diag.exact_secure_mana_cache_hits,
+                    exact_diag.pickup_path_calls,
+                    exact_diag.pickup_path_cache_hits,
+                    engine_diag.cache_hits,
+                    engine_diag.cache_misses,
+                    engine_diag.accepted_plans,
+                    engine_diag.reply_search_calls,
+                    case.game.fen(),
+                );
+                assert!(
+                    !inputs.is_empty(),
+                    "hotspot probe profile '{}' produced no legal move for '{}'",
+                    profile,
+                    case.label
+                );
+            },
+        );
+    }
+}
+
+#[test]
 fn runtime_pro_turn_engine_v30_profile_prefers_safe_white_fast_screen_turn_one_tail_root() {
     let game = MonsGame::from_fen(
         "0 0 w 0 0 2 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n04D0xS0xn05/n03E0xA0xn02Y0xn03",
@@ -5537,11 +5814,7 @@ fn runtime_pro_turn_engine_v3_shared_selector_matches_v30_on_primary_spirit_setu
         fixture.mode,
         &fixture.game,
     );
-    let baseline = loss_probe_decision(
-        "runtime_pro_turn_engine_v30",
-        fixture.mode,
-        &fixture.game,
-    );
+    let baseline = loss_probe_decision("runtime_pro_turn_engine_v30", fixture.mode, &fixture.game);
 
     assert_eq!(
         candidate.move_fen, baseline.move_fen,
@@ -5670,7 +5943,10 @@ fn runtime_pro_turn_engine_v3_shared_rejects_plain_progress_override_on_black_op
     );
 
     assert_eq!(Input::fen_from_array(&probe.candidate_inputs), "l0,0;l1,1");
-    assert_eq!(Input::fen_from_array(&probe.selected_inputs), "l1,5;l2,7;l1,8");
+    assert_eq!(
+        Input::fen_from_array(&probe.selected_inputs),
+        "l1,5;l2,7;l1,8"
+    );
     assert!(
         !probe.accepted,
         "plain one-chunk progress should not override the safe spirit shortlist on the black opening replay state: {:?}",
@@ -5712,8 +5988,14 @@ fn runtime_pro_turn_engine_v3_shared_rejects_late_black_safety_recovery_override
         &game,
     );
 
-    assert_eq!(Input::fen_from_array(&acceptance.candidate_inputs), "l0,0;l0,1");
-    assert_eq!(Input::fen_from_array(&acceptance.selected_inputs), "l2,5;l4,4;l3,3");
+    assert_eq!(
+        Input::fen_from_array(&acceptance.candidate_inputs),
+        "l0,0;l0,1"
+    );
+    assert_eq!(
+        Input::fen_from_array(&acceptance.selected_inputs),
+        "l2,5;l4,4;l3,3"
+    );
     assert!(
         !acceptance.accepted,
         "late black safety-recovery head should not override the concrete spirit-own-mana search root: {:?}",
@@ -5893,8 +6175,11 @@ fn print_runtime_pro_turn_engine_v3_shared_replay_probe(fixture_id: &str) {
     clear_turn_engine_plan_cache();
     clear_turn_engine_selector_diagnostics();
 
-    let config =
-        loss_probe_runtime_config("runtime_pro_turn_engine_v3_shared", &fixture.game, fixture.mode);
+    let config = loss_probe_runtime_config(
+        "runtime_pro_turn_engine_v3_shared",
+        &fixture.game,
+        fixture.mode,
+    );
     let fallback_probe =
         runtime_pro_turn_engine_v3_shared_fallback_probe_for_test(&fixture.game, config);
     let acceptance = MonsGameModel::turn_engine_acceptance_probe_for_test(&fixture.game, config);
@@ -5903,13 +6188,19 @@ fn print_runtime_pro_turn_engine_v3_shared_replay_probe(fixture_id: &str) {
 
     let first = model_runtime_pro_turn_engine_v3_shared(&fixture.game, config);
     println!("opening_first_chunk={}", Input::fen_from_array(&first));
-    if let Some(after_first) = MonsGameModel::apply_inputs_for_search(&fixture.game, first.as_slice()) {
-        let after_config =
-            loss_probe_runtime_config("runtime_pro_turn_engine_v3_shared", &after_first, fixture.mode);
+    if let Some(after_first) =
+        MonsGameModel::apply_inputs_for_search(&fixture.game, first.as_slice())
+    {
+        let after_config = loss_probe_runtime_config(
+            "runtime_pro_turn_engine_v3_shared",
+            &after_first,
+            fixture.mode,
+        );
         let continuation_probe =
             runtime_pro_turn_engine_v3_shared_fallback_probe_for_test(&after_first, after_config);
         let resumed = model_runtime_pro_turn_engine_v3_shared(&after_first, after_config);
-        let cached = turn_engine_cached_step(&after_first, calibration_turn_engine_config(after_config));
+        let cached =
+            turn_engine_cached_step(&after_first, calibration_turn_engine_config(after_config));
         println!("after_first_fen={}", after_first.fen());
         println!("after_first_fallback_probe={:?}", continuation_probe);
         println!("after_first_resumed={}", Input::fen_from_array(&resumed));

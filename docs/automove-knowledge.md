@@ -29,6 +29,7 @@ This document keeps only durable lessons that should shape future automove work.
 - Compress the lesson immediately when a run matters. Raw logs and stamps are disposable evidence, not memory.
 - Keep ignored harness test names unique; `cargo test` substring filters can accidentally run the wrong stage.
 - Candidate logs belong under `target/experiment-runs/<candidate>/`; runtime-preflight state belongs under `target/experiment-stamps/`.
+- When bounded `pro-reliability` stalls, prefer a fresh live duel sample over the synthetic hotspot probe when choosing the next split. On this ProV2 line the visible wall has jumped across three different surfaces in consecutive iterations: selector ordering, macro oracle projection, and turn-planner targeted score-window queries.
 
 ## Mistakes Not To Repeat
 

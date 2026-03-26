@@ -126,6 +126,93 @@ fn exact_payload_variant_index(payload: ExactActorPayload) -> usize {
     }
 }
 
+const EXACT_ACTOR_MOVE_MEMO_UNKNOWN: u8 = u8::MAX;
+const EXACT_ACTOR_MOVE_MEMO_CAPACITY: usize = EXACT_LOCATION_STATE_CAPACITY * 2 * 5 * 5 * 2;
+
+struct ExactActorMoveMemo([u8; EXACT_ACTOR_MOVE_MEMO_CAPACITY]);
+
+impl ExactActorMoveMemo {
+    #[inline]
+    fn new() -> Self {
+        Self([EXACT_ACTOR_MOVE_MEMO_UNKNOWN; EXACT_ACTOR_MOVE_MEMO_CAPACITY])
+    }
+
+    #[inline]
+    fn payload_after_move(
+        &mut self,
+        board: &Board,
+        mon_kind: MonKind,
+        color: Color,
+        payload: ExactActorPayload,
+        destination: Location,
+        allow_pick_bomb: bool,
+    ) -> Option<ExactActorPayload> {
+        let slot =
+            exact_actor_move_memo_slot(mon_kind, color, payload, destination, allow_pick_bomb);
+        let cached = self.0[slot];
+        if cached != EXACT_ACTOR_MOVE_MEMO_UNKNOWN {
+            return exact_actor_move_memo_decode(cached);
+        }
+
+        update_exact_query_diagnostics(|diagnostics| {
+            diagnostics.actor_payload_after_move_calls += 1
+        });
+        let result = actor_payload_after_move_compute(
+            board,
+            mon_kind,
+            color,
+            payload,
+            destination,
+            allow_pick_bomb,
+        );
+        self.0[slot] = exact_actor_move_memo_encode(result);
+        result
+    }
+}
+
+#[inline]
+fn exact_actor_move_memo_slot(
+    mon_kind: MonKind,
+    color: Color,
+    payload: ExactActorPayload,
+    destination: Location,
+    allow_pick_bomb: bool,
+) -> usize {
+    let allow_index = usize::from(allow_pick_bomb);
+    let payload_index = exact_payload_variant_index(payload);
+    let color_index = if color == Color::White { 0 } else { 1 };
+    let mon_kind_index = (exact_hash_mon_kind(mon_kind) - 1) as usize;
+    ((((allow_index * EXACT_PAYLOAD_VARIANTS + payload_index) * 2 + color_index) * 5
+        + mon_kind_index)
+        * EXACT_LOCATION_STATE_CAPACITY)
+        + destination.index()
+}
+
+#[inline]
+fn exact_actor_move_memo_encode(result: Option<ExactActorPayload>) -> u8 {
+    match result {
+        None => 0,
+        Some(ExactActorPayload::None) => 1,
+        Some(ExactActorPayload::Mana(Mana::Regular(Color::White))) => 2,
+        Some(ExactActorPayload::Mana(Mana::Regular(Color::Black))) => 3,
+        Some(ExactActorPayload::Mana(Mana::Supermana)) => 4,
+        Some(ExactActorPayload::Bomb) => 5,
+    }
+}
+
+#[inline]
+fn exact_actor_move_memo_decode(value: u8) -> Option<ExactActorPayload> {
+    match value {
+        0 => None,
+        1 => Some(ExactActorPayload::None),
+        2 => Some(ExactActorPayload::Mana(Mana::Regular(Color::White))),
+        3 => Some(ExactActorPayload::Mana(Mana::Regular(Color::Black))),
+        4 => Some(ExactActorPayload::Mana(Mana::Supermana)),
+        5 => Some(ExactActorPayload::Bomb),
+        _ => unreachable!("unexpected actor move memo value"),
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct ExactScorePathWindow {
     pub best_steps: Option<i32>,
@@ -524,6 +611,10 @@ pub(crate) struct ExactQueryDiagnostics {
     #[cfg(any(target_arch = "wasm32", test))]
     pub active_tactical_summary_builds: u32,
     pub passive_strategic_summary_builds: u32,
+    pub attack_reach_calls: u32,
+    pub attack_reach_cache_hits: u32,
+    pub drainer_immediate_threat_calls: u32,
+    pub actor_payload_after_move_calls: u32,
     #[cfg(any(target_arch = "wasm32", test))]
     pub exact_spirit_summary_calls: u32,
     #[cfg(any(target_arch = "wasm32", test))]
@@ -845,12 +936,30 @@ fn exact_own_drainer_safety_score(board: &Board, color: Color) -> i32 {
     let Some(drainer_location) = find_awake_drainer(board, color) else {
         return 0;
     };
+    let board_hash = exact_board_hash(board);
     let angel_nearby = board
         .find_awake_angel(color)
         .map_or(false, |angel| angel.distance(&drainer_location) == 1);
-    let immediate = is_drainer_under_immediate_threat(board, color, drainer_location, angel_nearby);
-    let walk = is_drainer_under_walk_threat(board, color, drainer_location, angel_nearby);
-    let exact_safe = is_drainer_exactly_safe_next_turn_on_board(board, color, drainer_location);
+    let (action_threats, bomb_threats) =
+        drainer_immediate_threats_with_hash(board, color, drainer_location, board_hash);
+    let immediate = if angel_nearby {
+        bomb_threats > 0
+    } else {
+        action_threats + bomb_threats > 0
+    };
+    let walk = is_drainer_under_walk_threat_with_hash(
+        board,
+        board_hash,
+        color,
+        drainer_location,
+        angel_nearby,
+    );
+    let exact_safe = is_drainer_exactly_safe_next_turn_on_board_with_hash(
+        board,
+        board_hash,
+        color,
+        drainer_location,
+    );
 
     if exact_safe && !immediate && !walk {
         2
@@ -871,12 +980,33 @@ pub(crate) fn can_attack_target_on_board(
     remaining_moves: i32,
     can_use_action: bool,
 ) -> bool {
+    can_attack_target_on_board_with_hash(
+        board,
+        exact_board_hash(board),
+        attacker_color,
+        target_color,
+        target,
+        remaining_moves,
+        can_use_action,
+    )
+}
+
+pub(crate) fn can_attack_target_on_board_with_hash(
+    board: &Board,
+    board_hash: u64,
+    attacker_color: Color,
+    target_color: Color,
+    target: Location,
+    remaining_moves: i32,
+    can_use_action: bool,
+) -> bool {
+    update_exact_query_diagnostics(|diagnostics| diagnostics.attack_reach_calls += 1);
     if remaining_moves < 0 || !can_use_action || board.item(target).is_none() {
         return false;
     }
 
     let key = ExactAttackQueryKey {
-        board_hash: exact_board_hash(board),
+        board_hash,
         attacker_color,
         target_color,
         target,
@@ -886,11 +1016,13 @@ pub(crate) fn can_attack_target_on_board(
     if let Some(cached) =
         EXACT_ATTACK_REACH_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
     {
+        update_exact_query_diagnostics(|diagnostics| diagnostics.attack_reach_cache_hits += 1);
         return cached;
     }
 
     let result = can_attack_target_on_board_uncached(
         board,
+        board_hash,
         attacker_color,
         target_color,
         target,
@@ -911,6 +1043,7 @@ pub(crate) fn can_attack_target_on_board(
 
 fn can_attack_target_on_board_uncached(
     board: &Board,
+    _board_hash: u64,
     attacker_color: Color,
     target_color: Color,
     target: Location,
@@ -918,6 +1051,7 @@ fn can_attack_target_on_board_uncached(
     _can_use_action: bool,
 ) -> bool {
     let target_guarded = exact_is_location_guarded_by_angel(board, target_color, target);
+    let mut actor_move_memo = ExactActorMoveMemo::new();
 
     for (start, item) in board.occupied() {
         let mon = match item {
@@ -967,7 +1101,7 @@ fn can_attack_target_on_board_uncached(
                 continue;
             }
             for &next in location.nearby_locations_ref() {
-                if let Some(next_payload) = actor_payload_after_move(
+                if let Some(next_payload) = actor_move_memo.payload_after_move(
                     board,
                     mon.kind,
                     mon.color,
@@ -985,7 +1119,7 @@ fn can_attack_target_on_board_uncached(
     false
 }
 
-fn exact_board_hash(board: &Board) -> u64 {
+pub(crate) fn exact_board_hash(board: &Board) -> u64 {
     let mut state = 0x6a09e667f3bcc909u64;
     for (idx, item) in board.items.iter().enumerate() {
         let Some(item) = item else { continue };
@@ -1263,6 +1397,24 @@ pub(crate) fn drainer_immediate_threats(
     color: Color,
     location: Location,
 ) -> (i32, i32) {
+    drainer_immediate_threats_with_hash(board, color, location, exact_board_hash(board))
+}
+
+pub(crate) fn drainer_immediate_threats_with_hash(
+    board: &Board,
+    color: Color,
+    location: Location,
+    _board_hash: u64,
+) -> (i32, i32) {
+    update_exact_query_diagnostics(|diagnostics| diagnostics.drainer_immediate_threat_calls += 1);
+    drainer_immediate_threats_uncached(board, color, location)
+}
+
+fn drainer_immediate_threats_uncached(
+    board: &Board,
+    color: Color,
+    location: Location,
+) -> (i32, i32) {
     let mut action_threats = 0;
     let mut bomb_threats = 0;
     for (threat_location, item) in board.occupied() {
@@ -1323,8 +1475,24 @@ pub(crate) fn is_drainer_under_walk_threat(
     location: Location,
     angel_nearby: bool,
 ) -> bool {
+    is_drainer_under_walk_threat_with_hash(
+        board,
+        exact_board_hash(board),
+        color,
+        location,
+        angel_nearby,
+    )
+}
+
+pub(crate) fn is_drainer_under_walk_threat_with_hash(
+    board: &Board,
+    board_hash: u64,
+    color: Color,
+    location: Location,
+    angel_nearby: bool,
+) -> bool {
     let key = ExactWalkThreatQueryKey {
-        board_hash: exact_board_hash(board),
+        board_hash,
         color,
         location,
         angel_nearby,
@@ -1438,15 +1606,30 @@ pub(crate) fn is_drainer_exactly_safe_next_turn_on_board(
     color: Color,
     location: Location,
 ) -> bool {
-    let angel_nearby = exact_is_location_guarded_by_angel(board, color, location);
-    !can_attack_target_on_board(
+    is_drainer_exactly_safe_next_turn_on_board_with_hash(
         board,
+        exact_board_hash(board),
+        color,
+        location,
+    )
+}
+
+pub(crate) fn is_drainer_exactly_safe_next_turn_on_board_with_hash(
+    board: &Board,
+    board_hash: u64,
+    color: Color,
+    location: Location,
+) -> bool {
+    let angel_nearby = exact_is_location_guarded_by_angel(board, color, location);
+    !can_attack_target_on_board_with_hash(
+        board,
+        board_hash,
         color.other(),
         color,
         location,
         Config::MONS_MOVES_PER_TURN,
         true,
-    ) && !is_drainer_under_walk_threat(board, color, location, angel_nearby)
+    ) && !is_drainer_under_walk_threat_with_hash(board, board_hash, color, location, angel_nearby)
 }
 
 fn exact_is_location_guarded_by_angel(board: &Board, color: Color, location: Location) -> bool {
@@ -1752,6 +1935,7 @@ fn exact_shortest_payload_state<F>(
 where
     F: FnMut(Location, ExactActorPayload) -> bool,
 {
+    let mut actor_move_memo = ExactActorMoveMemo::new();
     let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
     let mut seen = ExactPayloadSeen::new();
     queue.push_back((start, start_payload, 0));
@@ -1765,9 +1949,14 @@ where
             continue;
         }
         for &next in location.nearby_locations_ref() {
-            if let Some(next_payload) =
-                actor_payload_after_move(board, mon_kind, color, payload, next, allow_pick_bomb)
-            {
+            if let Some(next_payload) = actor_move_memo.payload_after_move(
+                board,
+                mon_kind,
+                color,
+                payload,
+                next,
+                allow_pick_bomb,
+            ) {
                 if seen.insert(next, next_payload) {
                     queue.push_back((next, next_payload, steps + 1));
                 }
@@ -1778,7 +1967,47 @@ where
     None
 }
 
+#[allow(dead_code)]
 fn actor_payload_after_move(
+    board: &Board,
+    mon_kind: MonKind,
+    color: Color,
+    payload: ExactActorPayload,
+    destination: Location,
+    allow_pick_bomb: bool,
+) -> Option<ExactActorPayload> {
+    actor_payload_after_move_with_hash(
+        board,
+        exact_board_hash(board),
+        mon_kind,
+        color,
+        payload,
+        destination,
+        allow_pick_bomb,
+    )
+}
+
+fn actor_payload_after_move_with_hash(
+    board: &Board,
+    _board_hash: u64,
+    mon_kind: MonKind,
+    color: Color,
+    payload: ExactActorPayload,
+    destination: Location,
+    allow_pick_bomb: bool,
+) -> Option<ExactActorPayload> {
+    update_exact_query_diagnostics(|diagnostics| diagnostics.actor_payload_after_move_calls += 1);
+    actor_payload_after_move_compute(
+        board,
+        mon_kind,
+        color,
+        payload,
+        destination,
+        allow_pick_bomb,
+    )
+}
+
+fn actor_payload_after_move_compute(
     board: &Board,
     mon_kind: MonKind,
     color: Color,
@@ -1980,6 +2209,7 @@ fn exact_drainer_pickup_window_uncached(
 ) -> ExactDrainerPickupWindow {
     update_exact_query_diagnostics(|diagnostics| diagnostics.pickup_path_calls += 1);
 
+    let mut actor_move_memo = ExactActorMoveMemo::new();
     let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
     let mut seen = ExactPayloadSeen::new();
     queue.push_back((start, ExactActorPayload::None, 0));
@@ -2008,9 +2238,14 @@ fn exact_drainer_pickup_window_uncached(
         }
 
         for &next in location.nearby_locations_ref() {
-            if let Some(next_payload) =
-                actor_payload_after_move(board, MonKind::Drainer, color, payload, next, false)
-            {
+            if let Some(next_payload) = actor_move_memo.payload_after_move(
+                board,
+                MonKind::Drainer,
+                color,
+                payload,
+                next,
+                false,
+            ) {
                 if seen.insert(next, next_payload) {
                     queue.push_back((next, next_payload, steps + 1));
                 }
@@ -2046,6 +2281,7 @@ fn exact_best_drainer_pickup_path_filtered_with_hash(
     }
     update_exact_query_diagnostics(|diagnostics| diagnostics.pickup_path_cache_misses += 1);
 
+    let mut actor_move_memo = ExactActorMoveMemo::new();
     let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
     let mut seen = ExactPayloadSeen::new();
     let start_state = (start, ExactActorPayload::None, 0);
@@ -2075,9 +2311,14 @@ fn exact_best_drainer_pickup_path_filtered_with_hash(
         }
 
         for &next in location.nearby_locations_ref() {
-            if let Some(next_payload) =
-                actor_payload_after_move(board, MonKind::Drainer, color, payload, next, false)
-            {
+            if let Some(next_payload) = actor_move_memo.payload_after_move(
+                board,
+                MonKind::Drainer,
+                color,
+                payload,
+                next,
+                false,
+            ) {
                 if seen.insert(next, next_payload) {
                     queue.push_back((next, next_payload, steps + 1));
                 }
@@ -2769,8 +3010,9 @@ fn can_attack_opponent_drainer_exact(game: &MonsGame, color: Color) -> bool {
     let Some(target) = find_awake_drainer(&game.board, color.other()) else {
         return false;
     };
-    can_attack_target_on_board(
+    can_attack_target_on_board_with_hash(
         &game.board,
+        exact_board_hash(&game.board),
         color,
         color.other(),
         target,
@@ -4282,6 +4524,49 @@ mod tests {
     }
 
     #[test]
+    fn can_attack_target_on_board_with_hash_matches_current_helper() {
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(2, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+
+        assert_eq!(
+            can_attack_target_on_board(
+                &board,
+                Color::Black,
+                Color::White,
+                Location::new(6, 5),
+                2,
+                true
+            ),
+            can_attack_target_on_board_with_hash(
+                &board,
+                board_hash,
+                Color::Black,
+                Color::White,
+                Location::new(6, 5),
+                2,
+                true,
+            )
+        );
+    }
+
+    #[test]
     fn exact_carrier_steps_cache_preserves_repeated_result() {
         clear_exact_state_analysis_cache();
         let board = game_with_items(
@@ -4380,6 +4665,127 @@ mod tests {
         assert!(first);
         assert_eq!(first, second);
         assert_eq!(first, third);
+    }
+
+    #[test]
+    fn walk_threat_with_hash_matches_current_helper() {
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(2, 5),
+                    Item::MonWithConsumable {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                        consumable: Consumable::Bomb,
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+
+        assert_eq!(
+            is_drainer_under_walk_threat(&board, Color::White, Location::new(6, 5), false),
+            is_drainer_under_walk_threat_with_hash(
+                &board,
+                board_hash,
+                Color::White,
+                Location::new(6, 5),
+                false,
+            )
+        );
+    }
+
+    #[test]
+    fn drainer_immediate_threats_with_hash_matches_current_helper() {
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 5),
+                    Item::MonWithConsumable {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                        consumable: Consumable::Bomb,
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+
+        assert_eq!(
+            drainer_immediate_threats(&board, Color::White, Location::new(6, 5)),
+            drainer_immediate_threats_with_hash(
+                &board,
+                Color::White,
+                Location::new(6, 5),
+                board_hash
+            )
+        );
+    }
+
+    #[test]
+    fn exact_actor_move_memo_reuses_same_board_lookup() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let mut memo = ExactActorMoveMemo::new();
+
+        let first = memo.payload_after_move(
+            &board,
+            MonKind::Drainer,
+            Color::White,
+            ExactActorPayload::None,
+            Location::new(6, 5),
+            false,
+        );
+        let second = memo.payload_after_move(
+            &board,
+            MonKind::Drainer,
+            Color::White,
+            ExactActorPayload::None,
+            Location::new(6, 5),
+            false,
+        );
+        let diagnostics = exact_query_diagnostics_snapshot();
+
+        assert_eq!(first, second);
+        assert_eq!(diagnostics.actor_payload_after_move_calls, 1);
     }
 
     #[test]

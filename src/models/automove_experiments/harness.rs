@@ -743,10 +743,7 @@ pub(super) fn run_pro_progressive_matchup(
         {
             meaningful_lift = true;
         }
-        if delta < -0.05
-            || games_per_seed >= max_games
-            || (meaningful_lift && delta >= 0.0)
-        {
+        if delta < -0.05 || games_per_seed >= max_games || (meaningful_lift && delta >= 0.0) {
             break;
         }
         games_per_seed = (games_per_seed * 2).min(max_games);
@@ -2453,11 +2450,7 @@ fn harvested_white_score_route_win_b_triage_game() -> MonsGame {
     .expect("harvested_white_score_route_win_b: valid fen")
 }
 
-fn derived_triage_game_after_inputs(
-    start_fen: &str,
-    input_fen: &str,
-    label: &str,
-) -> MonsGame {
+fn derived_triage_game_after_inputs(start_fen: &str, input_fen: &str, label: &str) -> MonsGame {
     let game = MonsGame::from_fen(start_fen, false)
         .unwrap_or_else(|| panic!("{}: valid start fen", label));
     let inputs = Input::array_from_fen(input_fen);
