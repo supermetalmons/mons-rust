@@ -16,6 +16,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - The latest bounded carrier-window cut is worth keeping: it collapsed `human_win_pro_a` payload work from about `32.2m` to about `6.3m` and materially sped up the probe, but the real duel gate still stalled past `2:17`.
 - The latest retained exact cut is also worth keeping: low-budget drainer pickup fast paths removed most uncached pickup BFS from the hotspot, score-floor after-window filtering trimmed some off-target tactical queries, and incremental board-hash reuse across spirit previews moved `human_win_pro_a` from about `570ms` to about `520ms`, but `pro-reliability` was still live past `2:20` on 2026-03-27.
 - The latest retained exact cut is worth keeping too: a zero-move after-window tactical fast path updates touched mana-pool counts directly instead of re-querying the immediate-window helper, which moved `human_win_pro_a` again from about `520ms` to about `433ms` and dropped immediate-window / after-window query volume from about `428999` / `427069` to about `168068` / `166138`, but `pro-reliability` still had to be killed at `3:37` on 2026-03-27.
+- The latest retained exact cut is also worth keeping: a budget-1 after-window tactical fast path updates touched-neighborhood one-move contributions instead of re-running the immediate-window helper, which dropped `human_win_pro_a` immediate-window / after-window query volume again from about `168068` / `166138` to about `41740` / `39810` and moved the hotspot from about `433ms` to about `413ms`, but `pro-reliability` still had to be killed at `2:35` on 2026-03-27.
 - `runtime_pro_turn_engine_v1` stays reference-only regression history.
 - Archive profiles and retired planner/quiescence lines are docs-only context.
 
@@ -55,8 +56,9 @@ Current live wall:
 - bounded carrier reach checks are worth keeping on budgeted immediate-window callers, but they still leave the live wall inside after-window tactical queries and drainer pickup work
 - low-budget pickup fast paths and incremental exact board-hash reuse are worth keeping, but the main `human_win_pro_a` wall still emits about `428999` immediate-window queries and about `427069` after-window calls
 - zero-move after-window tactical queries were a real wall and are now worth bypassing with exact touched-item updates, but the live duel wall still sits in the remaining budgeted after-window fanout
+- budget-1 after-window tactical queries were also worth bypassing locally, but once they drop out the wall-clock gain is modest and the remaining wall looks deeper than simple one-move query volume
 - future cuts need to reduce the number of after-window tactical queries or spirit-preview fanout itself, not just make hashing or pickup subroutines cheaper
-- the next live target is likely the remaining budget-1 / budget-2 after-window tactical query volume, not more budget-0 or hashing cleanup
+- the next live target is likely the remaining budget-2-plus after-window work and/or the payload reachability cost under the surviving tactical paths, not more budget-0 / budget-1 cleanup
 - not in planner/oracle summary construction anymore
 
 ## Secondary Split Family

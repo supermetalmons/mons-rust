@@ -4259,6 +4259,7 @@ fn exact_tactical_spirit_summary_uncached(
                 board_hash
             };
             let remaining_after_action = remaining_mon_moves.saturating_sub(spirit_steps);
+            let mut action_budget_one_summary: Option<ExactBudgetOneTacticalSummary> = None;
 
             for &target in spirit_pos.reachable_by_spirit_action_ref() {
                 let Some(target_item) = action_board.item(target).copied() else {
@@ -4270,6 +4271,13 @@ fn exact_tactical_spirit_summary_uncached(
                 for &dest in target.nearby_locations_ref() {
                     if !spirit_destination_allowed(&action_board, target, target_item, dest) {
                         continue;
+                    }
+                    if remaining_after_action == 1 && action_budget_one_summary.is_none() {
+                        action_budget_one_summary = Some(exact_budget_one_tactical_summary(
+                            &action_board,
+                            color,
+                            action_board_hash,
+                        ));
                     }
                     let (undo, score_delta, opponent_mana_score_delta) =
                         apply_spirit_move_preview_in_place(
@@ -4315,6 +4323,38 @@ fn exact_tactical_spirit_summary_uncached(
                                 );
                             exact_zero_move_tactical_window_from_counts(
                                 zero_move_counts,
+                                min_score,
+                                need_after_score,
+                                need_after_denial,
+                            )
+                        } else if remaining_after_action == 1 {
+                            let after_board_hash = exact_board_hash_after_touched_items(
+                                action_board_hash,
+                                &action_board,
+                                &[
+                                    ExactTouchedBoardItem {
+                                        location: undo.from,
+                                        before: undo.from_item,
+                                    },
+                                    ExactTouchedBoardItem {
+                                        location: undo.to,
+                                        before: undo.to_item,
+                                    },
+                                ],
+                            );
+                            let one_move_summary = action_budget_one_summary
+                                .as_ref()
+                                .expect("budget-one summary should be prepared before preview");
+                            let one_move_counts =
+                                exact_budget_one_tactical_counts_after_touched_locations(
+                                    one_move_summary,
+                                    &action_board,
+                                    color,
+                                    after_board_hash,
+                                    &[undo.from, undo.to],
+                                );
+                            exact_zero_move_tactical_window_from_counts(
+                                one_move_counts,
                                 min_score,
                                 need_after_score,
                                 need_after_denial,
@@ -5050,11 +5090,41 @@ struct ExactImmediateTacticalWindow {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+type ExactImmediateTacticalCounts = ExactZeroMoveTacticalCounts;
+
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct ExactZeroMoveTacticalCounts {
     score_one: u32,
     score_two: u32,
     opponent_two: u32,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Default)]
+struct ExactBudgetOneTacticalSummary {
+    counts: ExactImmediateTacticalCounts,
+    by_location: ExactHashMap<Location, ExactImmediateTacticalCounts>,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_immediate_tactical_counts_for_mana(
+    mana: Mana,
+    color: Color,
+) -> ExactImmediateTacticalCounts {
+    match mana.score(color) {
+        1 => ExactImmediateTacticalCounts {
+            score_one: 1,
+            ..ExactImmediateTacticalCounts::default()
+        },
+        2 => ExactImmediateTacticalCounts {
+            score_two: 1,
+            opponent_two: u32::from(mana == Mana::Regular(color.other())),
+            ..ExactImmediateTacticalCounts::default()
+        },
+        _ => ExactImmediateTacticalCounts::default(),
+    }
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -5075,18 +5145,7 @@ fn exact_zero_move_tactical_counts_for_item(
         return ExactZeroMoveTacticalCounts::default();
     }
 
-    match mana.score(color) {
-        1 => ExactZeroMoveTacticalCounts {
-            score_one: 1,
-            ..ExactZeroMoveTacticalCounts::default()
-        },
-        2 => ExactZeroMoveTacticalCounts {
-            score_two: 1,
-            opponent_two: u32::from(mana == Mana::Regular(color.other())),
-            ..ExactZeroMoveTacticalCounts::default()
-        },
-        _ => ExactZeroMoveTacticalCounts::default(),
-    }
+    exact_immediate_tactical_counts_for_mana(mana, color)
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -5151,6 +5210,119 @@ fn exact_zero_move_tactical_counts_after_touched_items(
             board.item(touched.location).copied(),
             color,
         );
+        debug_assert!(counts.score_one >= before.score_one);
+        debug_assert!(counts.score_two >= before.score_two);
+        debug_assert!(counts.opponent_two >= before.opponent_two);
+        counts.score_one = counts.score_one - before.score_one + after.score_one;
+        counts.score_two = counts.score_two - before.score_two + after.score_two;
+        counts.opponent_two = counts.opponent_two - before.opponent_two + after.opponent_two;
+    }
+    counts
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_budget_one_tactical_counts_for_location(
+    board: &Board,
+    color: Color,
+    location: Location,
+    board_hash: u64,
+) -> ExactImmediateTacticalCounts {
+    let Some(item) = board.item(location).copied() else {
+        return ExactImmediateTacticalCounts::default();
+    };
+    match item {
+        Item::MonWithMana { mon, mana } if mon.color == color && !mon.is_fainted() => {
+            if exact_carrier_steps_to_any_pool_with_hash_bounded(
+                board, location, mana, 1, board_hash,
+            )
+            .is_some()
+            {
+                exact_immediate_tactical_counts_for_mana(mana, color)
+            } else {
+                ExactImmediateTacticalCounts::default()
+            }
+        }
+        Item::Mon { mon } | Item::MonWithConsumable { mon, .. }
+            if mon.color == color && mon.kind == MonKind::Drainer && !mon.is_fainted() =>
+        {
+            let opponent_mana = Mana::Regular(color.other());
+            let pickup = exact_drainer_pickup_window_with_hash_min_any_score(
+                board,
+                color,
+                location,
+                Some(1),
+                1,
+                true,
+                true,
+                opponent_mana,
+                board_hash,
+            );
+            let mut counts = pickup
+                .any
+                .map_or_else(ExactImmediateTacticalCounts::default, |path| {
+                    exact_immediate_tactical_counts_for_mana(path.mana, color)
+                });
+            if pickup.opponent.is_some() {
+                counts.score_one = 0;
+                counts.score_two = 1;
+                counts.opponent_two = 1;
+            }
+            counts
+        }
+        _ => ExactImmediateTacticalCounts::default(),
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_budget_one_tactical_summary(
+    board: &Board,
+    color: Color,
+    board_hash: u64,
+) -> ExactBudgetOneTacticalSummary {
+    let mut summary = ExactBudgetOneTacticalSummary::default();
+    for (location, _) in board.occupied() {
+        let contribution =
+            exact_budget_one_tactical_counts_for_location(board, color, location, board_hash);
+        summary.counts.score_one += contribution.score_one;
+        summary.counts.score_two += contribution.score_two;
+        summary.counts.opponent_two += contribution.opponent_two;
+        if contribution != ExactImmediateTacticalCounts::default() {
+            summary.by_location.insert(location, contribution);
+        }
+    }
+    summary
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_push_unique_location(locations: &mut Vec<Location>, location: Location) {
+    if !locations.contains(&location) {
+        locations.push(location);
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_budget_one_tactical_counts_after_touched_locations(
+    base: &ExactBudgetOneTacticalSummary,
+    board: &Board,
+    color: Color,
+    board_hash: u64,
+    touched_locations: &[Location],
+) -> ExactImmediateTacticalCounts {
+    let mut affected_locations = Vec::with_capacity(touched_locations.len() * 5);
+    for &location in touched_locations {
+        exact_push_unique_location(&mut affected_locations, location);
+        for &nearby in location.nearby_locations_ref() {
+            exact_push_unique_location(&mut affected_locations, nearby);
+        }
+    }
+
+    let mut counts = base.counts;
+    for location in affected_locations {
+        let before = base.by_location.get(&location).copied().unwrap_or_default();
+        let after =
+            exact_budget_one_tactical_counts_for_location(board, color, location, board_hash);
         debug_assert!(counts.score_one >= before.score_one);
         debug_assert!(counts.score_two >= before.score_two);
         debug_assert!(counts.opponent_two >= before.opponent_two);
@@ -7741,6 +7913,100 @@ mod tests {
                     exact_board_hash(&preview_board),
                 ),
                 2,
+            )
+        );
+    }
+
+    #[test]
+    fn exact_budget_one_tactical_counts_after_touched_locations_matches_full_window() {
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(8, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(1, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+        let base_summary = exact_budget_one_tactical_summary(&board, Color::White, board_hash);
+        let mut preview_board = board.clone();
+        let destination_item = preview_board.item(Location::new(8, 2)).copied();
+        let (undo, _, _) = apply_spirit_move_preview_known_items_in_place(
+            &mut preview_board,
+            Location::new(8, 1),
+            Item::Mana {
+                mana: Mana::Regular(Color::White),
+            },
+            Location::new(8, 2),
+            destination_item,
+            Color::White,
+        );
+        let preview_hash = exact_board_hash_after_touched_items(
+            board_hash,
+            &preview_board,
+            &[
+                ExactTouchedBoardItem {
+                    location: undo.from,
+                    before: undo.from_item,
+                },
+                ExactTouchedBoardItem {
+                    location: undo.to,
+                    before: undo.to_item,
+                },
+            ],
+        );
+        let counts = exact_budget_one_tactical_counts_after_touched_locations(
+            &base_summary,
+            &preview_board,
+            Color::White,
+            preview_hash,
+            &[undo.from, undo.to],
+        );
+
+        assert_eq!(
+            exact_zero_move_tactical_window_from_counts(counts, 1, true, true),
+            exact_best_immediate_tactical_window_on_board_with_hash(
+                &preview_board,
+                Color::White,
+                1,
+                true,
+                true,
+                preview_hash,
+            )
+        );
+        assert_eq!(
+            exact_zero_move_tactical_window_from_counts(counts, 2, true, true),
+            exact_best_immediate_tactical_window_on_board_with_hash_min_score(
+                &preview_board,
+                Color::White,
+                1,
+                2,
+                true,
+                true,
+                preview_hash,
             )
         );
     }
