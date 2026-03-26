@@ -4513,6 +4513,15 @@ fn exact_tactical_spirit_summary_uncached(
             };
             let remaining_after_action = remaining_mon_moves.saturating_sub(spirit_steps);
             let mut action_budget_one_summary: Option<ExactBudgetOneTacticalSummary> = None;
+            let action_reach_mask = if remaining_after_action > 1 {
+                Some(exact_immediate_tactical_reach_mask(
+                    &action_board,
+                    color,
+                    remaining_after_action,
+                ))
+            } else {
+                None
+            };
 
             for &target in spirit_pos.reachable_by_spirit_action_ref() {
                 let Some(target_item) = action_board.item(target).copied() else {
@@ -4551,6 +4560,13 @@ fn exact_tactical_spirit_summary_uncached(
                     let need_after_score = need_score && score_floor < max_same_turn_score;
                     let need_after_denial =
                         need_denial && denial_floor < max_same_turn_opponent_score;
+                    let use_base_action_board = remaining_after_action > 1
+                        && action_reach_mask.as_ref().is_some_and(|mask| {
+                            !mask.contains(undo.from) && !mask.contains(undo.to)
+                        });
+                    if use_base_action_board {
+                        undo_spirit_move_preview(&mut action_board, undo);
+                    }
                     let after_window = if need_after_score || need_after_denial {
                         let min_score = if need_after_score {
                             (score_floor + 1).clamp(1, max_same_turn_score) as u8
@@ -4613,20 +4629,24 @@ fn exact_tactical_spirit_summary_uncached(
                                 need_after_denial,
                             )
                         } else {
-                            let after_board_hash = exact_board_hash_after_touched_items(
-                                action_board_hash,
-                                &action_board,
-                                &[
-                                    ExactTouchedBoardItem {
-                                        location: undo.from,
-                                        before: undo.from_item,
-                                    },
-                                    ExactTouchedBoardItem {
-                                        location: undo.to,
-                                        before: undo.to_item,
-                                    },
-                                ],
-                            );
+                            let after_board_hash = if use_base_action_board {
+                                action_board_hash
+                            } else {
+                                exact_board_hash_after_touched_items(
+                                    action_board_hash,
+                                    &action_board,
+                                    &[
+                                        ExactTouchedBoardItem {
+                                            location: undo.from,
+                                            before: undo.from_item,
+                                        },
+                                        ExactTouchedBoardItem {
+                                            location: undo.to,
+                                            before: undo.to_item,
+                                        },
+                                    ],
+                                )
+                            };
                             let cached_need_score = need_after_score;
                             let cached_need_denial = need_after_denial;
                             let key = ExactTacticalSpiritAfterWindowKey {
@@ -4737,7 +4757,9 @@ fn exact_tactical_spirit_summary_uncached(
                     {
                         best.opponent_mana_progress = true;
                     }
-                    undo_spirit_move_preview(&mut action_board, undo);
+                    if !use_base_action_board {
+                        undo_spirit_move_preview(&mut action_board, undo);
+                    }
                     if (!need_score || best.same_turn_score_value >= max_same_turn_score)
                         && (!need_denial
                             || best.same_turn_opponent_mana_score_value
@@ -5584,6 +5606,60 @@ fn exact_budget_one_tactical_counts_after_touched_locations(
         counts.opponent_two = counts.opponent_two - before.opponent_two + after.opponent_two;
     }
     counts
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_mark_locations_within_mon_budget(
+    mask: &mut ExactLocationSeen,
+    start: Location,
+    move_budget: i32,
+) {
+    let mut frontier = Vec::with_capacity(1);
+    frontier.push(start);
+    mask.insert(start);
+
+    for _ in 0..move_budget {
+        let mut next_frontier = Vec::with_capacity(frontier.len() * 6);
+        for &location in &frontier {
+            for &next in location.nearby_locations_ref() {
+                if mask.insert(next) {
+                    next_frontier.push(next);
+                }
+            }
+        }
+        if next_frontier.is_empty() {
+            break;
+        }
+        frontier = next_frontier;
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_immediate_tactical_reach_mask(
+    board: &Board,
+    color: Color,
+    move_budget: i32,
+) -> ExactLocationSeen {
+    let mut mask = ExactLocationSeen::new();
+    if move_budget < 0 {
+        return mask;
+    }
+
+    for (location, item) in board.occupied() {
+        match item {
+            Item::MonWithMana { mon, .. } if mon.color == color && !mon.is_fainted() => {
+                exact_mark_locations_within_mon_budget(&mut mask, location, move_budget);
+            }
+            Item::Mon { mon } | Item::MonWithConsumable { mon, .. }
+                if mon.color == color && mon.kind == MonKind::Drainer && !mon.is_fainted() =>
+            {
+                exact_mark_locations_within_mon_budget(&mut mask, location, move_budget);
+            }
+            _ => {}
+        }
+    }
+
+    mask
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -8984,6 +9060,122 @@ mod tests {
             exact_query_diagnostics_snapshot().immediate_tactical_window_queries,
             0
         );
+    }
+
+    #[test]
+    fn exact_immediate_tactical_window_far_preview_matches_base_window() {
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(0, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(10, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let move_budget = 2;
+        let reach_mask = exact_immediate_tactical_reach_mask(&board, Color::White, move_budget);
+        assert!(!reach_mask.contains(Location::new(7, 1)));
+        assert!(!reach_mask.contains(Location::new(8, 2)));
+
+        let base = exact_best_immediate_tactical_window_on_board_with_hash(
+            &board,
+            Color::White,
+            move_budget,
+            true,
+            true,
+            exact_board_hash(&board),
+        );
+        let (after_board, _, _) = apply_spirit_move_preview(
+            &board,
+            Location::new(7, 1),
+            Item::Mana {
+                mana: Mana::Regular(Color::Black),
+            },
+            Location::new(8, 2),
+            Color::White,
+        );
+        let after = exact_best_immediate_tactical_window_on_board_with_hash(
+            &after_board,
+            Color::White,
+            move_budget,
+            true,
+            true,
+            exact_board_hash(&after_board),
+        );
+
+        assert_eq!(after, base);
+    }
+
+    #[test]
+    fn exact_tactical_spirit_summary_reuses_base_after_window_for_far_previews() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+
+        let spirit = Location::new(5, 1);
+        let mut items = vec![
+            (
+                spirit,
+                Item::Mon {
+                    mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(0, 0),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(7, 1),
+                Item::Mana {
+                    mana: Mana::Regular(Color::Black),
+                },
+            ),
+            (
+                Location::new(10, 10),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ];
+        for &neighbor in spirit.nearby_locations_ref() {
+            items.push((
+                neighbor,
+                Item::Mon {
+                    mon: Mon::new(MonKind::Angel, Color::Black, 0),
+                },
+            ));
+        }
+        let board = game_with_items(items, Color::White).board;
+
+        let summary = exact_tactical_spirit_summary(
+            &board,
+            Color::White,
+            2,
+            true,
+            EXACT_TACTICAL_SPIRIT_NEED_SCORE,
+        );
+        let diagnostics = exact_query_diagnostics_snapshot();
+
+        assert!(!summary.same_turn_score);
+        assert_eq!(summary.same_turn_score_value, 0);
+        assert_eq!(diagnostics.tactical_spirit_after_window_calls, 1);
     }
 
     #[test]
