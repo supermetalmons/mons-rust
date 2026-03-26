@@ -1,18 +1,49 @@
 # How To Iterate On Automove
 
-This is the canonical operator playbook for automove work.
+This is the canonical runbook for automove work.
 
-Goal: produce one stronger, promotable change at a time. If a candidate is not promotable, compress the lesson, clean the artifacts, and move on.
+Archived profile IDs are invalid by design. New iteration work must stay on the retained profile surface below.
 
 ## Quick Reference
 
 1. Pick one target mode: `pro`, `normal`, or `fast`.
-2. Pick exactly one active idea from `AUTOMOVE_IDEAS.md`.
-3. Run the earned path in order.
-4. Kill flat or noisy candidates early.
-5. Record the outcome before cleaning artifacts.
+2. Pick one active idea from `AUTOMOVE_IDEAS.md`.
+3. Start from one retained profile ID.
+4. Run the earned path in order.
+5. Kill flat candidates early and record the lesson before cleanup.
+
+## Supported Profile IDs
+
+Current runtime and baselines:
+- `base`
+- `runtime_current`
+- `runtime_release_safe_pre_exact`
+
+Calibration anchors and curated-pool references:
+- `runtime_eff_exact_lite_v1`
+- `runtime_pre_fast_root_quality_v1_normal_conversion_v3`
+- `swift_2024_eval_reference`
+- `swift_2024_style_reference`
+- `runtime_normal_from_fast_reference_v1`
+
+Retained Pro references:
+- `runtime_pro_turn_engine_v1`
+- `runtime_pro_turn_engine_v30`
+
+If a profile ID is not in this list, it is archive-only context and must not be used for new experiments.
 
 ## Earned Paths
+
+### Calibration
+
+Run this before candidate work when the surface is not already known-good.
+
+```sh
+./scripts/run-automove-experiment.sh triage-calibrate
+./scripts/run-automove-experiment.sh triage-calibrate reply_risk
+./scripts/run-automove-experiment.sh triage-calibrate opponent_mana
+./scripts/run-automove-experiment.sh triage-calibrate supermana
+```
 
 ### Fast / Normal
 
@@ -29,13 +60,12 @@ SMART_PROMOTION_TARGET_MODE=<fast|normal> ./scripts/run-automove-experiment.sh l
 
 ```sh
 ./scripts/run-automove-experiment.sh guardrails <candidate>
-./scripts/run-automove-experiment.sh pro-opening-speed-probe <candidate>   # optional for opening_reply ideas
 SMART_TRIAGE_SURFACE=<opening_reply|primary_pro> ./scripts/run-automove-experiment.sh pro-triage <candidate>
 ./scripts/run-automove-experiment.sh runtime-preflight <candidate>
-./scripts/run-automove-experiment.sh pro-reliability <candidate>
-./scripts/run-automove-experiment.sh pro-fast-screen <candidate>
-./scripts/run-automove-experiment.sh pro-progressive <candidate>
-./scripts/run-automove-experiment.sh pro-ladder <candidate>
+./scripts/run-automove-experiment.sh pro-reliability <candidate> runtime_current
+./scripts/run-automove-experiment.sh pro-fast-screen <candidate> runtime_current
+./scripts/run-automove-experiment.sh pro-progressive <candidate> runtime_current
+./scripts/run-automove-experiment.sh pro-ladder <candidate> runtime_current
 ```
 
 ### Promotion-Time Only
@@ -45,21 +75,32 @@ cargo test --release --lib smart_automove_release_opening_black_reply_speed_gate
 cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --ignored --nocapture
 ```
 
-## Session Start Checklist
+## Default Baselines
 
-- Pick one target mode, one idea, and one candidate profile.
-- Default the baseline to `runtime_current` for new work unless the idea explicitly needs another reference.
-- For `reply_risk`, `opponent_mana`, and `supermana`, run `triage-calibrate` before candidate work if the surface is not already known-good.
-- For Pro `opening_reply` ideas, decide whether the optional `pro-opening-speed-probe` should run before `pro-triage`.
-- Confirm the first earned duel stage before budgeting progressive or ladder time.
+- Use `runtime_current` as the direct reference for new work unless the idea explicitly depends on another retained reference.
+- The script default baseline remains `runtime_release_safe_pre_exact` for compatibility.
+- Use `runtime_pro_turn_engine_v30` only as retained Pro history and comparison material. It is not shipping runtime.
+- Use `runtime_pro_turn_engine_v1` only for shared regression coverage and historical comparison.
 
-## Artifact Layout
+## Stop Conditions
 
-- Candidate logs default to `target/experiment-runs/<candidate>/`.
-- Calibration and workflow-only runs default to `target/experiment-runs/misc/`.
-- Manual profiler samples should go under `target/experiment-runs/misc/samples/` via `./scripts/capture-process-sample.sh <pid> [duration] [label]`.
-- Runtime-preflight stamps live in `target/experiment-stamps/`.
-- Use the cleaner intentionally:
+- `guardrails` fails.
+- `triage` or `pro-triage` fails.
+- `runtime-preflight` fails.
+- First earned duel stage is flat or negative.
+- Progressive stalls or turns into a runtime cliff.
+- One focused diagnostic split produces no credible next move.
+
+When any of these happens, kill the candidate, compress the lesson, and clean the artifacts.
+
+## Artifacts
+
+- Candidate logs: `target/experiment-runs/<candidate>/`
+- Workflow-only logs: `target/experiment-runs/misc/`
+- Runtime-preflight stamps: `target/experiment-stamps/`
+- Process samples: `target/experiment-runs/misc/samples/`
+
+Useful cleanup commands:
 
 ```sh
 ./scripts/clean-experiment-artifacts.sh --dry-run
@@ -70,78 +111,23 @@ cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --
 ./scripts/clean-process-samples.sh
 ```
 
-- Logs and stamps are disposable evidence, not durable memory.
-
-## Release Checklist
-
-- Review `git status` before publish.
-- Confirm `runtime_current` is still the shipping automove path.
-- Confirm `runtime_pro_turn_engine_v30` is still the retained ProV2 frontier and not wired into production runtime.
-- Confirm `runtime_pro_turn_engine_v1` remains reference-only retained history, not the live frontier.
-- Run:
-
-```sh
-cargo test
-cargo test --release --lib --no-run
-cargo test --release --lib smart_automove_release_opening_black_reply_speed_gate -- --ignored --nocapture
-cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --ignored --nocapture
-```
-
-- Commit valuable changes before version bump / publish.
-- Clean disposable experiment artifacts after validation.
-
-Production blockers:
-
-- build/test failures
-- release speed gate failures
-- any regression that enables turn-engine in shipping `runtime_current`
-
-Retained but non-blocking experiment state:
-
-- `runtime_pro_turn_engine_v30` code, probes, and fixtures
-- `runtime_pro_turn_engine_v1` reference-only code and shared regression coverage
-- ignored experiment-only tests and scripts
-- backlog, archive, and durable knowledge updates
-
-## Stop Conditions
-
-- `guardrails` fail: kill the candidate.
-- `triage` or `pro-triage` fail: kill the candidate, unless you deliberately spend one audit spot check.
-- `runtime-preflight` fail: kill the candidate.
-- First earned duel stage is flat or negative: kill the candidate.
-- Progressive fades, stalls, or hits a runtime cliff: kill the candidate.
-- No clear story after one focused diagnostic split: kill the candidate and split the idea differently.
+Logs and stamps are disposable evidence, not durable memory.
 
 ## Compatibility Surface
 
-These still exist, but they are not the default workflow:
+These stages still exist, but they are not promotion evidence on their own:
+- `preflight`
+- `audit-screen`
+- `pre-screen`
+- `pro-opening-speed-probe`
+- `pro-audit-screen`
+- `pro-pre-screen`
+- `docs/automove-experiments.md`
 
-- `preflight`: legacy combined wrapper.
-- `pre-screen` and `pro-pre-screen`: legacy reject-only diagnostics.
-- `audit-screen` and `pro-audit-screen`: occasional spot checks for clean triage rejects.
-- `docs/automove-experiments.md`: compatibility pointer only.
+## Session End
 
-Do not treat any of the compatibility paths as promotion evidence unless the canonical earned path also passes.
-
-## Session End Checklist
-
-1. Record the result in `AUTOMOVE_IDEAS.md`.
+1. Update `AUTOMOVE_IDEAS.md` with the current state or next split.
 2. Move durable lessons into `docs/automove-knowledge.md`.
-3. Move wave history or retired branch context into `docs/automove-archive.md`.
+3. Move retired branch history into `docs/automove-archive.md`.
 4. Clean logs and stamps intentionally.
-5. Start the next session with one fresh idea and one fresh candidate, not with raw artifact spelunking.
-
-## Files That Matter
-
-- `src/models/mons_game_model.rs`
-- `src/models/automove_turn_engine.rs`
-- `src/models/automove_turn_planner.rs`
-- `src/models/automove_experiments/profiles.rs`
-- `src/models/automove_experiments/tests.rs`
-- `src/models/automove_experiments/harness.rs`
-- `scripts/run-automove-experiment.sh`
-- `scripts/run-experiment-logged.sh`
-- `scripts/clean-experiment-artifacts.sh`
-- `AUTOMOVE_IDEAS.md`
-- `docs/automove-knowledge.md`
-- `docs/automove-archive.md`
+5. Start the next session with one fresh idea and one retained candidate.

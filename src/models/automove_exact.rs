@@ -10,8 +10,6 @@ const EXACT_CARRIER_STEPS_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_DRAINER_TO_MANA_CACHE_MAX_ENTRIES: usize = 8192;
 #[cfg(any(target_arch = "wasm32", test))]
 const EXACT_FOLLOWUP_SUMMARY_CACHE_MAX_ENTRIES: usize = 4096;
-#[cfg(any(target_arch = "wasm32", test))]
-const EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE_MAX_ENTRIES: usize = 4096;
 const EXACT_PICKUP_PATH_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_SPIRIT_REACH_CACHE_MAX_ENTRIES: usize = 4096;
 #[cfg(any(target_arch = "wasm32", test))]
@@ -130,8 +128,6 @@ fn exact_payload_variant_index(payload: ExactActorPayload) -> usize {
 
 const EXACT_ACTOR_MOVE_MEMO_UNKNOWN: u8 = u8::MAX;
 const EXACT_ACTOR_MOVE_MEMO_CAPACITY: usize = EXACT_LOCATION_STATE_CAPACITY * 2 * 5 * 5 * 2;
-#[cfg(any(target_arch = "wasm32", test))]
-const EXACT_DRAINER_PICKUP_WINDOW_CACHE_MAX_ENTRIES: usize = 32768;
 
 struct ExactActorMoveMemo {
     entries: [u8; EXACT_ACTOR_MOVE_MEMO_CAPACITY],
@@ -317,15 +313,6 @@ const EXACT_TACTICAL_SPIRIT_NEED_SCORE: u8 = 1 << 0;
 const EXACT_TACTICAL_SPIRIT_NEED_DENIAL: u8 = 1 << 1;
 #[cfg(any(target_arch = "wasm32", test))]
 const EXACT_TACTICAL_SPIRIT_NEED_PROGRESS: u8 = 1 << 2;
-
-#[cfg(any(target_arch = "wasm32", test))]
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct ExactRuntimeFlags {
-    pub enable_tactical_spirit_preview_fast_path: bool,
-    pub enable_immediate_tactical_window_cache: bool,
-    pub enable_drainer_pickup_window_cache: bool,
-    pub enable_secure_mana_dead_end_skip: bool,
-}
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, Default)]
@@ -632,39 +619,6 @@ struct ExactTacticalSpiritAfterWindowKey {
     need_denial: bool,
 }
 
-#[cfg(any(target_arch = "wasm32", test))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct ExactImmediateTacticalWindowKey {
-    board_hash: u64,
-    color: Color,
-    move_budget: i32,
-    need_score: bool,
-    need_denial: bool,
-}
-
-#[cfg(any(target_arch = "wasm32", test))]
-#[derive(Default)]
-struct ExactImmediateTacticalWindowCache {
-    entries: ExactHashMap<ExactImmediateTacticalWindowKey, ExactImmediateTacticalWindow>,
-}
-
-#[cfg(any(target_arch = "wasm32", test))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct ExactDrainerPickupWindowKey {
-    board_hash: u64,
-    color: Color,
-    start: Location,
-    max_steps: Option<i32>,
-    need_score: bool,
-    need_denial: bool,
-}
-
-#[cfg(any(target_arch = "wasm32", test))]
-#[derive(Default)]
-struct ExactDrainerPickupWindowCache {
-    entries: ExactHashMap<ExactDrainerPickupWindowKey, ExactDrainerPickupWindow>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ExactSpiritReachQueryKey {
     board_hash: u64,
@@ -739,13 +693,7 @@ pub(crate) struct ExactQueryDiagnostics {
     #[cfg(any(target_arch = "wasm32", test))]
     pub immediate_tactical_window_queries: u32,
     #[cfg(any(target_arch = "wasm32", test))]
-    pub immediate_tactical_window_cache_hits: u32,
-    #[cfg(any(target_arch = "wasm32", test))]
-    pub drainer_pickup_window_cache_hits: u32,
-    #[cfg(any(target_arch = "wasm32", test))]
     pub tactical_spirit_after_window_calls: u32,
-    #[cfg(any(target_arch = "wasm32", test))]
-    pub tactical_spirit_after_window_fast_path_skips: u32,
     pub passive_spirit_summary_calls: u32,
     #[cfg(any(target_arch = "wasm32", test))]
     pub exact_followup_summary_calls: u32,
@@ -755,17 +703,12 @@ pub(crate) struct ExactQueryDiagnostics {
     pub exact_secure_mana_calls: u32,
     #[cfg(any(target_arch = "wasm32", test))]
     pub exact_secure_mana_cache_hits: u32,
-    #[cfg(any(target_arch = "wasm32", test))]
-    pub exact_secure_mana_dead_end_skips: u32,
     pub pickup_path_calls: u32,
     pub pickup_path_cache_hits: u32,
     pub pickup_path_cache_misses: u32,
 }
 
 thread_local! {
-    #[cfg(any(target_arch = "wasm32", test))]
-    static EXACT_RUNTIME_FLAGS: RefCell<ExactRuntimeFlags> =
-        RefCell::new(ExactRuntimeFlags::default());
     #[cfg(any(target_arch = "wasm32", test))]
     static EXACT_STATE_ANALYSIS_CACHE: RefCell<ExactStateAnalysisCache> =
         RefCell::new(ExactStateAnalysisCache::default());
@@ -775,12 +718,6 @@ thread_local! {
     #[cfg(any(target_arch = "wasm32", test))]
     static EXACT_TURN_TACTICAL_PROJECTION_CACHE: RefCell<ExactTurnTacticalProjectionCache> =
         RefCell::new(ExactTurnTacticalProjectionCache::default());
-    #[cfg(any(target_arch = "wasm32", test))]
-    static EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE: RefCell<ExactImmediateTacticalWindowCache> =
-        RefCell::new(ExactImmediateTacticalWindowCache::default());
-    #[cfg(any(target_arch = "wasm32", test))]
-    static EXACT_DRAINER_PICKUP_WINDOW_CACHE: RefCell<ExactDrainerPickupWindowCache> =
-        RefCell::new(ExactDrainerPickupWindowCache::default());
     static EXACT_STRATEGIC_ANALYSIS_CACHE: RefCell<ExactStrategicAnalysisCache> =
         RefCell::new(ExactStrategicAnalysisCache::default());
     static EXACT_ATTACK_REACH_CACHE: RefCell<ExactAttackReachCache> =
@@ -838,39 +775,11 @@ pub(crate) fn exact_query_diagnostics_snapshot() -> ExactQueryDiagnostics {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-pub(crate) fn with_exact_runtime_flags<T>(flags: ExactRuntimeFlags, f: impl FnOnce() -> T) -> T {
-    struct ExactRuntimeFlagsGuard<'a> {
-        runtime: &'a RefCell<ExactRuntimeFlags>,
-        previous: ExactRuntimeFlags,
-    }
-
-    impl Drop for ExactRuntimeFlagsGuard<'_> {
-        fn drop(&mut self) {
-            *self.runtime.borrow_mut() = self.previous;
-        }
-    }
-
-    EXACT_RUNTIME_FLAGS.with(|runtime| {
-        let previous = *runtime.borrow();
-        *runtime.borrow_mut() = flags;
-        let _guard = ExactRuntimeFlagsGuard { runtime, previous };
-        f()
-    })
-}
-
-#[cfg(any(target_arch = "wasm32", test))]
-fn exact_runtime_flags() -> ExactRuntimeFlags {
-    EXACT_RUNTIME_FLAGS.with(|runtime| *runtime.borrow())
-}
-
-#[cfg(any(target_arch = "wasm32", test))]
 #[inline]
 pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_STATE_ANALYSIS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_TURN_SUMMARY_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_TURN_TACTICAL_PROJECTION_CACHE.with(|cache| cache.borrow_mut().entries.clear());
-    EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE.with(|cache| cache.borrow_mut().entries.clear());
-    EXACT_DRAINER_PICKUP_WINDOW_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_STRATEGIC_ANALYSIS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_ATTACK_REACH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_CARRIER_STEPS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
@@ -2699,46 +2608,6 @@ fn exact_drainer_pickup_window_with_hash(
         return ExactDrainerPickupWindow::default();
     }
 
-    if exact_runtime_flags().enable_drainer_pickup_window_cache {
-        let key = ExactDrainerPickupWindowKey {
-            board_hash,
-            color,
-            start,
-            max_steps,
-            need_score,
-            need_denial,
-        };
-        if let Some(cached) =
-            EXACT_DRAINER_PICKUP_WINDOW_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
-        {
-            update_exact_query_diagnostics(|diagnostics| {
-                diagnostics.drainer_pickup_window_cache_hits += 1;
-            });
-            return cached;
-        }
-
-        let window = exact_drainer_pickup_window_uncached_with_hash(
-            board,
-            color,
-            start,
-            max_steps,
-            need_score,
-            need_denial,
-            opponent_mana,
-            board_hash,
-        );
-        EXACT_DRAINER_PICKUP_WINDOW_CACHE.with(|cache| {
-            let mut cache = cache.borrow_mut();
-            if cache.entries.len() >= EXACT_DRAINER_PICKUP_WINDOW_CACHE_MAX_ENTRIES
-                && !cache.entries.contains_key(&key)
-            {
-                cache.entries.clear();
-            }
-            cache.entries.insert(key, window);
-        });
-        return window;
-    }
-
     exact_drainer_pickup_window_uncached_with_hash(
         board,
         color,
@@ -3053,7 +2922,6 @@ fn exact_secure_specific_mana_steps_in_game_uncached_at_mut(
         return None;
     }
 
-    let runtime_flags = exact_runtime_flags();
     let mut best = None;
     for &next in drainer_location.nearby_locations_ref() {
         let Some(transition) =
@@ -3063,14 +2931,6 @@ fn exact_secure_specific_mana_steps_in_game_uncached_at_mut(
         };
         let candidate = if transition.scored_mana == Some(wanted) {
             Some(1)
-        } else if runtime_flags.enable_secure_mana_dead_end_skip
-            && (transition.after_key.active_color != color
-                || transition.after_key.mons_moves_count >= Config::MONS_MOVES_PER_TURN)
-        {
-            update_exact_query_diagnostics(|diagnostics| {
-                diagnostics.exact_secure_mana_dead_end_skips += 1;
-            });
-            None
         } else {
             exact_secure_specific_mana_steps_in_game_with_key_at_mut(
                 game,
@@ -3770,7 +3630,6 @@ fn exact_tactical_spirit_summary_uncached(
     } else {
         0
     };
-    let runtime_flags = exact_runtime_flags();
     let mut best = ExactSpiritSummary::default();
     let mut after_window_cache: ExactHashMap<
         ExactTacticalSpiritAfterWindowKey,
@@ -3809,44 +3668,18 @@ fn exact_tactical_spirit_summary_uncached(
                     if !spirit_destination_allowed(&action_board, target, target_item, dest) {
                         continue;
                     }
-                    let destination_item = if runtime_flags.enable_tactical_spirit_preview_fast_path
-                    {
-                        action_board.item(dest).copied()
-                    } else {
-                        None
-                    };
                     let (undo, score_delta, opponent_mana_score_delta) =
-                        if runtime_flags.enable_tactical_spirit_preview_fast_path {
-                            apply_spirit_move_preview_known_items_in_place(
-                                &mut action_board,
-                                target,
-                                target_item,
-                                dest,
-                                destination_item,
-                                color,
-                            )
-                        } else {
-                            apply_spirit_move_preview_in_place(
-                                &mut action_board,
-                                target,
-                                target_item,
-                                dest,
-                                color,
-                            )
-                        };
-                    let preview_saturates_score = runtime_flags
-                        .enable_tactical_spirit_preview_fast_path
-                        && need_score
-                        && score_delta >= max_same_turn_score;
-                    let preview_saturates_denial = runtime_flags
-                        .enable_tactical_spirit_preview_fast_path
-                        && need_denial
-                        && opponent_mana_score_delta >= max_same_turn_opponent_score;
-                    if preview_saturates_score || preview_saturates_denial {
-                        update_exact_query_diagnostics(|diagnostics| {
-                            diagnostics.tactical_spirit_after_window_fast_path_skips += 1;
-                        });
-                    }
+                        apply_spirit_move_preview_in_place(
+                            &mut action_board,
+                            target,
+                            target_item,
+                            dest,
+                            color,
+                        );
+                    let preview_saturates_score =
+                        need_score && score_delta >= max_same_turn_score;
+                    let preview_saturates_denial =
+                        need_denial && opponent_mana_score_delta >= max_same_turn_opponent_score;
                     let need_after_score = need_score
                         && best.same_turn_score_value < max_same_turn_score
                         && !preview_saturates_score;
@@ -4541,44 +4374,6 @@ fn exact_best_immediate_tactical_window_on_board_with_hash(
     });
     if move_budget < 0 || (!need_score && !need_denial) {
         return ExactImmediateTacticalWindow::default();
-    }
-
-    let runtime_flags = exact_runtime_flags();
-    if runtime_flags.enable_immediate_tactical_window_cache {
-        let key = ExactImmediateTacticalWindowKey {
-            board_hash,
-            color,
-            move_budget,
-            need_score,
-            need_denial,
-        };
-        if let Some(cached) = EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE
-            .with(|cache| cache.borrow().entries.get(&key).copied())
-        {
-            update_exact_query_diagnostics(|diagnostics| {
-                diagnostics.immediate_tactical_window_cache_hits += 1;
-            });
-            return cached;
-        }
-
-        let window = exact_best_immediate_tactical_window_on_board_with_hash_uncached(
-            board,
-            color,
-            move_budget,
-            need_score,
-            need_denial,
-            board_hash,
-        );
-        EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE.with(|cache| {
-            let mut cache = cache.borrow_mut();
-            if cache.entries.len() >= EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE_MAX_ENTRIES
-                && !cache.entries.contains_key(&key)
-            {
-                cache.entries.clear();
-            }
-            cache.entries.insert(key, window);
-        });
-        return window;
     }
 
     exact_best_immediate_tactical_window_on_board_with_hash_uncached(
@@ -5984,155 +5779,6 @@ mod tests {
             third.map(|path| path.mana_value)
         );
     }
-
-    #[test]
-    fn exact_drainer_pickup_window_cache_matches_uncached_result() {
-        clear_exact_state_analysis_cache();
-        let board = game_with_items(
-            vec![
-                (
-                    Location::new(8, 4),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
-                    },
-                ),
-                (
-                    Location::new(7, 4),
-                    Item::Mana {
-                        mana: Mana::Supermana,
-                    },
-                ),
-                (
-                    Location::new(8, 5),
-                    Item::Mana {
-                        mana: Mana::Regular(Color::Black),
-                    },
-                ),
-                (
-                    Location::new(0, 5),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
-                    },
-                ),
-            ],
-            Color::White,
-        )
-        .board;
-        let board_hash = exact_board_hash(&board);
-        let baseline = exact_drainer_pickup_window_with_hash(
-            &board,
-            Color::White,
-            Location::new(8, 4),
-            Some(2),
-            true,
-            true,
-            Mana::Regular(Color::Black),
-            board_hash,
-        );
-
-        clear_exact_state_analysis_cache();
-        let cached = with_exact_runtime_flags(
-            ExactRuntimeFlags {
-                enable_drainer_pickup_window_cache: true,
-                ..ExactRuntimeFlags::default()
-            },
-            || {
-                exact_drainer_pickup_window_with_hash(
-                    &board,
-                    Color::White,
-                    Location::new(8, 4),
-                    Some(2),
-                    true,
-                    true,
-                    Mana::Regular(Color::Black),
-                    board_hash,
-                )
-            },
-        );
-
-        assert_eq!(cached, baseline);
-    }
-
-    #[test]
-    fn exact_drainer_pickup_window_cache_hits_repeated_query() {
-        clear_exact_state_analysis_cache();
-        clear_exact_query_diagnostics();
-        let board = game_with_items(
-            vec![
-                (
-                    Location::new(8, 4),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
-                    },
-                ),
-                (
-                    Location::new(7, 4),
-                    Item::Mana {
-                        mana: Mana::Supermana,
-                    },
-                ),
-                (
-                    Location::new(8, 5),
-                    Item::Mana {
-                        mana: Mana::Regular(Color::Black),
-                    },
-                ),
-                (
-                    Location::new(0, 5),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
-                    },
-                ),
-            ],
-            Color::White,
-        )
-        .board;
-        let board_hash = exact_board_hash(&board);
-
-        let first = with_exact_runtime_flags(
-            ExactRuntimeFlags {
-                enable_drainer_pickup_window_cache: true,
-                ..ExactRuntimeFlags::default()
-            },
-            || {
-                exact_drainer_pickup_window_with_hash(
-                    &board,
-                    Color::White,
-                    Location::new(8, 4),
-                    Some(2),
-                    true,
-                    true,
-                    Mana::Regular(Color::Black),
-                    board_hash,
-                )
-            },
-        );
-        let first_diag = exact_query_diagnostics_snapshot();
-        let second = with_exact_runtime_flags(
-            ExactRuntimeFlags {
-                enable_drainer_pickup_window_cache: true,
-                ..ExactRuntimeFlags::default()
-            },
-            || {
-                exact_drainer_pickup_window_with_hash(
-                    &board,
-                    Color::White,
-                    Location::new(8, 4),
-                    Some(2),
-                    true,
-                    true,
-                    Mana::Regular(Color::Black),
-                    board_hash,
-                )
-            },
-        );
-        let second_diag = exact_query_diagnostics_snapshot();
-
-        assert_eq!(first, second);
-        assert_eq!(first_diag.drainer_pickup_window_cache_hits, 0);
-        assert!(second_diag.drainer_pickup_window_cache_hits > 0);
-    }
-
     #[test]
     fn exact_secure_mana_cache_preserves_repeated_supermana_result() {
         clear_exact_state_analysis_cache();
@@ -6182,91 +5828,6 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first, third);
     }
-
-    #[test]
-    fn exact_secure_mana_dead_end_skip_matches_baseline_result() {
-        clear_exact_state_analysis_cache();
-        let board = game_with_items(
-            vec![
-                (
-                    Location::new(7, 5),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
-                    },
-                ),
-                (
-                    Location::new(5, 5),
-                    Item::Mana {
-                        mana: Mana::Supermana,
-                    },
-                ),
-                (
-                    Location::new(0, 10),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
-                    },
-                ),
-            ],
-            Color::White,
-        )
-        .board;
-
-        let baseline =
-            exact_secure_specific_mana_steps_on_board(&board, Color::White, Mana::Supermana, 1);
-        clear_exact_state_analysis_cache();
-        let candidate = with_exact_runtime_flags(
-            ExactRuntimeFlags {
-                enable_secure_mana_dead_end_skip: true,
-                ..ExactRuntimeFlags::default()
-            },
-            || exact_secure_specific_mana_steps_on_board(&board, Color::White, Mana::Supermana, 1),
-        );
-
-        assert_eq!(candidate, baseline);
-    }
-
-    #[test]
-    fn exact_secure_mana_dead_end_skip_records_pruned_recursions() {
-        clear_exact_state_analysis_cache();
-        clear_exact_query_diagnostics();
-        let board = game_with_items(
-            vec![
-                (
-                    Location::new(7, 5),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
-                    },
-                ),
-                (
-                    Location::new(5, 5),
-                    Item::Mana {
-                        mana: Mana::Supermana,
-                    },
-                ),
-                (
-                    Location::new(0, 10),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
-                    },
-                ),
-            ],
-            Color::White,
-        )
-        .board;
-
-        let result = with_exact_runtime_flags(
-            ExactRuntimeFlags {
-                enable_secure_mana_dead_end_skip: true,
-                ..ExactRuntimeFlags::default()
-            },
-            || exact_secure_specific_mana_steps_on_board(&board, Color::White, Mana::Supermana, 1),
-        );
-        let diagnostics = exact_query_diagnostics_snapshot();
-
-        assert_eq!(result, None);
-        assert!(diagnostics.exact_secure_mana_dead_end_skips > 0);
-    }
-
     #[test]
     fn exact_secure_mana_steps_find_shortest_supermana_score_path() {
         clear_exact_state_analysis_cache();
@@ -7388,53 +6949,6 @@ mod tests {
             expected_score_window
         );
     }
-
-    fn exact_tactical_spirit_summary_with_fast_path(
-        board: &Board,
-        color: Color,
-        remaining_mon_moves: i32,
-        can_use_action: bool,
-        fields: u8,
-        enable_fast_path: bool,
-        enable_window_cache: bool,
-    ) -> ExactSpiritSummary {
-        with_exact_runtime_flags(
-            ExactRuntimeFlags {
-                enable_tactical_spirit_preview_fast_path: enable_fast_path,
-                enable_immediate_tactical_window_cache: enable_window_cache,
-                enable_drainer_pickup_window_cache: false,
-                enable_secure_mana_dead_end_skip: false,
-            },
-            || {
-                exact_tactical_spirit_summary(
-                    board,
-                    color,
-                    remaining_mon_moves,
-                    can_use_action,
-                    fields,
-                )
-            },
-        )
-    }
-
-    fn exact_turn_tactical_projection_with_fast_path(
-        game: &MonsGame,
-        color: Color,
-        flags: u8,
-        enable_fast_path: bool,
-        enable_window_cache: bool,
-    ) -> ExactTurnTacticalProjection {
-        with_exact_runtime_flags(
-            ExactRuntimeFlags {
-                enable_tactical_spirit_preview_fast_path: enable_fast_path,
-                enable_immediate_tactical_window_cache: enable_window_cache,
-                enable_drainer_pickup_window_cache: false,
-                enable_secure_mana_dead_end_skip: false,
-            },
-            || exact_turn_tactical_projection(game, color, flags),
-        )
-    }
-
     #[test]
     fn exact_turn_tactical_projection_matches_denial_only_spirit_fields() {
         clear_exact_state_analysis_cache();
@@ -7484,298 +6998,6 @@ mod tests {
         assert_eq!(projection.spirit_assisted_score_value, 0);
         assert_eq!(projection.same_turn_score_window_value, 0);
     }
-
-    #[test]
-    fn exact_tactical_spirit_summary_fast_path_matches_score_only_legacy_path() {
-        let game = game_with_items(
-            vec![
-                (
-                    Location::new(7, 1),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
-                    },
-                ),
-                (
-                    Location::new(9, 1),
-                    Item::Mana {
-                        mana: Mana::Regular(Color::Black),
-                    },
-                ),
-                (
-                    Location::new(8, 2),
-                    Item::Mana {
-                        mana: Mana::Supermana,
-                    },
-                ),
-            ],
-            Color::White,
-        );
-        let remaining_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
-
-        let legacy = exact_tactical_spirit_summary_with_fast_path(
-            &game.board,
-            Color::White,
-            remaining_moves,
-            game.player_can_use_action(),
-            EXACT_TACTICAL_SPIRIT_NEED_SCORE,
-            false,
-            false,
-        );
-        let fast_path = exact_tactical_spirit_summary_with_fast_path(
-            &game.board,
-            Color::White,
-            remaining_moves,
-            game.player_can_use_action(),
-            EXACT_TACTICAL_SPIRIT_NEED_SCORE,
-            true,
-            false,
-        );
-
-        assert_eq!(fast_path, legacy);
-    }
-
-    #[test]
-    fn exact_tactical_spirit_summary_fast_path_matches_denial_only_legacy_path() {
-        let game = game_with_items(
-            vec![
-                (
-                    Location::new(7, 1),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
-                    },
-                ),
-                (
-                    Location::new(9, 1),
-                    Item::Mana {
-                        mana: Mana::Regular(Color::Black),
-                    },
-                ),
-                (
-                    Location::new(8, 2),
-                    Item::Mana {
-                        mana: Mana::Supermana,
-                    },
-                ),
-            ],
-            Color::White,
-        );
-        let remaining_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
-
-        let legacy = exact_tactical_spirit_summary_with_fast_path(
-            &game.board,
-            Color::White,
-            remaining_moves,
-            game.player_can_use_action(),
-            EXACT_TACTICAL_SPIRIT_NEED_DENIAL,
-            false,
-            false,
-        );
-        let fast_path = exact_tactical_spirit_summary_with_fast_path(
-            &game.board,
-            Color::White,
-            remaining_moves,
-            game.player_can_use_action(),
-            EXACT_TACTICAL_SPIRIT_NEED_DENIAL,
-            true,
-            false,
-        );
-
-        assert_eq!(fast_path, legacy);
-    }
-
-    #[test]
-    fn exact_tactical_spirit_summary_fast_path_matches_full_legacy_path() {
-        let game = game_with_items(
-            vec![
-                (
-                    Location::new(7, 1),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
-                    },
-                ),
-                (
-                    Location::new(9, 1),
-                    Item::Mana {
-                        mana: Mana::Regular(Color::Black),
-                    },
-                ),
-                (
-                    Location::new(8, 2),
-                    Item::Mana {
-                        mana: Mana::Supermana,
-                    },
-                ),
-                (
-                    Location::new(10, 4),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
-                    },
-                ),
-                (
-                    Location::new(0, 10),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
-                    },
-                ),
-            ],
-            Color::White,
-        );
-        let remaining_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
-
-        let legacy = exact_tactical_spirit_summary_with_fast_path(
-            &game.board,
-            Color::White,
-            remaining_moves,
-            game.player_can_use_action(),
-            EXACT_TACTICAL_SPIRIT_NEED_SCORE
-                | EXACT_TACTICAL_SPIRIT_NEED_DENIAL
-                | EXACT_TACTICAL_SPIRIT_NEED_PROGRESS,
-            false,
-            false,
-        );
-        let fast_path = exact_tactical_spirit_summary_with_fast_path(
-            &game.board,
-            Color::White,
-            remaining_moves,
-            game.player_can_use_action(),
-            EXACT_TACTICAL_SPIRIT_NEED_SCORE
-                | EXACT_TACTICAL_SPIRIT_NEED_DENIAL
-                | EXACT_TACTICAL_SPIRIT_NEED_PROGRESS,
-            true,
-            false,
-        );
-
-        assert_eq!(fast_path, legacy);
-    }
-
-    #[test]
-    fn exact_tactical_spirit_summary_fast_path_with_window_cache_matches_legacy_path() {
-        let game = game_with_items(
-            vec![
-                (
-                    Location::new(7, 1),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
-                    },
-                ),
-                (
-                    Location::new(9, 1),
-                    Item::Mana {
-                        mana: Mana::Regular(Color::Black),
-                    },
-                ),
-                (
-                    Location::new(8, 2),
-                    Item::Mana {
-                        mana: Mana::Supermana,
-                    },
-                ),
-                (
-                    Location::new(10, 4),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
-                    },
-                ),
-                (
-                    Location::new(0, 10),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
-                    },
-                ),
-            ],
-            Color::White,
-        );
-        let remaining_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
-
-        let legacy = exact_tactical_spirit_summary_with_fast_path(
-            &game.board,
-            Color::White,
-            remaining_moves,
-            game.player_can_use_action(),
-            EXACT_TACTICAL_SPIRIT_NEED_SCORE
-                | EXACT_TACTICAL_SPIRIT_NEED_DENIAL
-                | EXACT_TACTICAL_SPIRIT_NEED_PROGRESS,
-            false,
-            false,
-        );
-        let cached = exact_tactical_spirit_summary_with_fast_path(
-            &game.board,
-            Color::White,
-            remaining_moves,
-            game.player_can_use_action(),
-            EXACT_TACTICAL_SPIRIT_NEED_SCORE
-                | EXACT_TACTICAL_SPIRIT_NEED_DENIAL
-                | EXACT_TACTICAL_SPIRIT_NEED_PROGRESS,
-            true,
-            true,
-        );
-
-        assert_eq!(cached, legacy);
-    }
-
-    #[test]
-    fn exact_turn_tactical_projection_fast_path_matches_legacy_projection_profiles() {
-        let game = game_with_items(
-            vec![
-                (
-                    Location::new(7, 1),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
-                    },
-                ),
-                (
-                    Location::new(10, 4),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
-                    },
-                ),
-                (
-                    Location::new(9, 1),
-                    Item::Mana {
-                        mana: Mana::Regular(Color::Black),
-                    },
-                ),
-                (
-                    Location::new(8, 2),
-                    Item::Mana {
-                        mana: Mana::Supermana,
-                    },
-                ),
-                (
-                    Location::new(0, 10),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
-                    },
-                ),
-            ],
-            Color::White,
-        );
-
-        for flags in [
-            EXACT_TURN_TACTICAL_NEED_SUPERMANA_PROGRESS,
-            EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS
-                | EXACT_TURN_TACTICAL_NEED_SPIRIT_DENIAL,
-            EXACT_TURN_TACTICAL_NEED_SPIRIT_SCORE | EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW,
-            EXACT_TURN_TACTICAL_NEED_SUPERMANA_PROGRESS | EXACT_TURN_TACTICAL_NEED_SPIRIT_SCORE,
-        ] {
-            let legacy = exact_turn_tactical_projection_with_fast_path(
-                &game,
-                Color::White,
-                flags,
-                false,
-                false,
-            );
-            let fast_path = exact_turn_tactical_projection_with_fast_path(
-                &game,
-                Color::White,
-                flags,
-                true,
-                false,
-            );
-            assert_eq!(fast_path, legacy);
-        }
-    }
-
     #[test]
     fn exact_turn_tactical_projection_matches_spirit_turn_summary_fields() {
         clear_exact_state_analysis_cache();

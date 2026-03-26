@@ -38,18 +38,53 @@ EOF_HELP
 examples:
   ./scripts/run-automove-experiment.sh triage-calibrate
   ./scripts/run-automove-experiment.sh triage-calibrate opponent_mana
-  ./scripts/run-automove-experiment.sh guardrails runtime_eff_non_exact_v2
-  ./scripts/run-automove-experiment.sh preflight runtime_eff_non_exact_v2
-  SMART_TRIAGE_SURFACE=opponent_mana ./scripts/run-automove-experiment.sh triage runtime_eff_non_exact_v2
-  SMART_PROMOTION_TARGET_MODE=fast ./scripts/run-automove-experiment.sh audit-screen runtime_eff_non_exact_v2
-  SMART_PROMOTION_TARGET_MODE=fast ./scripts/run-automove-experiment.sh fast-screen runtime_eff_non_exact_v2
-  SMART_PROMOTION_TARGET_MODE=fast ./scripts/run-automove-experiment.sh progressive runtime_eff_non_exact_v2
-  SMART_TRIAGE_SURFACE=opening_reply ./scripts/run-automove-experiment.sh pro-triage runtime_eff_non_exact_v2
-  ./scripts/run-automove-experiment.sh pro-opening-speed-probe runtime_pro_quiescence_v1 runtime_current
-  ./scripts/run-automove-experiment.sh pro-audit-screen runtime_eff_non_exact_v2
+  ./scripts/run-automove-experiment.sh guardrails runtime_pre_fast_root_quality_v1_normal_conversion_v3
+  ./scripts/run-automove-experiment.sh preflight runtime_eff_exact_lite_v1
+  SMART_TRIAGE_SURFACE=opponent_mana ./scripts/run-automove-experiment.sh triage runtime_pre_fast_root_quality_v1_normal_conversion_v3
+  SMART_PROMOTION_TARGET_MODE=fast ./scripts/run-automove-experiment.sh audit-screen runtime_pre_fast_root_quality_v1_normal_conversion_v3
+  SMART_PROMOTION_TARGET_MODE=fast ./scripts/run-automove-experiment.sh fast-screen runtime_pre_fast_root_quality_v1_normal_conversion_v3
+  SMART_PROMOTION_TARGET_MODE=fast ./scripts/run-automove-experiment.sh progressive runtime_pre_fast_root_quality_v1_normal_conversion_v3
+  SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage runtime_pro_turn_engine_v30 runtime_current
+  ./scripts/run-automove-experiment.sh pro-opening-speed-probe runtime_pro_turn_engine_v30 runtime_current
+  ./scripts/run-automove-experiment.sh pro-audit-screen runtime_pro_turn_engine_v30 runtime_current
   ./scripts/run-automove-experiment.sh pro-reliability runtime_pro_turn_engine_v30 runtime_current
   ./scripts/run-automove-experiment.sh pro-ladder runtime_eff_exact_lite_v1 runtime_release_safe_pre_exact
 EOF_HELP
+}
+
+retained_profiles=(
+  base
+  runtime_current
+  runtime_release_safe_pre_exact
+  runtime_eff_exact_lite_v1
+  runtime_pre_fast_root_quality_v1_normal_conversion_v3
+  swift_2024_eval_reference
+  swift_2024_style_reference
+  runtime_normal_from_fast_reference_v1
+  runtime_pro_turn_engine_v1
+  runtime_pro_turn_engine_v30
+)
+
+profile_is_supported() {
+  local profile="$1"
+  local supported
+  for supported in "${retained_profiles[@]}"; do
+    if [ "${supported}" = "${profile}" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+require_supported_profile() {
+  local role="$1"
+  local profile="$2"
+  if profile_is_supported "${profile}"; then
+    return 0
+  fi
+  echo "unsupported ${role} profile: '${profile}'" >&2
+  echo "supported profiles: ${retained_profiles[*]}" >&2
+  exit 2
 }
 
 stage="${1:-}"
@@ -293,6 +328,9 @@ baseline_was_explicit=false
 if [ "$#" -eq 3 ]; then
   baseline_was_explicit=true
 fi
+
+require_supported_profile "candidate" "${candidate}"
+require_supported_profile "baseline" "${baseline}"
 
 case "${stage}" in
   guardrails)

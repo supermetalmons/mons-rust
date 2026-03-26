@@ -1013,8 +1013,6 @@ pub(crate) struct SmartSearchConfig {
     enable_turn_engine_secondary_analysis: bool,
     enable_turn_engine_selected_followup_projection: bool,
     enable_turn_engine_lazy_oracle_score_window_projection: bool,
-    enable_tactical_spirit_preview_fast_path: bool,
-    enable_immediate_tactical_window_cache: bool,
     enable_turn_engine_late_safe_mana_root_preference: bool,
     enable_turn_engine_late_black_setup_progress_rescue: bool,
     turn_engine_mode: TurnEngineMode,
@@ -1052,12 +1050,9 @@ pub(crate) struct SmartSearchConfig {
     enable_scoring_attack_reach_summary: bool,
     enable_scoring_attack_reach_target_narrowing: bool,
     enable_scoring_drainer_attack_reach_target_narrowing: bool,
-    enable_scoring_board_summary_reuse: bool,
     enable_child_vulnerability_scoring_ctx_reuse: bool,
     enable_child_vulnerability_attack_plausibility_screen: bool,
     enable_move_efficiency_tactical_score_window_narrowing: bool,
-    enable_drainer_pickup_window_cache: bool,
-    enable_secure_mana_dead_end_skip: bool,
     enable_two_stage_child_ordering: bool,
     child_ordering_shortlist_multiplier: usize,
     child_ordering_tactical_reserve: usize,
@@ -1373,8 +1368,6 @@ impl SmartSearchConfig {
             enable_turn_engine_secondary_analysis: true,
             enable_turn_engine_selected_followup_projection: true,
             enable_turn_engine_lazy_oracle_score_window_projection: false,
-            enable_tactical_spirit_preview_fast_path: false,
-            enable_immediate_tactical_window_cache: false,
             enable_turn_engine_late_safe_mana_root_preference: false,
             enable_turn_engine_late_black_setup_progress_rescue: false,
             turn_engine_mode: TurnEngineMode::ProV1,
@@ -1412,12 +1405,9 @@ impl SmartSearchConfig {
             enable_scoring_attack_reach_summary: false,
             enable_scoring_attack_reach_target_narrowing: false,
             enable_scoring_drainer_attack_reach_target_narrowing: false,
-            enable_scoring_board_summary_reuse: false,
             enable_child_vulnerability_scoring_ctx_reuse: false,
             enable_child_vulnerability_attack_plausibility_screen: false,
             enable_move_efficiency_tactical_score_window_narrowing: false,
-            enable_drainer_pickup_window_cache: false,
-            enable_secure_mana_dead_end_skip: false,
             enable_two_stage_child_ordering: false,
             child_ordering_shortlist_multiplier: 2,
             child_ordering_tactical_reserve: 2,
@@ -6766,17 +6756,7 @@ impl MonsGameModel {
 
     #[cfg(any(target_arch = "wasm32", test))]
     fn smart_search_best_inputs(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-        crate::models::automove_exact::with_exact_runtime_flags(
-            crate::models::automove_exact::ExactRuntimeFlags {
-                enable_tactical_spirit_preview_fast_path: config
-                    .enable_tactical_spirit_preview_fast_path,
-                enable_immediate_tactical_window_cache: config
-                    .enable_immediate_tactical_window_cache,
-                enable_drainer_pickup_window_cache: config.enable_drainer_pickup_window_cache,
-                enable_secure_mana_dead_end_skip: config.enable_secure_mana_dead_end_skip,
-            },
-            || Self::smart_search_best_inputs_internal(game, config, true),
-        )
+        Self::smart_search_best_inputs_internal(game, config, true)
     }
 
     #[cfg(test)]
@@ -6784,17 +6764,7 @@ impl MonsGameModel {
         game: &MonsGame,
         config: SmartSearchConfig,
     ) -> Vec<Input> {
-        crate::models::automove_exact::with_exact_runtime_flags(
-            crate::models::automove_exact::ExactRuntimeFlags {
-                enable_tactical_spirit_preview_fast_path: config
-                    .enable_tactical_spirit_preview_fast_path,
-                enable_immediate_tactical_window_cache: config
-                    .enable_immediate_tactical_window_cache,
-                enable_drainer_pickup_window_cache: config.enable_drainer_pickup_window_cache,
-                enable_secure_mana_dead_end_skip: config.enable_secure_mana_dead_end_skip,
-            },
-            || Self::smart_search_best_inputs_internal(game, config, false),
-        )
+        Self::smart_search_best_inputs_internal(game, config, false)
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
@@ -6850,30 +6820,7 @@ impl MonsGameModel {
 
     #[cfg(any(target_arch = "wasm32", test))]
     fn turn_engine_mode_uses_macro_plans(mode: TurnEngineMode) -> bool {
-        matches!(mode, TurnEngineMode::ProV2 | TurnEngineMode::ProV3)
-    }
-
-    #[cfg(any(target_arch = "wasm32", test))]
-    fn turn_engine_plan_has_concrete_package(plan: &TurnPlan) -> bool {
-        let meta = plan.package_meta;
-        meta.score_gain > 0
-            || meta.deny_gain > 0
-            || meta.drainer_safety_delta > 0
-            || matches!(
-                meta.kind,
-                Some(
-                    TurnPackageKind::ImmediateScore
-                        | TurnPackageKind::SecureProgress
-                        | TurnPackageKind::Attack
-                        | TurnPackageKind::Safety
-                )
-            )
-    }
-
-    #[cfg(any(target_arch = "wasm32", test))]
-    fn turn_engine_plan_has_positive_package_gain(plan: &TurnPlan) -> bool {
-        let meta = plan.package_meta;
-        meta.score_gain > 0 || meta.deny_gain > 0 || meta.drainer_safety_delta > 0
+        matches!(mode, TurnEngineMode::ProV2)
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
@@ -7350,10 +7297,6 @@ impl MonsGameModel {
         plan: &TurnPlan,
     ) -> Option<Vec<Input>> {
         let macro_mode = Self::turn_engine_mode_uses_macro_plans(config.turn_engine_mode);
-        let pro_v3_mode = matches!(config.turn_engine_mode, TurnEngineMode::ProV3);
-        let plan_has_concrete_package = Self::turn_engine_plan_has_concrete_package(plan);
-        let plan_has_positive_package_gain = Self::turn_engine_plan_has_positive_package_gain(plan);
-        let plan_safe_package = plan.package_meta.ends_nonnegative_drainer_safety;
         let candidate_inputs = plan.compiled_chunks.first()?.clone();
         let existing_candidate = root_moves
             .iter()
@@ -7385,8 +7328,6 @@ impl MonsGameModel {
         }
         let top_unsafe = Self::turn_engine_root_move_is_unsafe(top);
         let candidate_unsafe = Self::turn_engine_root_move_is_unsafe(&candidate);
-        let candidate_not_safer_than_top =
-            candidate.own_drainer_vulnerable || !top.own_drainer_vulnerable;
         let mut projected_state = game.clone_for_simulation();
         let mut projected_events = Vec::new();
         let mut projected_complete = true;
@@ -7473,18 +7414,6 @@ impl MonsGameModel {
                 || root.spirit_same_turn_score_setup_now
                 || root.spirit_own_mana_setup_now
         });
-        let top_safe_concrete_spirit_setup = root_moves.iter().take(10).any(|root| {
-            !Self::turn_engine_root_move_is_unsafe(root)
-                && (root.spirit_same_turn_score_setup_now || root.spirit_own_mana_setup_now)
-        });
-        let opening_black_single_chunk_head = pro_v3_mode
-            && game.active_color == Color::Black
-            && game.turn_number >= 6
-            && plan.compiled_chunks.len() < 2;
-        let top_neutral_search_root = !Self::turn_engine_root_move_has_progress_surface(top)
-            && !top.spirit_development
-            && !top.wins_immediately
-            && top.same_turn_score_window_value <= candidate.same_turn_score_window_value;
         let candidate_spirit_tactical = candidate.spirit_same_turn_score_setup_now
             || candidate.same_turn_score_window_value > 0
             || candidate.attacks_opponent_drainer
@@ -7504,36 +7433,6 @@ impl MonsGameModel {
                 plan.head_family,
                 TurnPlanFamily::SafeSupermanaProgress | TurnPlanFamily::SafeOpponentManaProgress
             ) && !candidate_progress_surface
-                && !(pro_v3_mode && plan_has_concrete_package && plan_safe_package)
-                && !completed_plan_override
-            {
-                return None;
-            }
-            if pro_v3_mode
-                && matches!(
-                    plan.head_family,
-                    TurnPlanFamily::SafeSupermanaProgress
-                        | TurnPlanFamily::SafeOpponentManaProgress
-                )
-                && plan.compiled_chunks.len() < 2
-                && !plan_has_positive_package_gain
-                && candidate_not_safer_than_top
-                && !candidate.safe_supermana_pickup_now
-                && !candidate.safe_opponent_mana_pickup_now
-                && (top_safe_concrete_spirit_setup
-                    || (opening_black_single_chunk_head
-                        && candidate_unsafe
-                        && top_neutral_search_root))
-                && !completed_plan_override
-            {
-                return None;
-            }
-            if opening_black_single_chunk_head
-                && matches!(plan.head_family, TurnPlanFamily::DrainerSafetyRecovery)
-                && plan.package_meta.score_gain <= 0
-                && plan.package_meta.deny_gain <= 0
-                && top_neutral_search_root
-                && candidate.heuristic < top.heuristic
                 && !completed_plan_override
             {
                 return None;
@@ -7543,9 +7442,6 @@ impl MonsGameModel {
                 && !candidate_spirit_tactical
                 && !candidate.spirit_same_turn_score_setup_now
                 && !candidate.spirit_own_mana_setup_now
-                && !(pro_v3_mode
-                    && plan_has_concrete_package
-                    && !plan.package_meta.spirit_only_setup)
             {
                 return None;
             }
@@ -7582,10 +7478,6 @@ impl MonsGameModel {
         plan: &TurnPlan,
     ) -> bool {
         let macro_mode = Self::turn_engine_mode_uses_macro_plans(config.turn_engine_mode);
-        let pro_v3_mode = matches!(config.turn_engine_mode, TurnEngineMode::ProV3);
-        let plan_has_concrete_package = Self::turn_engine_plan_has_concrete_package(plan);
-        let plan_has_positive_package_gain = Self::turn_engine_plan_has_positive_package_gain(plan);
-        let plan_safe_package = plan.package_meta.ends_nonnegative_drainer_safety;
         let Some(candidate_inputs) = plan.compiled_chunks.first() else {
             return false;
         };
@@ -7615,8 +7507,6 @@ impl MonsGameModel {
         let selected_unsafe = Self::turn_engine_root_evaluation_is_unsafe(selected);
         let candidate_progress_surface =
             Self::turn_engine_root_evaluation_has_progress_surface(candidate);
-        let candidate_not_safer_than_selected =
-            candidate.own_drainer_vulnerable || !selected.own_drainer_vulnerable;
 
         let score_gap = selected.score.saturating_sub(candidate.score);
         let same_turn_window_better =
@@ -7654,20 +7544,6 @@ impl MonsGameModel {
         let selected_spirit_phase = selected.spirit_development
             || selected.spirit_same_turn_score_setup_now
             || selected.spirit_own_mana_setup_now;
-        let selected_opening_spirit_edge = selected.spirit_same_turn_score_setup_now
-            || selected.spirit_own_mana_setup_now
-            || selected.same_turn_score_window_value > 0;
-        let blocked_pro_v3_flat_spirit_followup = pro_v3_mode
-            && matches!(plan.head_family, TurnPlanFamily::SpiritImpact)
-            && selected_opening_spirit_edge
-            && !candidate.spirit_development
-            && !candidate.spirit_same_turn_score_setup_now
-            && !candidate.spirit_own_mana_setup_now
-            && candidate.same_turn_score_window_value <= selected.same_turn_score_window_value
-            && candidate.spirit_setup_gain <= selected.spirit_setup_gain
-            && !scores_now_better
-            && !drainer_attack_better
-            && candidate_not_safer_than_selected;
         let selected_family = Self::turn_engine_root_evaluation_family(selected);
         let mut selected_utility = None;
         let mut selected_utility_value = || {
@@ -7751,49 +7627,6 @@ impl MonsGameModel {
                 || plan
                     .utility
                     .improves_non_score_override_axes(selected_utility_value()));
-        let opening_black_single_chunk_head = pro_v3_mode
-            && game.active_color == Color::Black
-            && game.turn_number >= 6
-            && plan.compiled_chunks.len() < 2;
-        let blocked_opening_black_immediate_score_spirit_override = opening_black_single_chunk_head
-            && matches!(plan.head_family, TurnPlanFamily::ImmediateScore)
-            && selected_spirit_phase
-            && selected_opening_spirit_edge
-            && !candidate.wins_immediately
-            && !scores_now_better
-            && !same_turn_window_better
-            && !drainer_attack_better
-            && !candidate.spirit_same_turn_score_setup_now
-            && !candidate.spirit_own_mana_setup_now
-            && candidate_not_safer_than_selected
-            && score_gap <= 64;
-        let blocked_opening_black_safety_recovery_spirit_override = pro_v3_mode
-            && game.active_color == Color::Black
-            && game.turn_number >= 6
-            && matches!(plan.head_family, TurnPlanFamily::DrainerSafetyRecovery)
-            && selected_opening_spirit_edge
-            && (selected.spirit_same_turn_score_setup_now || selected.spirit_own_mana_setup_now)
-            && !candidate_progress_surface
-            && !candidate.spirit_same_turn_score_setup_now
-            && !candidate.spirit_own_mana_setup_now
-            && !scores_now_better
-            && !same_turn_window_better
-            && !drainer_attack_better
-            && candidate.same_turn_score_window_value <= selected.same_turn_score_window_value
-            && candidate.spirit_setup_gain <= selected.spirit_setup_gain
-            && candidate_not_safer_than_selected;
-        let blocked_opening_black_safety_recovery_carrier_override = pro_v3_mode
-            && game.active_color == Color::Black
-            && game.turn_number >= 6
-            && matches!(plan.head_family, TurnPlanFamily::DrainerSafetyRecovery)
-            && (selected.same_turn_score_window_value > 0 || selected.score_path_best_steps <= 1)
-            && !candidate_progress_surface
-            && !candidate.spirit_same_turn_score_setup_now
-            && !candidate.spirit_own_mana_setup_now
-            && !scores_now_better
-            && !same_turn_window_better
-            && !drainer_attack_better
-            && candidate_not_safer_than_selected;
         if candidate_unsafe && !selected_unsafe && !projected_completed_plan_override {
             return false;
         }
@@ -7827,7 +7660,6 @@ impl MonsGameModel {
             )
             && !candidate_progress_surface
             && !selected_unsafe
-            && !(pro_v3_mode && plan_has_concrete_package && plan_safe_package)
             && !projected_completed_plan_override
             && !allow_non_concrete_white_progress_head
         {
@@ -7850,47 +7682,20 @@ impl MonsGameModel {
             | TurnPlanFamily::SafeOpponentManaProgress
             | TurnPlanFamily::ManaTempo => false,
         };
-        let competing_immediate_score_carrier_tie = pro_v3_mode
-            && matches!(plan.head_family, TurnPlanFamily::ImmediateScore)
-            && plan.compiled_chunks.len() <= 2
-            && !candidate.wins_immediately
-            && !selected.wins_immediately
-            && !scores_now_better
-            && !same_turn_window_better
-            && score_gap <= 16
-            && selected.efficiency > candidate.efficiency
-            && selected.own_drainer_vulnerable == candidate.own_drainer_vulnerable
-            && selected.same_turn_score_window_value == candidate.same_turn_score_window_value
-            && selected.score_path_best_steps == candidate.score_path_best_steps;
         if macro_mode
             && !selected.wins_immediately
-            && !competing_immediate_score_carrier_tie
-            && !blocked_opening_black_immediate_score_spirit_override
             && allow_generic_pro_v2_override
             && plan.utility.passes_override_guard(selected_utility_value())
             && (!candidate_unsafe || selected_unsafe)
         {
             return true;
         }
-        if blocked_opening_black_immediate_score_spirit_override {
-            return false;
-        }
-        if blocked_opening_black_safety_recovery_spirit_override {
-            return false;
-        }
-        if blocked_opening_black_safety_recovery_carrier_override {
-            return false;
-        }
         if matches!(plan.head_family, TurnPlanFamily::SpiritImpact)
             && !candidate_spirit_tactical
             && !candidate.spirit_development
             && !candidate.spirit_own_mana_setup_now
-            && !(pro_v3_mode && plan_has_concrete_package && !plan.package_meta.spirit_only_setup)
             && !projected_completed_plan_override
         {
-            return false;
-        }
-        if blocked_pro_v3_flat_spirit_followup {
             return false;
         }
         if projected_completed_plan_override {
@@ -7945,26 +7750,20 @@ impl MonsGameModel {
                 }
                 TurnPlanFamily::ManaTempo => false,
             },
-            TurnEngineMode::ProV2 | TurnEngineMode::ProV3 => match plan.head_family {
+            TurnEngineMode::ProV2 => match plan.head_family {
                 TurnPlanFamily::ImmediateScore => {
-                    !competing_immediate_score_carrier_tie
-                        && !blocked_opening_black_immediate_score_spirit_override
-                        && ((candidate.wins_immediately
-                            || scores_now_better
-                            || same_turn_window_better
-                            || (pro_v3_mode
-                                && plan.package_meta.score_gain > 0
-                                && plan_safe_package)
-                            || (candidate_index <= 16
-                                && plan.utility.passes_override_guard(selected_utility_value())
-                                && (!candidate_unsafe || selected_unsafe)))
-                            && score_gap <= 360)
+                    (candidate.wins_immediately
+                        || scores_now_better
+                        || same_turn_window_better
+                        || (candidate_index <= 16
+                            && plan.utility.passes_override_guard(selected_utility_value())
+                            && (!candidate_unsafe || selected_unsafe)))
+                        && score_gap <= 360
                 }
                 TurnPlanFamily::DenyOpponentWindow => {
                     same_turn_window_better
                         || safety_recover_better
                         || drainer_attack_better
-                        || (pro_v3_mode && plan.package_meta.deny_gain > 0 && plan_safe_package)
                         || (candidate_index <= 16
                             && score_gap <= 220
                             && !candidate_unsafe
@@ -7990,10 +7789,7 @@ impl MonsGameModel {
                         && score_gap <= 240
                         && (safety_recover_better
                             || safer_now
-                            || utility_only_recovery_override
-                            || (pro_v3_mode
-                                && plan.package_meta.drainer_safety_delta > 0
-                                && plan_safe_package))
+                            || utility_only_recovery_override)
                 }
                 TurnPlanFamily::SpiritImpact => {
                     let selected_utility = selected_utility_value();
@@ -8015,18 +7811,6 @@ impl MonsGameModel {
                         && !scores_now_better
                         && !drainer_attack_better;
                     if plain_followup_overrides_concrete_setup {
-                        return false;
-                    }
-                    let flat_followup_loses_spirit_setup_edge =
-                        blocked_pro_v3_flat_spirit_followup && selected_concrete_spirit_setup;
-                    if flat_followup_loses_spirit_setup_edge {
-                        return false;
-                    }
-                    if pro_v3_mode
-                        && plan.package_meta.spirit_only_setup
-                        && !candidate_spirit_tactical
-                        && !engine_better_than_selected
-                    {
                         return false;
                     }
                     let candidate_rank_cap = if plan.compiled_chunks.len() > 1 {
@@ -8088,17 +7872,6 @@ impl MonsGameModel {
                             || score_gap <= 32
                             || strategic_override_axes_better
                             || pickup_upgrade);
-                    let blocked_plain_progress_spirit_phase_override = pro_v3_mode
-                        && selected_spirit_phase
-                        && opening_black_single_chunk_head
-                        && !plan_has_positive_package_gain
-                        && !pickup_upgrade
-                        && !strategic_override_axes_better
-                        && selected_opening_spirit_edge
-                        && !candidate.spirit_same_turn_score_setup_now
-                        && !candidate.spirit_own_mana_setup_now
-                        && candidate.spirit_setup_gain <= selected.spirit_setup_gain
-                        && candidate_not_safer_than_selected;
                     let engine_better_than_selected = engine_not_worse_than_selected
                         && plan
                             .utility
@@ -8151,19 +7924,10 @@ impl MonsGameModel {
                         && (!selected_safe_progress
                             || strategic_override_axes_better
                             || pickup_upgrade
-                            || (progress_better && !selected_spirit_phase)
-                            || plan_has_positive_package_gain)
-                        && !blocked_plain_progress_spirit_phase_override;
-                    let positive_package_gain_override = pro_v3_mode
-                        && plan_has_positive_package_gain
-                        && plan_safe_package
-                        && !plan.package_meta.spirit_only_setup
-                        && !blocked_plain_progress_spirit_phase_override;
+                            || (progress_better && !selected_spirit_phase));
                     candidate_index <= candidate_rank_cap
                         && score_gap <= 220
-                        && !blocked_plain_progress_spirit_phase_override
                         && (progress_better_override
-                            || positive_package_gain_override
                             || white_plain_spirit_progress_override
                             || pickup_upgrade
                             || engine_progress_override
@@ -11185,7 +10949,6 @@ impl MonsGameModel {
                 config.enable_scoring_attack_reach_summary,
                 config.enable_scoring_attack_reach_target_narrowing,
                 config.enable_scoring_drainer_attack_reach_target_narrowing,
-                config.enable_scoring_board_summary_reuse,
             )
         });
         let mut heuristic = Self::score_state_with_context(
@@ -18676,7 +18439,6 @@ impl MonsGameModel {
             config.enable_scoring_attack_reach_summary,
             config.enable_scoring_attack_reach_target_narrowing,
             config.enable_scoring_drainer_attack_reach_target_narrowing,
-            config.enable_scoring_board_summary_reuse,
         )
     }
 
@@ -18689,7 +18451,6 @@ impl MonsGameModel {
         enable_scoring_attack_reach_summary: bool,
         enable_scoring_attack_reach_target_narrowing: bool,
         enable_scoring_drainer_attack_reach_target_narrowing: bool,
-        enable_scoring_board_summary_reuse: bool,
     ) -> i32 {
         Self::cached_search_preferability_score_with_hash(
             game,
@@ -18700,7 +18461,6 @@ impl MonsGameModel {
             enable_scoring_attack_reach_summary,
             enable_scoring_attack_reach_target_narrowing,
             enable_scoring_drainer_attack_reach_target_narrowing,
-            enable_scoring_board_summary_reuse,
             Self::search_state_hash(game),
         )
     }
@@ -18714,7 +18474,6 @@ impl MonsGameModel {
         enable_scoring_attack_reach_summary: bool,
         enable_scoring_attack_reach_target_narrowing: bool,
         enable_scoring_drainer_attack_reach_target_narrowing: bool,
-        enable_scoring_board_summary_reuse: bool,
         state_hash: u64,
     ) -> i32 {
         let cache_key = SearchPreferabilityCacheKey {
@@ -18742,7 +18501,6 @@ impl MonsGameModel {
                 enable_scoring_attack_reach_summary,
                 enable_scoring_attack_reach_target_narrowing,
                 enable_scoring_drainer_attack_reach_target_narrowing,
-                enable_scoring_board_summary_reuse,
             );
             evaluate_preferability_with_context(
                 game,
@@ -18961,7 +18719,6 @@ mod evaluation_cache_tests {
         config.enable_scoring_attack_reach_summary = true;
         config.enable_scoring_attack_reach_target_narrowing = true;
         config.enable_scoring_drainer_attack_reach_target_narrowing = true;
-        config.enable_scoring_board_summary_reuse = true;
         let with_context =
             MonsGameModel::evaluate_search_preferability(&game, Color::White, config);
 

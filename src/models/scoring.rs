@@ -148,7 +148,6 @@ struct ScoringAttackReachSummaryKey {
 pub(crate) struct ScoringEvalContext {
     board_hash: u64,
     allow_exact_strategic: bool,
-    enable_board_summary_reuse: bool,
     board_summary: OnceCell<ScoringBoardSummary>,
     mana_path_snapshot: OnceCell<ManaPathSnapshot>,
     exact_analysis: OnceCell<ExactStrategicAnalysis>,
@@ -163,7 +162,7 @@ pub(crate) struct ScoringEvalContext {
 
 impl ScoringEvalContext {
     pub(crate) fn new(game: &MonsGame, allow_exact_strategic: bool) -> Self {
-        Self::new_with_flags(game, allow_exact_strategic, false, false, false, false)
+        Self::new_with_flags(game, allow_exact_strategic, false, false, false)
     }
 
     pub(crate) fn new_with_flags(
@@ -172,12 +171,10 @@ impl ScoringEvalContext {
         enable_attack_reach_summary: bool,
         enable_attack_reach_target_narrowing: bool,
         enable_attack_reach_drainer_target_narrowing: bool,
-        enable_board_summary_reuse: bool,
     ) -> Self {
         Self {
             board_hash: crate::models::automove_exact::exact_board_hash(&game.board),
             allow_exact_strategic,
-            enable_board_summary_reuse,
             board_summary: OnceCell::new(),
             mana_path_snapshot: OnceCell::new(),
             exact_analysis: OnceCell::new(),
@@ -204,20 +201,14 @@ impl ScoringEvalContext {
 
     #[inline]
     fn board_summary_if_enabled(&self, board: &Board) -> Option<&ScoringBoardSummary> {
-        self.enable_board_summary_reuse
-            .then(|| self.board_summary(board))
+        Some(self.board_summary(board))
     }
 
     #[inline]
     fn mana_path_snapshot(&self, board: &Board) -> &ManaPathSnapshot {
-        if self.enable_board_summary_reuse {
-            let board_summary = self.board_summary(board);
-            self.mana_path_snapshot
-                .get_or_init(|| ManaPathSnapshot::from_summary(board_summary))
-        } else {
-            self.mana_path_snapshot
-                .get_or_init(|| ManaPathSnapshot::from_board(board))
-        }
+        let board_summary = self.board_summary(board);
+        self.mana_path_snapshot
+            .get_or_init(|| ManaPathSnapshot::from_summary(board_summary))
     }
 
     #[inline]
@@ -3227,7 +3218,7 @@ mod tests {
             ],
             Color::White,
         );
-        let context = ScoringEvalContext::new_with_flags(&game, true, true, true, false, false);
+        let context = ScoringEvalContext::new_with_flags(&game, true, true, true, false);
 
         let first =
             context.drainer_immediate_threats(&game.board, Color::White, Location::new(6, 5));
@@ -3291,7 +3282,7 @@ mod tests {
             ],
             Color::White,
         );
-        let context = ScoringEvalContext::new_with_flags(&game, true, true, true, true, false);
+        let context = ScoringEvalContext::new_with_flags(&game, true, true, true, true);
 
         let first =
             context.drainer_immediate_threats(&game.board, Color::White, Location::new(6, 5));
@@ -3364,9 +3355,9 @@ mod tests {
         );
         let plain_context = ScoringEvalContext::new(&game, true);
         let summary_context =
-            ScoringEvalContext::new_with_flags(&game, true, true, true, false, false);
+            ScoringEvalContext::new_with_flags(&game, true, true, true, false);
         let drainer_target_context =
-            ScoringEvalContext::new_with_flags(&game, true, true, true, true, false);
+            ScoringEvalContext::new_with_flags(&game, true, true, true, true);
 
         assert_eq!(
             evaluate_preferability_with_context(

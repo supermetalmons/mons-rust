@@ -2,119 +2,54 @@
 
 This is the live backlog for upcoming automove iterations.
 
-Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file lean: current state, the retained frontier, the latest attempted candidate, and compact next-step ideas only. Move durable lessons to `docs/automove-knowledge.md` and branch history to `docs/automove-archive.md`.
+Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file short. Move durable lessons to `docs/automove-knowledge.md` and retired branch history to `docs/automove-archive.md`.
 
 ## Current State (2026-03-26)
 
-- Production Pro in `runtime_current` still uses the promoted turn-opportunity planner from March 18, 2026.
-- `runtime_pro_turn_engine_v30` remains the retained ProV2 frontier.
-- `runtime_pro_turn_engine_v1` remains reference-only history, not the live frontier.
-- `runtime_pro_turn_engine_v3_shared` stays hidden experiment-only state; it recovered front-gate proof but still did not finish `pro-reliability` in a practical window.
-- `runtime_pro_turn_engine_v31` through `runtime_pro_turn_engine_v52` are archived roadmap follow-through, not separate live frontiers.
-- No extra Pro candidate is retained as active after the latest follow-up loop.
-- The latest useful archived follow-up is `runtime_pro_turn_engine_v61_pickup_window_cache_v1`, built on the `v60` search-summary + secure-dead-end base.
-- Fresh March 26, 2026 secure-recursion follow-ups `runtime_pro_turn_engine_v55_secure_mana_precheck_v1`, `runtime_pro_turn_engine_v56_secure_drainer_walk_cache_v1`, and `runtime_pro_turn_engine_v62_secure_pickup_prune_v1` were all killed and discarded; only `v60` and `v61` remain as useful archived code.
-- Default artifact layout is:
-  - logs: `target/experiment-runs/<candidate>/`
-  - workflow-only logs: `target/experiment-runs/misc/`
-  - runtime-preflight stamps: `target/experiment-stamps/`
-
-## Idea Template
-
-### Idea: <short name>
-
-- Base profile: `runtime_current`
-- Target mode:
-- Triage surface:
-- Triage pass signal:
-- Calibration gate:
-- Expected upside:
-- CPU risk:
-- Cheapest falsifier:
-- Current blocker:
-- Next split:
-- How to test:
-- Status:
+- Shipping runtime stays `runtime_current`.
+- `runtime_pro_turn_engine_v30` is the only retained Pro turn-engine frontier.
+- `runtime_pro_turn_engine_v1` stays as reference-only regression history.
+- Archived branches from `runtime_pro_turn_engine_v31` onward, the old planner lines, and the quiescence line are docs-only context now.
+- The executable experiment surface is intentionally small: current runtime, calibration anchors, curated references, and the two retained Pro references.
 
 ## Active Frontier
 
-### Idea: Pro turn engine v30 completion
+### Pro v30 completion
 
 - Base profile: `runtime_current`
+- Candidate profile: `runtime_pro_turn_engine_v30`
 - Target mode: `pro`
 - Triage surface: `primary_pro`
-- Triage pass signal: `runtime_pro_turn_engine_v30` keeps moving `primary_pro` fixtures while preserving `runtime-preflight` and re-earning direct `runtime_pro_turn_engine_v30` vs `runtime_current` reliability under the restored strict gate
-- Calibration gate: none
-- Expected upside: stronger full-turn planning and continuation reuse than shipping Pro without reopening the old CPU-heavy branch
-- CPU risk: medium-high
-- Cheapest falsifier: strict `pro-reliability` or the next focused exact-oracle split stays flat on `human_win_pro_a`
-- Current checkpoint:
-  - `runtime_pro_turn_engine_v30` still fully scores all enumerated children on the hard hotspot boards.
-  - The roadmap mainline was followed far enough that it should no longer be the operator doc: the local bundle, two-stage ordering, reach cleanup, projection-profile, and `v46`..`v52` search/oracle phases all landed as bounded follow-through.
-  - `runtime_pro_turn_engine_v52_spirit_preview_no_board_summary_v1` is the strongest late-roadmap technical base, but it is still not promotable.
-  - `runtime_pro_turn_engine_v53_spirit_preview_window_fast_path_v1` proved the narrow preview-saturation skip, but it did not move the direct gate enough to justify retained-frontier status.
-  - `runtime_pro_turn_engine_v54_tactical_window_cache_v1` proved the immediate tactical-window cache.
-  - `runtime_pro_turn_engine_v59_secure_mana_dead_end_skip_v1` proved that a bounded secure-mana dead-end skip can keep the front gates green, but it did not move the direct gate enough on its own.
-  - `runtime_pro_turn_engine_v60_secure_mana_board_summary_v1` reintroduced search-side scoring board-summary reuse on top of the stronger `v59` exact base and kept the front gates green.
-  - `runtime_pro_turn_engine_v61_pickup_window_cache_v1` is the strongest post-roadmap exact follow-up so far. It keeps the `v60` search-side reuse and adds a candidate-only cache for exact drainer pickup windows inside the immediate tactical window path.
-- Current blocker: a clean direct `pro-reliability` run still does not finish in a practical promotion window. The returned duel wall is still the same exact-oracle surface under `discover_macro_opportunities_v2 -> oracle_walk_seeds -> build_exact_turn_tactical_projection -> exact_tactical_spirit_summary`, with the sampled top cost now spread across `exact_apply_secure_drainer_walk_in_place`, `exact_secure_specific_mana_steps_in_game_with_key_at_mut`, `ExactActorMoveMemo::payload_after_move`, the uncached remainder of `exact_best_immediate_tactical_window_on_board_with_hash`, and `exact_board_hash`.
-- Recent outcome:
-  - `v53` kept the front of the earned path green and validated the preview-saturation skip, but the strict direct gate still ran past the practical window and was manually stopped.
-  - `v54`, `v59`, `v60`, and `v61` all kept the front of the earned path green: `guardrails`, `SMART_TRIAGE_SURFACE=primary_pro pro-triage`, and `runtime-preflight` all pass.
-  - Fresh front-gate numbers on `v61`: `primary_pro target_changed=14`, `off_target_changed=0`; runtime-preflight stage-1 CPU ratios were `0.771`, `0.859`, and `0.759`.
-  - Focused parity coverage exists for the spirit-preview helper, tactical spirit summary score-only parity, denial-only parity, full score+denial+progress parity, tactical projection parity, and immediate tactical-window parity.
-  - The bounded hotspot probe shows that `v61` is useful but still not decisive: on a fresh rerun it cut `payload_after_move` substantially and produced `pickup_window_hits` on the exact wall, but `human_win_pro_a` still stayed in the same band (`1273.92ms` baseline vs `1270.29ms` on `v61`) and the direct gate still did not finish in a practical window.
-  - A follow-up `v55` fast-lookup attempt cut counted immediate-window queries further, but it did not improve the hotspot wall enough to justify keeping the code, so it was discarded.
-  - The March 26, 2026 `v55` secure-mana precheck follow-up proved the current wall is not at the wrapper boundary: it produced large `secure_mana_precheck_hits`, but the hotspot stayed flat or worse (`primary_spirit_setup 322.20ms -> 324.37ms`, `human_win_pro_a 1273.92ms -> 1327.95ms`), so the code was discarded without spending earned-path stages.
-  - The March 26, 2026 `v56` secure drainer-walk metadata fast path also lost early. Even with heavy `secure_drainer_walk_hits`, the bounded probe regressed the returned boards (`primary_spirit_setup 322.20ms -> 407.55ms`, `human_win_pro_a 1273.92ms -> 1525.18ms`, `spirit_development 464.54ms -> 612.71ms`), so that code was also discarded.
-  - `v59` still ran past the practical direct-gate window after the front gates, so it stays archived-only.
-  - `v60` still ran past the practical direct-gate window after the front gates, so it stays archived-only.
-  - `v61` became the strongest useful archived follow-up of this wave: the new pickup-window cache hit exactly on the returned exact wall and improved bounded hotspot work, but a clean `pro-reliability` run still ran past the practical window and was manually stopped after about two minutes with no completion summary.
-  - A deeper `v62` secure-pickup prune was tested on top of `v61`, but it regressed the hotspot wall badly and was discarded.
+- Expected upside: stronger full-turn planning and continuation reuse than shipping Pro without reopening the dead archive branches
+- Current blocker: clean direct `pro-reliability` still does not finish in a practical window
+- Hotspot shape: the wall is still inside the exact tactical / projection path, not in wrapper-only glue
 - Next split:
-  - Do not spend more time on wrapper-local or transition-metadata exact caches around secure-mana recursion. `v55` and `v56` falsified that family.
-  - The next live split should go deeper into the remaining exact wall itself: `ExactActorMoveMemo::payload_after_move`, the uncached residue of `exact_best_immediate_tactical_window_on_board_with_hash`, and `exact_secure_specific_mana_steps_in_game_with_key_at_mut`.
-  - Do not reopen the discarded secure-mana specific-pickup prune family from `v62`; it cut counted secure recursion but made the hotspot materially worse.
-  - If the `v30` line still cannot earn a practical `pro-reliability` finish after 2–3 more focused splits, use the roadmap’s remaining structural fallbacks: a guarded hybrid overlay or a cheaper distilled online signal learned from `v30` decisions.
+  1. Cut deeper into the remaining exact wall around `payload_after_move`, immediate tactical-window work, and secure-mana recursion.
+  2. Add the smallest useful stuck-state / bounded-progress fixture pack so bad candidates die before duel spend.
+  3. If `v30` still cannot finish direct reliability after a few focused splits, stop grinding micro-optimizations and switch to a structural fallback.
 - How to test:
-  - `guardrails -> SMART_TRIAGE_SURFACE=primary_pro pro-triage -> runtime-preflight`
-  - `pro-reliability` against `runtime_current`
-  - only after the strict direct gate is green: `pro-fast-screen -> pro-progressive -> pro-ladder`
-- Status: active; retained frontier is `runtime_pro_turn_engine_v30`, latest useful archived follow-up is `runtime_pro_turn_engine_v61_pickup_window_cache_v1`
+  - `./scripts/run-automove-experiment.sh guardrails runtime_pro_turn_engine_v30`
+  - `SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage runtime_pro_turn_engine_v30 runtime_current`
+  - `./scripts/run-automove-experiment.sh runtime-preflight runtime_pro_turn_engine_v30 runtime_current`
+  - `./scripts/run-automove-experiment.sh pro-reliability runtime_pro_turn_engine_v30 runtime_current`
+- Status: active
 
-## Workflow Backlog
+## Backlog
 
-### Idea: Stuck-state and bounded-progress safety fixtures
+### Stuck-state and bounded-progress fixtures
 
-- Base profile: `runtime_current`
-- Target mode: `fast`, `normal`, `pro`
-- Triage surface: blocked until fixtures exist
-- Expected upside: catch empty-selector, repeat-loop, and no-progress regressions before promotion
-- CPU risk: low
-- Cheapest falsifier: fixtures land but do not reject unsafe candidates any earlier than the current guardrails
-- Current blocker: fixture pack does not yet cover these edge cases directly
-- Next split: add the smallest promotable fixture pack and wire it into guardrails or triage
-- How to test: add the fixtures, then confirm unsafe branches fail before duel spend
+- Goal: reject empty-selector, repeat-loop, and no-progress failures before duel spend
+- Cost: low
+- Why it matters: the workflow is now cleaner, so the next useful improvement is earlier failure detection
 - Status: backlog
 
-### Idea: Promotion-time rollup summary
+### Promotion rollup summary
 
-- Base profile: workflow-only
-- Target mode: workflow
-- Triage surface: none
-- Expected upside: faster promote/kill decisions without opening multiple raw logs
-- CPU risk: low
-- Cheapest falsifier: metadata and cleanup improvements are already enough, and no operator time is saved by adding a summary layer
-- Current blocker: logs are better organized now, but promotion evidence still lives across multiple command outputs
-- Next split: emit one compact per-stage rollup after progressive or ladder without changing any gate behavior
-- How to test: add the summary output and confirm it replaces manual log spelunking on one live candidate
+- Goal: emit one compact per-stage summary instead of forcing manual log spelunking
+- Cost: low
+- Why it matters: cleaner operator evidence and faster promote/kill decisions
 - Status: backlog
 
-## Recently Closed / Parked
+## Archive Pointer
 
-- Stronger Pro roadmap follow-through: `runtime_pro_turn_engine_v31`..`runtime_pro_turn_engine_v52` are archived as one bounded follow-through wave, and the `v53`..`v61` post-roadmap follow-ups are archived as latest evidence; use this file, not `stronger_pro_automove_roadmap.md`, for live next-step decisions.
-- Pro turn-engine wave compression: `runtime_pro_turn_engine_v2`..`v30` were reduced to one retained frontier plus archived lessons; see `docs/automove-archive.md`.
-- Pro intent planner v2 stabilization: early gates and bounded ladder speed could be kept green in the emergency-only shape, but direct reliability remained flat and the branch did not justify live-frontier space.
-- Fast tactical uplift against current Normal: repeated reply-risk, spirit-setup, opponent-mana, and scoring-only splits either failed triage, stayed flat at first duel, or hit progressive runtime cliffs; reopen only with a genuinely new code path.
-- Pro turn-opportunity planner v1: promoted to production Pro on March 18, 2026; keep the rollout Pro-only because direct Fast/Normal transplants regressed Normal.
-- Shared reply-risk / exact-lite cache reuse line: closed at `cache_reuse` triage.
+Detailed branch history for `runtime_pro_turn_engine_v31` and later, the planner experiments, the quiescence line, and earlier exhaustions lives in `docs/automove-archive.md`.
