@@ -1049,6 +1049,8 @@ pub(crate) struct SmartSearchConfig {
     enable_local_scoring_eval_ctx: bool,
     enable_scoring_attack_reach_summary: bool,
     enable_scoring_attack_reach_target_narrowing: bool,
+    enable_scoring_drainer_attack_reach_target_narrowing: bool,
+    enable_scoring_board_summary_reuse: bool,
     enable_child_vulnerability_scoring_ctx_reuse: bool,
     enable_child_vulnerability_attack_plausibility_screen: bool,
     enable_move_efficiency_tactical_score_window_narrowing: bool,
@@ -1403,6 +1405,8 @@ impl SmartSearchConfig {
             enable_local_scoring_eval_ctx: false,
             enable_scoring_attack_reach_summary: false,
             enable_scoring_attack_reach_target_narrowing: false,
+            enable_scoring_drainer_attack_reach_target_narrowing: false,
+            enable_scoring_board_summary_reuse: false,
             enable_child_vulnerability_scoring_ctx_reuse: false,
             enable_child_vulnerability_attack_plausibility_screen: false,
             enable_move_efficiency_tactical_score_window_narrowing: false,
@@ -11152,6 +11156,8 @@ impl MonsGameModel {
                 config.enable_static_exact_evaluation,
                 config.enable_scoring_attack_reach_summary,
                 config.enable_scoring_attack_reach_target_narrowing,
+                config.enable_scoring_drainer_attack_reach_target_narrowing,
+                config.enable_scoring_board_summary_reuse,
             )
         });
         let mut heuristic = Self::score_state_with_context(
@@ -18640,6 +18646,11 @@ impl MonsGameModel {
             perspective,
             config.scoring_weights,
             config.enable_static_exact_evaluation,
+            config.enable_local_scoring_eval_ctx,
+            config.enable_scoring_attack_reach_summary,
+            config.enable_scoring_attack_reach_target_narrowing,
+            config.enable_scoring_drainer_attack_reach_target_narrowing,
+            config.enable_scoring_board_summary_reuse,
         )
     }
 
@@ -18648,12 +18659,22 @@ impl MonsGameModel {
         perspective: Color,
         scoring_weights: &'static ScoringWeights,
         allow_exact_static_evaluation: bool,
+        enable_local_scoring_eval_ctx: bool,
+        enable_scoring_attack_reach_summary: bool,
+        enable_scoring_attack_reach_target_narrowing: bool,
+        enable_scoring_drainer_attack_reach_target_narrowing: bool,
+        enable_scoring_board_summary_reuse: bool,
     ) -> i32 {
         Self::cached_search_preferability_score_with_hash(
             game,
             perspective,
             scoring_weights,
             allow_exact_static_evaluation,
+            enable_local_scoring_eval_ctx,
+            enable_scoring_attack_reach_summary,
+            enable_scoring_attack_reach_target_narrowing,
+            enable_scoring_drainer_attack_reach_target_narrowing,
+            enable_scoring_board_summary_reuse,
             Self::search_state_hash(game),
         )
     }
@@ -18663,6 +18684,11 @@ impl MonsGameModel {
         perspective: Color,
         scoring_weights: &'static ScoringWeights,
         allow_exact_static_evaluation: bool,
+        enable_local_scoring_eval_ctx: bool,
+        enable_scoring_attack_reach_summary: bool,
+        enable_scoring_attack_reach_target_narrowing: bool,
+        enable_scoring_drainer_attack_reach_target_narrowing: bool,
+        enable_scoring_board_summary_reuse: bool,
         state_hash: u64,
     ) -> i32 {
         let cache_key = SearchPreferabilityCacheKey {
@@ -18683,12 +18709,30 @@ impl MonsGameModel {
         update_turn_engine_selector_diagnostics(|diagnostics| {
             diagnostics.search_preferability_builds += 1;
         });
-        let score = evaluate_preferability_with_weights_and_exact_policy(
-            game,
-            perspective,
-            scoring_weights,
-            allow_exact_static_evaluation,
-        );
+        let score = if enable_local_scoring_eval_ctx {
+            let context = ScoringEvalContext::new_with_flags(
+                game,
+                allow_exact_static_evaluation,
+                enable_scoring_attack_reach_summary,
+                enable_scoring_attack_reach_target_narrowing,
+                enable_scoring_drainer_attack_reach_target_narrowing,
+                enable_scoring_board_summary_reuse,
+            );
+            evaluate_preferability_with_context(
+                game,
+                perspective,
+                scoring_weights,
+                allow_exact_static_evaluation,
+                &context,
+            )
+        } else {
+            evaluate_preferability_with_weights_and_exact_policy(
+                game,
+                perspective,
+                scoring_weights,
+                allow_exact_static_evaluation,
+            )
+        };
         SEARCH_PREFERABILITY_CACHE.with(|cache| {
             let mut cache = cache.borrow_mut();
             if cache.len() >= SMART_SEARCH_PREFERABILITY_CACHE_MAX_ENTRIES
@@ -18835,6 +18879,66 @@ mod evaluation_cache_tests {
 
         assert_eq!(search_preferability_cache_len(), 1);
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn search_preferability_scoring_ctx_preserves_result() {
+        clear_turn_engine_selector_followup_floor_cache();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(4, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 5),
+                    Item::MonWithConsumable {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                        consumable: Consumable::Bomb,
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let (mut config, _) = MonsGameModel::runtime_config_for_game_with_context(
+            &game,
+            SmartAutomovePreference::Pro,
+            ProRuntimeContext::Independent,
+        );
+        config.enable_local_scoring_eval_ctx = false;
+        let without_context =
+            MonsGameModel::evaluate_search_preferability(&game, Color::White, config);
+
+        clear_turn_engine_selector_followup_floor_cache();
+        config.enable_local_scoring_eval_ctx = true;
+        config.enable_scoring_attack_reach_summary = true;
+        config.enable_scoring_attack_reach_target_narrowing = true;
+        config.enable_scoring_drainer_attack_reach_target_narrowing = true;
+        config.enable_scoring_board_summary_reuse = true;
+        let with_context = MonsGameModel::evaluate_search_preferability(&game, Color::White, config);
+
+        assert_eq!(without_context, with_context);
     }
 
     #[test]

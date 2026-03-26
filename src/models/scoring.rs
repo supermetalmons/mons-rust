@@ -9,10 +9,113 @@ const PROTECTED_HIGH_VALUE_CARRIER_OPPONENT_SCORE_MARGIN: i32 = 2;
 
 #[derive(Default)]
 struct AttackReachSummaryMemo {
-    entries: Vec<(
-        crate::models::automove_exact::AttackReachSummaryKey,
-        crate::models::automove_exact::AttackReachSummary,
-    )>,
+    entries: Vec<(ScoringAttackReachSummaryKey, crate::models::automove_exact::AttackReachSummary)>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ScoringDangerSource {
+    location: Location,
+    legacy_plain_threat: bool,
+    exact_action_threat: bool,
+    exact_bomb_threat: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ScoringManaEntry {
+    location: Location,
+    mana: Mana,
+}
+
+#[derive(Default)]
+struct ScoringBoardSummary {
+    mana_entries: Vec<ScoringManaEntry>,
+    live_mon_locations: [Vec<Location>; 2],
+    live_drainer_locations: [Vec<Location>; 2],
+    live_angel_locations: [Vec<Location>; 2],
+    danger_sources: [Vec<ScoringDangerSource>; 2],
+    loose_consumable_locations: Vec<Location>,
+    regular_mana_move_scores: [i32; 2],
+    regular_mana_score_path_steps: [Option<i32>; 2],
+}
+
+impl ScoringBoardSummary {
+    fn from_board(board: &Board) -> Self {
+        let mut summary = Self::default();
+
+        for (location, item) in board.occupied() {
+            match item {
+                Item::Mana { mana } => {
+                    let score_steps = distance(location, Destination::AnyClosestPool) - 1;
+                    summary.mana_entries.push(ScoringManaEntry {
+                        location,
+                        mana: *mana,
+                    });
+                    if let Mana::Regular(color) = mana {
+                        let slot = color_slot(*color);
+                        summary.regular_mana_score_path_steps[slot] = Some(
+                            summary.regular_mana_score_path_steps[slot]
+                                .map_or(score_steps + 1, |best| best.min(score_steps + 1)),
+                        );
+                        if score_steps <= 1 {
+                            summary.regular_mana_move_scores[slot] = mana.score(*color);
+                        }
+                    }
+                }
+                Item::Mon { mon }
+                | Item::MonWithMana { mon, .. }
+                | Item::MonWithConsumable { mon, .. } => {
+                    if mon.is_fainted() {
+                        continue;
+                    }
+                    let color_slot = color_slot(mon.color);
+                    summary.live_mon_locations[color_slot].push(location);
+                    if mon.kind == MonKind::Drainer {
+                        summary.live_drainer_locations[color_slot].push(location);
+                    }
+                    if mon.kind == MonKind::Angel {
+                        summary.live_angel_locations[color_slot].push(location);
+                    }
+
+                    let danger = ScoringDangerSource {
+                        location,
+                        legacy_plain_threat: !matches!(item, Item::MonWithMana { .. })
+                            && (mon.kind == MonKind::Mystic
+                                || mon.kind == MonKind::Demon
+                                || matches!(item, Item::MonWithConsumable { .. })),
+                        exact_action_threat: mon.kind == MonKind::Mystic || mon.kind == MonKind::Demon,
+                        exact_bomb_threat: matches!(
+                            item,
+                            Item::MonWithConsumable {
+                                consumable: Consumable::Bomb,
+                                ..
+                            }
+                        ),
+                    };
+                    if danger.legacy_plain_threat
+                        || danger.exact_action_threat
+                        || danger.exact_bomb_threat
+                    {
+                        summary.danger_sources[color_slot].push(danger);
+                    }
+                }
+                Item::Consumable { .. } => {
+                    summary.loose_consumable_locations.push(location);
+                }
+            }
+        }
+
+        summary
+    }
+
+    #[inline]
+    fn regular_mana_move_score(&self, color: Color) -> i32 {
+        self.regular_mana_move_scores[color_slot(color)]
+    }
+
+    #[inline]
+    fn regular_mana_score_path_steps(&self, color: Color) -> Option<i32> {
+        self.regular_mana_score_path_steps[color_slot(color)]
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -36,21 +139,31 @@ impl DrainerSafetySnapshot {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ScoringAttackReachSummaryKey {
+    query: crate::models::automove_exact::AttackReachSummaryKey,
+    drainer_targets_only: bool,
+}
+
 pub(crate) struct ScoringEvalContext {
     board_hash: u64,
     allow_exact_strategic: bool,
-    mana_snapshot: OnceCell<ManaPathSnapshot>,
+    enable_board_summary_reuse: bool,
+    board_summary: OnceCell<ScoringBoardSummary>,
+    mana_path_snapshot: OnceCell<ManaPathSnapshot>,
     exact_analysis: OnceCell<ExactStrategicAnalysis>,
     enable_attack_reach_summary: bool,
     enable_attack_reach_target_narrowing: bool,
+    enable_attack_reach_drainer_target_narrowing: bool,
     attack_reach_targets: OnceCell<[Vec<Location>; 2]>,
+    drainer_attack_targets: OnceCell<[Vec<Location>; 2]>,
     drainer_immediate_threat_memo: RefCell<[Option<(i32, i32)>; BOARD_CELLS * 2]>,
     attack_reach_summary_memo: RefCell<AttackReachSummaryMemo>,
 }
 
 impl ScoringEvalContext {
     pub(crate) fn new(game: &MonsGame, allow_exact_strategic: bool) -> Self {
-        Self::new_with_flags(game, allow_exact_strategic, false, false)
+        Self::new_with_flags(game, allow_exact_strategic, false, false, false, false)
     }
 
     pub(crate) fn new_with_flags(
@@ -58,15 +171,21 @@ impl ScoringEvalContext {
         allow_exact_strategic: bool,
         enable_attack_reach_summary: bool,
         enable_attack_reach_target_narrowing: bool,
+        enable_attack_reach_drainer_target_narrowing: bool,
+        enable_board_summary_reuse: bool,
     ) -> Self {
         Self {
             board_hash: crate::models::automove_exact::exact_board_hash(&game.board),
             allow_exact_strategic,
-            mana_snapshot: OnceCell::new(),
+            enable_board_summary_reuse,
+            board_summary: OnceCell::new(),
+            mana_path_snapshot: OnceCell::new(),
             exact_analysis: OnceCell::new(),
             enable_attack_reach_summary,
             enable_attack_reach_target_narrowing,
+            enable_attack_reach_drainer_target_narrowing,
             attack_reach_targets: OnceCell::new(),
+            drainer_attack_targets: OnceCell::new(),
             drainer_immediate_threat_memo: RefCell::new([None; BOARD_CELLS * 2]),
             attack_reach_summary_memo: RefCell::new(AttackReachSummaryMemo::default()),
         }
@@ -78,9 +197,27 @@ impl ScoringEvalContext {
     }
 
     #[inline]
-    fn mana_snapshot(&self, board: &Board) -> &ManaPathSnapshot {
-        self.mana_snapshot
-            .get_or_init(|| ManaPathSnapshot::from_board(board))
+    fn board_summary(&self, board: &Board) -> &ScoringBoardSummary {
+        self.board_summary
+            .get_or_init(|| ScoringBoardSummary::from_board(board))
+    }
+
+    #[inline]
+    fn board_summary_if_enabled(&self, board: &Board) -> Option<&ScoringBoardSummary> {
+        self.enable_board_summary_reuse
+            .then(|| self.board_summary(board))
+    }
+
+    #[inline]
+    fn mana_path_snapshot(&self, board: &Board) -> &ManaPathSnapshot {
+        if self.enable_board_summary_reuse {
+            let board_summary = self.board_summary(board);
+            self.mana_path_snapshot
+                .get_or_init(|| ManaPathSnapshot::from_summary(board_summary))
+        } else {
+            self.mana_path_snapshot
+                .get_or_init(|| ManaPathSnapshot::from_board(board))
+        }
     }
 
     #[inline]
@@ -113,6 +250,33 @@ impl ScoringEvalContext {
         }
     }
 
+    #[inline]
+    fn drainer_attack_targets(&self, board: &Board, target_color: Color) -> &[Location] {
+        let targets = self.drainer_attack_targets.get_or_init(|| {
+            [
+                board.occupied()
+                    .filter_map(|(location, item)| {
+                        item.mon()
+                            .filter(|mon| mon.color == Color::White && mon.kind == MonKind::Drainer)
+                            .map(|_| location)
+                    })
+                    .collect(),
+                board.occupied()
+                    .filter_map(|(location, item)| {
+                        item.mon()
+                            .filter(|mon| mon.color == Color::Black && mon.kind == MonKind::Drainer)
+                            .map(|_| location)
+                    })
+                    .collect(),
+            ]
+        });
+        if target_color == Color::White {
+            targets[0].as_slice()
+        } else {
+            targets[1].as_slice()
+        }
+    }
+
     fn attack_reach_summary(
         &self,
         board: &Board,
@@ -120,13 +284,17 @@ impl ScoringEvalContext {
         target_color: Color,
         remaining_moves: i32,
         can_use_action: bool,
+        drainer_targets_only: bool,
     ) -> crate::models::automove_exact::AttackReachSummary {
-        let key = crate::models::automove_exact::AttackReachSummaryKey {
-            board_hash: self.board_hash,
-            attacker_color,
-            target_color,
-            remaining_moves,
-            can_use_action,
+        let key = ScoringAttackReachSummaryKey {
+            query: crate::models::automove_exact::AttackReachSummaryKey {
+                board_hash: self.board_hash,
+                attacker_color,
+                target_color,
+                remaining_moves,
+                can_use_action,
+            },
+            drainer_targets_only,
         };
         if let Some((_, summary)) = self
             .attack_reach_summary_memo
@@ -138,7 +306,16 @@ impl ScoringEvalContext {
             return *summary;
         }
 
-        let summary = if self.enable_attack_reach_target_narrowing {
+        let summary = if drainer_targets_only {
+            crate::models::automove_exact::attack_reach_summary_for_targets_with_hash(
+                board,
+                self.board_hash,
+                attacker_color,
+                remaining_moves,
+                can_use_action,
+                self.drainer_attack_targets(board, target_color),
+            )
+        } else if self.enable_attack_reach_target_narrowing {
             crate::models::automove_exact::attack_reach_summary_for_targets_with_hash(
                 board,
                 self.board_hash,
@@ -172,7 +349,14 @@ impl ScoringEvalContext {
     ) -> (i32, i32) {
         if self.enable_attack_reach_summary {
             return self
-                .attack_reach_summary(board, color.other(), color, 0, true)
+                .attack_reach_summary(
+                    board,
+                    color.other(),
+                    color,
+                    0,
+                    true,
+                    self.enable_attack_reach_drainer_target_narrowing,
+                )
                 .immediate_threats(location);
         }
 
@@ -206,15 +390,34 @@ impl ScoringEvalContext {
         can_use_action: bool,
     ) -> bool {
         if self.enable_attack_reach_summary {
-            return self
-                .attack_reach_summary(
-                    board,
-                    attacker_color,
-                    target_color,
-                    remaining_moves,
-                    can_use_action,
-                )
-                .can_attack_target(target);
+            let use_drainer_targets_only = self.enable_attack_reach_drainer_target_narrowing
+                && board.item(target).and_then(|item| item.mon()).is_some_and(|mon| {
+                    mon.color == target_color && mon.kind == MonKind::Drainer
+                });
+            if use_drainer_targets_only {
+                return self
+                    .attack_reach_summary(
+                        board,
+                        attacker_color,
+                        target_color,
+                        remaining_moves,
+                        can_use_action,
+                        true,
+                    )
+                    .can_attack_target(target);
+            }
+            if !self.enable_attack_reach_drainer_target_narrowing {
+                return self
+                    .attack_reach_summary(
+                        board,
+                        attacker_color,
+                        target_color,
+                        remaining_moves,
+                        can_use_action,
+                        false,
+                    )
+                    .can_attack_target(target);
+            }
         }
 
         crate::models::automove_exact::can_attack_target_on_board_with_hash(
@@ -1217,7 +1420,7 @@ pub(crate) fn evaluate_preferability_with_context(
 
                     if let Some(path) = if use_legacy_formula {
                         best_drainer_pickup_path_with_snapshot(
-                            context.mana_snapshot(&game.board),
+                            context.mana_path_snapshot(&game.board),
                             mon.color,
                             location,
                         )
@@ -1279,8 +1482,12 @@ pub(crate) fn evaluate_preferability_with_context(
                         score += my_mon_multiplier * weights.drainer_walk_threat_boolean;
                     }
                 } else if mon.kind == MonKind::Spirit {
-                    let enemy_distance =
-                        nearest_enemy_mon_distance(&game.board, mon.color, location);
+                    let enemy_distance = nearest_enemy_mon_distance_with_context(
+                        &game.board,
+                        mon.color,
+                        location,
+                        Some(context),
+                    );
                     score += my_mon_multiplier * weights.spirit_close_to_enemy / enemy_distance;
                     score -= my_mon_multiplier
                         * spirit_on_own_base_penalty(
@@ -1310,8 +1517,12 @@ pub(crate) fn evaluate_preferability_with_context(
                     score += my_mon_multiplier * weights.spirit_action_utility * spirit_utility;
                     score += my_mon_multiplier * spirit_pressure_bonus;
                 } else if mon.kind == MonKind::Angel {
-                    let friendly_drainer_distance =
-                        nearest_friendly_drainer_distance(&game.board, mon.color, location);
+                    let friendly_drainer_distance = nearest_friendly_drainer_distance_with_context(
+                        &game.board,
+                        mon.color,
+                        location,
+                        Some(context),
+                    );
                     score += my_mon_multiplier * weights.angel_close_to_friendly_drainer
                         / friendly_drainer_distance;
                 } else if mon.kind != MonKind::Angel {
@@ -1323,8 +1534,12 @@ pub(crate) fn evaluate_preferability_with_context(
                     && !mon.is_fainted()
                     && (mon.kind == MonKind::Demon || mon.kind == MonKind::Mystic)
                 {
-                    let opp_drainer_dist =
-                        nearest_friendly_drainer_distance(&game.board, mon.color.other(), location);
+                    let opp_drainer_dist = nearest_friendly_drainer_distance_with_context(
+                        &game.board,
+                        mon.color.other(),
+                        location,
+                        Some(context),
+                    );
                     score += my_mon_multiplier * weights.attacker_close_to_opponent_drainer
                         / opp_drainer_dist;
                 }
@@ -1416,8 +1631,12 @@ pub(crate) fn evaluate_preferability_with_context(
                         }
                     }
                 } else if mon.kind == MonKind::Spirit {
-                    let enemy_distance =
-                        nearest_enemy_mon_distance(&game.board, mon.color, location);
+                    let enemy_distance = nearest_enemy_mon_distance_with_context(
+                        &game.board,
+                        mon.color,
+                        location,
+                        Some(context),
+                    );
                     score += my_mon_multiplier * weights.spirit_close_to_enemy / enemy_distance;
                     score -= my_mon_multiplier
                         * spirit_on_own_base_penalty(
@@ -1447,8 +1666,12 @@ pub(crate) fn evaluate_preferability_with_context(
                     score += my_mon_multiplier * weights.spirit_action_utility * spirit_utility;
                     score += my_mon_multiplier * spirit_pressure_bonus;
                 } else if mon.kind == MonKind::Angel {
-                    let friendly_drainer_distance =
-                        nearest_friendly_drainer_distance(&game.board, mon.color, location);
+                    let friendly_drainer_distance = nearest_friendly_drainer_distance_with_context(
+                        &game.board,
+                        mon.color,
+                        location,
+                        Some(context),
+                    );
                     score += my_mon_multiplier * weights.angel_close_to_friendly_drainer
                         / friendly_drainer_distance;
                 } else if mon.kind != MonKind::Angel {
@@ -1467,10 +1690,11 @@ pub(crate) fn evaluate_preferability_with_context(
                             }
                         );
                     if is_attacker {
-                        let opp_drainer_dist = nearest_friendly_drainer_distance(
+                        let opp_drainer_dist = nearest_friendly_drainer_distance_with_context(
                             &game.board,
                             mon.color.other(),
                             location,
+                            Some(context),
                         );
                         score += my_mon_multiplier * weights.attacker_close_to_opponent_drainer
                             / opp_drainer_dist;
@@ -1489,12 +1713,18 @@ pub(crate) fn evaluate_preferability_with_context(
                         let owner_multiplier = if *mana_color == color { 1 } else { -1 };
                         let owner_pool_distance =
                             distance(location, Destination::ClosestPool(*mana_color));
-                        let owner_drainer_distance =
-                            nearest_friendly_drainer_distance(&game.board, *mana_color, location);
-                        let enemy_drainer_distance = nearest_friendly_drainer_distance(
+                        let owner_drainer_distance = nearest_friendly_drainer_distance_with_context(
                             &game.board,
+                            *mana_color,
+                            location,
+                            Some(context),
+                        );
+                        let enemy_drainer_distance =
+                            nearest_friendly_drainer_distance_with_context(
+                                &game.board,
                             mana_color.other(),
                             location,
+                            Some(context),
                         );
                         let drainer_control =
                             (enemy_drainer_distance - owner_drainer_distance).clamp(-4, 4);
@@ -1507,10 +1737,18 @@ pub(crate) fn evaluate_preferability_with_context(
                         regular_bonus
                     }
                     Mana::Supermana => {
-                        let my_drainer_distance =
-                            nearest_friendly_drainer_distance(&game.board, color, location);
-                        let enemy_drainer_distance =
-                            nearest_friendly_drainer_distance(&game.board, color.other(), location);
+                        let my_drainer_distance = nearest_friendly_drainer_distance_with_context(
+                            &game.board,
+                            color,
+                            location,
+                            Some(context),
+                        );
+                        let enemy_drainer_distance = nearest_friendly_drainer_distance_with_context(
+                            &game.board,
+                            color.other(),
+                            location,
+                            Some(context),
+                        );
                         let drainer_control =
                             (enemy_drainer_distance - my_drainer_distance).clamp(-4, 4);
                         weights.supermana_drainer_control * drainer_control
@@ -1707,14 +1945,15 @@ pub(crate) fn evaluate_preferability_with_context(
     let my_score_path_window = if use_legacy_formula {
         score_path_window_to_any_pool_with_snapshot(
             &game.board,
-            context.mana_snapshot(&game.board),
+            context.mana_path_snapshot(&game.board),
             color,
             false,
             include_regular_mana_move_windows,
         )
     } else {
-        exact_score_path_window_from_summary(
-            include_regular_mana_move_windows.then(|| context.mana_snapshot(&game.board)),
+        exact_score_path_window_for_context(
+            &game.board,
+            context,
             color,
             my_exact_summary.expect("exact strategic analysis should be available"),
             include_regular_mana_move_windows,
@@ -1723,14 +1962,15 @@ pub(crate) fn evaluate_preferability_with_context(
     let opponent_score_path_window = if use_legacy_formula {
         score_path_window_to_any_pool_with_snapshot(
             &game.board,
-            context.mana_snapshot(&game.board),
+            context.mana_path_snapshot(&game.board),
             color.other(),
             false,
             include_regular_mana_move_windows,
         )
     } else {
-        exact_score_path_window_from_summary(
-            include_regular_mana_move_windows.then(|| context.mana_snapshot(&game.board)),
+        exact_score_path_window_for_context(
+            &game.board,
+            context,
             color.other(),
             opponent_exact_summary.expect("exact strategic analysis should be available"),
             include_regular_mana_move_windows,
@@ -1766,7 +2006,7 @@ pub(crate) fn evaluate_preferability_with_context(
         let immediate_window = if use_legacy_formula {
             immediate_score_window_summary_with_snapshot(
                 &game.board,
-                context.mana_snapshot(&game.board),
+                context.mana_path_snapshot(&game.board),
                 color,
                 remaining_mon_moves_for_active,
                 false,
@@ -1774,9 +2014,9 @@ pub(crate) fn evaluate_preferability_with_context(
                 include_regular_mana_move_windows && game.player_can_move_mana(),
             )
         } else {
-            exact_immediate_score_window_from_summary(
-                (include_regular_mana_move_windows && game.player_can_move_mana())
-                    .then(|| context.mana_snapshot(&game.board)),
+            exact_immediate_score_window_for_context(
+                &game.board,
+                context,
                 color,
                 my_exact_summary.expect("exact strategic analysis should be available"),
                 include_regular_mana_move_windows && game.player_can_move_mana(),
@@ -1795,7 +2035,7 @@ pub(crate) fn evaluate_preferability_with_context(
             let opponent_next_turn_window = if use_legacy_formula {
                 immediate_score_window_summary_with_snapshot(
                     &game.board,
-                    context.mana_snapshot(&game.board),
+                    context.mana_path_snapshot(&game.board),
                     color.other(),
                     Config::MONS_MOVES_PER_TURN,
                     true,
@@ -1803,8 +2043,9 @@ pub(crate) fn evaluate_preferability_with_context(
                     include_regular_mana_move_windows,
                 )
             } else {
-                exact_immediate_score_window_from_summary(
-                    include_regular_mana_move_windows.then(|| context.mana_snapshot(&game.board)),
+                exact_immediate_score_window_for_context(
+                    &game.board,
+                    context,
                     color.other(),
                     opponent_exact_summary.expect("exact strategic analysis should be available"),
                     include_regular_mana_move_windows,
@@ -1838,7 +2079,7 @@ pub(crate) fn evaluate_preferability_with_context(
         let opponent_immediate_window = if use_legacy_formula {
             immediate_score_window_summary_with_snapshot(
                 &game.board,
-                context.mana_snapshot(&game.board),
+                context.mana_path_snapshot(&game.board),
                 color.other(),
                 remaining_mon_moves_for_active,
                 false,
@@ -1846,9 +2087,9 @@ pub(crate) fn evaluate_preferability_with_context(
                 include_regular_mana_move_windows && game.player_can_move_mana(),
             )
         } else {
-            exact_immediate_score_window_from_summary(
-                (include_regular_mana_move_windows && game.player_can_move_mana())
-                    .then(|| context.mana_snapshot(&game.board)),
+            exact_immediate_score_window_for_context(
+                &game.board,
+                context,
                 color.other(),
                 opponent_exact_summary.expect("exact strategic analysis should be available"),
                 include_regular_mana_move_windows && game.player_can_move_mana(),
@@ -1869,7 +2110,7 @@ pub(crate) fn evaluate_preferability_with_context(
             let my_next_turn_window = if use_legacy_formula {
                 immediate_score_window_summary_with_snapshot(
                     &game.board,
-                    context.mana_snapshot(&game.board),
+                    context.mana_path_snapshot(&game.board),
                     color,
                     Config::MONS_MOVES_PER_TURN,
                     true,
@@ -1877,8 +2118,9 @@ pub(crate) fn evaluate_preferability_with_context(
                     include_regular_mana_move_windows,
                 )
             } else {
-                exact_immediate_score_window_from_summary(
-                    include_regular_mana_move_windows.then(|| context.mana_snapshot(&game.board)),
+                exact_immediate_score_window_for_context(
+                    &game.board,
+                    context,
                     color,
                     my_exact_summary.expect("exact strategic analysis should be available"),
                     include_regular_mana_move_windows,
@@ -1938,28 +2180,89 @@ fn spirit_on_own_base_penalty(board: &Board, mon: Mon, location: Location, penal
     }
 }
 
+fn exact_score_path_window_from_board_summary(
+    board_summary: &ScoringBoardSummary,
+    color: Color,
+    exact_summary: ExactColorSummary,
+) -> ScorePathWindow {
+    let exact = exact_summary.score_path_window;
+    let mut best_steps = exact.best_steps;
+    if let Some(candidate_steps) = board_summary.regular_mana_score_path_steps(color) {
+        best_steps = Some(best_steps.map_or(candidate_steps, |best| best.min(candidate_steps)));
+    }
+    ScorePathWindow {
+        best_steps,
+        multi_pressure: exact.multi_pressure,
+    }
+}
+
+fn exact_score_path_window_from_snapshot(
+    mana_snapshot: &ManaPathSnapshot,
+    color: Color,
+    exact_summary: ExactColorSummary,
+) -> ScorePathWindow {
+    let exact = exact_summary.score_path_window;
+    let mut best_steps = exact.best_steps;
+    for candidate in &mana_snapshot.candidates {
+        if candidate.mana == Mana::Regular(color) {
+            let candidate_steps = candidate.score_steps + 1;
+            best_steps = Some(best_steps.map_or(candidate_steps, |best| best.min(candidate_steps)));
+        }
+    }
+    ScorePathWindow {
+        best_steps,
+        multi_pressure: exact.multi_pressure,
+    }
+}
+
 fn exact_score_path_window_from_summary(
     mana_snapshot: Option<&ManaPathSnapshot>,
     color: Color,
     exact_summary: ExactColorSummary,
     include_regular_mana_move_windows: bool,
 ) -> ScorePathWindow {
-    let exact = exact_summary.score_path_window;
-    let mut best_steps = exact.best_steps;
     if include_regular_mana_move_windows {
-        for candidate in &mana_snapshot
-            .expect("mana snapshot should be available for regular mana move windows")
-            .candidates
-        {
-            if candidate.mana == Mana::Regular(color) {
-                let candidate_steps = candidate.score_steps + 1;
-                best_steps =
-                    Some(best_steps.map_or(candidate_steps, |best| best.min(candidate_steps)));
-            }
+        exact_score_path_window_from_snapshot(
+            mana_snapshot.expect("mana snapshot should be available for regular mana move windows"),
+            color,
+            exact_summary,
+        )
+    } else {
+        let exact = exact_summary.score_path_window;
+        ScorePathWindow {
+            best_steps: exact.best_steps,
+            multi_pressure: exact.multi_pressure,
         }
     }
-    ScorePathWindow {
-        best_steps,
+}
+
+fn exact_immediate_score_window_from_board_summary(
+    board_summary: &ScoringBoardSummary,
+    color: Color,
+    exact_summary: ExactColorSummary,
+) -> ImmediateScoreWindow {
+    let exact = exact_summary.immediate_window;
+    let best_score = exact
+        .best_score
+        .max(board_summary.regular_mana_move_score(color));
+    ImmediateScoreWindow {
+        best_score,
+        multi_pressure: exact.multi_pressure,
+    }
+}
+
+fn exact_immediate_score_window_from_snapshot(
+    mana_snapshot: &ManaPathSnapshot,
+    color: Color,
+    exact_summary: ExactColorSummary,
+) -> ImmediateScoreWindow {
+    let exact = exact_summary.immediate_window;
+    let best_score = exact.best_score.max(best_regular_mana_move_score_window_with_snapshot(
+        mana_snapshot,
+        color,
+    ));
+    ImmediateScoreWindow {
+        best_score,
         multi_pressure: exact.multi_pressure,
     }
 }
@@ -1970,17 +2273,64 @@ fn exact_immediate_score_window_from_summary(
     exact_summary: ExactColorSummary,
     allow_mana_move: bool,
 ) -> ImmediateScoreWindow {
-    let exact = exact_summary.immediate_window;
-    let mut best_score = exact.best_score;
     if allow_mana_move {
-        best_score = best_score.max(best_regular_mana_move_score_window_with_snapshot(
+        exact_immediate_score_window_from_snapshot(
             mana_snapshot.expect("mana snapshot should be available for mana move windows"),
             color,
-        ));
+            exact_summary,
+        )
+    } else {
+        let exact = exact_summary.immediate_window;
+        ImmediateScoreWindow {
+            best_score: exact.best_score,
+            multi_pressure: exact.multi_pressure,
+        }
     }
-    ImmediateScoreWindow {
-        best_score,
-        multi_pressure: exact.multi_pressure,
+}
+
+fn exact_score_path_window_for_context(
+    board: &Board,
+    context: &ScoringEvalContext,
+    color: Color,
+    exact_summary: ExactColorSummary,
+    include_regular_mana_move_windows: bool,
+) -> ScorePathWindow {
+    if !include_regular_mana_move_windows {
+        let exact = exact_summary.score_path_window;
+        return ScorePathWindow {
+            best_steps: exact.best_steps,
+            multi_pressure: exact.multi_pressure,
+        };
+    }
+    if let Some(board_summary) = context.board_summary_if_enabled(board) {
+        exact_score_path_window_from_board_summary(board_summary, color, exact_summary)
+    } else {
+        exact_score_path_window_from_snapshot(context.mana_path_snapshot(board), color, exact_summary)
+    }
+}
+
+fn exact_immediate_score_window_for_context(
+    board: &Board,
+    context: &ScoringEvalContext,
+    color: Color,
+    exact_summary: ExactColorSummary,
+    allow_mana_move: bool,
+) -> ImmediateScoreWindow {
+    if !allow_mana_move {
+        let exact = exact_summary.immediate_window;
+        return ImmediateScoreWindow {
+            best_score: exact.best_score,
+            multi_pressure: exact.multi_pressure,
+        };
+    }
+    if let Some(board_summary) = context.board_summary_if_enabled(board) {
+        exact_immediate_score_window_from_board_summary(board_summary, color, exact_summary)
+    } else {
+        exact_immediate_score_window_from_snapshot(
+            context.mana_path_snapshot(board),
+            color,
+            exact_summary,
+        )
     }
 }
 
@@ -2090,13 +2440,13 @@ fn spirit_action_utility(
     )
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct ScorePathWindow {
     best_steps: Option<i32>,
     multi_pressure: i32,
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct ImmediateScoreWindow {
     best_score: i32,
     multi_pressure: i32,
@@ -2117,29 +2467,22 @@ struct ManaPathSnapshot {
 
 impl ManaPathSnapshot {
     fn from_board(board: &Board) -> Self {
+        let summary = ScoringBoardSummary::from_board(board);
+        Self::from_summary(&summary)
+    }
+
+    fn from_summary(summary: &ScoringBoardSummary) -> Self {
         let mut snapshot = Self {
-            candidates: Vec::with_capacity(16),
-            regular_mana_move_scores: [0; 2],
+            candidates: Vec::with_capacity(summary.mana_entries.len().max(4)),
+            regular_mana_move_scores: summary.regular_mana_move_scores,
         };
-        for (location, item) in board.occupied() {
-            let Item::Mana { mana } = item else {
-                continue;
-            };
-            let score_steps = distance(location, Destination::AnyClosestPool) - 1;
+        for entry in &summary.mana_entries {
+            let score_steps = distance(entry.location, Destination::AnyClosestPool) - 1;
             snapshot.candidates.push(ManaPathCandidate {
-                location,
+                location: entry.location,
                 score_steps,
-                mana: *mana,
+                mana: entry.mana,
             });
-            if score_steps <= 1 {
-                if *mana == Mana::Regular(Color::White) {
-                    snapshot.regular_mana_move_scores[color_slot(Color::White)] =
-                        mana.score(Color::White);
-                } else if *mana == Mana::Regular(Color::Black) {
-                    snapshot.regular_mana_move_scores[color_slot(Color::Black)] =
-                        mana.score(Color::Black);
-                }
-            }
         }
         snapshot
     }
@@ -2374,12 +2717,78 @@ enum Destination {
     ClosestPool(Color),
 }
 
+#[allow(dead_code)]
 fn drainer_distances(
     board: &Board,
     color: Color,
     location: Location,
     use_legacy_formula: bool,
 ) -> (i32, i32, bool) {
+    drainer_distances_with_context(board, color, location, use_legacy_formula, None)
+}
+
+fn drainer_distances_with_context(
+    board: &Board,
+    color: Color,
+    location: Location,
+    use_legacy_formula: bool,
+    context: Option<&ScoringEvalContext>,
+) -> (i32, i32, bool) {
+    if let Some(summary) = context.and_then(|context| context.board_summary_if_enabled(board)) {
+        let mut min_mana = Config::BOARD_SIZE as i32;
+        let mut min_danger = Config::BOARD_SIZE as i32;
+
+        for entry in &summary.mana_entries {
+            let delta = entry.location.distance(&location) as i32;
+            if delta < min_mana {
+                min_mana = delta;
+            }
+        }
+
+        for danger in &summary.danger_sources[color_slot(color.other())] {
+            if use_legacy_formula {
+                if !danger.legacy_plain_threat {
+                    continue;
+                }
+                let delta = danger.location.distance(&location) as i32;
+                if delta < min_danger {
+                    min_danger = delta;
+                }
+                continue;
+            }
+
+            let mut delta = i32::MAX;
+            if danger.exact_action_threat {
+                delta = danger.location.distance(&location) as i32;
+            }
+            if danger.exact_bomb_threat {
+                let bomb_delta = (danger.location.distance(&location) as i32 - 2).max(1);
+                delta = delta.min(bomb_delta);
+            }
+            if delta < min_danger {
+                min_danger = delta;
+            }
+        }
+
+        if use_legacy_formula {
+            for consumable in &summary.loose_consumable_locations {
+                let delta = consumable.distance(&location) as i32;
+                if delta < min_danger {
+                    min_danger = delta;
+                }
+            }
+        }
+
+        let angel_nearby = summary.live_angel_locations[color_slot(color)]
+            .iter()
+            .any(|angel| angel.distance(&location) == 1);
+
+        if use_legacy_formula {
+            return (min_danger, min_mana, angel_nearby);
+        }
+        return (min_danger.max(1), min_mana.max(1), angel_nearby);
+    }
+
     let mut min_mana = Config::BOARD_SIZE as i32;
     let mut min_danger = Config::BOARD_SIZE as i32;
     let mut angel_nearby = false;
@@ -2480,7 +2889,7 @@ fn drainer_safety_snapshot_with_context(
     context: Option<&ScoringEvalContext>,
 ) -> DrainerSafetySnapshot {
     let (raw_danger, min_mana, angel_nearby) =
-        drainer_distances(board, color, location, use_legacy_formula);
+        drainer_distances_with_context(board, color, location, use_legacy_formula, context);
     let exact_danger_threat = is_drainer_under_danger_threat_with_context(
         board,
         color,
@@ -2818,7 +3227,7 @@ mod tests {
             ],
             Color::White,
         );
-        let context = ScoringEvalContext::new_with_flags(&game, true, true, true);
+        let context = ScoringEvalContext::new_with_flags(&game, true, true, true, false, false);
 
         let first =
             context.drainer_immediate_threats(&game.board, Color::White, Location::new(6, 5));
@@ -2844,6 +3253,71 @@ mod tests {
 
         assert_eq!(first, second);
         assert_eq!(diagnostics.attack_reach_summary_builds, 2);
+        assert_eq!(diagnostics.drainer_immediate_threat_calls, 0);
+        assert!(can_attack_drainer);
+        assert!(can_attack_carrier);
+    }
+
+    #[test]
+    fn scoring_eval_context_drainer_attack_summary_narrowing_falls_back_for_non_drainer_target() {
+        crate::models::automove_exact::clear_exact_query_diagnostics();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 5),
+                    Item::MonWithConsumable {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                        consumable: Consumable::Bomb,
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let context = ScoringEvalContext::new_with_flags(&game, true, true, true, true, false);
+
+        let first =
+            context.drainer_immediate_threats(&game.board, Color::White, Location::new(6, 5));
+        let second =
+            context.drainer_immediate_threats(&game.board, Color::White, Location::new(6, 5));
+        let can_attack_drainer = context.can_attack_target_on_board(
+            &game.board,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            Config::MONS_MOVES_PER_TURN,
+            true,
+        );
+        let can_attack_carrier = context.can_attack_target_on_board(
+            &game.board,
+            Color::Black,
+            Color::White,
+            Location::new(4, 5),
+            Config::MONS_MOVES_PER_TURN,
+            true,
+        );
+        let diagnostics = crate::models::automove_exact::exact_query_diagnostics_snapshot();
+
+        assert_eq!(first, second);
+        assert_eq!(diagnostics.attack_reach_summary_builds, 2);
+        assert_eq!(diagnostics.attack_reach_calls, 1);
         assert_eq!(diagnostics.drainer_immediate_threat_calls, 0);
         assert!(can_attack_drainer);
         assert!(can_attack_carrier);
@@ -2889,7 +3363,10 @@ mod tests {
             Color::White,
         );
         let plain_context = ScoringEvalContext::new(&game, true);
-        let summary_context = ScoringEvalContext::new_with_flags(&game, true, true, true);
+        let summary_context =
+            ScoringEvalContext::new_with_flags(&game, true, true, true, false, false);
+        let drainer_target_context =
+            ScoringEvalContext::new_with_flags(&game, true, true, true, true, false);
 
         assert_eq!(
             evaluate_preferability_with_context(
@@ -2906,6 +3383,107 @@ mod tests {
                 true,
                 &summary_context,
             )
+        );
+        assert_eq!(
+            evaluate_preferability_with_context(
+                &game,
+                Color::White,
+                &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
+                true,
+                &plain_context,
+            ),
+            evaluate_preferability_with_context(
+                &game,
+                Color::White,
+                &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
+                true,
+                &drainer_target_context,
+            )
+        );
+    }
+
+    #[test]
+    fn scoring_board_summary_exact_regular_mana_windows_match_snapshot() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(4, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(2, 8),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(9, 3),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(8, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(1, 8),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let board_summary = ScoringBoardSummary::from_board(&game.board);
+        let mana_snapshot = ManaPathSnapshot::from_summary(&board_summary);
+        let exact = exact_strategic_analysis(&game);
+        let white_exact = exact.color_summary(Color::White);
+        let black_exact = exact.color_summary(Color::Black);
+
+        assert_eq!(
+            exact_score_path_window_from_summary(Some(&mana_snapshot), Color::White, white_exact, true),
+            exact_score_path_window_from_board_summary(&board_summary, Color::White, white_exact),
+        );
+        assert_eq!(
+            exact_score_path_window_from_summary(Some(&mana_snapshot), Color::Black, black_exact, true),
+            exact_score_path_window_from_board_summary(&board_summary, Color::Black, black_exact),
+        );
+        assert_eq!(
+            exact_immediate_score_window_from_summary(
+                Some(&mana_snapshot),
+                Color::White,
+                white_exact,
+                true,
+            ),
+            exact_immediate_score_window_from_board_summary(
+                &board_summary,
+                Color::White,
+                white_exact,
+            ),
+        );
+        assert_eq!(
+            exact_immediate_score_window_from_summary(
+                Some(&mana_snapshot),
+                Color::Black,
+                black_exact,
+                true,
+            ),
+            exact_immediate_score_window_from_board_summary(
+                &board_summary,
+                Color::Black,
+                black_exact,
+            ),
         );
     }
 
@@ -4029,7 +4607,26 @@ fn is_drainer_under_immediate_threat(
     )
 }
 
+#[allow(dead_code)]
 fn nearest_enemy_mon_distance(board: &Board, color: Color, location: Location) -> i32 {
+    nearest_enemy_mon_distance_with_context(board, color, location, None)
+}
+
+fn nearest_enemy_mon_distance_with_context(
+    board: &Board,
+    color: Color,
+    location: Location,
+    context: Option<&ScoringEvalContext>,
+) -> i32 {
+    if let Some(summary) = context.and_then(|context| context.board_summary_if_enabled(board)) {
+        let best = summary.live_mon_locations[color_slot(color.other())]
+            .iter()
+            .map(|occupied| occupied.distance(&location) as i32)
+            .min()
+            .unwrap_or(Config::BOARD_SIZE as i32);
+        return best.max(1);
+    }
+
     let mut best = Config::BOARD_SIZE as i32;
     for (item_location, item) in board.occupied() {
         if let Some(mon) = item.mon() {
@@ -4044,7 +4641,26 @@ fn nearest_enemy_mon_distance(board: &Board, color: Color, location: Location) -
     best.max(1)
 }
 
+#[allow(dead_code)]
 fn nearest_friendly_drainer_distance(board: &Board, color: Color, location: Location) -> i32 {
+    nearest_friendly_drainer_distance_with_context(board, color, location, None)
+}
+
+fn nearest_friendly_drainer_distance_with_context(
+    board: &Board,
+    color: Color,
+    location: Location,
+    context: Option<&ScoringEvalContext>,
+) -> i32 {
+    if let Some(summary) = context.and_then(|context| context.board_summary_if_enabled(board)) {
+        let best = summary.live_drainer_locations[color_slot(color)]
+            .iter()
+            .map(|occupied| occupied.distance(&location) as i32)
+            .min()
+            .unwrap_or(Config::BOARD_SIZE as i32);
+        return best.max(1);
+    }
+
     let mut best = Config::BOARD_SIZE as i32;
     for (item_location, item) in board.occupied() {
         if let Some(mon) = item.mon() {

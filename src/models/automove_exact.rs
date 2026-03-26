@@ -1053,6 +1053,88 @@ pub(crate) fn can_attack_target_on_board(
     )
 }
 
+fn exact_attack_target_plausible_on_board(
+    board: &Board,
+    attacker_color: Color,
+    target_color: Color,
+    target: Location,
+    remaining_moves: i32,
+    can_use_action: bool,
+) -> bool {
+    if remaining_moves < 0 || !can_use_action || board.item(target).is_none() {
+        return false;
+    }
+
+    let target_guarded = exact_is_location_guarded_by_angel(board, target_color, target);
+    let bomb_pickup_locations = board
+        .occupied()
+        .filter_map(|(location, item)| match item {
+            Item::Consumable {
+                consumable: Consumable::BombOrPotion,
+            } => Some(location),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    for (location, item) in board.occupied() {
+        let Some(mon) = item.mon() else {
+            continue;
+        };
+        if mon.color != attacker_color || mon.is_fainted() {
+            continue;
+        }
+
+        if matches!(
+            item,
+            Item::MonWithConsumable {
+                consumable: Consumable::Bomb,
+                ..
+            }
+        ) && location.distance(&target) <= remaining_moves + 3
+        {
+            return true;
+        }
+
+        if !target_guarded {
+            let action_distance = match mon.kind {
+                MonKind::Mystic => target
+                    .reachable_by_mystic_action_ref()
+                    .iter()
+                    .map(|source| location.distance(source))
+                    .min()
+                    .unwrap_or(i32::MAX),
+                MonKind::Demon => target
+                    .reachable_by_demon_action_ref()
+                    .iter()
+                    .map(|source| location.distance(source))
+                    .min()
+                    .unwrap_or(i32::MAX),
+                MonKind::Drainer | MonKind::Angel | MonKind::Spirit => i32::MAX,
+            };
+            if action_distance <= remaining_moves {
+                return true;
+            }
+        }
+
+        if matches!(item, Item::MonWithMana { .. }) {
+            continue;
+        }
+
+        for bomb_location in &bomb_pickup_locations {
+            let to_bomb = location.distance(bomb_location);
+            if to_bomb > remaining_moves {
+                continue;
+            }
+            let moves_after_pickup = remaining_moves - to_bomb;
+            if bomb_location.distance(&target) <= moves_after_pickup + 3 {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 pub(crate) fn attack_reach_summary_with_hash(
     board: &Board,
     board_hash: u64,
@@ -1223,6 +1305,26 @@ pub(crate) fn can_attack_target_on_board_with_hash(
     {
         update_exact_query_diagnostics(|diagnostics| diagnostics.attack_reach_cache_hits += 1);
         return cached;
+    }
+
+    if !exact_attack_target_plausible_on_board(
+        board,
+        attacker_color,
+        target_color,
+        target,
+        remaining_moves,
+        can_use_action,
+    ) {
+        EXACT_ATTACK_REACH_CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            if cache.entries.len() >= EXACT_ATTACK_REACH_CACHE_MAX_ENTRIES
+                && !cache.entries.contains_key(&key)
+            {
+                cache.entries.clear();
+            }
+            cache.entries.insert(key, false);
+        });
+        return false;
     }
 
     let result = can_attack_target_on_board_uncached(
@@ -2410,9 +2512,15 @@ fn exact_drainer_pickup_window_uncached(
     color: Color,
     start: Location,
     max_steps: Option<i32>,
+    need_score: bool,
+    need_denial: bool,
     opponent_mana: Mana,
 ) -> ExactDrainerPickupWindow {
     update_exact_query_diagnostics(|diagnostics| diagnostics.pickup_path_calls += 1);
+
+    if !need_score && !need_denial {
+        return ExactDrainerPickupWindow::default();
+    }
 
     let mut actor_move_memo = ExactActorMoveMemo::new();
     let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
@@ -2420,6 +2528,8 @@ fn exact_drainer_pickup_window_uncached(
     queue.push_back((start, ExactActorPayload::None, 0));
     seen.insert(start, ExactActorPayload::None);
     let mut best = ExactDrainerPickupWindow::default();
+    let max_score = Mana::Supermana.score(color);
+    let max_opponent_score = opponent_mana.score(color);
 
     while let Some((location, payload, steps)) = queue.pop_front() {
         if max_steps.map_or(false, |limit| steps > limit) {
@@ -2433,11 +2543,23 @@ fn exact_drainer_pickup_window_uncached(
                     mana_value: mana.score(color),
                     mana,
                 };
-                if exact_pickup_path_beats(candidate, best.any) {
+                if need_score && exact_pickup_path_beats(candidate, best.any) {
                     best.any = Some(candidate);
                 }
-                if mana == opponent_mana && exact_pickup_path_beats(candidate, best.opponent) {
+                if need_denial
+                    && mana == opponent_mana
+                    && exact_pickup_path_beats(candidate, best.opponent)
+                {
                     best.opponent = Some(candidate);
+                }
+                let score_done =
+                    !need_score || best.any.is_some_and(|path| path.mana_value >= max_score);
+                let denial_done = !need_denial
+                    || best
+                        .opponent
+                        .is_some_and(|path| path.mana_value >= max_opponent_score);
+                if score_done && denial_done {
+                    return best;
                 }
             }
         }
@@ -3491,13 +3613,11 @@ fn exact_tactical_spirit_summary_uncached(
             if matches!(board.square(spirit_pos), Square::MonBase { .. }) {
                 continue;
             }
-            let action_board_storage = (spirit_pos != location).then(|| {
-                let mut moved = board.clone();
-                moved.remove_item(location);
-                moved.put(*item, spirit_pos);
-                moved
-            });
-            let action_board = action_board_storage.as_ref().unwrap_or(board);
+            let mut action_board = board.clone();
+            if spirit_pos != location {
+                action_board.remove_item(location);
+                action_board.put(*item, spirit_pos);
+            }
             let remaining_after_action = remaining_mon_moves.saturating_sub(spirit_steps);
 
             for &target in spirit_pos.reachable_by_spirit_action_ref() {
@@ -3508,17 +3628,23 @@ fn exact_tactical_spirit_summary_uncached(
                     continue;
                 }
                 for &dest in target.nearby_locations_ref() {
-                    if !spirit_destination_allowed(action_board, target, target_item, dest) {
+                    if !spirit_destination_allowed(&action_board, target, target_item, dest) {
                         continue;
                     }
-                    let (after_board, score_delta, opponent_mana_score_delta) =
-                        apply_spirit_move_preview(action_board, target, target_item, dest, color);
+                    let (undo, score_delta, opponent_mana_score_delta) =
+                        apply_spirit_move_preview_in_place(
+                            &mut action_board,
+                            target,
+                            target_item,
+                            dest,
+                            color,
+                        );
                     let need_after_score =
                         need_score && best.same_turn_score_value < max_same_turn_score;
                     let need_after_denial = need_denial
                         && best.same_turn_opponent_mana_score_value < max_same_turn_opponent_score;
                     let after_window = if need_after_score || need_after_denial {
-                        let after_board_hash = exact_board_hash(&after_board);
+                        let after_board_hash = exact_board_hash(&action_board);
                         let key = ExactTacticalSpiritAfterWindowKey {
                             board_hash: after_board_hash,
                             remaining_mon_moves: remaining_after_action,
@@ -3529,7 +3655,7 @@ fn exact_tactical_spirit_summary_uncached(
                             cached
                         } else {
                             let window = exact_best_immediate_tactical_window_on_board_with_hash(
-                                &after_board,
+                                &action_board,
                                 color,
                                 remaining_after_action,
                                 need_after_score,
@@ -3580,7 +3706,7 @@ fn exact_tactical_spirit_summary_uncached(
                             }
                         ) && score_delta > 0)
                             || can_secure_specific_mana_on_board(
-                                &after_board,
+                                &action_board,
                                 color,
                                 Mana::Supermana,
                                 remaining_after_action,
@@ -3592,7 +3718,7 @@ fn exact_tactical_spirit_summary_uncached(
                         && !best.opponent_mana_progress
                         && (opponent_mana_score_delta > 0
                             || can_secure_specific_mana_on_board(
-                                &after_board,
+                                &action_board,
                                 color,
                                 Mana::Regular(color.other()),
                                 remaining_after_action,
@@ -3600,6 +3726,7 @@ fn exact_tactical_spirit_summary_uncached(
                     {
                         best.opponent_mana_progress = true;
                     }
+                    undo_spirit_move_preview(&mut action_board, undo);
                     if (!need_score || best.same_turn_score_value >= max_same_turn_score)
                         && (!need_denial
                             || best.same_turn_opponent_mana_score_value
@@ -3648,13 +3775,11 @@ fn exact_spirit_summary_uncached(
             if matches!(board.square(spirit_pos), Square::MonBase { .. }) {
                 continue;
             }
-            let action_board_storage = (spirit_pos != location).then(|| {
-                let mut moved = board.clone();
-                moved.remove_item(location);
-                moved.put(*item, spirit_pos);
-                moved
-            });
-            let action_board = action_board_storage.as_ref().unwrap_or(board);
+            let mut action_board = board.clone();
+            if spirit_pos != location {
+                action_board.remove_item(location);
+                action_board.put(*item, spirit_pos);
+            }
             let remaining_after_action = remaining_mon_moves.saturating_sub(spirit_steps);
             for &target in spirit_pos.reachable_by_spirit_action_ref() {
                 let Some(target_item) = action_board.item(target).copied() else {
@@ -3667,10 +3792,16 @@ fn exact_spirit_summary_uncached(
                     if !spirit_destination_allowed(&action_board, target, target_item, dest) {
                         continue;
                     }
-                    let (after_board, score_delta, opponent_mana_score_delta) =
-                        apply_spirit_move_preview(&action_board, target, target_item, dest, color);
+                    let (undo, score_delta, opponent_mana_score_delta) =
+                        apply_spirit_move_preview_in_place(
+                            &mut action_board,
+                            target,
+                            target_item,
+                            dest,
+                            color,
+                        );
                     let after_summary =
-                        exact_followup_summary(&after_board, color, remaining_after_action);
+                        exact_followup_summary(&action_board, color, remaining_after_action);
                     let after_best_steps = after_summary.best_score_steps;
                     let after_opponent_steps = after_summary.opponent_best_score_steps;
                     let after_same_turn_score = score_delta.max(after_summary.immediate_score);
@@ -3733,6 +3864,7 @@ fn exact_spirit_summary_uncached(
                     } else if utility == best.utility {
                         best.next_turn_setup_gain = best.next_turn_setup_gain.max(setup_gain);
                     }
+                    undo_spirit_move_preview(&mut action_board, undo);
                 }
             }
         }
@@ -3968,15 +4100,28 @@ fn spirit_destination_allowed(
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-fn apply_spirit_move_preview(
-    board: &Board,
+#[derive(Debug, Clone, Copy)]
+struct SpiritPreviewUndo {
+    from: Location,
+    from_item: Option<Item>,
+    to: Location,
+    to_item: Option<Item>,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn apply_spirit_move_preview_in_place(
+    board: &mut Board,
     from: Location,
     target_item: Item,
     to: Location,
     perspective: Color,
-) -> (Board, i32, i32) {
-    let mut board = board.clone();
-    let destination_item = board.item(to).copied();
+) -> (SpiritPreviewUndo, i32, i32) {
+    let undo = SpiritPreviewUndo {
+        from,
+        from_item: board.item(from).copied(),
+        to,
+        to_item: board.item(to).copied(),
+    };
     let destination_square = board.square(to);
     board.remove_item(from);
 
@@ -3984,7 +4129,7 @@ fn apply_spirit_move_preview(
     let mut score_delta = 0;
     let mut opponent_mana_score_delta = 0;
 
-    match (target_item, destination_item) {
+    match (target_item, undo.to_item) {
         (Item::Mon { mon }, Some(Item::Mana { mana })) => {
             placed_item = Item::MonWithMana { mon, mana };
         }
@@ -4013,25 +4158,50 @@ fn apply_spirit_move_preview(
         _ => {}
     }
 
-    match destination_square {
-        Square::ManaPool { .. } => {
-            if let Some(mana) = placed_item.mana().copied() {
-                score_delta = mana.score(perspective);
-                if mana == Mana::Regular(perspective.other()) {
-                    opponent_mana_score_delta = score_delta;
-                }
-                if let Some(mon) = placed_item.mon().copied() {
-                    placed_item = Item::Mon { mon };
-                } else {
-                    board.remove_item(to);
-                    return (board, score_delta, opponent_mana_score_delta);
-                }
+    if matches!(destination_square, Square::ManaPool { .. }) {
+        if let Some(mana) = placed_item.mana().copied() {
+            score_delta = mana.score(perspective);
+            if mana == Mana::Regular(perspective.other()) {
+                opponent_mana_score_delta = score_delta;
+            }
+            if let Some(mon) = placed_item.mon().copied() {
+                placed_item = Item::Mon { mon };
+            } else {
+                board.remove_item(to);
+                return (undo, score_delta, opponent_mana_score_delta);
             }
         }
-        _ => {}
     }
 
     board.put(placed_item, to);
+    (undo, score_delta, opponent_mana_score_delta)
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn undo_spirit_move_preview(board: &mut Board, undo: SpiritPreviewUndo) {
+    if let Some(item) = undo.from_item {
+        board.put(item, undo.from);
+    } else {
+        board.remove_item(undo.from);
+    }
+    if let Some(item) = undo.to_item {
+        board.put(item, undo.to);
+    } else {
+        board.remove_item(undo.to);
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn apply_spirit_move_preview(
+    board: &Board,
+    from: Location,
+    target_item: Item,
+    to: Location,
+    perspective: Color,
+) -> (Board, i32, i32) {
+    let mut board = board.clone();
+    let (_, score_delta, opponent_mana_score_delta) =
+        apply_spirit_move_preview_in_place(&mut board, from, target_item, to, perspective);
     (board, score_delta, opponent_mana_score_delta)
 }
 
@@ -4164,6 +4334,8 @@ fn exact_best_immediate_tactical_window_on_board_with_hash(
                     color,
                     location,
                     Some(move_budget),
+                    need_score,
+                    need_denial,
                     opponent_mana,
                 );
                 if need_score {
@@ -4748,6 +4920,85 @@ mod tests {
                 true,
             )
         );
+    }
+
+    #[test]
+    fn exact_attack_plausibility_matches_curated_edges() {
+        let mystic_setup = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(2, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        assert!(exact_attack_target_plausible_on_board(
+            &mystic_setup,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            2,
+            true,
+        ));
+        assert!(can_attack_target_on_board(
+            &mystic_setup,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            2,
+            true,
+        ));
+
+        let guarded_mystic = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        assert!(!exact_attack_target_plausible_on_board(
+            &guarded_mystic,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            Config::MONS_MOVES_PER_TURN,
+            true,
+        ));
+        assert!(!can_attack_target_on_board(
+            &guarded_mystic,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            Config::MONS_MOVES_PER_TURN,
+            true,
+        ));
     }
 
     #[test]
@@ -5843,6 +6094,112 @@ mod tests {
         assert!(!turn.safe_supermana_progress);
         assert!(turn.spirit_assisted_supermana_progress);
         assert!(!turn.spirit_assisted_score);
+    }
+
+    #[test]
+    fn apply_spirit_move_preview_in_place_matches_wrapper_and_undo() {
+        let mut scoring_board = Board::new();
+        let white_pool = (0..Config::BOARD_SIZE)
+            .flat_map(|i| (0..Config::BOARD_SIZE).map(move |j| Location::new(i, j)))
+            .find(|location| {
+                matches!(
+                    scoring_board.square(*location),
+                    Square::ManaPool {
+                        color: Color::White,
+                    }
+                )
+            })
+            .expect("white pool should exist");
+        scoring_board.put(
+            Item::MonWithMana {
+                mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                mana: Mana::Supermana,
+            },
+            white_pool.nearby_locations_ref()[0],
+        );
+
+        let cases = vec![
+            (
+                game_with_items(
+                    vec![
+                        (
+                            Location::new(7, 1),
+                            Item::Mana {
+                                mana: Mana::Supermana,
+                            },
+                        ),
+                        (
+                            Location::new(8, 1),
+                            Item::Mon {
+                                mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                            },
+                        ),
+                    ],
+                    Color::White,
+                )
+                .board,
+                Location::new(7, 1),
+                Item::Mana {
+                    mana: Mana::Supermana,
+                },
+                Location::new(8, 1),
+                Color::White,
+            ),
+            (
+                game_with_items(
+                    vec![
+                        (
+                            Location::new(7, 1),
+                            Item::MonWithMana {
+                                mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                                mana: Mana::Regular(Color::White),
+                            },
+                        ),
+                        (
+                            Location::new(8, 1),
+                            Item::Mana {
+                                mana: Mana::Supermana,
+                            },
+                        ),
+                    ],
+                    Color::White,
+                )
+                .board,
+                Location::new(7, 1),
+                Item::MonWithMana {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    mana: Mana::Regular(Color::White),
+                },
+                Location::new(8, 1),
+                Color::White,
+            ),
+            (
+                scoring_board.clone(),
+                white_pool.nearby_locations_ref()[0],
+                Item::MonWithMana {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    mana: Mana::Supermana,
+                },
+                white_pool,
+                Color::White,
+            ),
+        ];
+
+        for (board, from, item, to, color) in cases {
+            let original = board.clone();
+            let (expected_board, expected_score, expected_opponent_score) =
+                apply_spirit_move_preview(&board, from, item, to, color);
+            let mut in_place_board = board.clone();
+            let (undo, score, opponent_score) =
+                apply_spirit_move_preview_in_place(&mut in_place_board, from, item, to, color);
+
+            assert_eq!(in_place_board, expected_board);
+            assert_eq!(score, expected_score);
+            assert_eq!(opponent_score, expected_opponent_score);
+
+            undo_spirit_move_preview(&mut in_place_board, undo);
+            assert_eq!(in_place_board, original);
+        }
     }
 
     #[test]
