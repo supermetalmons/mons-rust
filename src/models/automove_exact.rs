@@ -5,6 +5,7 @@ use std::hash::{BuildHasherDefault, Hasher};
 
 const EXACT_ANALYSIS_CACHE_MAX_ENTRIES: usize = 512;
 const EXACT_ATTACK_REACH_CACHE_MAX_ENTRIES: usize = 8192;
+const EXACT_CARRIER_DISTANCE_MAP_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_CARRIER_STEPS_CACHE_MAX_ENTRIES: usize = 8192;
 #[cfg(any(target_arch = "wasm32", test))]
 const EXACT_DRAINER_TO_MANA_CACHE_MAX_ENTRIES: usize = 8192;
@@ -25,10 +26,19 @@ const EXACT_SPIRIT_UTILITY_CAP: i32 = 6;
 const EXACT_BFS_CAPACITY: usize = 128;
 const EXACT_LOCATION_STATE_CAPACITY: usize =
     (Config::BOARD_SIZE as usize) * (Config::BOARD_SIZE as usize);
+const EXACT_CARRIER_MANA_VARIANTS: usize = 3;
 const EXACT_PAYLOAD_VARIANTS: usize = 5;
+const EXACT_CARRIER_MANA_STATE_CAPACITY: usize =
+    EXACT_LOCATION_STATE_CAPACITY * EXACT_CARRIER_MANA_VARIANTS;
 const EXACT_PAYLOAD_STATE_CAPACITY: usize = EXACT_LOCATION_STATE_CAPACITY * EXACT_PAYLOAD_VARIANTS;
 #[cfg(any(target_arch = "wasm32", test))]
 const EXACT_SECURE_TOUCHED_ITEMS_CAPACITY: usize = 12;
+const EXACT_CARRIER_DISTANCE_UNKNOWN: u8 = u8::MAX;
+const EXACT_CARRIER_MANA_VALUES: [Mana; EXACT_CARRIER_MANA_VARIANTS] = [
+    Mana::Regular(Color::White),
+    Mana::Regular(Color::Black),
+    Mana::Supermana,
+];
 
 #[derive(Default)]
 struct ExactFastHasher(u64);
@@ -128,6 +138,20 @@ fn exact_payload_variant_index(payload: ExactActorPayload) -> usize {
         ExactActorPayload::Mana(Mana::Supermana) => 3,
         ExactActorPayload::Bomb => 4,
     }
+}
+
+#[inline]
+fn exact_carrier_mana_index(mana: Mana) -> usize {
+    match mana {
+        Mana::Regular(Color::White) => 0,
+        Mana::Regular(Color::Black) => 1,
+        Mana::Supermana => 2,
+    }
+}
+
+#[inline]
+fn exact_carrier_distance_slot(location: Location, mana: Mana) -> usize {
+    location.index() * EXACT_CARRIER_MANA_VARIANTS + exact_carrier_mana_index(mana)
 }
 
 const EXACT_ACTOR_MOVE_MEMO_UNKNOWN: u8 = u8::MAX;
@@ -722,6 +746,53 @@ struct ExactAttackReachCache {
     entries: ExactHashMap<ExactAttackQueryKey, bool>,
 }
 
+#[derive(Clone)]
+struct ExactCarrierDistanceMap {
+    entries: [u8; EXACT_CARRIER_MANA_STATE_CAPACITY],
+}
+
+impl ExactCarrierDistanceMap {
+    #[inline]
+    fn new() -> Self {
+        Self {
+            entries: [EXACT_CARRIER_DISTANCE_UNKNOWN; EXACT_CARRIER_MANA_STATE_CAPACITY],
+        }
+    }
+
+    #[inline]
+    fn insert(&mut self, location: Location, mana: Mana, steps: u8) -> bool {
+        let slot = exact_carrier_distance_slot(location, mana);
+        if self.entries[slot] != EXACT_CARRIER_DISTANCE_UNKNOWN {
+            false
+        } else {
+            self.entries[slot] = steps;
+            true
+        }
+    }
+
+    #[inline]
+    fn steps(&self, location: Location, mana: Mana) -> Option<i32> {
+        let steps = self.entries[exact_carrier_distance_slot(location, mana)];
+        (steps != EXACT_CARRIER_DISTANCE_UNKNOWN).then_some(i32::from(steps))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ExactCarrierDistanceMapQueryKey {
+    board_hash: u64,
+    max_steps: i32,
+}
+
+#[derive(Default)]
+struct ExactCarrierDistanceMapCache {
+    entries: ExactHashMap<ExactCarrierDistanceMapQueryKey, ExactCarrierDistanceMap>,
+}
+
+#[derive(Default)]
+struct ExactCarrierDistanceMapWarmupCache {
+    entries: ExactHashMap<ExactCarrierDistanceMapQueryKey, u8>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ExactCarrierStepsQueryKey {
     board_hash: u64,
@@ -956,6 +1027,10 @@ thread_local! {
         RefCell::new(ExactStrategicAnalysisCache::default());
     static EXACT_ATTACK_REACH_CACHE: RefCell<ExactAttackReachCache> =
         RefCell::new(ExactAttackReachCache::default());
+    static EXACT_CARRIER_DISTANCE_MAP_CACHE: RefCell<ExactCarrierDistanceMapCache> =
+        RefCell::new(ExactCarrierDistanceMapCache::default());
+    static EXACT_CARRIER_DISTANCE_MAP_WARMUP_CACHE: RefCell<ExactCarrierDistanceMapWarmupCache> =
+        RefCell::new(ExactCarrierDistanceMapWarmupCache::default());
     static EXACT_CARRIER_STEPS_CACHE: RefCell<ExactCarrierStepsCache> =
         RefCell::new(ExactCarrierStepsCache::default());
     #[cfg(any(target_arch = "wasm32", test))]
@@ -1022,6 +1097,8 @@ pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_TURN_TACTICAL_PROJECTION_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_STRATEGIC_ANALYSIS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_ATTACK_REACH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
+    EXACT_CARRIER_DISTANCE_MAP_CACHE.with(|cache| cache.borrow_mut().entries.clear());
+    EXACT_CARRIER_DISTANCE_MAP_WARMUP_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_CARRIER_STEPS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_DRAINER_TO_MANA_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_DRAINER_PICKUP_WINDOW_CACHE.with(|cache| cache.borrow_mut().entries.clear());
@@ -2742,6 +2819,171 @@ fn square_allows_mana_carrier(square: Square, mana: Mana) -> bool {
 }
 
 #[inline]
+fn exact_location_is_mana_pool(board: &Board, location: Location) -> bool {
+    matches!(board.square(location), Square::ManaPool { .. })
+}
+
+#[inline]
+fn exact_carrier_state_can_continue(board: &Board, location: Location, mana: Mana) -> bool {
+    match board.items[location.index()] {
+        Some(Item::Mon { .. })
+        | Some(Item::MonWithMana { .. })
+        | Some(Item::MonWithConsumable { .. }) => false,
+        Some(Item::Mana { mana: item_mana }) => item_mana == mana,
+        Some(Item::Consumable {
+            consumable: Consumable::BombOrPotion,
+        }) => true,
+        Some(Item::Consumable { .. }) => false,
+        None => square_allows_mana_carrier(board.square(location), mana),
+    }
+}
+
+#[inline]
+fn exact_push_carrier_predecessor(
+    board: &Board,
+    predecessor: Location,
+    mana: Mana,
+    steps: u8,
+    distances: &mut ExactCarrierDistanceMap,
+    queue: &mut VecDeque<(Location, Mana)>,
+) {
+    if distances.insert(predecessor, mana, steps)
+        && exact_carrier_state_can_continue(board, predecessor, mana)
+    {
+        queue.push_back((predecessor, mana));
+    }
+}
+
+fn exact_build_carrier_distance_map(board: &Board, max_steps: i32) -> ExactCarrierDistanceMap {
+    let mut distances = ExactCarrierDistanceMap::new();
+    let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
+
+    for index in 0..board.items.len() {
+        let location = Location::from_index(index);
+        if !exact_location_is_mana_pool(board, location) {
+            continue;
+        }
+        for mana in EXACT_CARRIER_MANA_VALUES {
+            distances.insert(location, mana, 0);
+            if exact_carrier_state_can_continue(board, location, mana) {
+                queue.push_back((location, mana));
+            }
+        }
+    }
+
+    while let Some((location, next_mana)) = queue.pop_front() {
+        let current_steps = distances
+            .steps(location, next_mana)
+            .expect("queued carrier state should have a distance");
+        if current_steps >= max_steps {
+            continue;
+        }
+        let next_steps = current_steps.saturating_add(1) as u8;
+
+        for &predecessor in location.nearby_locations_ref() {
+            match board.items[location.index()] {
+                Some(Item::Mon { .. })
+                | Some(Item::MonWithMana { .. })
+                | Some(Item::MonWithConsumable { .. }) => {}
+                Some(Item::Mana { mana }) => {
+                    if mana != next_mana {
+                        continue;
+                    }
+                    for predecessor_mana in EXACT_CARRIER_MANA_VALUES {
+                        exact_push_carrier_predecessor(
+                            board,
+                            predecessor,
+                            predecessor_mana,
+                            next_steps,
+                            &mut distances,
+                            &mut queue,
+                        );
+                    }
+                }
+                Some(Item::Consumable {
+                    consumable: Consumable::BombOrPotion,
+                }) => {
+                    exact_push_carrier_predecessor(
+                        board,
+                        predecessor,
+                        next_mana,
+                        next_steps,
+                        &mut distances,
+                        &mut queue,
+                    );
+                }
+                Some(Item::Consumable { .. }) => {}
+                None => {
+                    if square_allows_mana_carrier(board.square(location), next_mana) {
+                        exact_push_carrier_predecessor(
+                            board,
+                            predecessor,
+                            next_mana,
+                            next_steps,
+                            &mut distances,
+                            &mut queue,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    distances
+}
+
+fn exact_carrier_steps_from_distance_map(
+    board: &Board,
+    start: Location,
+    mana: Mana,
+    board_hash: u64,
+    max_steps: i32,
+) -> Option<i32> {
+    EXACT_CARRIER_DISTANCE_MAP_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        let key = ExactCarrierDistanceMapQueryKey {
+            board_hash,
+            max_steps,
+        };
+        if let Some(distances) = cache.entries.get(&key) {
+            return distances.steps(start, mana);
+        }
+
+        let distances = exact_build_carrier_distance_map(board, max_steps);
+        let result = distances.steps(start, mana);
+        if cache.entries.len() >= EXACT_CARRIER_DISTANCE_MAP_CACHE_MAX_ENTRIES
+            && !cache.entries.contains_key(&key)
+        {
+            cache.entries.clear();
+        }
+        cache.entries.insert(key, distances);
+        result
+    })
+}
+
+fn exact_carrier_steps_to_any_pool_bounded_uncached(
+    board: &Board,
+    start: Location,
+    mana: Mana,
+    max_steps: i32,
+) -> Option<i32> {
+    exact_shortest_payload_state(
+        board,
+        start,
+        MonKind::Drainer,
+        Color::White,
+        ExactActorPayload::Mana(mana),
+        false,
+        Some(max_steps),
+        |location, payload| {
+            matches!(payload, ExactActorPayload::Mana(_))
+                && matches!(board.square(location), Square::ManaPool { .. })
+        },
+    )
+    .map(|result| result.steps)
+}
+
+#[inline]
 fn exact_carrier_steps_to_any_pool_with_hash(
     board: &Board,
     start: Location,
@@ -2797,6 +3039,9 @@ fn exact_carrier_steps_to_any_pool_with_hash_bounded(
     if max_steps < 0 {
         return None;
     }
+    if max_steps == 0 {
+        return exact_location_is_mana_pool(board, start).then_some(0);
+    }
 
     let key = ExactCarrierStepsQueryKey {
         board_hash,
@@ -2809,21 +3054,29 @@ fn exact_carrier_steps_to_any_pool_with_hash_bounded(
         return cached.filter(|&steps| steps <= max_steps);
     }
 
-    let result = exact_shortest_payload_state(
-        board,
-        start,
-        MonKind::Drainer,
-        Color::White,
-        ExactActorPayload::Mana(mana),
-        false,
-        Some(max_steps),
-        |location, payload| {
-            matches!(payload, ExactActorPayload::Mana(_))
-                && matches!(board.square(location), Square::ManaPool { .. })
-        },
-    )
-    .map(|result| result.steps);
+    let map_key = ExactCarrierDistanceMapQueryKey {
+        board_hash,
+        max_steps,
+    };
+    let should_use_distance_map = EXACT_CARRIER_DISTANCE_MAP_CACHE
+        .with(|cache| cache.borrow().entries.contains_key(&map_key))
+        || EXACT_CARRIER_DISTANCE_MAP_WARMUP_CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            let count = cache.entries.get(&map_key).copied().unwrap_or(0);
+            if count >= 1 {
+                cache.entries.remove(&map_key);
+                true
+            } else {
+                cache.entries.insert(map_key, count + 1);
+                false
+            }
+        });
 
+    let result = if should_use_distance_map {
+        exact_carrier_steps_from_distance_map(board, start, mana, board_hash, max_steps)
+    } else {
+        exact_carrier_steps_to_any_pool_bounded_uncached(board, start, mana, max_steps)
+    };
     if let Some(steps) = result {
         EXACT_CARRIER_STEPS_CACHE.with(|cache| {
             let mut cache = cache.borrow_mut();
@@ -5728,6 +5981,40 @@ mod tests {
         game
     }
 
+    fn find_mana_pool(board: &Board, color: Color) -> Location {
+        (0..Config::BOARD_SIZE)
+            .flat_map(|i| (0..Config::BOARD_SIZE).map(move |j| Location::new(i, j)))
+            .find(|location| {
+                matches!(
+                    board.square(*location),
+                    Square::ManaPool { color: pool_color } if pool_color == color
+                )
+            })
+            .expect("mana pool should exist")
+    }
+
+    fn exact_carrier_steps_generic_baseline(
+        board: &Board,
+        start: Location,
+        mana: Mana,
+        max_steps: Option<i32>,
+    ) -> Option<i32> {
+        exact_shortest_payload_state(
+            board,
+            start,
+            MonKind::Drainer,
+            Color::White,
+            ExactActorPayload::Mana(mana),
+            false,
+            max_steps,
+            |location, payload| {
+                matches!(payload, ExactActorPayload::Mana(_))
+                    && matches!(board.square(location), Square::ManaPool { .. })
+            },
+        )
+        .map(|result| result.steps)
+    }
+
     fn assert_secure_drainer_walk_matches_process_input(
         game: &MonsGame,
         from: Location,
@@ -6410,6 +6697,167 @@ mod tests {
 
         assert_eq!(first, second);
         assert_eq!(first, third);
+    }
+
+    #[test]
+    fn exact_carrier_steps_zero_budget_matches_generic_baseline() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+
+        let mut board = Board::new();
+        let white_pool = find_mana_pool(&board, Color::White);
+        board.put(
+            Item::MonWithMana {
+                mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                mana: Mana::Supermana,
+            },
+            white_pool,
+        );
+        let board_hash = exact_board_hash(&board);
+
+        assert_eq!(
+            exact_carrier_steps_to_any_pool_with_hash_bounded(
+                &board,
+                white_pool,
+                Mana::Supermana,
+                0,
+                board_hash,
+            ),
+            exact_carrier_steps_generic_baseline(&board, white_pool, Mana::Supermana, Some(0))
+        );
+        assert_eq!(
+            exact_query_diagnostics_snapshot().actor_payload_after_move_calls,
+            0
+        );
+    }
+
+    #[test]
+    fn exact_carrier_steps_bounded_matches_generic_baseline() {
+        clear_exact_state_analysis_cache();
+
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(8, 5),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+
+        assert_eq!(
+            exact_carrier_steps_to_any_pool_with_hash_bounded(
+                &board,
+                Location::new(8, 5),
+                Mana::Supermana,
+                2,
+                board_hash,
+            ),
+            exact_carrier_steps_generic_baseline(
+                &board,
+                Location::new(8, 5),
+                Mana::Supermana,
+                Some(2),
+            )
+        );
+        assert_eq!(
+            exact_carrier_steps_to_any_pool_with_hash_bounded(
+                &board,
+                Location::new(8, 5),
+                Mana::Supermana,
+                3,
+                board_hash,
+            ),
+            exact_carrier_steps_generic_baseline(
+                &board,
+                Location::new(8, 5),
+                Mana::Supermana,
+                Some(3),
+            )
+        );
+    }
+
+    #[test]
+    fn exact_carrier_steps_handles_mana_swap_before_pool() {
+        clear_exact_state_analysis_cache();
+
+        let mut board = Board::new();
+        let white_pool = find_mana_pool(&board, Color::White);
+        let middle = white_pool
+            .nearby_locations_ref()
+            .iter()
+            .copied()
+            .find(|location| !matches!(board.square(*location), Square::MonBase { .. }))
+            .expect("pool should have a traversable neighbor");
+        let start = middle
+            .nearby_locations_ref()
+            .iter()
+            .copied()
+            .find(|location| {
+                *location != white_pool
+                    && !location.nearby_locations_ref().contains(&white_pool)
+                    && square_allows_mana_carrier(
+                        board.square(*location),
+                        Mana::Regular(Color::White),
+                    )
+            })
+            .expect("middle should have a two-step carrier predecessor");
+
+        for &location in white_pool.nearby_locations_ref() {
+            if location != middle {
+                board.put(
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::Black, 0),
+                    },
+                    location,
+                );
+            }
+        }
+        for &location in middle.nearby_locations_ref() {
+            if location != start && location != white_pool {
+                board.put(
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::Black, 0),
+                    },
+                    location,
+                );
+            }
+        }
+        board.put(
+            Item::Mana {
+                mana: Mana::Regular(Color::Black),
+            },
+            middle,
+        );
+        board.put(
+            Item::MonWithMana {
+                mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                mana: Mana::Regular(Color::White),
+            },
+            start,
+        );
+        let board_hash = exact_board_hash(&board);
+
+        assert_eq!(
+            exact_carrier_steps_to_any_pool_with_hash(
+                &board,
+                start,
+                Mana::Regular(Color::White),
+                board_hash
+            ),
+            exact_carrier_steps_generic_baseline(&board, start, Mana::Regular(Color::White), None,)
+        );
     }
 
     #[test]
