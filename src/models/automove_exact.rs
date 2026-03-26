@@ -2819,6 +2819,44 @@ fn square_allows_mana_carrier(square: Square, mana: Mana) -> bool {
 }
 
 #[inline]
+fn exact_distance_to_any_pool_steps_lower_bound(location: Location) -> i32 {
+    let max_index = Config::MAX_LOCATION_INDEX;
+    let i = location.i;
+    let j = location.j;
+    i32::max(i32::min(i, max_index - i), i32::min(j, max_index - j))
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_drainer_pickup_steps_lower_bound(
+    board: &Board,
+    color: Color,
+    start: Location,
+    min_any_score: u8,
+    need_score: bool,
+    need_denial: bool,
+    opponent_mana: Mana,
+) -> Option<i32> {
+    if !need_score && !need_denial {
+        return None;
+    }
+
+    board
+        .occupied()
+        .filter_map(|(location, item)| {
+            let Item::Mana { mana } = item else {
+                return None;
+            };
+            let relevant_for_score = need_score && mana.score(color) >= i32::from(min_any_score);
+            let relevant_for_denial = need_denial && *mana == opponent_mana;
+            if !relevant_for_score && !relevant_for_denial {
+                return None;
+            }
+            Some(start.distance(&location) + exact_distance_to_any_pool_steps_lower_bound(location))
+        })
+        .min()
+}
+
+#[inline]
 fn exact_location_is_mana_pool(board: &Board, location: Location) -> bool {
     matches!(board.square(location), Square::ManaPool { .. })
 }
@@ -3041,6 +3079,9 @@ fn exact_carrier_steps_to_any_pool_with_hash_bounded(
     }
     if max_steps == 0 {
         return exact_location_is_mana_pool(board, start).then_some(0);
+    }
+    if exact_distance_to_any_pool_steps_lower_bound(start) > max_steps {
+        return None;
     }
 
     let key = ExactCarrierStepsQueryKey {
@@ -3318,6 +3359,20 @@ fn exact_drainer_pickup_window_with_hash_min_any_score(
             opponent_mana,
             board_hash,
         );
+    }
+    if max_steps.is_some_and(|limit| {
+        exact_drainer_pickup_steps_lower_bound(
+            board,
+            color,
+            start,
+            min_any_score,
+            need_score,
+            need_denial,
+            opponent_mana,
+        )
+        .is_some_and(|lower_bound| lower_bound > limit)
+    }) {
+        return ExactDrainerPickupWindow::default();
     }
     if let Some(limit @ 2..=3) = max_steps {
         return exact_drainer_pickup_window_small_budget_with_hash(
@@ -6808,6 +6863,61 @@ mod tests {
     }
 
     #[test]
+    fn exact_distance_to_any_pool_steps_lower_bound_matches_pool_scan() {
+        for i in 0..Config::BOARD_SIZE {
+            for j in 0..Config::BOARD_SIZE {
+                let location = Location::new(i, j);
+                let expected = Config::squares_ref()
+                    .iter()
+                    .filter_map(|(pool_location, square)| {
+                        matches!(square, Square::ManaPool { .. })
+                            .then_some(location.distance(pool_location))
+                    })
+                    .min()
+                    .expect("at least one mana pool");
+                assert_eq!(
+                    exact_distance_to_any_pool_steps_lower_bound(location),
+                    expected
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn exact_carrier_steps_far_budget_returns_none_without_payload_bfs() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+
+        let board = game_with_items(
+            vec![(
+                Location::new(5, 5),
+                Item::MonWithMana {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    mana: Mana::Supermana,
+                },
+            )],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+
+        assert_eq!(
+            exact_carrier_steps_to_any_pool_with_hash_bounded(
+                &board,
+                Location::new(5, 5),
+                Mana::Supermana,
+                1,
+                board_hash,
+            ),
+            None
+        );
+        assert_eq!(
+            exact_query_diagnostics_snapshot().actor_payload_after_move_calls,
+            0
+        );
+    }
+
+    #[test]
     fn exact_carrier_steps_bounded_matches_generic_baseline() {
         clear_exact_state_analysis_cache();
 
@@ -9726,6 +9836,56 @@ mod tests {
         );
 
         assert_eq!(fast, uncached);
+    }
+
+    #[test]
+    fn exact_drainer_pickup_window_far_budget_returns_default_without_payload_bfs() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(5, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 0),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+
+        let window = exact_drainer_pickup_window_with_hash(
+            &board,
+            Color::White,
+            Location::new(5, 5),
+            Some(2),
+            true,
+            true,
+            Mana::Regular(Color::Black),
+            board_hash,
+        );
+
+        assert_eq!(window, ExactDrainerPickupWindow::default());
+        assert_eq!(exact_query_diagnostics_snapshot().pickup_path_calls, 0);
+        assert_eq!(
+            exact_query_diagnostics_snapshot().actor_payload_after_move_calls,
+            0
+        );
     }
 
     #[test]
