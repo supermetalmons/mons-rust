@@ -2310,9 +2310,13 @@ fn build_color_summary(
         if mon.color != color || mon.is_fainted() {
             continue;
         }
-        if let Some(steps) =
-            exact_carrier_steps_to_any_pool_with_hash(&game.board, location, *mana, board_hash)
-        {
+        if let Some(steps) = exact_carrier_steps_to_any_pool_with_hash_bounded(
+            &game.board,
+            location,
+            *mana,
+            full_turn_moves,
+            board_hash,
+        ) {
             if steps <= full_turn_moves {
                 immediate_scores.push(mana.score(color));
             }
@@ -2501,7 +2505,7 @@ fn exact_shortest_payload_state<F>(
 where
     F: FnMut(Location, ExactActorPayload) -> bool,
 {
-    let mut actor_move_memo = ExactActorMoveMemo::new(exact_board_hash(board));
+    let mut actor_move_memo = ExactActorMoveMemo::new(0);
     let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
     let mut seen = ExactPayloadSeen::new();
     queue.push_back((start, start_payload, 0));
@@ -2734,6 +2738,59 @@ fn exact_carrier_steps_to_any_pool_with_hash(
         }
         cache.entries.insert(key, result);
     });
+    result
+}
+
+#[inline]
+fn exact_carrier_steps_to_any_pool_with_hash_bounded(
+    board: &Board,
+    start: Location,
+    mana: Mana,
+    max_steps: i32,
+    board_hash: u64,
+) -> Option<i32> {
+    if max_steps < 0 {
+        return None;
+    }
+
+    let key = ExactCarrierStepsQueryKey {
+        board_hash,
+        start,
+        mana,
+    };
+    if let Some(cached) =
+        EXACT_CARRIER_STEPS_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
+    {
+        return cached.filter(|&steps| steps <= max_steps);
+    }
+
+    let result = exact_shortest_payload_state(
+        board,
+        start,
+        MonKind::Drainer,
+        Color::White,
+        ExactActorPayload::Mana(mana),
+        false,
+        Some(max_steps),
+        |location, payload| {
+            matches!(payload, ExactActorPayload::Mana(_))
+                && matches!(board.square(location), Square::ManaPool { .. })
+        },
+    )
+    .map(|result| result.steps);
+
+    if let Some(steps) = result {
+        EXACT_CARRIER_STEPS_CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            if cache.entries.len() >= EXACT_CARRIER_STEPS_CACHE_MAX_ENTRIES
+                && !cache.entries.contains_key(&key)
+            {
+                cache.entries.clear();
+            }
+            cache.entries.insert(key, Some(steps));
+        });
+    }
+
     result
 }
 
@@ -4720,7 +4777,8 @@ fn exact_zero_move_immediate_tactical_window_on_board_with_hash(
         if mon.color != color || mon.is_fainted() {
             continue;
         }
-        if exact_carrier_steps_to_any_pool_with_hash(board, location, *mana, board_hash) != Some(0)
+        if exact_carrier_steps_to_any_pool_with_hash_bounded(board, location, *mana, 0, board_hash)
+            != Some(0)
         {
             continue;
         }
@@ -4735,7 +4793,6 @@ fn exact_zero_move_immediate_tactical_window_on_board_with_hash(
     best
 }
 
-#[cfg(any(target_arch = "wasm32", test))]
 fn exact_best_immediate_tactical_window_on_board_with_hash(
     board: &Board,
     color: Color,
@@ -4838,9 +4895,13 @@ fn exact_best_immediate_tactical_window_on_board_with_hash_uncached(
     for (location, item) in board.occupied() {
         match item {
             Item::MonWithMana { mon, mana } if mon.color == color && !mon.is_fainted() => {
-                if exact_carrier_steps_to_any_pool_with_hash(board, location, *mana, board_hash)
-                    .map_or(false, |steps| steps <= move_budget)
-                {
+                if let Some(_) = exact_carrier_steps_to_any_pool_with_hash_bounded(
+                    board,
+                    location,
+                    *mana,
+                    move_budget,
+                    board_hash,
+                ) {
                     let mana_value = mana.score(color);
                     if need_score {
                         best.best_score = best.best_score.max(mana_value);
@@ -4914,9 +4975,13 @@ fn exact_best_immediate_score_on_board_with_hash(
     for (location, item) in board.occupied() {
         match item {
             Item::MonWithMana { mon, mana } if mon.color == color && !mon.is_fainted() => {
-                if exact_carrier_steps_to_any_pool_with_hash(board, location, *mana, board_hash)
-                    .map_or(false, |steps| steps <= move_budget)
-                {
+                if let Some(_) = exact_carrier_steps_to_any_pool_with_hash_bounded(
+                    board,
+                    location,
+                    *mana,
+                    move_budget,
+                    board_hash,
+                ) {
                     best = best.max(mana.score(color));
                 }
             }
@@ -4977,9 +5042,13 @@ fn exact_best_immediate_opponent_mana_score_on_board_with_hash(
             Item::MonWithMana { mon, mana }
                 if mon.color == color && !mon.is_fainted() && *mana == opponent_mana =>
             {
-                if exact_carrier_steps_to_any_pool_with_hash(board, location, *mana, board_hash)
-                    .map_or(false, |steps| steps <= move_budget)
-                {
+                if let Some(_) = exact_carrier_steps_to_any_pool_with_hash_bounded(
+                    board,
+                    location,
+                    *mana,
+                    move_budget,
+                    board_hash,
+                ) {
                     best = best.max(mana.score(color));
                 }
             }
@@ -5708,6 +5777,60 @@ mod tests {
 
         assert_eq!(first, second);
         assert_eq!(first, third);
+    }
+
+    #[test]
+    fn exact_carrier_steps_bounded_query_does_not_cache_false_none() {
+        clear_exact_state_analysis_cache();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(8, 5),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+        let full = exact_carrier_steps_to_any_pool_with_hash(
+            &board,
+            Location::new(8, 5),
+            Mana::Supermana,
+            board_hash,
+        )
+        .expect("carrier should be able to reach a pool");
+        assert!(full > 0);
+
+        clear_exact_state_analysis_cache();
+        assert_eq!(
+            exact_carrier_steps_to_any_pool_with_hash_bounded(
+                &board,
+                Location::new(8, 5),
+                Mana::Supermana,
+                full - 1,
+                board_hash,
+            ),
+            None
+        );
+        assert_eq!(
+            exact_carrier_steps_to_any_pool_with_hash(
+                &board,
+                Location::new(8, 5),
+                Mana::Supermana,
+                board_hash,
+            ),
+            Some(full)
+        );
     }
 
     #[test]

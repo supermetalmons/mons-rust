@@ -13,6 +13,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - The latest shared exact cuts improved `runtime_pro_turn_engine_v30`, but it is still not promotable because `pro-reliability` keeps stalling past a practical window.
 - The latest local after-window cache-axis-sharing cut only shaved the hotspot slightly; it did not materially reduce tactical projection call volume or clear the promotion gate.
 - The latest tactical cache-sharing cuts did move the live wall again: `human_win_pro_a` dropped from about `1425ms` to about `1305ms`, but `pro-reliability` still stalled past `2:17`.
+- The latest bounded carrier-window cut is worth keeping: it collapsed `human_win_pro_a` payload work from about `32.2m` to about `6.3m` and materially sped up the probe, but the real duel gate still stalled past `2:17`.
 - `runtime_pro_turn_engine_v1` stays reference-only regression history.
 - Archive profiles and retired planner/quiescence lines are docs-only context.
 
@@ -49,6 +50,7 @@ Reject this family for a branch when:
 Current live wall:
 - inside tactical projection itself, especially `exact_tactical_spirit_summary` after-window work and the remaining `exact_best_immediate_tactical_window_on_board_with_hash` / pickup-window cost
 - cross-flag cache reuse at the tactical spirit, immediate-window, pickup-window, and projection layers is worth keeping, but it still does not clear the duel gate by itself
+- bounded carrier reach checks are worth keeping on budgeted immediate-window callers, but they still leave the live wall inside after-window tactical queries and drainer pickup work
 - future cuts need to reduce the cost of the remaining after-window computation itself or avoid entering it, not just reuse larger cached flag supersets
 - not in planner/oracle summary construction anymore
 

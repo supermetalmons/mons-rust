@@ -48,6 +48,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - Low-budget exact fast paths are worth keeping when they can prove a drainer pickup or immediate window is impossible without entering the full BFS / pickup-window path.
 - Sharing local after-window cache entries across score/denial flag variants is not enough by itself when the underlying after-window projection still runs at nearly the same frequency.
 - When a tactical result can be masked exactly, reuse cached superset flag results for smaller tactical spirit, immediate-window, pickup-window, and projection queries instead of rebuilding each flag subset.
+- Budgeted carrier-to-pool queries should not compute full shortest paths. When the caller only needs reachability within `N`, use a bounded search and do not hash the whole board just to initialize an actor move memo that ignores that hash.
 
 ## Mistakes Not To Repeat
 
@@ -69,5 +70,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - `runtime_pro_turn_engine_v30` is still not promotable after the current cuts because `pro-reliability` continues to stall in a practical window.
 - The latest `exact_tactical_spirit_summary` cache-axis-sharing tweak only shaved the hotspot slightly; it did not materially reduce tactical projection call volume.
 - The follow-up superset-cache cuts were worth keeping and moved `human_win_pro_a` again, from about `1425ms` down to about `1305ms`, but `pro-reliability` still stalled past `2:17`.
+- The follow-up bounded carrier-window cut was also worth keeping: it collapsed `human_win_pro_a` payload work from about `32.2m` to about `6.3m`, but `pro-reliability` still stalled past `2:17`.
+- A local uncached after-window path that bypassed the retained exact caches was not worth keeping; it increased pickup work and did not beat the retained bounded-cache line.
 - Next code should target the cost of the remaining after-window computation itself, or avoid entering it, alongside the remaining `exact_best_immediate_tactical_window_on_board_with_hash` / pickup-window work, not planner-oracle wrapper code.
 - Keep Fast work parked until there is a genuinely new code path. Minor search-order retunes and scoring-only tweaks are already saturated.
