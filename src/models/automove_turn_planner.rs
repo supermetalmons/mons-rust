@@ -33,6 +33,8 @@ pub(crate) struct TurnPlannerSearchConfig {
     pub allow_exact_static_evaluation: bool,
     pub strict_spirit_intent_compile: bool,
     pub disable_mana_tempo_intents: bool,
+    pub enable_targeted_exact_turn_summary_memo: bool,
+    pub enable_targeted_score_window_narrowing: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -2274,7 +2276,7 @@ fn model_tactical_routes(
     let candidate_cap = config.per_node_route_cap.clamp(2, 12);
     let mut routes = Vec::new();
     let mut tactical_inputs =
-        MonsGameModel::turn_planner_targeted_inputs(game, perspective, candidate_cap);
+        MonsGameModel::turn_planner_targeted_inputs(game, perspective, config);
     tactical_inputs.sort();
     tactical_inputs.dedup();
 
@@ -2910,6 +2912,8 @@ mod tests {
             allow_exact_static_evaluation: true,
             strict_spirit_intent_compile: false,
             disable_mana_tempo_intents: false,
+            enable_targeted_exact_turn_summary_memo: false,
+            enable_targeted_score_window_narrowing: false,
         }
     }
 

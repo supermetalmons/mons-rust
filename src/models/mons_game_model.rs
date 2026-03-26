@@ -1012,6 +1012,7 @@ pub(crate) struct SmartSearchConfig {
     enable_turn_engine_mid_turn_tactical_guard: bool,
     enable_turn_engine_secondary_analysis: bool,
     enable_turn_engine_selected_followup_projection: bool,
+    enable_turn_engine_lazy_oracle_score_window_projection: bool,
     enable_turn_engine_late_safe_mana_root_preference: bool,
     enable_turn_engine_late_black_setup_progress_rescue: bool,
     turn_engine_mode: TurnEngineMode,
@@ -1031,6 +1032,8 @@ pub(crate) struct SmartSearchConfig {
     turn_planner_intent_root_emergency_only: bool,
     turn_planner_strict_spirit_intent_compile: bool,
     turn_planner_disable_mana_tempo_intents: bool,
+    enable_turn_planner_targeted_exact_turn_summary_memo: bool,
+    enable_turn_planner_targeted_score_window_narrowing: bool,
     enable_exact_lite_progress_checks: bool,
     enable_exact_lite_spirit_window_checks: bool,
     exact_lite_root_call_budget: usize,
@@ -1044,6 +1047,8 @@ pub(crate) struct SmartSearchConfig {
     root_reply_risk_node_share_bp: i32,
     enable_child_eval_bundle: bool,
     enable_local_scoring_eval_ctx: bool,
+    enable_scoring_attack_reach_summary: bool,
+    enable_child_vulnerability_scoring_ctx_reuse: bool,
     enable_two_stage_child_ordering: bool,
     child_ordering_shortlist_multiplier: usize,
     child_ordering_tactical_reserve: usize,
@@ -1358,6 +1363,7 @@ impl SmartSearchConfig {
             enable_turn_engine_mid_turn_tactical_guard: false,
             enable_turn_engine_secondary_analysis: true,
             enable_turn_engine_selected_followup_projection: true,
+            enable_turn_engine_lazy_oracle_score_window_projection: false,
             enable_turn_engine_late_safe_mana_root_preference: false,
             enable_turn_engine_late_black_setup_progress_rescue: false,
             turn_engine_mode: TurnEngineMode::ProV1,
@@ -1377,6 +1383,8 @@ impl SmartSearchConfig {
             turn_planner_intent_root_emergency_only: false,
             turn_planner_strict_spirit_intent_compile: false,
             turn_planner_disable_mana_tempo_intents: false,
+            enable_turn_planner_targeted_exact_turn_summary_memo: false,
+            enable_turn_planner_targeted_score_window_narrowing: false,
             enable_exact_lite_progress_checks: false,
             enable_exact_lite_spirit_window_checks: false,
             exact_lite_root_call_budget: 0,
@@ -1390,6 +1398,8 @@ impl SmartSearchConfig {
             root_reply_risk_node_share_bp: SMART_ROOT_REPLY_RISK_NODE_SHARE_BP_FAST,
             enable_child_eval_bundle: false,
             enable_local_scoring_eval_ctx: false,
+            enable_scoring_attack_reach_summary: false,
+            enable_child_vulnerability_scoring_ctx_reuse: false,
             enable_two_stage_child_ordering: false,
             child_ordering_shortlist_multiplier: 2,
             child_ordering_tactical_reserve: 2,
@@ -1803,6 +1813,39 @@ struct NormalRootSafetySnapshot {
     opponent_max_score_gain: i32,
     my_score_gain: i32,
     worst_reply_score: i32,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Default)]
+struct TargetedExactTurnSummaryMemo {
+    entries: FastHashMap<u64, ExactTurnSummary>,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+impl TargetedExactTurnSummaryMemo {
+    fn get_or_compute(&mut self, game: &MonsGame, color: Color) -> ExactTurnSummary {
+        if game.active_color != color {
+            return ExactTurnSummary::default();
+        }
+
+        let state_hash = MonsGameModel::search_state_hash(game);
+        if let Some(cached) = self.entries.get(&state_hash).copied() {
+            return cached;
+        }
+
+        let summary = crate::models::automove_exact::exact_turn_summary_with_search_hash(
+            game, color, state_hash,
+        );
+        self.entries.insert(state_hash, summary);
+        summary
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Clone)]
+struct SameTurnScoreWindowCandidate {
+    transition: LegalInputTransition,
+    exact_turn: ExactTurnSummary,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -4185,11 +4228,87 @@ impl MonsGameModel {
         setup_inputs
     }
 
+    fn targeted_exact_turn_summary(
+        game: &MonsGame,
+        perspective: Color,
+        exact_turn_memo: &mut Option<TargetedExactTurnSummaryMemo>,
+    ) -> ExactTurnSummary {
+        if let Some(memo) = exact_turn_memo.as_mut() {
+            memo.get_or_compute(game, perspective)
+        } else {
+            exact_turn_summary(game, perspective)
+        }
+    }
+
+    fn targeted_score_window_candidate_sort(
+        a: &SameTurnScoreWindowCandidate,
+        b: &SameTurnScoreWindowCandidate,
+    ) -> std::cmp::Ordering {
+        b.exact_turn
+            .same_turn_score_window_value
+            .cmp(&a.exact_turn.same_turn_score_window_value)
+            .then_with(|| {
+                b.exact_turn
+                    .spirit_assisted_denial_value
+                    .cmp(&a.exact_turn.spirit_assisted_denial_value)
+            })
+            .then_with(|| {
+                Self::events_include_spirit_target_move(&b.transition.events).cmp(
+                    &Self::events_include_spirit_target_move(&a.transition.events),
+                )
+            })
+            .then_with(|| a.transition.inputs.cmp(&b.transition.inputs))
+    }
+
+    fn targeted_same_turn_score_window_transition_plausible(
+        game: &MonsGame,
+        transition: &LegalInputTransition,
+        perspective: Color,
+    ) -> bool {
+        let after = &transition.game;
+        if after.active_color != perspective {
+            return false;
+        }
+        if !after.player_can_move_mon() && !after.player_can_use_action() {
+            return false;
+        }
+        if Self::approximate_same_turn_score_window_value(after, perspective) > 0 {
+            return true;
+        }
+        if transition
+            .events
+            .iter()
+            .any(|event| matches!(event, Event::PickupMana { .. } | Event::ManaMove { .. }))
+        {
+            return true;
+        }
+
+        let before_drainer_steps = Self::approximate_best_drainer_to_mana_steps(game, perspective);
+        let after_drainer_steps = Self::approximate_best_drainer_to_mana_steps(after, perspective);
+        if after_drainer_steps
+            .zip(before_drainer_steps)
+            .map_or(false, |(after_steps, before_steps)| {
+                after_steps < before_steps
+            })
+        {
+            return true;
+        }
+
+        let before_carrier_steps = Self::approximate_best_carrier_steps(game, perspective);
+        let after_carrier_steps = Self::approximate_best_carrier_steps(after, perspective);
+        after_carrier_steps
+            .zip(before_carrier_steps)
+            .map_or(false, |(after_steps, before_steps)| {
+                after_steps < before_steps
+            })
+    }
+
     fn collect_targeted_spirit_score_inputs(
         game: &MonsGame,
         perspective: Color,
         max_candidates: usize,
         opponent_mana_only: bool,
+        exact_turn_memo: &mut Option<TargetedExactTurnSummaryMemo>,
     ) -> Vec<LegalInputTransition> {
         let spirit_locations = Self::find_awake_spirit_locations(game, perspective);
         if spirit_locations.is_empty() || !game.player_can_use_action() {
@@ -4242,18 +4361,20 @@ impl MonsGameModel {
                     if !Self::events_include_spirit_target_move(&events) {
                         continue;
                     }
-                    let after_same_turn_score_window_value = if after_game.active_color
-                        == perspective
-                    {
-                        exact_turn_summary(&after_game, perspective).same_turn_score_window_value
+                    let after_turn = if after_game.active_color == perspective {
+                        Some(Self::targeted_exact_turn_summary(
+                            &after_game,
+                            perspective,
+                            exact_turn_memo,
+                        ))
                     } else {
-                        0
+                        None
                     };
+                    let after_same_turn_score_window_value =
+                        after_turn.map_or(0, |turn| turn.same_turn_score_window_value);
                     let scores_now = if opponent_mana_only {
                         Self::events_score_opponent_mana(&events, perspective)
-                            || (after_game.active_color == perspective
-                                && exact_turn_summary(&after_game, perspective)
-                                    .safe_opponent_mana_progress)
+                            || after_turn.map_or(false, |turn| turn.safe_opponent_mana_progress)
                     } else {
                         Self::score_for_color(&after_game, perspective) > score_before
                             || after_same_turn_score_window_value > 0
@@ -4278,13 +4399,16 @@ impl MonsGameModel {
         perspective: Color,
         config: SmartSearchConfig,
         max_candidates: usize,
+        exact_turn_memo: &mut Option<TargetedExactTurnSummaryMemo>,
     ) -> Vec<LegalInputTransition> {
         if !game.player_can_move_mon() && !game.player_can_use_action() {
             return Vec::new();
         }
 
         let mut actor_locations = Self::find_awake_drainer_locations(game, perspective);
-        actor_locations.extend(Self::find_awake_spirit_locations(game, perspective));
+        if !config.enable_turn_planner_targeted_score_window_narrowing {
+            actor_locations.extend(Self::find_awake_spirit_locations(game, perspective));
+        }
         if actor_locations.is_empty() {
             return Vec::new();
         }
@@ -4311,23 +4435,40 @@ impl MonsGameModel {
                 if transition.game.active_color != perspective {
                     continue;
                 }
-                if exact_turn_summary(&transition.game, perspective).same_turn_score_window_value
-                    <= 0
+                if config.enable_turn_planner_targeted_score_window_narrowing
+                    && !Self::targeted_same_turn_score_window_transition_plausible(
+                        game,
+                        &transition,
+                        perspective,
+                    )
                 {
                     continue;
                 }
+                let exact_turn = Self::targeted_exact_turn_summary(
+                    &transition.game,
+                    perspective,
+                    exact_turn_memo,
+                );
+                if exact_turn.same_turn_score_window_value <= 0 {
+                    continue;
+                }
                 if seen_inputs.insert(transition.inputs.clone()) {
-                    score_window_inputs.push(transition);
+                    score_window_inputs.push(SameTurnScoreWindowCandidate {
+                        transition,
+                        exact_turn,
+                    });
                 }
             }
         }
 
-        score_window_inputs
-            .sort_by(|a, b| Self::compare_same_turn_score_window_transitions(a, b, perspective));
+        score_window_inputs.sort_by(Self::targeted_score_window_candidate_sort);
         if score_window_inputs.len() > max_candidates.max(1) {
             score_window_inputs.truncate(max_candidates.max(1));
         }
         score_window_inputs
+            .into_iter()
+            .map(|candidate| candidate.transition)
+            .collect()
     }
 
     fn compare_same_turn_score_window_transitions(
@@ -5061,11 +5202,15 @@ impl MonsGameModel {
             })
         {
             let fallback_limit = Self::same_turn_score_window_fallback_candidates_limit(config);
+            let mut exact_turn_memo = config
+                .enable_turn_planner_targeted_exact_turn_summary_memo
+                .then(TargetedExactTurnSummaryMemo::default);
             let mut fallback_inputs = Self::collect_targeted_spirit_score_inputs(
                 game,
                 perspective,
                 fallback_limit,
                 false,
+                &mut exact_turn_memo,
             );
             let mut fallback_seen_inputs = fallback_inputs
                 .iter()
@@ -5076,6 +5221,7 @@ impl MonsGameModel {
                 perspective,
                 config,
                 fallback_limit,
+                &mut exact_turn_memo,
             ) {
                 if fallback_seen_inputs.insert(transition.inputs.clone()) {
                     fallback_inputs.push(transition);
@@ -5101,8 +5247,16 @@ impl MonsGameModel {
             })
         {
             let fallback_limit = Self::spirit_score_fallback_candidates_limit(config);
-            let fallback_inputs =
-                Self::collect_targeted_spirit_score_inputs(game, perspective, fallback_limit, true);
+            let mut exact_turn_memo = config
+                .enable_turn_planner_targeted_exact_turn_summary_memo
+                .then(TargetedExactTurnSummaryMemo::default);
+            let fallback_inputs = Self::collect_targeted_spirit_score_inputs(
+                game,
+                perspective,
+                fallback_limit,
+                true,
+                &mut exact_turn_memo,
+            );
             if !fallback_inputs.is_empty() {
                 let mut seen_inputs = root_transitions
                     .iter()
@@ -6521,6 +6675,10 @@ impl MonsGameModel {
             allow_exact_static_evaluation: config.enable_static_exact_evaluation,
             strict_spirit_intent_compile: config.turn_planner_strict_spirit_intent_compile,
             disable_mana_tempo_intents: config.turn_planner_disable_mana_tempo_intents,
+            enable_targeted_exact_turn_summary_memo: config
+                .enable_turn_planner_targeted_exact_turn_summary_memo,
+            enable_targeted_score_window_narrowing: config
+                .enable_turn_planner_targeted_score_window_narrowing,
         };
         if config.enable_turn_planner_intent_root_injection
             && config.turn_planner_intent_root_injection_limit > 0
@@ -6550,6 +6708,8 @@ impl MonsGameModel {
             enable_spirit_family: config.turn_engine_enable_spirit_family,
             scoring_weights: config.scoring_weights,
             allow_exact_static_evaluation: config.enable_static_exact_evaluation,
+            enable_lazy_oracle_score_window_projection: config
+                .enable_turn_engine_lazy_oracle_score_window_projection,
         }
     }
 
@@ -9182,8 +9342,9 @@ impl MonsGameModel {
     pub(crate) fn turn_planner_targeted_inputs(
         game: &MonsGame,
         perspective: Color,
-        max_candidates: usize,
+        planner_config: TurnPlannerSearchConfig,
     ) -> Vec<Vec<Input>> {
+        let max_candidates = planner_config.per_node_route_cap.clamp(2, 12);
         if max_candidates == 0 || game.active_color != perspective {
             return Vec::new();
         }
@@ -9191,6 +9352,10 @@ impl MonsGameModel {
         let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
         config = Self::with_runtime_scoring_weights(game, config);
         config.enable_turn_opportunity_planner = false;
+        config.enable_turn_planner_targeted_exact_turn_summary_memo =
+            planner_config.enable_targeted_exact_turn_summary_memo;
+        config.enable_turn_planner_targeted_score_window_narrowing =
+            planner_config.enable_targeted_score_window_narrowing;
         config.root_enum_limit = config.root_enum_limit.min(72);
         config.node_enum_limit = config.node_enum_limit.min(54);
         config.root_branch_limit = config.root_branch_limit.clamp(6, 12);
@@ -9198,12 +9363,16 @@ impl MonsGameModel {
 
         let per_surface = max_candidates.clamp(2, 8);
         let mut transitions: Vec<LegalInputTransition> = Vec::new();
+        let mut exact_turn_memo = config
+            .enable_turn_planner_targeted_exact_turn_summary_memo
+            .then(TargetedExactTurnSummaryMemo::default);
 
         transitions.extend(Self::collect_targeted_same_turn_score_window_inputs(
             game,
             perspective,
             config,
             per_surface,
+            &mut exact_turn_memo,
         ));
         transitions.extend(Self::collect_targeted_safe_drainer_pickup_inputs(
             game,
@@ -9249,12 +9418,14 @@ impl MonsGameModel {
             perspective,
             per_surface,
             false,
+            &mut exact_turn_memo,
         ));
         transitions.extend(Self::collect_targeted_spirit_score_inputs(
             game,
             perspective,
             per_surface,
             true,
+            &mut exact_turn_memo,
         ));
 
         let mut seen = std::collections::HashSet::new();
@@ -10872,7 +11043,11 @@ impl MonsGameModel {
     ) -> ChildEvalBundle {
         let child_hash = Self::search_state_hash(simulated_game);
         let scoring_context = config.enable_local_scoring_eval_ctx.then(|| {
-            ScoringEvalContext::new(simulated_game, config.enable_static_exact_evaluation)
+            ScoringEvalContext::new_with_flags(
+                simulated_game,
+                config.enable_static_exact_evaluation,
+                config.enable_scoring_attack_reach_summary,
+            )
         });
         let mut heuristic = Self::score_state_with_context(
             simulated_game,
@@ -10947,11 +11122,31 @@ impl MonsGameModel {
         }
 
         let own_drainer_vulnerable_after = if config.enable_child_move_class_coverage {
-            Self::is_own_drainer_vulnerable_next_turn(
-                simulated_game,
-                actor_color,
-                config.enable_enhanced_drainer_vulnerability,
-            )
+            if config.enable_child_vulnerability_scoring_ctx_reuse {
+                scoring_context.as_ref().map_or_else(
+                    || {
+                        Self::is_own_drainer_vulnerable_next_turn(
+                            simulated_game,
+                            actor_color,
+                            config.enable_enhanced_drainer_vulnerability,
+                        )
+                    },
+                    |context| {
+                        Self::is_own_drainer_vulnerable_next_turn_with_context(
+                            simulated_game,
+                            actor_color,
+                            config.enable_enhanced_drainer_vulnerability,
+                            context,
+                        )
+                    },
+                )
+            } else {
+                Self::is_own_drainer_vulnerable_next_turn(
+                    simulated_game,
+                    actor_color,
+                    config.enable_enhanced_drainer_vulnerability,
+                )
+            }
         } else {
             false
         };
@@ -13096,6 +13291,37 @@ impl MonsGameModel {
         )
     }
 
+    fn is_own_drainer_immediately_vulnerable_on_board_with_context(
+        board: &Board,
+        perspective: Color,
+        opponent_to_move: bool,
+        opponent_remaining_moves: i32,
+        opponent_can_use_action: bool,
+        _enhanced: bool,
+        context: &ScoringEvalContext,
+    ) -> bool {
+        let (own_drainer_location, own_drainer_fainted) =
+            Self::own_awake_drainer_location_and_fainted(board, perspective);
+        if own_drainer_fainted {
+            return true;
+        }
+        let Some(own_drainer_location) = own_drainer_location else {
+            return false;
+        };
+
+        if !opponent_to_move || !opponent_can_use_action {
+            return false;
+        }
+        context.can_attack_target_on_board(
+            board,
+            perspective.other(),
+            perspective,
+            own_drainer_location,
+            opponent_remaining_moves.max(0),
+            opponent_can_use_action,
+        )
+    }
+
     #[allow(dead_code)]
     fn is_own_drainer_immediately_vulnerable(
         game: &MonsGame,
@@ -13128,6 +13354,23 @@ impl MonsGameModel {
             Config::MONS_MOVES_PER_TURN,
             !game.is_first_turn(),
             enhanced,
+        )
+    }
+
+    fn is_own_drainer_vulnerable_next_turn_with_context(
+        game: &MonsGame,
+        perspective: Color,
+        enhanced: bool,
+        context: &ScoringEvalContext,
+    ) -> bool {
+        Self::is_own_drainer_immediately_vulnerable_on_board_with_context(
+            &game.board,
+            perspective,
+            true,
+            Config::MONS_MOVES_PER_TURN,
+            !game.is_first_turn(),
+            enhanced,
+            context,
         )
     }
 
@@ -18555,6 +18798,8 @@ mod evaluation_cache_tests {
         let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
         config.enable_child_eval_bundle = true;
         config.enable_local_scoring_eval_ctx = true;
+        config.enable_scoring_attack_reach_summary = true;
+        config.enable_child_vulnerability_scoring_ctx_reuse = true;
         config.enable_child_move_class_coverage = true;
         let history_table: HistoryTable = HistoryTable::default();
         let transition = MonsGameModel::enumerate_legal_transitions(
@@ -19044,6 +19289,188 @@ mod evaluation_cache_tests {
             MonsGameModel::selected_two_stage_child_ordering_indices(&entries, true, config);
 
         assert_eq!(selected, vec![0, 2]);
+    }
+
+    fn planner_targeting_search_config(
+        game: &MonsGame,
+        enable_narrowing: bool,
+    ) -> SmartSearchConfig {
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config = MonsGameModel::with_runtime_scoring_weights(game, config);
+        config.enable_turn_opportunity_planner = false;
+        config.root_enum_limit = config.root_enum_limit.min(72);
+        config.node_enum_limit = config.node_enum_limit.min(54);
+        config.root_branch_limit = config.root_branch_limit.clamp(6, 12);
+        config.node_branch_limit = config.node_branch_limit.clamp(4, 10);
+        config.enable_turn_planner_targeted_exact_turn_summary_memo = enable_narrowing;
+        config.enable_turn_planner_targeted_score_window_narrowing = enable_narrowing;
+        config
+    }
+
+    #[test]
+    fn targeted_exact_turn_summary_memo_reuses_one_search_hash_entry() {
+        clear_exact_state_analysis_cache();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(8, 1),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let mut memo = Some(TargetedExactTurnSummaryMemo::default());
+
+        let first = MonsGameModel::targeted_exact_turn_summary(&game, Color::White, &mut memo);
+        let second = MonsGameModel::targeted_exact_turn_summary(
+            &game.clone_for_simulation(),
+            Color::White,
+            &mut memo,
+        );
+
+        assert_eq!(
+            first.same_turn_score_window_value,
+            second.same_turn_score_window_value
+        );
+        assert_eq!(
+            first.safe_opponent_mana_progress,
+            second.safe_opponent_mana_progress
+        );
+        assert_eq!(
+            first.spirit_assisted_denial_value,
+            second.spirit_assisted_denial_value
+        );
+        assert_eq!(
+            memo.as_ref()
+                .expect("memo should stay allocated")
+                .entries
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn targeted_same_turn_score_window_narrowing_keeps_drainer_pickup_candidate() {
+        clear_exact_state_analysis_cache();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(8, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let legacy_config = planner_targeting_search_config(&game, false);
+        let narrowed_config = planner_targeting_search_config(&game, true);
+        let per_surface = 8;
+
+        let mut legacy_memo = None;
+        let legacy_inputs = MonsGameModel::collect_targeted_same_turn_score_window_inputs(
+            &game,
+            Color::White,
+            legacy_config,
+            per_surface,
+            &mut legacy_memo,
+        );
+        let mut narrowed_memo = Some(TargetedExactTurnSummaryMemo::default());
+        let narrowed_inputs = MonsGameModel::collect_targeted_same_turn_score_window_inputs(
+            &game,
+            Color::White,
+            narrowed_config,
+            per_surface,
+            &mut narrowed_memo,
+        );
+
+        let legacy_target = legacy_inputs
+            .iter()
+            .find(|transition| {
+                transition.events.iter().any(|event| {
+                    matches!(
+                        event,
+                        Event::PickupMana {
+                            mana: Mana::Regular(Color::White),
+                            ..
+                        }
+                    )
+                })
+            })
+            .expect("expected a drainer pickup transition in legacy score-window targeting");
+        let narrowed_target = narrowed_inputs
+            .iter()
+            .find(|transition| transition.inputs == legacy_target.inputs)
+            .expect("narrowed targeting should retain the drainer pickup score-window transition");
+
+        assert!(narrowed_inputs.len() <= legacy_inputs.len());
+        assert_eq!(
+            exact_turn_summary(&legacy_target.game, Color::White).same_turn_score_window_value,
+            exact_turn_summary(&narrowed_target.game, Color::White).same_turn_score_window_value
+        );
+    }
+
+    #[test]
+    fn targeted_spirit_score_inputs_match_with_local_summary_memo() {
+        clear_exact_state_analysis_cache();
+        let game = MonsGame::from_fen(
+            "0 0 w 0 0 0 0 0 2 n05d0xn05/n11/n11/n11/n11/n11/n11/n08xxmn02/n11/n05D0xn01S0xn03/n11",
+            false,
+        )
+        .expect("valid primary spirit setup fixture");
+        let max_candidates = 8;
+        let mut legacy_memo = None;
+        let legacy_inputs = MonsGameModel::collect_targeted_spirit_score_inputs(
+            &game,
+            Color::White,
+            max_candidates,
+            false,
+            &mut legacy_memo,
+        );
+        let mut narrowed_memo = Some(TargetedExactTurnSummaryMemo::default());
+        let narrowed_inputs = MonsGameModel::collect_targeted_spirit_score_inputs(
+            &game,
+            Color::White,
+            max_candidates,
+            false,
+            &mut narrowed_memo,
+        );
+
+        assert!(
+            !legacy_inputs.is_empty(),
+            "expected a spirit score candidate"
+        );
+        assert_eq!(
+            legacy_inputs
+                .iter()
+                .map(|transition| transition.inputs.clone())
+                .collect::<Vec<_>>(),
+            narrowed_inputs
+                .iter()
+                .map(|transition| transition.inputs.clone())
+                .collect::<Vec<_>>()
+        );
     }
 }
 

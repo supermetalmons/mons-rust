@@ -1,11 +1,19 @@
 use crate::*;
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 
 const PROTECTED_HIGH_VALUE_CARRIER_SAFE_DANGER_MIN: i32 = 3;
 const PROTECTED_HIGH_VALUE_CARRIER_SUPERMANA_SCALE_BP: i32 = 2_500;
 const PROTECTED_HIGH_VALUE_CARRIER_OPPONENT_MANA_SCALE_BP: i32 = 2_500;
 const PROTECTED_HIGH_VALUE_CARRIER_VIRTUAL_SCORE_BP_MAX: i32 = 9_200;
 const PROTECTED_HIGH_VALUE_CARRIER_OPPONENT_SCORE_MARGIN: i32 = 2;
+
+#[derive(Default)]
+struct AttackReachSummaryMemo {
+    entries: Vec<(
+        crate::models::automove_exact::AttackReachSummaryKey,
+        crate::models::automove_exact::AttackReachSummary,
+    )>,
+}
 
 #[derive(Debug, Clone, Copy)]
 struct DrainerSafetySnapshot {
@@ -30,18 +38,32 @@ impl DrainerSafetySnapshot {
 
 pub(crate) struct ScoringEvalContext {
     board_hash: u64,
-    mana_snapshot: ManaPathSnapshot,
-    exact_analysis: Option<ExactStrategicAnalysis>,
+    allow_exact_strategic: bool,
+    mana_snapshot: OnceCell<ManaPathSnapshot>,
+    exact_analysis: OnceCell<ExactStrategicAnalysis>,
+    enable_attack_reach_summary: bool,
     drainer_immediate_threat_memo: RefCell<[Option<(i32, i32)>; BOARD_CELLS * 2]>,
+    attack_reach_summary_memo: RefCell<AttackReachSummaryMemo>,
 }
 
 impl ScoringEvalContext {
     pub(crate) fn new(game: &MonsGame, allow_exact_strategic: bool) -> Self {
+        Self::new_with_flags(game, allow_exact_strategic, false)
+    }
+
+    pub(crate) fn new_with_flags(
+        game: &MonsGame,
+        allow_exact_strategic: bool,
+        enable_attack_reach_summary: bool,
+    ) -> Self {
         Self {
             board_hash: crate::models::automove_exact::exact_board_hash(&game.board),
-            mana_snapshot: ManaPathSnapshot::from_board(&game.board),
-            exact_analysis: allow_exact_strategic.then(|| exact_strategic_analysis(game)),
+            allow_exact_strategic,
+            mana_snapshot: OnceCell::new(),
+            exact_analysis: OnceCell::new(),
+            enable_attack_reach_summary,
             drainer_immediate_threat_memo: RefCell::new([None; BOARD_CELLS * 2]),
+            attack_reach_summary_memo: RefCell::new(AttackReachSummaryMemo::default()),
         }
     }
 
@@ -50,12 +72,73 @@ impl ScoringEvalContext {
         self.board_hash
     }
 
+    #[inline]
+    fn mana_snapshot(&self, board: &Board) -> &ManaPathSnapshot {
+        self.mana_snapshot
+            .get_or_init(|| ManaPathSnapshot::from_board(board))
+    }
+
+    #[inline]
+    fn exact_analysis(&self, game: &MonsGame) -> Option<ExactStrategicAnalysis> {
+        self.allow_exact_strategic.then(|| {
+            *self
+                .exact_analysis
+                .get_or_init(|| exact_strategic_analysis(game))
+        })
+    }
+
+    fn attack_reach_summary(
+        &self,
+        board: &Board,
+        attacker_color: Color,
+        target_color: Color,
+        remaining_moves: i32,
+        can_use_action: bool,
+    ) -> crate::models::automove_exact::AttackReachSummary {
+        let key = crate::models::automove_exact::AttackReachSummaryKey {
+            board_hash: self.board_hash,
+            attacker_color,
+            target_color,
+            remaining_moves,
+            can_use_action,
+        };
+        if let Some((_, summary)) = self
+            .attack_reach_summary_memo
+            .borrow()
+            .entries
+            .iter()
+            .find(|(cached_key, _)| *cached_key == key)
+        {
+            return *summary;
+        }
+
+        let summary = crate::models::automove_exact::attack_reach_summary_with_hash(
+            board,
+            self.board_hash,
+            attacker_color,
+            target_color,
+            remaining_moves,
+            can_use_action,
+        );
+        self.attack_reach_summary_memo
+            .borrow_mut()
+            .entries
+            .push((key, summary));
+        summary
+    }
+
     fn drainer_immediate_threats(
         &self,
         board: &Board,
         color: Color,
         location: Location,
     ) -> (i32, i32) {
+        if self.enable_attack_reach_summary {
+            return self
+                .attack_reach_summary(board, color.other(), color, 0, true)
+                .immediate_threats(location);
+        }
+
         let memo_index = location.index()
             + if color == Color::Black {
                 BOARD_CELLS
@@ -74,6 +157,38 @@ impl ScoringEvalContext {
         );
         self.drainer_immediate_threat_memo.borrow_mut()[memo_index] = Some(threats);
         threats
+    }
+
+    pub(crate) fn can_attack_target_on_board(
+        &self,
+        board: &Board,
+        attacker_color: Color,
+        target_color: Color,
+        target: Location,
+        remaining_moves: i32,
+        can_use_action: bool,
+    ) -> bool {
+        if self.enable_attack_reach_summary {
+            return self
+                .attack_reach_summary(
+                    board,
+                    attacker_color,
+                    target_color,
+                    remaining_moves,
+                    can_use_action,
+                )
+                .can_attack_target(target);
+        }
+
+        crate::models::automove_exact::can_attack_target_on_board_with_hash(
+            board,
+            self.board_hash,
+            attacker_color,
+            target_color,
+            target,
+            remaining_moves,
+            can_use_action,
+        )
     }
 }
 
@@ -719,7 +834,7 @@ pub fn evaluate_preferability_breakdown_with_weights(
         )
     } else {
         exact_score_path_window_from_summary(
-            &mana_snapshot,
+            Some(&mana_snapshot),
             color,
             my_exact_summary.expect("exact strategic analysis should be available"),
             include_regular_mana_move_windows,
@@ -735,7 +850,7 @@ pub fn evaluate_preferability_breakdown_with_weights(
         )
     } else {
         exact_score_path_window_from_summary(
-            &mana_snapshot,
+            Some(&mana_snapshot),
             color.other(),
             opponent_exact_summary.expect("exact strategic analysis should be available"),
             include_regular_mana_move_windows,
@@ -784,7 +899,7 @@ pub fn evaluate_preferability_breakdown_with_weights(
             )
         } else {
             exact_immediate_score_window_from_summary(
-                &mana_snapshot,
+                Some(&mana_snapshot),
                 color,
                 my_exact_summary.expect("exact strategic analysis should be available"),
                 include_regular_mana_move_windows && game.player_can_move_mana(),
@@ -812,7 +927,7 @@ pub fn evaluate_preferability_breakdown_with_weights(
                 )
             } else {
                 exact_immediate_score_window_from_summary(
-                    &mana_snapshot,
+                    Some(&mana_snapshot),
                     color.other(),
                     opponent_exact_summary.expect("exact strategic analysis should be available"),
                     include_regular_mana_move_windows,
@@ -856,7 +971,7 @@ pub fn evaluate_preferability_breakdown_with_weights(
             )
         } else {
             exact_immediate_score_window_from_summary(
-                &mana_snapshot,
+                Some(&mana_snapshot),
                 color.other(),
                 opponent_exact_summary.expect("exact strategic analysis should be available"),
                 include_regular_mana_move_windows && game.player_can_move_mana(),
@@ -885,7 +1000,7 @@ pub fn evaluate_preferability_breakdown_with_weights(
                 )
             } else {
                 exact_immediate_score_window_from_summary(
-                    &mana_snapshot,
+                    Some(&mana_snapshot),
                     color,
                     my_exact_summary.expect("exact strategic analysis should be available"),
                     include_regular_mana_move_windows,
@@ -991,13 +1106,10 @@ pub(crate) fn evaluate_preferability_with_context(
     let supermana_base = game.board.supermana_base();
     let remaining_mon_moves_for_active =
         (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
-    let mana_snapshot = &context.mana_snapshot;
     let exact_analysis = if use_legacy_formula {
         None
     } else {
-        context
-            .exact_analysis
-            .or_else(|| Some(exact_strategic_analysis(game)))
+        context.exact_analysis(game)
     };
     let my_exact_summary = exact_analysis.map(|analysis| analysis.color_summary(color));
     let opponent_exact_summary =
@@ -1067,10 +1179,12 @@ pub(crate) fn evaluate_preferability_with_context(
                     }
 
                     if let Some(path) = if use_legacy_formula {
-                        best_drainer_pickup_path_with_snapshot(&mana_snapshot, mon.color, location)
-                            .map(|(path_steps, mana_value)| {
-                                (path_steps, path_steps + 1, mana_value)
-                            })
+                        best_drainer_pickup_path_with_snapshot(
+                            context.mana_snapshot(&game.board),
+                            mon.color,
+                            location,
+                        )
+                        .map(|(path_steps, mana_value)| (path_steps, path_steps + 1, mana_value))
                     } else {
                         exact_analysis
                             .expect("exact strategic analysis should be available")
@@ -1556,14 +1670,14 @@ pub(crate) fn evaluate_preferability_with_context(
     let my_score_path_window = if use_legacy_formula {
         score_path_window_to_any_pool_with_snapshot(
             &game.board,
-            &mana_snapshot,
+            context.mana_snapshot(&game.board),
             color,
             false,
             include_regular_mana_move_windows,
         )
     } else {
         exact_score_path_window_from_summary(
-            &mana_snapshot,
+            include_regular_mana_move_windows.then(|| context.mana_snapshot(&game.board)),
             color,
             my_exact_summary.expect("exact strategic analysis should be available"),
             include_regular_mana_move_windows,
@@ -1572,14 +1686,14 @@ pub(crate) fn evaluate_preferability_with_context(
     let opponent_score_path_window = if use_legacy_formula {
         score_path_window_to_any_pool_with_snapshot(
             &game.board,
-            &mana_snapshot,
+            context.mana_snapshot(&game.board),
             color.other(),
             false,
             include_regular_mana_move_windows,
         )
     } else {
         exact_score_path_window_from_summary(
-            &mana_snapshot,
+            include_regular_mana_move_windows.then(|| context.mana_snapshot(&game.board)),
             color.other(),
             opponent_exact_summary.expect("exact strategic analysis should be available"),
             include_regular_mana_move_windows,
@@ -1615,7 +1729,7 @@ pub(crate) fn evaluate_preferability_with_context(
         let immediate_window = if use_legacy_formula {
             immediate_score_window_summary_with_snapshot(
                 &game.board,
-                &mana_snapshot,
+                context.mana_snapshot(&game.board),
                 color,
                 remaining_mon_moves_for_active,
                 false,
@@ -1624,7 +1738,8 @@ pub(crate) fn evaluate_preferability_with_context(
             )
         } else {
             exact_immediate_score_window_from_summary(
-                &mana_snapshot,
+                (include_regular_mana_move_windows && game.player_can_move_mana())
+                    .then(|| context.mana_snapshot(&game.board)),
                 color,
                 my_exact_summary.expect("exact strategic analysis should be available"),
                 include_regular_mana_move_windows && game.player_can_move_mana(),
@@ -1643,7 +1758,7 @@ pub(crate) fn evaluate_preferability_with_context(
             let opponent_next_turn_window = if use_legacy_formula {
                 immediate_score_window_summary_with_snapshot(
                     &game.board,
-                    &mana_snapshot,
+                    context.mana_snapshot(&game.board),
                     color.other(),
                     Config::MONS_MOVES_PER_TURN,
                     true,
@@ -1652,7 +1767,7 @@ pub(crate) fn evaluate_preferability_with_context(
                 )
             } else {
                 exact_immediate_score_window_from_summary(
-                    &mana_snapshot,
+                    include_regular_mana_move_windows.then(|| context.mana_snapshot(&game.board)),
                     color.other(),
                     opponent_exact_summary.expect("exact strategic analysis should be available"),
                     include_regular_mana_move_windows,
@@ -1686,7 +1801,7 @@ pub(crate) fn evaluate_preferability_with_context(
         let opponent_immediate_window = if use_legacy_formula {
             immediate_score_window_summary_with_snapshot(
                 &game.board,
-                &mana_snapshot,
+                context.mana_snapshot(&game.board),
                 color.other(),
                 remaining_mon_moves_for_active,
                 false,
@@ -1695,7 +1810,8 @@ pub(crate) fn evaluate_preferability_with_context(
             )
         } else {
             exact_immediate_score_window_from_summary(
-                &mana_snapshot,
+                (include_regular_mana_move_windows && game.player_can_move_mana())
+                    .then(|| context.mana_snapshot(&game.board)),
                 color.other(),
                 opponent_exact_summary.expect("exact strategic analysis should be available"),
                 include_regular_mana_move_windows && game.player_can_move_mana(),
@@ -1716,7 +1832,7 @@ pub(crate) fn evaluate_preferability_with_context(
             let my_next_turn_window = if use_legacy_formula {
                 immediate_score_window_summary_with_snapshot(
                     &game.board,
-                    &mana_snapshot,
+                    context.mana_snapshot(&game.board),
                     color,
                     Config::MONS_MOVES_PER_TURN,
                     true,
@@ -1725,7 +1841,7 @@ pub(crate) fn evaluate_preferability_with_context(
                 )
             } else {
                 exact_immediate_score_window_from_summary(
-                    &mana_snapshot,
+                    include_regular_mana_move_windows.then(|| context.mana_snapshot(&game.board)),
                     color,
                     my_exact_summary.expect("exact strategic analysis should be available"),
                     include_regular_mana_move_windows,
@@ -1786,7 +1902,7 @@ fn spirit_on_own_base_penalty(board: &Board, mon: Mon, location: Location, penal
 }
 
 fn exact_score_path_window_from_summary(
-    mana_snapshot: &ManaPathSnapshot,
+    mana_snapshot: Option<&ManaPathSnapshot>,
     color: Color,
     exact_summary: ExactColorSummary,
     include_regular_mana_move_windows: bool,
@@ -1794,7 +1910,10 @@ fn exact_score_path_window_from_summary(
     let exact = exact_summary.score_path_window;
     let mut best_steps = exact.best_steps;
     if include_regular_mana_move_windows {
-        for candidate in &mana_snapshot.candidates {
+        for candidate in &mana_snapshot
+            .expect("mana snapshot should be available for regular mana move windows")
+            .candidates
+        {
             if candidate.mana == Mana::Regular(color) {
                 let candidate_steps = candidate.score_steps + 1;
                 best_steps =
@@ -1809,7 +1928,7 @@ fn exact_score_path_window_from_summary(
 }
 
 fn exact_immediate_score_window_from_summary(
-    mana_snapshot: &ManaPathSnapshot,
+    mana_snapshot: Option<&ManaPathSnapshot>,
     color: Color,
     exact_summary: ExactColorSummary,
     allow_mana_move: bool,
@@ -1818,7 +1937,7 @@ fn exact_immediate_score_window_from_summary(
     let mut best_score = exact.best_score;
     if allow_mana_move {
         best_score = best_score.max(best_regular_mana_move_score_window_with_snapshot(
-            mana_snapshot,
+            mana_snapshot.expect("mana snapshot should be available for mana move windows"),
             color,
         ));
     }
@@ -2621,6 +2740,136 @@ mod tests {
 
         assert_eq!(first, second);
         assert_eq!(diagnostics.drainer_immediate_threat_calls, 1);
+    }
+
+    #[test]
+    fn scoring_eval_context_attack_reach_summary_reuses_one_summary_build() {
+        crate::models::automove_exact::clear_exact_query_diagnostics();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 5),
+                    Item::MonWithConsumable {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                        consumable: Consumable::Bomb,
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let context = ScoringEvalContext::new_with_flags(&game, true, true);
+
+        let first =
+            context.drainer_immediate_threats(&game.board, Color::White, Location::new(6, 5));
+        let second =
+            context.drainer_immediate_threats(&game.board, Color::White, Location::new(6, 5));
+        let can_attack_drainer = context.can_attack_target_on_board(
+            &game.board,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            Config::MONS_MOVES_PER_TURN,
+            true,
+        );
+        let can_attack_carrier = context.can_attack_target_on_board(
+            &game.board,
+            Color::Black,
+            Color::White,
+            Location::new(4, 5),
+            Config::MONS_MOVES_PER_TURN,
+            true,
+        );
+        let diagnostics = crate::models::automove_exact::exact_query_diagnostics_snapshot();
+
+        assert_eq!(first, second);
+        assert_eq!(diagnostics.attack_reach_summary_builds, 2);
+        assert_eq!(diagnostics.drainer_immediate_threat_calls, 0);
+        assert!(can_attack_drainer);
+        assert!(can_attack_carrier);
+    }
+
+    #[test]
+    fn scoring_eval_context_attack_reach_summary_preserves_preferability() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(4, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 5),
+                    Item::MonWithConsumable {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                        consumable: Consumable::Bomb,
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let plain_context = ScoringEvalContext::new(&game, true);
+        let summary_context = ScoringEvalContext::new_with_flags(&game, true, true);
+
+        assert_eq!(
+            evaluate_preferability_with_context(
+                &game,
+                Color::White,
+                &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
+                true,
+                &plain_context,
+            ),
+            evaluate_preferability_with_context(
+                &game,
+                Color::White,
+                &RUNTIME_FAST_DRAINER_CONTEXT_SCORING_WEIGHTS,
+                true,
+                &summary_context,
+            )
+        );
     }
 
     #[test]
@@ -3707,15 +3956,26 @@ fn is_drainer_under_danger_threat_with_context(
         || crate::models::automove_exact::exact_board_hash(board),
         ScoringEvalContext::board_hash,
     );
-    crate::models::automove_exact::can_attack_target_on_board_with_hash(
-        board,
-        board_hash,
-        color.other(),
-        color,
-        location,
-        Config::MONS_MOVES_PER_TURN,
-        true,
-    )
+    if let Some(context) = context {
+        context.can_attack_target_on_board(
+            board,
+            color.other(),
+            color,
+            location,
+            Config::MONS_MOVES_PER_TURN,
+            true,
+        )
+    } else {
+        crate::models::automove_exact::can_attack_target_on_board_with_hash(
+            board,
+            board_hash,
+            color.other(),
+            color,
+            location,
+            Config::MONS_MOVES_PER_TURN,
+            true,
+        )
+    }
 }
 
 fn is_drainer_under_immediate_threat(

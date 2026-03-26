@@ -461,6 +461,8 @@ fn calibration_turn_engine_config(config: SmartSearchConfig) -> TurnEngineConfig
         enable_spirit_family: config.turn_engine_enable_spirit_family,
         scoring_weights: config.scoring_weights,
         allow_exact_static_evaluation: config.enable_static_exact_evaluation,
+        enable_lazy_oracle_score_window_projection: config
+            .enable_turn_engine_lazy_oracle_score_window_projection,
     }
 }
 
@@ -5487,7 +5489,7 @@ fn smart_automove_pro_reliability_hotspot_probe() {
                 let exact_diag = exact_query_diagnostics_snapshot();
 
                 println!(
-                    "HOTSPOT label={} move={} ms={:.2} selector(child_calls={} children={} fully_scored={} shortlist={} full_pass={} move_eff_builds={} move_eff_hits={} prefer_builds={} prefer_hits={} head_calls={} head_hits={} last_stage={}) exact(attack_calls={} attack_hits={} threat_calls={} payload_calls={} tactical_spirit_calls={} tactical_spirit_hits={} secure_mana_calls={} secure_mana_hits={} pickup_calls={} pickup_hits={}) engine(cache_hits={} cache_misses={} accepted={} reply_calls={}) fen={}",
+                    "HOTSPOT label={} move={} ms={:.2} selector(child_calls={} children={} fully_scored={} shortlist={} full_pass={} move_eff_builds={} move_eff_hits={} prefer_builds={} prefer_hits={} head_calls={} head_hits={} last_stage={}) exact(attack_summary_builds={} attack_calls={} attack_hits={} threat_calls={} payload_calls={} tactical_spirit_calls={} tactical_spirit_hits={} secure_mana_calls={} secure_mana_hits={} pickup_calls={} pickup_hits={}) engine(cache_hits={} cache_misses={} accepted={} reply_calls={}) fen={}",
                     case.label,
                     Input::fen_from_array(&inputs),
                     elapsed_ms,
@@ -5503,6 +5505,7 @@ fn smart_automove_pro_reliability_hotspot_probe() {
                     selector_diag.head_plan_calls,
                     selector_diag.head_plan_hits,
                     selector_diag.last_return_stage,
+                    exact_diag.attack_reach_summary_builds,
                     exact_diag.attack_reach_calls,
                     exact_diag.attack_reach_cache_hits,
                     exact_diag.drainer_immediate_threat_calls,

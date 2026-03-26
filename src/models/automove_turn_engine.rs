@@ -33,6 +33,7 @@ pub(crate) struct TurnEngineConfig {
     pub enable_spirit_family: bool,
     pub scoring_weights: &'static ScoringWeights,
     pub allow_exact_static_evaluation: bool,
+    pub enable_lazy_oracle_score_window_projection: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -371,6 +372,55 @@ struct ActionSeed {
     priority: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum TurnEngineProjectionProfile {
+    SafeProgressOnly,
+    OpponentProgressOnly,
+    DrainerOpportunity,
+    SpiritScoreOnly,
+    SpiritOpportunity,
+    SelectorWindow,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct TurnEngineProjectionMemoKey {
+    state_hash: u64,
+    color: Color,
+    profile: TurnEngineProjectionProfile,
+}
+
+#[derive(Default)]
+struct TurnEngineProjectionMemo {
+    entries: HashMap<TurnEngineProjectionMemoKey, ExactTurnTacticalProjection>,
+}
+
+impl TurnEngineProjectionMemo {
+    fn projection(
+        &mut self,
+        game: &MonsGame,
+        color: Color,
+        state_hash: u64,
+        profile: TurnEngineProjectionProfile,
+    ) -> ExactTurnTacticalProjection {
+        let key = TurnEngineProjectionMemoKey {
+            state_hash,
+            color,
+            profile,
+        };
+        if let Some(cached) = self.entries.get(&key).copied() {
+            return cached;
+        }
+        let projection = exact_turn_tactical_projection_with_search_hash(
+            game,
+            color,
+            state_hash,
+            tactical_projection_profile_flags(profile),
+        );
+        self.entries.insert(key, projection);
+        projection
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum OpportunityKind {
     ImmediateScore,
@@ -660,7 +710,7 @@ pub(crate) fn pro_v2_turn_engine_eligible(game: &MonsGame) -> bool {
 
 #[cfg(test)]
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TurnEnginePlanDigest {
     pub head_inputs_fen: String,
     pub head_family: TurnPlanFamily,
@@ -3560,6 +3610,8 @@ fn evaluate_plan_with_replies(
         enable_spirit_family: config.enable_spirit_family,
         scoring_weights: config.scoring_weights,
         allow_exact_static_evaluation: config.allow_exact_static_evaluation,
+        enable_lazy_oracle_score_window_projection: config
+            .enable_lazy_oracle_score_window_projection,
     };
     let opponent_plans = match generate_plans_for_mode(
         &after,
@@ -3624,6 +3676,8 @@ fn evaluate_plan_with_replies(
         enable_spirit_family: config.enable_spirit_family,
         scoring_weights: config.scoring_weights,
         allow_exact_static_evaluation: config.allow_exact_static_evaluation,
+        enable_lazy_oracle_score_window_projection: config
+            .enable_lazy_oracle_score_window_projection,
     };
     let reply_plans = match generate_plans_for_mode(
         &after_opponent,
@@ -4147,7 +4201,9 @@ fn discover_turn_opportunities_v2(
     .into_iter()
     .any(|family| family_allowed(allowed_families, family))
     {
-        seeds.extend(oracle_walk_seeds(game, perspective, context, allowed_families).into_iter());
+        seeds.extend(
+            oracle_walk_seeds(game, perspective, context, allowed_families, config).into_iter(),
+        );
     }
     if family_allowed(allowed_families, TurnPlanFamily::SpiritImpact) {
         seeds.extend(spirit_impact_seeds(game, perspective, config));
@@ -4299,6 +4355,7 @@ fn generate_action_seeds_v1(
             MonsGameModel::search_state_hash(game),
         ),
         None,
+        config,
     ));
     seeds.extend(spirit_impact_seeds(game, perspective, config));
     seeds.extend(mana_tempo_seeds(game, perspective));
@@ -5003,6 +5060,23 @@ fn oracle_walk_seeds(
     perspective: Color,
     context: ExactOpportunityContext,
     allowed_families: Option<&[TurnPlanFamily]>,
+    config: TurnEngineConfig,
+) -> Vec<ActionSeed> {
+    oracle_walk_seeds_with_projection_mode(
+        game,
+        perspective,
+        context,
+        allowed_families,
+        config.enable_lazy_oracle_score_window_projection,
+    )
+}
+
+fn oracle_walk_seeds_with_projection_mode(
+    game: &MonsGame,
+    perspective: Color,
+    context: ExactOpportunityContext,
+    allowed_families: Option<&[TurnPlanFamily]>,
+    use_lazy_score_window_projection: bool,
 ) -> Vec<ActionSeed> {
     if remaining_moves_for_color(game, perspective) <= 0 {
         return Vec::new();
@@ -5037,6 +5111,7 @@ fn oracle_walk_seeds(
         .unwrap_or(Config::BOARD_SIZE * 3);
     let own_drainer = find_awake_drainer_location(&game.board, perspective);
     let mut seeds = Vec::new();
+    let mut projection_memo = TurnEngineProjectionMemo::default();
 
     for (actor, item) in game.board.occupied() {
         let Some(mon) = item.mon().copied() else {
@@ -5072,14 +5147,32 @@ fn oracle_walk_seeds(
                 continue;
             }
 
-            let need_after_turn = actor_capabilities.tactical_flags != 0;
             let need_after_spirit = actor_capabilities.can_emit_spirit;
-            let after_state_hash = if need_after_turn || need_after_spirit {
-                Some(MonsGameModel::search_state_hash(&after))
+            let need_after_turn = if use_lazy_score_window_projection {
+                actor_capabilities.projection_profile.is_some()
             } else {
-                None
+                actor_capabilities.tactical_flags != 0
             };
-            let after_turn = if need_after_turn {
+            let need_after_score_window =
+                use_lazy_score_window_projection && actor_capabilities.needs_score_window;
+            let after_state_hash =
+                if need_after_turn || need_after_score_window || need_after_spirit {
+                    Some(MonsGameModel::search_state_hash(&after))
+                } else {
+                    None
+                };
+            let after_turn = if use_lazy_score_window_projection {
+                actor_capabilities.projection_profile.map(|profile| {
+                    projection_memo.projection(
+                        &after,
+                        perspective,
+                        after_state_hash.expect(
+                            "after_state_hash present when lazy oracle projection is needed",
+                        ),
+                        profile,
+                    )
+                })
+            } else if need_after_turn {
                 Some(exact_turn_tactical_projection_with_search_hash(
                     &after,
                     perspective,
@@ -5118,6 +5211,27 @@ fn oracle_walk_seeds(
                         .unwrap_or(Config::BOARD_SIZE * 3)
                 })
                 .unwrap_or(before_opponent_steps);
+            let mut after_score_window_value = None;
+            let mut load_after_score_window = || {
+                *after_score_window_value.get_or_insert_with(|| {
+                    if use_lazy_score_window_projection {
+                        projection_memo
+                            .projection(
+                                &after,
+                                perspective,
+                                after_state_hash.expect(
+                                    "after_state_hash present when score-window projection is needed",
+                                ),
+                                TurnEngineProjectionProfile::SelectorWindow,
+                            )
+                            .same_turn_score_window_value
+                    } else {
+                        after_turn
+                            .map(|summary| summary.same_turn_score_window_value)
+                            .unwrap_or(0)
+                    }
+                })
+            };
 
             if actor_capabilities.can_emit_supermana && after_super_steps < before_super_steps {
                 seeds.push(ActionSeed {
@@ -5130,10 +5244,7 @@ fn oracle_walk_seeds(
                         + after_safety
                             .saturating_sub(before_safety)
                             .saturating_mul(100)
-                        + after_turn
-                            .map(|summary| summary.same_turn_score_window_value)
-                            .unwrap_or(0)
-                            .saturating_mul(160),
+                        + load_after_score_window().saturating_mul(160),
                 });
             }
 
@@ -5173,17 +5284,28 @@ fn oracle_walk_seeds(
                 }
             }
 
-            let spirit_score_improved = actor_capabilities.can_emit_spirit
-                && after_turn.map_or(false, |summary| {
-                    summary.spirit_assisted_score_value > before_turn.spirit_assisted_score_value
-                        || summary.same_turn_score_window_value
-                            > before_turn.same_turn_score_window_value
-                });
             let spirit_setup_gain_delta = after_spirit.0.saturating_sub(before_spirit.0);
             let spirit_utility_delta = after_spirit.1.saturating_sub(before_spirit.1);
             let spirit_setup_improved = spirit_setup_gain_delta > 0 || spirit_utility_delta > 0;
+            let spirit_score_base_improved = actor_capabilities.can_emit_spirit
+                && after_turn.map_or(false, |summary| {
+                    summary.spirit_assisted_score_value > before_turn.spirit_assisted_score_value
+                });
+            let spirit_score_window_improved = actor_capabilities.can_emit_spirit
+                && if use_lazy_score_window_projection {
+                    !spirit_score_base_improved
+                        && !spirit_setup_improved
+                        && load_after_score_window() > before_turn.same_turn_score_window_value
+                } else {
+                    after_turn.map_or(false, |summary| {
+                        summary.same_turn_score_window_value
+                            > before_turn.same_turn_score_window_value
+                    })
+                };
             if actor_capabilities.can_emit_spirit
-                && (spirit_score_improved || spirit_setup_improved)
+                && (spirit_score_base_improved
+                    || spirit_score_window_improved
+                    || spirit_setup_improved)
             {
                 seeds.push(ActionSeed {
                     family: TurnPlanFamily::SpiritImpact,
@@ -5194,9 +5316,7 @@ fn oracle_walk_seeds(
                             .unwrap_or(0)
                             .saturating_sub(before_turn.spirit_assisted_score_value)
                             .saturating_mul(200)
-                        + after_turn
-                            .map(|summary| summary.same_turn_score_window_value)
-                            .unwrap_or(0)
+                        + load_after_score_window()
                             .saturating_sub(before_turn.same_turn_score_window_value)
                             .saturating_mul(220)
                         + spirit_setup_gain_delta.saturating_mul(320)
@@ -5391,6 +5511,8 @@ struct OracleWalkActorCapabilities {
     can_emit_safety: bool,
     can_emit_spirit: bool,
     tactical_flags: u8,
+    projection_profile: Option<TurnEngineProjectionProfile>,
+    needs_score_window: bool,
 }
 
 impl OracleWalkActorCapabilities {
@@ -5429,6 +5551,29 @@ fn tactical_projection_flags(
     flags
 }
 
+fn tactical_projection_profile_flags(profile: TurnEngineProjectionProfile) -> u8 {
+    match profile {
+        TurnEngineProjectionProfile::SafeProgressOnly => {
+            tactical_projection_flags(true, false, false, false, false)
+        }
+        TurnEngineProjectionProfile::OpponentProgressOnly => {
+            tactical_projection_flags(false, true, false, false, false)
+        }
+        TurnEngineProjectionProfile::DrainerOpportunity => {
+            tactical_projection_flags(false, true, false, true, false)
+        }
+        TurnEngineProjectionProfile::SpiritScoreOnly => {
+            tactical_projection_flags(false, false, true, false, false)
+        }
+        TurnEngineProjectionProfile::SpiritOpportunity => {
+            tactical_projection_flags(true, false, true, false, false)
+        }
+        TurnEngineProjectionProfile::SelectorWindow => {
+            tactical_projection_flags(false, false, false, false, true)
+        }
+    }
+}
+
 fn oracle_walk_actor_capabilities(
     mon_kind: MonKind,
     allow_supermana: bool,
@@ -5440,6 +5585,19 @@ fn oracle_walk_actor_capabilities(
     let can_emit_opponent_mana = allow_opponent_mana && mon_kind != MonKind::Spirit;
     let can_emit_safety = allow_safety;
     let can_emit_spirit = allow_spirit && mon_kind == MonKind::Spirit;
+    let projection_profile = if can_emit_supermana && can_emit_spirit {
+        Some(TurnEngineProjectionProfile::SpiritOpportunity)
+    } else if can_emit_supermana {
+        Some(TurnEngineProjectionProfile::SafeProgressOnly)
+    } else if can_emit_opponent_mana && allow_spirit {
+        Some(TurnEngineProjectionProfile::DrainerOpportunity)
+    } else if can_emit_opponent_mana {
+        Some(TurnEngineProjectionProfile::OpponentProgressOnly)
+    } else if can_emit_spirit {
+        Some(TurnEngineProjectionProfile::SpiritScoreOnly)
+    } else {
+        None
+    };
     let tactical_flags = tactical_projection_flags(
         can_emit_supermana,
         can_emit_opponent_mana,
@@ -5454,6 +5612,8 @@ fn oracle_walk_actor_capabilities(
         can_emit_safety,
         can_emit_spirit,
         tactical_flags,
+        projection_profile,
+        needs_score_window: can_emit_supermana || can_emit_spirit,
     }
 }
 
@@ -6437,6 +6597,7 @@ mod tests {
             enable_spirit_family: true,
             scoring_weights: &DEFAULT_SCORING_WEIGHTS,
             allow_exact_static_evaluation: false,
+            enable_lazy_oracle_score_window_projection: false,
         }
     }
 
@@ -6455,6 +6616,7 @@ mod tests {
             enable_spirit_family: true,
             scoring_weights: &DEFAULT_SCORING_WEIGHTS,
             allow_exact_static_evaluation: false,
+            enable_lazy_oracle_score_window_projection: false,
         }
     }
 
@@ -6464,6 +6626,8 @@ mod tests {
             oracle_walk_actor_capabilities(MonKind::Mystic, false, false, false, true);
         assert!(!capabilities.any_seed());
         assert_eq!(capabilities.tactical_flags, 0);
+        assert_eq!(capabilities.projection_profile, None);
+        assert!(!capabilities.needs_score_window);
     }
 
     #[test]
@@ -6472,6 +6636,8 @@ mod tests {
             oracle_walk_actor_capabilities(MonKind::Spirit, false, true, false, false);
         assert!(!capabilities.any_seed());
         assert_eq!(capabilities.tactical_flags, 0);
+        assert_eq!(capabilities.projection_profile, None);
+        assert!(!capabilities.needs_score_window);
     }
 
     #[test]
@@ -6486,6 +6652,11 @@ mod tests {
             EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS
                 | EXACT_TURN_TACTICAL_NEED_SPIRIT_DENIAL
         );
+        assert_eq!(
+            capabilities.projection_profile,
+            Some(TurnEngineProjectionProfile::DrainerOpportunity)
+        );
+        assert!(!capabilities.needs_score_window);
     }
 
     #[test]
@@ -6500,6 +6671,45 @@ mod tests {
                 | EXACT_TURN_TACTICAL_NEED_SPIRIT_SCORE
                 | EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW
         );
+        assert_eq!(
+            capabilities.projection_profile,
+            Some(TurnEngineProjectionProfile::SpiritOpportunity)
+        );
+        assert!(capabilities.needs_score_window);
+    }
+
+    #[test]
+    fn oracle_walk_lazy_score_window_preserves_primary_spirit_setup_fixture() {
+        let game = primary_spirit_setup_fixture();
+        let legacy = turn_engine_ranked_plan_digests_for_test(
+            &game,
+            Color::White,
+            pro_v2_engine_config(),
+            8,
+        );
+        let mut lazy_config = pro_v2_engine_config();
+        lazy_config.enable_lazy_oracle_score_window_projection = true;
+        let lazy = turn_engine_ranked_plan_digests_for_test(&game, Color::White, lazy_config, 8);
+
+        assert!(!legacy.is_empty());
+        assert_eq!(lazy, legacy);
+    }
+
+    #[test]
+    fn oracle_walk_lazy_score_window_preserves_primary_pvs_fixture() {
+        let game = primary_pvs_sensitive_search_fixture();
+        let legacy = turn_engine_ranked_plan_digests_for_test(
+            &game,
+            Color::Black,
+            pro_v2_engine_config(),
+            8,
+        );
+        let mut lazy_config = pro_v2_engine_config();
+        lazy_config.enable_lazy_oracle_score_window_projection = true;
+        let lazy = turn_engine_ranked_plan_digests_for_test(&game, Color::Black, lazy_config, 8);
+
+        assert!(!legacy.is_empty());
+        assert_eq!(lazy, legacy);
     }
 
     fn exhaustive_same_turn_reachable<F>(game: &MonsGame, color: Color, predicate: F) -> bool

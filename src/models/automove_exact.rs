@@ -445,6 +445,67 @@ pub(crate) struct ExactStrategicAnalysisCache {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct AttackReachSummaryKey {
+    pub board_hash: u64,
+    pub attacker_color: Color,
+    pub target_color: Color,
+    pub remaining_moves: i32,
+    pub can_use_action: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AttackReachSummary {
+    action_threat_counts: [u8; BOARD_CELLS],
+    bomb_threat_counts: [u8; BOARD_CELLS],
+    guarded_targets: [bool; BOARD_CELLS],
+}
+
+impl Default for AttackReachSummary {
+    fn default() -> Self {
+        Self {
+            action_threat_counts: [0; BOARD_CELLS],
+            bomb_threat_counts: [0; BOARD_CELLS],
+            guarded_targets: [false; BOARD_CELLS],
+        }
+    }
+}
+
+impl AttackReachSummary {
+    #[inline]
+    pub(crate) fn can_attack_target(self, target: Location) -> bool {
+        let slot = target.index();
+        self.bomb_threat_counts[slot] > 0
+            || (!self.guarded_targets[slot] && self.action_threat_counts[slot] > 0)
+    }
+
+    #[inline]
+    pub(crate) fn immediate_threats(self, target: Location) -> (i32, i32) {
+        let slot = target.index();
+        (
+            self.action_threat_counts[slot] as i32,
+            self.bomb_threat_counts[slot] as i32,
+        )
+    }
+
+    #[inline]
+    fn mark_guarded(&mut self, target: Location, guarded: bool) {
+        self.guarded_targets[target.index()] = guarded;
+    }
+
+    #[inline]
+    fn add_action_threat(&mut self, target: Location) {
+        let slot = target.index();
+        self.action_threat_counts[slot] = self.action_threat_counts[slot].saturating_add(1);
+    }
+
+    #[inline]
+    fn add_bomb_threat(&mut self, target: Location) {
+        let slot = target.index();
+        self.bomb_threat_counts[slot] = self.bomb_threat_counts[slot].saturating_add(1);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ExactAttackQueryKey {
     board_hash: u64,
     attacker_color: Color,
@@ -611,6 +672,7 @@ pub(crate) struct ExactQueryDiagnostics {
     #[cfg(any(target_arch = "wasm32", test))]
     pub active_tactical_summary_builds: u32,
     pub passive_strategic_summary_builds: u32,
+    pub attack_reach_summary_builds: u32,
     pub attack_reach_calls: u32,
     pub attack_reach_cache_hits: u32,
     pub drainer_immediate_threat_calls: u32,
@@ -989,6 +1051,114 @@ pub(crate) fn can_attack_target_on_board(
         remaining_moves,
         can_use_action,
     )
+}
+
+pub(crate) fn attack_reach_summary_with_hash(
+    board: &Board,
+    board_hash: u64,
+    attacker_color: Color,
+    target_color: Color,
+    remaining_moves: i32,
+    can_use_action: bool,
+) -> AttackReachSummary {
+    update_exact_query_diagnostics(|diagnostics| diagnostics.attack_reach_summary_builds += 1);
+
+    let mut summary = AttackReachSummary::default();
+    if remaining_moves < 0 || !can_use_action {
+        return summary;
+    }
+
+    let occupied_targets: Vec<Location> = board.occupied().map(|(location, _)| location).collect();
+    for &target in &occupied_targets {
+        summary.mark_guarded(
+            target,
+            exact_is_location_guarded_by_angel(board, target_color, target),
+        );
+    }
+
+    for (start, item) in board.occupied() {
+        let mon = match item {
+            Item::Mon { mon }
+            | Item::MonWithMana { mon, .. }
+            | Item::MonWithConsumable { mon, .. } => mon,
+            Item::Mana { .. } | Item::Consumable { .. } => continue,
+        };
+        if mon.color != attacker_color || mon.is_fainted() {
+            continue;
+        }
+
+        let allow_pick_bomb = !matches!(item, Item::MonWithMana { .. });
+        let start_payload = match item {
+            Item::MonWithConsumable {
+                consumable: Consumable::Bomb,
+                ..
+            } => ExactActorPayload::Bomb,
+            _ => ExactActorPayload::None,
+        };
+        let mut actor_move_memo = ExactActorMoveMemo::new();
+        let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
+        let mut seen = ExactPayloadSeen::new();
+        queue.push_back((start, start_payload, 0));
+        seen.insert(start, start_payload);
+
+        while let Some((location, payload, steps)) = queue.pop_front() {
+            if steps > remaining_moves {
+                continue;
+            }
+
+            if payload == ExactActorPayload::Bomb {
+                for &target in &occupied_targets {
+                    if location.distance(&target) <= 3 {
+                        summary.add_bomb_threat(target);
+                    }
+                }
+            }
+
+            if !matches!(board.square(location), Square::MonBase { .. }) {
+                match mon.kind {
+                    MonKind::Mystic => {
+                        for &target in &occupied_targets {
+                            if (location.i - target.i).abs() == 2
+                                && (location.j - target.j).abs() == 2
+                            {
+                                summary.add_action_threat(target);
+                            }
+                        }
+                    }
+                    MonKind::Demon => {
+                        for &target in &occupied_targets {
+                            if demon_has_line_attack(board, location, target) {
+                                summary.add_action_threat(target);
+                            }
+                        }
+                    }
+                    MonKind::Drainer | MonKind::Angel | MonKind::Spirit => {}
+                }
+            }
+
+            if steps == remaining_moves {
+                continue;
+            }
+
+            for &next in location.nearby_locations_ref() {
+                if let Some(next_payload) = actor_move_memo.payload_after_move(
+                    board,
+                    mon.kind,
+                    mon.color,
+                    payload,
+                    next,
+                    allow_pick_bomb,
+                ) {
+                    if seen.insert(next, next_payload) {
+                        queue.push_back((next, next_payload, steps + 1));
+                    }
+                }
+            }
+        }
+    }
+
+    let _ = board_hash;
+    summary
 }
 
 pub(crate) fn can_attack_target_on_board_with_hash(
@@ -4564,6 +4734,145 @@ mod tests {
                 true,
             )
         );
+    }
+
+    #[test]
+    fn attack_reach_summary_matches_current_helpers_and_immediate_threats() {
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 5),
+                    Item::MonWithConsumable {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                        consumable: Consumable::Bomb,
+                    },
+                ),
+                (
+                    Location::new(2, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 1),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+        let summary =
+            attack_reach_summary_with_hash(&board, board_hash, Color::Black, Color::White, 0, true);
+
+        assert_eq!(
+            summary.immediate_threats(Location::new(6, 5)),
+            drainer_immediate_threats_with_hash(
+                &board,
+                Color::White,
+                Location::new(6, 5),
+                board_hash,
+            )
+        );
+        for target in [
+            Location::new(6, 5),
+            Location::new(6, 4),
+            Location::new(4, 5),
+        ] {
+            assert_eq!(
+                summary.can_attack_target(target),
+                can_attack_target_on_board_with_hash(
+                    &board,
+                    board_hash,
+                    Color::Black,
+                    Color::White,
+                    target,
+                    0,
+                    true,
+                ),
+                "target {target:?} should match summary parity",
+            );
+        }
+    }
+
+    #[test]
+    fn attack_reach_summary_matches_moving_attack_queries() {
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(2, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(1, 5),
+                    Item::MonWithConsumable {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                        consumable: Consumable::Bomb,
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+        let summary =
+            attack_reach_summary_with_hash(&board, board_hash, Color::Black, Color::White, 2, true);
+
+        for target in [Location::new(6, 5), Location::new(4, 5)] {
+            assert_eq!(
+                summary.can_attack_target(target),
+                can_attack_target_on_board_with_hash(
+                    &board,
+                    board_hash,
+                    Color::Black,
+                    Color::White,
+                    target,
+                    2,
+                    true,
+                ),
+                "target {target:?} should match moving attack parity",
+            );
+        }
     }
 
     #[test]

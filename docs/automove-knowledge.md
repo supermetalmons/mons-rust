@@ -30,6 +30,7 @@ This document keeps only durable lessons that should shape future automove work.
 - Keep ignored harness test names unique; `cargo test` substring filters can accidentally run the wrong stage.
 - Candidate logs belong under `target/experiment-runs/<candidate>/`; runtime-preflight state belongs under `target/experiment-stamps/`.
 - When bounded `pro-reliability` stalls, prefer a fresh live duel sample over the synthetic hotspot probe when choosing the next split. On this ProV2 line the visible wall has jumped across three different surfaces in consecutive iterations: selector ordering, macro oracle projection, and turn-planner targeted score-window queries.
+- When a live sample clearly moves the wall to a new surface, follow the moved wall immediately instead of spending another iteration on the old one. In the latest ProV2 wave, the useful oracle cut (`v40`) pushed the blocker back into `search_score -> ranked_child_states`, and a follow-up search-side reuse cut (`v41`) reduced that search stack further even though it still was not promotable.
 
 ## Mistakes Not To Repeat
 
