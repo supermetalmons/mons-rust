@@ -13,6 +13,7 @@ This document keeps only durable lessons that should shape future automove work.
 - Drainer safety needs near-hard treatment in production search; soft penalties alone miss obvious blunders.
 - Root reply-risk guards and efficiency tie-breaks still earn their keep because they eliminate fake-good roots before deeper search.
 - Opening-specific latency guardrails matter. A stronger search that stalls on the first real black reply is not promotable.
+- Hybrid profile-level fallbacks must respect the retained opening and eligibility guards before they call into expensive plan probes; otherwise the comparison step itself can become the stage-1 CPU regression even when move selection stays unchanged.
 - Production wasm must stay single-shot and predictable. Deferred or post-return search is still not release-safe.
 - Wrapper-only tuning can recover specific cross-budget lanes, but it saturates quickly. When many tiny wrapper branches accumulate, the next gain usually needs shared engine/search work instead.
 - Config knob space is exhausted. Future gains need new code, not more `SmartSearchConfig` permutations.

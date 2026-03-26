@@ -6,7 +6,7 @@ use crate::models::scoring::{
 use crate::*;
 use std::cell::RefCell;
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 const TURN_ENGINE_CACHE_MAX_ENTRIES: usize = 4096;
 const TURN_ENGINE_COMPILE_LIMIT_MAX: usize = 256;
@@ -15,6 +15,7 @@ const TURN_ENGINE_COMPILE_LIMIT_MAX: usize = 256;
 pub(crate) enum TurnEngineMode {
     ProV1,
     ProV2,
+    ProV3,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -252,6 +253,30 @@ pub(crate) struct TurnPlan {
     pub head_utility: TurnEngineUtility,
     pub head_family: TurnPlanFamily,
     pub goal_family: TurnPlanFamily,
+    pub package_meta: TurnPackageMeta,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum TurnPackageKind {
+    ImmediateScore,
+    SecureProgress,
+    Attack,
+    Spirit,
+    Safety,
+    ManaTempo,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct TurnPackageMeta {
+    pub kind: Option<TurnPackageKind>,
+    pub head_actor: Option<Location>,
+    pub head_target: Option<Location>,
+    pub score_gain: i32,
+    pub deny_gain: i32,
+    pub drainer_safety_delta: i32,
+    pub spirit_only_setup: bool,
+    pub ends_nonnegative_drainer_safety: bool,
+    pub opponent_immediate_window_after: i32,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -358,7 +383,7 @@ pub(crate) enum OpportunityKind {
     ManaTempo,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub(crate) struct OpportunityBudget {
     pub mon_moves_needed: i32,
     pub needs_action: bool,
@@ -384,6 +409,23 @@ pub(crate) struct TurnOpportunity {
     pub priority: i32,
     pub budget: OpportunityBudget,
     pub delta: OpportunityDelta,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct TurnPackageMemoKey {
+    state_hash: u64,
+    kind: TurnPackageKind,
+    actor: Option<Location>,
+    endpoint: Option<Location>,
+    target: Option<Location>,
+    budget: TurnPackageBudget,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+struct TurnPackageBudget {
+    remaining_mon_moves: i32,
+    can_use_action: bool,
+    can_move_mana: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -652,6 +694,15 @@ pub(crate) fn turn_engine_ranked_plan_digests_for_test(
             Ok(plans) => plans,
             Err(_) => Vec::new(),
         },
+        TurnEngineMode::ProV3 => match generate_package_plans_v3(
+            game,
+            perspective,
+            config,
+            config.own_seed_cap.max(1),
+        ) {
+            Ok(plans) => plans,
+            Err(_) => Vec::new(),
+        },
         TurnEngineMode::ProV1 => match generate_turn_plans(
             game,
             perspective,
@@ -906,6 +957,7 @@ fn build_best_plan(
     match config.mode {
         TurnEngineMode::ProV1 => build_best_plan_v1(game, perspective, config),
         TurnEngineMode::ProV2 => build_best_opportunity_plan(game, perspective, config),
+        TurnEngineMode::ProV3 => build_best_package_plan_v3(game, perspective, config),
     }
 }
 
@@ -987,6 +1039,7 @@ fn fallback_single_action_plan(
             head_utility: evaluate_state_utility(&after, game, perspective, config),
             head_family: seed.family,
             goal_family: seed.family,
+            package_meta: TurnPackageMeta::default(),
         };
         plan.utility = evaluate_plan_with_replies(game, &plan, perspective, config);
         let replace = best_plan.as_ref().map_or(true, |current| {
@@ -1008,10 +1061,36 @@ fn compare_plans(left: &TurnPlan, right: &TurnPlan) -> Ordering {
         right.head_utility,
         right.head_family,
     )
+    .then_with(|| compare_package_meta(left.package_meta, right.package_meta))
     .then_with(|| family_rank(right.goal_family).cmp(&family_rank(left.goal_family)))
     .then_with(|| family_rank(right.head_family).cmp(&family_rank(left.head_family)))
     .then_with(|| right.actions.len().cmp(&left.actions.len()))
     .then_with(|| left.compiled_chunks.cmp(&right.compiled_chunks))
+}
+
+fn compare_package_meta(left: TurnPackageMeta, right: TurnPackageMeta) -> Ordering {
+    (
+        i32::from(left.score_gain > 0),
+        left.score_gain,
+        i32::from(left.deny_gain > 0),
+        left.deny_gain,
+        i32::from(left.drainer_safety_delta > 0),
+        left.drainer_safety_delta,
+        i32::from(left.ends_nonnegative_drainer_safety),
+        i32::from(!left.spirit_only_setup),
+        -left.opponent_immediate_window_after,
+    )
+        .cmp(&(
+            i32::from(right.score_gain > 0),
+            right.score_gain,
+            i32::from(right.deny_gain > 0),
+            right.deny_gain,
+            i32::from(right.drainer_safety_delta > 0),
+            right.drainer_safety_delta,
+            i32::from(right.ends_nonnegative_drainer_safety),
+            i32::from(!right.spirit_only_setup),
+            -right.opponent_immediate_window_after,
+        ))
 }
 
 #[allow(dead_code)]
@@ -1166,6 +1245,7 @@ fn opportunity_plan_into_turn_plan(plan: OpportunityPlan) -> TurnPlan {
         head_utility: plan.head_utility,
         head_family: plan.head_family,
         goal_family: plan.goal_family,
+        package_meta: TurnPackageMeta::default(),
     }
 }
 
@@ -1208,6 +1288,1099 @@ fn build_best_opportunity_plan(
     }
 
     Ok(best_plan)
+}
+
+type TurnPackageMemo = HashMap<TurnPackageMemoKey, Option<TurnPlan>>;
+
+#[derive(Debug, Clone)]
+struct PackageExecution {
+    game: MonsGame,
+    actions: Vec<TurnAction>,
+    compiled_chunks: Vec<Vec<Input>>,
+}
+
+#[derive(Debug, Clone)]
+struct PackageActorNode {
+    actor: Location,
+    execution: PackageExecution,
+}
+
+fn build_best_package_plan_v3(
+    game: &MonsGame,
+    perspective: Color,
+    config: TurnEngineConfig,
+) -> Result<Option<TurnPlan>, PlanBuildStatus> {
+    let plans = match generate_package_plans_v3(
+        game,
+        perspective,
+        config,
+        config.own_seed_cap.max(1),
+    ) {
+        Ok(plans) if !plans.is_empty() => plans,
+        Ok(_) | Err(PlanBuildStatus::NoPlan) => {
+            return Ok(fallback_single_action_plan(game, perspective, config));
+        }
+        Err(PlanBuildStatus::BudgetExceeded) => return Err(PlanBuildStatus::BudgetExceeded),
+    };
+
+    let mut best_plan: Option<TurnPlan> = None;
+    for mut plan in plans {
+        plan.utility = evaluate_plan_with_replies(game, &plan, perspective, config);
+        let replace = best_plan.as_ref().map_or(true, |current| {
+            compare_plans(&plan, current) == Ordering::Greater
+        });
+        if replace {
+            best_plan = Some(plan);
+        }
+    }
+
+    if let Some(best_plan) = best_plan.as_ref() {
+        update_turn_engine_diagnostics(|diagnostics| diagnostics.accepted_plans += 1);
+        record_accepted_plan_family(best_plan.head_family);
+    }
+
+    Ok(best_plan)
+}
+
+fn generate_package_plans_v3(
+    game: &MonsGame,
+    perspective: Color,
+    config: TurnEngineConfig,
+    plan_cap: usize,
+) -> Result<Vec<TurnPlan>, PlanBuildStatus> {
+    if game.active_color != perspective {
+        return Err(PlanBuildStatus::NoPlan);
+    }
+
+    let mut memo = TurnPackageMemo::new();
+    let mut plans = Vec::new();
+    plans.extend(immediate_score_packages_v3(game, perspective, config, &mut memo));
+    plans.extend(secure_progress_packages_v3(
+        game,
+        perspective,
+        Mana::Supermana,
+        TurnPlanFamily::SafeSupermanaProgress,
+        config,
+        &mut memo,
+    ));
+    plans.extend(secure_progress_packages_v3(
+        game,
+        perspective,
+        Mana::Regular(perspective.other()),
+        TurnPlanFamily::SafeOpponentManaProgress,
+        config,
+        &mut memo,
+    ));
+    plans.extend(attack_packages_v3(game, perspective, config, &mut memo));
+    plans.extend(spirit_packages_v3(game, perspective, config, &mut memo));
+    plans.extend(safety_packages_v3(game, perspective, config, &mut memo));
+    plans.extend(mana_tempo_packages_v3(game, perspective, config, &mut memo));
+
+    if plans.is_empty() {
+        return Err(PlanBuildStatus::NoPlan);
+    }
+
+    let mut dedup = HashSet::new();
+    let mut filtered = Vec::new();
+    for plan in plans {
+        let key = plan
+            .compiled_chunks
+            .iter()
+            .map(|chunk| Input::fen_from_array(chunk.as_slice()))
+            .collect::<Vec<_>>()
+            .join("|");
+        if dedup.insert(key) {
+            filtered.push(plan);
+        }
+    }
+
+    trim_opening_black_setup_only_packages(game, &mut filtered);
+    filtered.sort_by(|left, right| compare_plans(right, left));
+    filtered.truncate(plan_cap.max(4).saturating_mul(2));
+    Ok(filtered)
+}
+
+fn plan_has_concrete_package_value(plan: &TurnPlan) -> bool {
+    let meta = plan.package_meta;
+    meta.score_gain > 0
+        || meta.deny_gain > 0
+        || meta.drainer_safety_delta > 0
+        || (meta.kind.is_some() && !meta.spirit_only_setup)
+}
+
+fn trim_opening_black_setup_only_packages(game: &MonsGame, plans: &mut Vec<TurnPlan>) {
+    if game.active_color != Color::Black || game.turn_number > 4 {
+        return;
+    }
+    if !plans.iter().any(plan_has_concrete_package_value) {
+        return;
+    }
+    plans.retain(|plan| !plan.package_meta.spirit_only_setup || plan_has_concrete_package_value(plan));
+}
+
+fn package_budget(game: &MonsGame, perspective: Color) -> TurnPackageBudget {
+    TurnPackageBudget {
+        remaining_mon_moves: remaining_moves_for_color(game, perspective),
+        can_use_action: game.player_can_use_action(),
+        can_move_mana: game.player_can_move_mana(),
+    }
+}
+
+fn package_meta_for_plan(
+    root: &MonsGame,
+    end: &MonsGame,
+    perspective: Color,
+    kind: TurnPackageKind,
+    head_actor: Option<Location>,
+    head_target: Option<Location>,
+    actions: &[TurnAction],
+) -> TurnPackageMeta {
+    let opponent = perspective.other();
+    let opponent_window_before = exact_turn_summary(root, opponent).same_turn_score_window_value;
+    let opponent_window_after = if end.active_color == opponent {
+        exact_turn_summary(end, opponent).same_turn_score_window_value
+    } else {
+        turn_oracle_context(end, perspective).opponent_immediate_window
+    };
+    let drainer_safety_before = own_drainer_safety_score(&root.board, perspective);
+    let drainer_safety_after = own_drainer_safety_score(&end.board, perspective);
+    let only_spirit_setup = matches!(kind, TurnPackageKind::Spirit)
+        && score_for_color(end, perspective) == score_for_color(root, perspective)
+        && !actions.iter().any(|action| {
+            matches!(
+                action,
+                TurnAction::Attack { .. }
+                    | TurnAction::Bomb { .. }
+                    | TurnAction::ScoreCarry { .. }
+            )
+        });
+
+    TurnPackageMeta {
+        kind: Some(kind),
+        head_actor,
+        head_target,
+        score_gain: score_for_color(end, perspective)
+            .saturating_sub(score_for_color(root, perspective)),
+        deny_gain: opponent_window_before.saturating_sub(opponent_window_after),
+        drainer_safety_delta: drainer_safety_after.saturating_sub(drainer_safety_before),
+        spirit_only_setup: only_spirit_setup,
+        ends_nonnegative_drainer_safety: drainer_safety_after >= 0,
+        opponent_immediate_window_after: opponent_window_after,
+    }
+}
+
+fn build_package_plan(
+    root: &MonsGame,
+    head_state: &MonsGame,
+    execution: PackageExecution,
+    perspective: Color,
+    config: TurnEngineConfig,
+    head_family: TurnPlanFamily,
+    goal_family: TurnPlanFamily,
+    kind: TurnPackageKind,
+    head_actor: Option<Location>,
+    head_target: Option<Location>,
+) -> TurnPlan {
+    let utility = evaluate_state_utility(&execution.game, root, perspective, config);
+    let end_snapshot = TurnSnapshot::from_game(&execution.game);
+    let package_meta = package_meta_for_plan(
+        root,
+        &execution.game,
+        perspective,
+        kind,
+        head_actor,
+        head_target,
+        execution.actions.as_slice(),
+    );
+    TurnPlan {
+        actions: execution.actions,
+        compiled_chunks: execution.compiled_chunks,
+        end_game: execution.game,
+        end_snapshot,
+        utility,
+        head_utility: evaluate_state_utility(head_state, root, perspective, config),
+        head_family,
+        goal_family,
+        package_meta,
+    }
+}
+
+fn explore_actor_walk_nodes(
+    game: &MonsGame,
+    perspective: Color,
+    actor: Location,
+    wanted: Option<Mana>,
+    config: TurnEngineConfig,
+) -> Vec<PackageActorNode> {
+    let mut seen = HashSet::new();
+    let mut queue = VecDeque::new();
+    let start = PackageActorNode {
+        actor,
+        execution: PackageExecution {
+            game: game.clone_for_simulation(),
+            actions: Vec::new(),
+            compiled_chunks: Vec::new(),
+        },
+    };
+    seen.insert((MonsGameModel::search_state_hash(game), actor));
+    queue.push_back(start);
+    let mut nodes = Vec::new();
+
+    while let Some(node) = queue.pop_front() {
+        nodes.push(node.clone());
+        if node.execution.game.active_color != perspective
+            || remaining_moves_for_color(&node.execution.game, perspective) <= 0
+        {
+            continue;
+        }
+        for &next in node.actor.nearby_locations_ref() {
+            let action = if let Some(wanted) = wanted {
+                TurnAction::ScoreCarry {
+                    actor: node.actor,
+                    wanted,
+                    step: next,
+                }
+            } else {
+                TurnAction::Walk {
+                    actor: node.actor,
+                    to: next,
+                }
+            };
+            let Some((after, chunk)) =
+                compile_action(&node.execution.game, perspective, action, config)
+            else {
+                continue;
+            };
+            let key = (MonsGameModel::search_state_hash(&after), next);
+            if !seen.insert(key) {
+                continue;
+            }
+            let mut actions = node.execution.actions.clone();
+            actions.push(action);
+            let mut compiled_chunks = node.execution.compiled_chunks.clone();
+            compiled_chunks.push(chunk);
+            queue.push_back(PackageActorNode {
+                actor: next,
+                execution: PackageExecution {
+                    game: after,
+                    actions,
+                    compiled_chunks,
+                },
+            });
+        }
+    }
+
+    nodes
+}
+
+fn combine_execution(prefix: &PackageExecution, suffix: &PackageExecution) -> PackageExecution {
+    let mut actions = prefix.actions.clone();
+    actions.extend(suffix.actions.iter().copied());
+    let mut compiled_chunks = prefix.compiled_chunks.clone();
+    compiled_chunks.extend(suffix.compiled_chunks.iter().cloned());
+    PackageExecution {
+        game: suffix.game.clone_for_simulation(),
+        actions,
+        compiled_chunks,
+    }
+}
+
+fn input_location(input: &Input) -> Option<Location> {
+    match input {
+        Input::Location(location) => Some(*location),
+        Input::Modifier(_) | Input::Takeback => None,
+    }
+}
+
+fn best_immediate_score_execution_for_carrier(
+    game: &MonsGame,
+    perspective: Color,
+    actor: Location,
+    wanted: Mana,
+    config: TurnEngineConfig,
+) -> Option<PackageExecution> {
+    let start_score = score_for_color(game, perspective);
+    let mut best: Option<PackageExecution> = None;
+    for node in explore_actor_walk_nodes(game, perspective, actor, Some(wanted), config) {
+        let end_score = score_for_color(&node.execution.game, perspective);
+        if end_score <= start_score {
+            continue;
+        }
+        let replace = best.as_ref().map_or(true, |current| {
+            end_score > score_for_color(&current.game, perspective)
+                || (end_score == score_for_color(&current.game, perspective)
+                    && node.execution.compiled_chunks.len() < current.compiled_chunks.len())
+        });
+        if replace {
+            best = Some(node.execution);
+        }
+    }
+    best
+}
+
+fn best_immediate_score_execution_any(
+    game: &MonsGame,
+    perspective: Color,
+    config: TurnEngineConfig,
+) -> Option<(Location, Mana, PackageExecution)> {
+    let mut best: Option<(Location, Mana, PackageExecution)> = None;
+    for (actor, item) in game.board.occupied() {
+        let Item::MonWithMana { mon, mana } = item else {
+            continue;
+        };
+        if mon.color != perspective || mon.is_fainted() {
+            continue;
+        }
+        let Some(execution) =
+            best_immediate_score_execution_for_carrier(game, perspective, actor, *mana, config)
+        else {
+            continue;
+        };
+        let replace = best.as_ref().map_or(true, |(_, _, current)| {
+            score_for_color(&execution.game, perspective) > score_for_color(&current.game, perspective)
+                || (score_for_color(&execution.game, perspective)
+                    == score_for_color(&current.game, perspective)
+                    && execution.compiled_chunks.len() < current.compiled_chunks.len())
+        });
+        if replace {
+            best = Some((actor, *mana, execution));
+        }
+    }
+    best
+}
+
+fn best_safety_execution(
+    game: &MonsGame,
+    perspective: Color,
+    config: TurnEngineConfig,
+) -> Option<PackageExecution> {
+    let drainer = find_awake_drainer_location(&game.board, perspective)?;
+    let before_safety = own_drainer_safety_score(&game.board, perspective);
+    let mut best: Option<PackageExecution> = None;
+    for node in explore_actor_walk_nodes(game, perspective, drainer, None, config) {
+        if node.execution.actions.is_empty() {
+            continue;
+        }
+        let after_safety = own_drainer_safety_score(&node.execution.game.board, perspective);
+        if after_safety <= before_safety {
+            continue;
+        }
+        let replace = best.as_ref().map_or(true, |current| {
+            after_safety > own_drainer_safety_score(&current.game.board, perspective)
+                || (after_safety == own_drainer_safety_score(&current.game.board, perspective)
+                    && node.execution.compiled_chunks.len() < current.compiled_chunks.len())
+        });
+        if replace {
+            best = Some(node.execution);
+        }
+    }
+    best
+}
+
+fn maybe_append_best_suffix(
+    execution: &PackageExecution,
+    perspective: Color,
+    config: TurnEngineConfig,
+) -> PackageExecution {
+    if execution.game.active_color != perspective {
+        return execution.clone();
+    }
+    if let Some(safety_suffix) = (own_drainer_safety_score(&execution.game.board, perspective) < 0)
+        .then(|| best_safety_execution(&execution.game, perspective, config))
+        .flatten()
+    {
+        return combine_execution(execution, &safety_suffix);
+    }
+    if let Some((_, _, score_suffix)) =
+        best_immediate_score_execution_any(&execution.game, perspective, config)
+    {
+        return combine_execution(execution, &score_suffix);
+    }
+    execution.clone()
+}
+
+fn push_plan_if_memorable(
+    plans: &mut Vec<TurnPlan>,
+    memo: &mut TurnPackageMemo,
+    key: TurnPackageMemoKey,
+    plan: Option<TurnPlan>,
+) {
+    memo.insert(key, plan.clone());
+    if let Some(plan) = plan {
+        plans.push(plan);
+    }
+}
+
+fn immediate_score_packages_v3(
+    game: &MonsGame,
+    perspective: Color,
+    config: TurnEngineConfig,
+    memo: &mut TurnPackageMemo,
+) -> Vec<TurnPlan> {
+    let mut plans = Vec::new();
+    let budget = package_budget(game, perspective);
+    for (actor, item) in game.board.occupied() {
+        let Item::MonWithMana { mon, mana } = item else {
+            continue;
+        };
+        if mon.color != perspective || mon.is_fainted() {
+            continue;
+        }
+        let Some(execution) =
+            best_immediate_score_execution_for_carrier(game, perspective, actor, *mana, config)
+        else {
+            continue;
+        };
+        let key = TurnPackageMemoKey {
+            state_hash: MonsGameModel::search_state_hash(game),
+            kind: TurnPackageKind::ImmediateScore,
+            actor: Some(actor),
+            endpoint: execution
+                .compiled_chunks
+                .last()
+                .and_then(|chunk| chunk.last())
+                .and_then(input_location),
+            target: None,
+            budget,
+        };
+        if let Some(cached) = memo.get(&key).cloned().flatten() {
+            plans.push(cached);
+            continue;
+        }
+        let head_state = execution
+            .compiled_chunks
+            .first()
+            .and_then(|chunk| MonsGameModel::apply_inputs_for_search(game, chunk.as_slice()))
+            .unwrap_or_else(|| execution.game.clone_for_simulation());
+        push_plan_if_memorable(
+            &mut plans,
+            memo,
+            key,
+            Some(build_package_plan(
+                game,
+                &head_state,
+                execution,
+                perspective,
+                config,
+                TurnPlanFamily::ImmediateScore,
+                TurnPlanFamily::ImmediateScore,
+                TurnPackageKind::ImmediateScore,
+                Some(actor),
+                None,
+            )),
+        );
+    }
+    plans
+}
+
+fn materialize_scorecarry_path_execution(
+    game: &MonsGame,
+    perspective: Color,
+    actor: Location,
+    wanted: Mana,
+    path: &[Location],
+    config: TurnEngineConfig,
+) -> Option<PackageExecution> {
+    let mut state = game.clone_for_simulation();
+    let mut current_actor = actor;
+    let mut actions = Vec::with_capacity(path.len());
+    let mut compiled_chunks = Vec::with_capacity(path.len());
+    for &step in path {
+        let action = TurnAction::ScoreCarry {
+            actor: current_actor,
+            wanted,
+            step,
+        };
+        let (after, chunk) = compile_action(&state, perspective, action, config)?;
+        actions.push(action);
+        compiled_chunks.push(chunk);
+        state = after;
+        current_actor = step;
+        if state.active_color != perspective {
+            break;
+        }
+    }
+    Some(PackageExecution {
+        game: state,
+        actions,
+        compiled_chunks,
+    })
+}
+
+fn secure_progress_path_candidates_v3(
+    game: &MonsGame,
+    perspective: Color,
+    actor: Location,
+    wanted: Mana,
+    config: TurnEngineConfig,
+) -> Vec<PackageExecution> {
+    let mut suffix_cache = HashMap::<(u64, Location), Option<Vec<Location>>>::new();
+    let max_paths = if remaining_moves_for_color(game, perspective) >= 4 {
+        4
+    } else {
+        3
+    };
+    let branch_depth = remaining_moves_for_color(game, perspective).clamp(1, 2) as usize;
+    let branch_width = 3usize;
+    let mut routes = Vec::new();
+    let mut queue = VecDeque::new();
+    let mut seen = HashSet::new();
+
+    let start = PackageActorNode {
+        actor,
+        execution: PackageExecution {
+            game: game.clone_for_simulation(),
+            actions: Vec::new(),
+            compiled_chunks: Vec::new(),
+        },
+    };
+    seen.insert((MonsGameModel::search_state_hash(game), actor, 0usize));
+    queue.push_back(start);
+
+    while let Some(node) = queue.pop_front() {
+        let state_hash = MonsGameModel::search_state_hash(&node.execution.game);
+        let suffix = suffix_cache
+            .entry((state_hash, node.actor))
+            .or_insert_with(|| {
+                exact_secure_specific_mana_path_from(
+                    &node.execution.game,
+                    perspective,
+                    node.actor,
+                    wanted,
+                )
+            })
+            .clone();
+        if let Some(suffix) = suffix {
+            if !suffix.is_empty() || !node.execution.actions.is_empty() {
+                if let Some(suffix_execution) = materialize_scorecarry_path_execution(
+                    &node.execution.game,
+                    perspective,
+                    node.actor,
+                    wanted,
+                    suffix.as_slice(),
+                    config,
+                ) {
+                    routes.push(combine_execution(&node.execution, &suffix_execution));
+                }
+            }
+        }
+
+        let depth = node.execution.compiled_chunks.len();
+        if depth >= branch_depth
+            || node.execution.game.active_color != perspective
+            || remaining_moves_for_color(&node.execution.game, perspective) <= 0
+        {
+            continue;
+        }
+
+        let mut children = Vec::new();
+        for &next in node.actor.nearby_locations_ref() {
+            let action = TurnAction::ScoreCarry {
+                actor: node.actor,
+                wanted,
+                step: next,
+            };
+            let Some((after, chunk)) = compile_action(&node.execution.game, perspective, action, config)
+            else {
+                continue;
+            };
+            let after_hash = MonsGameModel::search_state_hash(&after);
+            let Some(suffix) = suffix_cache
+                .entry((after_hash, next))
+                .or_insert_with(|| exact_secure_specific_mana_path_from(&after, perspective, next, wanted))
+                .clone()
+            else {
+                continue;
+            };
+            children.push((depth + 1 + suffix.len(), next, after_hash, next, after, chunk, action));
+        }
+
+        children.sort_by_key(|(total_steps, _, _, _, _, _, _)| *total_steps);
+        for (_, _, after_hash, next_actor, after, chunk, action) in
+            children.into_iter().take(branch_width)
+        {
+            if !seen.insert((after_hash, next_actor, depth + 1)) {
+                continue;
+            }
+            let mut actions = node.execution.actions.clone();
+            actions.push(action);
+            let mut compiled_chunks = node.execution.compiled_chunks.clone();
+            compiled_chunks.push(chunk);
+            queue.push_back(PackageActorNode {
+                actor: next_actor,
+                execution: PackageExecution {
+                    game: after,
+                    actions,
+                    compiled_chunks,
+                },
+            });
+        }
+    }
+
+    routes.sort_by(|left, right| {
+        score_for_color(&right.game, perspective)
+            .cmp(&score_for_color(&left.game, perspective))
+            .then_with(|| left.compiled_chunks.len().cmp(&right.compiled_chunks.len()))
+    });
+    let mut dedup = HashSet::new();
+    let mut filtered = Vec::new();
+    for route in routes {
+        let signature = route
+            .compiled_chunks
+            .iter()
+            .map(|chunk| Input::fen_from_array(chunk.as_slice()))
+            .collect::<Vec<_>>()
+            .join("|");
+        if dedup.insert(signature) {
+            filtered.push(route);
+        }
+        if filtered.len() >= max_paths {
+            break;
+        }
+    }
+    filtered
+}
+
+fn secure_progress_packages_v3(
+    game: &MonsGame,
+    perspective: Color,
+    wanted: Mana,
+    family: TurnPlanFamily,
+    config: TurnEngineConfig,
+    memo: &mut TurnPackageMemo,
+) -> Vec<TurnPlan> {
+    let mut plans = Vec::new();
+    let Some(drainer) = find_awake_drainer_location(&game.board, perspective) else {
+        return plans;
+    };
+    let route_candidates =
+        secure_progress_path_candidates_v3(game, perspective, drainer, wanted, config);
+    if route_candidates.is_empty() {
+        return plans;
+    }
+
+    let opponent_window_before = exact_turn_summary(game, perspective.other()).same_turn_score_window_value;
+    for route in route_candidates {
+        let endpoint = route
+            .compiled_chunks
+            .last()
+            .and_then(|chunk| chunk.last())
+            .and_then(input_location);
+        let key = TurnPackageMemoKey {
+            state_hash: MonsGameModel::search_state_hash(game),
+            kind: TurnPackageKind::SecureProgress,
+            actor: Some(drainer),
+            endpoint,
+            target: None,
+            budget: package_budget(game, perspective),
+        };
+        if let Some(cached) = memo.get(&key).cloned().flatten() {
+            plans.push(cached);
+            continue;
+        }
+
+        let mut execution = route;
+        let current_actor = endpoint.unwrap_or(drainer);
+        if execution.game.active_color == perspective
+            && matches!(
+                execution.game.board.item(current_actor),
+                Some(Item::MonWithMana { mana, .. }) if *mana == wanted
+            )
+        {
+            if let Some(score_suffix) = best_immediate_score_execution_for_carrier(
+                &execution.game,
+                perspective,
+                current_actor,
+                wanted,
+                config,
+            ) {
+                execution = combine_execution(&execution, &score_suffix);
+            }
+        }
+        execution = maybe_append_best_suffix(&execution, perspective, config);
+        let opponent_window_after = if execution.game.active_color == perspective.other() {
+            exact_turn_summary(&execution.game, perspective.other()).same_turn_score_window_value
+        } else {
+            turn_oracle_context(&execution.game, perspective).opponent_immediate_window
+        };
+        let goal_family =
+            if score_for_color(&execution.game, perspective) > score_for_color(game, perspective) {
+                TurnPlanFamily::ImmediateScore
+            } else if opponent_window_after < opponent_window_before {
+                TurnPlanFamily::DenyOpponentWindow
+            } else {
+                family
+            };
+        let head_state = execution
+            .compiled_chunks
+            .first()
+            .and_then(|chunk| MonsGameModel::apply_inputs_for_search(game, chunk.as_slice()))
+            .unwrap_or_else(|| execution.game.clone_for_simulation());
+        push_plan_if_memorable(
+            &mut plans,
+            memo,
+            key,
+            Some(build_package_plan(
+                game,
+                &head_state,
+                execution,
+                perspective,
+                config,
+                family,
+                goal_family,
+                TurnPackageKind::SecureProgress,
+                Some(drainer),
+                endpoint,
+            )),
+        );
+    }
+    plans
+}
+
+fn attack_packages_v3(
+    game: &MonsGame,
+    perspective: Color,
+    config: TurnEngineConfig,
+    memo: &mut TurnPackageMemo,
+) -> Vec<TurnPlan> {
+    let Some(target) = find_awake_drainer_location(&game.board, perspective.other()) else {
+        return Vec::new();
+    };
+    let mut plans = Vec::new();
+    let budget = package_budget(game, perspective);
+
+    for (actor, item) in game.board.occupied() {
+        if !actor_can_attack_from_item(item) && !actor_can_bomb_from_item(item) {
+            continue;
+        }
+        let Some(mon) = item.mon().copied() else {
+            continue;
+        };
+        if mon.color != perspective || mon.is_fainted() {
+            continue;
+        }
+        for node in explore_actor_walk_nodes(game, perspective, actor, None, config) {
+            let attack_action = if node.execution.game.player_can_use_action()
+                && actor_can_attack_target_now(
+                    &node.execution.game.board,
+                    node.actor,
+                    target,
+                    node.execution.game.board.item(node.actor).unwrap_or(item),
+                    perspective,
+                ) {
+                Some(TurnAction::Attack {
+                    actor: node.actor,
+                    target,
+                })
+            } else if node.execution.game.player_can_use_action()
+                && actor_can_bomb_target_now(
+                    &node.execution.game.board,
+                    node.actor,
+                    target,
+                    node.execution.game.board.item(node.actor).unwrap_or(item),
+                    perspective,
+                ) {
+                Some(TurnAction::Bomb {
+                    actor: node.actor,
+                    target,
+                })
+            } else {
+                None
+            };
+            let Some(attack_action) = attack_action else {
+                continue;
+            };
+            let key = TurnPackageMemoKey {
+                state_hash: MonsGameModel::search_state_hash(game),
+                kind: TurnPackageKind::Attack,
+                actor: Some(actor),
+                endpoint: Some(node.actor),
+                target: Some(target),
+                budget,
+            };
+            if let Some(cached) = memo.get(&key).cloned().flatten() {
+                plans.push(cached);
+                continue;
+            }
+            let Some((after, chunk)) =
+                compile_action(&node.execution.game, perspective, attack_action, config)
+            else {
+                continue;
+            };
+            let mut execution = node.execution.clone();
+            execution.actions.push(attack_action);
+            execution.compiled_chunks.push(chunk);
+            execution.game = after;
+            execution = maybe_append_best_suffix(&execution, perspective, config);
+            let head_state = execution
+                .compiled_chunks
+                .first()
+                .and_then(|chunk| MonsGameModel::apply_inputs_for_search(game, chunk.as_slice()))
+                .unwrap_or_else(|| execution.game.clone_for_simulation());
+            let goal_family = if find_awake_drainer_location(&execution.game.board, perspective.other())
+                .is_none()
+            {
+                TurnPlanFamily::DrainerKill
+            } else {
+                TurnPlanFamily::DenyOpponentWindow
+            };
+            push_plan_if_memorable(
+                &mut plans,
+                memo,
+                key,
+                Some(build_package_plan(
+                    game,
+                    &head_state,
+                    execution,
+                    perspective,
+                    config,
+                    TurnPlanFamily::DrainerKill,
+                    goal_family,
+                    TurnPackageKind::Attack,
+                    Some(actor),
+                    Some(target),
+                )),
+            );
+        }
+    }
+    plans
+}
+
+fn spirit_packages_v3(
+    game: &MonsGame,
+    perspective: Color,
+    config: TurnEngineConfig,
+    memo: &mut TurnPackageMemo,
+) -> Vec<TurnPlan> {
+    if !config.enable_spirit_family {
+        return Vec::new();
+    }
+    let mut plans = Vec::new();
+    let budget = package_budget(game, perspective);
+    let root_hash = MonsGameModel::search_state_hash(game);
+    let before_turn = exact_turn_tactical_projection_with_search_hash(
+        game,
+        perspective,
+        root_hash,
+        tactical_projection_flags(true, true, true, true, true),
+    );
+
+    for (actor, item) in game.board.occupied() {
+        let Some(mon) = item.mon().copied() else {
+            continue;
+        };
+        if mon.color != perspective || mon.kind != MonKind::Spirit || mon.is_fainted() {
+            continue;
+        }
+        for node in explore_actor_walk_nodes(game, perspective, actor, None, config) {
+            if !node.execution.game.player_can_use_action() {
+                continue;
+            }
+            for &target in node.actor.reachable_by_spirit_action_ref() {
+                let Some(target_item) = node.execution.game.board.item(target).copied() else {
+                    continue;
+                };
+                if !spirit_target_allowed(target_item) {
+                    continue;
+                }
+                for &destination in target.nearby_locations_ref() {
+                    if !spirit_destination_allowed(&node.execution.game.board, target_item, destination)
+                    {
+                        continue;
+                    }
+                    let key = TurnPackageMemoKey {
+                        state_hash: MonsGameModel::search_state_hash(game),
+                        kind: TurnPackageKind::Spirit,
+                        actor: Some(node.actor),
+                        endpoint: Some(destination),
+                        target: Some(target),
+                        budget,
+                    };
+                    if let Some(cached) = memo.get(&key).cloned().flatten() {
+                        plans.push(cached);
+                        continue;
+                    }
+                    let action = TurnAction::SpiritShift {
+                        actor: node.actor,
+                        target,
+                        destination,
+                    };
+                    let Some((after, chunk)) =
+                        compile_action(&node.execution.game, perspective, action, config)
+                    else {
+                        continue;
+                    };
+                    let after_projection = exact_turn_tactical_projection_with_search_hash(
+                        &after,
+                        perspective,
+                        MonsGameModel::search_state_hash(&after),
+                        tactical_projection_flags(true, true, true, true, true),
+                    );
+                    let improved = after_projection.same_turn_score_window_value
+                        > before_turn.same_turn_score_window_value
+                        || after_projection.spirit_assisted_score_value
+                            > before_turn.spirit_assisted_score_value
+                        || after_projection.spirit_assisted_denial_value
+                            > before_turn.spirit_assisted_denial_value
+                        || after_projection.safe_supermana_progress_steps
+                            < before_turn.safe_supermana_progress_steps
+                        || after_projection.safe_opponent_mana_progress_steps
+                            < before_turn.safe_opponent_mana_progress_steps;
+                    if !improved {
+                        continue;
+                    }
+                    let mut execution = node.execution.clone();
+                    execution.actions.push(action);
+                    execution.compiled_chunks.push(chunk);
+                    execution.game = after;
+                    execution = maybe_append_best_suffix(&execution, perspective, config);
+                    let head_state = execution
+                        .compiled_chunks
+                        .first()
+                        .and_then(|chunk| MonsGameModel::apply_inputs_for_search(game, chunk.as_slice()))
+                        .unwrap_or_else(|| execution.game.clone_for_simulation());
+                    let goal_family = if score_for_color(&execution.game, perspective)
+                        > score_for_color(game, perspective)
+                    {
+                        TurnPlanFamily::ImmediateScore
+                    } else if exact_turn_summary(&execution.game, perspective.other())
+                        .same_turn_score_window_value
+                        < before_turn.same_turn_score_window_value
+                    {
+                        TurnPlanFamily::DenyOpponentWindow
+                    } else {
+                        TurnPlanFamily::SpiritImpact
+                    };
+                    push_plan_if_memorable(
+                        &mut plans,
+                        memo,
+                        key,
+                        Some(build_package_plan(
+                            game,
+                            &head_state,
+                            execution,
+                            perspective,
+                            config,
+                            TurnPlanFamily::SpiritImpact,
+                            goal_family,
+                            TurnPackageKind::Spirit,
+                            Some(actor),
+                            Some(target),
+                        )),
+                    );
+                }
+            }
+        }
+    }
+    plans
+}
+
+fn safety_packages_v3(
+    game: &MonsGame,
+    perspective: Color,
+    config: TurnEngineConfig,
+    memo: &mut TurnPackageMemo,
+) -> Vec<TurnPlan> {
+    let mut plans = Vec::new();
+    let Some(drainer) = find_awake_drainer_location(&game.board, perspective) else {
+        return plans;
+    };
+    let Some(execution) = best_safety_execution(game, perspective, config) else {
+        return plans;
+    };
+    let key = TurnPackageMemoKey {
+        state_hash: MonsGameModel::search_state_hash(game),
+        kind: TurnPackageKind::Safety,
+        actor: Some(drainer),
+        endpoint: execution
+            .compiled_chunks
+            .last()
+            .and_then(|chunk| chunk.last())
+            .and_then(input_location),
+        target: None,
+        budget: package_budget(game, perspective),
+    };
+    if let Some(cached) = memo.get(&key).cloned().flatten() {
+        plans.push(cached);
+        return plans;
+    }
+    let execution = maybe_append_best_suffix(&execution, perspective, config);
+    let head_state = execution
+        .compiled_chunks
+        .first()
+        .and_then(|chunk| MonsGameModel::apply_inputs_for_search(game, chunk.as_slice()))
+        .unwrap_or_else(|| execution.game.clone_for_simulation());
+    push_plan_if_memorable(
+        &mut plans,
+        memo,
+        key,
+        Some(build_package_plan(
+            game,
+            &head_state,
+            execution,
+            perspective,
+            config,
+            TurnPlanFamily::DrainerSafetyRecovery,
+            TurnPlanFamily::DrainerSafetyRecovery,
+            TurnPackageKind::Safety,
+            Some(drainer),
+            None,
+        )),
+    );
+    plans
+}
+
+fn mana_tempo_packages_v3(
+    game: &MonsGame,
+    perspective: Color,
+    config: TurnEngineConfig,
+    memo: &mut TurnPackageMemo,
+) -> Vec<TurnPlan> {
+    let mut plans = Vec::new();
+    for seed in mana_tempo_seeds(game, perspective).into_iter().take(4) {
+        let key = TurnPackageMemoKey {
+            state_hash: MonsGameModel::search_state_hash(game),
+            kind: TurnPackageKind::ManaTempo,
+            actor: action_priority_locations(seed.action).first().copied(),
+            endpoint: action_priority_locations(seed.action).last().copied(),
+            target: None,
+            budget: package_budget(game, perspective),
+        };
+        if let Some(cached) = memo.get(&key).cloned().flatten() {
+            plans.push(cached);
+            continue;
+        }
+        let Some((after, chunk)) = compile_action(game, perspective, seed.action, config) else {
+            continue;
+        };
+        let execution = maybe_append_best_suffix(
+            &PackageExecution {
+                game: after.clone_for_simulation(),
+                actions: vec![seed.action],
+                compiled_chunks: vec![chunk],
+            },
+            perspective,
+            config,
+        );
+        push_plan_if_memorable(
+            &mut plans,
+            memo,
+            key,
+            Some(build_package_plan(
+                game,
+                &after,
+                execution,
+                perspective,
+                config,
+                TurnPlanFamily::ManaTempo,
+                TurnPlanFamily::ManaTempo,
+                TurnPackageKind::ManaTempo,
+                action_priority_locations(seed.action).first().copied(),
+                None,
+            )),
+        );
+    }
+    plans
 }
 
 #[allow(dead_code)]
@@ -1472,6 +2645,7 @@ fn macro_plan_into_turn_plan(
         head_utility: node.head_utility,
         head_family: node.head_family,
         goal_family: node.goal_family,
+        package_meta: TurnPackageMeta::default(),
     }
 }
 
@@ -2300,6 +3474,7 @@ fn generate_turn_plans(
             head_utility: node.head_utility,
             head_family: node.head_family,
             goal_family: node.goal_family,
+            package_meta: TurnPackageMeta::default(),
         })
         .collect::<Vec<_>>();
     plans.sort_by(|a, b| compare_plans(b, a));
@@ -2325,6 +3500,7 @@ fn generate_plans_for_mode(
             step_cap.min(bundle_plan_cap_for_config(config)),
             expansion_cap,
         ),
+        TurnEngineMode::ProV3 => generate_package_plans_v3(game, perspective, config, seed_cap),
         TurnEngineMode::ProV1 => generate_turn_plans(
             game,
             perspective,
@@ -3053,6 +4229,16 @@ fn generate_action_seeds(
 ) -> Vec<ActionSeed> {
     match config.mode {
         TurnEngineMode::ProV2 => {
+            return discover_turn_opportunities_v2(game, perspective, config, seed_cap, None)
+                .into_iter()
+                .map(|opportunity| ActionSeed {
+                    family: opportunity.family,
+                    action: opportunity.action,
+                    priority: opportunity.priority,
+                })
+                .collect();
+        }
+        TurnEngineMode::ProV3 => {
             return discover_turn_opportunities_v2(game, perspective, config, seed_cap, None)
                 .into_iter()
                 .map(|opportunity| ActionSeed {
@@ -5007,6 +6193,7 @@ fn turn_engine_config_fingerprint(config: TurnEngineConfig) -> u64 {
     let mode_id = match config.mode {
         TurnEngineMode::ProV1 => 1_u64,
         TurnEngineMode::ProV2 => 2_u64,
+        TurnEngineMode::ProV3 => 3_u64,
     };
     for value in [
         config.own_seed_cap as u64,
@@ -5042,7 +6229,10 @@ fn register_plan_continuations(
     let mut state = game.clone_for_simulation();
     let start_color = game.active_color;
     for (chunk_index, chunk) in plan.compiled_chunks.iter().enumerate() {
-        if chunk_index > 0 && matches!(mode, TurnEngineMode::ProV2) {
+        if matches!(mode, TurnEngineMode::ProV3) && chunk_index > 0 {
+            break;
+        }
+        if chunk_index > 0 && matches!(mode, TurnEngineMode::ProV2 | TurnEngineMode::ProV3) {
             let Some(fresh_plan) = turn_engine_candidate_plan(&state, perspective, config) else {
                 break;
             };

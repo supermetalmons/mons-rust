@@ -31,6 +31,7 @@ const PROFILE_RUNTIME_PRO_TURN_PLANNER_V1: &str = "runtime_pro_turn_planner_v1";
 const PROFILE_RUNTIME_PRO_INTENT_PLANNER_V2: &str = "runtime_pro_intent_planner_v2";
 const PROFILE_RUNTIME_PRO_TURN_ENGINE_V1: &str = "runtime_pro_turn_engine_v1";
 const PROFILE_RUNTIME_PRO_TURN_ENGINE_V30: &str = "runtime_pro_turn_engine_v30";
+const PROFILE_RUNTIME_PRO_TURN_ENGINE_V3_SHARED: &str = "runtime_pro_turn_engine_v3_shared";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct ExactLiteBudgets {
@@ -426,6 +427,9 @@ pub(super) fn profile_runtime_config_for_name(
         PROFILE_RUNTIME_PRO_INTENT_PLANNER_V2 => configure_runtime_pro_intent_planner_v2(config),
         PROFILE_RUNTIME_PRO_TURN_ENGINE_V1 => configure_runtime_pro_turn_engine_v1(config),
         PROFILE_RUNTIME_PRO_TURN_ENGINE_V30 => configure_runtime_pro_turn_engine_v30(config),
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V3_SHARED => {
+            configure_runtime_pro_turn_engine_v3_shared(config)
+        }
         "runtime_pre_fast_root_quality_v1_normal_conversion_v3" => {
             configure_runtime_pre_fast_root_quality_v1_normal_conversion_v3(game, config)
         }
@@ -929,6 +933,213 @@ fn configure_runtime_pro_turn_engine_v30(config: SmartSearchConfig) -> SmartSear
     runtime
 }
 
+fn configure_runtime_pro_turn_engine_v3_shared(config: SmartSearchConfig) -> SmartSearchConfig {
+    let mut runtime = configure_runtime_pro_turn_engine_v30(config);
+    runtime.turn_engine_mode = TurnEngineMode::ProV3;
+    runtime
+}
+
+fn experiment_turn_engine_config_for_game(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> TurnEngineConfig {
+    let mut engine = TurnEngineConfig {
+        mode: config.turn_engine_mode,
+        own_seed_cap: config.turn_engine_seed_cap.max(1),
+        own_beam: config.turn_engine_beam_width.max(1),
+        per_node_family_cap: config.turn_engine_per_node_family_cap.max(1),
+        step_cap: config.turn_engine_step_cap.max(1),
+        opponent_seed_cap: config.turn_engine_opponent_seed_cap.max(1),
+        opponent_beam: config.turn_engine_opponent_beam_width.max(1),
+        reply_seed_cap: config.turn_engine_reply_seed_cap.max(1),
+        reply_beam: config.turn_engine_reply_beam_width.max(1),
+        expansion_cap: config.turn_engine_expansion_cap.max(1),
+        enable_spirit_family: config.turn_engine_enable_spirit_family,
+        scoring_weights: config.scoring_weights,
+        allow_exact_static_evaluation: config.enable_static_exact_evaluation,
+    };
+    let clamp_early_white_turn_start =
+        matches!(config.turn_engine_mode, TurnEngineMode::ProV2 | TurnEngineMode::ProV3)
+            && config.enable_turn_engine_low_budget_guard
+            && game.active_color == Color::White
+            && game.turn_number <= 3
+            && !game.player_can_use_action()
+            && !game.player_can_move_mana()
+            && matches!(game.mons_moves_count, 0 | 3);
+    if clamp_early_white_turn_start {
+        engine.own_seed_cap = engine.own_seed_cap.min(14).max(1);
+        engine.own_beam = engine.own_beam.min(5).max(1);
+        engine.per_node_family_cap = engine.per_node_family_cap.min(4).max(1);
+        engine.step_cap = engine.step_cap.min(6).max(1);
+        engine.opponent_seed_cap = engine.opponent_seed_cap.min(1).max(1);
+        engine.opponent_beam = engine.opponent_beam.min(1).max(1);
+        engine.reply_seed_cap = engine.reply_seed_cap.min(1).max(1);
+        engine.reply_beam = engine.reply_beam.min(1).max(1);
+        engine.expansion_cap = engine.expansion_cap.min(48).max(1);
+    }
+    engine
+}
+
+fn should_fallback_to_runtime_pro_turn_engine_v30(
+    game: &MonsGame,
+    runtime_v3: SmartSearchConfig,
+) -> bool {
+    if !runtime_v3.enable_turn_engine {
+        return false;
+    }
+
+    let v3_engine = experiment_turn_engine_config_for_game(game, runtime_v3);
+    let Some(v3_plan) = turn_engine_best_plan_for_test(game, game.active_color, v3_engine) else {
+        return true;
+    };
+
+    let runtime_v30 = configure_runtime_pro_turn_engine_v30(runtime_v3);
+    let v30_engine = experiment_turn_engine_config_for_game(game, runtime_v30);
+    let Some(v30_plan) = turn_engine_best_plan_for_test(game, game.active_color, v30_engine) else {
+        return false;
+    };
+    let full_budget_turn_start = game.mons_moves_count == 0
+        && game.player_can_use_action()
+        && game.player_can_move_mana();
+
+    let v30_not_worse = v30_plan.utility >= v3_plan.utility
+        || v30_plan
+            .utility
+            .supports_primary_axes_eval_tolerance(v3_plan.utility, 96);
+    if !v30_not_worse {
+        return false;
+    }
+
+    let suppress_single_chunk_progress_fallback = game.active_color == Color::Black
+        && game.turn_number >= 6
+        && matches!(
+            v3_plan.head_family,
+            TurnPlanFamily::SafeSupermanaProgress | TurnPlanFamily::SafeOpponentManaProgress
+        )
+        && v3_plan.compiled_chunks.len() < 2
+        && v3_plan.package_meta.score_gain <= 0
+        && v3_plan.package_meta.deny_gain <= 0
+        && v3_plan.package_meta.drainer_safety_delta <= 0;
+    let suppress_single_chunk_safe_black_fallback = game.active_color == Color::Black
+        && game.turn_number >= 6
+        && v3_plan.compiled_chunks.len() < 2
+        && v30_plan.compiled_chunks.len() >= 2
+        && v30_plan
+            .utility
+            .supports_primary_axes_eval_tolerance(v3_plan.utility, 64)
+        && (matches!(
+            v3_plan.head_family,
+            TurnPlanFamily::ImmediateScore | TurnPlanFamily::DrainerSafetyRecovery
+        ) || v3_plan.package_meta.ends_nonnegative_drainer_safety);
+    let v30_primary_axes_better =
+        crate::models::automove_turn_engine::compare_utility_primary_axes(
+            v30_plan.utility,
+            v3_plan.utility,
+        ) == std::cmp::Ordering::Greater;
+    let v30_materially_stronger_black_recovery = game.active_color == Color::Black
+        && game.turn_number >= 6
+        && full_budget_turn_start
+        && matches!(v3_plan.head_family, TurnPlanFamily::DrainerSafetyRecovery)
+        && (v30_primary_axes_better || v30_plan.utility.passes_override_guard(v3_plan.utility))
+        && (matches!(v30_plan.goal_family, TurnPlanFamily::ImmediateScore)
+            || v30_plan.package_meta.score_gain > v3_plan.package_meta.score_gain
+            || v30_plan.package_meta.deny_gain > v3_plan.package_meta.deny_gain
+            || v30_plan.package_meta.opponent_immediate_window_after
+                < v3_plan.package_meta.opponent_immediate_window_after);
+    let suppress_black_safety_recovery_fallback = game.active_color == Color::Black
+        && game.turn_number >= 6
+        && matches!(v3_plan.head_family, TurnPlanFamily::DrainerSafetyRecovery)
+        && v3_plan.package_meta.drainer_safety_delta > 0
+        && v3_plan.package_meta.ends_nonnegative_drainer_safety
+        && !v30_materially_stronger_black_recovery
+        && v3_plan
+            .utility
+            .supports_primary_axes_eval_tolerance(v30_plan.utility, 64);
+    if suppress_single_chunk_progress_fallback
+        || suppress_single_chunk_safe_black_fallback
+        || suppress_black_safety_recovery_fallback
+    {
+        return false;
+    }
+    let weak_single_chunk_plan = v3_plan.compiled_chunks.len() < 2
+        && v30_plan.compiled_chunks.len() >= 2
+        && !suppress_single_chunk_progress_fallback
+        && !suppress_single_chunk_safe_black_fallback;
+    let weak_single_chunk_spirit = matches!(v3_plan.head_family, TurnPlanFamily::SpiritImpact)
+        && weak_single_chunk_plan;
+    let spirit_only_setup_gap = v3_plan.package_meta.spirit_only_setup
+        && v30_plan.compiled_chunks.len() > v3_plan.compiled_chunks.len();
+    let late_black_partial_turn = game.active_color == Color::Black
+        && game.turn_number >= 6
+        && (!game.player_can_use_action() || game.mons_moves_count > 0);
+    let missed_immediate_score = !late_black_partial_turn
+        && !matches!(v3_plan.goal_family, TurnPlanFamily::ImmediateScore)
+        && v3_plan.package_meta.score_gain <= 0
+        && matches!(v30_plan.goal_family, TurnPlanFamily::ImmediateScore);
+
+    weak_single_chunk_plan
+        || weak_single_chunk_spirit
+        || spirit_only_setup_gap
+        || missed_immediate_score
+        || v30_materially_stronger_black_recovery
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub(super) struct RuntimeProTurnEngineV3SharedFallbackProbe {
+    pub fallback_to_v30: bool,
+    pub v3_head_inputs_fen: Option<String>,
+    pub v3_head_family: Option<TurnPlanFamily>,
+    pub v3_goal_family: Option<TurnPlanFamily>,
+    pub v3_chunk_count: usize,
+    pub v3_utility: Option<TurnEngineUtility>,
+    pub v30_head_inputs_fen: Option<String>,
+    pub v30_head_family: Option<TurnPlanFamily>,
+    pub v30_goal_family: Option<TurnPlanFamily>,
+    pub v30_chunk_count: usize,
+    pub v30_utility: Option<TurnEngineUtility>,
+}
+
+#[cfg(test)]
+pub(super) fn runtime_pro_turn_engine_v3_shared_fallback_probe_for_test(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> RuntimeProTurnEngineV3SharedFallbackProbe {
+    let runtime_v3 = configure_runtime_pro_turn_engine_v3_shared(config);
+    let runtime_v30 = configure_runtime_pro_turn_engine_v30(config);
+    let v3_engine = experiment_turn_engine_config_for_game(game, runtime_v3);
+    let v30_engine = experiment_turn_engine_config_for_game(game, runtime_v30);
+    let v3_plan = turn_engine_best_plan_for_test(game, game.active_color, v3_engine);
+    let v30_plan = turn_engine_best_plan_for_test(game, game.active_color, v30_engine);
+
+    RuntimeProTurnEngineV3SharedFallbackProbe {
+        fallback_to_v30: should_fallback_to_runtime_pro_turn_engine_v30(game, runtime_v3),
+        v3_head_inputs_fen: v3_plan
+            .as_ref()
+            .and_then(|plan| plan.compiled_chunks.first())
+            .map(|chunk| Input::fen_from_array(chunk.as_slice())),
+        v3_head_family: v3_plan.as_ref().map(|plan| plan.head_family),
+        v3_goal_family: v3_plan.as_ref().map(|plan| plan.goal_family),
+        v3_chunk_count: v3_plan
+            .as_ref()
+            .map(|plan| plan.compiled_chunks.len())
+            .unwrap_or(0),
+        v3_utility: v3_plan.as_ref().map(|plan| plan.utility),
+        v30_head_inputs_fen: v30_plan
+            .as_ref()
+            .and_then(|plan| plan.compiled_chunks.first())
+            .map(|chunk| Input::fen_from_array(chunk.as_slice())),
+        v30_head_family: v30_plan.as_ref().map(|plan| plan.head_family),
+        v30_goal_family: v30_plan.as_ref().map(|plan| plan.goal_family),
+        v30_chunk_count: v30_plan
+            .as_ref()
+            .map(|plan| plan.compiled_chunks.len())
+            .unwrap_or(0),
+        v30_utility: v30_plan.as_ref().map(|plan| plan.utility),
+    }
+}
+
 pub(super) fn model_runtime_pro_turn_planner_v1(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -1095,6 +1306,110 @@ pub(super) fn model_runtime_pro_turn_engine_v30(
     runtime_selector_inputs(game, configure_runtime_pro_turn_engine_v30(config))
 }
 
+pub(super) fn model_runtime_pro_turn_engine_v3_shared(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    let opening_book_mode = std::env::var("SMART_USE_WHITE_OPENING_BOOK")
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes"
+            )
+        })
+        .unwrap_or(false);
+    if opening_book_mode {
+        let opening_runtime = SearchBudget::from_preference(SmartAutomovePreference::Normal)
+            .runtime_config_for_game(game);
+        return runtime_selector_inputs(
+            game,
+            configure_runtime_release_safe_pre_exact(opening_runtime),
+        );
+    }
+
+    let early_white_turn_start = game.active_color == Color::White
+        && game.turn_number <= 3
+        && !game.player_can_use_action()
+        && !game.player_can_move_mana()
+        && matches!(game.mons_moves_count, 0 | 3);
+    if early_white_turn_start {
+        let fast_runtime = SearchBudget::from_preference(SmartAutomovePreference::Fast)
+            .runtime_config_for_game(game);
+        return runtime_selector_inputs(
+            game,
+            configure_runtime_release_safe_pre_exact(fast_runtime),
+        );
+    }
+
+    let white_turn_one_late_opening_tail = game.active_color == Color::White
+        && game.turn_number == 1
+        && game.mons_moves_count == 2
+        && !game.player_can_use_action()
+        && !game.player_can_move_mana();
+    if white_turn_one_late_opening_tail {
+        let fast_runtime = SearchBudget::from_preference(SmartAutomovePreference::Fast)
+            .runtime_config_for_game(game);
+        return runtime_selector_inputs(
+            game,
+            configure_runtime_release_safe_pre_exact(fast_runtime),
+        );
+    }
+
+    let white_turn_three_turn_start_action_mana = game.active_color == Color::White
+        && game.turn_number == 3
+        && game.mons_moves_count == 0
+        && game.player_can_use_action()
+        && game.player_can_move_mana();
+    if white_turn_three_turn_start_action_mana {
+        let fast_runtime = SearchBudget::from_preference(SmartAutomovePreference::Fast)
+            .runtime_config_for_game(game);
+        return runtime_selector_inputs(
+            game,
+            configure_runtime_release_safe_pre_exact(fast_runtime),
+        );
+    }
+
+    let white_turn_three_mana_only = game.active_color == Color::White
+        && game.turn_number == 3
+        && game.mons_moves_count == 1
+        && !game.player_can_use_action()
+        && game.player_can_move_mana();
+    if white_turn_three_mana_only {
+        let normal_runtime = SearchBudget::from_preference(SmartAutomovePreference::Normal)
+            .runtime_config_for_game(game);
+        return runtime_selector_inputs(
+            game,
+            configure_runtime_release_safe_pre_exact(normal_runtime),
+        );
+    }
+
+    let white_turn_three_mid_turn = game.active_color == Color::White
+        && game.turn_number == 3
+        && game.mons_moves_count > 0
+        && (game.player_can_use_action() || game.player_can_move_mana());
+    if white_turn_three_mid_turn {
+        let fast_runtime = SearchBudget::from_preference(SmartAutomovePreference::Fast)
+            .runtime_config_for_game(game);
+        return runtime_selector_inputs(
+            game,
+            configure_runtime_release_safe_pre_exact(fast_runtime),
+        );
+    }
+
+    let runtime_v3 = configure_runtime_pro_turn_engine_v3_shared(config);
+    if runtime_v3.enable_turn_engine
+        && !crate::models::automove_turn_engine::pro_v2_turn_engine_eligible(game)
+    {
+        return runtime_selector_inputs(game, configure_runtime_pro_turn_engine_v30(config));
+    }
+    if should_fallback_to_runtime_pro_turn_engine_v30(game, runtime_v3) {
+        return runtime_selector_inputs(game, configure_runtime_pro_turn_engine_v30(config));
+    }
+
+    runtime_selector_inputs(game, runtime_v3)
+}
+
 pub(super) fn candidate_model(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     let selector =
         profile_selector_from_name(candidate_profile().as_str()).unwrap_or(model_base_profile);
@@ -1219,6 +1534,12 @@ pub(super) fn profile_selector_from_name(profile_name: &str) -> Option<AutomoveS
         .iter()
         .find(|profile| profile.id == profile_name)
         .map(|profile| profile.selector)
+        .or_else(|| match profile_name {
+            PROFILE_RUNTIME_PRO_TURN_ENGINE_V3_SHARED => {
+                Some(model_runtime_pro_turn_engine_v3_shared)
+            }
+            _ => None,
+        })
 }
 
 pub(super) fn selected_pool_models() -> Vec<AutomoveModel> {

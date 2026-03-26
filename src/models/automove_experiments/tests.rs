@@ -5230,6 +5230,12 @@ fn smart_automove_pro_turn_engine_selector_probe() {
     );
     print_loss_probe_decision("decision", &decision);
     let config = calibration_runtime_config(profile.as_str(), &game, preference);
+    if profile == "runtime_pro_turn_engine_v3_shared" {
+        println!(
+            "fallback_probe={:?}",
+            runtime_pro_turn_engine_v3_shared_fallback_probe_for_test(&game, config)
+        );
+    }
     if let Some(selection_probe) = MonsGameModel::root_selection_probe_for_test(&game, config) {
         println!("root_selection_probe={:?}", selection_probe);
     } else {
@@ -5286,6 +5292,40 @@ fn runtime_pro_turn_engine_v30_profile_prefers_safe_white_fast_screen_turn_three
         decision.move_fen, "l8,4;l8,5",
         "v30 should route the traced white turn-three start fast-screen blocker to the shared fast/current line, got {}",
         decision.move_fen
+    );
+}
+
+#[test]
+fn runtime_pro_turn_engine_v3_shared_profile_skips_non_eligible_white_turn_one_tail_probe() {
+    let game = MonsGame::from_fen(
+        "0 0 w 0 0 4 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n02E0xn01A0xn02S0xn03/n05D0xn02Y0xn02",
+        false,
+    )
+    .expect("white turn-one full-tail fen should be valid");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    clear_turn_engine_selector_diagnostics();
+
+    assert!(
+        !crate::models::automove_turn_engine::pro_v2_turn_engine_eligible(&game),
+        "the traced white turn-one full-tail state should stay outside the macro-engine eligibility surface"
+    );
+
+    let decision = loss_probe_decision(
+        "runtime_pro_turn_engine_v3_shared",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let selector_diag = turn_engine_selector_diagnostics_snapshot();
+
+    assert_eq!(
+        decision.move_fen, "l9,7;l8,6",
+        "v3 shared should keep the baseline opening-tail move on the non-eligible white turn-one state"
+    );
+    assert_eq!(
+        selector_diag.head_plan_calls, 0,
+        "v3 shared should skip the expensive head-plan probe on the non-eligible white turn-one tail: {:?}",
+        selector_diag
     );
 }
 
@@ -5361,6 +5401,103 @@ fn runtime_pro_turn_engine_v30_profile_resumes_cached_spirit_setup_continuation(
     );
 }
 
+#[test]
+fn runtime_pro_turn_engine_v3_shared_profile_resolves_hidden_selector() {
+    assert!(
+        profile_selector_from_name("runtime_pro_turn_engine_v3_shared").is_some(),
+        "hidden v3 shared profile should resolve for experiments"
+    );
+}
+
+#[test]
+fn runtime_pro_turn_engine_v3_shared_profile_tracks_v30_spirit_setup_continuation() {
+    fn game_with_items(items: Vec<(Location, Item)>, active_color: Color) -> MonsGame {
+        let mut game = MonsGame::new(false);
+        game.board = Board::new_with_items(items.into_iter().collect());
+        game.active_color = active_color;
+        game.actions_used_count = 0;
+        game.mana_moves_count = 0;
+        game.mons_moves_count = 0;
+        game.turn_number = 2;
+        game.white_score = 0;
+        game.black_score = 0;
+        game.white_potions_count = 0;
+        game.black_potions_count = 0;
+        game
+    }
+
+    let game = game_with_items(
+        vec![
+            (
+                Location::new(9, 7),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(9, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(7, 8),
+                Item::Mana {
+                    mana: Mana::Regular(Color::Black),
+                },
+            ),
+            (
+                Location::new(0, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+    );
+    clear_turn_engine_plan_cache();
+
+    let config = calibration_runtime_config(
+        "runtime_pro_turn_engine_v3_shared",
+        &game,
+        SmartAutomovePreference::Pro,
+    );
+    let first = model_runtime_pro_turn_engine_v3_shared(&game, config);
+    let v30_first = model_runtime_pro_turn_engine_v30(
+        &game,
+        calibration_runtime_config(
+            "runtime_pro_turn_engine_v30",
+            &game,
+            SmartAutomovePreference::Pro,
+        ),
+    );
+    assert_eq!(
+        first, v30_first,
+        "v3 shared should preserve the retained v30 first chunk on the spirit-setup continuation fixture"
+    );
+    let after_first = MonsGameModel::apply_inputs_for_search(&game, first.as_slice())
+        .expect("v3 shared first spirit-setup chunk should be legal");
+    let after_config = calibration_runtime_config(
+        "runtime_pro_turn_engine_v3_shared",
+        &after_first,
+        SmartAutomovePreference::Pro,
+    );
+    let resumed = model_runtime_pro_turn_engine_v3_shared(&after_first, after_config);
+    let v30_resumed = model_runtime_pro_turn_engine_v30(
+        &after_first,
+        calibration_runtime_config(
+            "runtime_pro_turn_engine_v30",
+            &after_first,
+            SmartAutomovePreference::Pro,
+        ),
+    );
+
+    assert_eq!(
+        resumed, v30_resumed,
+        "v3 shared should preserve the retained v30 continuation on the post-chunk live state"
+    );
+}
+
 fn primary_pro_fixture_by_id(id: &str) -> TriageFixture {
     primary_pro_triage_fixtures()
         .into_iter()
@@ -5387,6 +5524,28 @@ fn runtime_pro_turn_engine_v30_accepts_primary_spirit_setup_macro_head() {
     assert!(
         probe.chunk_count >= 4,
         "spirit setup should remain a whole-turn bundle"
+    );
+}
+
+#[test]
+fn runtime_pro_turn_engine_v3_shared_selector_matches_v30_on_primary_spirit_setup() {
+    let fixture = primary_pro_fixture_by_id("primary_spirit_setup");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let candidate = loss_probe_decision(
+        "runtime_pro_turn_engine_v3_shared",
+        fixture.mode,
+        &fixture.game,
+    );
+    let baseline = loss_probe_decision(
+        "runtime_pro_turn_engine_v30",
+        fixture.mode,
+        &fixture.game,
+    );
+
+    assert_eq!(
+        candidate.move_fen, baseline.move_fen,
+        "v3 shared should preserve the retained v30 selector output on primary_spirit_setup while the new package path is still hybridized"
     );
 }
 
@@ -5432,6 +5591,180 @@ fn runtime_pro_turn_engine_v30_surfaces_multi_chunk_human_win_plan() {
         digests[0]
     );
     assert_eq!(digests[0].goal_family, TurnPlanFamily::ImmediateScore);
+}
+
+#[test]
+fn runtime_pro_turn_engine_v3_shared_surfaces_multi_chunk_human_win_plan() {
+    let fixture = primary_pro_fixture_by_id("human_win_pro_a");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let config = loss_probe_runtime_config(
+        "runtime_pro_turn_engine_v3_shared",
+        &fixture.game,
+        fixture.mode,
+    );
+    let digests = turn_engine_ranked_plan_digests_for_test(
+        &fixture.game,
+        fixture.game.active_color,
+        calibration_turn_engine_config(config),
+        3,
+    );
+
+    assert!(
+        !digests.is_empty(),
+        "v3 shared should surface at least one whole-turn plan on human_win_pro_a"
+    );
+    assert!(
+        digests[0].chunk_count >= 4,
+        "human_win_pro_a should stay multi-chunk under v3 shared, got {:?}",
+        digests[0]
+    );
+}
+
+#[test]
+fn runtime_pro_turn_engine_v3_shared_black_turn_engine_candidate_avoids_l0_5_l1_5_default() {
+    let fixture = primary_pro_fixture_by_id("primary_black_loss_opening_a_black_turn");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let decision = loss_probe_decision_with_options(
+        "runtime_pro_turn_engine_v3_shared",
+        fixture.mode,
+        &fixture.game,
+        true,
+    );
+    let engine = decision
+        .turn_engine
+        .as_ref()
+        .expect("v3 shared black-turn fixture should produce a turn-engine decision");
+
+    assert_ne!(
+        engine.candidate_move_fen.as_deref(),
+        Some("l0,5;l1,5"),
+        "v3 shared should no longer default the black-turn engine head to l0,5;l1,5 when stronger packages exist: {:?}",
+        engine
+    );
+}
+
+#[test]
+fn runtime_pro_turn_engine_v3_shared_rejects_plain_progress_override_on_black_opening_replay_state()
+{
+    let game = MonsGame::from_fen(
+        "1 1 b 0 0 0 0 0 6 d0xn06e0xn03/n03y0xn01s0xa0xn04/n07xxmn03/n02xxmn04xxmn03/n05xxmn05/xxQn04xxUn04Y0x/n05xxMn01xxMn03/n11/n05S0xn01xxMn03/n01xxMn03A0xn05/D0xn01E0xn08",
+        false,
+    )
+    .expect("black opening replay fen should be valid");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+
+    let config = loss_probe_runtime_config(
+        "runtime_pro_turn_engine_v3_shared",
+        &game,
+        SmartAutomovePreference::Pro,
+    );
+    let probe = MonsGameModel::turn_engine_acceptance_probe_for_test(&game, config)
+        .expect("v3 shared replay state should produce an acceptance probe");
+    let decision = loss_probe_decision(
+        "runtime_pro_turn_engine_v3_shared",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+
+    assert_eq!(Input::fen_from_array(&probe.candidate_inputs), "l0,0;l1,1");
+    assert_eq!(Input::fen_from_array(&probe.selected_inputs), "l1,5;l2,7;l1,8");
+    assert!(
+        !probe.accepted,
+        "plain one-chunk progress should not override the safe spirit shortlist on the black opening replay state: {:?}",
+        probe
+    );
+    assert_eq!(
+        decision.move_fen, "l1,5;l2,7;l1,8",
+        "v3 shared should now respect the root-search spirit shortlist on the replayed black opening state"
+    );
+}
+
+#[test]
+fn runtime_pro_turn_engine_v3_shared_rejects_late_black_safety_recovery_override_and_falls_back_to_v30(
+) {
+    let game = MonsGame::from_fen(
+        "2 1 b 0 0 0 0 0 10 d0xn10/xxmn05a0xe0xxxmn02/n05s0xn05/n07xxmn03/n01E0xn02xxmn04Y0xn01/n05xxUn05/n04xxMn06/y0xn05S0xn04/n08xxMn02/n05A0xn02xxMn02/n05D1xn05",
+        false,
+    )
+    .expect("late black opening spirit-edge fen should be valid");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+
+    let config = loss_probe_runtime_config(
+        "runtime_pro_turn_engine_v3_shared",
+        &game,
+        SmartAutomovePreference::Pro,
+    );
+    let acceptance = MonsGameModel::turn_engine_acceptance_probe_for_test(&game, config)
+        .expect("late black opening spirit-edge state should produce an acceptance probe");
+    let fallback_probe = runtime_pro_turn_engine_v3_shared_fallback_probe_for_test(&game, config);
+    let candidate = loss_probe_decision(
+        "runtime_pro_turn_engine_v3_shared",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let baseline = loss_probe_decision(
+        "runtime_pro_turn_engine_v30",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+
+    assert_eq!(Input::fen_from_array(&acceptance.candidate_inputs), "l0,0;l0,1");
+    assert_eq!(Input::fen_from_array(&acceptance.selected_inputs), "l2,5;l4,4;l3,3");
+    assert!(
+        !acceptance.accepted,
+        "late black safety-recovery head should not override the concrete spirit-own-mana search root: {:?}",
+        acceptance
+    );
+    assert!(
+        fallback_probe.fallback_to_v30,
+        "hybrid v3 shared should fall back to v30 when raw ProV3 is materially weaker on the late black safety state: {:?}",
+        fallback_probe
+    );
+    assert_eq!(
+        candidate.move_fen, baseline.move_fen,
+        "v3 shared should match retained v30 on the late black safety state once fallback is restored"
+    );
+}
+
+#[test]
+fn runtime_pro_turn_engine_v3_shared_rejects_late_black_safety_recovery_override_on_carrier_edge_state(
+) {
+    let game = MonsGame::from_fen(
+        "2 1 b 1 0 0 0 0 10 d0xn10/xxmn05a0xe0xxxmn02/n05s0xn05/n03xxmn03xxmn03/n01E0xn07Y0xn01/n05xxUn05/n04xxMn06/y0xn05S0xn04/n08xxMn02/n05A0xn02xxMn02/n05D1xn05",
+        false,
+    )
+    .expect("late black carrier-edge fen should be valid");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+
+    let config = loss_probe_runtime_config(
+        "runtime_pro_turn_engine_v3_shared",
+        &game,
+        SmartAutomovePreference::Pro,
+    );
+    let probe = MonsGameModel::turn_engine_acceptance_probe_for_test(&game, config)
+        .expect("late black carrier-edge state should produce an acceptance probe");
+    let decision = loss_probe_decision(
+        "runtime_pro_turn_engine_v3_shared",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+
+    assert_eq!(Input::fen_from_array(&probe.candidate_inputs), "l0,0;l0,1");
+    assert_eq!(Input::fen_from_array(&probe.selected_inputs), "l0,0;l1,0");
+    assert!(
+        !probe.accepted,
+        "late black carrier-edge root should not be overridden by a flat safety-recovery head: {:?}",
+        probe
+    );
+    assert_eq!(
+        decision.move_fen, "l0,0;l1,0",
+        "v3 shared should keep the carrier score edge on the late black tail"
+    );
 }
 
 #[test]
@@ -5497,6 +5830,116 @@ fn runtime_pro_turn_engine_v30_curated_dominance_probe() {
         "v30 should beat runtime_current on the curated opportunity pack (>90%), got {:.3}",
         win_rate
     );
+}
+
+#[test]
+#[ignore = "diagnostic: dominance probe for runtime_pro_turn_engine_v3_shared against runtime_current on curated opportunity fixtures"]
+fn runtime_pro_turn_engine_v3_shared_curated_dominance_probe() {
+    let fixture_ids = [
+        "primary_spirit_setup",
+        "primary_black_loss_opening_a_ply19",
+        "human_win_pro_a",
+    ];
+    let mut wins = 0usize;
+    let mut total = 0usize;
+
+    for fixture_id in fixture_ids {
+        let fixture = primary_pro_fixture_by_id(fixture_id);
+        let candidate_is_white = fixture.game.active_color == Color::White;
+        let (result, traces) = replay_pro_reliability_loss_probe_game_with_options(
+            "runtime_pro_turn_engine_v3_shared",
+            "runtime_current",
+            fixture.game.fen().as_str(),
+            candidate_is_white,
+            56,
+            2,
+            true,
+        );
+        total += 1;
+        if result == MatchResult::CandidateWin {
+            wins += 1;
+        }
+        println!(
+            "dominance fixture={} result={:?} traces_logged={}",
+            fixture_id,
+            result,
+            traces.len()
+        );
+    }
+
+    let win_rate = wins as f64 / total.max(1) as f64;
+    assert!(
+        win_rate > 0.90,
+        "v3 shared should beat runtime_current on the curated opportunity pack (>90%), got {:.3}",
+        win_rate
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect replay divergence on primary_black_loss_opening_a_ply19 for runtime_pro_turn_engine_v3_shared"]
+fn runtime_pro_turn_engine_v3_shared_primary_black_loss_opening_a_ply19_replay_probe() {
+    print_runtime_pro_turn_engine_v3_shared_replay_probe("primary_black_loss_opening_a_ply19");
+}
+
+#[test]
+#[ignore = "diagnostic: inspect replay divergence on human_win_pro_a for runtime_pro_turn_engine_v3_shared"]
+fn runtime_pro_turn_engine_v3_shared_human_win_pro_a_replay_probe() {
+    print_runtime_pro_turn_engine_v3_shared_replay_probe("human_win_pro_a");
+}
+
+fn print_runtime_pro_turn_engine_v3_shared_replay_probe(fixture_id: &str) {
+    let fixture = primary_pro_fixture_by_id(fixture_id);
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    clear_turn_engine_selector_diagnostics();
+
+    let config =
+        loss_probe_runtime_config("runtime_pro_turn_engine_v3_shared", &fixture.game, fixture.mode);
+    let fallback_probe =
+        runtime_pro_turn_engine_v3_shared_fallback_probe_for_test(&fixture.game, config);
+    let acceptance = MonsGameModel::turn_engine_acceptance_probe_for_test(&fixture.game, config);
+    println!("opening_fallback_probe={:?}", fallback_probe);
+    print_turn_engine_acceptance_probe("opening_acceptance", acceptance.as_ref());
+
+    let first = model_runtime_pro_turn_engine_v3_shared(&fixture.game, config);
+    println!("opening_first_chunk={}", Input::fen_from_array(&first));
+    if let Some(after_first) = MonsGameModel::apply_inputs_for_search(&fixture.game, first.as_slice()) {
+        let after_config =
+            loss_probe_runtime_config("runtime_pro_turn_engine_v3_shared", &after_first, fixture.mode);
+        let continuation_probe =
+            runtime_pro_turn_engine_v3_shared_fallback_probe_for_test(&after_first, after_config);
+        let resumed = model_runtime_pro_turn_engine_v3_shared(&after_first, after_config);
+        let cached = turn_engine_cached_step(&after_first, calibration_turn_engine_config(after_config));
+        println!("after_first_fen={}", after_first.fen());
+        println!("after_first_fallback_probe={:?}", continuation_probe);
+        println!("after_first_resumed={}", Input::fen_from_array(&resumed));
+        println!(
+            "after_first_cached={:?}",
+            cached.as_ref().map(|inputs| Input::fen_from_array(inputs))
+        );
+    }
+
+    let (result, traces) = replay_pro_reliability_loss_probe_game_with_options(
+        "runtime_pro_turn_engine_v3_shared",
+        "runtime_current",
+        fixture.game.fen().as_str(),
+        fixture.game.active_color == Color::White,
+        56,
+        16,
+        true,
+    );
+    println!(
+        "replay_fixture={} replay_result={:?} trace_count={} opening_fen={}",
+        fixture_id,
+        result,
+        traces.len(),
+        fixture.game.fen()
+    );
+    for trace in traces {
+        println!("TRACE ply={} fen={}", trace.ply, trace.fen);
+        print_loss_probe_decision("  candidate", &trace.candidate);
+        print_loss_probe_decision("  baseline", &trace.baseline);
+    }
 }
 
 #[test]
