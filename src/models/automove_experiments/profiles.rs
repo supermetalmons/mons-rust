@@ -71,6 +71,12 @@ const PROFILE_RUNTIME_PRO_TURN_ENGINE_V53_SPIRIT_PREVIEW_WINDOW_FAST_PATH_V1: &s
     "runtime_pro_turn_engine_v53_spirit_preview_window_fast_path_v1";
 const PROFILE_RUNTIME_PRO_TURN_ENGINE_V54_TACTICAL_WINDOW_CACHE_V1: &str =
     "runtime_pro_turn_engine_v54_tactical_window_cache_v1";
+const PROFILE_RUNTIME_PRO_TURN_ENGINE_V59_SECURE_MANA_DEAD_END_SKIP_V1: &str =
+    "runtime_pro_turn_engine_v59_secure_mana_dead_end_skip_v1";
+const PROFILE_RUNTIME_PRO_TURN_ENGINE_V60_SECURE_MANA_BOARD_SUMMARY_V1: &str =
+    "runtime_pro_turn_engine_v60_secure_mana_board_summary_v1";
+const PROFILE_RUNTIME_PRO_TURN_ENGINE_V61_PICKUP_WINDOW_CACHE_V1: &str =
+    "runtime_pro_turn_engine_v61_pickup_window_cache_v1";
 const PROFILE_RUNTIME_PRO_TURN_ENGINE_V3_SHARED: &str = "runtime_pro_turn_engine_v3_shared";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -526,6 +532,15 @@ pub(super) fn profile_runtime_config_for_name(
         }
         PROFILE_RUNTIME_PRO_TURN_ENGINE_V54_TACTICAL_WINDOW_CACHE_V1 => {
             configure_runtime_pro_turn_engine_v54_tactical_window_cache_v1(config)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V59_SECURE_MANA_DEAD_END_SKIP_V1 => {
+            configure_runtime_pro_turn_engine_v59_secure_mana_dead_end_skip_v1(config)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V60_SECURE_MANA_BOARD_SUMMARY_V1 => {
+            configure_runtime_pro_turn_engine_v60_secure_mana_board_summary_v1(config)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V61_PICKUP_WINDOW_CACHE_V1 => {
+            configure_runtime_pro_turn_engine_v61_pickup_window_cache_v1(config)
         }
         PROFILE_RUNTIME_PRO_TURN_ENGINE_V3_SHARED => {
             configure_runtime_pro_turn_engine_v3_shared(config)
@@ -1180,6 +1195,30 @@ fn configure_runtime_pro_turn_engine_v54_tactical_window_cache_v1(
     let mut runtime =
         configure_runtime_pro_turn_engine_v53_spirit_preview_window_fast_path_v1(config);
     runtime.enable_immediate_tactical_window_cache = true;
+    runtime
+}
+
+fn configure_runtime_pro_turn_engine_v59_secure_mana_dead_end_skip_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = configure_runtime_pro_turn_engine_v54_tactical_window_cache_v1(config);
+    runtime.enable_secure_mana_dead_end_skip = true;
+    runtime
+}
+
+fn configure_runtime_pro_turn_engine_v60_secure_mana_board_summary_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = configure_runtime_pro_turn_engine_v59_secure_mana_dead_end_skip_v1(config);
+    runtime.enable_scoring_board_summary_reuse = true;
+    runtime
+}
+
+fn configure_runtime_pro_turn_engine_v61_pickup_window_cache_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime = configure_runtime_pro_turn_engine_v60_secure_mana_board_summary_v1(config);
+    runtime.enable_drainer_pickup_window_cache = true;
     runtime
 }
 
@@ -2818,6 +2857,39 @@ pub(super) fn model_runtime_pro_turn_engine_v54_tactical_window_cache_v1(
     )
 }
 
+pub(super) fn model_runtime_pro_turn_engine_v59_secure_mana_dead_end_skip_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    runtime_pro_turn_engine_v30_guarded_inputs(
+        game,
+        config,
+        configure_runtime_pro_turn_engine_v59_secure_mana_dead_end_skip_v1,
+    )
+}
+
+pub(super) fn model_runtime_pro_turn_engine_v60_secure_mana_board_summary_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    runtime_pro_turn_engine_v30_guarded_inputs(
+        game,
+        config,
+        configure_runtime_pro_turn_engine_v60_secure_mana_board_summary_v1,
+    )
+}
+
+pub(super) fn model_runtime_pro_turn_engine_v61_pickup_window_cache_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    runtime_pro_turn_engine_v30_guarded_inputs(
+        game,
+        config,
+        configure_runtime_pro_turn_engine_v61_pickup_window_cache_v1,
+    )
+}
+
 pub(super) fn model_runtime_pro_turn_engine_v3_shared(
     game: &MonsGame,
     config: SmartSearchConfig,
@@ -3091,6 +3163,15 @@ fn archived_profile_selector_from_name(profile_name: &str) -> Option<AutomoveSel
         }
         PROFILE_RUNTIME_PRO_TURN_ENGINE_V54_TACTICAL_WINDOW_CACHE_V1 => {
             Some(model_runtime_pro_turn_engine_v54_tactical_window_cache_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V59_SECURE_MANA_DEAD_END_SKIP_V1 => {
+            Some(model_runtime_pro_turn_engine_v59_secure_mana_dead_end_skip_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V60_SECURE_MANA_BOARD_SUMMARY_V1 => {
+            Some(model_runtime_pro_turn_engine_v60_secure_mana_board_summary_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V61_PICKUP_WINDOW_CACHE_V1 => {
+            Some(model_runtime_pro_turn_engine_v61_pickup_window_cache_v1)
         }
         PROFILE_RUNTIME_PRO_TURN_ENGINE_V3_SHARED => Some(model_runtime_pro_turn_engine_v3_shared),
         _ => None,

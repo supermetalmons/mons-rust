@@ -5489,7 +5489,7 @@ fn smart_automove_pro_reliability_hotspot_probe() {
                 let exact_diag = exact_query_diagnostics_snapshot();
 
                 println!(
-                    "HOTSPOT label={} move={} ms={:.2} selector(child_calls={} children={} fully_scored={} shortlist={} full_pass={} move_eff_builds={} move_eff_hits={} prefer_builds={} prefer_hits={} head_calls={} head_hits={} last_stage={}) exact(attack_summary_builds={} attack_calls={} attack_hits={} threat_calls={} payload_calls={} tactical_spirit_calls={} tactical_spirit_hits={} immediate_window_queries={} immediate_window_hits={} tactical_window_calls={} tactical_window_skips={} secure_mana_calls={} secure_mana_hits={} pickup_calls={} pickup_hits={}) engine(cache_hits={} cache_misses={} accepted={} reply_calls={}) fen={}",
+                    "HOTSPOT label={} move={} ms={:.2} selector(child_calls={} children={} fully_scored={} shortlist={} full_pass={} move_eff_builds={} move_eff_hits={} prefer_builds={} prefer_hits={} head_calls={} head_hits={} last_stage={}) exact(attack_summary_builds={} attack_calls={} attack_hits={} threat_calls={} payload_calls={} tactical_spirit_calls={} tactical_spirit_hits={} immediate_window_queries={} immediate_window_hits={} pickup_window_hits={} tactical_window_calls={} tactical_window_skips={} secure_mana_calls={} secure_mana_hits={} secure_mana_dead_end_skips={} pickup_calls={} pickup_hits={}) engine(cache_hits={} cache_misses={} accepted={} reply_calls={}) fen={}",
                     case.label,
                     Input::fen_from_array(&inputs),
                     elapsed_ms,
@@ -5514,10 +5514,12 @@ fn smart_automove_pro_reliability_hotspot_probe() {
                     exact_diag.tactical_spirit_summary_cache_hits,
                     exact_diag.immediate_tactical_window_queries,
                     exact_diag.immediate_tactical_window_cache_hits,
+                    exact_diag.drainer_pickup_window_cache_hits,
                     exact_diag.tactical_spirit_after_window_calls,
                     exact_diag.tactical_spirit_after_window_fast_path_skips,
                     exact_diag.exact_secure_mana_calls,
                     exact_diag.exact_secure_mana_cache_hits,
+                    exact_diag.exact_secure_mana_dead_end_skips,
                     exact_diag.pickup_path_calls,
                     exact_diag.pickup_path_cache_hits,
                     engine_diag.cache_hits,

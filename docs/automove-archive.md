@@ -113,6 +113,25 @@ This document keeps compressed history for retired automove profiles and experim
   - both candidates were killed at the bounded hotspot stage and the code was discarded
   - next work should either go deeper into secure drainer recursion itself or shift back to search-side reuse; do not reopen the same exact cache-layer family without a materially different cut
 
+## Wave 11: Secure-Recursion, Search-Summary, And Pickup-Window Follow-Ups (Mar 26, 2026)
+
+- Scope: `runtime_pro_turn_engine_v59` through `runtime_pro_turn_engine_v62`.
+- Why this wave happened:
+  - `v55` and `v56` showed wrapper-local secure-recursion caches were the wrong cut
+  - the next bounded question was whether one search-side reuse layer plus a deeper exact pickup-window cache could move the direct gate without reopening broader churn
+- What was tried:
+  - `v59` added a candidate-only secure-mana dead-end skip inside the exact secure recursion
+  - `v60` re-enabled scoring board-summary reuse on top of the stronger exact base
+  - `v61` added a candidate-only cache for exact drainer pickup windows inside the immediate tactical-window path
+  - `v62` tried a deeper secure-mana specific-pickup prune on top of `v61`
+- Compressed lesson:
+  - `v59` kept `guardrails`, `pro-triage`, and `runtime-preflight` green, but it still did not finish `pro-reliability` in a practical window
+  - `v60` kept `guardrails`, `pro-triage`, and `runtime-preflight` green but still did not finish `pro-reliability` in a practical window
+  - `v61` was the strongest useful follow-up of the wave: it kept the front gates green and materially reduced bounded exact work, especially `payload_after_move`, by introducing `pickup_window_hits` on the returned wall
+  - even with `v61`, the direct gate still ran past the practical window and was manually stopped after roughly two minutes, so the retained frontier stayed `runtime_pro_turn_engine_v30`
+  - `v62` cut counted secure recursion but regressed the hotspot badly, so the code was discarded
+  - the next exact split should target the remaining `payload_after_move` / uncached immediate-window / secure-recursion surface directly; do not reopen the discarded `v62` prune family
+
 ## Parked Campaign: Fast Tactical Uplift Against Current Normal (Mar 18-20, 2026)
 
 - Goal: recover the `normal` vs `fast` gap without violating Fast latency.

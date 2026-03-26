@@ -130,13 +130,19 @@ fn exact_payload_variant_index(payload: ExactActorPayload) -> usize {
 
 const EXACT_ACTOR_MOVE_MEMO_UNKNOWN: u8 = u8::MAX;
 const EXACT_ACTOR_MOVE_MEMO_CAPACITY: usize = EXACT_LOCATION_STATE_CAPACITY * 2 * 5 * 5 * 2;
+#[cfg(any(target_arch = "wasm32", test))]
+const EXACT_DRAINER_PICKUP_WINDOW_CACHE_MAX_ENTRIES: usize = 32768;
 
-struct ExactActorMoveMemo([u8; EXACT_ACTOR_MOVE_MEMO_CAPACITY]);
+struct ExactActorMoveMemo {
+    entries: [u8; EXACT_ACTOR_MOVE_MEMO_CAPACITY],
+}
 
 impl ExactActorMoveMemo {
     #[inline]
-    fn new() -> Self {
-        Self([EXACT_ACTOR_MOVE_MEMO_UNKNOWN; EXACT_ACTOR_MOVE_MEMO_CAPACITY])
+    fn new(_board_hash: u64) -> Self {
+        Self {
+            entries: [EXACT_ACTOR_MOVE_MEMO_UNKNOWN; EXACT_ACTOR_MOVE_MEMO_CAPACITY],
+        }
     }
 
     #[inline]
@@ -151,7 +157,7 @@ impl ExactActorMoveMemo {
     ) -> Option<ExactActorPayload> {
         let slot =
             exact_actor_move_memo_slot(mon_kind, color, payload, destination, allow_pick_bomb);
-        let cached = self.0[slot];
+        let cached = self.entries[slot];
         if cached != EXACT_ACTOR_MOVE_MEMO_UNKNOWN {
             return exact_actor_move_memo_decode(cached);
         }
@@ -167,7 +173,8 @@ impl ExactActorMoveMemo {
             destination,
             allow_pick_bomb,
         );
-        self.0[slot] = exact_actor_move_memo_encode(result);
+        let encoded = exact_actor_move_memo_encode(result);
+        self.entries[slot] = encoded;
         result
     }
 }
@@ -227,7 +234,7 @@ pub(crate) struct ExactImmediateScoreWindow {
     pub multi_pressure: i32,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ExactDrainerPickupPath {
     pub path_steps: i32,
     pub total_moves: i32,
@@ -316,6 +323,8 @@ const EXACT_TACTICAL_SPIRIT_NEED_PROGRESS: u8 = 1 << 2;
 pub(crate) struct ExactRuntimeFlags {
     pub enable_tactical_spirit_preview_fast_path: bool,
     pub enable_immediate_tactical_window_cache: bool,
+    pub enable_drainer_pickup_window_cache: bool,
+    pub enable_secure_mana_dead_end_skip: bool,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -639,6 +648,23 @@ struct ExactImmediateTacticalWindowCache {
     entries: ExactHashMap<ExactImmediateTacticalWindowKey, ExactImmediateTacticalWindow>,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ExactDrainerPickupWindowKey {
+    board_hash: u64,
+    color: Color,
+    start: Location,
+    max_steps: Option<i32>,
+    need_score: bool,
+    need_denial: bool,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Default)]
+struct ExactDrainerPickupWindowCache {
+    entries: ExactHashMap<ExactDrainerPickupWindowKey, ExactDrainerPickupWindow>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ExactSpiritReachQueryKey {
     board_hash: u64,
@@ -715,6 +741,8 @@ pub(crate) struct ExactQueryDiagnostics {
     #[cfg(any(target_arch = "wasm32", test))]
     pub immediate_tactical_window_cache_hits: u32,
     #[cfg(any(target_arch = "wasm32", test))]
+    pub drainer_pickup_window_cache_hits: u32,
+    #[cfg(any(target_arch = "wasm32", test))]
     pub tactical_spirit_after_window_calls: u32,
     #[cfg(any(target_arch = "wasm32", test))]
     pub tactical_spirit_after_window_fast_path_skips: u32,
@@ -727,6 +755,8 @@ pub(crate) struct ExactQueryDiagnostics {
     pub exact_secure_mana_calls: u32,
     #[cfg(any(target_arch = "wasm32", test))]
     pub exact_secure_mana_cache_hits: u32,
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub exact_secure_mana_dead_end_skips: u32,
     pub pickup_path_calls: u32,
     pub pickup_path_cache_hits: u32,
     pub pickup_path_cache_misses: u32,
@@ -748,6 +778,9 @@ thread_local! {
     #[cfg(any(target_arch = "wasm32", test))]
     static EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE: RefCell<ExactImmediateTacticalWindowCache> =
         RefCell::new(ExactImmediateTacticalWindowCache::default());
+    #[cfg(any(target_arch = "wasm32", test))]
+    static EXACT_DRAINER_PICKUP_WINDOW_CACHE: RefCell<ExactDrainerPickupWindowCache> =
+        RefCell::new(ExactDrainerPickupWindowCache::default());
     static EXACT_STRATEGIC_ANALYSIS_CACHE: RefCell<ExactStrategicAnalysisCache> =
         RefCell::new(ExactStrategicAnalysisCache::default());
     static EXACT_ATTACK_REACH_CACHE: RefCell<ExactAttackReachCache> =
@@ -837,6 +870,7 @@ pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_TURN_SUMMARY_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_TURN_TACTICAL_PROJECTION_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE.with(|cache| cache.borrow_mut().entries.clear());
+    EXACT_DRAINER_PICKUP_WINDOW_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_STRATEGIC_ANALYSIS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_ATTACK_REACH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_CARRIER_STEPS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
@@ -1278,7 +1312,7 @@ pub(crate) fn attack_reach_summary_for_targets_with_hash(
             } => ExactActorPayload::Bomb,
             _ => ExactActorPayload::None,
         };
-        let mut actor_move_memo = ExactActorMoveMemo::new();
+        let mut actor_move_memo = ExactActorMoveMemo::new(board_hash);
         let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
         let mut seen = ExactPayloadSeen::new();
         queue.push_back((start, start_payload, 0));
@@ -1416,7 +1450,7 @@ pub(crate) fn can_attack_target_on_board_with_hash(
 
 fn can_attack_target_on_board_uncached(
     board: &Board,
-    _board_hash: u64,
+    board_hash: u64,
     attacker_color: Color,
     target_color: Color,
     target: Location,
@@ -1424,7 +1458,7 @@ fn can_attack_target_on_board_uncached(
     _can_use_action: bool,
 ) -> bool {
     let target_guarded = exact_is_location_guarded_by_angel(board, target_color, target);
-    let mut actor_move_memo = ExactActorMoveMemo::new();
+    let mut actor_move_memo = ExactActorMoveMemo::new(board_hash);
 
     for (start, item) in board.occupied() {
         let mon = match item {
@@ -2308,7 +2342,7 @@ fn exact_shortest_payload_state<F>(
 where
     F: FnMut(Location, ExactActorPayload) -> bool,
 {
-    let mut actor_move_memo = ExactActorMoveMemo::new();
+    let mut actor_move_memo = ExactActorMoveMemo::new(exact_board_hash(board));
     let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
     let mut seen = ExactPayloadSeen::new();
     queue.push_back((start, start_payload, 0));
@@ -2549,7 +2583,7 @@ fn exact_carrier_steps_to_any_pool(board: &Board, start: Location, mana: Mana) -
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct ExactDrainerPickupWindow {
     any: Option<ExactDrainerPickupPath>,
     opponent: Option<ExactDrainerPickupPath>,
@@ -2573,7 +2607,7 @@ fn exact_pickup_path_beats(
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-fn exact_drainer_pickup_window_uncached(
+fn exact_drainer_pickup_window_uncached_with_hash(
     board: &Board,
     color: Color,
     start: Location,
@@ -2581,6 +2615,7 @@ fn exact_drainer_pickup_window_uncached(
     need_score: bool,
     need_denial: bool,
     opponent_mana: Mana,
+    board_hash: u64,
 ) -> ExactDrainerPickupWindow {
     update_exact_query_diagnostics(|diagnostics| diagnostics.pickup_path_calls += 1);
 
@@ -2588,7 +2623,7 @@ fn exact_drainer_pickup_window_uncached(
         return ExactDrainerPickupWindow::default();
     }
 
-    let mut actor_move_memo = ExactActorMoveMemo::new();
+    let mut actor_move_memo = ExactActorMoveMemo::new(board_hash);
     let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
     let mut seen = ExactPayloadSeen::new();
     queue.push_back((start, ExactActorPayload::None, 0));
@@ -2649,6 +2684,73 @@ fn exact_drainer_pickup_window_uncached(
     best
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_drainer_pickup_window_with_hash(
+    board: &Board,
+    color: Color,
+    start: Location,
+    max_steps: Option<i32>,
+    need_score: bool,
+    need_denial: bool,
+    opponent_mana: Mana,
+    board_hash: u64,
+) -> ExactDrainerPickupWindow {
+    if !need_score && !need_denial {
+        return ExactDrainerPickupWindow::default();
+    }
+
+    if exact_runtime_flags().enable_drainer_pickup_window_cache {
+        let key = ExactDrainerPickupWindowKey {
+            board_hash,
+            color,
+            start,
+            max_steps,
+            need_score,
+            need_denial,
+        };
+        if let Some(cached) =
+            EXACT_DRAINER_PICKUP_WINDOW_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
+        {
+            update_exact_query_diagnostics(|diagnostics| {
+                diagnostics.drainer_pickup_window_cache_hits += 1;
+            });
+            return cached;
+        }
+
+        let window = exact_drainer_pickup_window_uncached_with_hash(
+            board,
+            color,
+            start,
+            max_steps,
+            need_score,
+            need_denial,
+            opponent_mana,
+            board_hash,
+        );
+        EXACT_DRAINER_PICKUP_WINDOW_CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            if cache.entries.len() >= EXACT_DRAINER_PICKUP_WINDOW_CACHE_MAX_ENTRIES
+                && !cache.entries.contains_key(&key)
+            {
+                cache.entries.clear();
+            }
+            cache.entries.insert(key, window);
+        });
+        return window;
+    }
+
+    exact_drainer_pickup_window_uncached_with_hash(
+        board,
+        color,
+        start,
+        max_steps,
+        need_score,
+        need_denial,
+        opponent_mana,
+        board_hash,
+    )
+}
+
 #[inline]
 fn exact_best_drainer_pickup_path_filtered_with_hash(
     board: &Board,
@@ -2674,7 +2776,7 @@ fn exact_best_drainer_pickup_path_filtered_with_hash(
     }
     update_exact_query_diagnostics(|diagnostics| diagnostics.pickup_path_cache_misses += 1);
 
-    let mut actor_move_memo = ExactActorMoveMemo::new();
+    let mut actor_move_memo = ExactActorMoveMemo::new(board_hash);
     let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
     let mut seen = ExactPayloadSeen::new();
     let start_state = (start, ExactActorPayload::None, 0);
@@ -2951,6 +3053,7 @@ fn exact_secure_specific_mana_steps_in_game_uncached_at_mut(
         return None;
     }
 
+    let runtime_flags = exact_runtime_flags();
     let mut best = None;
     for &next in drainer_location.nearby_locations_ref() {
         let Some(transition) =
@@ -2960,6 +3063,14 @@ fn exact_secure_specific_mana_steps_in_game_uncached_at_mut(
         };
         let candidate = if transition.scored_mana == Some(wanted) {
             Some(1)
+        } else if runtime_flags.enable_secure_mana_dead_end_skip
+            && (transition.after_key.active_color != color
+                || transition.after_key.mons_moves_count >= Config::MONS_MOVES_PER_TURN)
+        {
+            update_exact_query_diagnostics(|diagnostics| {
+                diagnostics.exact_secure_mana_dead_end_skips += 1;
+            });
+            None
         } else {
             exact_secure_specific_mana_steps_in_game_with_key_at_mut(
                 game,
@@ -4524,7 +4635,7 @@ fn exact_best_immediate_tactical_window_on_board_with_hash_uncached(
             Item::Mon { mon } | Item::MonWithConsumable { mon, .. }
                 if mon.color == color && mon.kind == MonKind::Drainer && !mon.is_fainted() =>
             {
-                let pickup = exact_drainer_pickup_window_uncached(
+                let pickup = exact_drainer_pickup_window_with_hash(
                     board,
                     color,
                     location,
@@ -4532,6 +4643,7 @@ fn exact_best_immediate_tactical_window_on_board_with_hash_uncached(
                     need_score,
                     need_denial,
                     opponent_mana,
+                    board_hash,
                 );
                 if need_score {
                     if let Some(path) = pickup.any {
@@ -5545,7 +5657,7 @@ mod tests {
             Color::White,
         )
         .board;
-        let mut memo = ExactActorMoveMemo::new();
+        let mut memo = ExactActorMoveMemo::new(exact_board_hash(&board));
 
         let first = memo.payload_after_move(
             &board,
@@ -5874,6 +5986,154 @@ mod tests {
     }
 
     #[test]
+    fn exact_drainer_pickup_window_cache_matches_uncached_result() {
+        clear_exact_state_analysis_cache();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(8, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 4),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(8, 5),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+        let baseline = exact_drainer_pickup_window_with_hash(
+            &board,
+            Color::White,
+            Location::new(8, 4),
+            Some(2),
+            true,
+            true,
+            Mana::Regular(Color::Black),
+            board_hash,
+        );
+
+        clear_exact_state_analysis_cache();
+        let cached = with_exact_runtime_flags(
+            ExactRuntimeFlags {
+                enable_drainer_pickup_window_cache: true,
+                ..ExactRuntimeFlags::default()
+            },
+            || {
+                exact_drainer_pickup_window_with_hash(
+                    &board,
+                    Color::White,
+                    Location::new(8, 4),
+                    Some(2),
+                    true,
+                    true,
+                    Mana::Regular(Color::Black),
+                    board_hash,
+                )
+            },
+        );
+
+        assert_eq!(cached, baseline);
+    }
+
+    #[test]
+    fn exact_drainer_pickup_window_cache_hits_repeated_query() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(8, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 4),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(8, 5),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+
+        let first = with_exact_runtime_flags(
+            ExactRuntimeFlags {
+                enable_drainer_pickup_window_cache: true,
+                ..ExactRuntimeFlags::default()
+            },
+            || {
+                exact_drainer_pickup_window_with_hash(
+                    &board,
+                    Color::White,
+                    Location::new(8, 4),
+                    Some(2),
+                    true,
+                    true,
+                    Mana::Regular(Color::Black),
+                    board_hash,
+                )
+            },
+        );
+        let first_diag = exact_query_diagnostics_snapshot();
+        let second = with_exact_runtime_flags(
+            ExactRuntimeFlags {
+                enable_drainer_pickup_window_cache: true,
+                ..ExactRuntimeFlags::default()
+            },
+            || {
+                exact_drainer_pickup_window_with_hash(
+                    &board,
+                    Color::White,
+                    Location::new(8, 4),
+                    Some(2),
+                    true,
+                    true,
+                    Mana::Regular(Color::Black),
+                    board_hash,
+                )
+            },
+        );
+        let second_diag = exact_query_diagnostics_snapshot();
+
+        assert_eq!(first, second);
+        assert_eq!(first_diag.drainer_pickup_window_cache_hits, 0);
+        assert!(second_diag.drainer_pickup_window_cache_hits > 0);
+    }
+
+    #[test]
     fn exact_secure_mana_cache_preserves_repeated_supermana_result() {
         clear_exact_state_analysis_cache();
         let game = game_with_items(
@@ -5921,6 +6181,90 @@ mod tests {
 
         assert_eq!(first, second);
         assert_eq!(first, third);
+    }
+
+    #[test]
+    fn exact_secure_mana_dead_end_skip_matches_baseline_result() {
+        clear_exact_state_analysis_cache();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+
+        let baseline =
+            exact_secure_specific_mana_steps_on_board(&board, Color::White, Mana::Supermana, 1);
+        clear_exact_state_analysis_cache();
+        let candidate = with_exact_runtime_flags(
+            ExactRuntimeFlags {
+                enable_secure_mana_dead_end_skip: true,
+                ..ExactRuntimeFlags::default()
+            },
+            || exact_secure_specific_mana_steps_on_board(&board, Color::White, Mana::Supermana, 1),
+        );
+
+        assert_eq!(candidate, baseline);
+    }
+
+    #[test]
+    fn exact_secure_mana_dead_end_skip_records_pruned_recursions() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+
+        let result = with_exact_runtime_flags(
+            ExactRuntimeFlags {
+                enable_secure_mana_dead_end_skip: true,
+                ..ExactRuntimeFlags::default()
+            },
+            || exact_secure_specific_mana_steps_on_board(&board, Color::White, Mana::Supermana, 1),
+        );
+        let diagnostics = exact_query_diagnostics_snapshot();
+
+        assert_eq!(result, None);
+        assert!(diagnostics.exact_secure_mana_dead_end_skips > 0);
     }
 
     #[test]
@@ -7058,6 +7402,8 @@ mod tests {
             ExactRuntimeFlags {
                 enable_tactical_spirit_preview_fast_path: enable_fast_path,
                 enable_immediate_tactical_window_cache: enable_window_cache,
+                enable_drainer_pickup_window_cache: false,
+                enable_secure_mana_dead_end_skip: false,
             },
             || {
                 exact_tactical_spirit_summary(
@@ -7082,6 +7428,8 @@ mod tests {
             ExactRuntimeFlags {
                 enable_tactical_spirit_preview_fast_path: enable_fast_path,
                 enable_immediate_tactical_window_cache: enable_window_cache,
+                enable_drainer_pickup_window_cache: false,
+                enable_secure_mana_dead_end_skip: false,
             },
             || exact_turn_tactical_projection(game, color, flags),
         )

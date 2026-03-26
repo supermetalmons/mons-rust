@@ -1056,6 +1056,8 @@ pub(crate) struct SmartSearchConfig {
     enable_child_vulnerability_scoring_ctx_reuse: bool,
     enable_child_vulnerability_attack_plausibility_screen: bool,
     enable_move_efficiency_tactical_score_window_narrowing: bool,
+    enable_drainer_pickup_window_cache: bool,
+    enable_secure_mana_dead_end_skip: bool,
     enable_two_stage_child_ordering: bool,
     child_ordering_shortlist_multiplier: usize,
     child_ordering_tactical_reserve: usize,
@@ -1414,6 +1416,8 @@ impl SmartSearchConfig {
             enable_child_vulnerability_scoring_ctx_reuse: false,
             enable_child_vulnerability_attack_plausibility_screen: false,
             enable_move_efficiency_tactical_score_window_narrowing: false,
+            enable_drainer_pickup_window_cache: false,
+            enable_secure_mana_dead_end_skip: false,
             enable_two_stage_child_ordering: false,
             child_ordering_shortlist_multiplier: 2,
             child_ordering_tactical_reserve: 2,
@@ -6768,6 +6772,8 @@ impl MonsGameModel {
                     .enable_tactical_spirit_preview_fast_path,
                 enable_immediate_tactical_window_cache: config
                     .enable_immediate_tactical_window_cache,
+                enable_drainer_pickup_window_cache: config.enable_drainer_pickup_window_cache,
+                enable_secure_mana_dead_end_skip: config.enable_secure_mana_dead_end_skip,
             },
             || Self::smart_search_best_inputs_internal(game, config, true),
         )
@@ -6784,6 +6790,8 @@ impl MonsGameModel {
                     .enable_tactical_spirit_preview_fast_path,
                 enable_immediate_tactical_window_cache: config
                     .enable_immediate_tactical_window_cache,
+                enable_drainer_pickup_window_cache: config.enable_drainer_pickup_window_cache,
+                enable_secure_mana_dead_end_skip: config.enable_secure_mana_dead_end_skip,
             },
             || Self::smart_search_best_inputs_internal(game, config, false),
         )
