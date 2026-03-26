@@ -312,11 +312,21 @@ pub(crate) const EXACT_TURN_TACTICAL_NEED_SPIRIT_DENIAL: u8 = 1 << 3;
 #[cfg(any(target_arch = "wasm32", test))]
 pub(crate) const EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW: u8 = 1 << 4;
 #[cfg(any(target_arch = "wasm32", test))]
+const EXACT_TURN_TACTICAL_ALL_FLAGS: u8 = EXACT_TURN_TACTICAL_NEED_SUPERMANA_PROGRESS
+    | EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS
+    | EXACT_TURN_TACTICAL_NEED_SPIRIT_SCORE
+    | EXACT_TURN_TACTICAL_NEED_SPIRIT_DENIAL
+    | EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW;
+#[cfg(any(target_arch = "wasm32", test))]
 const EXACT_TACTICAL_SPIRIT_NEED_SCORE: u8 = 1 << 0;
 #[cfg(any(target_arch = "wasm32", test))]
 const EXACT_TACTICAL_SPIRIT_NEED_DENIAL: u8 = 1 << 1;
 #[cfg(any(target_arch = "wasm32", test))]
 const EXACT_TACTICAL_SPIRIT_NEED_PROGRESS: u8 = 1 << 2;
+#[cfg(any(target_arch = "wasm32", test))]
+const EXACT_TACTICAL_SPIRIT_ALL_FIELDS: u8 = EXACT_TACTICAL_SPIRIT_NEED_SCORE
+    | EXACT_TACTICAL_SPIRIT_NEED_DENIAL
+    | EXACT_TACTICAL_SPIRIT_NEED_PROGRESS;
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, Default)]
@@ -353,6 +363,151 @@ enum ExactColorSummaryMode {
     #[cfg(any(target_arch = "wasm32", test))]
     ActiveTactical,
     PassiveStrategic,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_tactical_spirit_summary_for_fields(
+    summary: ExactSpiritSummary,
+    fields: u8,
+) -> ExactSpiritSummary {
+    ExactSpiritSummary {
+        same_turn_score: if fields & EXACT_TACTICAL_SPIRIT_NEED_SCORE != 0 {
+            summary.same_turn_score
+        } else {
+            false
+        },
+        same_turn_score_value: if fields & EXACT_TACTICAL_SPIRIT_NEED_SCORE != 0 {
+            summary.same_turn_score_value
+        } else {
+            0
+        },
+        same_turn_opponent_mana_score: if fields & EXACT_TACTICAL_SPIRIT_NEED_DENIAL != 0 {
+            summary.same_turn_opponent_mana_score
+        } else {
+            false
+        },
+        same_turn_opponent_mana_score_value: if fields & EXACT_TACTICAL_SPIRIT_NEED_DENIAL != 0 {
+            summary.same_turn_opponent_mana_score_value
+        } else {
+            0
+        },
+        supermana_progress: if fields & EXACT_TACTICAL_SPIRIT_NEED_PROGRESS != 0 {
+            summary.supermana_progress
+        } else {
+            false
+        },
+        opponent_mana_progress: if fields & EXACT_TACTICAL_SPIRIT_NEED_PROGRESS != 0 {
+            summary.opponent_mana_progress
+        } else {
+            false
+        },
+        ..ExactSpiritSummary::default()
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_tactical_spirit_superset_fields(fields: u8) -> &'static [u8] {
+    match fields {
+        EXACT_TACTICAL_SPIRIT_NEED_SCORE => &[
+            EXACT_TACTICAL_SPIRIT_NEED_SCORE | EXACT_TACTICAL_SPIRIT_NEED_DENIAL,
+            EXACT_TACTICAL_SPIRIT_NEED_SCORE | EXACT_TACTICAL_SPIRIT_NEED_PROGRESS,
+            EXACT_TACTICAL_SPIRIT_ALL_FIELDS,
+        ],
+        EXACT_TACTICAL_SPIRIT_NEED_DENIAL => &[
+            EXACT_TACTICAL_SPIRIT_NEED_SCORE | EXACT_TACTICAL_SPIRIT_NEED_DENIAL,
+            EXACT_TACTICAL_SPIRIT_NEED_DENIAL | EXACT_TACTICAL_SPIRIT_NEED_PROGRESS,
+            EXACT_TACTICAL_SPIRIT_ALL_FIELDS,
+        ],
+        EXACT_TACTICAL_SPIRIT_NEED_PROGRESS => &[
+            EXACT_TACTICAL_SPIRIT_NEED_SCORE | EXACT_TACTICAL_SPIRIT_NEED_PROGRESS,
+            EXACT_TACTICAL_SPIRIT_NEED_DENIAL | EXACT_TACTICAL_SPIRIT_NEED_PROGRESS,
+            EXACT_TACTICAL_SPIRIT_ALL_FIELDS,
+        ],
+        3 | 5 | 6 => &[EXACT_TACTICAL_SPIRIT_ALL_FIELDS],
+        7 => &[],
+        _ => &[],
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_immediate_tactical_window_for_axes(
+    window: ExactImmediateTacticalWindow,
+    need_score: bool,
+    need_denial: bool,
+) -> ExactImmediateTacticalWindow {
+    ExactImmediateTacticalWindow {
+        best_score: if need_score { window.best_score } else { 0 },
+        best_opponent_mana_score: if need_denial {
+            window.best_opponent_mana_score
+        } else {
+            0
+        },
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_drainer_pickup_window_for_axes(
+    window: ExactDrainerPickupWindow,
+    need_score: bool,
+    need_denial: bool,
+) -> ExactDrainerPickupWindow {
+    ExactDrainerPickupWindow {
+        any: if need_score { window.any } else { None },
+        opponent: if need_denial { window.opponent } else { None },
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_turn_tactical_projection_for_flags(
+    projection: ExactTurnTacticalProjection,
+    flags: u8,
+) -> ExactTurnTacticalProjection {
+    let need_supermana = flags & EXACT_TURN_TACTICAL_NEED_SUPERMANA_PROGRESS != 0;
+    let need_opponent_mana = flags & EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS != 0;
+    let need_spirit_score = flags & EXACT_TURN_TACTICAL_NEED_SPIRIT_SCORE != 0;
+    let need_spirit_denial = flags & EXACT_TURN_TACTICAL_NEED_SPIRIT_DENIAL != 0;
+    let need_score_window = flags & EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW != 0;
+    let include_score_window_denial =
+        need_score_window && (need_opponent_mana || need_spirit_denial);
+    let include_spirit_score = need_spirit_score || need_score_window;
+    let include_spirit_denial = need_spirit_denial || include_score_window_denial;
+    let safe_supermana_progress_steps = need_supermana
+        .then_some(())
+        .and(projection.safe_supermana_progress_steps);
+    let safe_opponent_mana_progress_steps = need_opponent_mana
+        .then_some(())
+        .and(projection.safe_opponent_mana_progress_steps);
+    let spirit_assisted_denial = include_spirit_denial && projection.spirit_assisted_denial;
+
+    ExactTurnTacticalProjection {
+        safe_supermana_progress: safe_supermana_progress_steps.is_some(),
+        safe_supermana_progress_steps,
+        safe_opponent_mana_progress: safe_opponent_mana_progress_steps.is_some()
+            || spirit_assisted_denial,
+        safe_opponent_mana_progress_steps,
+        spirit_assisted_score: include_spirit_score && projection.spirit_assisted_score,
+        spirit_assisted_score_value: if include_spirit_score {
+            projection.spirit_assisted_score_value
+        } else {
+            0
+        },
+        spirit_assisted_denial,
+        spirit_assisted_denial_value: if include_spirit_denial {
+            projection.spirit_assisted_denial_value
+        } else {
+            0
+        },
+        same_turn_score_window_value: if need_score_window {
+            projection.same_turn_score_window_value
+        } else {
+            0
+        },
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -971,6 +1126,20 @@ pub(crate) fn exact_turn_tactical_projection_with_search_hash(
         let mut cache = cache.borrow_mut();
         if let Some(cached) = cache.entries.get(&cache_key).copied() {
             return cached;
+        }
+        for superset_flags in 1..=EXACT_TURN_TACTICAL_ALL_FLAGS {
+            if superset_flags == flags || superset_flags & flags != flags {
+                continue;
+            }
+            let superset_key = ExactTurnTacticalProjectionKey {
+                flags: superset_flags,
+                ..cache_key
+            };
+            if let Some(cached) = cache.entries.get(&superset_key).copied() {
+                let derived = exact_turn_tactical_projection_for_flags(cached, flags);
+                cache.entries.insert(cache_key, derived);
+                return derived;
+            }
         }
         let built = build_exact_turn_tactical_projection(game, flags);
         if cache.entries.len() >= EXACT_ANALYSIS_CACHE_MAX_ENTRIES
@@ -2728,9 +2897,25 @@ fn exact_drainer_pickup_window_with_hash(
         need_denial,
         opponent_mana,
     };
-    if let Some(cached) =
-        EXACT_DRAINER_PICKUP_WINDOW_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
-    {
+    if let Some(cached) = EXACT_DRAINER_PICKUP_WINDOW_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(cached) = cache.entries.get(&key).copied() {
+            return Some(cached);
+        }
+        if need_score ^ need_denial {
+            let superset_key = ExactDrainerPickupWindowQueryKey {
+                need_score: true,
+                need_denial: true,
+                ..key
+            };
+            if let Some(cached) = cache.entries.get(&superset_key).copied() {
+                let derived = exact_drainer_pickup_window_for_axes(cached, need_score, need_denial);
+                cache.entries.insert(key, derived);
+                return Some(derived);
+            }
+        }
+        None
+    }) {
         return cached;
     }
 
@@ -3604,6 +3789,26 @@ fn exact_tactical_spirit_summary(
     if let Some(cached) =
         EXACT_SPIRIT_TACTICAL_SUMMARY_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
     {
+        update_exact_query_diagnostics(|diagnostics| {
+            diagnostics.tactical_spirit_summary_cache_hits += 1;
+        });
+        return cached;
+    }
+    if let Some(cached) = EXACT_SPIRIT_TACTICAL_SUMMARY_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        for &superset_fields in exact_tactical_spirit_superset_fields(fields) {
+            let superset_key = ExactTacticalSpiritSummaryKey {
+                fields: superset_fields,
+                ..key
+            };
+            if let Some(cached) = cache.entries.get(&superset_key).copied() {
+                let derived = exact_tactical_spirit_summary_for_fields(cached, fields);
+                cache.entries.insert(key, derived);
+                return Some(derived);
+            }
+        }
+        None
+    }) {
         update_exact_query_diagnostics(|diagnostics| {
             diagnostics.tactical_spirit_summary_cache_hits += 1;
         });
@@ -4553,9 +4758,26 @@ fn exact_best_immediate_tactical_window_on_board_with_hash(
         need_score,
         need_denial,
     };
-    if let Some(cached) = EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE
-        .with(|cache| cache.borrow().entries.get(&key).copied())
-    {
+    if let Some(cached) = EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(cached) = cache.entries.get(&key).copied() {
+            return Some(cached);
+        }
+        if need_score ^ need_denial {
+            let superset_key = ExactImmediateTacticalWindowQueryKey {
+                need_score: true,
+                need_denial: true,
+                ..key
+            };
+            if let Some(cached) = cache.entries.get(&superset_key).copied() {
+                let derived =
+                    exact_immediate_tactical_window_for_axes(cached, need_score, need_denial);
+                cache.entries.insert(key, derived);
+                return Some(derived);
+            }
+        }
+        None
+    }) {
         return cached;
     }
 
@@ -5983,6 +6205,63 @@ mod tests {
     }
 
     #[test]
+    fn exact_drainer_pickup_window_superset_cache_answers_subset_query() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(8, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 4),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(6, 4),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+
+        let full = exact_drainer_pickup_window_with_hash(
+            &board,
+            Color::White,
+            Location::new(8, 4),
+            Some(3),
+            true,
+            true,
+            Mana::Regular(Color::Black),
+            board_hash,
+        );
+        clear_exact_query_diagnostics();
+        let score_only = exact_drainer_pickup_window_with_hash(
+            &board,
+            Color::White,
+            Location::new(8, 4),
+            Some(3),
+            true,
+            false,
+            Mana::Regular(Color::Black),
+            board_hash,
+        );
+
+        assert_eq!(score_only.any, full.any);
+        assert_eq!(score_only.opponent, None);
+        assert_eq!(exact_query_diagnostics_snapshot().pickup_path_calls, 0);
+    }
+
+    #[test]
     fn exact_drainer_pickup_window_cache_preserves_repeated_result() {
         clear_exact_state_analysis_cache();
         let board = game_with_items(
@@ -6148,6 +6427,59 @@ mod tests {
         assert_eq!(second_cache_len, 1);
         assert!(EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE
             .with(|cache| { cache.borrow().entries.contains_key(&key) }));
+    }
+
+    #[test]
+    fn exact_immediate_tactical_window_superset_cache_answers_subset_query() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(8, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 4),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(6, 4),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+
+        let full = exact_best_immediate_tactical_window_on_board_with_hash(
+            &board,
+            Color::White,
+            3,
+            true,
+            true,
+            board_hash,
+        );
+        clear_exact_query_diagnostics();
+        let score_only = exact_best_immediate_tactical_window_on_board_with_hash(
+            &board,
+            Color::White,
+            3,
+            true,
+            false,
+            board_hash,
+        );
+
+        assert_eq!(score_only.best_score, full.best_score);
+        assert_eq!(score_only.best_opponent_mana_score, 0);
+        assert_eq!(exact_query_diagnostics_snapshot().pickup_path_calls, 0);
     }
 
     #[test]
@@ -7156,6 +7488,67 @@ mod tests {
     }
 
     #[test]
+    fn exact_tactical_spirit_summary_superset_cache_answers_subset_query() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+
+        let full = exact_tactical_spirit_summary(
+            &board,
+            Color::White,
+            Config::MONS_MOVES_PER_TURN,
+            true,
+            EXACT_TACTICAL_SPIRIT_ALL_FIELDS,
+        );
+        clear_exact_query_diagnostics();
+        let score_only = exact_tactical_spirit_summary(
+            &board,
+            Color::White,
+            Config::MONS_MOVES_PER_TURN,
+            true,
+            EXACT_TACTICAL_SPIRIT_NEED_SCORE,
+        );
+
+        assert!(score_only.same_turn_score);
+        assert_eq!(score_only.same_turn_score_value, full.same_turn_score_value);
+        assert!(!score_only.same_turn_opponent_mana_score);
+        assert_eq!(score_only.same_turn_opponent_mana_score_value, 0);
+        assert!(!score_only.supermana_progress);
+        assert!(!score_only.opponent_mana_progress);
+        assert_eq!(
+            exact_query_diagnostics_snapshot().tactical_spirit_summary_cache_hits,
+            1
+        );
+        assert_eq!(
+            exact_query_diagnostics_snapshot().immediate_tactical_window_queries,
+            0
+        );
+    }
+
+    #[test]
     fn exact_spirit_reach_cache_preserves_repeated_positions() {
         clear_exact_state_analysis_cache();
         let board = game_with_items(
@@ -7424,6 +7817,63 @@ mod tests {
         assert_eq!(
             projection.same_turn_score_window_value,
             turn.same_turn_score_window_value
+        );
+    }
+
+    #[test]
+    fn exact_turn_tactical_projection_superset_cache_answers_subset_query() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let state_hash = exact_search_state_hash(&game);
+
+        let full = exact_turn_tactical_projection_with_search_hash(
+            &game,
+            Color::White,
+            state_hash,
+            EXACT_TURN_TACTICAL_ALL_FLAGS,
+        );
+        assert!(full.spirit_assisted_denial);
+        assert!(full.safe_opponent_mana_progress);
+
+        clear_exact_query_diagnostics();
+        let opponent_only = exact_turn_tactical_projection_with_search_hash(
+            &game,
+            Color::White,
+            state_hash,
+            EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS,
+        );
+
+        assert!(!opponent_only.safe_opponent_mana_progress);
+        assert_eq!(opponent_only.safe_opponent_mana_progress_steps, None);
+        assert!(!opponent_only.spirit_assisted_score);
+        assert_eq!(opponent_only.spirit_assisted_score_value, 0);
+        assert!(!opponent_only.spirit_assisted_denial);
+        assert_eq!(opponent_only.spirit_assisted_denial_value, 0);
+        assert_eq!(opponent_only.same_turn_score_window_value, 0);
+        assert_eq!(
+            exact_query_diagnostics_snapshot().tactical_spirit_summary_calls,
+            0
+        );
+        assert_eq!(
+            exact_query_diagnostics_snapshot().exact_secure_mana_calls,
+            0
         );
     }
 
