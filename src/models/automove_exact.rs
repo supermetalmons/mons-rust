@@ -9,7 +9,11 @@ const EXACT_CARRIER_STEPS_CACHE_MAX_ENTRIES: usize = 8192;
 #[cfg(any(target_arch = "wasm32", test))]
 const EXACT_DRAINER_TO_MANA_CACHE_MAX_ENTRIES: usize = 8192;
 #[cfg(any(target_arch = "wasm32", test))]
+const EXACT_DRAINER_PICKUP_WINDOW_CACHE_MAX_ENTRIES: usize = 8192;
+#[cfg(any(target_arch = "wasm32", test))]
 const EXACT_FOLLOWUP_SUMMARY_CACHE_MAX_ENTRIES: usize = 4096;
+#[cfg(any(target_arch = "wasm32", test))]
+const EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_PICKUP_PATH_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_SPIRIT_REACH_CACHE_MAX_ENTRIES: usize = 4096;
 #[cfg(any(target_arch = "wasm32", test))]
@@ -339,7 +343,7 @@ pub(crate) struct ExactOpportunityDelta {
 pub(crate) struct ExactOpportunityContext {
     pub budget: ExactOpportunityBudget,
     #[allow(dead_code)]
-    pub turn: ExactTurnSummary,
+    pub turn: ExactTurnTacticalProjection,
     pub delta: ExactOpportunityDelta,
     pub opponent_can_win_immediately: bool,
 }
@@ -581,6 +585,24 @@ struct ExactPickupPathCache {
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ExactDrainerPickupWindowQueryKey {
+    board_hash: u64,
+    color: Color,
+    start: Location,
+    max_steps: Option<i32>,
+    need_score: bool,
+    need_denial: bool,
+    opponent_mana: Mana,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Default)]
+struct ExactDrainerPickupWindowCache {
+    entries: ExactHashMap<ExactDrainerPickupWindowQueryKey, ExactDrainerPickupWindow>,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ExactSpiritSummaryKey {
     board_hash: u64,
     color: Color,
@@ -617,6 +639,22 @@ struct ExactTacticalSpiritAfterWindowKey {
     remaining_mon_moves: i32,
     need_score: bool,
     need_denial: bool,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ExactImmediateTacticalWindowQueryKey {
+    board_hash: u64,
+    color: Color,
+    move_budget: i32,
+    need_score: bool,
+    need_denial: bool,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Default)]
+struct ExactImmediateTacticalWindowCache {
+    entries: ExactHashMap<ExactImmediateTacticalWindowQueryKey, ExactImmediateTacticalWindow>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -728,8 +766,14 @@ thread_local! {
     static EXACT_DRAINER_TO_MANA_CACHE: RefCell<ExactDrainerToManaCache> =
         RefCell::new(ExactDrainerToManaCache::default());
     #[cfg(any(target_arch = "wasm32", test))]
+    static EXACT_DRAINER_PICKUP_WINDOW_CACHE: RefCell<ExactDrainerPickupWindowCache> =
+        RefCell::new(ExactDrainerPickupWindowCache::default());
+    #[cfg(any(target_arch = "wasm32", test))]
     static EXACT_FOLLOWUP_SUMMARY_CACHE: RefCell<ExactFollowupSummaryCache> =
         RefCell::new(ExactFollowupSummaryCache::default());
+    #[cfg(any(target_arch = "wasm32", test))]
+    static EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE: RefCell<ExactImmediateTacticalWindowCache> =
+        RefCell::new(ExactImmediateTacticalWindowCache::default());
     static EXACT_PICKUP_PATH_CACHE: RefCell<ExactPickupPathCache> =
         RefCell::new(ExactPickupPathCache::default());
     static EXACT_SPIRIT_REACH_CACHE: RefCell<ExactSpiritReachCache> =
@@ -784,7 +828,9 @@ pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_ATTACK_REACH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_CARRIER_STEPS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_DRAINER_TO_MANA_CACHE.with(|cache| cache.borrow_mut().entries.clear());
+    EXACT_DRAINER_PICKUP_WINDOW_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_FOLLOWUP_SUMMARY_CACHE.with(|cache| cache.borrow_mut().entries.clear());
+    EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_PICKUP_PATH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_SPIRIT_REACH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_SPIRIT_SUMMARY_CACHE.with(|cache| cache.borrow_mut().entries.clear());
@@ -938,6 +984,41 @@ pub(crate) fn exact_turn_tactical_projection_with_search_hash(
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+pub(crate) fn exact_same_turn_score_window_with_search_hash(
+    game: &MonsGame,
+    color: Color,
+    key: u64,
+) -> i32 {
+    exact_turn_tactical_projection_with_search_hash(
+        game,
+        color,
+        key,
+        EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW,
+    )
+    .same_turn_score_window_value
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_opportunity_turn_tactical_projection_with_search_hash(
+    game: &MonsGame,
+    color: Color,
+    key: u64,
+) -> ExactTurnTacticalProjection {
+    exact_turn_tactical_projection_with_search_hash(
+        game,
+        color,
+        key,
+        EXACT_TURN_TACTICAL_NEED_SUPERMANA_PROGRESS
+            | EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS
+            | EXACT_TURN_TACTICAL_NEED_SPIRIT_SCORE
+            | EXACT_TURN_TACTICAL_NEED_SPIRIT_DENIAL
+            | EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW,
+    )
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
 pub(crate) fn can_attack_opponent_drainer_this_turn(game: &MonsGame, color: Color) -> bool {
     exact_turn_summary(game, color).can_attack_opponent_drainer
 }
@@ -963,7 +1044,7 @@ pub(crate) fn exact_opportunity_context_with_search_hash(
         can_use_action: game.player_can_use_action(),
         can_move_mana: game.player_can_move_mana(),
     };
-    let turn = exact_turn_summary_with_search_hash(game, color, key);
+    let turn = exact_opportunity_turn_tactical_projection_with_search_hash(game, color, key);
     let drainer_safety = exact_own_drainer_safety_score(&game.board, color);
     let opponent = color.other();
     let opponent_score = if opponent == Color::White {
@@ -993,7 +1074,7 @@ pub(crate) fn exact_opportunity_context_with_search_hash(
                 .spirit_assisted_score_value
                 .max(turn.spirit_assisted_denial_value),
             opponent_window_deny_gain,
-            drainer_attack_available: turn.can_attack_opponent_drainer,
+            drainer_attack_available: can_attack_opponent_drainer_exact(game, color),
             drainer_safety,
             safe_supermana_progress_steps: turn.safe_supermana_progress_steps,
             safe_opponent_mana_progress_steps: turn.safe_opponent_mana_progress_steps,
@@ -2607,8 +2688,53 @@ fn exact_drainer_pickup_window_with_hash(
     if !need_score && !need_denial {
         return ExactDrainerPickupWindow::default();
     }
+    if max_steps == Some(0) {
+        return ExactDrainerPickupWindow::default();
+    }
+    if max_steps == Some(1) {
+        let mut best = ExactDrainerPickupWindow::default();
+        for &next in start.nearby_locations_ref() {
+            let Some(Item::Mana { mana }) = board.item(next) else {
+                continue;
+            };
+            if !matches!(board.square(next), Square::ManaPool { .. }) {
+                continue;
+            }
+            let candidate = ExactDrainerPickupPath {
+                path_steps: 0,
+                total_moves: 1,
+                mana_value: mana.score(color),
+                mana: *mana,
+            };
+            if need_score && exact_pickup_path_beats(candidate, best.any) {
+                best.any = Some(candidate);
+            }
+            if need_denial
+                && *mana == opponent_mana
+                && exact_pickup_path_beats(candidate, best.opponent)
+            {
+                best.opponent = Some(candidate);
+            }
+        }
+        return best;
+    }
 
-    exact_drainer_pickup_window_uncached_with_hash(
+    let key = ExactDrainerPickupWindowQueryKey {
+        board_hash,
+        color,
+        start,
+        max_steps,
+        need_score,
+        need_denial,
+        opponent_mana,
+    };
+    if let Some(cached) =
+        EXACT_DRAINER_PICKUP_WINDOW_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
+    {
+        return cached;
+    }
+
+    let result = exact_drainer_pickup_window_uncached_with_hash(
         board,
         color,
         start,
@@ -2617,7 +2743,17 @@ fn exact_drainer_pickup_window_with_hash(
         need_denial,
         opponent_mana,
         board_hash,
-    )
+    );
+    EXACT_DRAINER_PICKUP_WINDOW_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.entries.len() >= EXACT_DRAINER_PICKUP_WINDOW_CACHE_MAX_ENTRIES
+            && !cache.entries.contains_key(&key)
+        {
+            cache.entries.clear();
+        }
+        cache.entries.insert(key, result);
+    });
+    result
 }
 
 #[inline]
@@ -3676,8 +3812,7 @@ fn exact_tactical_spirit_summary_uncached(
                             dest,
                             color,
                         );
-                    let preview_saturates_score =
-                        need_score && score_delta >= max_same_turn_score;
+                    let preview_saturates_score = need_score && score_delta >= max_same_turn_score;
                     let preview_saturates_denial =
                         need_denial && opponent_mana_score_delta >= max_same_turn_opponent_score;
                     let need_after_score = need_score
@@ -4361,6 +4496,38 @@ struct ExactImmediateTacticalWindow {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+fn exact_zero_move_immediate_tactical_window_on_board_with_hash(
+    board: &Board,
+    color: Color,
+    need_score: bool,
+    need_denial: bool,
+    board_hash: u64,
+) -> ExactImmediateTacticalWindow {
+    let mut best = ExactImmediateTacticalWindow::default();
+    let opponent_mana = Mana::Regular(color.other());
+    for (location, item) in board.occupied() {
+        let Item::MonWithMana { mon, mana } = item else {
+            continue;
+        };
+        if mon.color != color || mon.is_fainted() {
+            continue;
+        }
+        if exact_carrier_steps_to_any_pool_with_hash(board, location, *mana, board_hash) != Some(0)
+        {
+            continue;
+        }
+        let mana_value = mana.score(color);
+        if need_score {
+            best.best_score = best.best_score.max(mana_value);
+        }
+        if need_denial && *mana == opponent_mana {
+            best.best_opponent_mana_score = best.best_opponent_mana_score.max(mana_value);
+        }
+    }
+    best
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
 fn exact_best_immediate_tactical_window_on_board_with_hash(
     board: &Board,
     color: Color,
@@ -4376,14 +4543,37 @@ fn exact_best_immediate_tactical_window_on_board_with_hash(
         return ExactImmediateTacticalWindow::default();
     }
 
-    exact_best_immediate_tactical_window_on_board_with_hash_uncached(
+    let key = ExactImmediateTacticalWindowQueryKey {
+        board_hash,
+        color,
+        move_budget,
+        need_score,
+        need_denial,
+    };
+    if let Some(cached) = EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE
+        .with(|cache| cache.borrow().entries.get(&key).copied())
+    {
+        return cached;
+    }
+
+    let result = exact_best_immediate_tactical_window_on_board_with_hash_uncached(
         board,
         color,
         move_budget,
         need_score,
         need_denial,
         board_hash,
-    )
+    );
+    EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.entries.len() >= EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE_MAX_ENTRIES
+            && !cache.entries.contains_key(&key)
+        {
+            cache.entries.clear();
+        }
+        cache.entries.insert(key, result);
+    });
+    result
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -4397,6 +4587,15 @@ fn exact_best_immediate_tactical_window_on_board_with_hash_uncached(
 ) -> ExactImmediateTacticalWindow {
     if move_budget < 0 || (!need_score && !need_denial) {
         return ExactImmediateTacticalWindow::default();
+    }
+    if move_budget == 0 {
+        return exact_zero_move_immediate_tactical_window_on_board_with_hash(
+            board,
+            color,
+            need_score,
+            need_denial,
+            board_hash,
+        );
     }
 
     let opponent_mana = Mana::Regular(color.other());
@@ -5779,6 +5978,175 @@ mod tests {
             third.map(|path| path.mana_value)
         );
     }
+
+    #[test]
+    fn exact_drainer_pickup_window_cache_preserves_repeated_result() {
+        clear_exact_state_analysis_cache();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(8, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 4),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(6, 4),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+        let key = ExactDrainerPickupWindowQueryKey {
+            board_hash,
+            color: Color::White,
+            start: Location::new(8, 4),
+            max_steps: Some(3),
+            need_score: true,
+            need_denial: true,
+            opponent_mana: Mana::Regular(Color::Black),
+        };
+
+        let first = exact_drainer_pickup_window_with_hash(
+            &board,
+            Color::White,
+            Location::new(8, 4),
+            Some(3),
+            true,
+            true,
+            Mana::Regular(Color::Black),
+            board_hash,
+        );
+        let first_cache_len =
+            EXACT_DRAINER_PICKUP_WINDOW_CACHE.with(|cache| cache.borrow().entries.len());
+        let second = exact_drainer_pickup_window_with_hash(
+            &board,
+            Color::White,
+            Location::new(8, 4),
+            Some(3),
+            true,
+            true,
+            Mana::Regular(Color::Black),
+            board_hash,
+        );
+        let second_cache_len =
+            EXACT_DRAINER_PICKUP_WINDOW_CACHE.with(|cache| cache.borrow().entries.len());
+        clear_exact_state_analysis_cache();
+        let third = exact_drainer_pickup_window_with_hash(
+            &board,
+            Color::White,
+            Location::new(8, 4),
+            Some(3),
+            true,
+            true,
+            Mana::Regular(Color::Black),
+            board_hash,
+        );
+
+        assert_eq!(first, second);
+        assert_eq!(first, third);
+        assert_eq!(first_cache_len, 1);
+        assert_eq!(second_cache_len, 1);
+        assert!(EXACT_DRAINER_PICKUP_WINDOW_CACHE
+            .with(|cache| { cache.borrow().entries.contains_key(&key) }));
+    }
+
+    #[test]
+    fn exact_immediate_tactical_window_cache_preserves_repeated_result() {
+        clear_exact_state_analysis_cache();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(8, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 4),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(6, 4),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+        let key = ExactImmediateTacticalWindowQueryKey {
+            board_hash,
+            color: Color::White,
+            move_budget: 3,
+            need_score: true,
+            need_denial: true,
+        };
+
+        let first = exact_best_immediate_tactical_window_on_board_with_hash(
+            &board,
+            Color::White,
+            3,
+            true,
+            true,
+            board_hash,
+        );
+        let first_cache_len =
+            EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE.with(|cache| cache.borrow().entries.len());
+        let second = exact_best_immediate_tactical_window_on_board_with_hash(
+            &board,
+            Color::White,
+            3,
+            true,
+            true,
+            board_hash,
+        );
+        let second_cache_len =
+            EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE.with(|cache| cache.borrow().entries.len());
+        clear_exact_state_analysis_cache();
+        let third = exact_best_immediate_tactical_window_on_board_with_hash(
+            &board,
+            Color::White,
+            3,
+            true,
+            true,
+            board_hash,
+        );
+
+        assert_eq!(first, second);
+        assert_eq!(first, third);
+        assert_eq!(first_cache_len, 1);
+        assert_eq!(second_cache_len, 1);
+        assert!(EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE
+            .with(|cache| { cache.borrow().entries.contains_key(&key) }));
+    }
+
     #[test]
     fn exact_secure_mana_cache_preserves_repeated_supermana_result() {
         clear_exact_state_analysis_cache();
@@ -7139,6 +7507,136 @@ mod tests {
             Color::White,
         );
         assert!(exact_turn_summary(&game, Color::White).can_attack_opponent_drainer);
+    }
+
+    #[test]
+    fn exact_opportunity_context_avoids_full_turn_summary_build() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        let context = exact_opportunity_context(&game, Color::White);
+        let diagnostics = exact_query_diagnostics_snapshot();
+
+        assert_eq!(diagnostics.exact_turn_summary_builds, 0);
+        assert_eq!(context.delta.safe_supermana_progress_steps, Some(1));
+        assert!(!context.opponent_can_win_immediately);
+    }
+
+    #[test]
+    fn exact_drainer_pickup_window_zero_steps_returns_default_without_bfs() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+
+        assert_eq!(
+            exact_drainer_pickup_window_with_hash(
+                &board,
+                Color::White,
+                Location::new(7, 5),
+                Some(0),
+                true,
+                true,
+                Mana::Regular(Color::Black),
+                board_hash,
+            ),
+            ExactDrainerPickupWindow::default(),
+        );
+        assert_eq!(exact_query_diagnostics_snapshot().pickup_path_calls, 0);
+    }
+
+    #[test]
+    fn exact_immediate_tactical_window_zero_budget_skips_drainer_queries() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+
+        let mut board = Board::new();
+        let white_pool = (0..Config::BOARD_SIZE)
+            .flat_map(|i| (0..Config::BOARD_SIZE).map(move |j| Location::new(i, j)))
+            .find(|location| {
+                matches!(
+                    board.square(*location),
+                    Square::ManaPool {
+                        color: Color::White,
+                    }
+                )
+            })
+            .expect("white pool should exist");
+        board.put(
+            Item::MonWithMana {
+                mon: Mon::new(MonKind::Mystic, Color::White, 0),
+                mana: Mana::Supermana,
+            },
+            white_pool,
+        );
+        board.put(
+            Item::Mon {
+                mon: Mon::new(MonKind::Drainer, Color::White, 0),
+            },
+            white_pool.nearby_locations_ref()[0],
+        );
+        board.put(
+            Item::Mana {
+                mana: Mana::Regular(Color::Black),
+            },
+            white_pool.nearby_locations_ref()[1],
+        );
+        let board_hash = exact_board_hash(&board);
+
+        let window = exact_best_immediate_tactical_window_on_board_with_hash(
+            &board,
+            Color::White,
+            0,
+            true,
+            true,
+            board_hash,
+        );
+
+        assert_eq!(window.best_score, Mana::Supermana.score(Color::White));
+        assert_eq!(window.best_opponent_mana_score, 0);
+        assert_eq!(exact_query_diagnostics_snapshot().pickup_path_calls, 0);
     }
 
     #[test]

@@ -2611,9 +2611,9 @@ fn evaluate_state_utility_uncached(
         0
     };
     let opponent = perspective.other();
-    let opponent_window_before = exact_turn_summary(start, opponent).same_turn_score_window_value;
+    let opponent_window_before = active_turn_score_window(start, opponent);
     let opponent_window_after = if game.active_color == opponent {
-        exact_turn_summary(game, opponent).same_turn_score_window_value
+        active_turn_score_window(game, opponent)
     } else {
         oracle.opponent_immediate_window
     };
@@ -2722,6 +2722,20 @@ fn turn_oracle_context(game: &MonsGame, perspective: Color) -> TurnOracleContext
         cache.insert(key, built);
     });
     built
+}
+
+#[inline]
+fn active_turn_score_window_with_search_hash(
+    game: &MonsGame,
+    color: Color,
+    state_hash: u64,
+) -> i32 {
+    exact_same_turn_score_window_with_search_hash(game, color, state_hash)
+}
+
+#[inline]
+fn active_turn_score_window(game: &MonsGame, color: Color) -> i32 {
+    active_turn_score_window_with_search_hash(game, color, MonsGameModel::search_state_hash(game))
 }
 
 fn bundle_chunk_cap_for_config(config: TurnEngineConfig) -> usize {
@@ -3316,9 +3330,11 @@ fn immediate_score_seeds(game: &MonsGame, perspective: Color) -> Vec<ActionSeed>
 
 fn deny_window_seeds(game: &MonsGame, perspective: Color) -> Vec<ActionSeed> {
     let opponent = perspective.other();
-    let deny_pressure =
-        exact_turn_summary_with_search_hash(game, opponent, MonsGameModel::search_state_hash(game))
-            .same_turn_score_window_value;
+    let deny_pressure = active_turn_score_window_with_search_hash(
+        game,
+        opponent,
+        MonsGameModel::search_state_hash(game),
+    );
     if deny_pressure <= 0 && !opponent_can_win_immediately(game, perspective) {
         return Vec::new();
     }
@@ -5294,7 +5310,7 @@ fn opponent_can_win_immediately(game: &MonsGame, perspective: Color) -> bool {
     if needed <= 0 {
         return true;
     }
-    exact_turn_summary(game, opponent).same_turn_score_window_value >= needed
+    active_turn_score_window(game, opponent) >= needed
 }
 
 fn score_for_color(game: &MonsGame, color: Color) -> i32 {
@@ -5365,7 +5381,7 @@ fn opponent_drainer_kill_is_high_value(
     if own_drainer_safety_score(&game.board, perspective) < 0 {
         return true;
     }
-    if exact_turn_summary(game, opponent).same_turn_score_window_value > 0 {
+    if active_turn_score_window(game, opponent) > 0 {
         return true;
     }
     if score_for_color(game, opponent) >= Config::TARGET_SCORE - 2 {
@@ -5958,8 +5974,8 @@ mod tests {
             find_awake_drainer_location(&state.board, Color::Black).is_some();
         assert!(
             !opponent_drainer_alive
-                || exact_turn_summary(&state, Color::Black).same_turn_score_window_value
-                    < exact_turn_summary(&game, Color::Black).same_turn_score_window_value,
+                || active_turn_score_window(&state, Color::Black)
+                    < active_turn_score_window(&game, Color::Black),
             "plan should either remove the drainer or reduce the immediate scoring window"
         );
     }

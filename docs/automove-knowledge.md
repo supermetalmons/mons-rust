@@ -38,12 +38,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 ## Engine And Search Lessons Worth Keeping
 
 - If a caller only consumes spirit-assisted exact fields plus safe-progress fields, do not request the exact tactical `SCORE_WINDOW` payload there.
+- If a caller only needs the active-turn score window, route it through a tactical score-window projection instead of a full turn summary.
 - Cheap lower-bound drainer-attack screens are worth keeping when they can reject impossible child vulnerability probes before exact reach work.
 - On one-shot spirit-preview paths, local work can beat repeated filtered global cache queries.
 - Mutate/undo preview application is often better than clone-per-preview on exact tactical spirit paths.
 - After a cut moves the wall, follow the moved wall immediately instead of iterating again on the old surface.
 - When a new helper removes one hotspot, verify that the helper itself did not become the new wall before going deeper.
 - If a retained optimization shifts cost from summary construction to direct point queries on the same caller surface, follow the caller that still emits those queries.
+- Low-budget exact fast paths are worth keeping when they can prove a drainer pickup or immediate window is impossible without entering the full BFS / pickup-window path.
 
 ## Mistakes Not To Repeat
 
@@ -61,5 +63,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 
 - The current problem is not proving that Pro full-turn planning can ever be stronger. The retained code already shows that it can be.
 - The current problem is finishing the earned path cleanly with one retained challenger under strict gates.
-- Next code should either reduce direct `pro-reliability` friction on `runtime_pro_turn_engine_v30` or move the live wall in shared exact/search code that benefits that challenger directly.
+- The latest shared exact cuts moved the wall from planner/oracle summary construction into tactical projection itself.
+- `runtime_pro_turn_engine_v30` is still not promotable after the current cuts because `pro-reliability` continues to stall in a practical window.
+- Next code should target `exact_tactical_spirit_summary` after-window followups and the remaining `exact_best_immediate_tactical_window_on_board_with_hash` / pickup-window work, not planner-oracle wrapper code.
 - Keep Fast work parked until there is a genuinely new code path. Minor search-order retunes and scoring-only tweaks are already saturated.
