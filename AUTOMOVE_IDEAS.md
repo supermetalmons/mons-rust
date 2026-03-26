@@ -18,6 +18,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - The latest retained exact cut is worth keeping too: a zero-move after-window tactical fast path updates touched mana-pool counts directly instead of re-querying the immediate-window helper, which moved `human_win_pro_a` again from about `520ms` to about `433ms` and dropped immediate-window / after-window query volume from about `428999` / `427069` to about `168068` / `166138`, but `pro-reliability` still had to be killed at `3:37` on 2026-03-27.
 - The latest retained exact cut is also worth keeping: a budget-1 after-window tactical fast path updates touched-neighborhood one-move contributions instead of re-running the immediate-window helper, which dropped `human_win_pro_a` immediate-window / after-window query volume again from about `168068` / `166138` to about `41740` / `39810` and moved the hotspot from about `433ms` to about `413ms`, but `pro-reliability` still had to be killed at `2:35` on 2026-03-27.
 - The latest local budget-2 after-window summary experiment was not worth keeping: it collapsed `human_win_pro_a` immediate-window / after-window query volume again from about `41740` / `39810` to about `7590` / `5660`, but the hotspot itself regressed from about `420ms` to about `452ms` and `pro-reliability` still had to be killed at `2:35` on 2026-03-27.
+- The latest shared actor-move-memo experiment was not worth keeping either: sharing payload transition memos across immediate-window and budget-1 summary searches trimmed `human_win_pro_a` payload calls only slightly and cut pickup-window calls from about `2910` to about `2218`, but the hotspot regressed from about `420ms` to about `433ms` and `pro-reliability` still had to be killed at `2:34` on 2026-03-27.
 - `runtime_pro_turn_engine_v1` stays reference-only regression history.
 - Archive profiles and retired planner/quiescence lines are docs-only context.
 
@@ -59,8 +60,9 @@ Current live wall:
 - zero-move after-window tactical queries were a real wall and are now worth bypassing with exact touched-item updates, but the live duel wall still sits in the remaining budgeted after-window fanout
 - budget-1 after-window tactical queries were also worth bypassing locally, but once they drop out the wall-clock gain is modest and the remaining wall looks deeper than simple one-move query volume
 - budget-2 after-window tactical query volume is no longer the right target by itself; collapsing it with a local summary moved counters but not wall-clock
+- board-scoped payload-transition memo reuse is also not enough by itself once the obvious after-window fanout is gone
 - future cuts need to reduce the number of after-window tactical queries or spirit-preview fanout itself, not just make hashing or pickup subroutines cheaper
-- the next live target is likely the payload reachability cost under the surviving tactical paths, not more budget-count collapse alone
+- the next live target is likely the remaining payload reachability algorithm itself, not more memo reuse or budget-count collapse alone
 - not in planner/oracle summary construction anymore
 
 ## Secondary Split Family
