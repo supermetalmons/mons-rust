@@ -3771,6 +3771,7 @@ fn exact_tactical_spirit_summary_uncached(
         ExactTacticalSpiritAfterWindowKey,
         ExactImmediateTacticalWindow,
     > = ExactHashMap::default();
+    let share_after_window_axes = need_score && need_denial;
 
     for (location, item) in board.occupied() {
         let Some(mon) = item.mon() else {
@@ -3823,11 +3824,13 @@ fn exact_tactical_spirit_summary_uncached(
                         && !preview_saturates_denial;
                     let after_window = if need_after_score || need_after_denial {
                         let after_board_hash = exact_board_hash(&action_board);
+                        let cached_need_score = share_after_window_axes || need_after_score;
+                        let cached_need_denial = share_after_window_axes || need_after_denial;
                         let key = ExactTacticalSpiritAfterWindowKey {
                             board_hash: after_board_hash,
                             remaining_mon_moves: remaining_after_action,
-                            need_score: need_after_score,
-                            need_denial: need_after_denial,
+                            need_score: cached_need_score,
+                            need_denial: cached_need_denial,
                         };
                         if let Some(cached) = after_window_cache.get(&key).copied() {
                             cached
@@ -3839,8 +3842,8 @@ fn exact_tactical_spirit_summary_uncached(
                                 &action_board,
                                 color,
                                 remaining_after_action,
-                                need_after_score,
-                                need_after_denial,
+                                cached_need_score,
+                                cached_need_denial,
                                 after_board_hash,
                             );
                             after_window_cache.insert(key, window);

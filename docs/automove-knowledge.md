@@ -46,6 +46,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - When a new helper removes one hotspot, verify that the helper itself did not become the new wall before going deeper.
 - If a retained optimization shifts cost from summary construction to direct point queries on the same caller surface, follow the caller that still emits those queries.
 - Low-budget exact fast paths are worth keeping when they can prove a drainer pickup or immediate window is impossible without entering the full BFS / pickup-window path.
+- Sharing local after-window cache entries across score/denial flag variants is not enough by itself when the underlying after-window projection still runs at nearly the same frequency.
 
 ## Mistakes Not To Repeat
 
@@ -65,5 +66,6 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - The current problem is finishing the earned path cleanly with one retained challenger under strict gates.
 - The latest shared exact cuts moved the wall from planner/oracle summary construction into tactical projection itself.
 - `runtime_pro_turn_engine_v30` is still not promotable after the current cuts because `pro-reliability` continues to stall in a practical window.
-- Next code should target `exact_tactical_spirit_summary` after-window followups and the remaining `exact_best_immediate_tactical_window_on_board_with_hash` / pickup-window work, not planner-oracle wrapper code.
+- The latest `exact_tactical_spirit_summary` cache-axis-sharing tweak only shaved the hotspot slightly; it did not materially reduce tactical projection call volume.
+- Next code should target the cost of the after-window computation itself, or avoid entering it, alongside the remaining `exact_best_immediate_tactical_window_on_board_with_hash` / pickup-window work, not planner-oracle wrapper code.
 - Keep Fast work parked until there is a genuinely new code path. Minor search-order retunes and scoring-only tweaks are already saturated.
