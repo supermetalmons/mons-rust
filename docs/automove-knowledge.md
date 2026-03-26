@@ -51,6 +51,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - When a tactical result can be masked exactly, reuse cached superset flag results for smaller tactical spirit, immediate-window, pickup-window, and projection queries instead of rebuilding each flag subset.
 - Budgeted carrier-to-pool queries should not compute full shortest paths. When the caller only needs reachability within `N`, use a bounded search and do not hash the whole board just to initialize an actor move memo that ignores that hash.
 - Once pickup BFS cost drops, full-board exact hash rebuilds on spirit preview surfaces become a real wall. Keep exact board hashing incrementally maintainable so preview code can update touched squares instead of rescanning the board.
+- Zero-move after-window tactical spirit queries do not need the full immediate-window helper. When a spirit preview leaves no remaining mon moves, derive the exact tactical window from touched mana-pool count deltas instead of re-entering the cached search path.
 
 ## Mistakes Not To Repeat
 
@@ -74,7 +75,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - The follow-up superset-cache cuts were worth keeping and moved `human_win_pro_a` again, from about `1425ms` down to about `1305ms`, but `pro-reliability` still stalled past `2:17`.
 - The follow-up bounded carrier-window cut was also worth keeping: it collapsed `human_win_pro_a` payload work from about `32.2m` to about `6.3m`, but `pro-reliability` still stalled past `2:17`.
 - The follow-up low-budget pickup-window, score-floor after-window, and incremental board-hash cut was also worth keeping: it removed most uncached pickup BFS from the hotspot and moved `human_win_pro_a` from about `570ms` to about `520ms`, but `pro-reliability` still stalled past `2:20` on 2026-03-27.
+- The follow-up zero-move after-window tactical cut was also worth keeping: exact touched-item mana-pool updates moved `human_win_pro_a` from about `520ms` to about `433ms` and dropped immediate-window / after-window query volume from about `428999` / `427069` to about `168068` / `166138`, but `pro-reliability` still had to be killed at `3:37` on 2026-03-27.
 - A local uncached after-window path that bypassed the retained exact caches was not worth keeping; it increased pickup work and did not beat the retained bounded-cache line.
 - A score-floor threshold on after-window tactical queries can trim some off-target immediate-window work, but the live `human_win_pro_a` wall still emits roughly the same after-window query volume.
+- Once the zero-move branch is removed, the remaining live wall is budgeted after-window fanout, especially the budget-1 and budget-2 exact tactical queries under `exact_tactical_spirit_summary`.
 - Next code should target the number of remaining after-window tactical queries or the spirit-preview fanout that creates them, not planner-oracle wrapper code or more per-query micro-optimizations alone.
 - Keep Fast work parked until there is a genuinely new code path. Minor search-order retunes and scoring-only tweaks are already saturated.

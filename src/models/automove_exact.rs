@@ -4220,6 +4220,7 @@ fn exact_tactical_spirit_summary_uncached(
         ExactTacticalSpiritAfterWindowKey,
         ExactImmediateTacticalWindow,
     > = ExactHashMap::default();
+    let base_zero_move_counts = exact_zero_move_tactical_counts(board, color);
 
     for (location, item) in board.occupied() {
         let Some(mon) = item.mon() else {
@@ -4290,62 +4291,87 @@ fn exact_tactical_spirit_summary_uncached(
                     let need_after_denial =
                         need_denial && denial_floor < max_same_turn_opponent_score;
                     let after_window = if need_after_score || need_after_denial {
-                        let after_board_hash = exact_board_hash_after_touched_items(
-                            action_board_hash,
-                            &action_board,
-                            &[
-                                ExactTouchedBoardItem {
-                                    location: undo.from,
-                                    before: undo.from_item,
-                                },
-                                ExactTouchedBoardItem {
-                                    location: undo.to,
-                                    before: undo.to_item,
-                                },
-                            ],
-                        );
-                        let cached_need_score = need_after_score;
-                        let cached_need_denial = need_after_denial;
-                        let min_score = if cached_need_score {
+                        let min_score = if need_after_score {
                             (score_floor + 1).clamp(1, max_same_turn_score) as u8
                         } else {
                             0
                         };
-                        let key = ExactTacticalSpiritAfterWindowKey {
-                            board_hash: after_board_hash,
-                            remaining_mon_moves: remaining_after_action,
-                            min_score,
-                            need_score: cached_need_score,
-                            need_denial: cached_need_denial,
-                        };
-                        if let Some(cached) = after_window_cache.get(&key).copied() {
-                            cached
+                        if remaining_after_action == 0 {
+                            let zero_move_counts =
+                                exact_zero_move_tactical_counts_after_touched_items(
+                                    base_zero_move_counts,
+                                    &action_board,
+                                    color,
+                                    &[
+                                        ExactTouchedBoardItem {
+                                            location: undo.from,
+                                            before: undo.from_item,
+                                        },
+                                        ExactTouchedBoardItem {
+                                            location: undo.to,
+                                            before: undo.to_item,
+                                        },
+                                    ],
+                                );
+                            exact_zero_move_tactical_window_from_counts(
+                                zero_move_counts,
+                                min_score,
+                                need_after_score,
+                                need_after_denial,
+                            )
                         } else {
-                            update_exact_query_diagnostics(|diagnostics| {
-                                diagnostics.tactical_spirit_after_window_calls += 1;
-                            });
-                            let window = if min_score > 1 {
-                                exact_best_immediate_tactical_window_on_board_with_hash_min_score(
-                                    &action_board,
-                                    color,
-                                    remaining_after_action,
-                                    min_score,
-                                    cached_need_score,
-                                    cached_need_denial,
-                                    after_board_hash,
-                                )
-                            } else {
-                                exact_best_immediate_tactical_window_on_board_with_hash(
-                                    &action_board,
-                                    color,
-                                    remaining_after_action,
-                                    cached_need_score,
-                                    cached_need_denial,
-                                    after_board_hash,
-                                )
+                            let after_board_hash = exact_board_hash_after_touched_items(
+                                action_board_hash,
+                                &action_board,
+                                &[
+                                    ExactTouchedBoardItem {
+                                        location: undo.from,
+                                        before: undo.from_item,
+                                    },
+                                    ExactTouchedBoardItem {
+                                        location: undo.to,
+                                        before: undo.to_item,
+                                    },
+                                ],
+                            );
+                            let cached_need_score = need_after_score;
+                            let cached_need_denial = need_after_denial;
+                            let key = ExactTacticalSpiritAfterWindowKey {
+                                board_hash: after_board_hash,
+                                remaining_mon_moves: remaining_after_action,
+                                min_score,
+                                need_score: cached_need_score,
+                                need_denial: cached_need_denial,
                             };
-                            after_window_cache.insert(key, window);
-                            window
+                            if let Some(cached) = after_window_cache.get(&key).copied() {
+                                cached
+                            } else {
+                                update_exact_query_diagnostics(|diagnostics| {
+                                    diagnostics.tactical_spirit_after_window_calls += 1;
+                                });
+                                let window = if min_score > 1 {
+                                    exact_best_immediate_tactical_window_on_board_with_hash_min_score(
+                                        &action_board,
+                                        color,
+                                        remaining_after_action,
+                                        min_score,
+                                        cached_need_score,
+                                        cached_need_denial,
+                                        after_board_hash,
+                                    )
+                                } else {
+                                    exact_best_immediate_tactical_window_on_board_with_hash(
+                                        &action_board,
+                                        color,
+                                        remaining_after_action,
+                                        cached_need_score,
+                                        cached_need_denial,
+                                        after_board_hash,
+                                    )
+                                };
+                                after_window_cache.insert(key, window);
+                                window
+                            }
                         }
                     } else {
                         ExactImmediateTacticalWindow::default()
@@ -5024,6 +5050,118 @@ struct ExactImmediateTacticalWindow {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct ExactZeroMoveTacticalCounts {
+    score_one: u32,
+    score_two: u32,
+    opponent_two: u32,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_zero_move_tactical_counts_for_item(
+    board: &Board,
+    location: Location,
+    item: Option<Item>,
+    color: Color,
+) -> ExactZeroMoveTacticalCounts {
+    let Some(Item::MonWithMana { mon, mana }) = item else {
+        return ExactZeroMoveTacticalCounts::default();
+    };
+    if mon.color != color || mon.is_fainted() {
+        return ExactZeroMoveTacticalCounts::default();
+    }
+    if !matches!(board.square(location), Square::ManaPool { .. }) {
+        return ExactZeroMoveTacticalCounts::default();
+    }
+
+    match mana.score(color) {
+        1 => ExactZeroMoveTacticalCounts {
+            score_one: 1,
+            ..ExactZeroMoveTacticalCounts::default()
+        },
+        2 => ExactZeroMoveTacticalCounts {
+            score_two: 1,
+            opponent_two: u32::from(mana == Mana::Regular(color.other())),
+            ..ExactZeroMoveTacticalCounts::default()
+        },
+        _ => ExactZeroMoveTacticalCounts::default(),
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_zero_move_tactical_counts(board: &Board, color: Color) -> ExactZeroMoveTacticalCounts {
+    let mut counts = ExactZeroMoveTacticalCounts::default();
+    for (location, item) in board.occupied() {
+        let contribution =
+            exact_zero_move_tactical_counts_for_item(board, location, Some(*item), color);
+        counts.score_one += contribution.score_one;
+        counts.score_two += contribution.score_two;
+        counts.opponent_two += contribution.opponent_two;
+    }
+    counts
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_zero_move_tactical_window_from_counts(
+    counts: ExactZeroMoveTacticalCounts,
+    min_score: u8,
+    need_score: bool,
+    need_denial: bool,
+) -> ExactImmediateTacticalWindow {
+    ExactImmediateTacticalWindow {
+        best_score: if need_score {
+            if counts.score_two > 0 && min_score <= 2 {
+                2
+            } else if counts.score_one > 0 && min_score <= 1 {
+                1
+            } else {
+                0
+            }
+        } else {
+            0
+        },
+        best_opponent_mana_score: if need_denial && counts.opponent_two > 0 {
+            2
+        } else {
+            0
+        },
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_zero_move_tactical_counts_after_touched_items(
+    base: ExactZeroMoveTacticalCounts,
+    board: &Board,
+    color: Color,
+    touched_items: &[ExactTouchedBoardItem],
+) -> ExactZeroMoveTacticalCounts {
+    let mut counts = base;
+    for touched in touched_items {
+        let before = exact_zero_move_tactical_counts_for_item(
+            board,
+            touched.location,
+            touched.before,
+            color,
+        );
+        let after = exact_zero_move_tactical_counts_for_item(
+            board,
+            touched.location,
+            board.item(touched.location).copied(),
+            color,
+        );
+        debug_assert!(counts.score_one >= before.score_one);
+        debug_assert!(counts.score_two >= before.score_two);
+        debug_assert!(counts.opponent_two >= before.opponent_two);
+        counts.score_one = counts.score_one - before.score_one + after.score_one;
+        counts.score_two = counts.score_two - before.score_two + after.score_two;
+        counts.opponent_two = counts.opponent_two - before.opponent_two + after.opponent_two;
+    }
+    counts
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
 fn exact_zero_move_immediate_tactical_window_on_board_with_hash(
     board: &Board,
     color: Color,
@@ -5086,7 +5224,7 @@ fn exact_best_immediate_tactical_window_on_board_with_hash_min_score(
     board_hash: u64,
 ) -> ExactImmediateTacticalWindow {
     update_exact_query_diagnostics(|diagnostics| {
-        diagnostics.immediate_tactical_window_queries += 1
+        diagnostics.immediate_tactical_window_queries += 1;
     });
     if move_budget < 0 || (!need_score && !need_denial) {
         return ExactImmediateTacticalWindow::default();
@@ -7521,6 +7659,90 @@ mod tests {
         );
 
         assert_eq!(incremental_hash, exact_board_hash(&preview_board));
+    }
+
+    #[test]
+    fn exact_zero_move_tactical_counts_after_touched_items_matches_full_window() {
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(8, 1),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let base_counts = exact_zero_move_tactical_counts(&board, Color::White);
+        let mut preview_board = board.clone();
+        let destination_item = preview_board.item(Location::new(8, 1)).copied();
+        let (undo, _, _) = apply_spirit_move_preview_known_items_in_place(
+            &mut preview_board,
+            Location::new(7, 1),
+            Item::MonWithMana {
+                mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                mana: Mana::Regular(Color::White),
+            },
+            Location::new(8, 1),
+            destination_item,
+            Color::White,
+        );
+
+        let counts = exact_zero_move_tactical_counts_after_touched_items(
+            base_counts,
+            &preview_board,
+            Color::White,
+            &[
+                ExactTouchedBoardItem {
+                    location: undo.from,
+                    before: undo.from_item,
+                },
+                ExactTouchedBoardItem {
+                    location: undo.to,
+                    before: undo.to_item,
+                },
+            ],
+        );
+
+        assert_eq!(
+            exact_zero_move_tactical_window_from_counts(counts, 1, true, true),
+            exact_zero_move_immediate_tactical_window_on_board_with_hash(
+                &preview_board,
+                Color::White,
+                true,
+                true,
+                exact_board_hash(&preview_board),
+            )
+        );
+        assert_eq!(
+            exact_zero_move_tactical_window_from_counts(counts, 2, true, true),
+            exact_immediate_tactical_window_for_min_score(
+                exact_zero_move_immediate_tactical_window_on_board_with_hash(
+                    &preview_board,
+                    Color::White,
+                    true,
+                    true,
+                    exact_board_hash(&preview_board),
+                ),
+                2,
+            )
+        );
     }
 
     #[test]
