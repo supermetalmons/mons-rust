@@ -1,55 +1,74 @@
 # Automove Ideas
 
-This is the live backlog for upcoming automove iterations.
+This is the live decision board for automove work.
 
-Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the execution playbook. Keep this file short. Move durable lessons to `docs/automove-knowledge.md` and retired branch history to `docs/automove-archive.md`.
+Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move durable lessons to `docs/automove-knowledge.md` and retired branch history to `docs/automove-archive.md`.
 
 ## Current State (2026-03-26)
 
-- Shipping runtime stays `runtime_current`.
-- `runtime_pro_turn_engine_v30` is the only retained Pro turn-engine frontier.
-- `runtime_pro_turn_engine_v1` stays as reference-only regression history.
-- Archived branches from `runtime_pro_turn_engine_v31` onward, the old planner lines, and the quiescence line are docs-only context now.
-- The executable experiment surface is intentionally small: current runtime, calibration anchors, curated references, and the two retained Pro references.
+- Shipping Pro stays `runtime_current`.
+- `runtime_current` is the planner-plus-quiescence Pro runtime.
+- `runtime_pro_turn_engine_v30` is the only live Pro challenger.
+- `runtime_pro_turn_engine_v30` is a guarded `ProV2` engine path with deliberate opening and early-white fallbacks.
+- `runtime_pro_turn_engine_v1` stays reference-only regression history.
+- Archive profiles and retired planner/quiescence lines are docs-only context.
 
-## Active Frontier
+## Live Objective
 
-### Pro v30 completion
+Promote `runtime_pro_turn_engine_v30` against `runtime_current` in Pro mode with fewer, cheaper iterations.
 
-- Base profile: `runtime_current`
-- Candidate profile: `runtime_pro_turn_engine_v30`
-- Target mode: `pro`
-- Triage surface: `primary_pro`
-- Expected upside: stronger full-turn planning and continuation reuse than shipping Pro without reopening the dead archive branches
-- Current blocker: clean direct `pro-reliability` still does not finish in a practical window
-- Hotspot shape: the wall is still inside the exact tactical / projection path, not in wrapper-only glue
-- Next split:
-  1. Cut deeper into the remaining exact wall around `payload_after_move`, immediate tactical-window work, and secure-mana recursion.
-  2. Add the smallest useful stuck-state / bounded-progress fixture pack so bad candidates die before duel spend.
-  3. If `v30` still cannot finish direct reliability after a few focused splits, stop grinding micro-optimizations and switch to a structural fallback.
-- How to test:
-  - `./scripts/run-automove-experiment.sh guardrails runtime_pro_turn_engine_v30`
-  - `SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage runtime_pro_turn_engine_v30 runtime_current`
-  - `./scripts/run-automove-experiment.sh runtime-preflight runtime_pro_turn_engine_v30 runtime_current`
-  - `./scripts/run-automove-experiment.sh pro-reliability runtime_pro_turn_engine_v30 runtime_current`
-- Status: active
+Success means:
+- `guardrails` stays clean.
+- `SMART_TRIAGE_SURFACE=primary_pro` passes `pro-triage`.
+- `runtime-preflight` stays clean.
+- `pro-reliability` produces real promotable evidence against `runtime_current`.
 
-## Backlog
+Default loop:
+- `./scripts/run-automove-experiment.sh guardrails runtime_pro_turn_engine_v30`
+- `SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage runtime_pro_turn_engine_v30 runtime_current`
+- `./scripts/run-automove-experiment.sh runtime-preflight runtime_pro_turn_engine_v30`
+- `./scripts/run-automove-experiment.sh pro-reliability runtime_pro_turn_engine_v30 runtime_current`
 
-### Stuck-state and bounded-progress fixtures
+## Primary Split Family
 
-- Goal: reject empty-selector, repeat-loop, and no-progress failures before duel spend
-- Cost: low
-- Why it matters: the workflow is now cleaner, so the next useful improvement is earlier failure detection
-- Status: backlog
+Shared exact/search cuts on the current live wall.
 
-### Promotion rollup summary
+Use this family when:
+- a fresh `pro-reliability` sample points at the next wall clearly
+- the wall is still inside exact tactical, projection, or search-side scoring work
+- the split can plausibly improve `primary_pro` or reduce direct duel friction
 
-- Goal: emit one compact per-stage summary instead of forcing manual log spelunking
-- Cost: low
-- Why it matters: cleaner operator evidence and faster promote/kill decisions
-- Status: backlog
+Reject this family for a branch when:
+- the split is only another wrapper retune
+- the hotspot moved but the planned change still attacks the old wall
+- the split has no direct story for `pro-triage` or `pro-reliability`
 
-## Archive Pointer
+## Secondary Split Family
 
-Detailed branch history for `runtime_pro_turn_engine_v31` and later, the planner experiments, the quiescence line, and earlier exhaustions lives in `docs/automove-archive.md`.
+Minimal new `primary_pro` fixtures or stuck-state / bounded-progress fixtures.
+
+Use this family only when:
+- a small fixture addition can reject bad branches before duel spend
+- the current wall is already understood and the missing piece is earlier failure detection
+- the fixture is directly tied to a repeated live failure mode
+
+Do not use this family to avoid live Pro evidence.
+
+## Parked
+
+Do not spend time here unless the live objective changes:
+- Fast work
+- archive profiles
+- retired planner/quiescence revivals
+- wrapper-only knob sweeps
+- hotspot-first iteration loops
+- broad reporting cleanup that does not change promote/kill speed
+
+## Hard Kill Condition
+
+Stop the line and record the lesson when a focused split does not do at least one of these:
+- improve `pro-triage`
+- reduce `pro-reliability` friction
+- move the live wall to a new code surface
+
+If the direct duel wall is unclear, take a fresh live `pro-reliability` sample before starting another micro-optimization pass.

@@ -6,20 +6,20 @@ Archived profile IDs are invalid by design. New iteration work must stay on the 
 
 ## Quick Reference
 
-1. Pick one target mode: `pro`, `normal`, or `fast`.
-2. Pick one active idea from `AUTOMOVE_IDEAS.md`.
-3. Start from one retained profile ID.
-4. Run the earned path in order.
-5. Kill flat candidates early and record the lesson before cleanup.
+1. Default to Pro work.
+2. Treat `runtime_current` as the shipping Pro baseline.
+3. Treat `runtime_pro_turn_engine_v30` as the only live Pro challenger.
+4. Run the cheap-to-expensive Pro loop in order.
+5. Kill flat lines immediately and compress the lesson before starting another split.
 
-## Supported Profile IDs
+## Retained Profile Surface
 
 Current runtime and baselines:
 - `base`
 - `runtime_current`
 - `runtime_release_safe_pre_exact`
 
-Calibration anchors and curated-pool references:
+Calibration anchors and curated references:
 - `runtime_eff_exact_lite_v1`
 - `runtime_pre_fast_root_quality_v1_normal_conversion_v3`
 - `swift_2024_eval_reference`
@@ -30,68 +30,136 @@ Retained Pro references:
 - `runtime_pro_turn_engine_v1`
 - `runtime_pro_turn_engine_v30`
 
-If a profile ID is not in this list, it is archive-only context and must not be used for new experiments.
+If a profile ID is not in this list, it is archive-only context and must not be used for new work.
 
-## Earned Paths
+## Current Reality
 
-### Calibration
+- Shipping Pro is `runtime_current`. Its Pro path is the planner-plus-quiescence runtime selected by the live game context.
+- The only live Pro challenger is `runtime_pro_turn_engine_v30`. It is a guarded `ProV2` turn-engine path, not a raw always-on engine.
+- `runtime_pro_turn_engine_v30` deliberately falls back on opening-book positions and several early white turn shapes. That is expected behavior, not a bug.
+- `runtime_pro_turn_engine_v1` stays only as regression history and comparison material.
+- Do not reopen archive profiles, retired planner lines, or old quiescence branches without a brand-new hypothesis strong enough to justify new code.
 
-Run this before candidate work when the surface is not already known-good.
+## Canonical Pro Loop
 
-```sh
-./scripts/run-automove-experiment.sh triage-calibrate
-./scripts/run-automove-experiment.sh triage-calibrate reply_risk
-./scripts/run-automove-experiment.sh triage-calibrate opponent_mana
-./scripts/run-automove-experiment.sh triage-calibrate supermana
-```
-
-### Fast / Normal
+Use this exact order for real Pro iteration work.
 
 ```sh
-./scripts/run-automove-experiment.sh guardrails <candidate>
-SMART_TRIAGE_SURFACE=<surface> ./scripts/run-automove-experiment.sh triage <candidate>
-./scripts/run-automove-experiment.sh runtime-preflight <candidate>
-SMART_PROMOTION_TARGET_MODE=<fast|normal> ./scripts/run-automove-experiment.sh fast-screen <candidate>
-SMART_PROMOTION_TARGET_MODE=<fast|normal> ./scripts/run-automove-experiment.sh progressive <candidate>
-SMART_PROMOTION_TARGET_MODE=<fast|normal> ./scripts/run-automove-experiment.sh ladder <candidate>
+./scripts/run-automove-experiment.sh guardrails runtime_pro_turn_engine_v30
+SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage runtime_pro_turn_engine_v30 runtime_current
+./scripts/run-automove-experiment.sh runtime-preflight runtime_pro_turn_engine_v30
+./scripts/run-automove-experiment.sh pro-reliability runtime_pro_turn_engine_v30 runtime_current
 ```
 
-### Pro
+Operator defaults:
+- Candidate profile: `SMART_PRO_CANDIDATE_PROFILE` or `SMART_CANDIDATE_PROFILE`
+- Pro baseline: `runtime_current`
+- Default Pro triage surface: `SMART_TRIAGE_SURFACE=primary_pro`
+- Opening-only fallback surface: `SMART_TRIAGE_SURFACE=opening_reply`
 
-```sh
-./scripts/run-automove-experiment.sh guardrails <candidate>
-SMART_TRIAGE_SURFACE=<opening_reply|primary_pro> ./scripts/run-automove-experiment.sh pro-triage <candidate>
-./scripts/run-automove-experiment.sh runtime-preflight <candidate>
-./scripts/run-automove-experiment.sh pro-reliability <candidate> runtime_current
-./scripts/run-automove-experiment.sh pro-fast-screen <candidate> runtime_current
-./scripts/run-automove-experiment.sh pro-progressive <candidate> runtime_current
-./scripts/run-automove-experiment.sh pro-ladder <candidate> runtime_current
-```
+Baseline rules:
+- For Pro work, compare directly against `runtime_current`.
+- The script default baseline, `runtime_release_safe_pre_exact`, exists for compatibility and non-Pro stages. Do not let it drive Pro examples or Pro decisions.
+- Use `opening_reply` only when the change touches opening-book fallback ordering, early-turn fallback guards, or an opening-specific latency regression.
 
-### Promotion-Time Only
+## Step Rules
 
-```sh
-cargo test --release --lib smart_automove_release_opening_black_reply_speed_gate -- --ignored --nocapture
-cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --ignored --nocapture
-```
+### 1. `guardrails`
 
-## Default Baselines
+What it means:
+- Cheap tactical and interview-policy validation.
+- First kill gate before any surface or duel work.
 
-- Use `runtime_current` as the direct reference for new work unless the idea explicitly depends on another retained reference.
-- The script default baseline remains `runtime_release_safe_pre_exact` for compatibility.
-- Use `runtime_pro_turn_engine_v30` only as retained Pro history and comparison material. It is not shipping runtime.
-- Use `runtime_pro_turn_engine_v1` only for shared regression coverage and historical comparison.
-
-## Stop Conditions
-
+Kill the line if:
 - `guardrails` fails.
-- `triage` or `pro-triage` fails.
-- `runtime-preflight` fails.
-- First earned duel stage is flat or negative.
-- Progressive stalls or turns into a runtime cliff.
-- One focused diagnostic split produces no credible next move.
+- The change only buys speed but loses obvious tactical quality.
 
-When any of these happens, kill the candidate, compress the lesson, and clean the artifacts.
+### 2. `pro-triage`
+
+What it means:
+- Fixed-cost deterministic Pro triage against `runtime_current`.
+- The harness always compares both Pro fixture packs: the target surface and the off-target surface.
+
+Pass rule:
+- Pass only when the target surface changes and off-target churn stays at `<= 1`.
+
+Default interpretation:
+- `primary_pro` is the default live surface. It is the main Pro fixture pack and should carry almost all ongoing work.
+- `opening_reply` is a narrow opening/fallback-order check, not the default Pro surface.
+
+Kill the line if:
+- The target surface does not move.
+- Off-target churn is larger than `1`.
+- The change needs a broader story than the current hypothesis can justify.
+
+### 3. `runtime-preflight`
+
+What it means:
+- Required stamp before duel stages unless you intentionally skip it for diagnostics.
+- Runs the stage-1 CPU non-regression gate and exact-lite diagnostics gate.
+
+Kill the line if:
+- Stage-1 CPU regresses.
+- Exact-lite diagnostics regress.
+- The candidate needs more wrapper knobs just to survive preflight.
+
+### 4. `pro-reliability`
+
+What it means:
+- First real Pro promotion gate.
+- Direct Pro-vs-Pro duel evidence against `runtime_current`.
+
+Use it to decide:
+- Whether the candidate is promotable.
+- Whether the live wall moved to a new code surface.
+- Whether the next split should be a shared exact/search cut or a minimal fixture addition.
+
+Kill the line if:
+- The first direct duel signal is flat or negative.
+- The run still does not finish in a practical window and you do not have a new code hypothesis.
+- The wall stays where it already was after a focused split.
+
+## Diagnostic Ladder
+
+Use diagnostics only after the canonical loop tells you why they are needed.
+
+1. Prefer a fresh live `pro-reliability` sample when the wall is unclear or has moved.
+2. Use `triage-calibrate` only when the triage surface itself is new or no longer calibrated.
+3. Use `pro-opening-speed-probe` only for opening-specific regressions.
+4. Use `pro-audit-screen` only as a cheap sanity check on a clean `pro-triage` reject.
+5. Use the hotspot probe only after a real duel stall, and only to narrow the next code surface.
+
+Do not do these by default:
+- archive reopenings
+- wrapper-only knob sweeps
+- hotspot-first micro-optimization loops
+- broad split families without a new code hypothesis
+
+## Promotion Follow-Up Only
+
+These stages are not part of the default Pro loop. Use them only after `pro-reliability` earns more spend.
+
+```sh
+./scripts/run-automove-experiment.sh pro-fast-screen runtime_pro_turn_engine_v30 runtime_current
+./scripts/run-automove-experiment.sh pro-progressive runtime_pro_turn_engine_v30 runtime_current
+./scripts/run-automove-experiment.sh pro-ladder runtime_pro_turn_engine_v30 runtime_current
+```
+
+## Compatibility Surface
+
+These commands still exist, but they are not the main story and they are not promotion proof for the Pro frontier:
+- `triage-calibrate`
+- `triage`
+- `preflight`
+- `audit-screen`
+- `pre-screen`
+- `fast-screen`
+- `progressive`
+- `ladder`
+- `pro-opening-speed-probe`
+- `pro-audit-screen`
+- `pro-pre-screen`
+- `docs/automove-experiments.md`
 
 ## Artifacts
 
@@ -100,34 +168,12 @@ When any of these happens, kill the candidate, compress the lesson, and clean th
 - Runtime-preflight stamps: `target/experiment-stamps/`
 - Process samples: `target/experiment-runs/misc/samples/`
 
-Useful cleanup commands:
-
-```sh
-./scripts/clean-experiment-artifacts.sh --dry-run
-./scripts/clean-experiment-artifacts.sh --candidate <candidate> --logs-only --dry-run
-./scripts/clean-experiment-artifacts.sh --candidate <candidate> --stamps-only --dry-run
-./scripts/clean-experiment-artifacts.sh
-./scripts/clean-process-samples.sh --dry-run
-./scripts/clean-process-samples.sh
-```
-
 Logs and stamps are disposable evidence, not durable memory.
-
-## Compatibility Surface
-
-These stages still exist, but they are not promotion evidence on their own:
-- `preflight`
-- `audit-screen`
-- `pre-screen`
-- `pro-opening-speed-probe`
-- `pro-audit-screen`
-- `pro-pre-screen`
-- `docs/automove-experiments.md`
 
 ## Session End
 
-1. Update `AUTOMOVE_IDEAS.md` with the current state or next split.
+1. Update `AUTOMOVE_IDEAS.md` with the next live split or the kill result.
 2. Move durable lessons into `docs/automove-knowledge.md`.
 3. Move retired branch history into `docs/automove-archive.md`.
 4. Clean logs and stamps intentionally.
-5. Start the next session with one fresh idea and one retained candidate.
+5. Start the next session with one live hypothesis and one retained candidate.
