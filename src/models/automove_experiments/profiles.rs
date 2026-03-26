@@ -67,6 +67,10 @@ const PROFILE_RUNTIME_PRO_TURN_ENGINE_V51_SPIRIT_PREVIEW_IN_PLACE_V1: &str =
     "runtime_pro_turn_engine_v51_spirit_preview_in_place_v1";
 const PROFILE_RUNTIME_PRO_TURN_ENGINE_V52_SPIRIT_PREVIEW_NO_BOARD_SUMMARY_V1: &str =
     "runtime_pro_turn_engine_v52_spirit_preview_no_board_summary_v1";
+const PROFILE_RUNTIME_PRO_TURN_ENGINE_V53_SPIRIT_PREVIEW_WINDOW_FAST_PATH_V1: &str =
+    "runtime_pro_turn_engine_v53_spirit_preview_window_fast_path_v1";
+const PROFILE_RUNTIME_PRO_TURN_ENGINE_V54_TACTICAL_WINDOW_CACHE_V1: &str =
+    "runtime_pro_turn_engine_v54_tactical_window_cache_v1";
 const PROFILE_RUNTIME_PRO_TURN_ENGINE_V3_SHARED: &str = "runtime_pro_turn_engine_v3_shared";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -81,7 +85,7 @@ struct AutomoveProfile {
     selector: AutomoveSelector,
 }
 
-const RETAINED_PROFILES: [AutomoveProfile; 47] = [
+const RETAINED_PROFILES: [AutomoveProfile; 29] = [
     AutomoveProfile {
         id: "base",
         selector: model_base_profile,
@@ -197,78 +201,6 @@ const RETAINED_PROFILES: [AutomoveProfile; 47] = [
     AutomoveProfile {
         id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V30,
         selector: model_runtime_pro_turn_engine_v30,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V31_ORDERING_BUNDLE_V1,
-        selector: model_runtime_pro_turn_engine_v31_ordering_bundle_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V32_TWO_STAGE_ORDERING_V1,
-        selector: model_runtime_pro_turn_engine_v32_two_stage_ordering_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V33_REACH_CLEANUP_V1,
-        selector: model_runtime_pro_turn_engine_v33_reach_cleanup_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V37_PLANNER_SCORE_WINDOW_V1,
-        selector: model_runtime_pro_turn_engine_v37_planner_score_window_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V39_SCORING_ATTACK_SUMMARY_V1,
-        selector: model_runtime_pro_turn_engine_v39_scoring_attack_summary_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V40_ORACLE_PROJECTION_PROFILES_V1,
-        selector: model_runtime_pro_turn_engine_v40_oracle_projection_profiles_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V41_CHILD_VULNERABILITY_CTX_V1,
-        selector: model_runtime_pro_turn_engine_v41_child_vulnerability_ctx_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V42_MOVE_EFFICIENCY_SCORE_WINDOW_V1,
-        selector: model_runtime_pro_turn_engine_v42_move_efficiency_score_window_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V43_SCORING_ATTACK_TARGETS_V1,
-        selector: model_runtime_pro_turn_engine_v43_scoring_attack_targets_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V44_CHILD_VULNERABILITY_SCREEN_V1,
-        selector: model_runtime_pro_turn_engine_v44_child_vulnerability_screen_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V45_TACTICAL_PICKUP_WINDOW_V1,
-        selector: model_runtime_pro_turn_engine_v45_tactical_pickup_window_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V46_SCORING_DRAINER_TARGETS_V1,
-        selector: model_runtime_pro_turn_engine_v46_scoring_drainer_targets_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V47_TACTICAL_PICKUP_EARLY_EXIT_V1,
-        selector: model_runtime_pro_turn_engine_v47_tactical_pickup_early_exit_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V48_EXACT_ATTACK_PLAUSIBILITY_V1,
-        selector: model_runtime_pro_turn_engine_v48_exact_attack_plausibility_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V49_SEARCH_PREFERABILITY_CTX_V1,
-        selector: model_runtime_pro_turn_engine_v49_search_preferability_ctx_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V50_SCORING_BOARD_SUMMARY_V1,
-        selector: model_runtime_pro_turn_engine_v50_scoring_board_summary_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V51_SPIRIT_PREVIEW_IN_PLACE_V1,
-        selector: model_runtime_pro_turn_engine_v51_spirit_preview_in_place_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V52_SPIRIT_PREVIEW_NO_BOARD_SUMMARY_V1,
-        selector: model_runtime_pro_turn_engine_v52_spirit_preview_no_board_summary_v1,
     },
 ];
 
@@ -588,6 +520,12 @@ pub(super) fn profile_runtime_config_for_name(
         }
         PROFILE_RUNTIME_PRO_TURN_ENGINE_V52_SPIRIT_PREVIEW_NO_BOARD_SUMMARY_V1 => {
             configure_runtime_pro_turn_engine_v52_spirit_preview_no_board_summary_v1(config)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V53_SPIRIT_PREVIEW_WINDOW_FAST_PATH_V1 => {
+            configure_runtime_pro_turn_engine_v53_spirit_preview_window_fast_path_v1(config)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V54_TACTICAL_WINDOW_CACHE_V1 => {
+            configure_runtime_pro_turn_engine_v54_tactical_window_cache_v1(config)
         }
         PROFILE_RUNTIME_PRO_TURN_ENGINE_V3_SHARED => {
             configure_runtime_pro_turn_engine_v3_shared(config)
@@ -1162,8 +1100,7 @@ fn configure_runtime_pro_turn_engine_v42_move_efficiency_score_window_v1(
 fn configure_runtime_pro_turn_engine_v43_scoring_attack_targets_v1(
     config: SmartSearchConfig,
 ) -> SmartSearchConfig {
-    let mut runtime =
-        configure_runtime_pro_turn_engine_v42_move_efficiency_score_window_v1(config);
+    let mut runtime = configure_runtime_pro_turn_engine_v42_move_efficiency_score_window_v1(config);
     runtime.enable_scoring_attack_reach_target_narrowing = true;
     runtime
 }
@@ -1226,6 +1163,24 @@ fn configure_runtime_pro_turn_engine_v52_spirit_preview_no_board_summary_v1(
     config: SmartSearchConfig,
 ) -> SmartSearchConfig {
     configure_runtime_pro_turn_engine_v49_search_preferability_ctx_v1(config)
+}
+
+fn configure_runtime_pro_turn_engine_v53_spirit_preview_window_fast_path_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime =
+        configure_runtime_pro_turn_engine_v52_spirit_preview_no_board_summary_v1(config);
+    runtime.enable_tactical_spirit_preview_fast_path = true;
+    runtime
+}
+
+fn configure_runtime_pro_turn_engine_v54_tactical_window_cache_v1(
+    config: SmartSearchConfig,
+) -> SmartSearchConfig {
+    let mut runtime =
+        configure_runtime_pro_turn_engine_v53_spirit_preview_window_fast_path_v1(config);
+    runtime.enable_immediate_tactical_window_cache = true;
+    runtime
 }
 
 fn configure_runtime_pro_turn_engine_v3_shared(config: SmartSearchConfig) -> SmartSearchConfig {
@@ -2673,6 +2628,18 @@ pub(super) fn model_runtime_pro_turn_engine_v46_scoring_drainer_targets_v1(
     game: &MonsGame,
     config: SmartSearchConfig,
 ) -> Vec<Input> {
+    runtime_pro_turn_engine_v30_guarded_inputs(
+        game,
+        config,
+        configure_runtime_pro_turn_engine_v46_scoring_drainer_targets_v1,
+    )
+}
+
+fn runtime_pro_turn_engine_v30_guarded_inputs(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+    configure: fn(SmartSearchConfig) -> SmartSearchConfig,
+) -> Vec<Input> {
     let opening_book_mode = std::env::var("SMART_USE_WHITE_OPENING_BOOK")
         .ok()
         .map(|value| {
@@ -2760,52 +2727,95 @@ pub(super) fn model_runtime_pro_turn_engine_v46_scoring_drainer_targets_v1(
         );
     }
 
-    runtime_selector_inputs(
-        game,
-        configure_runtime_pro_turn_engine_v46_scoring_drainer_targets_v1(config),
-    )
+    runtime_selector_inputs(game, configure(config))
 }
 
 pub(super) fn model_runtime_pro_turn_engine_v47_tactical_pickup_early_exit_v1(
     game: &MonsGame,
     config: SmartSearchConfig,
 ) -> Vec<Input> {
-    model_runtime_pro_turn_engine_v46_scoring_drainer_targets_v1(game, config)
+    runtime_pro_turn_engine_v30_guarded_inputs(
+        game,
+        config,
+        configure_runtime_pro_turn_engine_v47_tactical_pickup_early_exit_v1,
+    )
 }
 
 pub(super) fn model_runtime_pro_turn_engine_v48_exact_attack_plausibility_v1(
     game: &MonsGame,
     config: SmartSearchConfig,
 ) -> Vec<Input> {
-    model_runtime_pro_turn_engine_v46_scoring_drainer_targets_v1(game, config)
+    runtime_pro_turn_engine_v30_guarded_inputs(
+        game,
+        config,
+        configure_runtime_pro_turn_engine_v48_exact_attack_plausibility_v1,
+    )
 }
 
 pub(super) fn model_runtime_pro_turn_engine_v49_search_preferability_ctx_v1(
     game: &MonsGame,
     config: SmartSearchConfig,
 ) -> Vec<Input> {
-    model_runtime_pro_turn_engine_v46_scoring_drainer_targets_v1(game, config)
+    runtime_pro_turn_engine_v30_guarded_inputs(
+        game,
+        config,
+        configure_runtime_pro_turn_engine_v49_search_preferability_ctx_v1,
+    )
 }
 
 pub(super) fn model_runtime_pro_turn_engine_v50_scoring_board_summary_v1(
     game: &MonsGame,
     config: SmartSearchConfig,
 ) -> Vec<Input> {
-    model_runtime_pro_turn_engine_v46_scoring_drainer_targets_v1(game, config)
+    runtime_pro_turn_engine_v30_guarded_inputs(
+        game,
+        config,
+        configure_runtime_pro_turn_engine_v50_scoring_board_summary_v1,
+    )
 }
 
 pub(super) fn model_runtime_pro_turn_engine_v51_spirit_preview_in_place_v1(
     game: &MonsGame,
     config: SmartSearchConfig,
 ) -> Vec<Input> {
-    model_runtime_pro_turn_engine_v46_scoring_drainer_targets_v1(game, config)
+    runtime_pro_turn_engine_v30_guarded_inputs(
+        game,
+        config,
+        configure_runtime_pro_turn_engine_v51_spirit_preview_in_place_v1,
+    )
 }
 
 pub(super) fn model_runtime_pro_turn_engine_v52_spirit_preview_no_board_summary_v1(
     game: &MonsGame,
     config: SmartSearchConfig,
 ) -> Vec<Input> {
-    model_runtime_pro_turn_engine_v46_scoring_drainer_targets_v1(game, config)
+    runtime_pro_turn_engine_v30_guarded_inputs(
+        game,
+        config,
+        configure_runtime_pro_turn_engine_v52_spirit_preview_no_board_summary_v1,
+    )
+}
+
+pub(super) fn model_runtime_pro_turn_engine_v53_spirit_preview_window_fast_path_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    runtime_pro_turn_engine_v30_guarded_inputs(
+        game,
+        config,
+        configure_runtime_pro_turn_engine_v53_spirit_preview_window_fast_path_v1,
+    )
+}
+
+pub(super) fn model_runtime_pro_turn_engine_v54_tactical_window_cache_v1(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    runtime_pro_turn_engine_v30_guarded_inputs(
+        game,
+        config,
+        configure_runtime_pro_turn_engine_v54_tactical_window_cache_v1,
+    )
 }
 
 pub(super) fn model_runtime_pro_turn_engine_v3_shared(
@@ -3020,6 +3030,73 @@ fn retained_profiles() -> &'static [AutomoveProfile] {
     &RETAINED_PROFILES
 }
 
+fn archived_profile_selector_from_name(profile_name: &str) -> Option<AutomoveSelector> {
+    match profile_name {
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V31_ORDERING_BUNDLE_V1 => {
+            Some(model_runtime_pro_turn_engine_v31_ordering_bundle_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V32_TWO_STAGE_ORDERING_V1 => {
+            Some(model_runtime_pro_turn_engine_v32_two_stage_ordering_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V33_REACH_CLEANUP_V1 => {
+            Some(model_runtime_pro_turn_engine_v33_reach_cleanup_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V37_PLANNER_SCORE_WINDOW_V1 => {
+            Some(model_runtime_pro_turn_engine_v37_planner_score_window_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V39_SCORING_ATTACK_SUMMARY_V1 => {
+            Some(model_runtime_pro_turn_engine_v39_scoring_attack_summary_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V40_ORACLE_PROJECTION_PROFILES_V1 => {
+            Some(model_runtime_pro_turn_engine_v40_oracle_projection_profiles_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V41_CHILD_VULNERABILITY_CTX_V1 => {
+            Some(model_runtime_pro_turn_engine_v41_child_vulnerability_ctx_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V42_MOVE_EFFICIENCY_SCORE_WINDOW_V1 => {
+            Some(model_runtime_pro_turn_engine_v42_move_efficiency_score_window_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V43_SCORING_ATTACK_TARGETS_V1 => {
+            Some(model_runtime_pro_turn_engine_v43_scoring_attack_targets_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V44_CHILD_VULNERABILITY_SCREEN_V1 => {
+            Some(model_runtime_pro_turn_engine_v44_child_vulnerability_screen_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V45_TACTICAL_PICKUP_WINDOW_V1 => {
+            Some(model_runtime_pro_turn_engine_v45_tactical_pickup_window_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V46_SCORING_DRAINER_TARGETS_V1 => {
+            Some(model_runtime_pro_turn_engine_v46_scoring_drainer_targets_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V47_TACTICAL_PICKUP_EARLY_EXIT_V1 => {
+            Some(model_runtime_pro_turn_engine_v47_tactical_pickup_early_exit_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V48_EXACT_ATTACK_PLAUSIBILITY_V1 => {
+            Some(model_runtime_pro_turn_engine_v48_exact_attack_plausibility_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V49_SEARCH_PREFERABILITY_CTX_V1 => {
+            Some(model_runtime_pro_turn_engine_v49_search_preferability_ctx_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V50_SCORING_BOARD_SUMMARY_V1 => {
+            Some(model_runtime_pro_turn_engine_v50_scoring_board_summary_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V51_SPIRIT_PREVIEW_IN_PLACE_V1 => {
+            Some(model_runtime_pro_turn_engine_v51_spirit_preview_in_place_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V52_SPIRIT_PREVIEW_NO_BOARD_SUMMARY_V1 => {
+            Some(model_runtime_pro_turn_engine_v52_spirit_preview_no_board_summary_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V53_SPIRIT_PREVIEW_WINDOW_FAST_PATH_V1 => {
+            Some(model_runtime_pro_turn_engine_v53_spirit_preview_window_fast_path_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V54_TACTICAL_WINDOW_CACHE_V1 => {
+            Some(model_runtime_pro_turn_engine_v54_tactical_window_cache_v1)
+        }
+        PROFILE_RUNTIME_PRO_TURN_ENGINE_V3_SHARED => Some(model_runtime_pro_turn_engine_v3_shared),
+        _ => None,
+    }
+}
+
 pub(super) fn retained_profile_ids() -> Vec<&'static str> {
     retained_profiles()
         .iter()
@@ -3036,12 +3113,7 @@ pub(super) fn profile_selector_from_name(profile_name: &str) -> Option<AutomoveS
         .iter()
         .find(|profile| profile.id == profile_name)
         .map(|profile| profile.selector)
-        .or_else(|| match profile_name {
-            PROFILE_RUNTIME_PRO_TURN_ENGINE_V3_SHARED => {
-                Some(model_runtime_pro_turn_engine_v3_shared)
-            }
-            _ => None,
-        })
+        .or_else(|| archived_profile_selector_from_name(profile_name))
 }
 
 pub(super) fn selected_pool_models() -> Vec<AutomoveModel> {

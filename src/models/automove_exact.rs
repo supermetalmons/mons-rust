@@ -10,6 +10,8 @@ const EXACT_CARRIER_STEPS_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_DRAINER_TO_MANA_CACHE_MAX_ENTRIES: usize = 8192;
 #[cfg(any(target_arch = "wasm32", test))]
 const EXACT_FOLLOWUP_SUMMARY_CACHE_MAX_ENTRIES: usize = 4096;
+#[cfg(any(target_arch = "wasm32", test))]
+const EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE_MAX_ENTRIES: usize = 4096;
 const EXACT_PICKUP_PATH_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_SPIRIT_REACH_CACHE_MAX_ENTRIES: usize = 4096;
 #[cfg(any(target_arch = "wasm32", test))]
@@ -234,7 +236,7 @@ pub(crate) struct ExactDrainerPickupPath {
     pub mana: Mana,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ExactSpiritSummary {
     pub utility: i32,
     pub same_turn_score: bool,
@@ -279,7 +281,7 @@ pub(crate) struct ExactTurnSummary {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ExactTurnTacticalProjection {
     pub safe_supermana_progress: bool,
     pub safe_supermana_progress_steps: Option<i32>,
@@ -308,6 +310,13 @@ const EXACT_TACTICAL_SPIRIT_NEED_SCORE: u8 = 1 << 0;
 const EXACT_TACTICAL_SPIRIT_NEED_DENIAL: u8 = 1 << 1;
 #[cfg(any(target_arch = "wasm32", test))]
 const EXACT_TACTICAL_SPIRIT_NEED_PROGRESS: u8 = 1 << 2;
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ExactRuntimeFlags {
+    pub enable_tactical_spirit_preview_fast_path: bool,
+    pub enable_immediate_tactical_window_cache: bool,
+}
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, Default)]
@@ -614,6 +623,22 @@ struct ExactTacticalSpiritAfterWindowKey {
     need_denial: bool,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ExactImmediateTacticalWindowKey {
+    board_hash: u64,
+    color: Color,
+    move_budget: i32,
+    need_score: bool,
+    need_denial: bool,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[derive(Default)]
+struct ExactImmediateTacticalWindowCache {
+    entries: ExactHashMap<ExactImmediateTacticalWindowKey, ExactImmediateTacticalWindow>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct ExactSpiritReachQueryKey {
     board_hash: u64,
@@ -685,6 +710,14 @@ pub(crate) struct ExactQueryDiagnostics {
     pub tactical_spirit_summary_calls: u32,
     #[cfg(any(target_arch = "wasm32", test))]
     pub tactical_spirit_summary_cache_hits: u32,
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub immediate_tactical_window_queries: u32,
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub immediate_tactical_window_cache_hits: u32,
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub tactical_spirit_after_window_calls: u32,
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub tactical_spirit_after_window_fast_path_skips: u32,
     pub passive_spirit_summary_calls: u32,
     #[cfg(any(target_arch = "wasm32", test))]
     pub exact_followup_summary_calls: u32,
@@ -701,6 +734,9 @@ pub(crate) struct ExactQueryDiagnostics {
 
 thread_local! {
     #[cfg(any(target_arch = "wasm32", test))]
+    static EXACT_RUNTIME_FLAGS: RefCell<ExactRuntimeFlags> =
+        RefCell::new(ExactRuntimeFlags::default());
+    #[cfg(any(target_arch = "wasm32", test))]
     static EXACT_STATE_ANALYSIS_CACHE: RefCell<ExactStateAnalysisCache> =
         RefCell::new(ExactStateAnalysisCache::default());
     #[cfg(any(target_arch = "wasm32", test))]
@@ -709,6 +745,9 @@ thread_local! {
     #[cfg(any(target_arch = "wasm32", test))]
     static EXACT_TURN_TACTICAL_PROJECTION_CACHE: RefCell<ExactTurnTacticalProjectionCache> =
         RefCell::new(ExactTurnTacticalProjectionCache::default());
+    #[cfg(any(target_arch = "wasm32", test))]
+    static EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE: RefCell<ExactImmediateTacticalWindowCache> =
+        RefCell::new(ExactImmediateTacticalWindowCache::default());
     static EXACT_STRATEGIC_ANALYSIS_CACHE: RefCell<ExactStrategicAnalysisCache> =
         RefCell::new(ExactStrategicAnalysisCache::default());
     static EXACT_ATTACK_REACH_CACHE: RefCell<ExactAttackReachCache> =
@@ -766,11 +805,38 @@ pub(crate) fn exact_query_diagnostics_snapshot() -> ExactQueryDiagnostics {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn with_exact_runtime_flags<T>(flags: ExactRuntimeFlags, f: impl FnOnce() -> T) -> T {
+    struct ExactRuntimeFlagsGuard<'a> {
+        runtime: &'a RefCell<ExactRuntimeFlags>,
+        previous: ExactRuntimeFlags,
+    }
+
+    impl Drop for ExactRuntimeFlagsGuard<'_> {
+        fn drop(&mut self) {
+            *self.runtime.borrow_mut() = self.previous;
+        }
+    }
+
+    EXACT_RUNTIME_FLAGS.with(|runtime| {
+        let previous = *runtime.borrow();
+        *runtime.borrow_mut() = flags;
+        let _guard = ExactRuntimeFlagsGuard { runtime, previous };
+        f()
+    })
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_runtime_flags() -> ExactRuntimeFlags {
+    EXACT_RUNTIME_FLAGS.with(|runtime| *runtime.borrow())
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
 #[inline]
 pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_STATE_ANALYSIS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_TURN_SUMMARY_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_TURN_TACTICAL_PROJECTION_CACHE.with(|cache| cache.borrow_mut().entries.clear());
+    EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_STRATEGIC_ANALYSIS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_ATTACK_REACH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_CARRIER_STEPS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
@@ -3593,6 +3659,7 @@ fn exact_tactical_spirit_summary_uncached(
     } else {
         0
     };
+    let runtime_flags = exact_runtime_flags();
     let mut best = ExactSpiritSummary::default();
     let mut after_window_cache: ExactHashMap<
         ExactTacticalSpiritAfterWindowKey,
@@ -3631,18 +3698,50 @@ fn exact_tactical_spirit_summary_uncached(
                     if !spirit_destination_allowed(&action_board, target, target_item, dest) {
                         continue;
                     }
+                    let destination_item = if runtime_flags.enable_tactical_spirit_preview_fast_path
+                    {
+                        action_board.item(dest).copied()
+                    } else {
+                        None
+                    };
                     let (undo, score_delta, opponent_mana_score_delta) =
-                        apply_spirit_move_preview_in_place(
-                            &mut action_board,
-                            target,
-                            target_item,
-                            dest,
-                            color,
-                        );
-                    let need_after_score =
-                        need_score && best.same_turn_score_value < max_same_turn_score;
+                        if runtime_flags.enable_tactical_spirit_preview_fast_path {
+                            apply_spirit_move_preview_known_items_in_place(
+                                &mut action_board,
+                                target,
+                                target_item,
+                                dest,
+                                destination_item,
+                                color,
+                            )
+                        } else {
+                            apply_spirit_move_preview_in_place(
+                                &mut action_board,
+                                target,
+                                target_item,
+                                dest,
+                                color,
+                            )
+                        };
+                    let preview_saturates_score = runtime_flags
+                        .enable_tactical_spirit_preview_fast_path
+                        && need_score
+                        && score_delta >= max_same_turn_score;
+                    let preview_saturates_denial = runtime_flags
+                        .enable_tactical_spirit_preview_fast_path
+                        && need_denial
+                        && opponent_mana_score_delta >= max_same_turn_opponent_score;
+                    if preview_saturates_score || preview_saturates_denial {
+                        update_exact_query_diagnostics(|diagnostics| {
+                            diagnostics.tactical_spirit_after_window_fast_path_skips += 1;
+                        });
+                    }
+                    let need_after_score = need_score
+                        && best.same_turn_score_value < max_same_turn_score
+                        && !preview_saturates_score;
                     let need_after_denial = need_denial
-                        && best.same_turn_opponent_mana_score_value < max_same_turn_opponent_score;
+                        && best.same_turn_opponent_mana_score_value < max_same_turn_opponent_score
+                        && !preview_saturates_denial;
                     let after_window = if need_after_score || need_after_denial {
                         let after_board_hash = exact_board_hash(&action_board);
                         let key = ExactTacticalSpiritAfterWindowKey {
@@ -3654,6 +3753,9 @@ fn exact_tactical_spirit_summary_uncached(
                         if let Some(cached) = after_window_cache.get(&key).copied() {
                             cached
                         } else {
+                            update_exact_query_diagnostics(|diagnostics| {
+                                diagnostics.tactical_spirit_after_window_calls += 1;
+                            });
                             let window = exact_best_immediate_tactical_window_on_board_with_hash(
                                 &action_board,
                                 color,
@@ -3668,13 +3770,23 @@ fn exact_tactical_spirit_summary_uncached(
                     } else {
                         ExactImmediateTacticalWindow::default()
                     };
-                    let after_same_turn_score = if need_after_score {
-                        score_delta.max(after_window.best_score)
+                    let after_same_turn_score = if need_score {
+                        let mut best_score = best.same_turn_score_value.max(score_delta);
+                        if need_after_score {
+                            best_score = best_score.max(after_window.best_score);
+                        }
+                        best_score
                     } else {
                         best.same_turn_score_value
                     };
-                    let after_same_turn_opponent_score = if need_after_denial {
-                        opponent_mana_score_delta.max(after_window.best_opponent_mana_score)
+                    let after_same_turn_opponent_score = if need_denial {
+                        let mut best_score = best
+                            .same_turn_opponent_mana_score_value
+                            .max(opponent_mana_score_delta);
+                        if need_after_denial {
+                            best_score = best_score.max(after_window.best_opponent_mana_score);
+                        }
+                        best_score
                     } else {
                         best.same_turn_opponent_mana_score_value
                     };
@@ -4109,18 +4221,19 @@ struct SpiritPreviewUndo {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-fn apply_spirit_move_preview_in_place(
+fn apply_spirit_move_preview_known_items_in_place(
     board: &mut Board,
     from: Location,
     target_item: Item,
     to: Location,
+    destination_item: Option<Item>,
     perspective: Color,
 ) -> (SpiritPreviewUndo, i32, i32) {
     let undo = SpiritPreviewUndo {
         from,
-        from_item: board.item(from).copied(),
+        from_item: Some(target_item),
         to,
-        to_item: board.item(to).copied(),
+        to_item: destination_item,
     };
     let destination_square = board.square(to);
     board.remove_item(from);
@@ -4129,7 +4242,7 @@ fn apply_spirit_move_preview_in_place(
     let mut score_delta = 0;
     let mut opponent_mana_score_delta = 0;
 
-    match (target_item, undo.to_item) {
+    match (target_item, destination_item) {
         (Item::Mon { mon }, Some(Item::Mana { mana })) => {
             placed_item = Item::MonWithMana { mon, mana };
         }
@@ -4175,6 +4288,24 @@ fn apply_spirit_move_preview_in_place(
 
     board.put(placed_item, to);
     (undo, score_delta, opponent_mana_score_delta)
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn apply_spirit_move_preview_in_place(
+    board: &mut Board,
+    from: Location,
+    target_item: Item,
+    to: Location,
+    perspective: Color,
+) -> (SpiritPreviewUndo, i32, i32) {
+    apply_spirit_move_preview_known_items_in_place(
+        board,
+        from,
+        target_item,
+        to,
+        board.item(to).copied(),
+        perspective,
+    )
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -4279,7 +4410,7 @@ fn exact_best_score_steps_on_board_with_hash(
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct ExactImmediateTacticalWindow {
     best_score: i32,
     best_opponent_mana_score: i32,
@@ -4287,6 +4418,70 @@ struct ExactImmediateTacticalWindow {
 
 #[cfg(any(target_arch = "wasm32", test))]
 fn exact_best_immediate_tactical_window_on_board_with_hash(
+    board: &Board,
+    color: Color,
+    move_budget: i32,
+    need_score: bool,
+    need_denial: bool,
+    board_hash: u64,
+) -> ExactImmediateTacticalWindow {
+    update_exact_query_diagnostics(|diagnostics| {
+        diagnostics.immediate_tactical_window_queries += 1
+    });
+    if move_budget < 0 || (!need_score && !need_denial) {
+        return ExactImmediateTacticalWindow::default();
+    }
+
+    let runtime_flags = exact_runtime_flags();
+    if runtime_flags.enable_immediate_tactical_window_cache {
+        let key = ExactImmediateTacticalWindowKey {
+            board_hash,
+            color,
+            move_budget,
+            need_score,
+            need_denial,
+        };
+        if let Some(cached) = EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE
+            .with(|cache| cache.borrow().entries.get(&key).copied())
+        {
+            update_exact_query_diagnostics(|diagnostics| {
+                diagnostics.immediate_tactical_window_cache_hits += 1;
+            });
+            return cached;
+        }
+
+        let window = exact_best_immediate_tactical_window_on_board_with_hash_uncached(
+            board,
+            color,
+            move_budget,
+            need_score,
+            need_denial,
+            board_hash,
+        );
+        EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            if cache.entries.len() >= EXACT_IMMEDIATE_TACTICAL_WINDOW_CACHE_MAX_ENTRIES
+                && !cache.entries.contains_key(&key)
+            {
+                cache.entries.clear();
+            }
+            cache.entries.insert(key, window);
+        });
+        return window;
+    }
+
+    exact_best_immediate_tactical_window_on_board_with_hash_uncached(
+        board,
+        color,
+        move_budget,
+        need_score,
+        need_denial,
+        board_hash,
+    )
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_best_immediate_tactical_window_on_board_with_hash_uncached(
     board: &Board,
     color: Color,
     move_budget: i32,
@@ -6190,15 +6385,31 @@ mod tests {
             let (expected_board, expected_score, expected_opponent_score) =
                 apply_spirit_move_preview(&board, from, item, to, color);
             let mut in_place_board = board.clone();
+            let mut known_items_board = board.clone();
+            let destination_item = known_items_board.item(to).copied();
             let (undo, score, opponent_score) =
                 apply_spirit_move_preview_in_place(&mut in_place_board, from, item, to, color);
+            let (known_items_undo, known_items_score, known_items_opponent_score) =
+                apply_spirit_move_preview_known_items_in_place(
+                    &mut known_items_board,
+                    from,
+                    item,
+                    to,
+                    destination_item,
+                    color,
+                );
 
             assert_eq!(in_place_board, expected_board);
             assert_eq!(score, expected_score);
             assert_eq!(opponent_score, expected_opponent_score);
+            assert_eq!(known_items_board, expected_board);
+            assert_eq!(known_items_score, expected_score);
+            assert_eq!(known_items_opponent_score, expected_opponent_score);
 
             undo_spirit_move_preview(&mut in_place_board, undo);
+            undo_spirit_move_preview(&mut known_items_board, known_items_undo);
             assert_eq!(in_place_board, original);
+            assert_eq!(known_items_board, original);
         }
     }
 
@@ -6834,6 +7045,48 @@ mod tests {
         );
     }
 
+    fn exact_tactical_spirit_summary_with_fast_path(
+        board: &Board,
+        color: Color,
+        remaining_mon_moves: i32,
+        can_use_action: bool,
+        fields: u8,
+        enable_fast_path: bool,
+        enable_window_cache: bool,
+    ) -> ExactSpiritSummary {
+        with_exact_runtime_flags(
+            ExactRuntimeFlags {
+                enable_tactical_spirit_preview_fast_path: enable_fast_path,
+                enable_immediate_tactical_window_cache: enable_window_cache,
+            },
+            || {
+                exact_tactical_spirit_summary(
+                    board,
+                    color,
+                    remaining_mon_moves,
+                    can_use_action,
+                    fields,
+                )
+            },
+        )
+    }
+
+    fn exact_turn_tactical_projection_with_fast_path(
+        game: &MonsGame,
+        color: Color,
+        flags: u8,
+        enable_fast_path: bool,
+        enable_window_cache: bool,
+    ) -> ExactTurnTacticalProjection {
+        with_exact_runtime_flags(
+            ExactRuntimeFlags {
+                enable_tactical_spirit_preview_fast_path: enable_fast_path,
+                enable_immediate_tactical_window_cache: enable_window_cache,
+            },
+            || exact_turn_tactical_projection(game, color, flags),
+        )
+    }
+
     #[test]
     fn exact_turn_tactical_projection_matches_denial_only_spirit_fields() {
         clear_exact_state_analysis_cache();
@@ -6882,6 +7135,297 @@ mod tests {
         assert!(!projection.spirit_assisted_score);
         assert_eq!(projection.spirit_assisted_score_value, 0);
         assert_eq!(projection.same_turn_score_window_value, 0);
+    }
+
+    #[test]
+    fn exact_tactical_spirit_summary_fast_path_matches_score_only_legacy_path() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(8, 2),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let remaining_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
+
+        let legacy = exact_tactical_spirit_summary_with_fast_path(
+            &game.board,
+            Color::White,
+            remaining_moves,
+            game.player_can_use_action(),
+            EXACT_TACTICAL_SPIRIT_NEED_SCORE,
+            false,
+            false,
+        );
+        let fast_path = exact_tactical_spirit_summary_with_fast_path(
+            &game.board,
+            Color::White,
+            remaining_moves,
+            game.player_can_use_action(),
+            EXACT_TACTICAL_SPIRIT_NEED_SCORE,
+            true,
+            false,
+        );
+
+        assert_eq!(fast_path, legacy);
+    }
+
+    #[test]
+    fn exact_tactical_spirit_summary_fast_path_matches_denial_only_legacy_path() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(8, 2),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let remaining_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
+
+        let legacy = exact_tactical_spirit_summary_with_fast_path(
+            &game.board,
+            Color::White,
+            remaining_moves,
+            game.player_can_use_action(),
+            EXACT_TACTICAL_SPIRIT_NEED_DENIAL,
+            false,
+            false,
+        );
+        let fast_path = exact_tactical_spirit_summary_with_fast_path(
+            &game.board,
+            Color::White,
+            remaining_moves,
+            game.player_can_use_action(),
+            EXACT_TACTICAL_SPIRIT_NEED_DENIAL,
+            true,
+            false,
+        );
+
+        assert_eq!(fast_path, legacy);
+    }
+
+    #[test]
+    fn exact_tactical_spirit_summary_fast_path_matches_full_legacy_path() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(8, 2),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(10, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let remaining_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
+
+        let legacy = exact_tactical_spirit_summary_with_fast_path(
+            &game.board,
+            Color::White,
+            remaining_moves,
+            game.player_can_use_action(),
+            EXACT_TACTICAL_SPIRIT_NEED_SCORE
+                | EXACT_TACTICAL_SPIRIT_NEED_DENIAL
+                | EXACT_TACTICAL_SPIRIT_NEED_PROGRESS,
+            false,
+            false,
+        );
+        let fast_path = exact_tactical_spirit_summary_with_fast_path(
+            &game.board,
+            Color::White,
+            remaining_moves,
+            game.player_can_use_action(),
+            EXACT_TACTICAL_SPIRIT_NEED_SCORE
+                | EXACT_TACTICAL_SPIRIT_NEED_DENIAL
+                | EXACT_TACTICAL_SPIRIT_NEED_PROGRESS,
+            true,
+            false,
+        );
+
+        assert_eq!(fast_path, legacy);
+    }
+
+    #[test]
+    fn exact_tactical_spirit_summary_fast_path_with_window_cache_matches_legacy_path() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(8, 2),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(10, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let remaining_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
+
+        let legacy = exact_tactical_spirit_summary_with_fast_path(
+            &game.board,
+            Color::White,
+            remaining_moves,
+            game.player_can_use_action(),
+            EXACT_TACTICAL_SPIRIT_NEED_SCORE
+                | EXACT_TACTICAL_SPIRIT_NEED_DENIAL
+                | EXACT_TACTICAL_SPIRIT_NEED_PROGRESS,
+            false,
+            false,
+        );
+        let cached = exact_tactical_spirit_summary_with_fast_path(
+            &game.board,
+            Color::White,
+            remaining_moves,
+            game.player_can_use_action(),
+            EXACT_TACTICAL_SPIRIT_NEED_SCORE
+                | EXACT_TACTICAL_SPIRIT_NEED_DENIAL
+                | EXACT_TACTICAL_SPIRIT_NEED_PROGRESS,
+            true,
+            true,
+        );
+
+        assert_eq!(cached, legacy);
+    }
+
+    #[test]
+    fn exact_turn_tactical_projection_fast_path_matches_legacy_projection_profiles() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(10, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(8, 2),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        for flags in [
+            EXACT_TURN_TACTICAL_NEED_SUPERMANA_PROGRESS,
+            EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS
+                | EXACT_TURN_TACTICAL_NEED_SPIRIT_DENIAL,
+            EXACT_TURN_TACTICAL_NEED_SPIRIT_SCORE | EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW,
+            EXACT_TURN_TACTICAL_NEED_SUPERMANA_PROGRESS | EXACT_TURN_TACTICAL_NEED_SPIRIT_SCORE,
+        ] {
+            let legacy = exact_turn_tactical_projection_with_fast_path(
+                &game,
+                Color::White,
+                flags,
+                false,
+                false,
+            );
+            let fast_path = exact_turn_tactical_projection_with_fast_path(
+                &game,
+                Color::White,
+                flags,
+                true,
+                false,
+            );
+            assert_eq!(fast_path, legacy);
+        }
     }
 
     #[test]

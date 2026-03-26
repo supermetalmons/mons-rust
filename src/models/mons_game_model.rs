@@ -1013,6 +1013,8 @@ pub(crate) struct SmartSearchConfig {
     enable_turn_engine_secondary_analysis: bool,
     enable_turn_engine_selected_followup_projection: bool,
     enable_turn_engine_lazy_oracle_score_window_projection: bool,
+    enable_tactical_spirit_preview_fast_path: bool,
+    enable_immediate_tactical_window_cache: bool,
     enable_turn_engine_late_safe_mana_root_preference: bool,
     enable_turn_engine_late_black_setup_progress_rescue: bool,
     turn_engine_mode: TurnEngineMode,
@@ -1369,6 +1371,8 @@ impl SmartSearchConfig {
             enable_turn_engine_secondary_analysis: true,
             enable_turn_engine_selected_followup_projection: true,
             enable_turn_engine_lazy_oracle_score_window_projection: false,
+            enable_tactical_spirit_preview_fast_path: false,
+            enable_immediate_tactical_window_cache: false,
             enable_turn_engine_late_safe_mana_root_preference: false,
             enable_turn_engine_late_black_setup_progress_rescue: false,
             turn_engine_mode: TurnEngineMode::ProV1,
@@ -6758,7 +6762,15 @@ impl MonsGameModel {
 
     #[cfg(any(target_arch = "wasm32", test))]
     fn smart_search_best_inputs(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
-        Self::smart_search_best_inputs_internal(game, config, true)
+        crate::models::automove_exact::with_exact_runtime_flags(
+            crate::models::automove_exact::ExactRuntimeFlags {
+                enable_tactical_spirit_preview_fast_path: config
+                    .enable_tactical_spirit_preview_fast_path,
+                enable_immediate_tactical_window_cache: config
+                    .enable_immediate_tactical_window_cache,
+            },
+            || Self::smart_search_best_inputs_internal(game, config, true),
+        )
     }
 
     #[cfg(test)]
@@ -6766,7 +6778,15 @@ impl MonsGameModel {
         game: &MonsGame,
         config: SmartSearchConfig,
     ) -> Vec<Input> {
-        Self::smart_search_best_inputs_internal(game, config, false)
+        crate::models::automove_exact::with_exact_runtime_flags(
+            crate::models::automove_exact::ExactRuntimeFlags {
+                enable_tactical_spirit_preview_fast_path: config
+                    .enable_tactical_spirit_preview_fast_path,
+                enable_immediate_tactical_window_cache: config
+                    .enable_immediate_tactical_window_cache,
+            },
+            || Self::smart_search_best_inputs_internal(game, config, false),
+        )
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
@@ -12794,11 +12814,10 @@ impl MonsGameModel {
     fn move_efficiency_tactical_projection_flags(
         enable_tactical_score_window_narrowing: bool,
     ) -> u8 {
-        let mut flags =
-            crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_SUPERMANA_PROGRESS
-                | crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS
-                | crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_SPIRIT_SCORE
-                | crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_SPIRIT_DENIAL;
+        let mut flags = crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_SUPERMANA_PROGRESS
+            | crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_OPPONENT_MANA_PROGRESS
+            | crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_SPIRIT_SCORE
+            | crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_SPIRIT_DENIAL;
         if !enable_tactical_score_window_narrowing {
             flags |= crate::models::automove_exact::EXACT_TURN_TACTICAL_NEED_SCORE_WINDOW;
         }
@@ -12821,9 +12840,8 @@ impl MonsGameModel {
         let my_summary = strategic.map(|analysis| analysis.color_summary(perspective));
         let opponent_summary =
             strategic.map(|analysis| analysis.color_summary(perspective.other()));
-        let tactical_flags = Self::move_efficiency_tactical_projection_flags(
-            enable_tactical_score_window_narrowing,
-        );
+        let tactical_flags =
+            Self::move_efficiency_tactical_projection_flags(enable_tactical_score_window_narrowing);
         let my_turn_summary = if include_tactical_exact && game.active_color == perspective {
             crate::models::automove_exact::exact_turn_tactical_projection_with_search_hash(
                 game,
@@ -18936,7 +18954,8 @@ mod evaluation_cache_tests {
         config.enable_scoring_attack_reach_target_narrowing = true;
         config.enable_scoring_drainer_attack_reach_target_narrowing = true;
         config.enable_scoring_board_summary_reuse = true;
-        let with_context = MonsGameModel::evaluate_search_preferability(&game, Color::White, config);
+        let with_context =
+            MonsGameModel::evaluate_search_preferability(&game, Color::White, config);
 
         assert_eq!(without_context, with_context);
     }
@@ -19385,16 +19404,14 @@ mod evaluation_cache_tests {
             ],
             Color::White,
         );
-        assert!(
-            !MonsGameModel::target_attack_plausible_on_board(
-                &guarded_mystic.board,
-                Color::Black,
-                Color::White,
-                Location::new(6, 5),
-                Config::MONS_MOVES_PER_TURN,
-                true,
-            )
-        );
+        assert!(!MonsGameModel::target_attack_plausible_on_board(
+            &guarded_mystic.board,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            Config::MONS_MOVES_PER_TURN,
+            true,
+        ));
         assert!(!crate::models::automove_exact::can_attack_target_on_board(
             &guarded_mystic.board,
             Color::Black,
@@ -19428,16 +19445,14 @@ mod evaluation_cache_tests {
             ],
             Color::White,
         );
-        assert!(
-            !MonsGameModel::target_attack_plausible_on_board(
-                &mana_carrier_cannot_pick_bomb.board,
-                Color::Black,
-                Color::White,
-                Location::new(6, 6),
-                Config::MONS_MOVES_PER_TURN,
-                true,
-            )
-        );
+        assert!(!MonsGameModel::target_attack_plausible_on_board(
+            &mana_carrier_cannot_pick_bomb.board,
+            Color::Black,
+            Color::White,
+            Location::new(6, 6),
+            Config::MONS_MOVES_PER_TURN,
+            true,
+        ));
         assert!(!crate::models::automove_exact::can_attack_target_on_board(
             &mana_carrier_cannot_pick_bomb.board,
             Color::Black,

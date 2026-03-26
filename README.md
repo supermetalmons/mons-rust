@@ -36,7 +36,7 @@ Compatibility notes:
 - `preflight`, `pre-screen`, and `pro-pre-screen` still exist, but they are legacy diagnostics.
 - `audit-screen` and `pro-audit-screen` are spot checks for clean triage rejects, not promotion evidence.
 - Unless a note says otherwise, new candidates should branch from `runtime_current`.
-- Shipping runtime note: the package release ships `runtime_current`; `runtime_pro_turn_engine_v1` is retained experiment work, not production.
+- Shipping runtime note: the package release ships `runtime_current`; `runtime_pro_turn_engine_v30` is the retained Pro frontier for offline experiments, and `runtime_pro_turn_engine_v1` remains reference-only history.
 
 ## rules-tests runner
 
@@ -76,7 +76,7 @@ Release checklist:
 
 - Review `git status` before publish and confirm only intentional committed changes are present.
 - Confirm `runtime_current` is still the shipping automove path.
-- Confirm `runtime_pro_turn_engine_v1` remains fenced off from production.
+- Confirm retained Pro experiment frontiers (`runtime_pro_turn_engine_v30` and newer candidate-only follow-ups) remain fenced off from production.
 - Run `cargo test`.
 - Run `cargo test --release --lib smart_automove_release_opening_black_reply_speed_gate -- --ignored --nocapture`.
 - Run `cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --ignored --nocapture`.
@@ -91,6 +91,6 @@ Production blockers:
 
 Non-blocking retained experiment state:
 
-- `runtime_pro_turn_engine_v1` profile and ignored probes
+- retained Pro frontier profiles (`runtime_pro_turn_engine_v30`, candidate-only follow-ups, and `runtime_pro_turn_engine_v1` as reference history) plus ignored probes
 - experiment workflow/logging helpers
 - compressed automove backlog / knowledge / archive docs

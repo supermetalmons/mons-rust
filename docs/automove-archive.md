@@ -66,6 +66,38 @@ This document keeps compressed history for retired automove profiles and experim
   - keep `runtime_pro_turn_engine_v30` as the sole active ProV2 frontier
   - keep `runtime_pro_turn_engine_v1` only as reference history
 
+## Wave 8: Stronger Pro Roadmap Follow-Through (Mar 25-26, 2026)
+
+- Scope: `runtime_pro_turn_engine_v31` through `runtime_pro_turn_engine_v52`.
+- Why this wave happened:
+  - the stronger-Pro roadmap was used as a bounded follow-through program after the `v30` compression
+  - the work stayed focused on finishing the retained frontier rather than opening a new permanent branch family
+- What landed across the wave:
+  - local child bundles and extra hotspot diagnostics
+  - two-stage child ordering / shortlist safety
+  - reach and payload cleanup in hot exact helpers
+  - planner and oracle projection-profile narrowing
+  - search-side and exact-oracle follow-up splits through `v52`
+- Compressed lesson:
+  - these IDs were useful follow-through evidence, not separate long-lived frontiers
+  - `runtime_pro_turn_engine_v52_spirit_preview_no_board_summary_v1` became the strongest late-roadmap technical base
+  - none of `v31`..`v52` finished `pro-reliability` in a practical promotion window, so the retained frontier stayed `runtime_pro_turn_engine_v30`
+  - active work should stay in `AUTOMOVE_IDEAS.md`, with archived context here
+
+## Wave 9: Post-Roadmap Exact Window Follow-Ups (Mar 26, 2026)
+
+- Scope: `runtime_pro_turn_engine_v53` through `runtime_pro_turn_engine_v54`.
+- Why this wave happened:
+  - the late-roadmap blocker had snapped back to `exact_tactical_spirit_summary -> exact_best_immediate_tactical_window_on_board_with_hash`
+  - the goal was to cut preview-local exact window work without reopening broader search-side churn immediately
+- What landed across the wave:
+  - `v53` added the spirit-preview saturation fast path
+  - `v54` added a candidate-only cache for exact immediate tactical windows
+- Compressed lesson:
+  - `v54` was useful evidence: it improved bounded hotspot and stage-1 CPU numbers while keeping `guardrails`, `pro-triage`, and `runtime-preflight` green
+  - neither `v53` nor `v54` finished `pro-reliability` in a practical window
+  - the returned direct wall remained deeper in secure drainer recursion, payload churn, and remaining uncached exact-window work, so the retained frontier stayed `runtime_pro_turn_engine_v30`
+
 ## Parked Campaign: Fast Tactical Uplift Against Current Normal (Mar 18-20, 2026)
 
 - Goal: recover the `normal` vs `fast` gap without violating Fast latency.
