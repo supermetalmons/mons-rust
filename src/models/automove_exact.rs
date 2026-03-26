@@ -2659,6 +2659,56 @@ where
     None
 }
 
+fn exact_shortest_payload_state_bounded_with_lower_bound<F, L>(
+    board: &Board,
+    start: Location,
+    mon_kind: MonKind,
+    color: Color,
+    start_payload: ExactActorPayload,
+    allow_pick_bomb: bool,
+    max_steps: i32,
+    mut goal: F,
+    mut lower_bound: L,
+) -> Option<ExactStateResult>
+where
+    F: FnMut(Location, ExactActorPayload) -> bool,
+    L: FnMut(Location, ExactActorPayload) -> i32,
+{
+    let mut actor_move_memo = ExactActorMoveMemo::new(0);
+    let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
+    let mut seen = ExactPayloadSeen::new();
+    queue.push_back((start, start_payload, 0));
+    seen.insert(start, start_payload);
+
+    while let Some((location, payload, steps)) = queue.pop_front() {
+        if goal(location, payload) {
+            return Some(ExactStateResult { steps });
+        }
+        if steps >= max_steps {
+            continue;
+        }
+        if steps.saturating_add(lower_bound(location, payload)) > max_steps {
+            continue;
+        }
+        for &next in location.nearby_locations_ref() {
+            if let Some(next_payload) = actor_move_memo.payload_after_move(
+                board,
+                mon_kind,
+                color,
+                payload,
+                next,
+                allow_pick_bomb,
+            ) {
+                if seen.insert(next, next_payload) {
+                    queue.push_back((next, next_payload, steps + 1));
+                }
+            }
+        }
+    }
+
+    None
+}
+
 #[allow(dead_code)]
 fn actor_payload_after_move(
     board: &Board,
@@ -2856,6 +2906,40 @@ fn exact_drainer_pickup_steps_lower_bound(
         .min()
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+fn exact_drainer_pickup_remaining_steps_lower_bound(
+    board: &Board,
+    color: Color,
+    location: Location,
+    payload: ExactActorPayload,
+    min_any_score: u8,
+    need_score: bool,
+    need_denial: bool,
+    opponent_mana: Mana,
+) -> Option<i32> {
+    match payload {
+        ExactActorPayload::None => exact_drainer_pickup_steps_lower_bound(
+            board,
+            color,
+            location,
+            min_any_score,
+            need_score,
+            need_denial,
+            opponent_mana,
+        ),
+        ExactActorPayload::Mana(mana) => {
+            let relevant_for_score = need_score && mana.score(color) >= i32::from(min_any_score);
+            let relevant_for_denial = need_denial && mana == opponent_mana;
+            if relevant_for_score || relevant_for_denial {
+                Some(exact_distance_to_any_pool_steps_lower_bound(location))
+            } else {
+                None
+            }
+        }
+        ExactActorPayload::Bomb => None,
+    }
+}
+
 #[inline]
 fn exact_location_is_mana_pool(board: &Board, location: Location) -> bool {
     matches!(board.square(location), Square::ManaPool { .. })
@@ -3005,18 +3089,19 @@ fn exact_carrier_steps_to_any_pool_bounded_uncached(
     mana: Mana,
     max_steps: i32,
 ) -> Option<i32> {
-    exact_shortest_payload_state(
+    exact_shortest_payload_state_bounded_with_lower_bound(
         board,
         start,
         MonKind::Drainer,
         Color::White,
         ExactActorPayload::Mana(mana),
         false,
-        Some(max_steps),
+        max_steps,
         |location, payload| {
             matches!(payload, ExactActorPayload::Mana(_))
                 && matches!(board.square(location), Square::ManaPool { .. })
         },
+        |location, _| exact_distance_to_any_pool_steps_lower_bound(location),
     )
     .map(|result| result.steps)
 }
@@ -3247,6 +3332,20 @@ fn exact_drainer_pickup_window_small_budget_with_hash(
 
         let mut next_frontier = Vec::with_capacity(frontier.len() * 6);
         for &(location, payload) in &frontier {
+            if exact_drainer_pickup_remaining_steps_lower_bound(
+                board,
+                color,
+                location,
+                payload,
+                min_any_score,
+                need_score,
+                need_denial,
+                opponent_mana,
+            )
+            .map_or(true, |lower_bound| steps.saturating_add(lower_bound) > max_steps)
+            {
+                continue;
+            }
             for &next in location.nearby_locations_ref() {
                 if let Some(next_payload) = actor_move_memo.payload_after_move(
                     board,
@@ -3307,6 +3406,21 @@ fn exact_drainer_pickup_window_uncached_with_hash(
             steps,
         ) {
             return best;
+        }
+        if max_steps.is_some_and(|limit| {
+            exact_drainer_pickup_remaining_steps_lower_bound(
+                board,
+                color,
+                location,
+                payload,
+                min_any_score,
+                need_score,
+                need_denial,
+                opponent_mana,
+            )
+            .map_or(true, |lower_bound| steps.saturating_add(lower_bound) > limit)
+        }) {
+            continue;
         }
 
         for &next in location.nearby_locations_ref() {
@@ -6915,6 +7029,43 @@ mod tests {
             exact_query_diagnostics_snapshot().actor_payload_after_move_calls,
             0
         );
+    }
+
+    #[test]
+    fn exact_carrier_steps_bounded_prunes_states_beyond_remaining_budget() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+
+        let board = game_with_items(
+            vec![(
+                Location::new(5, 5),
+                Item::MonWithMana {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    mana: Mana::Supermana,
+                },
+            )],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+        let optimized = exact_carrier_steps_to_any_pool_with_hash_bounded(
+            &board,
+            Location::new(5, 5),
+            Mana::Supermana,
+            5,
+            board_hash,
+        );
+        let optimized_calls = exact_query_diagnostics_snapshot().actor_payload_after_move_calls;
+
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let baseline =
+            exact_carrier_steps_generic_baseline(&board, Location::new(5, 5), Mana::Supermana, Some(5));
+        let baseline_calls = exact_query_diagnostics_snapshot().actor_payload_after_move_calls;
+
+        assert_eq!(optimized, baseline);
+        assert!(optimized.is_some());
+        assert!(optimized_calls < baseline_calls);
     }
 
     #[test]
