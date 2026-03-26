@@ -4159,41 +4159,20 @@ fn exact_best_immediate_tactical_window_on_board_with_hash(
             Item::Mon { mon } | Item::MonWithConsumable { mon, .. }
                 if mon.color == color && mon.kind == MonKind::Drainer && !mon.is_fainted() =>
             {
-                if need_score && need_denial {
-                    let pickup = exact_drainer_pickup_window_uncached(
-                        board,
-                        color,
-                        location,
-                        Some(move_budget),
-                        opponent_mana,
-                    );
+                let pickup = exact_drainer_pickup_window_uncached(
+                    board,
+                    color,
+                    location,
+                    Some(move_budget),
+                    opponent_mana,
+                );
+                if need_score {
                     if let Some(path) = pickup.any {
                         best.best_score = best.best_score.max(path.mana_value);
                     }
+                }
+                if need_denial {
                     if let Some(path) = pickup.opponent {
-                        best.best_opponent_mana_score =
-                            best.best_opponent_mana_score.max(path.mana_value);
-                    }
-                } else if need_score {
-                    if let Some(path) = exact_best_drainer_pickup_path_filtered_with_hash(
-                        board,
-                        color,
-                        location,
-                        Some(move_budget),
-                        ExactPickupFilter::Any,
-                        board_hash,
-                    ) {
-                        best.best_score = best.best_score.max(path.mana_value);
-                    }
-                } else if need_denial {
-                    if let Some(path) = exact_best_drainer_pickup_path_filtered_with_hash(
-                        board,
-                        color,
-                        location,
-                        Some(move_budget),
-                        ExactPickupFilter::Wanted(opponent_mana),
-                        board_hash,
-                    ) {
                         best.best_opponent_mana_score =
                             best.best_opponent_mana_score.max(path.mana_value);
                     }
@@ -6689,5 +6668,61 @@ mod tests {
             Color::White,
         );
         assert!(exact_turn_summary(&game, Color::White).can_attack_opponent_drainer);
+    }
+
+    #[test]
+    fn exact_immediate_tactical_window_matches_score_and_denial_helpers() {
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(8, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(9, 1),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(8, 2),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+        let window = exact_best_immediate_tactical_window_on_board_with_hash(
+            &board,
+            Color::White,
+            Config::MONS_MOVES_PER_TURN,
+            true,
+            true,
+            board_hash,
+        );
+
+        assert_eq!(
+            window.best_score,
+            exact_best_immediate_score_on_board_with_hash(
+                &board,
+                Color::White,
+                Config::MONS_MOVES_PER_TURN,
+                board_hash,
+            )
+        );
+        assert_eq!(
+            window.best_opponent_mana_score,
+            exact_best_immediate_opponent_mana_score_on_board_with_hash(
+                &board,
+                Color::White,
+                Config::MONS_MOVES_PER_TURN,
+                board_hash,
+            )
+        );
     }
 }

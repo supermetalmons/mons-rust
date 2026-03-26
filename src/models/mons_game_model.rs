@@ -1050,6 +1050,7 @@ pub(crate) struct SmartSearchConfig {
     enable_scoring_attack_reach_summary: bool,
     enable_scoring_attack_reach_target_narrowing: bool,
     enable_child_vulnerability_scoring_ctx_reuse: bool,
+    enable_child_vulnerability_attack_plausibility_screen: bool,
     enable_move_efficiency_tactical_score_window_narrowing: bool,
     enable_two_stage_child_ordering: bool,
     child_ordering_shortlist_multiplier: usize,
@@ -1403,6 +1404,7 @@ impl SmartSearchConfig {
             enable_scoring_attack_reach_summary: false,
             enable_scoring_attack_reach_target_narrowing: false,
             enable_child_vulnerability_scoring_ctx_reuse: false,
+            enable_child_vulnerability_attack_plausibility_screen: false,
             enable_move_efficiency_tactical_score_window_narrowing: false,
             enable_two_stage_child_ordering: false,
             child_ordering_shortlist_multiplier: 2,
@@ -4143,6 +4145,101 @@ impl MonsGameModel {
         }
 
         attackers
+    }
+
+    fn target_attack_plausible_on_board(
+        board: &Board,
+        attacker_color: Color,
+        target_color: Color,
+        target: Location,
+        remaining_moves: i32,
+        can_use_action: bool,
+    ) -> bool {
+        if remaining_moves < 0 || !can_use_action || board.item(target).is_none() {
+            return false;
+        }
+
+        let target_guarded = Self::is_location_guarded_by_angel(board, target_color, target);
+        let bomb_pickup_locations = board
+            .occupied()
+            .filter_map(|(location, item)| match item {
+                Item::Consumable {
+                    consumable: Consumable::BombOrPotion,
+                } => Some(location),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        for (location, item) in board.occupied() {
+            let Some(mon) = item.mon() else {
+                continue;
+            };
+            if mon.color != attacker_color || mon.is_fainted() {
+                continue;
+            }
+
+            if matches!(
+                item,
+                Item::MonWithConsumable {
+                    consumable: Consumable::Bomb,
+                    ..
+                }
+            ) && location.distance(&target) <= remaining_moves + 3
+            {
+                return true;
+            }
+
+            if !target_guarded {
+                let action_distance = match mon.kind {
+                    MonKind::Mystic => Self::min_steps_to_mystic_attack_source(location, target),
+                    MonKind::Demon => Self::min_steps_to_demon_attack_source(location, target),
+                    _ => i32::MAX,
+                };
+                if action_distance <= remaining_moves {
+                    return true;
+                }
+            }
+
+            if matches!(item, Item::MonWithMana { .. }) {
+                continue;
+            }
+
+            for bomb_location in &bomb_pickup_locations {
+                let to_bomb = location.distance(bomb_location);
+                if to_bomb > remaining_moves {
+                    continue;
+                }
+                let moves_after_pickup = remaining_moves - to_bomb;
+                if bomb_location.distance(&target) <= moves_after_pickup + 3 {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    fn is_own_drainer_vulnerability_plausible_next_turn(
+        game: &MonsGame,
+        perspective: Color,
+    ) -> bool {
+        let (own_drainer_location, own_drainer_fainted) =
+            Self::own_awake_drainer_location_and_fainted(&game.board, perspective);
+        if own_drainer_fainted {
+            return true;
+        }
+        let Some(own_drainer_location) = own_drainer_location else {
+            return false;
+        };
+
+        Self::target_attack_plausible_on_board(
+            &game.board,
+            perspective.other(),
+            perspective,
+            own_drainer_location,
+            Config::MONS_MOVES_PER_TURN,
+            !game.is_first_turn(),
+        )
     }
 
     fn can_attempt_forced_drainer_attack_fallback(game: &MonsGame, perspective: Color) -> bool {
@@ -11131,7 +11228,14 @@ impl MonsGameModel {
         }
 
         let own_drainer_vulnerable_after = if config.enable_child_move_class_coverage {
-            if config.enable_child_vulnerability_scoring_ctx_reuse {
+            if config.enable_child_vulnerability_attack_plausibility_screen
+                && !Self::is_own_drainer_vulnerability_plausible_next_turn(
+                    simulated_game,
+                    actor_color,
+                )
+            {
+                false
+            } else if config.enable_child_vulnerability_scoring_ctx_reuse {
                 scoring_context.as_ref().map_or_else(
                     || {
                         Self::is_own_drainer_vulnerable_next_turn(
@@ -11281,11 +11385,20 @@ impl MonsGameModel {
             || killer_hashes[1] == child_hash;
         let resolves_own_drainer_exposure = scratch.own_drainer_vulnerable_before
             && config.enable_child_move_class_coverage
-            && !Self::is_own_drainer_vulnerable_next_turn(
-                &transition.game,
-                actor_color,
-                config.enable_enhanced_drainer_vulnerability,
-            );
+            && if config.enable_child_vulnerability_attack_plausibility_screen
+                && !Self::is_own_drainer_vulnerability_plausible_next_turn(
+                    &transition.game,
+                    actor_color,
+                )
+            {
+                true
+            } else {
+                !Self::is_own_drainer_vulnerable_next_turn(
+                    &transition.game,
+                    actor_color,
+                    config.enable_enhanced_drainer_vulnerability,
+                )
+            };
         let preserves_exact_progress = (retain_supermana_progress
             && Self::transition_preserves_exact_progress(transition, perspective, Mana::Supermana))
             || (retain_opponent_mana_progress
@@ -11619,11 +11732,20 @@ impl MonsGameModel {
 
                     let own_drainer_vulnerable_before = scratch.own_drainer_vulnerable_before;
                     let own_drainer_vulnerable_after = if config.enable_child_move_class_coverage {
-                        Self::is_own_drainer_vulnerable_next_turn(
-                            &simulated_game,
-                            actor_color,
-                            config.enable_enhanced_drainer_vulnerability,
-                        )
+                        if config.enable_child_vulnerability_attack_plausibility_screen
+                            && !Self::is_own_drainer_vulnerability_plausible_next_turn(
+                                &simulated_game,
+                                actor_color,
+                            )
+                        {
+                            false
+                        } else {
+                            Self::is_own_drainer_vulnerable_next_turn(
+                                &simulated_game,
+                                actor_color,
+                                config.enable_enhanced_drainer_vulnerability,
+                            )
+                        }
                     } else {
                         false
                     };
@@ -18944,6 +19066,7 @@ mod evaluation_cache_tests {
         config.enable_scoring_attack_reach_summary = true;
         config.enable_scoring_attack_reach_target_narrowing = true;
         config.enable_child_vulnerability_scoring_ctx_reuse = true;
+        config.enable_child_vulnerability_attack_plausibility_screen = true;
         config.enable_move_efficiency_tactical_score_window_narrowing = true;
         config.enable_child_move_class_coverage = true;
         let history_table: HistoryTable = HistoryTable::default();
@@ -19062,6 +19185,242 @@ mod evaluation_cache_tests {
         );
         assert_eq!(bundle.classes.material, expected_classes.material);
         assert_eq!(bundle.classes.quiet, expected_classes.quiet);
+    }
+
+    #[test]
+    fn child_vulnerability_attack_plausibility_matches_curated_edges() {
+        let mystic_setup = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(2, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        assert!(MonsGameModel::target_attack_plausible_on_board(
+            &mystic_setup.board,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            2,
+            true,
+        ));
+        assert!(crate::models::automove_exact::can_attack_target_on_board(
+            &mystic_setup.board,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            2,
+            true,
+        ));
+
+        let bomb_setup = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(1, 5),
+                    Item::MonWithConsumable {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                        consumable: Consumable::Bomb,
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        assert!(MonsGameModel::target_attack_plausible_on_board(
+            &bomb_setup.board,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            2,
+            true,
+        ));
+        assert!(crate::models::automove_exact::can_attack_target_on_board(
+            &bomb_setup.board,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            2,
+            true,
+        ));
+
+        let guarded_mystic = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        assert!(
+            !MonsGameModel::target_attack_plausible_on_board(
+                &guarded_mystic.board,
+                Color::Black,
+                Color::White,
+                Location::new(6, 5),
+                Config::MONS_MOVES_PER_TURN,
+                true,
+            )
+        );
+        assert!(!crate::models::automove_exact::can_attack_target_on_board(
+            &guarded_mystic.board,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            Config::MONS_MOVES_PER_TURN,
+            true,
+        ));
+
+        let mana_carrier_cannot_pick_bomb = game_with_items(
+            vec![
+                (
+                    Location::new(6, 6),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 0),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(3, 0),
+                    Item::Consumable {
+                        consumable: Consumable::BombOrPotion,
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        assert!(
+            !MonsGameModel::target_attack_plausible_on_board(
+                &mana_carrier_cannot_pick_bomb.board,
+                Color::Black,
+                Color::White,
+                Location::new(6, 6),
+                Config::MONS_MOVES_PER_TURN,
+                true,
+            )
+        );
+        assert!(!crate::models::automove_exact::can_attack_target_on_board(
+            &mana_carrier_cannot_pick_bomb.board,
+            Color::Black,
+            Color::White,
+            Location::new(6, 6),
+            Config::MONS_MOVES_PER_TURN,
+            true,
+        ));
+    }
+
+    #[test]
+    fn child_vulnerability_plausibility_screen_skips_exact_probe_for_impossible_child() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let parent = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let child = game_with_items(
+            vec![
+                (
+                    Location::new(10, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(10, 9),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let mut config = child_ordering_shortlist_config();
+        config.enable_child_vulnerability_attack_plausibility_screen = true;
+        let scratch = MonsGameModel::build_child_ordering_scratch(
+            &parent,
+            Color::White,
+            parent.active_color,
+            config,
+        );
+        assert!(scratch.own_drainer_vulnerable_before);
+        clear_exact_query_diagnostics();
+
+        let transition = LegalInputTransition {
+            inputs: Vec::new(),
+            game: child,
+            events: Vec::new(),
+        };
+        let (force_full, eventful_reserve) = MonsGameModel::child_requires_full_ordering_pass(
+            &transition,
+            Color::White,
+            parent.active_color,
+            MonsGameModel::search_state_hash(&transition.game),
+            None,
+            [0; 2],
+            config,
+            &scratch,
+            false,
+            false,
+        );
+        let diagnostics = exact_query_diagnostics_snapshot();
+
+        assert!(force_full);
+        assert!(!eventful_reserve);
+        assert_eq!(diagnostics.attack_reach_calls, 0);
     }
 
     fn child_ordering_shortlist_config() -> SmartSearchConfig {
