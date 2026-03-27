@@ -81,6 +81,7 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - board-scoped memo-shape experiments
   - broad search-budget or reply-budget increases without a new selector/root-choice hypothesis
   - wrapper-level `runtime_current` fallback widening or narrowing
+  - projected-completion acceptance clamps for traced plain-spirit followup bundles
   - attack-target setup tables
   - sort removal
   - full-board direct scans on sparse search helpers
