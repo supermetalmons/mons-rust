@@ -27,6 +27,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - The latest retained exact cut is worth keeping too: bounded carrier BFS and drainer pickup search now also prune individual states whose empty-board remaining-distance lower bound already exceeds the remaining budget, which moved `human_win_pro_a` down again to about `344.52ms` and `347.07ms`, with `payload_calls` down to about `3397716` and pickup calls still about `2684`, but `pro-reliability` still had to be killed at about `2:28` on 2026-03-27.
 - The latest filtered pickup-path reuse experiment was not worth keeping: routing `exact_best_drainer_pickup_path_filtered_with_hash` through the pickup-window surface reduced `payload_calls` on several secondary fixtures, but `human_win_pro_a` stayed effectively flat at about `348.72ms` / `349.09ms` with `payload_calls` still about `3327205`, so duplicate filtered pickup search is not the live wall by itself.
 - The latest exact empty-board carrier/drainer lower-bound table experiment was also not worth keeping: replacing the geometric bounds with static exact empty-board distances left the retained hotspot effectively flat at about `350.08ms` with `payload_calls` back at about `3397716`, so stronger static bounds do not materially beat the cheaper geometric bounds on the live wall.
+- The latest exact one-actor after-window reuse experiment was not worth keeping either: reusing base action-board per-actor immediate tactical contributions collapsed `human_win_pro_a` immediate-window queries from about `27900` to about `1930`, but fresh stable reruns sat at about `347.56ms` and `347.95ms` with `payload_calls` still about `3398229`, so the branch regressed slightly versus the retained deeper-pruning baseline and was killed before another duel loop.
 - `runtime_pro_turn_engine_v1` stays reference-only regression history.
 - Archive profiles and retired planner/quiescence lines are docs-only context.
 
@@ -78,6 +79,7 @@ Current live wall:
 - filtered pickup-path reuse through the pickup-window surface is not enough by itself either; even when it trims payload work on secondary fixtures, the main `human_win_pro_a` wall stays flat
 - stronger static empty-board distance tables are also not the next wall by themselves; once the retained deeper-pruning line is in place, replacing the cheap geometric bounds with exact empty-board tables does not materially improve the live hotspot
 - future cuts need to reduce the number of after-window tactical queries or spirit-preview fanout itself, not just make hashing or pickup subroutines cheaper
+- per-actor after-window reuse is not enough by itself either; even when it preserves the retained exact search surface and removes most full immediate-window rebuilds, flat payload work can leave wall-clock slightly worse than the retained baseline
 - the next live target is still the remaining payload reachability algorithm itself, not more memo reuse, wrapper-only guards, or budget-count collapse alone
 - not in planner/oracle summary construction anymore
 
