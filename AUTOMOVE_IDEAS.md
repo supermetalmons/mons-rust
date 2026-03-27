@@ -79,7 +79,9 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - board-scoped memo-shape experiments
   - broad search-budget or reply-budget increases without a new selector/root-choice hypothesis
   - wrapper-level `runtime_current` fallback widening or narrowing
+  - exact first-disagreement profile fallbacks for traced live loss FENs
   - projected-completion acceptance clamps for traced plain-spirit followup bundles
+  - single black projected non-concrete progress or immediate-score override blocks for traced opening-B continuations
   - positive attack/safety-edge plain-spirit acceptance clamps
   - single traced pair clamps that only fix one black safe-followup acceptance case or one late-white setup-progress comparator
   - attack-target setup tables
