@@ -5820,6 +5820,46 @@ fn runtime_pro_turn_engine_v30_prefers_safe_black_opening_a_ply19_root() {
 }
 
 #[test]
+fn runtime_pro_turn_engine_v30_rejects_black_plain_spirit_followup_macro_head() {
+    let game = MonsGame::from_fen(
+        "1 0 b 0 0 1 0 0 4 n05d0xa0xn04/n05s0xxxme0xn03/n11/n04xxmn06/n02y0xxxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n03xxMn02xxMn04/n06S0xn04/n02E0xn01A0xn03Y0xn02/D0xn10",
+        false,
+    )
+    .expect("valid black plain spirit followup fixture fen");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let config = loss_probe_runtime_config(
+        "runtime_pro_turn_engine_v30",
+        &game,
+        SmartAutomovePreference::Pro,
+    );
+    let probe = MonsGameModel::turn_engine_acceptance_probe_for_test(&game, config)
+        .expect("v30 black plain spirit followup fixture should produce an acceptance probe");
+
+    assert_eq!(Input::fen_from_array(&probe.candidate_inputs), "l1,5;l1,7;l0,7");
+    assert!(
+        !probe.accepted,
+        "v30 should reject the black plain spirit followup macro head when the searched safe root projects a comparable followup: {:?}",
+        probe
+    );
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_prefers_safe_black_plain_spirit_followup_root() {
+    let game = MonsGame::from_fen(
+        "1 0 b 0 0 1 0 0 4 n05d0xa0xn04/n05s0xxxme0xn03/n11/n04xxmn06/n02y0xxxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n03xxMn02xxMn04/n06S0xn04/n02E0xn01A0xn03Y0xn02/D0xn10",
+        false,
+    )
+    .expect("valid black plain spirit followup fixture fen");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let decision =
+        loss_probe_decision("runtime_pro_turn_engine_v30", SmartAutomovePreference::Pro, &game);
+
+    assert_eq!(decision.move_fen, "l4,2;l5,1");
+}
+
+#[test]
 fn runtime_pro_turn_engine_v30_reply_guard_prefers_concrete_white_spirit_followup_setup() {
     let game = MonsGame::from_fen(
         "0 0 w 0 0 5 0 0 3 n05d2xa0xn04/n05s0xn01e0xn03/n03y0xn03xxmn03/n03xxmn07/n03xxmn01xxmn01xxmn01S0xn01/xxQn04xxUn05/n03xxMn01xxMn01xxMn03/n04D0Mn01xxMn04/n11/n04A0xn06/n03E0xn03Y0xn03",

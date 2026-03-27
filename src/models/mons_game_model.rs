@@ -7260,7 +7260,17 @@ impl MonsGameModel {
                     || selected.spirit_same_turn_score_setup_now
                     || selected.spirit_own_mana_setup_now
                     || Self::turn_engine_root_evaluation_has_progress_surface(selected);
-                if !selected_has_followup_surface {
+                let selected_safe_mana_tempo_projection = selected.game.active_color == Color::Black
+                    && matches!(
+                    family,
+                    TurnPlanFamily::ManaTempo | TurnPlanFamily::DrainerSafetyRecovery
+                ) && !selected_has_followup_surface
+                    && !Self::turn_engine_root_evaluation_is_unsafe(selected)
+                    && !selected.mana_handoff_to_opponent
+                    && !selected.has_roundtrip
+                    && !selected.wins_immediately
+                    && !selected.attacks_opponent_drainer;
+                if !selected_has_followup_surface && !selected_safe_mana_tempo_projection {
                     base_utility
                 } else {
                     #[cfg(test)]
@@ -7681,8 +7691,21 @@ impl MonsGameModel {
                 || plan
                     .utility
                     .improves_non_score_override_axes(selected_utility_value()));
+        let projected_safe_root_blocks_plain_spirit_override = macro_mode
+            && game.active_color == Color::Black
+            && matches!(plan.head_family, TurnPlanFamily::SpiritImpact)
+            && !selected_unsafe
+            && !candidate_unsafe
+            && !selected_progress_surface
+            && !selected_spirit_phase
+            && !candidate_progress_surface
+            && !candidate_spirit_tactical
+            && !candidate.spirit_own_mana_setup_now
+            && score_gap > 96
+            && !strategic_override_axes_better;
         let projected_completed_plan_override =
             projected_completed_plan_override
+                && !projected_safe_root_blocks_plain_spirit_override
                 && !narrow_black_mana_only_unsafe_score_override
                 && !narrow_white_mana_only_progress_tie_override;
         if candidate_unsafe && !selected_unsafe && !projected_completed_plan_override {
@@ -7855,6 +7878,20 @@ impl MonsGameModel {
                         plan.utility.supports_family_fallback(selected_utility);
                     let engine_better_than_selected =
                         plan.utility.passes_override_guard(selected_utility);
+                    let selected_safe_projected_root_blocks_plain_spirit =
+                        game.active_color == Color::Black
+                            && !selected_unsafe
+                            && !candidate_unsafe
+                            && !selected_spirit_phase
+                            && !selected_progress_surface
+                            && !candidate_spirit_tactical
+                            && !candidate.spirit_own_mana_setup_now
+                            && !candidate_progress_surface
+                            && score_gap > 96
+                            && !strategic_override_axes_better;
+                    if selected_safe_projected_root_blocks_plain_spirit {
+                        return false;
+                    }
                     let selected_concrete_spirit_setup = selected.spirit_same_turn_score_setup_now
                         || selected.spirit_own_mana_setup_now
                         || selected.same_turn_score_window_value > 0;
