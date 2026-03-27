@@ -82,6 +82,7 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - exact first-disagreement profile fallbacks for traced live loss FENs
   - projected-completion acceptance clamps for traced plain-spirit followup bundles
   - single black projected non-concrete progress or immediate-score override blocks for traced opening-B continuations
+  - dormant ProV2 config toggles without direct duel lift, including `enable_turn_engine_mid_turn_progress_guard` and `enable_turn_engine_lazy_oracle_score_window_projection`
   - positive attack/safety-edge plain-spirit acceptance clamps
   - single traced pair clamps that only fix one black safe-followup acceptance case or one late-white setup-progress comparator
   - attack-target setup tables
