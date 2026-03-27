@@ -78,11 +78,12 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - custom hashers
   - reverse carrier maps or reverse pickup maps
   - board-scoped memo-shape experiments
-  - broad early-turn profile fallback widening or narrowing
+  - wrapper-level `runtime_current` fallback widening or narrowing
   - attack-target setup tables
   - sort removal
   - full-board direct scans on sparse search helpers
 - Rule: if a branch preserved behavior and was only slower or flat, the new `700ms` ceiling does not justify reopening it.
+- Rule: disagreement-count shrink by itself is not enough to retain a branch. If traced losses move but direct duel win rate stays flat or regresses, park the wrapper/fallback idea and move deeper into selector/search logic.
 
 ## Iteration Rules
 
