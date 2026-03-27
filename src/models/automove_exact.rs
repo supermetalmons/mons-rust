@@ -6058,32 +6058,61 @@ fn exact_budget_one_tactical_counts_for_location(
         Item::Mon { mon } | Item::MonWithConsumable { mon, .. }
             if mon.color == color && mon.kind == MonKind::Drainer && !mon.is_fainted() =>
         {
-            let opponent_mana = Mana::Regular(color.other());
-            let pickup = exact_drainer_pickup_window_with_hash_min_any_score(
-                board,
-                color,
-                location,
-                Some(1),
-                1,
-                true,
-                true,
-                opponent_mana,
-                board_hash,
-            );
-            let mut counts = pickup
-                .any
-                .map_or_else(ExactImmediateTacticalCounts::default, |path| {
-                    exact_immediate_tactical_counts_for_mana(path.mana, color)
-                });
-            if pickup.opponent.is_some() {
-                counts.score_one = 0;
-                counts.score_two = 1;
-                counts.opponent_two = 1;
-            }
-            counts
+            exact_budget_one_drainer_tactical_counts(board, color, location, board_hash)
         }
         _ => ExactImmediateTacticalCounts::default(),
     }
+}
+
+#[inline]
+fn exact_budget_one_drainer_tactical_counts(
+    board: &Board,
+    color: Color,
+    start: Location,
+    _board_hash: u64,
+) -> ExactImmediateTacticalCounts {
+    let opponent_mana = Mana::Regular(color.other());
+    let mut best_any_score = 0;
+    let mut best_opponent_score = 0;
+
+    for &next in start.nearby_locations_ref() {
+        let Some(ExactActorPayload::Mana(mana)) = actor_payload_after_move_with_hash(
+            board,
+            0,
+            MonKind::Drainer,
+            color,
+            ExactActorPayload::None,
+            next,
+            false,
+        ) else {
+            continue;
+        };
+        if !matches!(Config::square_at(next), Square::ManaPool { .. }) {
+            continue;
+        }
+
+        let mana_score = mana.score(color);
+        best_any_score = best_any_score.max(mana_score);
+        if mana == opponent_mana {
+            best_opponent_score = best_opponent_score.max(mana_score);
+        }
+        if best_any_score >= 2 && best_opponent_score >= 2 {
+            break;
+        }
+    }
+
+    let mut counts = ExactImmediateTacticalCounts::default();
+    if best_any_score >= 2 {
+        counts.score_two = 1;
+    } else if best_any_score == 1 {
+        counts.score_one = 1;
+    }
+    if best_opponent_score >= 2 {
+        counts.score_one = 0;
+        counts.score_two = 1;
+        counts.opponent_two = 1;
+    }
+    counts
 }
 
 fn exact_budget_one_tactical_summary(
@@ -9867,6 +9896,67 @@ mod tests {
                 true,
                 preview_hash,
             )
+        );
+    }
+
+    #[test]
+    fn exact_budget_one_drainer_tactical_counts_match_pickup_window() {
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(5, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 6),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(6, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+
+        let pickup = exact_drainer_pickup_window_with_hash_min_any_score(
+            &board,
+            Color::White,
+            Location::new(5, 5),
+            Some(1),
+            1,
+            true,
+            true,
+            Mana::Regular(Color::Black),
+            board_hash,
+        );
+        let mut expected = pickup
+            .any
+            .map_or_else(ExactImmediateTacticalCounts::default, |path| {
+                exact_immediate_tactical_counts_for_mana(path.mana, Color::White)
+            });
+        if pickup.opponent.is_some() {
+            expected.score_one = 0;
+            expected.score_two = 1;
+            expected.opponent_two = 1;
+        }
+
+        assert_eq!(
+            exact_budget_one_drainer_tactical_counts(
+                &board,
+                Color::White,
+                Location::new(5, 5),
+                board_hash,
+            ),
+            expected,
         );
     }
 
