@@ -2392,38 +2392,58 @@ fn drainer_immediate_threats_uncached(
 ) -> (i32, i32) {
     let mut action_threats = 0;
     let mut bomb_threats = 0;
-    for (threat_location, item) in board.occupied() {
+    for &threat_location in location.reachable_by_mystic_action_ref() {
+        let Some(item) = board.item(threat_location) else {
+            continue;
+        };
         let mon = match item {
             Item::Mon { mon }
             | Item::MonWithMana { mon, .. }
             | Item::MonWithConsumable { mon, .. } => mon,
             Item::Mana { .. } | Item::Consumable { .. } => continue,
         };
-        if mon.color == color || mon.is_fainted() {
+        if mon.kind == MonKind::Mystic
+            && mon.color != color
+            && !mon.is_fainted()
+            && !matches!(board.square(threat_location), Square::MonBase { .. })
+        {
+            action_threats += 1;
+        }
+    }
+
+    for &threat_location in location.reachable_by_demon_action_ref() {
+        let Some(item) = board.item(threat_location) else {
             continue;
+        };
+        let mon = match item {
+            Item::Mon { mon }
+            | Item::MonWithMana { mon, .. }
+            | Item::MonWithConsumable { mon, .. } => mon,
+            Item::Mana { .. } | Item::Consumable { .. } => continue,
+        };
+        if mon.kind == MonKind::Demon
+            && mon.color != color
+            && !mon.is_fainted()
+            && !matches!(board.square(threat_location), Square::MonBase { .. })
+            && demon_has_line_attack(board, threat_location, location)
+        {
+            action_threats += 1;
         }
-        let on_own_base = matches!(board.square(threat_location), Square::MonBase { .. });
-        if !on_own_base {
-            if mon.kind == MonKind::Mystic
-                && (threat_location.i - location.i).abs() == 2
-                && (threat_location.j - location.j).abs() == 2
-            {
-                action_threats += 1;
-            } else if mon.kind == MonKind::Demon
-                && demon_has_line_attack(board, threat_location, location)
-            {
-                action_threats += 1;
-            }
-        }
+    }
+
+    for &threat_location in location.reachable_by_bomb_ref() {
+        let Some(item) = board.item(threat_location) else {
+            continue;
+        };
         if matches!(
             item,
             Item::MonWithConsumable {
+                mon,
                 consumable: Consumable::Bomb,
-                ..
-            }
-        ) && !on_own_base
-            && threat_location.distance(&location) <= 3
-        {
+            } if mon.color != color
+                && !mon.is_fainted()
+                && !matches!(board.square(threat_location), Square::MonBase { .. })
+        ) {
             bomb_threats += 1;
         }
     }
@@ -6774,6 +6794,51 @@ mod tests {
         false
     }
 
+    fn drainer_immediate_threats_uncached_baseline(
+        board: &Board,
+        color: Color,
+        location: Location,
+    ) -> (i32, i32) {
+        let mut action_threats = 0;
+        let mut bomb_threats = 0;
+        for (threat_location, item) in board.occupied() {
+            let mon = match item {
+                Item::Mon { mon }
+                | Item::MonWithMana { mon, .. }
+                | Item::MonWithConsumable { mon, .. } => mon,
+                Item::Mana { .. } | Item::Consumable { .. } => continue,
+            };
+            if mon.color == color || mon.is_fainted() {
+                continue;
+            }
+            let on_own_base = matches!(board.square(threat_location), Square::MonBase { .. });
+            if !on_own_base {
+                if mon.kind == MonKind::Mystic
+                    && (threat_location.i - location.i).abs() == 2
+                    && (threat_location.j - location.j).abs() == 2
+                {
+                    action_threats += 1;
+                } else if mon.kind == MonKind::Demon
+                    && demon_has_line_attack(board, threat_location, location)
+                {
+                    action_threats += 1;
+                }
+            }
+            if matches!(
+                item,
+                Item::MonWithConsumable {
+                    consumable: Consumable::Bomb,
+                    ..
+                }
+            ) && !on_own_base
+                && threat_location.distance(&location) <= 3
+            {
+                bomb_threats += 1;
+            }
+        }
+        (action_threats, bomb_threats)
+    }
+
     fn assert_secure_drainer_walk_matches_process_input(
         game: &MonsGame,
         from: Location,
@@ -8025,6 +8090,63 @@ mod tests {
                 Color::White,
                 Location::new(6, 5),
                 board_hash
+            )
+        );
+    }
+
+    #[test]
+    fn exact_drainer_immediate_threats_local_geometry_matches_full_scan() {
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 5),
+                    Item::MonWithConsumable {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                        consumable: Consumable::Bomb,
+                    },
+                ),
+                (
+                    Location::new(8, 8),
+                    Item::MonWithConsumable {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                        consumable: Consumable::Bomb,
+                    },
+                ),
+                (
+                    Location::new(6, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+
+        assert_eq!(
+            drainer_immediate_threats_uncached(&board, Color::White, Location::new(6, 5)),
+            drainer_immediate_threats_uncached_baseline(
+                &board,
+                Color::White,
+                Location::new(6, 5),
             )
         );
     }
