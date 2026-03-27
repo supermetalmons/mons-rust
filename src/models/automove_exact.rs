@@ -1612,6 +1612,7 @@ fn exact_attack_target_plausible_on_board(
             continue;
         }
         if exact_attack_target_plausible_for_attacker(
+            board,
             target,
             remaining_moves,
             target_guarded,
@@ -1629,6 +1630,7 @@ fn exact_attack_target_plausible_on_board(
 
 #[inline]
 fn exact_attack_target_plausible_for_attacker(
+    board: &Board,
     target: Location,
     remaining_moves: i32,
     target_guarded: bool,
@@ -1649,21 +1651,9 @@ fn exact_attack_target_plausible_for_attacker(
     }
 
     if !target_guarded {
-        let action_distance = match mon.kind {
-            MonKind::Mystic => target
-                .reachable_by_mystic_action_ref()
-                .iter()
-                .map(|source| location.distance(source))
-                .min()
-                .unwrap_or(i32::MAX),
-            MonKind::Demon => target
-                .reachable_by_demon_action_ref()
-                .iter()
-                .map(|source| location.distance(source))
-                .min()
-                .unwrap_or(i32::MAX),
-            MonKind::Drainer | MonKind::Angel | MonKind::Spirit => i32::MAX,
-        };
+        let action_distance =
+            exact_attack_action_steps_lower_bound(board, mon.kind, location, target)
+                .unwrap_or(i32::MAX);
         if action_distance <= remaining_moves {
             return true;
         }
@@ -1933,6 +1923,7 @@ fn can_attack_target_on_board_uncached(
             continue;
         }
         if !exact_attack_target_plausible_for_attacker(
+            board,
             target,
             remaining_moves,
             target_guarded,
@@ -1981,6 +1972,7 @@ fn can_attack_target_on_board_uncached(
                 continue;
             }
             if exact_attack_remaining_steps_lower_bound(
+                board,
                 target,
                 target_guarded,
                 &bomb_pickup_locations,
@@ -2015,6 +2007,7 @@ fn can_attack_target_on_board_uncached(
 
 #[inline]
 fn exact_attack_remaining_steps_lower_bound(
+    board: &Board,
     target: Location,
     target_guarded: bool,
     bomb_pickup_locations: &[Location],
@@ -2029,7 +2022,7 @@ fn exact_attack_remaining_steps_lower_bound(
             let mut best = if target_guarded {
                 None
             } else {
-                exact_attack_action_steps_lower_bound(mon_kind, location, target)
+                exact_attack_action_steps_lower_bound(board, mon_kind, location, target)
             };
             if allow_pick_bomb {
                 for &bomb_location in bomb_pickup_locations {
@@ -2047,6 +2040,7 @@ fn exact_attack_remaining_steps_lower_bound(
 
 #[inline]
 fn exact_attack_action_steps_lower_bound(
+    board: &Board,
     mon_kind: MonKind,
     location: Location,
     target: Location,
@@ -2055,15 +2049,32 @@ fn exact_attack_action_steps_lower_bound(
         MonKind::Mystic => target
             .reachable_by_mystic_action_ref()
             .iter()
-            .map(|source| location.distance(source))
+            .copied()
+            .filter(|&source| exact_attack_action_source_available(board, location, source))
+            .map(|source| location.distance(&source))
             .min(),
         MonKind::Demon => target
             .reachable_by_demon_action_ref()
             .iter()
-            .map(|source| location.distance(source))
+            .copied()
+            .filter(|&source| {
+                exact_attack_action_source_available(board, location, source)
+                    && board.item(source.location_between(&target)).is_none()
+            })
+            .map(|source| location.distance(&source))
             .min(),
         MonKind::Drainer | MonKind::Angel | MonKind::Spirit => None,
     }
+}
+
+#[inline]
+fn exact_attack_action_source_available(
+    board: &Board,
+    current_location: Location,
+    source: Location,
+) -> bool {
+    !matches!(board.square(source), Square::MonBase { .. })
+        && (source == current_location || board.item(source).is_none())
 }
 
 #[inline]
@@ -7623,6 +7634,84 @@ mod tests {
         assert_eq!(optimized, baseline);
         assert!(optimized);
         assert!(optimized_calls < baseline_calls);
+    }
+
+    #[test]
+    fn exact_attack_target_blocked_action_sources_return_false_without_payload_bfs() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(2, 5),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(4, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Demon, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(4, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Demon, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 3),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Demon, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(8, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Demon, Color::White, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+
+        let optimized = can_attack_target_on_board_with_hash(
+            &board,
+            board_hash,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            4,
+            true,
+        );
+        let optimized_calls = exact_query_diagnostics_snapshot().actor_payload_after_move_calls;
+
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let baseline = can_attack_target_on_board_uncached_baseline(
+            &board,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            4,
+        );
+        let baseline_calls = exact_query_diagnostics_snapshot().actor_payload_after_move_calls;
+
+        assert_eq!(optimized, baseline);
+        assert!(!optimized);
+        assert_eq!(optimized_calls, 0);
+        assert!(baseline_calls > optimized_calls);
     }
 
     #[test]
