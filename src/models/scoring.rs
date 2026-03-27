@@ -36,6 +36,12 @@ struct ScoringManaEntry {
     mana: Mana,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ScoringManaCarrierEntry {
+    location: Location,
+    mana: Mana,
+}
+
 struct InlineCopyList<T: Copy, const N: usize> {
     len: usize,
     items: [MaybeUninit<T>; N],
@@ -133,6 +139,8 @@ fn scoring_danger_source_flags(item: &Item, mon: Mon) -> (bool, bool, bool) {
 #[derive(Debug, PartialEq, Eq, Default)]
 struct ScoringBoardSummary {
     mana_entries: InlineCopyList<ScoringManaEntry, SCORING_MAX_MANA_ENTRIES>,
+    live_mana_carriers:
+        [InlineCopyList<ScoringManaCarrierEntry, SCORING_MAX_LIVE_MONS_PER_COLOR>; 2],
     live_mon_locations: [InlineCopyList<Location, SCORING_MAX_LIVE_MONS_PER_COLOR>; 2],
     live_drainer_locations: [InlineCopyList<Location, SCORING_MAX_DRAINERS_PER_COLOR>; 2],
     live_angel_locations: [InlineCopyList<Location, SCORING_MAX_ANGELS_PER_COLOR>; 2],
@@ -173,6 +181,10 @@ impl ScoringBoardSummary {
                         continue;
                     }
                     let color_slot = color_slot(mon.color);
+                    if let Item::MonWithMana { mana, .. } = item {
+                        summary.live_mana_carriers[color_slot]
+                            .push(ScoringManaCarrierEntry { location, mana });
+                    }
                     summary.live_mon_locations[color_slot].push(location);
                     if mon.kind == MonKind::Drainer {
                         summary.live_drainer_locations[color_slot].push(location);
@@ -2034,9 +2046,9 @@ pub(crate) fn evaluate_preferability_with_context(
     }
 
     let my_score_path_window = if use_legacy_formula {
-        score_path_window_to_any_pool_with_snapshot(
+        score_path_window_to_any_pool_for_context(
             &game.board,
-            context.mana_path_snapshot(&game.board),
+            context,
             color,
             false,
             include_regular_mana_move_windows,
@@ -2051,9 +2063,9 @@ pub(crate) fn evaluate_preferability_with_context(
         )
     };
     let opponent_score_path_window = if use_legacy_formula {
-        score_path_window_to_any_pool_with_snapshot(
+        score_path_window_to_any_pool_for_context(
             &game.board,
-            context.mana_path_snapshot(&game.board),
+            context,
             color.other(),
             false,
             include_regular_mana_move_windows,
@@ -2095,9 +2107,9 @@ pub(crate) fn evaluate_preferability_with_context(
 
     if game.active_color == color {
         let immediate_window = if use_legacy_formula {
-            immediate_score_window_summary_with_snapshot(
+            immediate_score_window_summary_for_context(
                 &game.board,
-                context.mana_path_snapshot(&game.board),
+                context,
                 color,
                 remaining_mon_moves_for_active,
                 false,
@@ -2124,9 +2136,9 @@ pub(crate) fn evaluate_preferability_with_context(
             );
 
             let opponent_next_turn_window = if use_legacy_formula {
-                immediate_score_window_summary_with_snapshot(
+                immediate_score_window_summary_for_context(
                     &game.board,
-                    context.mana_path_snapshot(&game.board),
+                    context,
                     color.other(),
                     Config::MONS_MOVES_PER_TURN,
                     true,
@@ -2168,9 +2180,9 @@ pub(crate) fn evaluate_preferability_with_context(
         }
     } else {
         let opponent_immediate_window = if use_legacy_formula {
-            immediate_score_window_summary_with_snapshot(
+            immediate_score_window_summary_for_context(
                 &game.board,
-                context.mana_path_snapshot(&game.board),
+                context,
                 color.other(),
                 remaining_mon_moves_for_active,
                 false,
@@ -2199,9 +2211,9 @@ pub(crate) fn evaluate_preferability_with_context(
             );
 
             let my_next_turn_window = if use_legacy_formula {
-                immediate_score_window_summary_with_snapshot(
+                immediate_score_window_summary_for_context(
                     &game.board,
-                    context.mana_path_snapshot(&game.board),
+                    context,
                     color,
                     Config::MONS_MOVES_PER_TURN,
                     true,
@@ -2406,6 +2418,82 @@ fn exact_score_path_window_for_context(
     }
 }
 
+fn score_path_window_to_any_pool_from_summary(
+    board_summary: &ScoringBoardSummary,
+    mana_snapshot: Option<&ManaPathSnapshot>,
+    color: Color,
+    include_drainer_pickups: bool,
+    include_regular_mana_move_windows: bool,
+) -> ScorePathWindow {
+    let mut top_steps = [i32::MAX; 3];
+
+    for carrier in &board_summary.live_mana_carriers[color_slot(color)] {
+        insert_lowest_step(
+            &mut top_steps,
+            distance(carrier.location, Destination::AnyClosestPool),
+        );
+    }
+
+    if include_drainer_pickups {
+        let mana_snapshot =
+            mana_snapshot.expect("mana snapshot should be available for drainer pickup windows");
+        for location in &board_summary.live_drainer_locations[color_slot(color)] {
+            if let Some((path_steps, _)) =
+                best_drainer_pickup_path_with_snapshot(mana_snapshot, color, *location)
+            {
+                insert_lowest_step(&mut top_steps, path_steps + 1);
+            }
+        }
+    }
+
+    if include_regular_mana_move_windows {
+        if let Some(candidate_steps) = board_summary.regular_mana_score_path_steps(color) {
+            insert_lowest_step(&mut top_steps, candidate_steps);
+        }
+    }
+
+    let best_steps = (top_steps[0] != i32::MAX).then_some(top_steps[0]);
+    let mut multi_pressure = 0i32;
+    if top_steps[1] != i32::MAX {
+        multi_pressure += 70 / top_steps[1].max(1);
+    }
+    if top_steps[2] != i32::MAX {
+        multi_pressure += 40 / top_steps[2].max(1);
+    }
+
+    ScorePathWindow {
+        best_steps,
+        multi_pressure,
+    }
+}
+
+fn score_path_window_to_any_pool_for_context(
+    board: &Board,
+    context: &ScoringEvalContext,
+    color: Color,
+    include_drainer_pickups: bool,
+    include_regular_mana_move_windows: bool,
+) -> ScorePathWindow {
+    if let Some(board_summary) = context.board_summary_if_enabled(board) {
+        let mana_snapshot = include_drainer_pickups.then(|| context.mana_path_snapshot(board));
+        score_path_window_to_any_pool_from_summary(
+            board_summary,
+            mana_snapshot,
+            color,
+            include_drainer_pickups,
+            include_regular_mana_move_windows,
+        )
+    } else {
+        score_path_window_to_any_pool_with_snapshot(
+            board,
+            context.mana_path_snapshot(board),
+            color,
+            include_drainer_pickups,
+            include_regular_mana_move_windows,
+        )
+    }
+}
+
 fn exact_immediate_score_window_for_context(
     board: &Board,
     context: &ScoringEvalContext,
@@ -2427,6 +2515,91 @@ fn exact_immediate_score_window_for_context(
             context.mana_path_snapshot(board),
             color,
             exact_summary,
+        )
+    }
+}
+
+fn immediate_score_window_summary_from_summary(
+    board_summary: &ScoringBoardSummary,
+    mana_snapshot: Option<&ManaPathSnapshot>,
+    color: Color,
+    remaining_mon_moves: i32,
+    include_drainer_pickups: bool,
+    include_regular_mana_move_windows: bool,
+    allow_mana_move: bool,
+) -> ImmediateScoreWindow {
+    if remaining_mon_moves <= 0 {
+        return ImmediateScoreWindow::default();
+    }
+
+    let mut top_scores = [0i32; 3];
+
+    for carrier in &board_summary.live_mana_carriers[color_slot(color)] {
+        let pool_steps = distance(carrier.location, Destination::AnyClosestPool) - 1;
+        if pool_steps <= remaining_mon_moves {
+            insert_top_score(&mut top_scores, carrier.mana.score(color));
+        }
+    }
+
+    if include_drainer_pickups {
+        let mana_snapshot =
+            mana_snapshot.expect("mana snapshot should be available for drainer pickup windows");
+        for location in &board_summary.live_drainer_locations[color_slot(color)] {
+            let mut best_pickup_score = 0;
+            for candidate in &mana_snapshot.candidates {
+                let pickup_steps = location.distance(&candidate.location) as i32;
+                if pickup_steps + candidate.score_steps <= remaining_mon_moves {
+                    best_pickup_score = best_pickup_score.max(candidate.mana.score(color));
+                }
+            }
+            if best_pickup_score > 0 {
+                insert_top_score(&mut top_scores, best_pickup_score);
+            }
+        }
+    }
+
+    if include_regular_mana_move_windows && allow_mana_move {
+        let mana_move_immediate = board_summary.regular_mana_move_score(color);
+        if mana_move_immediate > 0 {
+            insert_top_score(&mut top_scores, mana_move_immediate);
+        }
+    }
+
+    ImmediateScoreWindow {
+        best_score: top_scores[0],
+        multi_pressure: top_scores[1] * 70 + top_scores[2] * 35,
+    }
+}
+
+fn immediate_score_window_summary_for_context(
+    board: &Board,
+    context: &ScoringEvalContext,
+    color: Color,
+    remaining_mon_moves: i32,
+    include_drainer_pickups: bool,
+    include_regular_mana_move_windows: bool,
+    allow_mana_move: bool,
+) -> ImmediateScoreWindow {
+    if let Some(board_summary) = context.board_summary_if_enabled(board) {
+        let mana_snapshot = include_drainer_pickups.then(|| context.mana_path_snapshot(board));
+        immediate_score_window_summary_from_summary(
+            board_summary,
+            mana_snapshot,
+            color,
+            remaining_mon_moves,
+            include_drainer_pickups,
+            include_regular_mana_move_windows,
+            allow_mana_move,
+        )
+    } else {
+        immediate_score_window_summary_with_snapshot(
+            board,
+            context.mana_path_snapshot(board),
+            color,
+            remaining_mon_moves,
+            include_drainer_pickups,
+            include_regular_mana_move_windows,
+            allow_mana_move,
         )
     }
 }
@@ -3593,6 +3766,148 @@ mod tests {
         );
     }
 
+    #[test]
+    fn scoring_board_summary_legacy_windows_match_snapshot() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(8, 4),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Mystic, Color::White, 0),
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(8, 6),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(3, 4),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(3, 6),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(4, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(7, 6),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(4, 4),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let board_summary = ScoringBoardSummary::from_board(&game.board);
+        let mana_snapshot = ManaPathSnapshot::from_summary(&board_summary);
+
+        assert_eq!(
+            score_path_window_to_any_pool_with_snapshot(
+                &game.board,
+                &mana_snapshot,
+                Color::White,
+                true,
+                true,
+            ),
+            score_path_window_to_any_pool_from_summary(
+                &board_summary,
+                Some(&mana_snapshot),
+                Color::White,
+                true,
+                true,
+            ),
+        );
+        assert_eq!(
+            score_path_window_to_any_pool_with_snapshot(
+                &game.board,
+                &mana_snapshot,
+                Color::Black,
+                true,
+                true,
+            ),
+            score_path_window_to_any_pool_from_summary(
+                &board_summary,
+                Some(&mana_snapshot),
+                Color::Black,
+                true,
+                true,
+            ),
+        );
+        assert_eq!(
+            immediate_score_window_summary_with_snapshot(
+                &game.board,
+                &mana_snapshot,
+                Color::White,
+                Config::MONS_MOVES_PER_TURN,
+                true,
+                true,
+                true,
+            ),
+            immediate_score_window_summary_from_summary(
+                &board_summary,
+                Some(&mana_snapshot),
+                Color::White,
+                Config::MONS_MOVES_PER_TURN,
+                true,
+                true,
+                true,
+            ),
+        );
+        assert_eq!(
+            immediate_score_window_summary_with_snapshot(
+                &game.board,
+                &mana_snapshot,
+                Color::Black,
+                Config::MONS_MOVES_PER_TURN,
+                true,
+                true,
+                true,
+            ),
+            immediate_score_window_summary_from_summary(
+                &board_summary,
+                Some(&mana_snapshot),
+                Color::Black,
+                Config::MONS_MOVES_PER_TURN,
+                true,
+                true,
+                true,
+            ),
+        );
+    }
+
     fn scoring_board_summary_without_capacity_prep(board: &Board) -> ScoringBoardSummary {
         let mut summary = ScoringBoardSummary::default();
 
@@ -3622,6 +3937,13 @@ mod tests {
                         continue;
                     }
                     let color_slot = color_slot(mon.color);
+                    if let Item::MonWithMana { mana, .. } = item {
+                        summary.live_mana_carriers[color_slot]
+                            .push(ScoringManaCarrierEntry {
+                                location,
+                                mana: *mana,
+                            });
+                    }
                     summary.live_mon_locations[color_slot].push(location);
                     if mon.kind == MonKind::Drainer {
                         summary.live_drainer_locations[color_slot].push(location);
