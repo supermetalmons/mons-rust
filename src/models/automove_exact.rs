@@ -688,6 +688,16 @@ impl ExactPickupFilter {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_pickup_filter_max_mana_value(filter: ExactPickupFilter, color: Color) -> i32 {
+    match filter {
+        ExactPickupFilter::Any => Mana::Supermana.score(color),
+        #[cfg(any(target_arch = "wasm32", test))]
+        ExactPickupFilter::Wanted(wanted) => wanted.score(color),
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, Default)]
 struct ExactFollowupSummary {
     best_score_steps: Option<i32>,
@@ -3224,6 +3234,33 @@ fn exact_drainer_pickup_remaining_steps_lower_bound(
 }
 
 #[inline]
+fn exact_filtered_drainer_pickup_remaining_steps_lower_bound(
+    board: &Board,
+    location: Location,
+    payload: ExactActorPayload,
+    mana_filter: ExactPickupFilter,
+) -> Option<i32> {
+    match payload {
+        ExactActorPayload::None => board
+            .occupied()
+            .filter_map(|(mana_location, item)| {
+                let Item::Mana { mana } = item else {
+                    return None;
+                };
+                mana_filter.matches(*mana).then_some(
+                    location.distance(&mana_location)
+                        + exact_distance_to_any_pool_steps_lower_bound(mana_location),
+                )
+            })
+            .min(),
+        ExactActorPayload::Mana(mana) => mana_filter
+            .matches(mana)
+            .then_some(exact_distance_to_any_pool_steps_lower_bound(location)),
+        ExactActorPayload::Bomb => None,
+    }
+}
+
+#[inline]
 fn exact_location_is_mana_pool(board: &Board, location: Location) -> bool {
     matches!(board.square(location), Square::ManaPool { .. })
 }
@@ -3527,6 +3564,34 @@ fn exact_pickup_path_beats(
                 || (candidate_metric == current_metric && candidate.mana_value > current.mana_value)
         }
     }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_pickup_path_metric(path: ExactDrainerPickupPath) -> i32 {
+    path.path_steps.saturating_mul(3).saturating_sub(path.mana_value)
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_pickup_path_metric_from_total_moves(total_moves: i32, mana_value: i32) -> i32 {
+    total_moves
+        .saturating_sub(1)
+        .saturating_mul(3)
+        .saturating_sub(mana_value)
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_pickup_path_future_can_beat_best(
+    best: ExactDrainerPickupPath,
+    total_moves_lower_bound: i32,
+    max_mana_value: i32,
+) -> bool {
+    let future_metric =
+        exact_pickup_path_metric_from_total_moves(total_moves_lower_bound, max_mana_value);
+    let best_metric = exact_pickup_path_metric(best);
+    future_metric < best_metric || (future_metric == best_metric && best.mana_value < max_mana_value)
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -3908,6 +3973,27 @@ fn exact_best_drainer_pickup_path_filtered_with_hash(
     }
     update_exact_query_diagnostics(|diagnostics| diagnostics.pickup_path_cache_misses += 1);
 
+    if max_steps.is_some_and(|limit| {
+        exact_filtered_drainer_pickup_remaining_steps_lower_bound(
+            board,
+            start,
+            ExactActorPayload::None,
+            mana_filter,
+        )
+        .is_some_and(|lower_bound| lower_bound > limit)
+    }) {
+        EXACT_PICKUP_PATH_CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            if cache.entries.len() >= EXACT_PICKUP_PATH_CACHE_MAX_ENTRIES
+                && !cache.entries.contains_key(&key)
+            {
+                cache.entries.clear();
+            }
+            cache.entries.insert(key, None);
+        });
+        return None;
+    }
+
     let mut actor_move_memo = ExactDrainerMoveMemo::new();
     let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
     let mut seen = ExactPayloadSeen::new();
@@ -3915,10 +4001,16 @@ fn exact_best_drainer_pickup_path_filtered_with_hash(
     queue.push_back(start_state);
     seen.insert(start, ExactActorPayload::None);
     let mut best: Option<ExactDrainerPickupPath> = None;
+    let max_mana_value = exact_pickup_filter_max_mana_value(mana_filter, color);
 
     while let Some((location, payload, steps)) = queue.pop_front() {
         if max_steps.map_or(false, |limit| steps > limit) {
             continue;
+        }
+        if let Some(best_path) = best {
+            if !exact_pickup_path_future_can_beat_best(best_path, steps, max_mana_value) {
+                break;
+            }
         }
         if let ExactActorPayload::Mana(mana) = payload {
             if mana_filter.matches(mana)
@@ -3933,6 +4025,27 @@ fn exact_best_drainer_pickup_path_filtered_with_hash(
                 };
                 if exact_pickup_path_beats(candidate, best) {
                     best = Some(candidate);
+                }
+            }
+        }
+        if max_steps.is_some() || best.is_some() {
+            if let Some(lower_bound) = exact_filtered_drainer_pickup_remaining_steps_lower_bound(
+                board,
+                location,
+                payload,
+                mana_filter,
+            ) {
+                if max_steps.is_some_and(|limit| steps.saturating_add(lower_bound) > limit) {
+                    continue;
+                }
+                if let Some(best_path) = best {
+                    if !exact_pickup_path_future_can_beat_best(
+                        best_path,
+                        steps.saturating_add(lower_bound),
+                        max_mana_value,
+                    ) {
+                        continue;
+                    }
                 }
             }
         }
@@ -8392,6 +8505,128 @@ mod tests {
             first.map(|path| path.mana_value),
             third.map(|path| path.mana_value)
         );
+    }
+
+    #[test]
+    fn exact_filtered_pickup_path_far_budget_returns_none_without_payload_expansion() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(8, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 0),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+
+        assert_eq!(
+            exact_best_drainer_pickup_path_filtered_with_hash(
+                &board,
+                Color::White,
+                Location::new(8, 4),
+                Some(2),
+                ExactPickupFilter::Wanted(Mana::Regular(Color::Black)),
+                exact_board_hash(&board),
+            ),
+            None
+        );
+        assert_eq!(
+            exact_query_diagnostics_snapshot().actor_payload_after_move_calls,
+            0
+        );
+    }
+
+    #[test]
+    fn exact_filtered_pickup_path_matches_window_queries() {
+        clear_exact_state_analysis_cache();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(8, 4),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 4),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(7, 5),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(6, 4),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let start = Location::new(8, 4);
+        let board_hash = exact_board_hash(&board);
+        let opponent_mana = Mana::Regular(Color::Black);
+
+        let any = exact_best_drainer_pickup_path_filtered_with_hash(
+            &board,
+            Color::White,
+            start,
+            Some(3),
+            ExactPickupFilter::Any,
+            board_hash,
+        );
+        let any_window = exact_drainer_pickup_window_with_hash_min_any_score(
+            &board,
+            Color::White,
+            start,
+            Some(3),
+            1,
+            true,
+            false,
+            opponent_mana,
+            board_hash,
+        )
+        .any;
+        assert_eq!(any, any_window);
+
+        let wanted = exact_best_drainer_pickup_path_filtered_with_hash(
+            &board,
+            Color::White,
+            start,
+            Some(3),
+            ExactPickupFilter::Wanted(opponent_mana),
+            board_hash,
+        );
+        let wanted_window = exact_drainer_pickup_window_with_hash_min_any_score(
+            &board,
+            Color::White,
+            start,
+            Some(3),
+            0,
+            false,
+            true,
+            opponent_mana,
+            board_hash,
+        )
+        .opponent;
+        assert_eq!(wanted, wanted_window);
     }
 
     #[test]
