@@ -1925,6 +1925,19 @@ fn can_attack_target_on_board_uncached(
             if steps == remaining_moves {
                 continue;
             }
+            if exact_attack_remaining_steps_lower_bound(
+                target,
+                target_guarded,
+                &bomb_pickup_locations,
+                location,
+                payload,
+                mon.kind,
+                allow_pick_bomb,
+            )
+            .is_some_and(|lower_bound| steps.saturating_add(lower_bound) > remaining_moves)
+            {
+                continue;
+            }
             for &next in location.nearby_locations_ref() {
                 if let Some(next_payload) = exact_attack_payload_after_move(
                     &mut actor_move_memo,
@@ -1943,6 +1956,59 @@ fn can_attack_target_on_board_uncached(
         }
     }
     false
+}
+
+#[inline]
+fn exact_attack_remaining_steps_lower_bound(
+    target: Location,
+    target_guarded: bool,
+    bomb_pickup_locations: &[Location],
+    location: Location,
+    payload: ExactActorPayload,
+    mon_kind: MonKind,
+    allow_pick_bomb: bool,
+) -> Option<i32> {
+    match payload {
+        ExactActorPayload::Bomb => Some(location.distance(&target).saturating_sub(3)),
+        ExactActorPayload::None => {
+            let mut best = if target_guarded {
+                None
+            } else {
+                exact_attack_action_steps_lower_bound(mon_kind, location, target)
+            };
+            if allow_pick_bomb {
+                for &bomb_location in bomb_pickup_locations {
+                    let pickup_steps = location.distance(&bomb_location);
+                    let post_pickup_steps = bomb_location.distance(&target).saturating_sub(3);
+                    let candidate = pickup_steps.saturating_add(post_pickup_steps);
+                    best = Some(best.map_or(candidate, |current| current.min(candidate)));
+                }
+            }
+            best
+        }
+        ExactActorPayload::Mana(_) => None,
+    }
+}
+
+#[inline]
+fn exact_attack_action_steps_lower_bound(
+    mon_kind: MonKind,
+    location: Location,
+    target: Location,
+) -> Option<i32> {
+    match mon_kind {
+        MonKind::Mystic => target
+            .reachable_by_mystic_action_ref()
+            .iter()
+            .map(|source| location.distance(source))
+            .min(),
+        MonKind::Demon => target
+            .reachable_by_demon_action_ref()
+            .iter()
+            .map(|source| location.distance(source))
+            .min(),
+        MonKind::Drainer | MonKind::Angel | MonKind::Spirit => None,
+    }
 }
 
 #[inline]
@@ -7202,6 +7268,58 @@ mod tests {
             Color::White,
             Location::new(6, 5),
             2,
+        );
+        let baseline_calls = exact_query_diagnostics_snapshot().actor_payload_after_move_calls;
+
+        assert_eq!(optimized, baseline);
+        assert!(optimized);
+        assert!(optimized_calls < baseline_calls);
+    }
+
+    #[test]
+    fn exact_attack_target_prunes_states_beyond_remaining_budget() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(2, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+
+        let optimized = can_attack_target_on_board_with_hash(
+            &board,
+            board_hash,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            4,
+            true,
+        );
+        let optimized_calls = exact_query_diagnostics_snapshot().actor_payload_after_move_calls;
+
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let baseline = can_attack_target_on_board_uncached_baseline(
+            &board,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            4,
         );
         let baseline_calls = exact_query_diagnostics_snapshot().actor_payload_after_move_calls;
 
