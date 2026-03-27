@@ -1,15 +1,25 @@
 use crate::*;
 use std::cell::{OnceCell, RefCell};
+use std::mem::MaybeUninit;
 
 const PROTECTED_HIGH_VALUE_CARRIER_SAFE_DANGER_MIN: i32 = 3;
 const PROTECTED_HIGH_VALUE_CARRIER_SUPERMANA_SCALE_BP: i32 = 2_500;
 const PROTECTED_HIGH_VALUE_CARRIER_OPPONENT_MANA_SCALE_BP: i32 = 2_500;
 const PROTECTED_HIGH_VALUE_CARRIER_VIRTUAL_SCORE_BP_MAX: i32 = 9_200;
 const PROTECTED_HIGH_VALUE_CARRIER_OPPONENT_SCORE_MARGIN: i32 = 2;
+const SCORING_MAX_MANA_ENTRIES: usize = 11;
+const SCORING_MAX_LIVE_MONS_PER_COLOR: usize = 5;
+const SCORING_MAX_DRAINERS_PER_COLOR: usize = 1;
+const SCORING_MAX_ANGELS_PER_COLOR: usize = 1;
+const SCORING_MAX_DANGER_SOURCES_PER_COLOR: usize = 5;
+const SCORING_MAX_LOOSE_CONSUMABLES: usize = 2;
 
 #[derive(Default)]
 struct AttackReachSummaryMemo {
-    entries: Vec<(ScoringAttackReachSummaryKey, crate::models::automove_exact::AttackReachSummary)>,
+    entries: Vec<(
+        ScoringAttackReachSummaryKey,
+        crate::models::automove_exact::AttackReachSummary,
+    )>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +36,83 @@ struct ScoringManaEntry {
     mana: Mana,
 }
 
+struct InlineCopyList<T: Copy, const N: usize> {
+    len: usize,
+    items: [MaybeUninit<T>; N],
+    spill: Option<Vec<T>>,
+}
+
+impl<T: Copy, const N: usize> InlineCopyList<T, N> {
+    #[inline]
+    fn push(&mut self, value: T) {
+        if let Some(spill) = &mut self.spill {
+            spill.push(value);
+            self.len += 1;
+            return;
+        }
+
+        if self.len < N {
+            self.items[self.len].write(value);
+            self.len += 1;
+            return;
+        }
+
+        let mut spill = Vec::with_capacity(N.saturating_mul(2).max(N + 1));
+        spill.extend_from_slice(self.inline_slice());
+        spill.push(value);
+        self.len += 1;
+        self.spill = Some(spill);
+    }
+
+    #[inline]
+    fn as_slice(&self) -> &[T] {
+        self.spill.as_deref().unwrap_or_else(|| self.inline_slice())
+    }
+
+    #[inline]
+    fn iter(&self) -> std::slice::Iter<'_, T> {
+        self.as_slice().iter()
+    }
+
+    #[inline]
+    fn inline_slice(&self) -> &[T] {
+        unsafe { std::slice::from_raw_parts(self.items.as_ptr() as *const T, self.len) }
+    }
+}
+
+impl<T: Copy, const N: usize> Default for InlineCopyList<T, N> {
+    fn default() -> Self {
+        Self {
+            len: 0,
+            items: std::array::from_fn(|_| MaybeUninit::uninit()),
+            spill: None,
+        }
+    }
+}
+
+impl<T: Copy + std::fmt::Debug, const N: usize> std::fmt::Debug for InlineCopyList<T, N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
+}
+
+impl<T: Copy + PartialEq, const N: usize> PartialEq for InlineCopyList<T, N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_slice() == other.as_slice()
+    }
+}
+
+impl<T: Copy + Eq, const N: usize> Eq for InlineCopyList<T, N> {}
+
+impl<'a, T: Copy, const N: usize> IntoIterator for &'a InlineCopyList<T, N> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 #[inline]
 fn scoring_danger_source_flags(item: &Item, mon: Mon) -> (bool, bool, bool) {
     let legacy_plain_threat = !matches!(item, Item::MonWithMana { .. })
@@ -40,98 +127,24 @@ fn scoring_danger_source_flags(item: &Item, mon: Mon) -> (bool, bool, bool) {
             ..
         }
     );
-    (
-        legacy_plain_threat,
-        exact_action_threat,
-        exact_bomb_threat,
-    )
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct ScoringBoardSummaryCounts {
-    mana_entries: usize,
-    live_mon_locations: [usize; 2],
-    live_drainer_locations: [usize; 2],
-    live_angel_locations: [usize; 2],
-    danger_sources: [usize; 2],
-    loose_consumable_locations: usize,
-}
-
-impl ScoringBoardSummaryCounts {
-    fn from_board(board: &Board) -> Self {
-        let mut counts = Self::default();
-
-        for item in board.items.iter().flatten() {
-            match item {
-                Item::Mana { .. } => {
-                    counts.mana_entries += 1;
-                }
-                Item::Mon { mon }
-                | Item::MonWithMana { mon, .. }
-                | Item::MonWithConsumable { mon, .. } => {
-                    if mon.is_fainted() {
-                        continue;
-                    }
-                    let color_slot = color_slot(mon.color);
-                    counts.live_mon_locations[color_slot] += 1;
-                    if mon.kind == MonKind::Drainer {
-                        counts.live_drainer_locations[color_slot] += 1;
-                    }
-                    if mon.kind == MonKind::Angel {
-                        counts.live_angel_locations[color_slot] += 1;
-                    }
-                    let (legacy_plain_threat, exact_action_threat, exact_bomb_threat) =
-                        scoring_danger_source_flags(item, *mon);
-                    if legacy_plain_threat || exact_action_threat || exact_bomb_threat {
-                        counts.danger_sources[color_slot] += 1;
-                    }
-                }
-                Item::Consumable { .. } => {
-                    counts.loose_consumable_locations += 1;
-                }
-            }
-        }
-
-        counts
-    }
+    (legacy_plain_threat, exact_action_threat, exact_bomb_threat)
 }
 
 #[derive(Debug, PartialEq, Eq, Default)]
 struct ScoringBoardSummary {
-    mana_entries: Vec<ScoringManaEntry>,
-    live_mon_locations: [Vec<Location>; 2],
-    live_drainer_locations: [Vec<Location>; 2],
-    live_angel_locations: [Vec<Location>; 2],
-    danger_sources: [Vec<ScoringDangerSource>; 2],
-    loose_consumable_locations: Vec<Location>,
+    mana_entries: InlineCopyList<ScoringManaEntry, SCORING_MAX_MANA_ENTRIES>,
+    live_mon_locations: [InlineCopyList<Location, SCORING_MAX_LIVE_MONS_PER_COLOR>; 2],
+    live_drainer_locations: [InlineCopyList<Location, SCORING_MAX_DRAINERS_PER_COLOR>; 2],
+    live_angel_locations: [InlineCopyList<Location, SCORING_MAX_ANGELS_PER_COLOR>; 2],
+    danger_sources: [InlineCopyList<ScoringDangerSource, SCORING_MAX_DANGER_SOURCES_PER_COLOR>; 2],
+    loose_consumable_locations: InlineCopyList<Location, SCORING_MAX_LOOSE_CONSUMABLES>,
     regular_mana_move_scores: [i32; 2],
     regular_mana_score_path_steps: [Option<i32>; 2],
 }
 
 impl ScoringBoardSummary {
-    fn with_capacities(counts: ScoringBoardSummaryCounts) -> Self {
-        Self {
-            mana_entries: Vec::with_capacity(counts.mana_entries),
-            live_mon_locations: std::array::from_fn(|idx| {
-                Vec::with_capacity(counts.live_mon_locations[idx])
-            }),
-            live_drainer_locations: std::array::from_fn(|idx| {
-                Vec::with_capacity(counts.live_drainer_locations[idx])
-            }),
-            live_angel_locations: std::array::from_fn(|idx| {
-                Vec::with_capacity(counts.live_angel_locations[idx])
-            }),
-            danger_sources: std::array::from_fn(|idx| {
-                Vec::with_capacity(counts.danger_sources[idx])
-            }),
-            loose_consumable_locations: Vec::with_capacity(counts.loose_consumable_locations),
-            regular_mana_move_scores: [0; 2],
-            regular_mana_score_path_steps: [None; 2],
-        }
-    }
-
     fn from_board(board: &Board) -> Self {
-        let mut summary = Self::with_capacities(ScoringBoardSummaryCounts::from_board(board));
+        let mut summary = Self::default();
 
         for (location, item) in board.occupied() {
             match item {
@@ -329,14 +342,16 @@ impl ScoringEvalContext {
     fn drainer_attack_targets(&self, board: &Board, target_color: Color) -> &[Location] {
         let targets = self.drainer_attack_targets.get_or_init(|| {
             [
-                board.occupied()
+                board
+                    .occupied()
                     .filter_map(|(location, item)| {
                         item.mon()
                             .filter(|mon| mon.color == Color::White && mon.kind == MonKind::Drainer)
                             .map(|_| location)
                     })
                     .collect(),
-                board.occupied()
+                board
+                    .occupied()
                     .filter_map(|(location, item)| {
                         item.mon()
                             .filter(|mon| mon.color == Color::Black && mon.kind == MonKind::Drainer)
@@ -466,9 +481,10 @@ impl ScoringEvalContext {
     ) -> bool {
         if self.enable_attack_reach_summary {
             let use_drainer_targets_only = self.enable_attack_reach_drainer_target_narrowing
-                && board.item(target).and_then(|item| item.mon()).is_some_and(|mon| {
-                    mon.color == target_color && mon.kind == MonKind::Drainer
-                });
+                && board
+                    .item(target)
+                    .and_then(|item| item.mon())
+                    .is_some_and(|mon| mon.color == target_color && mon.kind == MonKind::Drainer);
             if use_drainer_targets_only {
                 return self
                     .attack_reach_summary(
@@ -1794,9 +1810,8 @@ pub(crate) fn evaluate_preferability_with_context(
                             location,
                             Some(context),
                         );
-                        let enemy_drainer_distance =
-                            nearest_friendly_drainer_distance_with_context(
-                                &game.board,
+                        let enemy_drainer_distance = nearest_friendly_drainer_distance_with_context(
+                            &game.board,
                             mana_color.other(),
                             location,
                             Some(context),
@@ -2332,10 +2347,12 @@ fn exact_immediate_score_window_from_snapshot(
     exact_summary: ExactColorSummary,
 ) -> ImmediateScoreWindow {
     let exact = exact_summary.immediate_window;
-    let best_score = exact.best_score.max(best_regular_mana_move_score_window_with_snapshot(
-        mana_snapshot,
-        color,
-    ));
+    let best_score = exact
+        .best_score
+        .max(best_regular_mana_move_score_window_with_snapshot(
+            mana_snapshot,
+            color,
+        ));
     ImmediateScoreWindow {
         best_score,
         multi_pressure: exact.multi_pressure,
@@ -2380,7 +2397,11 @@ fn exact_score_path_window_for_context(
     if let Some(board_summary) = context.board_summary_if_enabled(board) {
         exact_score_path_window_from_board_summary(board_summary, color, exact_summary)
     } else {
-        exact_score_path_window_from_snapshot(context.mana_path_snapshot(board), color, exact_summary)
+        exact_score_path_window_from_snapshot(
+            context.mana_path_snapshot(board),
+            color,
+            exact_summary,
+        )
     }
 }
 
@@ -2536,7 +2557,7 @@ struct ManaPathCandidate {
 
 #[derive(Default)]
 struct ManaPathSnapshot {
-    candidates: Vec<ManaPathCandidate>,
+    candidates: InlineCopyList<ManaPathCandidate, SCORING_MAX_MANA_ENTRIES>,
     regular_mana_move_scores: [i32; 2],
 }
 
@@ -2548,8 +2569,8 @@ impl ManaPathSnapshot {
 
     fn from_summary(summary: &ScoringBoardSummary) -> Self {
         let mut snapshot = Self {
-            candidates: Vec::with_capacity(summary.mana_entries.len().max(4)),
             regular_mana_move_scores: summary.regular_mana_move_scores,
+            ..Self::default()
         };
         for entry in &summary.mana_entries {
             let score_steps = distance(entry.location, Destination::AnyClosestPool) - 1;
@@ -3438,8 +3459,7 @@ mod tests {
             Color::White,
         );
         let plain_context = ScoringEvalContext::new(&game, true);
-        let summary_context =
-            ScoringEvalContext::new_with_flags(&game, true, true, true, false);
+        let summary_context = ScoringEvalContext::new_with_flags(&game, true, true, true, false);
         let drainer_target_context =
             ScoringEvalContext::new_with_flags(&game, true, true, true, true);
 
@@ -3527,11 +3547,21 @@ mod tests {
         let black_exact = exact.color_summary(Color::Black);
 
         assert_eq!(
-            exact_score_path_window_from_summary(Some(&mana_snapshot), Color::White, white_exact, true),
+            exact_score_path_window_from_summary(
+                Some(&mana_snapshot),
+                Color::White,
+                white_exact,
+                true
+            ),
             exact_score_path_window_from_board_summary(&board_summary, Color::White, white_exact),
         );
         assert_eq!(
-            exact_score_path_window_from_summary(Some(&mana_snapshot), Color::Black, black_exact, true),
+            exact_score_path_window_from_summary(
+                Some(&mana_snapshot),
+                Color::Black,
+                black_exact,
+                true
+            ),
             exact_score_path_window_from_board_summary(&board_summary, Color::Black, black_exact),
         );
         assert_eq!(
