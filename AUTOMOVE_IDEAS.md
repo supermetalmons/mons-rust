@@ -68,6 +68,7 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
      - scoring-side tactical preference
      - child ordering / preferability interaction
      - move-class / transition-order behavior
+     - omitted concrete spirit-setup / progress competitors versus plain-spirit or safe non-spirit shortlist winners
    - Only spend here when the branch has a direct story for why `runtime_pro_turn_engine_v30` should beat `runtime_current` more often, not merely do the same work with a different memo layout.
 
 ## Do Not Reopen Just Because 700ms Is Relaxed
