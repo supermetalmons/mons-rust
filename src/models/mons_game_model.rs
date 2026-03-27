@@ -7531,6 +7531,20 @@ impl MonsGameModel {
             || candidate.scores_opponent_mana_this_turn
             || candidate.safe_supermana_pickup_now
             || candidate.safe_opponent_mana_pickup_now;
+        let narrow_black_mana_only_unsafe_score_override = matches!(
+            plan.head_family,
+            TurnPlanFamily::ImmediateScore
+        ) && game.active_color == Color::Black
+            && game.turn_number <= 4
+            && game.mons_moves_count == 0
+            && !game.player_can_use_action()
+            && game.player_can_move_mana()
+            && candidate_unsafe
+            && !selected_unsafe
+            && !candidate.wins_immediately
+            && !scores_now_better
+            && !drainer_attack_better
+            && candidate.same_turn_score_window_value <= selected.same_turn_score_window_value;
         let progress_better = (Self::root_progress_steps_better(
             candidate.safe_supermana_progress_steps,
             selected.safe_supermana_progress_steps,
@@ -7556,6 +7570,47 @@ impl MonsGameModel {
                 )
             })
         };
+        let selected_progress_surface =
+            Self::turn_engine_root_evaluation_has_progress_surface(selected);
+        let pickup_upgrade = (candidate.safe_supermana_pickup_now
+            && !selected.safe_supermana_pickup_now)
+            || (candidate.safe_opponent_mana_pickup_now
+                && !selected.safe_opponent_mana_pickup_now);
+        let near_tie_progress = candidate.safe_supermana_progress_steps
+            == selected.safe_supermana_progress_steps
+            && candidate.safe_opponent_mana_progress_steps
+                == selected.safe_opponent_mana_progress_steps
+            && candidate.own_drainer_vulnerable == selected.own_drainer_vulnerable
+            && candidate.efficiency == selected.efficiency
+            && candidate.supermana_progress == selected.supermana_progress
+            && candidate.opponent_mana_progress == selected.opponent_mana_progress;
+        let primary_axes_order = crate::models::automove_turn_engine::compare_utility_primary_axes(
+            plan.utility,
+            selected_utility_value(),
+        );
+        let strategic_override_axes_better = plan
+            .utility
+            .improves_non_score_override_axes(selected_utility_value());
+        let narrow_white_mana_only_progress_tie_override = macro_mode
+            && matches!(
+                plan.head_family,
+                TurnPlanFamily::SafeSupermanaProgress | TurnPlanFamily::SafeOpponentManaProgress
+            )
+            && game.active_color == Color::White
+            && game.turn_number >= 5
+            && game.mons_moves_count <= 1
+            && !game.player_can_use_action()
+            && game.player_can_move_mana()
+            && !candidate_unsafe
+            && !selected_unsafe
+            && candidate_progress_surface
+            && selected_progress_surface
+            && !selected_spirit_phase
+            && near_tie_progress
+            && score_gap > 48
+            && primary_axes_order == std::cmp::Ordering::Equal
+            && !pickup_upgrade
+            && !strategic_override_axes_better;
         let mut projected_state = game.clone_for_simulation();
         let mut projected_events = Vec::new();
         let mut projected_complete = true;
@@ -7626,6 +7681,10 @@ impl MonsGameModel {
                 || plan
                     .utility
                     .improves_non_score_override_axes(selected_utility_value()));
+        let projected_completed_plan_override =
+            projected_completed_plan_override
+                && !narrow_black_mana_only_unsafe_score_override
+                && !narrow_white_mana_only_progress_tie_override;
         if candidate_unsafe && !selected_unsafe && !projected_completed_plan_override {
             return false;
         }
@@ -15990,6 +16049,12 @@ impl MonsGameModel {
                 shortlist.as_slice(),
                 config,
             )
+            && !Self::reply_risk_shortlist_has_white_spirit_followup_setup_competition(
+                game,
+                scored_roots,
+                shortlist.as_slice(),
+                config,
+            )
             && !Self::reply_risk_shortlist_has_safe_progress_competition(
                 scored_roots,
                 shortlist.as_slice(),
@@ -16910,6 +16975,32 @@ impl MonsGameModel {
         false
     }
 
+    fn reply_risk_shortlist_has_white_spirit_followup_setup_competition(
+        game: &MonsGame,
+        scored_roots: &[RootEvaluation],
+        shortlist: &[usize],
+        config: SmartSearchConfig,
+    ) -> bool {
+        if shortlist.len() < 2 {
+            return false;
+        }
+
+        for (position, candidate_index) in shortlist.iter().copied().enumerate() {
+            for incumbent_index in shortlist.iter().copied().skip(position + 1) {
+                if Self::is_pro_v2_white_spirit_followup_setup_pair(
+                    game,
+                    &scored_roots[candidate_index],
+                    &scored_roots[incumbent_index],
+                    config,
+                ) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     fn reply_risk_shortlist_has_close_positive_score_competition(
         scored_roots: &[RootEvaluation],
         shortlist: &[usize],
@@ -17367,6 +17458,149 @@ impl MonsGameModel {
         }
     }
 
+    fn is_pro_v2_white_spirit_followup_setup_pair(
+        game: &MonsGame,
+        candidate: &RootEvaluation,
+        incumbent: &RootEvaluation,
+        config: SmartSearchConfig,
+    ) -> bool {
+        if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
+            || game.active_color != Color::White
+            || game.turn_number > 3
+            || game.mons_moves_count < 4
+            || !game.player_can_use_action()
+            || !game.player_can_move_mana()
+        {
+            return false;
+        }
+
+        let candidate_setup_progress = candidate.spirit_own_mana_setup_now
+            && candidate.opponent_mana_progress
+            && !Self::is_plain_spirit_development_root(candidate);
+        let incumbent_setup_progress = incumbent.spirit_own_mana_setup_now
+            && incumbent.opponent_mana_progress
+            && !Self::is_plain_spirit_development_root(incumbent);
+        if candidate_setup_progress == incumbent_setup_progress {
+            return false;
+        }
+
+        let (setup, plain) =
+            if candidate_setup_progress && Self::is_plain_spirit_development_root(incumbent) {
+                (candidate, incumbent)
+            } else if incumbent_setup_progress && Self::is_plain_spirit_development_root(candidate) {
+                (incumbent, candidate)
+            } else {
+                return false;
+            };
+
+        setup.inputs.first() == plain.inputs.first()
+            && setup.efficiency == plain.efficiency
+            && setup.own_drainer_vulnerable == plain.own_drainer_vulnerable
+            && setup.own_drainer_walk_vulnerable == plain.own_drainer_walk_vulnerable
+            && !setup.mana_handoff_to_opponent
+            && !plain.mana_handoff_to_opponent
+            && !setup.has_roundtrip
+            && !plain.has_roundtrip
+            && !setup.wins_immediately
+            && !plain.wins_immediately
+            && !setup.attacks_opponent_drainer
+            && !plain.attacks_opponent_drainer
+            && !setup.scores_supermana_this_turn
+            && !plain.scores_supermana_this_turn
+            && !setup.scores_opponent_mana_this_turn
+            && !plain.scores_opponent_mana_this_turn
+            && !setup.safe_supermana_pickup_now
+            && !plain.safe_supermana_pickup_now
+            && !setup.safe_opponent_mana_pickup_now
+            && !plain.safe_opponent_mana_pickup_now
+            && setup.same_turn_score_window_value == 0
+            && plain.same_turn_score_window_value == 0
+            && !setup.supermana_progress
+            && !plain.supermana_progress
+    }
+
+    fn pro_v2_white_spirit_followup_setup_reply_order(
+        game: &MonsGame,
+        candidate: &RootEvaluation,
+        candidate_snapshot: RootReplyRiskSnapshot,
+        incumbent: &RootEvaluation,
+        incumbent_snapshot: RootReplyRiskSnapshot,
+        config: SmartSearchConfig,
+    ) -> Option<std::cmp::Ordering> {
+        if !Self::is_pro_v2_white_spirit_followup_setup_pair(game, candidate, incumbent, config) {
+            return None;
+        }
+
+        let candidate_setup_progress = candidate.spirit_own_mana_setup_now
+            && candidate.opponent_mana_progress
+            && !Self::is_plain_spirit_development_root(candidate);
+        let incumbent_setup_progress = incumbent.spirit_own_mana_setup_now
+            && incumbent.opponent_mana_progress
+            && !Self::is_plain_spirit_development_root(incumbent);
+        if candidate_setup_progress == incumbent_setup_progress {
+            return None;
+        }
+
+        let (setup, setup_snapshot, plain, plain_snapshot, candidate_is_setup) =
+            if candidate_setup_progress && Self::is_plain_spirit_development_root(incumbent) {
+                (candidate, candidate_snapshot, incumbent, incumbent_snapshot, true)
+            } else if incumbent_setup_progress && Self::is_plain_spirit_development_root(candidate) {
+                (incumbent, incumbent_snapshot, candidate, candidate_snapshot, false)
+            } else {
+                return None;
+            };
+
+        if setup.inputs.first() != plain.inputs.first()
+            || setup.efficiency != plain.efficiency
+            || setup.own_drainer_vulnerable != plain.own_drainer_vulnerable
+            || setup.own_drainer_walk_vulnerable != plain.own_drainer_walk_vulnerable
+            || setup.mana_handoff_to_opponent
+            || plain.mana_handoff_to_opponent
+            || setup.has_roundtrip
+            || plain.has_roundtrip
+            || setup.wins_immediately
+            || plain.wins_immediately
+            || setup.attacks_opponent_drainer
+            || plain.attacks_opponent_drainer
+            || setup.scores_supermana_this_turn
+            || plain.scores_supermana_this_turn
+            || setup.scores_opponent_mana_this_turn
+            || plain.scores_opponent_mana_this_turn
+            || setup.safe_supermana_pickup_now
+            || plain.safe_supermana_pickup_now
+            || setup.safe_opponent_mana_pickup_now
+            || plain.safe_opponent_mana_pickup_now
+            || setup.same_turn_score_window_value > 0
+            || plain.same_turn_score_window_value > 0
+            || setup.supermana_progress
+            || plain.supermana_progress
+            || setup_snapshot.allows_immediate_opponent_win
+            || plain_snapshot.allows_immediate_opponent_win
+            || setup_snapshot.opponent_reaches_match_point
+            || plain_snapshot.opponent_reaches_match_point
+        {
+            return None;
+        }
+
+        const SCORE_MARGIN: i32 = 96;
+        const REPLY_FLOOR_MARGIN: i32 = 96;
+        const ROOT_RANK_MARGIN: usize = 8;
+
+        if setup.score.saturating_add(SCORE_MARGIN) < plain.score
+            || setup_snapshot.worst_reply_score.saturating_add(REPLY_FLOOR_MARGIN)
+                < plain_snapshot.worst_reply_score
+            || setup.root_rank > plain.root_rank.saturating_add(ROOT_RANK_MARGIN)
+        {
+            return None;
+        }
+
+        Some(if candidate_is_setup {
+            std::cmp::Ordering::Greater
+        } else {
+            std::cmp::Ordering::Less
+        })
+    }
+
     fn pro_v2_mixed_plain_spirit_reply_floor_order(
         candidate_snapshot: RootReplyRiskSnapshot,
         candidate_projection: &TurnEngineRootProjection,
@@ -17526,6 +17760,16 @@ impl MonsGameModel {
             perspective,
             config,
             spirit_followup_scores,
+        ) {
+            return order == std::cmp::Ordering::Greater;
+        }
+        if let Some(order) = Self::pro_v2_white_spirit_followup_setup_reply_order(
+            game,
+            candidate,
+            candidate_snapshot,
+            incumbent,
+            incumbent_snapshot,
+            config,
         ) {
             return order == std::cmp::Ordering::Greater;
         }

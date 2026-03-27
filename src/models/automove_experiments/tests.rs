@@ -5537,10 +5537,28 @@ fn runtime_pro_turn_engine_v30_profile_prefers_safe_white_fast_screen_turn_one_t
     );
 
     assert_eq!(
-        decision.move_fen, "l10,4;l9,3",
-        "v30 should route the traced white turn-one opening tail blocker to the shared fast/current line, got {}",
+        decision.move_fen, "l10,3;l9,3",
+        "v30 should route the traced white turn-one opening tail blocker to the shared current line, got {}",
         decision.move_fen
     );
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_profile_prefers_current_white_three_move_opening_tail() {
+    let game = MonsGame::from_fen(
+        "0 0 w 0 0 3 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n04D0xn01S0xn04/n02E0xn01A0xn02Y0xn03",
+        false,
+    )
+    .expect("white three-move opening tail fen should be valid");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let decision = loss_probe_decision(
+        "runtime_pro_turn_engine_v30",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+
+    assert_eq!(decision.move_fen, "l10,7;l9,7");
 }
 
 #[test]
@@ -5562,6 +5580,114 @@ fn runtime_pro_turn_engine_v30_profile_prefers_safe_white_fast_screen_turn_three
         "v30 should route the traced white turn-three start fast-screen blocker to the shared fast/current line, got {}",
         decision.move_fen
     );
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_profile_prefers_current_white_turn_three_start_action_mana_root() {
+    let game = MonsGame::from_fen(
+        "0 0 w 0 0 0 0 0 3 n03y0xn03e0xn03/n05s0xa0xn01d0mn02/n11/n04xxmn02xxmn03/n03xxmn01xxmn05/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n07Y0xn03/n04D0xn01S0xn04/n02E0xn01A0xn06",
+        false,
+    )
+    .expect("white turn-three start action+mana loss fen should be valid");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let decision = loss_probe_decision(
+        "runtime_pro_turn_engine_v30",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+
+    assert_eq!(decision.move_fen, "l9,4;l8,4");
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_profile_prefers_current_white_turn_three_start_action_mana_variant() {
+    let game = MonsGame::from_fen(
+        "0 0 w 0 0 0 0 0 3 n03y0xn03e0xn03/n05s0xa0xn01d0mn02/n11/n04xxmn02xxmn03/n03xxmn01xxmn05/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n01E0xn09/n04D0xn01S0xn01Y0xn02/n04A0xn06",
+        false,
+    )
+    .expect("white turn-three variant loss fen should be valid");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let decision = loss_probe_decision(
+        "runtime_pro_turn_engine_v30",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+
+    assert_eq!(decision.move_fen, "l9,8;l8,7");
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_profile_keeps_current_planner_on_engine_disabled_opening() {
+    let game = MonsGame::from_fen(
+        "0 0 w 0 0 2 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n04E0xn01D0xn04/n04A0xn01S0xY0xn03",
+        false,
+    )
+    .expect("engine-disabled opening planner fen should be valid");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let decision = loss_probe_decision(
+        "runtime_pro_turn_engine_v30",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+
+    assert_eq!(decision.move_fen, "l9,6;l8,6");
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_profile_prefers_current_black_turn_two_start_root() {
+    let game = MonsGame::from_fen(
+        "0 0 b 0 0 0 0 0 2 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n01E0xn09/n04D0xn01S0xn01Y0xn02/n04A0xn06",
+        false,
+    )
+    .expect("black turn-two opening start loss fen should be valid");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let decision = loss_probe_decision(
+        "runtime_pro_turn_engine_v30",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+
+    assert_eq!(decision.move_fen, "l0,4;l1,5");
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_profile_prefers_current_black_turn_two_mana_only_root() {
+    let game = MonsGame::from_fen(
+        "0 0 b 1 0 2 0 0 2 n03y0xn02a0xe0xn03/n05s0xd0xn04/n07xxmn03/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n04D0xn06/n02E0xA0xn01S0xn05/n07Y0xn03",
+        false,
+    )
+    .expect("black turn-two mana-only loss fen should be valid");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let decision = loss_probe_decision(
+        "runtime_pro_turn_engine_v30",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+
+    assert_eq!(decision.move_fen, "l0,3;l1,3");
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_profile_prefers_current_black_turn_four_start_action_mana_root() {
+    let game = MonsGame::from_fen(
+        "1 0 b 0 0 0 0 0 4 n05d0xn05/n05s0xa0xe0xn03/n03y0xn03xxmn03/n03xxmn07/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn05/n04xxMn03xxMn02/n05S0xn05/n04E0xA0xn05/n07Y0xn02D0x",
+        false,
+    )
+    .expect("black turn-four action+mana loss fen should be valid");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let decision = loss_probe_decision(
+        "runtime_pro_turn_engine_v30",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+
+    assert_eq!(decision.move_fen, "l1,5;l3,3;l2,2");
 }
 
 #[test]
@@ -5666,7 +5792,7 @@ fn runtime_pro_turn_engine_v30_accepts_primary_spirit_setup_macro_head() {
 }
 
 #[test]
-fn runtime_pro_turn_engine_v30_accepts_black_opening_a_ply19_macro_head() {
+fn runtime_pro_turn_engine_v30_rejects_black_opening_a_ply19_macro_head() {
     let fixture = primary_pro_fixture_by_id("primary_black_loss_opening_a_ply19");
     clear_exact_state_analysis_cache();
     clear_turn_engine_plan_cache();
@@ -5677,10 +5803,98 @@ fn runtime_pro_turn_engine_v30_accepts_black_opening_a_ply19_macro_head() {
 
     assert_eq!(Input::fen_from_array(&probe.candidate_inputs), "l2,5;l2,6");
     assert!(
-        probe.accepted,
-        "v30 should now accept the stronger macro head: {:?}",
+        !probe.accepted,
+        "v30 should reject the unsafe black-opening macro head: {:?}",
         probe
     );
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_prefers_safe_black_opening_a_ply19_root() {
+    let fixture = primary_pro_fixture_by_id("primary_black_loss_opening_a_ply19");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let decision = loss_probe_decision("runtime_pro_turn_engine_v30", fixture.mode, &fixture.game);
+
+    assert_eq!(decision.move_fen, "l2,5;l1,4");
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_reply_guard_prefers_concrete_white_spirit_followup_setup() {
+    let game = MonsGame::from_fen(
+        "0 0 w 0 0 5 0 0 3 n05d2xa0xn04/n05s0xn01e0xn03/n03y0xn03xxmn03/n03xxmn07/n03xxmn01xxmn01xxmn01S0xn01/xxQn04xxUn05/n03xxMn01xxMn01xxMn03/n04D0Mn01xxMn04/n11/n04A0xn06/n03E0xn03Y0xn03",
+        false,
+    )
+    .expect("valid white spirit followup fixture fen");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let config = loss_probe_runtime_config(
+        "runtime_pro_turn_engine_v30",
+        &game,
+        SmartAutomovePreference::Pro,
+    );
+    let probe = MonsGameModel::root_selection_probe_for_test(&game, config)
+        .expect("v30 white followup fixture should produce a root selection probe");
+
+    assert_eq!(
+        probe.reply_guard_selected_move_fen.as_deref(),
+        Some("l4,9;l4,7;l5,7"),
+    );
+    assert_eq!(probe.final_selected_move_fen, "l4,9;l4,7;l5,7");
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_prefers_concrete_white_spirit_followup_root() {
+    let game = MonsGame::from_fen(
+        "0 0 w 0 0 5 0 0 3 n05d2xa0xn04/n05s0xn01e0xn03/n03y0xn03xxmn03/n03xxmn07/n03xxmn01xxmn01xxmn01S0xn01/xxQn04xxUn05/n03xxMn01xxMn01xxMn03/n04D0Mn01xxMn04/n11/n04A0xn06/n03E0xn03Y0xn03",
+        false,
+    )
+    .expect("valid white spirit followup fixture fen");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let decision = loss_probe_decision("runtime_pro_turn_engine_v30", SmartAutomovePreference::Pro, &game);
+
+    assert_eq!(decision.move_fen, "l4,9;l4,7;l5,7");
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_rejects_white_progress_tail_macro_head() {
+    let game = MonsGame::from_fen(
+        "0 0 w 1 0 1 0 0 7 n11/n05d0xa0xn01e0xn02/n06s0xS0xxxmn02/n02xxmxxmxxmn06/n08xxmn02/y0xn04xxUn05/n05xxMn01xxMn03/n04xxMn01xxMn04/n01E0xxxMn08/n04A0xD0xY0xn04/n11",
+        false,
+    )
+    .expect("valid white progress tail fixture fen");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let config = loss_probe_runtime_config(
+        "runtime_pro_turn_engine_v30",
+        &game,
+        SmartAutomovePreference::Pro,
+    );
+    let probe = MonsGameModel::turn_engine_acceptance_probe_for_test(&game, config)
+        .expect("v30 white progress tail fixture should produce an acceptance probe");
+
+    assert_eq!(Input::fen_from_array(&probe.candidate_inputs), "l9,5;l8,5");
+    assert!(
+        !probe.accepted,
+        "v30 should reject the tied white progress-tail macro head: {:?}",
+        probe
+    );
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_prefers_searched_white_progress_tail_root() {
+    let game = MonsGame::from_fen(
+        "0 0 w 1 0 1 0 0 7 n11/n05d0xa0xn01e0xn02/n06s0xS0xxxmn02/n02xxmxxmxxmn06/n08xxmn02/y0xn04xxUn05/n05xxMn01xxMn03/n04xxMn01xxMn04/n01E0xxxMn08/n04A0xD0xY0xn04/n11",
+        false,
+    )
+    .expect("valid white progress tail fixture fen");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let decision =
+        loss_probe_decision("runtime_pro_turn_engine_v30", SmartAutomovePreference::Pro, &game);
+
+    assert_eq!(decision.move_fen, "l9,5;l8,4");
 }
 
 #[test]

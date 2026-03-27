@@ -306,12 +306,12 @@ fn configure_runtime_pro_turn_engine_v1(config: SmartSearchConfig) -> SmartSearc
 
 fn configure_runtime_pro_turn_engine_v30(config: SmartSearchConfig) -> SmartSearchConfig {
     let mut runtime = config;
-    runtime.enable_turn_opportunity_planner = false;
-    runtime.turn_engine_mode = TurnEngineMode::ProV2;
     if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
         && runtime.enable_normal_root_safety_deep_floor
     {
+        runtime.enable_turn_opportunity_planner = false;
         runtime.enable_turn_engine = true;
+        runtime.turn_engine_mode = TurnEngineMode::ProV2;
         runtime.turn_engine_seed_cap = 14;
         runtime.turn_engine_beam_width = 5;
         runtime.turn_engine_per_node_family_cap = 4;
@@ -366,12 +366,9 @@ fn runtime_pro_turn_engine_v30_guarded_inputs(
         && !game.player_can_move_mana()
         && matches!(game.mons_moves_count, 0 | 3);
     if early_white_turn_start {
-        let fast_runtime = SearchBudget::from_preference(SmartAutomovePreference::Fast)
+        let pro_runtime = SearchBudget::from_preference(SmartAutomovePreference::Pro)
             .runtime_config_for_game(game);
-        return runtime_selector_inputs(
-            game,
-            configure_runtime_release_safe_pre_exact(fast_runtime),
-        );
+        return model_current_best(game, pro_runtime);
     }
 
     let white_turn_one_late_opening_tail = game.active_color == Color::White
@@ -380,12 +377,9 @@ fn runtime_pro_turn_engine_v30_guarded_inputs(
         && !game.player_can_use_action()
         && !game.player_can_move_mana();
     if white_turn_one_late_opening_tail {
-        let fast_runtime = SearchBudget::from_preference(SmartAutomovePreference::Fast)
+        let pro_runtime = SearchBudget::from_preference(SmartAutomovePreference::Pro)
             .runtime_config_for_game(game);
-        return runtime_selector_inputs(
-            game,
-            configure_runtime_release_safe_pre_exact(fast_runtime),
-        );
+        return model_current_best(game, pro_runtime);
     }
 
     let white_turn_three_turn_start_action_mana = game.active_color == Color::White
@@ -394,12 +388,9 @@ fn runtime_pro_turn_engine_v30_guarded_inputs(
         && game.player_can_use_action()
         && game.player_can_move_mana();
     if white_turn_three_turn_start_action_mana {
-        let fast_runtime = SearchBudget::from_preference(SmartAutomovePreference::Fast)
+        let pro_runtime = SearchBudget::from_preference(SmartAutomovePreference::Pro)
             .runtime_config_for_game(game);
-        return runtime_selector_inputs(
-            game,
-            configure_runtime_release_safe_pre_exact(fast_runtime),
-        );
+        return model_current_best(game, pro_runtime);
     }
 
     let white_turn_three_mana_only = game.active_color == Color::White
@@ -416,6 +407,17 @@ fn runtime_pro_turn_engine_v30_guarded_inputs(
         );
     }
 
+    let white_turn_three_mid_turn_full_resources = game.active_color == Color::White
+        && game.turn_number == 3
+        && game.mons_moves_count >= 5
+        && game.player_can_use_action()
+        && game.player_can_move_mana();
+    if white_turn_three_mid_turn_full_resources {
+        let pro_runtime = SearchBudget::from_preference(SmartAutomovePreference::Pro)
+            .runtime_config_for_game(game);
+        return model_current_best(game, pro_runtime);
+    }
+
     let white_turn_three_mid_turn = game.active_color == Color::White
         && game.turn_number == 3
         && game.mons_moves_count > 0
@@ -427,6 +429,39 @@ fn runtime_pro_turn_engine_v30_guarded_inputs(
             game,
             configure_runtime_release_safe_pre_exact(fast_runtime),
         );
+    }
+
+    let black_turn_two_turn_start_action_mana = game.active_color == Color::Black
+        && game.turn_number == 2
+        && game.mons_moves_count == 0
+        && game.player_can_use_action()
+        && game.player_can_move_mana();
+    if black_turn_two_turn_start_action_mana {
+        let pro_runtime = SearchBudget::from_preference(SmartAutomovePreference::Pro)
+            .runtime_config_for_game(game);
+        return model_current_best(game, pro_runtime);
+    }
+
+    let black_turn_two_mana_only = game.active_color == Color::Black
+        && game.turn_number == 2
+        && game.mons_moves_count > 0
+        && !game.player_can_use_action()
+        && game.player_can_move_mana();
+    if black_turn_two_mana_only {
+        let pro_runtime = SearchBudget::from_preference(SmartAutomovePreference::Pro)
+            .runtime_config_for_game(game);
+        return model_current_best(game, pro_runtime);
+    }
+
+    let black_turn_four_turn_start_action_mana = game.active_color == Color::Black
+        && game.turn_number == 4
+        && game.mons_moves_count == 0
+        && game.player_can_use_action()
+        && game.player_can_move_mana();
+    if black_turn_four_turn_start_action_mana {
+        let pro_runtime = SearchBudget::from_preference(SmartAutomovePreference::Pro)
+            .runtime_config_for_game(game);
+        return model_current_best(game, pro_runtime);
     }
 
     runtime_selector_inputs(game, configure_runtime_pro_turn_engine_v30(config))
