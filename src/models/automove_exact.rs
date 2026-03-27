@@ -156,6 +156,9 @@ fn exact_carrier_distance_slot(location: Location, mana: Mana) -> usize {
 
 const EXACT_ACTOR_MOVE_MEMO_UNKNOWN: u8 = u8::MAX;
 const EXACT_ACTOR_MOVE_MEMO_CAPACITY: usize = EXACT_LOCATION_STATE_CAPACITY * 2 * 5 * 5 * 2;
+const EXACT_DRAINER_MOVE_MEMO_PAYLOAD_VARIANTS: usize = 4;
+const EXACT_DRAINER_MOVE_MEMO_CAPACITY: usize =
+    EXACT_LOCATION_STATE_CAPACITY * 2 * EXACT_DRAINER_MOVE_MEMO_PAYLOAD_VARIANTS;
 
 struct ExactActorMoveMemo {
     entries: [u8; EXACT_ACTOR_MOVE_MEMO_CAPACITY],
@@ -203,6 +206,49 @@ impl ExactActorMoveMemo {
     }
 }
 
+struct ExactDrainerMoveMemo {
+    entries: [u8; EXACT_DRAINER_MOVE_MEMO_CAPACITY],
+}
+
+impl ExactDrainerMoveMemo {
+    #[inline]
+    fn new() -> Self {
+        Self {
+            entries: [EXACT_ACTOR_MOVE_MEMO_UNKNOWN; EXACT_DRAINER_MOVE_MEMO_CAPACITY],
+        }
+    }
+
+    #[inline]
+    fn payload_after_move(
+        &mut self,
+        board: &Board,
+        color: Color,
+        payload: ExactActorPayload,
+        destination: Location,
+    ) -> Option<ExactActorPayload> {
+        let slot = exact_drainer_move_memo_slot(color, payload, destination);
+        let cached = self.entries[slot];
+        if cached != EXACT_ACTOR_MOVE_MEMO_UNKNOWN {
+            return exact_drainer_move_memo_decode(cached);
+        }
+
+        update_exact_query_diagnostics(|diagnostics| {
+            diagnostics.actor_payload_after_move_calls += 1
+        });
+        let result = actor_payload_after_move_compute(
+            board,
+            MonKind::Drainer,
+            color,
+            payload,
+            destination,
+            false,
+        );
+        let encoded = exact_drainer_move_memo_encode(result);
+        self.entries[slot] = encoded;
+        result
+    }
+}
+
 #[inline]
 fn exact_actor_move_memo_slot(
     mon_kind: MonKind,
@@ -217,6 +263,19 @@ fn exact_actor_move_memo_slot(
     let mon_kind_index = (exact_hash_mon_kind(mon_kind) - 1) as usize;
     ((((allow_index * EXACT_PAYLOAD_VARIANTS + payload_index) * 2 + color_index) * 5
         + mon_kind_index)
+        * EXACT_LOCATION_STATE_CAPACITY)
+        + destination.index()
+}
+
+#[inline]
+fn exact_drainer_move_memo_slot(
+    color: Color,
+    payload: ExactActorPayload,
+    destination: Location,
+) -> usize {
+    let color_index = if color == Color::White { 0 } else { 1 };
+    ((color_index * EXACT_DRAINER_MOVE_MEMO_PAYLOAD_VARIANTS
+        + exact_drainer_move_payload_variant_index(payload))
         * EXACT_LOCATION_STATE_CAPACITY)
         + destination.index()
 }
@@ -243,6 +302,43 @@ fn exact_actor_move_memo_decode(value: u8) -> Option<ExactActorPayload> {
         4 => Some(ExactActorPayload::Mana(Mana::Supermana)),
         5 => Some(ExactActorPayload::Bomb),
         _ => unreachable!("unexpected actor move memo value"),
+    }
+}
+
+#[inline]
+fn exact_drainer_move_payload_variant_index(payload: ExactActorPayload) -> usize {
+    match payload {
+        ExactActorPayload::None => 0,
+        ExactActorPayload::Mana(Mana::Regular(Color::White)) => 1,
+        ExactActorPayload::Mana(Mana::Regular(Color::Black)) => 2,
+        ExactActorPayload::Mana(Mana::Supermana) => 3,
+        ExactActorPayload::Bomb => unreachable!("drainer pickup path should never carry bomb"),
+    }
+}
+
+#[inline]
+fn exact_drainer_move_memo_encode(result: Option<ExactActorPayload>) -> u8 {
+    match result {
+        None => 0,
+        Some(ExactActorPayload::None) => 1,
+        Some(ExactActorPayload::Mana(Mana::Regular(Color::White))) => 2,
+        Some(ExactActorPayload::Mana(Mana::Regular(Color::Black))) => 3,
+        Some(ExactActorPayload::Mana(Mana::Supermana)) => 4,
+        Some(ExactActorPayload::Bomb) => {
+            unreachable!("drainer pickup path should never produce bomb")
+        }
+    }
+}
+
+#[inline]
+fn exact_drainer_move_memo_decode(value: u8) -> Option<ExactActorPayload> {
+    match value {
+        0 => None,
+        1 => Some(ExactActorPayload::None),
+        2 => Some(ExactActorPayload::Mana(Mana::Regular(Color::White))),
+        3 => Some(ExactActorPayload::Mana(Mana::Regular(Color::Black))),
+        4 => Some(ExactActorPayload::Mana(Mana::Supermana)),
+        _ => unreachable!("unexpected drainer move memo value"),
     }
 }
 
@@ -3301,12 +3397,12 @@ fn exact_drainer_pickup_window_small_budget_with_hash(
     need_score: bool,
     need_denial: bool,
     opponent_mana: Mana,
-    board_hash: u64,
+    _board_hash: u64,
 ) -> ExactDrainerPickupWindow {
     debug_assert!((0..=3).contains(&max_steps));
 
     let mut best = ExactDrainerPickupWindow::default();
-    let mut actor_move_memo = ExactActorMoveMemo::new(board_hash);
+    let mut actor_move_memo = ExactDrainerMoveMemo::new();
     let mut frontier = Vec::with_capacity(1);
     frontier.push((start, ExactActorPayload::None));
 
@@ -3342,19 +3438,15 @@ fn exact_drainer_pickup_window_small_budget_with_hash(
                 need_denial,
                 opponent_mana,
             )
-            .map_or(true, |lower_bound| steps.saturating_add(lower_bound) > max_steps)
-            {
+            .map_or(true, |lower_bound| {
+                steps.saturating_add(lower_bound) > max_steps
+            }) {
                 continue;
             }
             for &next in location.nearby_locations_ref() {
-                if let Some(next_payload) = actor_move_memo.payload_after_move(
-                    board,
-                    MonKind::Drainer,
-                    color,
-                    payload,
-                    next,
-                    false,
-                ) {
+                if let Some(next_payload) =
+                    actor_move_memo.payload_after_move(board, color, payload, next)
+                {
                     next_frontier.push((next, next_payload));
                 }
             }
@@ -3375,7 +3467,7 @@ fn exact_drainer_pickup_window_uncached_with_hash(
     need_score: bool,
     need_denial: bool,
     opponent_mana: Mana,
-    board_hash: u64,
+    _board_hash: u64,
 ) -> ExactDrainerPickupWindow {
     update_exact_query_diagnostics(|diagnostics| diagnostics.pickup_path_calls += 1);
 
@@ -3383,7 +3475,7 @@ fn exact_drainer_pickup_window_uncached_with_hash(
         return ExactDrainerPickupWindow::default();
     }
 
-    let mut actor_move_memo = ExactActorMoveMemo::new(board_hash);
+    let mut actor_move_memo = ExactDrainerMoveMemo::new();
     let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
     let mut seen = ExactPayloadSeen::new();
     queue.push_back((start, ExactActorPayload::None, 0));
@@ -3418,20 +3510,17 @@ fn exact_drainer_pickup_window_uncached_with_hash(
                 need_denial,
                 opponent_mana,
             )
-            .map_or(true, |lower_bound| steps.saturating_add(lower_bound) > limit)
+            .map_or(true, |lower_bound| {
+                steps.saturating_add(lower_bound) > limit
+            })
         }) {
             continue;
         }
 
         for &next in location.nearby_locations_ref() {
-            if let Some(next_payload) = actor_move_memo.payload_after_move(
-                board,
-                MonKind::Drainer,
-                color,
-                payload,
-                next,
-                false,
-            ) {
+            if let Some(next_payload) =
+                actor_move_memo.payload_after_move(board, color, payload, next)
+            {
                 if seen.insert(next, next_payload) {
                     queue.push_back((next, next_payload, steps + 1));
                 }
@@ -3632,7 +3721,7 @@ fn exact_best_drainer_pickup_path_filtered_with_hash(
     }
     update_exact_query_diagnostics(|diagnostics| diagnostics.pickup_path_cache_misses += 1);
 
-    let mut actor_move_memo = ExactActorMoveMemo::new(board_hash);
+    let mut actor_move_memo = ExactDrainerMoveMemo::new();
     let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
     let mut seen = ExactPayloadSeen::new();
     let start_state = (start, ExactActorPayload::None, 0);
@@ -3662,14 +3751,9 @@ fn exact_best_drainer_pickup_path_filtered_with_hash(
         }
 
         for &next in location.nearby_locations_ref() {
-            if let Some(next_payload) = actor_move_memo.payload_after_move(
-                board,
-                MonKind::Drainer,
-                color,
-                payload,
-                next,
-                false,
-            ) {
+            if let Some(next_payload) =
+                actor_move_memo.payload_after_move(board, color, payload, next)
+            {
                 if seen.insert(next, next_payload) {
                     queue.push_back((next, next_payload, steps + 1));
                 }
@@ -7434,6 +7518,48 @@ mod tests {
             ExactActorPayload::None,
             Location::new(6, 5),
             false,
+        );
+        let diagnostics = exact_query_diagnostics_snapshot();
+
+        assert_eq!(first, second);
+        assert_eq!(diagnostics.actor_payload_after_move_calls, 1);
+    }
+
+    #[test]
+    fn exact_drainer_move_memo_reuses_same_board_lookup() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let mut memo = ExactDrainerMoveMemo::new();
+
+        let first = memo.payload_after_move(
+            &board,
+            Color::White,
+            ExactActorPayload::None,
+            Location::new(6, 5),
+        );
+        let second = memo.payload_after_move(
+            &board,
+            Color::White,
+            ExactActorPayload::None,
+            Location::new(6, 5),
         );
         let diagnostics = exact_query_diagnostics_snapshot();
 
