@@ -1116,6 +1116,8 @@ pub(crate) struct ExactQueryDiagnostics {
     pub exact_secure_mana_calls: u32,
     #[cfg(any(target_arch = "wasm32", test))]
     pub exact_secure_mana_cache_hits: u32,
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub exact_secure_drainer_walk_apply_calls: u32,
     pub pickup_path_calls: u32,
     pub pickup_path_cache_hits: u32,
     pub pickup_path_cache_misses: u32,
@@ -4021,6 +4023,19 @@ fn exact_drainer_to_any_mana_steps(board: &Board, color: Color, start: Location)
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_distance_to_wanted_mana_steps_lower_bound(
+    board: &Board,
+    wanted: Mana,
+    start: Location,
+) -> Option<i32> {
+    board.occupied().filter_map(|(location, item)| match item {
+        Item::Mana { mana } if *mana == wanted => Some(start.distance(&location)),
+        _ => None,
+    }).min()
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
 fn exact_secure_specific_mana_steps_this_turn(
     game: &MonsGame,
     color: Color,
@@ -4052,6 +4067,17 @@ pub(crate) fn exact_secure_specific_mana_steps_on_board(
     remaining_moves: i32,
 ) -> Option<i32> {
     if remaining_moves < 0 {
+        return None;
+    }
+    let drainer_location = find_awake_drainer(board, color)?;
+    let holding_wanted = matches!(
+        board.item(drainer_location),
+        Some(Item::MonWithMana { mana, .. }) if *mana == wanted
+    );
+    if !holding_wanted
+        && exact_distance_to_wanted_mana_steps_lower_bound(board, wanted, drainer_location)
+            .map_or(true, |lower_bound| lower_bound > remaining_moves)
+    {
         return None;
     }
 
@@ -4165,10 +4191,11 @@ fn exact_secure_specific_mana_steps_in_game_uncached_at_mut(
     state_key: ExactSecureManaStateKey,
     cache: &mut ExactSecureManaCache,
 ) -> Option<i32> {
-    if matches!(
+    let holding_wanted = matches!(
         game.board.item(drainer_location),
         Some(Item::MonWithMana { mana, .. }) if *mana == wanted
-    ) {
+    );
+    if holding_wanted {
         if is_drainer_exactly_safe_next_turn_on_board(&game.board, color, drainer_location) {
             return Some(0);
         }
@@ -4177,9 +4204,29 @@ fn exact_secure_specific_mana_steps_in_game_uncached_at_mut(
     if game.active_color != color || !game.player_can_move_mon() {
         return None;
     }
+    let remaining_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
+    if !holding_wanted
+        && exact_distance_to_wanted_mana_steps_lower_bound(&game.board, wanted, drainer_location)
+            .map_or(true, |lower_bound| lower_bound > remaining_moves)
+    {
+        return None;
+    }
 
     let mut best = None;
     for &next in drainer_location.nearby_locations_ref() {
+        if !holding_wanted {
+            let next_picks_wanted = matches!(
+                game.board.item(next),
+                Some(Item::Mana { mana }) if *mana == wanted
+            );
+            let remaining_after_step = remaining_moves.saturating_sub(1);
+            if !next_picks_wanted
+                && exact_distance_to_wanted_mana_steps_lower_bound(&game.board, wanted, next)
+                    .map_or(true, |lower_bound| lower_bound > remaining_after_step)
+            {
+                continue;
+            }
+        }
         let Some(transition) =
             exact_apply_secure_drainer_walk_in_place(game, state_key, drainer_location, next)
         else {
@@ -4457,6 +4504,9 @@ fn exact_apply_secure_drainer_walk_in_place(
     from: Location,
     to: Location,
 ) -> Option<ExactSecureDrainerWalkMutation> {
+    update_exact_query_diagnostics(|diagnostics| {
+        diagnostics.exact_secure_drainer_walk_apply_calls += 1
+    });
     if !exact_walk_destination_plausible(&game.board, from, to) {
         return None;
     }
@@ -8738,6 +8788,45 @@ mod tests {
         assert_eq!(
             exact_secure_specific_mana_steps_on_board(&board, Color::White, Mana::Supermana, 1),
             Some(1)
+        );
+    }
+
+    #[test]
+    fn exact_secure_specific_mana_steps_far_target_returns_none_without_walk_mutation() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(10, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+
+        assert_eq!(
+            exact_secure_specific_mana_steps_on_board(&board, Color::White, Mana::Supermana, 3),
+            None
+        );
+        assert_eq!(
+            exact_query_diagnostics_snapshot().exact_secure_drainer_walk_apply_calls,
+            0
         );
     }
 
