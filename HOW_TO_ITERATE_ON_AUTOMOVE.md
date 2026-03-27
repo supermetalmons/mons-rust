@@ -12,6 +12,13 @@ Archived profile IDs are invalid by design. New iteration work must stay on the 
 4. Run the cheap-to-expensive Pro loop in order.
 5. Kill flat lines immediately and compress the lesson before starting another split.
 
+## Focused Pro Goal
+
+- The focused Pro target is now explicit: `runtime_pro_turn_engine_v30` must beat `runtime_current` in direct Pro-vs-Pro duels with `win_rate >= 0.90` while staying at `candidate_avg_move_ms <= 700`.
+- Move time means candidate decision-selection time on candidate turns only inside completed Pro-vs-Pro duel games against `runtime_current`.
+- Do not count compile time, harness startup, or `game.process_input(...)` in that move-time budget.
+- A stalled or incomplete duel run is not promotable evidence, even if hotspot probes or one-game samples look good.
+
 ## Retained Profile Surface
 
 Current runtime and baselines:
@@ -96,27 +103,36 @@ Kill the line if:
 
 What it means:
 - Required stamp before duel stages unless you intentionally skip it for diagnostics.
-- Runs the stage-1 CPU non-regression gate and exact-lite diagnostics gate.
+- Runs the stage-1 CPU report and exact-lite diagnostics gate.
+
+Pro interpretation:
+- For Pro candidates, stage-1 CPU is advisory only.
+- Exact-lite diagnostics are still a hard gate.
+- Fast and normal candidates still use the old hard stage-1 CPU rejection rule.
 
 Kill the line if:
-- Stage-1 CPU regresses.
 - Exact-lite diagnostics regress.
 - The candidate needs more wrapper knobs just to survive preflight.
 
 ### 4. `pro-reliability`
 
 What it means:
-- First real Pro promotion gate.
-- Direct Pro-vs-Pro duel evidence against `runtime_current`.
+- Focused Pro duel gate.
+- Direct Pro-vs-Pro win-rate and move-time evidence against `runtime_current`.
 
 Use it to decide:
-- Whether the candidate is promotable.
+- Whether the candidate earns confirmation spend.
 - Whether the live wall moved to a new code surface.
 - Whether the next split should be a shared exact/search cut or a minimal fixture addition.
 
+Pass rule:
+- Pass only when the run completes, `win_rate >= 0.90`, `confidence >= 0.99`, and `candidate_avg_move_ms <= 700`.
+- The focused corpus defaults are `3` repeats, `2` games per repeat, mirrored play, `max_plies=96`.
+
 Kill the line if:
 - The first direct duel signal is flat or negative.
-- The run still does not finish in a practical window and you do not have a new code hypothesis.
+- The run does not complete.
+- The candidate clears win rate but blows the move-time budget.
 - The wall stays where it already was after a focused split.
 
 ## Diagnostic Ladder
@@ -140,10 +156,16 @@ Do not do these by default:
 These stages are not part of the default Pro loop. Use them only after `pro-reliability` earns more spend.
 
 ```sh
+./scripts/run-automove-experiment.sh pro-reliability-confirm runtime_pro_turn_engine_v30 runtime_current
 ./scripts/run-automove-experiment.sh pro-fast-screen runtime_pro_turn_engine_v30 runtime_current
 ./scripts/run-automove-experiment.sh pro-progressive runtime_pro_turn_engine_v30 runtime_current
 ./scripts/run-automove-experiment.sh pro-ladder runtime_pro_turn_engine_v30 runtime_current
 ```
+
+`pro-reliability-confirm` is the final Pro-vs-current confirmation stage before promotion:
+- It uses the same pass rule as `pro-reliability`.
+- Its confirmation corpus defaults are `4` repeats, `4` games per repeat, mirrored play, `max_plies=96`.
+- Promote only after `pro-reliability-confirm` completes cleanly and still clears both the `>= 0.90` win-rate floor and the `<= 700ms` candidate average move-time budget.
 
 ## Compatibility Surface
 

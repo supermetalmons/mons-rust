@@ -10,8 +10,8 @@ usage:
 
 stages:
   guardrails      tactical guardrails only; the cheap first gate before triage
-  runtime-preflight stage-1 cpu gate + exact-lite diagnostics; writes the duel stamp
-  preflight       tactical guardrails + stage-1 cpu gate + exact-lite diagnostics; also writes the duel stamp
+  runtime-preflight stage-1 cpu report (advisory for Pro) + exact-lite diagnostics; writes the duel stamp
+  preflight       tactical guardrails + stage-1 cpu report (advisory for Pro) + exact-lite diagnostics; also writes the duel stamp
   triage-calibrate fixed retained-profile calibration for reply_risk/supermana/opponent_mana
   triage          fixed-cost deterministic triage for fast/normal (requires SMART_TRIAGE_SURFACE)
   audit-screen    cheap duel-only audit for an occasional triage reject; honors SMART_PROMOTION_TARGET_MODE=fast|normal
@@ -23,7 +23,8 @@ stages:
   pro-opening-speed-probe diagnostic opening-reply latency compare on fixed pro fixtures
   pro-audit-screen cheap pro duel-only audit for an occasional pro-triage reject
   pro-pre-screen  legacy reject-only pro screen vs normal and fast with tighter budgets
-  pro-reliability direct pro-vs-pro reliability gate against the baseline; requires the duel stamp
+  pro-reliability focused pro-vs-pro reliability gate against the baseline; requires the duel stamp
+  pro-reliability-confirm larger pro-vs-pro confirmation gate against the baseline; requires the duel stamp
   pro-fast-screen duel-only pro fast screens vs normal and fast; requires the duel stamp
   pro-progressive duel-only pro progressive duels vs normal and fast; requires the duel stamp
   pro-ladder      duel-only strict pro promotion ladder; requires the duel stamp
@@ -48,6 +49,7 @@ examples:
   ./scripts/run-automove-experiment.sh pro-opening-speed-probe runtime_pro_turn_engine_v30 runtime_current
   ./scripts/run-automove-experiment.sh pro-audit-screen runtime_pro_turn_engine_v30 runtime_current
   ./scripts/run-automove-experiment.sh pro-reliability runtime_pro_turn_engine_v30 runtime_current
+  ./scripts/run-automove-experiment.sh pro-reliability-confirm runtime_pro_turn_engine_v30 runtime_current
   ./scripts/run-automove-experiment.sh pro-ladder runtime_eff_exact_lite_v1 runtime_release_safe_pre_exact
 EOF_HELP
 }
@@ -250,9 +252,11 @@ run_pro_progressive() {
 }
 
 run_pro_reliability_gate() {
+  local run_name="$1"
+  shift
   local extra_env=("$@")
   run_cargo_logged \
-    "pro_reliability_${candidate}" \
+    "${run_name}" \
     "smart_automove_pool_pro_reliability_gate" \
     "SMART_GATE_BASELINE_PROFILE=${baseline}" \
     "SMART_PRO_BASELINE_PROFILE=${baseline}" \
@@ -341,6 +345,7 @@ case "${stage}" in
     stage1_extra_env=()
     if [[ "${candidate}" == runtime_pro_* ]]; then
       stage1_extra_env+=("SMART_STAGE1_INCLUDE_PRO=true")
+      stage1_extra_env+=("SMART_STAGE1_CPU_ADVISORY=true")
     fi
     run_cargo_logged "stage1_cpu_${candidate}" "smart_automove_pool_stage1_cpu_non_regression_gate" "${stage1_extra_env[@]}"
     run_cargo_logged "exact_lite_diag_${candidate}" "smart_automove_pool_exact_lite_diagnostics_gate"
@@ -352,6 +357,7 @@ case "${stage}" in
     stage1_extra_env=()
     if [[ "${candidate}" == runtime_pro_* ]]; then
       stage1_extra_env+=("SMART_STAGE1_INCLUDE_PRO=true")
+      stage1_extra_env+=("SMART_STAGE1_CPU_ADVISORY=true")
     fi
     run_cargo_logged "stage1_cpu_${candidate}" "smart_automove_pool_stage1_cpu_non_regression_gate" "${stage1_extra_env[@]}"
     run_cargo_logged "exact_lite_diag_${candidate}" "smart_automove_pool_exact_lite_diagnostics_gate"
@@ -413,7 +419,21 @@ case "${stage}" in
     ;;
   pro-reliability)
     require_fresh_preflight_stamp "${candidate}"
-    run_pro_reliability_gate "SMART_SKIP_RUNTIME_PREFLIGHT=true"
+    run_pro_reliability_gate \
+      "pro_reliability_${candidate}" \
+      "SMART_PRO_RELIABILITY_REPEATS=3" \
+      "SMART_PRO_RELIABILITY_GAMES=2" \
+      "SMART_PRO_RELIABILITY_MAX_PLIES=96" \
+      "SMART_SKIP_RUNTIME_PREFLIGHT=true"
+    ;;
+  pro-reliability-confirm)
+    require_fresh_preflight_stamp "${candidate}"
+    run_pro_reliability_gate \
+      "pro_reliability_confirm_${candidate}" \
+      "SMART_PRO_RELIABILITY_REPEATS=4" \
+      "SMART_PRO_RELIABILITY_GAMES=4" \
+      "SMART_PRO_RELIABILITY_MAX_PLIES=96" \
+      "SMART_SKIP_RUNTIME_PREFLIGHT=true"
     ;;
   pro-fast-screen)
     require_fresh_preflight_stamp "${candidate}"

@@ -364,6 +364,33 @@ pub(super) fn run_budget_duel_series(
     stats
 }
 
+pub(super) fn run_budget_duel_series_with_timing(
+    model_a: AutomoveModel,
+    budget_a: SearchBudget,
+    model_b: AutomoveModel,
+    budget_b: SearchBudget,
+    games: usize,
+    seed: u64,
+    max_plies: usize,
+) -> TimedMatchupStats {
+    let opening_fens = generate_opening_fens_cached(seed, games.max(1));
+    let mut stats = TimedMatchupStats::default();
+    for game_index in 0..games.max(1) {
+        let a_is_white = game_index % 2 == 0;
+        let (result, timing) = play_one_game_budget_duel_with_timing(
+            model_a,
+            budget_a,
+            model_b,
+            budget_b,
+            a_is_white,
+            opening_fens[game_index].as_str(),
+            max_plies,
+        );
+        stats.record(result, timing);
+    }
+    stats
+}
+
 pub(super) fn play_one_game_budget_duel(
     model_a: AutomoveModel,
     budget_a: SearchBudget,
@@ -425,6 +452,87 @@ pub(super) fn play_one_game_budget_duel(
         Some(winner_color) => match_result_from_winner(winner_color, a_is_white),
         None => MatchResult::Draw,
     }
+}
+
+pub(super) fn play_one_game_budget_duel_with_timing(
+    model_a: AutomoveModel,
+    budget_a: SearchBudget,
+    model_b: AutomoveModel,
+    budget_b: SearchBudget,
+    a_is_white: bool,
+    opening_fen: &str,
+    max_plies: usize,
+) -> (MatchResult, DuelTimingStats) {
+    let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
+    clear_exact_state_analysis_cache();
+    clear_turn_opportunity_plan_cache();
+    clear_turn_engine_plan_cache();
+    clear_turn_engine_selector_diagnostics();
+    let use_white_opening_book = env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false);
+    let mut timing = DuelTimingStats::default();
+
+    for _ in 0..max_plies {
+        if let Some(winner_color) = game.winner_color() {
+            return (match_result_from_winner(winner_color, a_is_white), timing);
+        }
+
+        let a_to_move = if a_is_white {
+            game.active_color == Color::White
+        } else {
+            game.active_color == Color::Black
+        };
+        let (actor_model, actor_budget) = if a_to_move {
+            (model_a, budget_a)
+        } else {
+            (model_b, budget_b)
+        };
+
+        let config = actor_budget.runtime_config_for_game(&game);
+        let start = Instant::now();
+        let inputs = if use_white_opening_book {
+            MonsGameModel::white_first_turn_opening_next_inputs(&game).unwrap_or_else(|| {
+                select_inputs_with_runtime_fallback(actor_model.select_inputs, &game, config)
+            })
+        } else {
+            select_inputs_with_runtime_fallback(actor_model.select_inputs, &game, config)
+        };
+        let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+        if a_to_move {
+            timing.record_candidate_turn(elapsed_ms);
+        } else {
+            timing.record_baseline_turn(elapsed_ms);
+        }
+
+        if inputs.is_empty() {
+            return (
+                if a_to_move {
+                    MatchResult::OpponentWin
+                } else {
+                    MatchResult::CandidateWin
+                },
+                timing,
+            );
+        }
+
+        if !matches!(game.process_input(inputs, false, false), Output::Events(_)) {
+            return (
+                if a_to_move {
+                    MatchResult::OpponentWin
+                } else {
+                    MatchResult::CandidateWin
+                },
+                timing,
+            );
+        }
+    }
+
+    (
+        match adjudicate_non_terminal_game(&game) {
+            Some(winner_color) => match_result_from_winner(winner_color, a_is_white),
+            None => MatchResult::Draw,
+        },
+        timing,
+    )
 }
 
 pub(super) fn match_result_from_winner(
@@ -760,6 +868,18 @@ pub(super) fn mirrored_candidate_stats(ab: MatchupStats, ba: MatchupStats) -> Ma
     }
 }
 
+pub(super) fn mirrored_candidate_timing(
+    ab: DuelTimingStats,
+    ba: DuelTimingStats,
+) -> DuelTimingStats {
+    DuelTimingStats {
+        candidate_total_ms: ab.candidate_total_ms + ba.baseline_total_ms,
+        baseline_total_ms: ab.baseline_total_ms + ba.candidate_total_ms,
+        candidate_turns: ab.candidate_turns + ba.baseline_turns,
+        baseline_turns: ab.baseline_turns + ba.candidate_turns,
+    }
+}
+
 pub(super) fn run_cross_budget_duel(config: CrossBudgetDuelConfig<'_>) -> MatchupStats {
     let Some(selector_a) = profile_selector_from_name(config.profile_a) else {
         panic!(
@@ -835,6 +955,106 @@ pub(super) fn run_cross_budget_duel(config: CrossBudgetDuelConfig<'_>) -> Matchu
                 aggregate.total_games(),
                 delta,
                 confidence,
+            );
+        }
+    }
+
+    if let Some(previous) = original_max_plies {
+        env::set_var("SMART_POOL_MAX_PLIES", previous);
+    } else {
+        env::remove_var("SMART_POOL_MAX_PLIES");
+    }
+    if let Some(previous) = original_opening_book {
+        env::set_var("SMART_USE_WHITE_OPENING_BOOK", previous);
+    } else {
+        env::remove_var("SMART_USE_WHITE_OPENING_BOOK");
+    }
+
+    aggregate
+}
+
+pub(super) fn run_cross_budget_duel_with_timing(
+    config: CrossBudgetDuelConfig<'_>,
+) -> TimedMatchupStats {
+    let Some(selector_a) = profile_selector_from_name(config.profile_a) else {
+        panic!(
+            "unknown profile for cross-budget duel A: {}",
+            config.profile_a
+        );
+    };
+    let Some(selector_b) = profile_selector_from_name(config.profile_b) else {
+        panic!(
+            "unknown profile for cross-budget duel B: {}",
+            config.profile_b
+        );
+    };
+
+    let model_a = AutomoveModel {
+        id: "cross_budget_a",
+        select_inputs: selector_a,
+    };
+    let model_b = AutomoveModel {
+        id: "cross_budget_b",
+        select_inputs: selector_b,
+    };
+    let budget_a = SearchBudget::from_preference(config.mode_a);
+    let budget_b = SearchBudget::from_preference(config.mode_b);
+
+    let original_max_plies = env::var("SMART_POOL_MAX_PLIES").ok();
+    let original_opening_book = env::var("SMART_USE_WHITE_OPENING_BOOK").ok();
+    env::set_var("SMART_POOL_MAX_PLIES", config.max_plies.to_string());
+    env::set_var(
+        "SMART_USE_WHITE_OPENING_BOOK",
+        if config.use_white_opening_book {
+            "true"
+        } else {
+            "false"
+        },
+    );
+
+    let mut aggregate = TimedMatchupStats::default();
+    let progress = env_bool("SMART_DUEL_PROGRESS").unwrap_or(false);
+    for repeat_index in 0..config.repeats.max(1) {
+        let seed =
+            seed_for_budget_duel_repeat_and_tag(budget_a, budget_b, repeat_index, config.seed_tag);
+        let ab = run_budget_duel_series_with_timing(
+            model_a,
+            budget_a,
+            model_b,
+            budget_b,
+            config.games_per_repeat.max(1),
+            seed,
+            config.max_plies,
+        );
+        let ba = run_budget_duel_series_with_timing(
+            model_b,
+            budget_b,
+            model_a,
+            budget_a,
+            config.games_per_repeat.max(1),
+            seed,
+            config.max_plies,
+        );
+        aggregate.matchup.merge(mirrored_candidate_stats(ab.matchup, ba.matchup));
+        aggregate
+            .timing
+            .merge(mirrored_candidate_timing(ab.timing, ba.timing));
+        if progress {
+            let (delta, confidence) = stats_delta_confidence(aggregate.matchup);
+            println!(
+                "cross-budget progress: {}({}) vs {}({}) seed={} repeat={}/{} games={} delta={:.4} confidence={:.3} candidate_avg_ms={:.2} baseline_avg_ms={:.2}",
+                config.profile_a,
+                config.mode_a.as_api_value(),
+                config.profile_b,
+                config.mode_b.as_api_value(),
+                config.seed_tag,
+                repeat_index + 1,
+                config.repeats.max(1),
+                aggregate.matchup.total_games(),
+                delta,
+                confidence,
+                aggregate.timing.candidate_avg_ms(),
+                aggregate.timing.baseline_avg_ms(),
             );
         }
     }

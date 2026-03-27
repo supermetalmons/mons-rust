@@ -27,6 +27,7 @@ const SMART_PRO_PROGRESSIVE_MEANINGFUL_DELTA_MIN: f64 = 0.04;
 const SMART_PRO_PROGRESSIVE_MEANINGFUL_CONFIDENCE_MIN: f64 = 0.65;
 pub(super) const SMART_PRO_RELIABILITY_WIN_RATE_MIN: f64 = 0.90;
 pub(super) const SMART_PRO_RELIABILITY_CONFIDENCE_MIN: f64 = 0.99;
+pub(super) const SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX: f64 = 700.0;
 const SMART_PRO_PRIMARY_IMPROVEMENT_DELTA_MIN_VS_NORMAL: f64 = 0.08;
 const SMART_PRO_PRIMARY_IMPROVEMENT_DELTA_MIN_VS_FAST: f64 = 0.08;
 const SMART_PRO_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN: f64 = 0.90;
@@ -143,6 +144,54 @@ impl MatchupStats {
         }
         let p_value = one_sided_binomial_p_value(self.wins, decisive_games);
         (1.0_f64 - p_value).clamp(0.0, 1.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct DuelTimingStats {
+    candidate_total_ms: f64,
+    baseline_total_ms: f64,
+    candidate_turns: usize,
+    baseline_turns: usize,
+}
+
+impl DuelTimingStats {
+    fn record_candidate_turn(&mut self, elapsed_ms: f64) {
+        self.candidate_total_ms += elapsed_ms;
+        self.candidate_turns += 1;
+    }
+
+    fn record_baseline_turn(&mut self, elapsed_ms: f64) {
+        self.baseline_total_ms += elapsed_ms;
+        self.baseline_turns += 1;
+    }
+
+    fn merge(&mut self, other: DuelTimingStats) {
+        self.candidate_total_ms += other.candidate_total_ms;
+        self.baseline_total_ms += other.baseline_total_ms;
+        self.candidate_turns += other.candidate_turns;
+        self.baseline_turns += other.baseline_turns;
+    }
+
+    fn candidate_avg_ms(&self) -> f64 {
+        self.candidate_total_ms / self.candidate_turns.max(1) as f64
+    }
+
+    fn baseline_avg_ms(&self) -> f64 {
+        self.baseline_total_ms / self.baseline_turns.max(1) as f64
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct TimedMatchupStats {
+    matchup: MatchupStats,
+    timing: DuelTimingStats,
+}
+
+impl TimedMatchupStats {
+    fn record(&mut self, result: MatchResult, timing: DuelTimingStats) {
+        self.matchup.record(result);
+        self.timing.merge(timing);
     }
 }
 
