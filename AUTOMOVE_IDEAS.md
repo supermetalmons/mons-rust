@@ -83,6 +83,7 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - wrapper-level `runtime_current` fallback widening or narrowing
   - projected-completion acceptance clamps for traced plain-spirit followup bundles
   - positive attack/safety-edge plain-spirit acceptance clamps
+  - single traced pair clamps that only fix one black safe-followup acceptance case or one late-white setup-progress comparator
   - attack-target setup tables
   - sort removal
   - full-board direct scans on sparse search helpers
