@@ -72,6 +72,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - Attack reach also admits per-state lower-bound pruning after the impossible-attacker and mana-state cuts. If a state's cheapest exact-safe path to either an action source or a bomb attack still exceeds the remaining budget, skip expanding it.
 - Do not assume broader query-aware actor gating on spirit after-window masks will help either. Even when low-score carrier and drainer neighborhoods drop out on score/denial-only paths under optimistic one-step preview relevance checks, the live hotspot can stay flat with unchanged payload work.
 - Do not assume local precomputed target-lower-bound tables will help either. Replacing repeated attack action/bomb lower-bound arithmetic with per-target arrays can regress badly if the table build cost exceeds the saved repeated checks.
+- Do not assume enabling full scoring-side attack summaries will help either. On the live `runtime_pro_turn_engine_v30` wall, turning on local scoring attack summaries and target narrowing can explode summary builds while leaving `payload_calls` flat and regressing wall-clock, so repeated scoring attack/threat point queries are not the right surface for full-board summary construction.
+- Do not assume lighter attack-side cache reuse is automatically worth keeping either. Removing a duplicated uncached attack prescan, caching exact drainer immediate-threat point queries, and reusing monotonic attack results across nearby budgets can all reduce counters (`threat_calls`, `attack_hits`, or a few `payload_calls`) while leaving the live hotspot flat to worse; if `human_win_pro_a` does not move materially, those fixed-cost attack/threat helpers are not the next wall.
 
 ## Mistakes Not To Repeat
 
