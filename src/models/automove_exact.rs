@@ -1127,6 +1127,8 @@ pub(crate) struct ExactQueryDiagnostics {
     #[cfg(any(target_arch = "wasm32", test))]
     pub exact_secure_mana_cache_hits: u32,
     #[cfg(any(target_arch = "wasm32", test))]
+    pub exact_secure_mana_board_cache_hits: u32,
+    #[cfg(any(target_arch = "wasm32", test))]
     pub exact_secure_drainer_walk_apply_calls: u32,
     pub pickup_path_calls: u32,
     pub pickup_path_cache_hits: u32,
@@ -4216,6 +4218,23 @@ pub(crate) fn exact_secure_specific_mana_steps_on_board(
 
     let mons_moves_count =
         (Config::MONS_MOVES_PER_TURN - remaining_moves).clamp(0, Config::MONS_MOVES_PER_TURN);
+    let state = exact_secure_mana_state_key_from_board(board, color, mons_moves_count);
+    let key = ExactSecureManaQueryKey {
+        state,
+        color,
+        wanted,
+    };
+    if let Some(cached) =
+        EXACT_SECURE_MANA_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
+    {
+        update_exact_query_diagnostics(|diagnostics| {
+            diagnostics.exact_secure_mana_calls += 1;
+            diagnostics.exact_secure_mana_cache_hits += 1;
+            diagnostics.exact_secure_mana_board_cache_hits += 1;
+        });
+        return cached;
+    }
+
     let game = MonsGame::new_simulation_state(
         board.clone(),
         0,
@@ -4230,7 +4249,6 @@ pub(crate) fn exact_secure_specific_mana_steps_on_board(
     );
     // Non-terminal same-turn states still have the mana move available; exhausting it here
     // would make the synthetic game auto-end after one mon move and miss multi-step drainer paths.
-    let state = exact_secure_mana_state_key_from_board(board, color, mons_moves_count);
     exact_secure_specific_mana_steps_in_game_with_key(&game, color, wanted, state)
 }
 
@@ -9080,6 +9098,53 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first, third);
     }
+
+    #[test]
+    fn exact_secure_mana_on_board_hits_cache_before_game_build() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 5),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+
+        let first =
+            exact_secure_specific_mana_steps_on_board(&board, Color::White, Mana::Supermana, 5);
+        let first_diagnostics = exact_query_diagnostics_snapshot();
+        let second =
+            exact_secure_specific_mana_steps_on_board(&board, Color::White, Mana::Supermana, 5);
+        let second_diagnostics = exact_query_diagnostics_snapshot();
+
+        assert_eq!(first, Some(1));
+        assert_eq!(second, first);
+        assert_eq!(first_diagnostics.exact_secure_mana_board_cache_hits, 0);
+        assert_eq!(second_diagnostics.exact_secure_mana_board_cache_hits, 1);
+        assert_eq!(
+            second_diagnostics.exact_secure_drainer_walk_apply_calls,
+            first_diagnostics.exact_secure_drainer_walk_apply_calls,
+        );
+    }
+
     #[test]
     fn exact_secure_mana_steps_find_shortest_supermana_score_path() {
         clear_exact_state_analysis_cache();
