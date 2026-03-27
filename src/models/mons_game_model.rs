@@ -1654,7 +1654,6 @@ pub(crate) struct RootSearchProbe {
     pub final_selected_move_fen: String,
 }
 
-#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct TurnEngineSelectorDiagnostics {
     pub head_plan_calls: usize,
