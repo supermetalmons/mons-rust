@@ -81,6 +81,7 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - board-scoped memo-shape experiments
   - broad search-budget or reply-budget increases without a new selector/root-choice hypothesis
   - wrapper-level `runtime_current` fallback widening or narrowing
+  - narrow white turn-three action+mana wrapper compares to the shared current line when they only drop the focused gate back to the old `0.8333 / 0.9807` band
   - narrow white turn-three mana-only wrapper reroutes, including the `mons_moves==1` and `mons_moves==3` score-window followup slices, when they only keep confirmation quality flat
   - exact first-disagreement profile fallbacks for traced live loss FENs
   - projected-completion acceptance clamps for traced plain-spirit followup bundles
