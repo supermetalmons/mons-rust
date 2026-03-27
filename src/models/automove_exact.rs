@@ -1556,52 +1556,76 @@ fn exact_attack_target_plausible_on_board(
         if mon.color != attacker_color || mon.is_fainted() {
             continue;
         }
-
-        if matches!(
-            item,
-            Item::MonWithConsumable {
-                consumable: Consumable::Bomb,
-                ..
-            }
-        ) && location.distance(&target) <= remaining_moves + 3
-        {
+        if exact_attack_target_plausible_for_attacker(
+            target,
+            remaining_moves,
+            target_guarded,
+            location,
+            *item,
+            *mon,
+            &bomb_pickup_locations,
+        ) {
             return true;
         }
+    }
 
-        if !target_guarded {
-            let action_distance = match mon.kind {
-                MonKind::Mystic => target
-                    .reachable_by_mystic_action_ref()
-                    .iter()
-                    .map(|source| location.distance(source))
-                    .min()
-                    .unwrap_or(i32::MAX),
-                MonKind::Demon => target
-                    .reachable_by_demon_action_ref()
-                    .iter()
-                    .map(|source| location.distance(source))
-                    .min()
-                    .unwrap_or(i32::MAX),
-                MonKind::Drainer | MonKind::Angel | MonKind::Spirit => i32::MAX,
-            };
-            if action_distance <= remaining_moves {
-                return true;
-            }
+    false
+}
+
+#[inline]
+fn exact_attack_target_plausible_for_attacker(
+    target: Location,
+    remaining_moves: i32,
+    target_guarded: bool,
+    location: Location,
+    item: Item,
+    mon: Mon,
+    bomb_pickup_locations: &[Location],
+) -> bool {
+    if matches!(
+        item,
+        Item::MonWithConsumable {
+            consumable: Consumable::Bomb,
+            ..
         }
+    ) && location.distance(&target) <= remaining_moves + 3
+    {
+        return true;
+    }
 
-        if matches!(item, Item::MonWithMana { .. }) {
+    if !target_guarded {
+        let action_distance = match mon.kind {
+            MonKind::Mystic => target
+                .reachable_by_mystic_action_ref()
+                .iter()
+                .map(|source| location.distance(source))
+                .min()
+                .unwrap_or(i32::MAX),
+            MonKind::Demon => target
+                .reachable_by_demon_action_ref()
+                .iter()
+                .map(|source| location.distance(source))
+                .min()
+                .unwrap_or(i32::MAX),
+            MonKind::Drainer | MonKind::Angel | MonKind::Spirit => i32::MAX,
+        };
+        if action_distance <= remaining_moves {
+            return true;
+        }
+    }
+
+    if matches!(item, Item::MonWithMana { .. }) {
+        return false;
+    }
+
+    for bomb_location in bomb_pickup_locations {
+        let to_bomb = location.distance(bomb_location);
+        if to_bomb > remaining_moves {
             continue;
         }
-
-        for bomb_location in &bomb_pickup_locations {
-            let to_bomb = location.distance(bomb_location);
-            if to_bomb > remaining_moves {
-                continue;
-            }
-            let moves_after_pickup = remaining_moves - to_bomb;
-            if bomb_location.distance(&target) <= moves_after_pickup + 3 {
-                return true;
-            }
+        let moves_after_pickup = remaining_moves - to_bomb;
+        if bomb_location.distance(&target) <= moves_after_pickup + 3 {
+            return true;
         }
     }
 
@@ -1731,7 +1755,8 @@ pub(crate) fn attack_reach_summary_for_targets_with_hash(
             }
 
             for &next in location.nearby_locations_ref() {
-                if let Some(next_payload) = actor_move_memo.payload_after_move(
+                if let Some(next_payload) = exact_attack_payload_after_move(
+                    &mut actor_move_memo,
                     board,
                     mon.kind,
                     mon.color,
@@ -1831,6 +1856,15 @@ fn can_attack_target_on_board_uncached(
     _can_use_action: bool,
 ) -> bool {
     let target_guarded = exact_is_location_guarded_by_angel(board, target_color, target);
+    let bomb_pickup_locations = board
+        .occupied()
+        .filter_map(|(location, item)| match item {
+            Item::Consumable {
+                consumable: Consumable::BombOrPotion,
+            } => Some(location),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
     let mut actor_move_memo = ExactActorMoveMemo::new(board_hash);
 
     for (start, item) in board.occupied() {
@@ -1841,6 +1875,17 @@ fn can_attack_target_on_board_uncached(
             Item::Mana { .. } | Item::Consumable { .. } => continue,
         };
         if mon.color != attacker_color || mon.is_fainted() {
+            continue;
+        }
+        if !exact_attack_target_plausible_for_attacker(
+            target,
+            remaining_moves,
+            target_guarded,
+            start,
+            *item,
+            *mon,
+            &bomb_pickup_locations,
+        ) {
             continue;
         }
         let allow_pick_bomb = !matches!(item, Item::MonWithMana { .. });
@@ -1881,7 +1926,8 @@ fn can_attack_target_on_board_uncached(
                 continue;
             }
             for &next in location.nearby_locations_ref() {
-                if let Some(next_payload) = actor_move_memo.payload_after_move(
+                if let Some(next_payload) = exact_attack_payload_after_move(
+                    &mut actor_move_memo,
                     board,
                     mon.kind,
                     mon.color,
@@ -1897,6 +1943,32 @@ fn can_attack_target_on_board_uncached(
         }
     }
     false
+}
+
+#[inline]
+fn exact_attack_payload_after_move(
+    actor_move_memo: &mut ExactActorMoveMemo,
+    board: &Board,
+    mon_kind: MonKind,
+    color: Color,
+    payload: ExactActorPayload,
+    destination: Location,
+    allow_pick_bomb: bool,
+) -> Option<ExactActorPayload> {
+    if matches!(payload, ExactActorPayload::Mana(_))
+        || matches!(board.items[destination.index()], Some(Item::Mana { .. }))
+    {
+        return None;
+    }
+
+    actor_move_memo.payload_after_move(
+        board,
+        mon_kind,
+        color,
+        payload,
+        destination,
+        allow_pick_bomb,
+    )
 }
 
 pub(crate) fn exact_board_hash(board: &Board) -> u64 {
@@ -6344,6 +6416,84 @@ mod tests {
         .map(|result| result.steps)
     }
 
+    fn can_attack_target_on_board_uncached_baseline(
+        board: &Board,
+        attacker_color: Color,
+        target_color: Color,
+        target: Location,
+        remaining_moves: i32,
+    ) -> bool {
+        let target_guarded = exact_is_location_guarded_by_angel(board, target_color, target);
+        let mut actor_move_memo = ExactActorMoveMemo::new(exact_board_hash(board));
+
+        for (start, item) in board.occupied() {
+            let mon = match item {
+                Item::Mon { mon }
+                | Item::MonWithMana { mon, .. }
+                | Item::MonWithConsumable { mon, .. } => mon,
+                Item::Mana { .. } | Item::Consumable { .. } => continue,
+            };
+            if mon.color != attacker_color || mon.is_fainted() {
+                continue;
+            }
+            let allow_pick_bomb = !matches!(item, Item::MonWithMana { .. });
+            let start_payload = match item {
+                Item::MonWithConsumable {
+                    consumable: Consumable::Bomb,
+                    ..
+                } => ExactActorPayload::Bomb,
+                _ => ExactActorPayload::None,
+            };
+            let mut queue = VecDeque::with_capacity(EXACT_BFS_CAPACITY);
+            let mut seen = ExactPayloadSeen::new();
+            queue.push_back((start, start_payload, 0));
+            seen.insert(start, start_payload);
+
+            while let Some((location, payload, steps)) = queue.pop_front() {
+                if steps > remaining_moves {
+                    continue;
+                }
+                if payload == ExactActorPayload::Bomb
+                    && board.item(target).is_some()
+                    && location.distance(&target) <= 3
+                {
+                    return true;
+                }
+                if !matches!(board.square(location), Square::MonBase { .. }) && !target_guarded {
+                    if mon.kind == MonKind::Mystic
+                        && (location.i - target.i).abs() == 2
+                        && (location.j - target.j).abs() == 2
+                    {
+                        return true;
+                    }
+                    if mon.kind == MonKind::Demon && demon_has_line_attack(board, location, target)
+                    {
+                        return true;
+                    }
+                }
+                if steps == remaining_moves {
+                    continue;
+                }
+                for &next in location.nearby_locations_ref() {
+                    if let Some(next_payload) = actor_move_memo.payload_after_move(
+                        board,
+                        mon.kind,
+                        mon.color,
+                        payload,
+                        next,
+                        allow_pick_bomb,
+                    ) {
+                        if seen.insert(next, next_payload) {
+                            queue.push_back((next, next_payload, steps + 1));
+                        }
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
     fn assert_secure_drainer_walk_matches_process_input(
         game: &MonsGame,
         from: Location,
@@ -6881,9 +7031,9 @@ mod tests {
                     },
                 ),
                 (
-                    Location::new(2, 5),
+                    Location::new(4, 3),
                     Item::Mon {
-                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
                     },
                 ),
                 (
@@ -6994,6 +7144,70 @@ mod tests {
                 "target {target:?} should match moving attack parity",
             );
         }
+    }
+
+    #[test]
+    fn exact_attack_target_skips_irrelevant_drainer_before_payload_bfs() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 1),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(2, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+
+        let optimized = can_attack_target_on_board_with_hash(
+            &board,
+            board_hash,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            2,
+            true,
+        );
+        let optimized_calls = exact_query_diagnostics_snapshot().actor_payload_after_move_calls;
+
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let baseline = can_attack_target_on_board_uncached_baseline(
+            &board,
+            Color::Black,
+            Color::White,
+            Location::new(6, 5),
+            2,
+        );
+        let baseline_calls = exact_query_diagnostics_snapshot().actor_payload_after_move_calls;
+
+        assert_eq!(optimized, baseline);
+        assert!(optimized);
+        assert!(optimized_calls < baseline_calls);
     }
 
     #[test]
@@ -7143,8 +7357,12 @@ mod tests {
 
         clear_exact_state_analysis_cache();
         clear_exact_query_diagnostics();
-        let baseline =
-            exact_carrier_steps_generic_baseline(&board, Location::new(5, 5), Mana::Supermana, Some(5));
+        let baseline = exact_carrier_steps_generic_baseline(
+            &board,
+            Location::new(5, 5),
+            Mana::Supermana,
+            Some(5),
+        );
         let baseline_calls = exact_query_diagnostics_snapshot().actor_payload_after_move_calls;
 
         assert_eq!(optimized, baseline);
