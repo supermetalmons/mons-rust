@@ -78,6 +78,7 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - custom hashers
   - reverse carrier maps or reverse pickup maps
   - board-scoped memo-shape experiments
+  - broad early-turn profile fallback widening or narrowing
   - attack-target setup tables
   - sort removal
   - full-board direct scans on sparse search helpers
