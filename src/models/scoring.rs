@@ -146,22 +146,23 @@ impl ScoringBoardSummary {
     fn from_board(board: &Board) -> Self {
         let mut summary = Self::default();
 
-        for (location, item) in board.occupied() {
+        for (index, item) in board.items.iter().enumerate() {
+            let Some(item) = *item else { continue };
+            let location = Location::from_index(index);
             match item {
                 Item::Mana { mana } => {
                     let score_steps = distance(location, Destination::AnyClosestPool) - 1;
-                    summary.mana_entries.push(ScoringManaEntry {
-                        location,
-                        mana: *mana,
-                    });
+                    summary
+                        .mana_entries
+                        .push(ScoringManaEntry { location, mana });
                     if let Mana::Regular(color) = mana {
-                        let slot = color_slot(*color);
+                        let slot = color_slot(color);
                         summary.regular_mana_score_path_steps[slot] = Some(
                             summary.regular_mana_score_path_steps[slot]
                                 .map_or(score_steps + 1, |best| best.min(score_steps + 1)),
                         );
                         if score_steps <= 1 {
-                            summary.regular_mana_move_scores[slot] = mana.score(*color);
+                            summary.regular_mana_move_scores[slot] = mana.score(color);
                         }
                     }
                 }
@@ -181,7 +182,7 @@ impl ScoringBoardSummary {
                     }
 
                     let (legacy_plain_threat, exact_action_threat, exact_bomb_threat) =
-                        scoring_danger_source_flags(item, *mon);
+                        scoring_danger_source_flags(&item, mon);
                     let danger = ScoringDangerSource {
                         location,
                         legacy_plain_threat,
