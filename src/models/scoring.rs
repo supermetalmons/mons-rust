@@ -12,7 +12,7 @@ struct AttackReachSummaryMemo {
     entries: Vec<(ScoringAttackReachSummaryKey, crate::models::automove_exact::AttackReachSummary)>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ScoringDangerSource {
     location: Location,
     legacy_plain_threat: bool,
@@ -20,13 +20,83 @@ struct ScoringDangerSource {
     exact_bomb_threat: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ScoringManaEntry {
     location: Location,
     mana: Mana,
 }
 
-#[derive(Default)]
+#[inline]
+fn scoring_danger_source_flags(item: &Item, mon: Mon) -> (bool, bool, bool) {
+    let legacy_plain_threat = !matches!(item, Item::MonWithMana { .. })
+        && (mon.kind == MonKind::Mystic
+            || mon.kind == MonKind::Demon
+            || matches!(item, Item::MonWithConsumable { .. }));
+    let exact_action_threat = mon.kind == MonKind::Mystic || mon.kind == MonKind::Demon;
+    let exact_bomb_threat = matches!(
+        item,
+        Item::MonWithConsumable {
+            consumable: Consumable::Bomb,
+            ..
+        }
+    );
+    (
+        legacy_plain_threat,
+        exact_action_threat,
+        exact_bomb_threat,
+    )
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct ScoringBoardSummaryCounts {
+    mana_entries: usize,
+    live_mon_locations: [usize; 2],
+    live_drainer_locations: [usize; 2],
+    live_angel_locations: [usize; 2],
+    danger_sources: [usize; 2],
+    loose_consumable_locations: usize,
+}
+
+impl ScoringBoardSummaryCounts {
+    fn from_board(board: &Board) -> Self {
+        let mut counts = Self::default();
+
+        for item in board.items.iter().flatten() {
+            match item {
+                Item::Mana { .. } => {
+                    counts.mana_entries += 1;
+                }
+                Item::Mon { mon }
+                | Item::MonWithMana { mon, .. }
+                | Item::MonWithConsumable { mon, .. } => {
+                    if mon.is_fainted() {
+                        continue;
+                    }
+                    let color_slot = color_slot(mon.color);
+                    counts.live_mon_locations[color_slot] += 1;
+                    if mon.kind == MonKind::Drainer {
+                        counts.live_drainer_locations[color_slot] += 1;
+                    }
+                    if mon.kind == MonKind::Angel {
+                        counts.live_angel_locations[color_slot] += 1;
+                    }
+                    let (legacy_plain_threat, exact_action_threat, exact_bomb_threat) =
+                        scoring_danger_source_flags(item, *mon);
+                    if legacy_plain_threat || exact_action_threat || exact_bomb_threat {
+                        counts.danger_sources[color_slot] += 1;
+                    }
+                }
+                Item::Consumable { .. } => {
+                    counts.loose_consumable_locations += 1;
+                }
+            }
+        }
+
+        counts
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Default)]
 struct ScoringBoardSummary {
     mana_entries: Vec<ScoringManaEntry>,
     live_mon_locations: [Vec<Location>; 2],
@@ -39,8 +109,29 @@ struct ScoringBoardSummary {
 }
 
 impl ScoringBoardSummary {
+    fn with_capacities(counts: ScoringBoardSummaryCounts) -> Self {
+        Self {
+            mana_entries: Vec::with_capacity(counts.mana_entries),
+            live_mon_locations: std::array::from_fn(|idx| {
+                Vec::with_capacity(counts.live_mon_locations[idx])
+            }),
+            live_drainer_locations: std::array::from_fn(|idx| {
+                Vec::with_capacity(counts.live_drainer_locations[idx])
+            }),
+            live_angel_locations: std::array::from_fn(|idx| {
+                Vec::with_capacity(counts.live_angel_locations[idx])
+            }),
+            danger_sources: std::array::from_fn(|idx| {
+                Vec::with_capacity(counts.danger_sources[idx])
+            }),
+            loose_consumable_locations: Vec::with_capacity(counts.loose_consumable_locations),
+            regular_mana_move_scores: [0; 2],
+            regular_mana_score_path_steps: [None; 2],
+        }
+    }
+
     fn from_board(board: &Board) -> Self {
-        let mut summary = Self::default();
+        let mut summary = Self::with_capacities(ScoringBoardSummaryCounts::from_board(board));
 
         for (location, item) in board.occupied() {
             match item {
@@ -76,20 +167,13 @@ impl ScoringBoardSummary {
                         summary.live_angel_locations[color_slot].push(location);
                     }
 
+                    let (legacy_plain_threat, exact_action_threat, exact_bomb_threat) =
+                        scoring_danger_source_flags(item, *mon);
                     let danger = ScoringDangerSource {
                         location,
-                        legacy_plain_threat: !matches!(item, Item::MonWithMana { .. })
-                            && (mon.kind == MonKind::Mystic
-                                || mon.kind == MonKind::Demon
-                                || matches!(item, Item::MonWithConsumable { .. })),
-                        exact_action_threat: mon.kind == MonKind::Mystic || mon.kind == MonKind::Demon,
-                        exact_bomb_threat: matches!(
-                            item,
-                            Item::MonWithConsumable {
-                                consumable: Consumable::Bomb,
-                                ..
-                            }
-                        ),
+                        legacy_plain_threat,
+                        exact_action_threat,
+                        exact_bomb_threat,
                     };
                     if danger.legacy_plain_threat
                         || danger.exact_action_threat
@@ -3475,6 +3559,136 @@ mod tests {
                 Color::Black,
                 black_exact,
             ),
+        );
+    }
+
+    fn scoring_board_summary_without_capacity_prep(board: &Board) -> ScoringBoardSummary {
+        let mut summary = ScoringBoardSummary::default();
+
+        for (location, item) in board.occupied() {
+            match item {
+                Item::Mana { mana } => {
+                    let score_steps = distance(location, Destination::AnyClosestPool) - 1;
+                    summary.mana_entries.push(ScoringManaEntry {
+                        location,
+                        mana: *mana,
+                    });
+                    if let Mana::Regular(color) = mana {
+                        let slot = color_slot(*color);
+                        summary.regular_mana_score_path_steps[slot] = Some(
+                            summary.regular_mana_score_path_steps[slot]
+                                .map_or(score_steps + 1, |best| best.min(score_steps + 1)),
+                        );
+                        if score_steps <= 1 {
+                            summary.regular_mana_move_scores[slot] = mana.score(*color);
+                        }
+                    }
+                }
+                Item::Mon { mon }
+                | Item::MonWithMana { mon, .. }
+                | Item::MonWithConsumable { mon, .. } => {
+                    if mon.is_fainted() {
+                        continue;
+                    }
+                    let color_slot = color_slot(mon.color);
+                    summary.live_mon_locations[color_slot].push(location);
+                    if mon.kind == MonKind::Drainer {
+                        summary.live_drainer_locations[color_slot].push(location);
+                    }
+                    if mon.kind == MonKind::Angel {
+                        summary.live_angel_locations[color_slot].push(location);
+                    }
+
+                    let (legacy_plain_threat, exact_action_threat, exact_bomb_threat) =
+                        scoring_danger_source_flags(item, *mon);
+                    let danger = ScoringDangerSource {
+                        location,
+                        legacy_plain_threat,
+                        exact_action_threat,
+                        exact_bomb_threat,
+                    };
+                    if danger.legacy_plain_threat
+                        || danger.exact_action_threat
+                        || danger.exact_bomb_threat
+                    {
+                        summary.danger_sources[color_slot].push(danger);
+                    }
+                }
+                Item::Consumable { .. } => {
+                    summary.loose_consumable_locations.push(location);
+                }
+            }
+        }
+
+        summary
+    }
+
+    #[test]
+    fn scoring_board_summary_capacity_prep_preserves_summary_contents() {
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(7, 5),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(2, 8),
+                    Item::Mana {
+                        mana: Mana::Regular(Color::Black),
+                    },
+                ),
+                (
+                    Location::new(9, 3),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(8, 1),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(6, 6),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Angel, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(3, 2),
+                    Item::MonWithConsumable {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                        consumable: Consumable::Bomb,
+                    },
+                ),
+                (
+                    Location::new(1, 8),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 1),
+                    },
+                ),
+                (
+                    Location::new(5, 4),
+                    Item::Consumable {
+                        consumable: Consumable::Potion,
+                    },
+                ),
+            ],
+            Color::White,
+        );
+
+        assert_eq!(
+            ScoringBoardSummary::from_board(&game.board),
+            scoring_board_summary_without_capacity_prep(&game.board),
         );
     }
 
