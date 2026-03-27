@@ -11,14 +11,16 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Focused gate result:
   - `pro-reliability`
   - `12` games
-  - `win_rate=0.8333`
-  - `confidence=0.9807`
-  - `candidate_avg_ms=96.34`
+  - `win_rate=0.9167`
+  - `confidence=0.9968`
+  - `candidate_avg_ms=99.64`
 - Last confirmation result:
   - `pro-reliability-confirm`
-  - not rerun on the current retained cut because the focused gate still fails
-  - last completed confirm on the older weaker cut: `32` games, `win_rate=0.5938`, `confidence=0.8115`, `candidate_avg_ms=84.52`
-- Direct conclusion: speed is already acceptable. The candidate is now one win short of the focused Pro gate, so promotion is still blocked by quality against `runtime_current`, not by the `700ms` move-time budget.
+  - `32` games
+  - `win_rate=0.7812`
+  - `confidence=0.9989`
+  - `candidate_avg_ms=100.11`
+- Direct conclusion: speed is already acceptable and the focused gate now clears, but promotion is still blocked by larger-corpus quality against `runtime_current`, not by the `700ms` move-time budget.
 
 ## Promotion Rule
 

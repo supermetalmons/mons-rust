@@ -407,6 +407,18 @@ fn runtime_pro_turn_engine_v30_guarded_inputs(
         );
     }
 
+    let white_turn_three_mid_turn_scoring_action_mana = game.active_color == Color::White
+        && game.turn_number == 3
+        && matches!(game.mons_moves_count, 1 | 2)
+        && game.player_can_use_action()
+        && game.player_can_move_mana();
+    if white_turn_three_mid_turn_scoring_action_mana {
+        let context = crate::models::automove_exact::exact_opportunity_context(game, game.active_color);
+        if context.delta.same_turn_score_window_value > 0 {
+            return runtime_selector_inputs(game, configure_runtime_pro_turn_engine_v30(config));
+        }
+    }
+
     let white_turn_three_mid_turn_full_resources = game.active_color == Color::White
         && game.turn_number == 3
         && game.mons_moves_count >= 5

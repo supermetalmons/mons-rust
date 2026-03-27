@@ -15017,6 +15017,7 @@ impl MonsGameModel {
         let context = crate::models::automove_exact::exact_opportunity_context(game, perspective);
         !context.opponent_can_win_immediately
             && context.delta.drainer_safety < 0
+            && context.delta.same_turn_score_window_value <= 0
             && context.delta.safe_supermana_progress_steps.is_none()
             && context.delta.safe_opponent_mana_progress_steps.is_none()
     }
