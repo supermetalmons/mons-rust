@@ -81,6 +81,7 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - board-scoped memo-shape experiments
   - broad search-budget or reply-budget increases without a new selector/root-choice hypothesis
   - wrapper-level `runtime_current` fallback widening or narrowing
+  - narrow white turn-three mana-only score-window wrapper reroutes that only keep confirm quality flat
   - exact first-disagreement profile fallbacks for traced live loss FENs
   - projected-completion acceptance clamps for traced plain-spirit followup bundles
   - single black projected non-concrete progress or immediate-score override blocks for traced opening-B continuations
