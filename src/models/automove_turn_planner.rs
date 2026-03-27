@@ -1357,25 +1357,11 @@ fn score_for_color(game: &MonsGame, color: Color) -> i32 {
 }
 
 fn own_drainer_safety_score(board: &Board, color: Color) -> i32 {
-    let Some(drainer_location) = find_awake_drainer_location(board, color) else {
-        return 0;
-    };
-    let angel_nearby = board
-        .find_awake_angel(color)
-        .map_or(false, |angel| angel.distance(&drainer_location) == 1);
-    let immediate = is_drainer_under_immediate_threat(board, color, drainer_location, angel_nearby);
-    let walk = is_drainer_under_walk_threat(board, color, drainer_location, angel_nearby);
-    let exact_safe = is_drainer_exactly_safe_next_turn_on_board(board, color, drainer_location);
-
-    if exact_safe && !immediate && !walk {
-        2
-    } else if exact_safe {
-        1
-    } else if immediate || walk {
-        -2
-    } else {
-        -1
-    }
+    crate::models::automove_exact::exact_own_drainer_safety_score_with_hash(
+        board,
+        crate::models::automove_exact::exact_board_hash(board),
+        color,
+    )
 }
 
 fn own_drainer_carries_safe_mana(board: &Board, color: Color, wanted: Mana) -> bool {

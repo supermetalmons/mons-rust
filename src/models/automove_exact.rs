@@ -7,6 +7,7 @@ const EXACT_ANALYSIS_CACHE_MAX_ENTRIES: usize = 512;
 const EXACT_ATTACK_REACH_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_CARRIER_DISTANCE_MAP_CACHE_MAX_ENTRIES: usize = 8192;
 const EXACT_CARRIER_STEPS_CACHE_MAX_ENTRIES: usize = 8192;
+const EXACT_DRAINER_SAFETY_CACHE_MAX_ENTRIES: usize = 8192;
 #[cfg(any(target_arch = "wasm32", test))]
 const EXACT_DRAINER_TO_MANA_CACHE_MAX_ENTRIES: usize = 8192;
 #[cfg(any(target_arch = "wasm32", test))]
@@ -842,6 +843,17 @@ struct ExactAttackReachCache {
     entries: ExactHashMap<ExactAttackQueryKey, bool>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ExactDrainerSafetyQueryKey {
+    board_hash: u64,
+    color: Color,
+}
+
+#[derive(Default)]
+struct ExactDrainerSafetyCache {
+    entries: ExactHashMap<ExactDrainerSafetyQueryKey, i32>,
+}
+
 #[derive(Clone)]
 struct ExactCarrierDistanceMap {
     entries: [u8; EXACT_CARRIER_MANA_STATE_CAPACITY],
@@ -1123,6 +1135,8 @@ thread_local! {
         RefCell::new(ExactStrategicAnalysisCache::default());
     static EXACT_ATTACK_REACH_CACHE: RefCell<ExactAttackReachCache> =
         RefCell::new(ExactAttackReachCache::default());
+    static EXACT_DRAINER_SAFETY_CACHE: RefCell<ExactDrainerSafetyCache> =
+        RefCell::new(ExactDrainerSafetyCache::default());
     static EXACT_CARRIER_DISTANCE_MAP_CACHE: RefCell<ExactCarrierDistanceMapCache> =
         RefCell::new(ExactCarrierDistanceMapCache::default());
     static EXACT_CARRIER_DISTANCE_MAP_WARMUP_CACHE: RefCell<ExactCarrierDistanceMapWarmupCache> =
@@ -1193,6 +1207,7 @@ pub(crate) fn clear_exact_state_analysis_cache() {
     EXACT_TURN_TACTICAL_PROJECTION_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_STRATEGIC_ANALYSIS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_ATTACK_REACH_CACHE.with(|cache| cache.borrow_mut().entries.clear());
+    EXACT_DRAINER_SAFETY_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_CARRIER_DISTANCE_MAP_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_CARRIER_DISTANCE_MAP_WARMUP_CACHE.with(|cache| cache.borrow_mut().entries.clear());
     EXACT_CARRIER_STEPS_CACHE.with(|cache| cache.borrow_mut().entries.clear());
@@ -1427,8 +1442,9 @@ pub(crate) fn exact_opportunity_context_with_search_hash(
         can_use_action: game.player_can_use_action(),
         can_move_mana: game.player_can_move_mana(),
     };
+    let board_hash = exact_board_hash(&game.board);
     let turn = exact_opportunity_turn_tactical_projection_with_search_hash(game, color, key);
-    let drainer_safety = exact_own_drainer_safety_score(&game.board, color);
+    let drainer_safety = exact_own_drainer_safety_score_with_hash(&game.board, board_hash, color);
     let opponent = color.other();
     let opponent_score = if opponent == Color::White {
         game.white_score
@@ -1457,7 +1473,11 @@ pub(crate) fn exact_opportunity_context_with_search_hash(
                 .spirit_assisted_score_value
                 .max(turn.spirit_assisted_denial_value),
             opponent_window_deny_gain,
-            drainer_attack_available: can_attack_opponent_drainer_exact(game, color),
+            drainer_attack_available: can_attack_opponent_drainer_exact_with_hash(
+                game,
+                color,
+                board_hash,
+            ),
             drainer_safety,
             safe_supermana_progress_steps: turn.safe_supermana_progress_steps,
             safe_opponent_mana_progress_steps: turn.safe_opponent_mana_progress_steps,
@@ -1466,45 +1486,66 @@ pub(crate) fn exact_opportunity_context_with_search_hash(
     }
 }
 
-#[cfg(any(target_arch = "wasm32", test))]
-fn exact_own_drainer_safety_score(board: &Board, color: Color) -> i32 {
-    let Some(drainer_location) = find_awake_drainer(board, color) else {
-        return 0;
-    };
-    let board_hash = exact_board_hash(board);
-    let angel_nearby = board
-        .find_awake_angel(color)
-        .map_or(false, |angel| angel.distance(&drainer_location) == 1);
-    let (action_threats, bomb_threats) =
-        drainer_immediate_threats_with_hash(board, color, drainer_location, board_hash);
-    let immediate = if angel_nearby {
-        bomb_threats > 0
-    } else {
-        action_threats + bomb_threats > 0
-    };
-    let walk = is_drainer_under_walk_threat_with_hash(
-        board,
-        board_hash,
-        color,
-        drainer_location,
-        angel_nearby,
-    );
-    let exact_safe = is_drainer_exactly_safe_next_turn_on_board_with_hash(
-        board,
-        board_hash,
-        color,
-        drainer_location,
-    );
-
-    if exact_safe && !immediate && !walk {
-        2
-    } else if exact_safe {
-        1
-    } else if immediate || walk {
-        -2
-    } else {
-        -1
+pub(crate) fn exact_own_drainer_safety_score_with_hash(
+    board: &Board,
+    board_hash: u64,
+    color: Color,
+) -> i32 {
+    let key = ExactDrainerSafetyQueryKey { board_hash, color };
+    if let Some(cached) =
+        EXACT_DRAINER_SAFETY_CACHE.with(|cache| cache.borrow().entries.get(&key).copied())
+    {
+        return cached;
     }
+
+    let result = if let Some(drainer_location) = find_awake_drainer(board, color) {
+        let angel_nearby = board
+            .find_awake_angel(color)
+            .map_or(false, |angel| angel.distance(&drainer_location) == 1);
+        let (action_threats, bomb_threats) =
+            drainer_immediate_threats_with_hash(board, color, drainer_location, board_hash);
+        let immediate = if angel_nearby {
+            bomb_threats > 0
+        } else {
+            action_threats + bomb_threats > 0
+        };
+        let walk = is_drainer_under_walk_threat_with_hash(
+            board,
+            board_hash,
+            color,
+            drainer_location,
+            angel_nearby,
+        );
+        let exact_safe = is_drainer_exactly_safe_next_turn_on_board_with_hash(
+            board,
+            board_hash,
+            color,
+            drainer_location,
+        );
+
+        if exact_safe && !immediate && !walk {
+            2
+        } else if exact_safe {
+            1
+        } else if immediate || walk {
+            -2
+        } else {
+            -1
+        }
+    } else {
+        0
+    };
+
+    EXACT_DRAINER_SAFETY_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.entries.len() >= EXACT_DRAINER_SAFETY_CACHE_MAX_ENTRIES
+            && !cache.entries.contains_key(&key)
+        {
+            cache.entries.clear();
+        }
+        cache.entries.insert(key, result);
+    });
+    result
 }
 
 pub(crate) fn can_attack_target_on_board(
@@ -2742,8 +2783,14 @@ fn build_exact_turn_summary(game: &MonsGame) -> ExactTurnSummary {
             .max(tactical_spirit.same_turn_score_value)
             .max(tactical_spirit.same_turn_opponent_mana_score_value);
 
+    let board_hash = exact_board_hash(&game.board);
+
     ExactTurnSummary {
-        can_attack_opponent_drainer: can_attack_opponent_drainer_exact(game, color),
+        can_attack_opponent_drainer: can_attack_opponent_drainer_exact_with_hash(
+            game,
+            color,
+            board_hash,
+        ),
         safe_supermana_progress: safe_supermana_progress_steps.is_some(),
         safe_supermana_progress_steps,
         safe_opponent_mana_progress: safe_opponent_mana_progress_steps.is_some()
@@ -4579,13 +4626,17 @@ fn exact_apply_secure_drainer_walk(
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-fn can_attack_opponent_drainer_exact(game: &MonsGame, color: Color) -> bool {
+fn can_attack_opponent_drainer_exact_with_hash(
+    game: &MonsGame,
+    color: Color,
+    board_hash: u64,
+) -> bool {
     let Some(target) = find_awake_drainer(&game.board, color.other()) else {
         return false;
     };
     can_attack_target_on_board_with_hash(
         &game.board,
-        exact_board_hash(&game.board),
+        board_hash,
         color,
         color.other(),
         target,
@@ -7945,6 +7996,92 @@ mod tests {
             is_drainer_exactly_safe_next_turn_on_board(&board, Color::White, Location::new(6, 5)),
             expected
         );
+    }
+
+    #[test]
+    fn exact_drainer_safety_score_reuses_same_board_lookup() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+
+        let board = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(2, 7),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+        )
+        .board;
+        let board_hash = exact_board_hash(&board);
+
+        let first = exact_own_drainer_safety_score_with_hash(&board, board_hash, Color::White);
+        let first_diagnostics = exact_query_diagnostics_snapshot();
+        let second = exact_own_drainer_safety_score_with_hash(&board, board_hash, Color::White);
+        let second_diagnostics = exact_query_diagnostics_snapshot();
+
+        assert_eq!(first, second);
+        assert_eq!(
+            first_diagnostics.drainer_immediate_threat_calls,
+            second_diagnostics.drainer_immediate_threat_calls
+        );
+        assert_eq!(
+            first_diagnostics.attack_reach_calls,
+            second_diagnostics.attack_reach_calls
+        );
+    }
+
+    #[test]
+    fn exact_drainer_safety_score_positive_matches_exact_safe_boolean() {
+        clear_exact_state_analysis_cache();
+
+        for board in [
+            game_with_items(
+                vec![(
+                    Location::new(6, 5),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Supermana,
+                    },
+                )],
+                Color::White,
+            )
+            .board,
+            game_with_items(
+                vec![
+                    (
+                        Location::new(6, 5),
+                        Item::MonWithMana {
+                            mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                            mana: Mana::Supermana,
+                        },
+                    ),
+                    (
+                        Location::new(2, 7),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                        },
+                    ),
+                ],
+                Color::White,
+            )
+            .board,
+        ] {
+            let board_hash = exact_board_hash(&board);
+
+            assert_eq!(
+                exact_own_drainer_safety_score_with_hash(&board, board_hash, Color::White) > 0,
+                is_drainer_exactly_safe_next_turn_on_board(&board, Color::White, Location::new(6, 5)),
+            );
+        }
     }
 
     #[test]
