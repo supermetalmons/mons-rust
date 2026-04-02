@@ -68,6 +68,15 @@ Pack a directory back into chunks:
 
 `./scripts/pack-rules-tests.sh --dir /tmp/rules-tests-work --chunks-dir ./rules-tests-chunks --chunk-size 100000`
 
+## repo cleanup
+
+`./repo-clean.sh`
+
+- switches back to a kept branch (`main`, `master`, or `keep/*`) before deleting disposable branches
+- removes non-primary worktrees, clears stashes, deletes non-kept local branches, and prunes non-kept remote branches
+- use `./repo-clean.sh --local-only` to skip remote branch deletion
+- use `keep/<name>` for any branch you want to protect from cleanup
+
 ## publishing to npm
 
 `./publish.sh`
