@@ -103,3 +103,10 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
 - Kill a line immediately if it is only a speed regression with no quality story.
 - Kill a line immediately if it preserves behavior and only shifts counters.
 - Prefer cheap quality-ranking probes first, then the canonical Pro loop, then confirmation only after the focused gate earns more spend.
+
+## Next Live Split
+
+- Keep the retained challenger unchanged for now. On 2026-04-03 I tried a shared early-white setup-progress force/focus cut that blocked non-tactical turn-three `spirit_own_mana_setup_now + progress` heads when a safe non-spirit progress root already matched the same path surface.
+- That branch really did fix the first confirm-aligned `opening 0 / ab` seam (`l9,6;l7,4;l7,3` -> `l8,7;l7,8`), passed `guardrails`, `pro-triage` (`target_changed=10`, `off_target_changed=0`), `runtime-preflight`, and the focused `pro-reliability` gate (`0.9167 / 0.9968 / 94.50ms`).
+- It is still dead as a promotion line because `pro-reliability-confirm` stayed exactly flat on quality at `0.7812 / 0.9989` and slowed from the retained `100.11ms` to `103.92ms`.
+- Next hypothesis: stay out of wrapper/fallback and early-white setup-progress force/focus repairs. The live wall on that lane moved later and out of engine injection: `opening 0 / ab`, `ply=18`, plain search chooses `l7,7;l8,8` while `runtime_current` prefers `l7,4;l8,4`. The next split should target that later white non-engine selector/search family instead of reopening earlier replay fixes.
