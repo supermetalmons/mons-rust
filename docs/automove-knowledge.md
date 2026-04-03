@@ -24,10 +24,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - Keep the active frontier small: one live idea, one candidate, one canonical path.
 - For Pro work, compare directly against `runtime_current`, not the script's compatibility default baseline.
 - The canonical Pro path is `guardrails -> pro-triage(primary_pro) -> runtime-preflight -> pro-reliability`.
+- Pro promotion now requires both direct matchups: candidate Pro versus current Pro, and candidate Pro versus current Normal, each at the same `0.90 / 0.99 / 700ms` floor.
 - `opening_reply` is a narrow fallback-order and opening-regression surface, not the default Pro surface.
 - `pro-triage` only counts as a pass when the target surface changes and off-target churn stays at `<= 1`.
 - `runtime-preflight` is the required stamp before duel stages unless the run is intentionally diagnostic.
-- `pro-reliability` is the first real promotion gate. `pro-fast-screen`, `pro-progressive`, and `pro-ladder` come later.
+- `pro-reliability` is the first real promotion gate, and it now checks both current-Pro and current-Normal duels. `pro-fast-screen`, `pro-progressive`, and `pro-ladder` come later.
 - If a surface is already calibrated, do not move the CPU gate back in front of triage.
 - `audit-screen` and `pro-audit-screen` are reject diagnostics, not promotion evidence.
 - Prefer a fresh live `pro-reliability` sample over the hotspot probe when the wall is unclear or has moved.

@@ -108,14 +108,48 @@ fn opening_reply_speed_probe_avg_ms(
     })
 }
 
-fn pro_reliability_gate_passes(
+#[derive(Debug, Clone, Copy)]
+struct ProReliabilityGateMetrics {
     win_rate: f64,
     confidence: f64,
     candidate_avg_ms: f64,
+}
+
+fn pro_reliability_duel_passes(metrics: ProReliabilityGateMetrics) -> bool {
+    metrics.win_rate >= SMART_PRO_RELIABILITY_WIN_RATE_MIN
+        && metrics.confidence >= SMART_PRO_RELIABILITY_CONFIDENCE_MIN
+        && metrics.candidate_avg_ms <= SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX
+}
+
+fn pro_reliability_gate_passes(
+    vs_current_pro: ProReliabilityGateMetrics,
+    vs_current_normal: ProReliabilityGateMetrics,
 ) -> bool {
-    win_rate >= SMART_PRO_RELIABILITY_WIN_RATE_MIN
-        && confidence >= SMART_PRO_RELIABILITY_CONFIDENCE_MIN
-        && candidate_avg_ms <= SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX
+    pro_reliability_duel_passes(vs_current_pro) && pro_reliability_duel_passes(vs_current_normal)
+}
+
+fn assert_pro_reliability_duel_passes(label: &str, metrics: ProReliabilityGateMetrics) {
+    assert!(
+        metrics.win_rate >= SMART_PRO_RELIABILITY_WIN_RATE_MIN,
+        "{} failed: win_rate {:.4} < {:.2}",
+        label,
+        metrics.win_rate,
+        SMART_PRO_RELIABILITY_WIN_RATE_MIN
+    );
+    assert!(
+        metrics.confidence >= SMART_PRO_RELIABILITY_CONFIDENCE_MIN,
+        "{} confidence failed: {:.4} < {:.2}",
+        label,
+        metrics.confidence,
+        SMART_PRO_RELIABILITY_CONFIDENCE_MIN
+    );
+    assert!(
+        metrics.candidate_avg_ms <= SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX,
+        "{} move time failed: candidate_avg_ms {:.2}ms > {:.2}ms",
+        label,
+        metrics.candidate_avg_ms,
+        SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX
+    );
 }
 
 #[test]
@@ -141,11 +175,34 @@ fn duel_timing_stats_merge_and_average_track_candidate_and_baseline_turns() {
 }
 
 #[test]
-fn pro_reliability_gate_passes_only_when_win_confidence_and_move_time_clear() {
-    assert!(pro_reliability_gate_passes(0.90, 0.99, 700.0));
-    assert!(!pro_reliability_gate_passes(0.89, 0.99, 700.0));
-    assert!(!pro_reliability_gate_passes(0.90, 0.98, 700.0));
-    assert!(!pro_reliability_gate_passes(0.90, 0.99, 700.01));
+fn pro_reliability_gate_passes_only_when_both_matchups_clear_win_confidence_and_move_time() {
+    let passing = ProReliabilityGateMetrics {
+        win_rate: 0.90,
+        confidence: 0.99,
+        candidate_avg_ms: 700.0,
+    };
+    assert!(pro_reliability_gate_passes(passing, passing));
+    assert!(!pro_reliability_gate_passes(
+        ProReliabilityGateMetrics {
+            win_rate: 0.89,
+            ..passing
+        },
+        passing
+    ));
+    assert!(!pro_reliability_gate_passes(
+        passing,
+        ProReliabilityGateMetrics {
+            confidence: 0.98,
+            ..passing
+        }
+    ));
+    assert!(!pro_reliability_gate_passes(
+        passing,
+        ProReliabilityGateMetrics {
+            candidate_avg_ms: 700.01,
+            ..passing
+        }
+    ));
 }
 
 #[test]
@@ -7668,7 +7725,7 @@ fn smart_automove_pool_promotion_ladder() {
 }
 
 #[test]
-#[ignore = "reliability gate: retained pro profile vs runtime_current at pro budget with move-time cap"]
+#[ignore = "reliability gate: retained pro profile vs runtime_current pro and normal at pro budget with move-time cap"]
 fn smart_automove_pool_pro_reliability_gate() {
     let candidate_profile = env_profile_name("SMART_PRO_RELIABILITY_CANDIDATE_PROFILE")
         .unwrap_or_else(|| "runtime_pro_turn_engine_v30".to_string());
@@ -7691,17 +7748,16 @@ fn smart_automove_pool_pro_reliability_gate() {
     let repeats = env_usize("SMART_PRO_RELIABILITY_REPEATS")
         .unwrap_or(3)
         .max(1);
-    let games = env_usize("SMART_PRO_RELIABILITY_GAMES")
-        .unwrap_or(2)
-        .max(1);
+    let games = env_usize("SMART_PRO_RELIABILITY_GAMES").unwrap_or(2).max(1);
     let max_plies_floor = if skip_guardrails { 8 } else { 56 };
     let max_plies = env_usize("SMART_PRO_RELIABILITY_MAX_PLIES")
         .unwrap_or(96)
         .max(max_plies_floor);
     let seed_tag = env_profile_name("SMART_PRO_RELIABILITY_SEED_TAG")
         .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
+    let normal_seed_tag = format!("{}_vs_normal", seed_tag);
 
-    let stats = run_cross_budget_duel_with_timing(CrossBudgetDuelConfig {
+    let pro_stats = run_cross_budget_duel_with_timing(CrossBudgetDuelConfig {
         profile_a: candidate_profile.as_str(),
         mode_a: SmartAutomovePreference::Pro,
         profile_b: baseline_profile.as_str(),
@@ -7712,58 +7768,83 @@ fn smart_automove_pool_pro_reliability_gate() {
         max_plies,
         use_white_opening_book: false,
     });
-    let total_games = stats.matchup.total_games();
-    let win_rate = stats.matchup.win_rate_points();
-    let confidence = stats.matchup.confidence_better_than_even();
-    let candidate_avg_ms = stats.timing.candidate_avg_ms();
-    let baseline_avg_ms = stats.timing.baseline_avg_ms();
+    let normal_stats = run_cross_budget_duel_with_timing(CrossBudgetDuelConfig {
+        profile_a: candidate_profile.as_str(),
+        mode_a: SmartAutomovePreference::Pro,
+        profile_b: baseline_profile.as_str(),
+        mode_b: SmartAutomovePreference::Normal,
+        seed_tag: normal_seed_tag.as_str(),
+        repeats,
+        games_per_repeat: games,
+        max_plies,
+        use_white_opening_book: false,
+    });
+
+    let pro_total_games = pro_stats.matchup.total_games();
+    let pro_metrics = ProReliabilityGateMetrics {
+        win_rate: pro_stats.matchup.win_rate_points(),
+        confidence: pro_stats.matchup.confidence_better_than_even(),
+        candidate_avg_ms: pro_stats.timing.candidate_avg_ms(),
+    };
     println!(
-        "pro reliability gate: candidate={} baseline={} total_games={} win_rate={:.4} confidence={:.4} candidate_avg_ms={:.2} baseline_avg_ms={:.2} candidate_turns={} baseline_turns={}",
+        "pro reliability gate vs current pro: candidate={} baseline={} total_games={} win_rate={:.4} confidence={:.4} candidate_avg_ms={:.2} baseline_avg_ms={:.2} candidate_turns={} baseline_turns={}",
         candidate_profile,
         baseline_profile,
-        total_games,
-        win_rate,
-        confidence,
-        candidate_avg_ms,
-        baseline_avg_ms,
-        stats.timing.candidate_turns,
-        stats.timing.baseline_turns
+        pro_total_games,
+        pro_metrics.win_rate,
+        pro_metrics.confidence,
+        pro_metrics.candidate_avg_ms,
+        pro_stats.timing.baseline_avg_ms(),
+        pro_stats.timing.candidate_turns,
+        pro_stats.timing.baseline_turns
+    );
+
+    let normal_total_games = normal_stats.matchup.total_games();
+    let normal_metrics = ProReliabilityGateMetrics {
+        win_rate: normal_stats.matchup.win_rate_points(),
+        confidence: normal_stats.matchup.confidence_better_than_even(),
+        candidate_avg_ms: normal_stats.timing.candidate_avg_ms(),
+    };
+    println!(
+        "pro reliability gate vs current normal: candidate={} baseline={} total_games={} win_rate={:.4} confidence={:.4} candidate_avg_ms={:.2} baseline_avg_ms={:.2} candidate_turns={} baseline_turns={}",
+        candidate_profile,
+        baseline_profile,
+        normal_total_games,
+        normal_metrics.win_rate,
+        normal_metrics.confidence,
+        normal_metrics.candidate_avg_ms,
+        normal_stats.timing.baseline_avg_ms(),
+        normal_stats.timing.candidate_turns,
+        normal_stats.timing.baseline_turns
     );
 
     let expected_games = repeats.saturating_mul(games).saturating_mul(2);
     assert_eq!(
-        total_games, expected_games,
-        "pro reliability gate expected {} mirrored games but ran {}",
-        expected_games, total_games
+        pro_total_games, expected_games,
+        "pro reliability gate vs current pro expected {} mirrored games but ran {}",
+        expected_games, pro_total_games
     );
     assert!(
-        pro_reliability_gate_passes(win_rate, confidence, candidate_avg_ms),
-        "pro reliability gate failed: win_rate {:.4} confidence {:.4} candidate_avg_ms {:.2}ms (required win_rate >= {:.2}, confidence >= {:.2}, candidate_avg_ms <= {:.2}ms)",
-        win_rate,
-        confidence,
-        candidate_avg_ms,
+        normal_total_games == expected_games,
+        "pro reliability gate vs current normal expected {} mirrored games but ran {}",
+        expected_games,
+        normal_total_games
+    );
+    assert!(
+        pro_reliability_gate_passes(pro_metrics, normal_metrics),
+        "pro reliability gate failed overall: vs_current_pro [win_rate {:.4} confidence {:.4} candidate_avg_ms {:.2}ms] vs_current_normal [win_rate {:.4} confidence {:.4} candidate_avg_ms {:.2}ms] (required each duel to satisfy win_rate >= {:.2}, confidence >= {:.2}, candidate_avg_ms <= {:.2}ms)",
+        pro_metrics.win_rate,
+        pro_metrics.confidence,
+        pro_metrics.candidate_avg_ms,
+        normal_metrics.win_rate,
+        normal_metrics.confidence,
+        normal_metrics.candidate_avg_ms,
         SMART_PRO_RELIABILITY_WIN_RATE_MIN,
         SMART_PRO_RELIABILITY_CONFIDENCE_MIN,
         SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX
     );
-    assert!(
-        win_rate >= SMART_PRO_RELIABILITY_WIN_RATE_MIN,
-        "pro reliability gate failed: win_rate {:.4} < {:.2}",
-        win_rate,
-        SMART_PRO_RELIABILITY_WIN_RATE_MIN
-    );
-    assert!(
-        confidence >= SMART_PRO_RELIABILITY_CONFIDENCE_MIN,
-        "pro reliability gate confidence failed: {:.4} < {:.2}",
-        confidence,
-        SMART_PRO_RELIABILITY_CONFIDENCE_MIN
-    );
-    assert!(
-        candidate_avg_ms <= SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX,
-        "pro reliability gate move time failed: candidate_avg_ms {:.2}ms > {:.2}ms",
-        candidate_avg_ms,
-        SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX
-    );
+    assert_pro_reliability_duel_passes("pro reliability gate vs current pro", pro_metrics);
+    assert_pro_reliability_duel_passes("pro reliability gate vs current normal", normal_metrics);
 }
 
 #[test]

@@ -23,8 +23,8 @@ stages:
   pro-opening-speed-probe diagnostic opening-reply latency compare on fixed pro fixtures
   pro-audit-screen cheap pro duel-only audit for an occasional pro-triage reject
   pro-pre-screen  legacy reject-only pro screen vs normal and fast with tighter budgets
-  pro-reliability focused pro-vs-pro reliability gate against the baseline; requires the duel stamp
-  pro-reliability-confirm larger pro-vs-pro confirmation gate against the baseline; requires the duel stamp
+  pro-reliability focused pro-vs-pro and pro-vs-normal reliability gate against the baseline; requires the duel stamp
+  pro-reliability-confirm larger pro-vs-pro and pro-vs-normal confirmation gate against the baseline; requires the duel stamp
   pro-fast-screen duel-only pro fast screens vs normal and fast; requires the duel stamp
   pro-progressive duel-only pro progressive duels vs normal and fast; requires the duel stamp
   pro-ladder      duel-only strict pro promotion ladder; requires the duel stamp

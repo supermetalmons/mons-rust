@@ -14,8 +14,8 @@ Archived profile IDs are invalid by design. New iteration work must stay on the 
 
 ## Focused Pro Goal
 
-- The focused Pro target is now explicit: `runtime_pro_turn_engine_v30` must beat `runtime_current` in direct Pro-vs-Pro duels with `win_rate >= 0.90` while staying at `candidate_avg_move_ms <= 700`.
-- Move time means candidate decision-selection time on candidate turns only inside completed Pro-vs-Pro duel games against `runtime_current`.
+- The focused Pro target is now explicit: `runtime_pro_turn_engine_v30` must beat `runtime_current` in direct Pro-vs-Pro duels with `win_rate >= 0.90`, and it must also beat `runtime_current` Normal in direct Pro-vs-Normal duels with `win_rate >= 0.90`, while staying at `candidate_avg_move_ms <= 700` in both matchups.
+- Move time means candidate decision-selection time on candidate turns only inside completed Pro-vs-Pro and Pro-vs-Normal duel games against `runtime_current`.
 - Do not count compile time, harness startup, or `game.process_input(...)` in that move-time budget.
 - A stalled or incomplete duel run is not promotable evidence, even if hotspot probes or one-game samples look good.
 
@@ -118,7 +118,7 @@ Kill the line if:
 
 What it means:
 - Focused Pro duel gate.
-- Direct Pro-vs-Pro win-rate and move-time evidence against `runtime_current`.
+- Direct Pro-vs-Pro and Pro-vs-Normal win-rate and move-time evidence against `runtime_current`.
 
 Use it to decide:
 - Whether the candidate earns confirmation spend.
@@ -126,7 +126,7 @@ Use it to decide:
 - Whether the next split should be a shared exact/search cut or a minimal fixture addition.
 
 Pass rule:
-- Pass only when the run completes, `win_rate >= 0.90`, `confidence >= 0.99`, and `candidate_avg_move_ms <= 700`.
+- Pass only when both duel runs complete, each clears `win_rate >= 0.90`, each clears `confidence >= 0.99`, and `candidate_avg_move_ms <= 700` in both matchups.
 - The focused corpus defaults are `3` repeats, `2` games per repeat, mirrored play, `max_plies=96`.
 
 Kill the line if:
@@ -163,9 +163,9 @@ These stages are not part of the default Pro loop. Use them only after `pro-reli
 ```
 
 `pro-reliability-confirm` is the final Pro-vs-current confirmation stage before promotion:
-- It uses the same pass rule as `pro-reliability`.
+- It uses the same dual-duel pass rule as `pro-reliability`.
 - Its confirmation corpus defaults are `4` repeats, `4` games per repeat, mirrored play, `max_plies=96`.
-- Promote only after `pro-reliability-confirm` completes cleanly and still clears both the `>= 0.90` win-rate floor and the `<= 700ms` candidate average move-time budget.
+- Promote only after `pro-reliability-confirm` completes cleanly and still clears both current-`Pro` and current-`Normal` at the `>= 0.90` win-rate floor while staying at the `<= 700ms` candidate average move-time budget in both duels.
 
 ## Compatibility Surface
 

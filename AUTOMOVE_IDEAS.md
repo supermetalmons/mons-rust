@@ -20,16 +20,15 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
   - `win_rate=0.7812`
   - `confidence=0.9989`
   - `candidate_avg_ms=100.11`
-- Direct conclusion: speed is already acceptable and the focused gate now clears, but promotion is still blocked by larger-corpus quality against `runtime_current`, not by the `700ms` move-time budget.
+- Direct conclusion: speed is already acceptable and the focused Pro-vs-Pro gate clears, but promotion is still blocked by larger-corpus quality against `runtime_current`, not by the `700ms` move-time budget. Under the stronger rule, future promotion evidence must also clear the same floor against current Normal.
 
 ## Promotion Rule
 
 - `pro-reliability` is now the focused Pro gate.
 - `pro-reliability-confirm` is the final promotion proof.
-- Promote only after a completed confirmation run clears all three:
-  - `win_rate >= 0.90`
-  - `confidence >= 0.99`
-  - `candidate_avg_move_ms <= 700`
+- Promote only after a completed confirmation run clears both direct duels:
+  - candidate Pro vs current Pro: `win_rate >= 0.90`, `confidence >= 0.99`, `candidate_avg_move_ms <= 700`
+  - candidate Pro vs current Normal: `win_rate >= 0.90`, `confidence >= 0.99`, `candidate_avg_move_ms <= 700`
 - `candidate_avg_move_ms` means candidate decision-selection time on candidate turns only. Do not count compile time, harness startup, or `game.process_input(...)`.
 - A stalled or incomplete duel run is not promotable evidence.
 
