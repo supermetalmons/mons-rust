@@ -5300,6 +5300,58 @@ fn smart_automove_pro_turn_engine_selector_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: inspect arbitrary selector state via SMART_PROBE_FEN using loss-probe runtime config"]
+fn smart_automove_pro_turn_engine_loss_probe_selector_probe() {
+    let fen = std::env::var("SMART_PROBE_FEN").expect("SMART_PROBE_FEN should be set");
+    let profile = std::env::var("SMART_PROBE_PROFILE")
+        .unwrap_or_else(|_| "runtime_pro_turn_engine_v30".to_string());
+    let preference = match std::env::var("SMART_PROBE_MODE")
+        .unwrap_or_else(|_| "pro".to_string())
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "fast" => SmartAutomovePreference::Fast,
+        "normal" => SmartAutomovePreference::Normal,
+        _ => SmartAutomovePreference::Pro,
+    };
+    let game = MonsGame::from_fen(fen.as_str(), false).expect("SMART_PROBE_FEN should be valid");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    clear_turn_engine_selector_diagnostics();
+    let decision = loss_probe_decision_with_options(profile.as_str(), preference, &game, true);
+    println!("probe_profile={profile} probe_mode={preference:?}");
+    println!(
+        "turn_state turn={} mons_moves={} can_action={} can_move_mana={}",
+        game.turn_number,
+        game.mons_moves_count,
+        game.player_can_use_action(),
+        game.player_can_move_mana(),
+    );
+    println!(
+        "selector_diag={:?}",
+        turn_engine_selector_diagnostics_snapshot()
+    );
+    print_loss_probe_decision("decision", &decision);
+    let config = loss_probe_runtime_config(profile.as_str(), &game, preference);
+    if let Some(selection_probe) = MonsGameModel::root_selection_probe_for_test(&game, config) {
+        println!("root_selection_probe={:?}", selection_probe);
+    } else {
+        println!("root_selection_probe none");
+    }
+    if let Some(search_probe) = MonsGameModel::root_search_probe_for_test(&game, config) {
+        println!("root_search_probe={:?}", search_probe);
+    } else {
+        println!("root_search_probe none");
+    }
+    if let Some(acceptance) = MonsGameModel::turn_engine_acceptance_probe_for_test(&game, config) {
+        print_turn_engine_acceptance_probe("acceptance", Some(&acceptance));
+    } else {
+        println!("acceptance none");
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: bounded selector/exact hotspot probe for pro reliability corpus"]
 fn smart_automove_pro_reliability_hotspot_probe() {
     use std::collections::HashMap;
