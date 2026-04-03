@@ -1650,6 +1650,7 @@ pub(crate) struct RootSearchProbe {
     pub filtered_root_scores: Vec<i32>,
     pub reply_guard_shortlist_move_fens: Vec<String>,
     pub reply_guard_shortlist_scores: Vec<i32>,
+    pub reply_guard_shortlist_snapshot_summaries: Vec<String>,
     pub reply_guard_selected_move_fen: Option<String>,
     pub final_selected_move_fen: String,
 }
@@ -8761,6 +8762,14 @@ impl MonsGameModel {
         } else {
             None
         };
+        let root_node_budget = ((config.max_visited_nodes
+            * config.root_reply_risk_node_share_bp.max(0) as usize)
+            / 10_000)
+            .max(reply_guard_shortlist.len())
+            .max(1);
+        let per_root_reply_limit = (root_node_budget / reply_guard_shortlist.len().max(1))
+            .max(1)
+            .min(config.root_reply_risk_reply_limit.max(1));
         let final_selected_move_fen =
             Input::fen_from_array(&Self::pick_root_move_with_exploration(
                 game,
@@ -8809,6 +8818,24 @@ impl MonsGameModel {
             reply_guard_shortlist_scores: reply_guard_shortlist
                 .iter()
                 .map(|index| scored_roots[*index].score)
+                .collect(),
+            reply_guard_shortlist_snapshot_summaries: reply_guard_shortlist
+                .iter()
+                .map(|index| {
+                    let snapshot = Self::root_reply_risk_snapshot(
+                        &scored_roots[*index].game,
+                        perspective,
+                        config,
+                        per_root_reply_limit,
+                    );
+                    format!(
+                        "{}:win_loss={} match_point={} worst_reply={}",
+                        Input::fen_from_array(&scored_roots[*index].inputs),
+                        snapshot.allows_immediate_opponent_win,
+                        snapshot.opponent_reaches_match_point,
+                        snapshot.worst_reply_score,
+                    )
+                })
                 .collect(),
             reply_guard_selected_move_fen,
             final_selected_move_fen,
