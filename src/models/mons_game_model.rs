@@ -1655,6 +1655,21 @@ pub(crate) struct RootSearchProbe {
     pub final_selected_move_fen: String,
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub(crate) struct ChildOrderingProbeEntry {
+    pub input_fen: String,
+    pub heuristic: i32,
+    pub ordering_efficiency: i32,
+    pub tactical_extension_trigger: bool,
+    pub quiet_reduction_candidate: bool,
+    pub selective_extension_candidate: bool,
+    pub quiet: bool,
+    pub material: bool,
+    pub carrier_progress: bool,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct TurnEngineSelectorDiagnostics {
     pub head_plan_calls: usize,
@@ -8840,6 +8855,124 @@ impl MonsGameModel {
             reply_guard_selected_move_fen,
             final_selected_move_fen,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn ranked_child_ordering_probe_for_test(
+        game: &MonsGame,
+        perspective: Color,
+        maximizing: bool,
+        config: SmartSearchConfig,
+    ) -> Vec<ChildOrderingProbeEntry> {
+        let actor_color = game.active_color;
+        let scratch = Self::build_child_ordering_scratch(game, perspective, actor_color, config);
+        let start_options = Self::automove_start_input_options(config);
+        let mut child_transitions =
+            Self::enumerate_legal_transitions(game, config.node_enum_limit, start_options);
+        if config.enable_child_move_class_coverage
+            && config.enable_child_exact_tactics
+            && Self::should_probe_exact_child_progress(game, actor_color)
+        {
+            let exact_turn = exact_turn_summary(game, actor_color);
+            let fallback_limit = Self::child_exact_progress_fallback_candidates_limit(config);
+            let mut seen_inputs = child_transitions
+                .iter()
+                .map(|transition| transition.inputs.clone())
+                .collect::<std::collections::HashSet<_>>();
+            if (exact_turn.safe_supermana_progress || exact_turn.spirit_assisted_supermana_progress)
+                && !child_transitions.iter().any(|transition| {
+                    Self::transition_preserves_exact_progress(
+                        transition,
+                        actor_color,
+                        Mana::Supermana,
+                    )
+                })
+            {
+                let fallback_inputs = Self::collect_targeted_exact_progress_inputs(
+                    game,
+                    actor_color,
+                    config,
+                    fallback_limit,
+                    Mana::Supermana,
+                );
+                for transition in fallback_inputs {
+                    if seen_inputs.insert(transition.inputs.clone()) {
+                        child_transitions.push(transition);
+                    }
+                }
+            }
+            if (exact_turn.safe_opponent_mana_progress
+                || exact_turn.spirit_assisted_opponent_mana_progress
+                || exact_turn.spirit_assisted_denial)
+                && !child_transitions.iter().any(|transition| {
+                    Self::transition_preserves_exact_progress(
+                        transition,
+                        actor_color,
+                        Mana::Regular(actor_color.other()),
+                    )
+                })
+            {
+                let fallback_inputs = Self::collect_targeted_exact_progress_inputs(
+                    game,
+                    actor_color,
+                    config,
+                    fallback_limit,
+                    Mana::Regular(actor_color.other()),
+                );
+                for transition in fallback_inputs {
+                    if seen_inputs.insert(transition.inputs.clone()) {
+                        child_transitions.push(transition);
+                    }
+                }
+            }
+        }
+
+        let history_table = HistoryTable::default();
+        let mut transition_summaries = std::collections::HashMap::new();
+        for transition in child_transitions.iter() {
+            let child_hash = Self::search_state_hash(&transition.game);
+            let bundle = Self::build_child_eval_bundle(
+                game,
+                &transition.game,
+                perspective,
+                actor_color,
+                transition.events.as_slice(),
+                None,
+                [0; 2],
+                config,
+                &history_table,
+                &scratch,
+            );
+            transition_summaries.entry(child_hash).or_insert_with(|| ChildOrderingProbeEntry {
+                input_fen: Input::fen_from_array(&transition.inputs),
+                heuristic: bundle.heuristic,
+                ordering_efficiency: bundle.ordering_efficiency,
+                tactical_extension_trigger: bundle.tactical_extension_trigger,
+                quiet_reduction_candidate: bundle.quiet_reduction_candidate,
+                selective_extension_candidate: Self::is_selective_extension_candidate(
+                    bundle.tactical_extension_trigger,
+                    bundle.ordering_efficiency,
+                    bundle.classes,
+                ),
+                quiet: bundle.classes.quiet,
+                material: bundle.classes.material,
+                carrier_progress: bundle.classes.carrier_progress,
+            });
+        }
+
+        let ranked_children = Self::ranked_child_states(
+            game,
+            perspective,
+            maximizing,
+            None,
+            [0; 2],
+            config,
+            &history_table,
+        );
+        ranked_children
+            .into_iter()
+            .filter_map(|child| transition_summaries.get(&child.hash).cloned())
+            .collect::<Vec<_>>()
     }
 
     #[cfg(any(target_arch = "wasm32", test))]

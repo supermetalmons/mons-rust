@@ -5520,6 +5520,66 @@ fn smart_automove_ranked_root_moves_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: inspect ranked child ordering after applying SMART_PROBE_ROOT_INPUT_FEN"]
+fn smart_automove_ranked_child_states_probe() {
+    let fen = std::env::var("SMART_PROBE_FEN").expect("SMART_PROBE_FEN should be set");
+    let root_input_fen =
+        std::env::var("SMART_PROBE_ROOT_INPUT_FEN").expect("SMART_PROBE_ROOT_INPUT_FEN should be set");
+    let profile = std::env::var("SMART_PROBE_PROFILE")
+        .unwrap_or_else(|_| "runtime_pro_turn_engine_v30".to_string());
+    let preference = match std::env::var("SMART_PROBE_MODE")
+        .unwrap_or_else(|_| "pro".to_string())
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "fast" => SmartAutomovePreference::Fast,
+        "normal" => SmartAutomovePreference::Normal,
+        _ => SmartAutomovePreference::Pro,
+    };
+    let game = MonsGame::from_fen(fen.as_str(), false).expect("SMART_PROBE_FEN should be valid");
+    let perspective = game.active_color;
+    let config =
+        probe_config_with_env_overrides(loss_probe_runtime_config(profile.as_str(), &game, preference));
+    let root_inputs = Input::array_from_fen(root_input_fen.as_str());
+    let (after_root, _) = MonsGameModel::apply_inputs_for_search_with_events(&game, &root_inputs)
+        .expect("SMART_PROBE_ROOT_INPUT_FEN should apply cleanly");
+    let maximizing = after_root.active_color == perspective;
+    let probe = MonsGameModel::ranked_child_ordering_probe_for_test(
+        &after_root,
+        perspective,
+        maximizing,
+        config,
+    );
+
+    println!("probe_profile={profile} probe_mode={preference:?}");
+    println!("root_input_fen={root_input_fen}");
+    println!(
+        "after_root turn={} mons_moves={} active={:?} maximizing={}",
+        after_root.turn_number,
+        after_root.mons_moves_count,
+        after_root.active_color,
+        maximizing,
+    );
+    println!("ranked_child_count={}", probe.len());
+    for (rank, child) in probe.iter().enumerate() {
+        println!(
+            "rank={} fen={} heuristic={} eff={} ext={} tactical={} quiet_red={} quiet={} material={} carrier_progress={}",
+            rank,
+            child.input_fen,
+            child.heuristic,
+            child.ordering_efficiency,
+            child.selective_extension_candidate,
+            child.tactical_extension_trigger,
+            child.quiet_reduction_candidate,
+            child.quiet,
+            child.material,
+            child.carrier_progress,
+        );
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: bounded selector/exact hotspot probe for pro reliability corpus"]
 fn smart_automove_pro_reliability_hotspot_probe() {
     use std::collections::HashMap;
