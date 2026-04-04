@@ -4707,6 +4707,259 @@ fn smart_automove_pro_fast_screen_vs_normal_preserved_family_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: classify internal shipping-Pro-preserved current-Normal losses by handoff stage"]
+fn smart_automove_pro_fast_screen_vs_normal_preserved_handoff_probe() {
+    #[derive(Default)]
+    struct HandoffStats {
+        exacts: usize,
+        unique_fens: std::collections::BTreeSet<String>,
+        samples: Vec<String>,
+    }
+
+    fn handoff_stage_for_preserved_internal_loss(
+        trace: &ReliabilityLossProbeTrace,
+        selection_probe: Option<&crate::models::mons_game_model::RootSelectionProbe>,
+        search_probe: Option<&crate::models::mons_game_model::RootSearchProbe>,
+        acceptance_probe: Option<&crate::models::mons_game_model::TurnEngineAcceptanceProbe>,
+    ) -> String {
+        let baseline_move = trace.baseline.move_fen.as_str();
+        let profile_move = trace.candidate.move_fen.as_str();
+        let selection_final = selection_probe
+            .as_ref()
+            .map(|probe| probe.final_selected_move_fen.as_str());
+        let search_final = search_probe
+            .as_ref()
+            .map(|probe| probe.final_selected_move_fen.as_str());
+        let acceptance_selected = acceptance_probe
+            .as_ref()
+            .map(|probe| Input::fen_from_array(&probe.selected_inputs));
+        let acceptance_selected = acceptance_selected.as_deref();
+        let acceptance_candidate = acceptance_probe
+            .as_ref()
+            .map(|probe| Input::fen_from_array(&probe.candidate_inputs));
+        let acceptance_candidate = acceptance_candidate.as_deref();
+        let accepted = acceptance_probe.as_ref().map(|probe| probe.accepted);
+
+        if trace.candidate.selector_last_stage == "engine_cached_resume" {
+            return "cached_resume_handoff".to_string();
+        }
+
+        if selection_final != Some(baseline_move) {
+            return "root_selection_miss".to_string();
+        }
+        if search_final != Some(baseline_move) {
+            return "root_search_miss".to_string();
+        }
+
+        match (acceptance_selected, acceptance_candidate, accepted) {
+            (Some(selected), Some(candidate), Some(true))
+                if selected == profile_move && candidate == profile_move =>
+            {
+                "selected_override_injection".to_string()
+            }
+            (Some(selected), Some(candidate), Some(true))
+                if selected == baseline_move && candidate == profile_move =>
+            {
+                "acceptance_override".to_string()
+            }
+            (Some(selected), Some(_candidate), Some(false)) if selected == baseline_move => {
+                "candidate_rejected_after_search".to_string()
+            }
+            (Some(selected), _, _) if selected == baseline_move => {
+                "selected_root_kept".to_string()
+            }
+            (Some(selected), _, _) if selected != baseline_move => {
+                "post_search_selected_root_replaced".to_string()
+            }
+            _ => "post_search_handoff_unknown".to_string(),
+        }
+    }
+
+    let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
+        .unwrap_or_else(|| "runtime_pro_turn_engine_v30".into());
+    let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_current".into());
+    let shipping_pro_profile = env_profile_name("SMART_PROBE_SHIPPING_PRO_PROFILE")
+        .unwrap_or_else(|| baseline_profile.clone());
+    let repeats = env_usize("SMART_PRO_FAST_SCREEN_REPEATS")
+        .unwrap_or(2)
+        .max(1);
+    let games_per_repeat = env_usize("SMART_PRO_FAST_SCREEN_GAMES").unwrap_or(2).max(1);
+    let max_plies = env_usize("SMART_PRO_FAST_SCREEN_MAX_PLIES")
+        .unwrap_or(84)
+        .max(56);
+    let trace_limit = env_usize("SMART_PROBE_TRACE_LIMIT").unwrap_or(3).max(1);
+    let include_acceptance = env_bool("SMART_PROBE_INCLUDE_ACCEPTANCE").unwrap_or(true);
+    let sample_limit = env_usize("SMART_PROBE_SHARED_SURFACE_SAMPLE_LIMIT")
+        .unwrap_or(2)
+        .max(1);
+    let seed_tag = env_profile_name("SMART_PRO_FAST_SCREEN_SEED_TAG")
+        .unwrap_or_else(|| "pro_fast_screen_vs_normal_v1".to_string());
+    let budget_pro = SearchBudget::from_preference(SmartAutomovePreference::Pro);
+    let budget_normal = SearchBudget::from_preference(SmartAutomovePreference::Normal);
+    let mut total_games = 0usize;
+    let mut normal_loss_games = 0usize;
+    let mut preserved_internal_exacts = 0usize;
+    let mut handoff_stats = std::collections::BTreeMap::<String, HandoffStats>::new();
+
+    eprintln!(
+        "pro fast-screen vs-normal preserved-handoff probe config: candidate_profile={} baseline_profile={} shipping_pro_profile={} seed_tag={} repeats={} games_per_repeat={} max_plies={} trace_limit={} include_acceptance={} sample_limit={}",
+        candidate_profile,
+        baseline_profile,
+        shipping_pro_profile,
+        seed_tag,
+        repeats,
+        games_per_repeat,
+        max_plies,
+        trace_limit,
+        include_acceptance,
+        sample_limit,
+    );
+
+    for repeat_index in 0..repeats {
+        let seed = seed_for_budget_duel_repeat_and_tag(
+            budget_pro,
+            budget_normal,
+            repeat_index,
+            seed_tag.as_str(),
+        );
+        let opening_fens = generate_opening_fens_cached(seed, games_per_repeat);
+
+        for (opening_index, opening_fen) in opening_fens.iter().enumerate() {
+            let candidate_white_ab = opening_index % 2 == 0;
+            for (mirror, candidate_is_white) in [("ab", candidate_white_ab), ("ba", !candidate_white_ab)] {
+                total_games += 1;
+                let (result, traces) = replay_cross_budget_loss_probe_game_with_options(
+                    candidate_profile.as_str(),
+                    SmartAutomovePreference::Pro,
+                    baseline_profile.as_str(),
+                    SmartAutomovePreference::Normal,
+                    opening_fen.as_str(),
+                    candidate_is_white,
+                    max_plies,
+                    trace_limit,
+                    include_acceptance,
+                );
+                if result != MatchResult::OpponentWin {
+                    continue;
+                }
+                normal_loss_games += 1;
+                for trace in &traces {
+                    let game = MonsGame::from_fen(trace.fen.as_str(), false)
+                        .expect("preserved handoff probe fen should be valid");
+                    let direct = loss_probe_direct_runtime_decision_with_options(
+                        candidate_profile.as_str(),
+                        SmartAutomovePreference::Pro,
+                        &game,
+                        include_acceptance,
+                    );
+                    if direct.move_fen != trace.candidate.move_fen {
+                        continue;
+                    }
+                    let shipping_pro = loss_probe_decision_with_options(
+                        shipping_pro_profile.as_str(),
+                        SmartAutomovePreference::Pro,
+                        &game,
+                        include_acceptance,
+                    );
+                    if shipping_pro.move_fen != trace.baseline.move_fen {
+                        continue;
+                    }
+                    preserved_internal_exacts += 1;
+                    let config = loss_probe_runtime_config(
+                        candidate_profile.as_str(),
+                        &game,
+                        SmartAutomovePreference::Pro,
+                    );
+                    let selection_probe = MonsGameModel::root_selection_probe_for_test(&game, config);
+                    let search_probe = MonsGameModel::root_search_probe_for_test(&game, config);
+                    let acceptance_probe =
+                        MonsGameModel::turn_engine_acceptance_probe_for_test(&game, config);
+                    let handoff_stage = handoff_stage_for_preserved_internal_loss(
+                        trace,
+                        selection_probe.as_ref(),
+                        search_probe.as_ref(),
+                        acceptance_probe.as_ref(),
+                    );
+                    let engine = trace.candidate.turn_engine.as_ref();
+                    let candidate_family = engine
+                        .and_then(|engine| engine.candidate_family)
+                        .map(|family| format!("{:?}", family))
+                        .unwrap_or_else(|| "None".to_string());
+                    let surface_key = format!(
+                        "handoff_stage={} profile_stage={} candidate_family={} active_color={:?} turn={} mons_moves={} can_action={} can_move_mana={} move_len={} selector_stage={}",
+                        handoff_stage,
+                        trace.candidate.selector_last_stage,
+                        candidate_family,
+                        game.active_color,
+                        game.turn_number,
+                        game.mons_moves_count,
+                        game.player_can_use_action(),
+                        game.player_can_move_mana(),
+                        trace.candidate.inputs.len(),
+                        direct.selector_last_stage,
+                    );
+                    let entry = handoff_stats.entry(surface_key).or_default();
+                    entry.exacts += 1;
+                    entry.unique_fens.insert(trace.fen.clone());
+                    if entry.samples.len() < sample_limit {
+                        entry.samples.push(format!(
+                            "repeat={} opening_index={} mirror={} ply={} fen={} profile_move={} baseline_move={} shipping_pro_move={} selection_final={:?} search_final={:?} acceptance_selected={:?} acceptance_candidate={:?} accepted={:?}",
+                            repeat_index,
+                            opening_index,
+                            mirror,
+                            trace.ply,
+                            trace.fen,
+                            trace.candidate.move_fen,
+                            trace.baseline.move_fen,
+                            shipping_pro.move_fen,
+                            selection_probe
+                                .as_ref()
+                                .map(|probe| probe.final_selected_move_fen.clone()),
+                            search_probe
+                                .as_ref()
+                                .map(|probe| probe.final_selected_move_fen.clone()),
+                            acceptance_probe
+                                .as_ref()
+                                .map(|probe| Input::fen_from_array(&probe.selected_inputs)),
+                            acceptance_probe
+                                .as_ref()
+                                .map(|probe| Input::fen_from_array(&probe.candidate_inputs)),
+                            acceptance_probe.as_ref().map(|probe| probe.accepted),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    let mut repeated_handoff_surfaces = 0usize;
+    for (surface_key, stats) in &handoff_stats {
+        if stats.exacts > 1 {
+            repeated_handoff_surfaces += 1;
+        }
+        eprintln!(
+            "PRESERVED_HANDOFF count={} unique_fens={} {}",
+            stats.exacts,
+            stats.unique_fens.len(),
+            surface_key,
+        );
+        for sample in &stats.samples {
+            eprintln!("  PRESERVED_HANDOFF_SAMPLE {}", sample);
+        }
+    }
+
+    eprintln!(
+        "pro fast-screen vs-normal preserved-handoff probe summary: total_games={} normal_loss_games={} preserved_internal_exacts={} handoff_surface_count={} repeated_handoff_surfaces={}",
+        total_games,
+        normal_loss_games,
+        preserved_internal_exacts,
+        handoff_stats.len(),
+        repeated_handoff_surfaces,
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: inspect one pro fast-screen opening against the normal baseline"]
 fn smart_automove_pro_fast_screen_opening_probe_vs_normal() {
     let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
