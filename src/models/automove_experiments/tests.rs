@@ -574,6 +574,12 @@ fn probe_config_with_env_overrides(mut config: SmartSearchConfig) -> SmartSearch
     if let Some(value) = env_bool_value("SMART_PROBE_FORCE_SELECTED_FOLLOWUP_PROJECTION") {
         config.enable_turn_engine_selected_followup_projection = value;
     }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_LAZY_ORACLE_SCORE_WINDOW_PROJECTION") {
+        config.enable_turn_engine_lazy_oracle_score_window_projection = value;
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_LATE_BLACK_SETUP_PROGRESS_RESCUE") {
+        config.enable_turn_engine_late_black_setup_progress_rescue = value;
+    }
     if let Some(value) = env_bool_value("SMART_PROBE_FORCE_LOW_BUDGET_GUARD") {
         config.enable_turn_engine_low_budget_guard = value;
     }
@@ -6258,7 +6264,7 @@ fn smart_automove_pro_reliability_override_delta_probe() {
     let mut family_delta_stats = std::collections::BTreeMap::<String, FamilyDeltaStats>::new();
 
     eprintln!(
-        "pro reliability override delta probe config: candidate_profile={} baseline_profile={} baseline_mode={:?} seed_tag={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} trace_limit={} override_engine_disabled={:?} override_max_nodes={:?} override_root_limit={:?} override_enum_limit={:?} override_node_limit={:?} override_node_enum_limit={:?} override_secondary_analysis={:?} override_selected_followup_projection={:?} override_focus_k={:?} override_focus_share_bp={:?} override_reply_limit={:?} override_reply_share_bp={:?} override_reply_margin={:?} override_drainer_margin={:?} override_efficiency_margin={:?} override_selective_extension_share_bp={:?} override_shortlist_max={:?} override_quiet_reductions={:?} override_quiet_reduction_depth={:?} override_quiescence={:?} override_quiescence_tactical_only={:?} override_quiescence_budget={:?} override_quiescence_enum_limit={:?} override_low_budget_guard={:?} override_mid_turn_tactical_guard={:?} override_late_safe_mana_root_preference={:?}",
+        "pro reliability override delta probe config: candidate_profile={} baseline_profile={} baseline_mode={:?} seed_tag={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} trace_limit={} override_engine_disabled={:?} override_max_nodes={:?} override_root_limit={:?} override_enum_limit={:?} override_node_limit={:?} override_node_enum_limit={:?} override_secondary_analysis={:?} override_selected_followup_projection={:?} override_lazy_oracle_score_window_projection={:?} override_late_black_setup_progress_rescue={:?} override_focus_k={:?} override_focus_share_bp={:?} override_reply_limit={:?} override_reply_share_bp={:?} override_reply_margin={:?} override_drainer_margin={:?} override_efficiency_margin={:?} override_selective_extension_share_bp={:?} override_shortlist_max={:?} override_quiet_reductions={:?} override_quiet_reduction_depth={:?} override_quiescence={:?} override_quiescence_tactical_only={:?} override_quiescence_budget={:?} override_quiescence_enum_limit={:?} override_low_budget_guard={:?} override_mid_turn_tactical_guard={:?} override_late_safe_mana_root_preference={:?}",
         candidate_profile,
         baseline_profile,
         baseline_mode,
@@ -6276,6 +6282,8 @@ fn smart_automove_pro_reliability_override_delta_probe() {
         env_usize("SMART_PROBE_FORCE_NODE_ENUM_LIMIT"),
         env_bool("SMART_PROBE_FORCE_SECONDARY_ANALYSIS"),
         env_bool("SMART_PROBE_FORCE_SELECTED_FOLLOWUP_PROJECTION"),
+        env_bool("SMART_PROBE_FORCE_LAZY_ORACLE_SCORE_WINDOW_PROJECTION"),
+        env_bool("SMART_PROBE_FORCE_LATE_BLACK_SETUP_PROGRESS_RESCUE"),
         env_usize("SMART_PROBE_FORCE_FOCUS_K"),
         env_i32("SMART_PROBE_FORCE_FOCUS_SHARE_BP"),
         env_usize("SMART_PROBE_FORCE_REPLY_LIMIT"),
@@ -6498,7 +6506,7 @@ fn smart_automove_pro_reliability_candidate_override_probe() {
     let mut normal_timing = DuelTimingStats::default();
 
     eprintln!(
-        "pro reliability candidate override probe config: candidate_profile={} baseline_profile={} seed_tag_pro={} seed_tag_normal={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} override_turn_planner_root_injection={:?} override_turn_planner_root_injection_limit={:?} override_turn_planner_root_max_gap={:?} override_turn_planner_root_emergency_only={:?} override_engine_disabled={:?} override_max_nodes={:?} override_root_limit={:?} override_enum_limit={:?} override_node_limit={:?} override_node_enum_limit={:?} override_secondary_analysis={:?} override_selected_followup_projection={:?} override_two_pass_root_allocation={:?} override_volatility_focus={:?} override_event_ordering={:?} override_selective_extensions={:?} override_focus_k={:?} override_focus_share_bp={:?} override_reply_limit={:?} override_reply_share_bp={:?} override_reply_margin={:?} override_drainer_margin={:?} override_efficiency_margin={:?} override_selective_extension_share_bp={:?} override_shortlist_max={:?} override_quiet_reductions={:?} override_quiet_reduction_depth={:?} override_normal_safety_rerank={:?} override_normal_safety_deep_floor={:?} override_clean_reply={:?} override_hard_spirit_deploy={:?} override_soft_root_priors={:?} override_deterministic_tiebreak={:?} override_quiescence={:?} override_quiescence_tactical_only={:?} override_quiescence_budget={:?} override_quiescence_enum_limit={:?} override_low_budget_guard={:?} override_mid_turn_tactical_guard={:?} override_late_safe_mana_root_preference={:?}",
+        "pro reliability candidate override probe config: candidate_profile={} baseline_profile={} seed_tag_pro={} seed_tag_normal={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} override_turn_planner_root_injection={:?} override_turn_planner_root_injection_limit={:?} override_turn_planner_root_max_gap={:?} override_turn_planner_root_emergency_only={:?} override_engine_disabled={:?} override_max_nodes={:?} override_root_limit={:?} override_enum_limit={:?} override_node_limit={:?} override_node_enum_limit={:?} override_secondary_analysis={:?} override_selected_followup_projection={:?} override_lazy_oracle_score_window_projection={:?} override_late_black_setup_progress_rescue={:?} override_two_pass_root_allocation={:?} override_volatility_focus={:?} override_event_ordering={:?} override_selective_extensions={:?} override_focus_k={:?} override_focus_share_bp={:?} override_reply_limit={:?} override_reply_share_bp={:?} override_reply_margin={:?} override_drainer_margin={:?} override_efficiency_margin={:?} override_selective_extension_share_bp={:?} override_shortlist_max={:?} override_quiet_reductions={:?} override_quiet_reduction_depth={:?} override_normal_safety_rerank={:?} override_normal_safety_deep_floor={:?} override_clean_reply={:?} override_hard_spirit_deploy={:?} override_soft_root_priors={:?} override_deterministic_tiebreak={:?} override_quiescence={:?} override_quiescence_tactical_only={:?} override_quiescence_budget={:?} override_quiescence_enum_limit={:?} override_low_budget_guard={:?} override_mid_turn_tactical_guard={:?} override_late_safe_mana_root_preference={:?}",
         candidate_profile,
         baseline_profile,
         seed_tag_pro,
@@ -6519,6 +6527,8 @@ fn smart_automove_pro_reliability_candidate_override_probe() {
         env_usize("SMART_PROBE_FORCE_NODE_ENUM_LIMIT"),
         env_bool("SMART_PROBE_FORCE_SECONDARY_ANALYSIS"),
         env_bool("SMART_PROBE_FORCE_SELECTED_FOLLOWUP_PROJECTION"),
+        env_bool("SMART_PROBE_FORCE_LAZY_ORACLE_SCORE_WINDOW_PROJECTION"),
+        env_bool("SMART_PROBE_FORCE_LATE_BLACK_SETUP_PROGRESS_RESCUE"),
         env_bool("SMART_PROBE_FORCE_TWO_PASS_ROOT_ALLOCATION"),
         env_bool("SMART_PROBE_FORCE_VOLATILITY_FOCUS"),
         env_bool("SMART_PROBE_FORCE_EVENT_ORDERING"),
