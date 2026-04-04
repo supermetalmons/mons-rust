@@ -3040,6 +3040,124 @@ fn smart_automove_pro_fast_screen_loss_probe_vs_pro() {
 }
 
 #[test]
+#[ignore = "diagnostic: replay the same pro openings against current Pro and current Normal and print shared candidate losses"]
+fn smart_automove_pro_fast_screen_shared_loss_probe_vs_current() {
+    let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
+        .unwrap_or_else(|| "runtime_pro_turn_engine_v30".into());
+    let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_current".into());
+    let repeats = env_usize("SMART_PRO_FAST_SCREEN_REPEATS")
+        .unwrap_or(2)
+        .max(1);
+    let games_per_repeat = env_usize("SMART_PRO_FAST_SCREEN_GAMES").unwrap_or(2).max(1);
+    let max_plies = env_usize("SMART_PRO_FAST_SCREEN_MAX_PLIES")
+        .unwrap_or(84)
+        .max(56);
+    let trace_limit = env_usize("SMART_PROBE_TRACE_LIMIT").unwrap_or(3).max(1);
+    let include_acceptance = env_bool("SMART_PROBE_INCLUDE_ACCEPTANCE").unwrap_or(true);
+    let seed_tag = env_profile_name("SMART_PRO_FAST_SCREEN_SEED_TAG")
+        .unwrap_or_else(|| "pro_fast_screen_shared_vs_current_v1".to_string());
+    let budget = SearchBudget::from_preference(SmartAutomovePreference::Pro);
+    let mut total_games = 0usize;
+    let mut shared_losses = 0usize;
+    let mut pro_only_losses = 0usize;
+    let mut normal_only_losses = 0usize;
+
+    eprintln!(
+        "pro fast-screen shared-loss probe config: candidate_profile={} baseline_profile={} seed_tag={} repeats={} games_per_repeat={} max_plies={} trace_limit={} include_acceptance={}",
+        candidate_profile,
+        baseline_profile,
+        seed_tag,
+        repeats,
+        games_per_repeat,
+        max_plies,
+        trace_limit,
+        include_acceptance,
+    );
+
+    for repeat_index in 0..repeats {
+        let seed =
+            seed_for_budget_duel_repeat_and_tag(budget, budget, repeat_index, seed_tag.as_str());
+        let opening_fens = generate_opening_fens_cached(seed, games_per_repeat);
+
+        for (opening_index, opening_fen) in opening_fens.iter().enumerate() {
+            let candidate_white_ab = opening_index % 2 == 0;
+            for (mirror, candidate_is_white) in
+                [("ab", candidate_white_ab), ("ba", !candidate_white_ab)]
+            {
+                total_games += 1;
+                let (vs_pro_result, vs_pro_traces) = replay_cross_budget_loss_probe_game_with_options(
+                    candidate_profile.as_str(),
+                    SmartAutomovePreference::Pro,
+                    baseline_profile.as_str(),
+                    SmartAutomovePreference::Pro,
+                    opening_fen.as_str(),
+                    candidate_is_white,
+                    max_plies,
+                    trace_limit,
+                    include_acceptance,
+                );
+                let (vs_normal_result, vs_normal_traces) =
+                    replay_cross_budget_loss_probe_game_with_options(
+                        candidate_profile.as_str(),
+                        SmartAutomovePreference::Pro,
+                        baseline_profile.as_str(),
+                        SmartAutomovePreference::Normal,
+                        opening_fen.as_str(),
+                        candidate_is_white,
+                        max_plies,
+                        trace_limit,
+                        include_acceptance,
+                    );
+                let lost_vs_pro = vs_pro_result == MatchResult::OpponentWin;
+                let lost_vs_normal = vs_normal_result == MatchResult::OpponentWin;
+
+                match (lost_vs_pro, lost_vs_normal) {
+                    (true, true) => {
+                        shared_losses += 1;
+                        eprintln!(
+                            "PRO_FAST_SCREEN_SHARED_LOSS game={} repeat={} opening_index={} mirror={} candidate_is_white={} seed={} opening={}",
+                            shared_losses,
+                            repeat_index,
+                            opening_index,
+                            mirror,
+                            candidate_is_white,
+                            seed,
+                            opening_fen
+                        );
+                        for trace in &vs_pro_traces {
+                            eprintln!("  VS_PRO_TRACE ply={} fen={}", trace.ply, trace.fen);
+                            print_loss_probe_decision("    candidate", &trace.candidate);
+                            print_loss_probe_decision("    baseline", &trace.baseline);
+                        }
+                        for trace in &vs_normal_traces {
+                            eprintln!("  VS_NORMAL_TRACE ply={} fen={}", trace.ply, trace.fen);
+                            print_loss_probe_decision("    candidate", &trace.candidate);
+                            print_loss_probe_decision("    baseline", &trace.baseline);
+                        }
+                    }
+                    (true, false) => {
+                        pro_only_losses += 1;
+                    }
+                    (false, true) => {
+                        normal_only_losses += 1;
+                    }
+                    (false, false) => {}
+                }
+            }
+        }
+    }
+
+    eprintln!(
+        "pro fast-screen shared-loss probe summary: total_games={} shared_losses={} pro_only_losses={} normal_only_losses={}",
+        total_games,
+        shared_losses,
+        pro_only_losses,
+        normal_only_losses,
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: inspect one pro fast-screen opening against the normal baseline"]
 fn smart_automove_pro_fast_screen_opening_probe_vs_normal() {
     let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
