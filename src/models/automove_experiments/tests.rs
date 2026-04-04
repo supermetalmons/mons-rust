@@ -4959,9 +4959,11 @@ fn smart_automove_pro_fast_screen_vs_normal_preserved_handoff_probe() {
     );
 }
 
-#[test]
-#[ignore = "diagnostic: classify real pro-reliability current-Normal losses by aligned surface and shipping-Pro relation"]
-fn smart_automove_pro_reliability_vs_normal_surface_probe() {
+fn run_smart_automove_pro_reliability_surface_probe(
+    baseline_mode: SmartAutomovePreference,
+    seed_tag_suffix: &str,
+    label: &str,
+) {
     #[derive(Default)]
     struct SurfaceStats {
         exacts: usize,
@@ -4985,7 +4987,7 @@ fn smart_automove_pro_reliability_vs_normal_surface_probe() {
         surface_key_mode: &str,
     ) -> (String, SurfaceStats) {
         let game = MonsGame::from_fen(trace.fen.as_str(), false)
-            .expect("reliability vs-normal surface probe fen should be valid");
+            .expect("reliability surface probe fen should be valid");
         let turn_status = trace
             .candidate
             .turn_engine
@@ -5129,15 +5131,16 @@ fn smart_automove_pro_reliability_vs_normal_surface_probe() {
         .unwrap_or_else(|| "aligned".to_string());
     let reliability_seed_tag = env_profile_name("SMART_PRO_RELIABILITY_SEED_TAG")
         .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
-    let seed_tag = format!("{}_vs_normal", reliability_seed_tag);
-    let budget_pro = SearchBudget::from_preference(SmartAutomovePreference::Pro);
-    let budget_normal = SearchBudget::from_preference(SmartAutomovePreference::Normal);
+    let seed_tag = format!("{}{}", reliability_seed_tag, seed_tag_suffix);
+    let candidate_budget = SearchBudget::from_preference(SmartAutomovePreference::Pro);
+    let baseline_budget = SearchBudget::from_preference(baseline_mode);
     let mut total_games = 0usize;
-    let mut normal_loss_games = 0usize;
+    let mut loss_games = 0usize;
     let mut surface_stats = std::collections::BTreeMap::<String, SurfaceStats>::new();
 
     eprintln!(
-        "pro reliability vs-normal surface probe config: candidate_profile={} baseline_profile={} shipping_pro_profile={} seed_tag={} repeats={} games_per_repeat={} max_plies={} trace_limit={} include_acceptance={} sample_limit={} key_mode={}",
+        "{} config: candidate_profile={} baseline_profile={} shipping_pro_profile={} seed_tag={} repeats={} games_per_repeat={} max_plies={} trace_limit={} include_acceptance={} sample_limit={} key_mode={}",
+        label,
         candidate_profile,
         baseline_profile,
         shipping_pro_profile,
@@ -5153,8 +5156,8 @@ fn smart_automove_pro_reliability_vs_normal_surface_probe() {
 
     for repeat_index in 0..repeats {
         let seed = seed_for_budget_duel_repeat_and_tag(
-            budget_pro,
-            budget_normal,
+            candidate_budget,
+            baseline_budget,
             repeat_index,
             seed_tag.as_str(),
         );
@@ -5168,7 +5171,7 @@ fn smart_automove_pro_reliability_vs_normal_surface_probe() {
                     candidate_profile.as_str(),
                     SmartAutomovePreference::Pro,
                     baseline_profile.as_str(),
-                    SmartAutomovePreference::Normal,
+                    baseline_mode,
                     opening_fen.as_str(),
                     candidate_is_white,
                     max_plies,
@@ -5178,7 +5181,7 @@ fn smart_automove_pro_reliability_vs_normal_surface_probe() {
                 if result != MatchResult::OpponentWin {
                     continue;
                 }
-                normal_loss_games += 1;
+                loss_games += 1;
                 for trace in &traces {
                     let (surface_key, stats) = build_surface_stats(
                         candidate_profile.as_str(),
@@ -5221,7 +5224,8 @@ fn smart_automove_pro_reliability_vs_normal_surface_probe() {
         }
 
         eprintln!(
-            "RELIABILITY_VS_NORMAL_SURFACE count={} internal={} wrapper={} pro_matches=[candidate:{} baseline:{} neither:{}] unique_fens={} {}",
+            "{} count={} internal={} wrapper={} pro_matches=[candidate:{} baseline:{} neither:{}] unique_fens={} {}",
+            label,
             stats.exacts,
             stats.internal_exacts,
             stats.wrapper_owned_exacts,
@@ -5232,15 +5236,16 @@ fn smart_automove_pro_reliability_vs_normal_surface_probe() {
             surface_key,
         );
         for sample in &stats.samples {
-            eprintln!("  RELIABILITY_VS_NORMAL_SURFACE_SAMPLE {}", sample);
+            eprintln!("  {}_SAMPLE {}", label, sample);
         }
     }
 
     eprintln!(
-        "pro reliability vs-normal surface probe summary: key_mode={} total_games={} normal_loss_games={} surface_count={} repeated_surface_count={} repeated_internal_surface_count={} repeated_non_pro_owned_surface_count={} repeated_internal_non_pro_owned_surface_count={} total_internal_exacts={}",
+        "{} summary: key_mode={} total_games={} loss_games={} surface_count={} repeated_surface_count={} repeated_internal_surface_count={} repeated_non_pro_owned_surface_count={} repeated_internal_non_pro_owned_surface_count={} total_internal_exacts={}",
+        label,
         surface_key_mode,
         total_games,
-        normal_loss_games,
+        loss_games,
         surface_stats.len(),
         repeated_surface_count,
         repeated_internal_surface_count,
@@ -5250,8 +5255,29 @@ fn smart_automove_pro_reliability_vs_normal_surface_probe() {
     );
 
     assert!(
-        normal_loss_games > 0,
-        "reliability vs-normal surface probe found no candidate losses"
+        loss_games > 0,
+        "{} found no candidate losses",
+        label
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: classify real pro-reliability current-Normal losses by aligned surface and shipping-Pro relation"]
+fn smart_automove_pro_reliability_vs_normal_surface_probe() {
+    run_smart_automove_pro_reliability_surface_probe(
+        SmartAutomovePreference::Normal,
+        "_vs_normal",
+        "RELIABILITY_VS_NORMAL_SURFACE",
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: classify real pro-reliability current-Pro losses by aligned surface and shipping-Pro relation"]
+fn smart_automove_pro_reliability_vs_pro_surface_probe() {
+    run_smart_automove_pro_reliability_surface_probe(
+        SmartAutomovePreference::Pro,
+        "",
+        "RELIABILITY_VS_PRO_SURFACE",
     );
 }
 
