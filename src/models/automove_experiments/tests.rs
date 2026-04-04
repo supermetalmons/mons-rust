@@ -6192,6 +6192,18 @@ fn smart_automove_pro_reliability_shared_handoff_probe_vs_current() {
 #[test]
 #[ignore = "diagnostic: compare default challenger vs candidate-side override on the retained pro-reliability slice"]
 fn smart_automove_pro_reliability_override_delta_probe() {
+    #[derive(Default)]
+    struct FamilyDeltaStats {
+        exacts: usize,
+        to_baseline: usize,
+        away_from_baseline: usize,
+        to_third: usize,
+        accepted_false_to_true: usize,
+        accepted_true_to_false: usize,
+        unique_fens: std::collections::BTreeSet<String>,
+        samples: Vec<String>,
+    }
+
     let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
         .unwrap_or_else(|| "runtime_pro_turn_engine_v30".into());
     let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
@@ -6229,6 +6241,7 @@ fn smart_automove_pro_reliability_override_delta_probe() {
     let mut changed_to_baseline = 0usize;
     let mut changed_away_from_baseline = 0usize;
     let mut changed_to_third = 0usize;
+    let mut family_delta_stats = std::collections::BTreeMap::<String, FamilyDeltaStats>::new();
 
     eprintln!(
         "pro reliability override delta probe config: candidate_profile={} baseline_profile={} baseline_mode={:?} seed_tag={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} trace_limit={} override_secondary_analysis={:?} override_selected_followup_projection={:?} override_low_budget_guard={:?} override_mid_turn_tactical_guard={:?} override_late_safe_mana_root_preference={:?}",
@@ -6299,19 +6312,50 @@ fn smart_automove_pro_reliability_override_delta_probe() {
 
                         if default.move_fen != overridden.move_fen {
                             changed_exacts += 1;
+                            let default_engine = default.turn_engine.as_ref();
+                            let override_engine = overridden.turn_engine.as_ref();
+                            let default_family = default_engine
+                                .and_then(|engine| engine.candidate_family)
+                                .map(|family| format!("{:?}", family))
+                                .unwrap_or_else(|| "None".to_string());
+                            let override_family = override_engine
+                                .and_then(|engine| engine.candidate_family)
+                                .map(|family| format!("{:?}", family))
+                                .unwrap_or_else(|| "None".to_string());
+                            let default_accepted =
+                                default_engine.and_then(|engine| engine.accepted_after_search);
+                            let override_accepted =
+                                override_engine.and_then(|engine| engine.accepted_after_search);
+                            let family_key = format!(
+                                "default_family={} override_family={} default_accepted={:?} override_accepted={:?}",
+                                default_family,
+                                override_family,
+                                default_accepted,
+                                override_accepted,
+                            );
+                            let family_entry = family_delta_stats.entry(family_key).or_default();
+                            family_entry.exacts += 1;
+                            family_entry.unique_fens.insert(game.fen());
                             if overridden.move_fen == baseline.move_fen {
                                 changed_to_baseline += 1;
+                                family_entry.to_baseline += 1;
                             } else if default.move_fen == baseline.move_fen {
                                 changed_away_from_baseline += 1;
+                                family_entry.away_from_baseline += 1;
                             } else {
                                 changed_to_third += 1;
+                                family_entry.to_third += 1;
+                            }
+                            if default_accepted == Some(false) && override_accepted == Some(true) {
+                                family_entry.accepted_false_to_true += 1;
+                            }
+                            if default_accepted == Some(true) && override_accepted == Some(false) {
+                                family_entry.accepted_true_to_false += 1;
                             }
                             if logged < trace_limit {
                                 logged += 1;
-                                let default_engine = default.turn_engine.as_ref();
-                                let override_engine = overridden.turn_engine.as_ref();
-                                eprintln!(
-                                    "OVERRIDE_DELTA repeat={} opening_index={} mirror={} candidate_is_white={} ply={} fen={} default_move={} override_move={} baseline_move={} default_stage={} override_stage={} baseline_stage={} default_head={:?} override_head={:?} default_selected={:?} override_selected={:?} default_accepted={:?} override_accepted={:?}",
+                                let sample = format!(
+                                    "repeat={} opening_index={} mirror={} candidate_is_white={} ply={} fen={} default_move={} override_move={} baseline_move={} default_stage={} override_stage={} baseline_stage={} default_head={:?} override_head={:?} default_selected={:?} override_selected={:?} default_accepted={:?} override_accepted={:?}",
                                     repeat_index,
                                     opening_index,
                                     mirror,
@@ -6331,6 +6375,10 @@ fn smart_automove_pro_reliability_override_delta_probe() {
                                     default_engine.and_then(|engine| engine.accepted_after_search),
                                     override_engine.and_then(|engine| engine.accepted_after_search),
                                 );
+                                eprintln!("OVERRIDE_DELTA {}", sample);
+                                if family_entry.samples.len() < 2 {
+                                    family_entry.samples.push(sample);
+                                }
                             }
                         }
 
@@ -6363,6 +6411,22 @@ fn smart_automove_pro_reliability_override_delta_probe() {
         changed_away_from_baseline,
         changed_to_third,
     );
+    for (family_key, stats) in &family_delta_stats {
+        eprintln!(
+            "OVERRIDE_DELTA_FAMILY count={} to_baseline={} away_from_baseline={} to_third={} accepted_false_to_true={} accepted_true_to_false={} unique_fens={} {}",
+            stats.exacts,
+            stats.to_baseline,
+            stats.away_from_baseline,
+            stats.to_third,
+            stats.accepted_false_to_true,
+            stats.accepted_true_to_false,
+            stats.unique_fens.len(),
+            family_key,
+        );
+        for sample in &stats.samples {
+            eprintln!("  OVERRIDE_DELTA_FAMILY_SAMPLE {}", sample);
+        }
+    }
 
     assert!(total_games > 0, "override delta probe found no games");
 }
