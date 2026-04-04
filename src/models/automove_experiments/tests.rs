@@ -6258,7 +6258,7 @@ fn smart_automove_pro_reliability_override_delta_probe() {
     let mut family_delta_stats = std::collections::BTreeMap::<String, FamilyDeltaStats>::new();
 
     eprintln!(
-        "pro reliability override delta probe config: candidate_profile={} baseline_profile={} baseline_mode={:?} seed_tag={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} trace_limit={} override_secondary_analysis={:?} override_selected_followup_projection={:?} override_focus_k={:?} override_focus_share_bp={:?} override_reply_limit={:?} override_reply_share_bp={:?} override_reply_margin={:?} override_selective_extension_share_bp={:?} override_shortlist_max={:?} override_quiet_reductions={:?} override_quiet_reduction_depth={:?} override_quiescence={:?} override_quiescence_tactical_only={:?} override_quiescence_budget={:?} override_quiescence_enum_limit={:?} override_low_budget_guard={:?} override_mid_turn_tactical_guard={:?} override_late_safe_mana_root_preference={:?}",
+        "pro reliability override delta probe config: candidate_profile={} baseline_profile={} baseline_mode={:?} seed_tag={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} trace_limit={} override_secondary_analysis={:?} override_selected_followup_projection={:?} override_focus_k={:?} override_focus_share_bp={:?} override_reply_limit={:?} override_reply_share_bp={:?} override_reply_margin={:?} override_drainer_margin={:?} override_efficiency_margin={:?} override_selective_extension_share_bp={:?} override_shortlist_max={:?} override_quiet_reductions={:?} override_quiet_reduction_depth={:?} override_quiescence={:?} override_quiescence_tactical_only={:?} override_quiescence_budget={:?} override_quiescence_enum_limit={:?} override_low_budget_guard={:?} override_mid_turn_tactical_guard={:?} override_late_safe_mana_root_preference={:?}",
         candidate_profile,
         baseline_profile,
         baseline_mode,
@@ -6275,6 +6275,8 @@ fn smart_automove_pro_reliability_override_delta_probe() {
         env_usize("SMART_PROBE_FORCE_REPLY_LIMIT"),
         env_i32("SMART_PROBE_FORCE_REPLY_SHARE_BP"),
         env_i32("SMART_PROBE_FORCE_REPLY_MARGIN"),
+        env_i32("SMART_PROBE_FORCE_DRAINER_MARGIN"),
+        env_i32("SMART_PROBE_FORCE_EFFICIENCY_MARGIN"),
         env_i32("SMART_PROBE_FORCE_SELECTIVE_EXTENSION_SHARE_BP"),
         env_usize("SMART_PROBE_FORCE_SHORTLIST_MAX"),
         env_bool("SMART_PROBE_FORCE_QUIET_REDUCTIONS"),
@@ -6490,7 +6492,7 @@ fn smart_automove_pro_reliability_candidate_override_probe() {
     let mut normal_timing = DuelTimingStats::default();
 
     eprintln!(
-        "pro reliability candidate override probe config: candidate_profile={} baseline_profile={} seed_tag_pro={} seed_tag_normal={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} override_turn_planner_root_injection={:?} override_turn_planner_root_injection_limit={:?} override_turn_planner_root_max_gap={:?} override_turn_planner_root_emergency_only={:?} override_secondary_analysis={:?} override_selected_followup_projection={:?} override_two_pass_root_allocation={:?} override_volatility_focus={:?} override_event_ordering={:?} override_selective_extensions={:?} override_focus_k={:?} override_focus_share_bp={:?} override_reply_limit={:?} override_reply_share_bp={:?} override_reply_margin={:?} override_selective_extension_share_bp={:?} override_shortlist_max={:?} override_quiet_reductions={:?} override_quiet_reduction_depth={:?} override_normal_safety_rerank={:?} override_normal_safety_deep_floor={:?} override_clean_reply={:?} override_hard_spirit_deploy={:?} override_soft_root_priors={:?} override_deterministic_tiebreak={:?} override_quiescence={:?} override_quiescence_tactical_only={:?} override_quiescence_budget={:?} override_quiescence_enum_limit={:?} override_low_budget_guard={:?} override_mid_turn_tactical_guard={:?} override_late_safe_mana_root_preference={:?}",
+        "pro reliability candidate override probe config: candidate_profile={} baseline_profile={} seed_tag_pro={} seed_tag_normal={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} override_turn_planner_root_injection={:?} override_turn_planner_root_injection_limit={:?} override_turn_planner_root_max_gap={:?} override_turn_planner_root_emergency_only={:?} override_secondary_analysis={:?} override_selected_followup_projection={:?} override_two_pass_root_allocation={:?} override_volatility_focus={:?} override_event_ordering={:?} override_selective_extensions={:?} override_focus_k={:?} override_focus_share_bp={:?} override_reply_limit={:?} override_reply_share_bp={:?} override_reply_margin={:?} override_drainer_margin={:?} override_efficiency_margin={:?} override_selective_extension_share_bp={:?} override_shortlist_max={:?} override_quiet_reductions={:?} override_quiet_reduction_depth={:?} override_normal_safety_rerank={:?} override_normal_safety_deep_floor={:?} override_clean_reply={:?} override_hard_spirit_deploy={:?} override_soft_root_priors={:?} override_deterministic_tiebreak={:?} override_quiescence={:?} override_quiescence_tactical_only={:?} override_quiescence_budget={:?} override_quiescence_enum_limit={:?} override_low_budget_guard={:?} override_mid_turn_tactical_guard={:?} override_late_safe_mana_root_preference={:?}",
         candidate_profile,
         baseline_profile,
         seed_tag_pro,
@@ -6514,6 +6516,8 @@ fn smart_automove_pro_reliability_candidate_override_probe() {
         env_usize("SMART_PROBE_FORCE_REPLY_LIMIT"),
         env_i32("SMART_PROBE_FORCE_REPLY_SHARE_BP"),
         env_i32("SMART_PROBE_FORCE_REPLY_MARGIN"),
+        env_i32("SMART_PROBE_FORCE_DRAINER_MARGIN"),
+        env_i32("SMART_PROBE_FORCE_EFFICIENCY_MARGIN"),
         env_i32("SMART_PROBE_FORCE_SELECTIVE_EXTENSION_SHARE_BP"),
         env_usize("SMART_PROBE_FORCE_SHORTLIST_MAX"),
         env_bool("SMART_PROBE_FORCE_QUIET_REDUCTIONS"),
