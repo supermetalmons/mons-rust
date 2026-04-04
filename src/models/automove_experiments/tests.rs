@@ -5282,6 +5282,380 @@ fn smart_automove_pro_reliability_vs_pro_surface_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: aggregate broader family overlap across the real vs-Pro and vs-Normal gate losses"]
+fn smart_automove_pro_reliability_shared_family_probe_vs_current() {
+    #[derive(Default)]
+    struct SharedFamilySideStats {
+        exacts: usize,
+        internal_exacts: usize,
+        wrapper_owned_exacts: usize,
+        direct_matches_baseline: usize,
+        head_selected_true: usize,
+        head_selected_false: usize,
+        head_selected_none: usize,
+        accepted_true: usize,
+        accepted_false: usize,
+        accepted_none: usize,
+        unique_fens: std::collections::BTreeSet<String>,
+        samples: Vec<String>,
+    }
+
+    #[derive(Default)]
+    struct SharedFamilySurfaceStats {
+        vs_pro: SharedFamilySideStats,
+        vs_normal: SharedFamilySideStats,
+    }
+
+    fn build_shared_family_trace_stats(
+        candidate_profile: &str,
+        trace: &ReliabilityLossProbeTrace,
+        repeat_index: usize,
+        opening_index: usize,
+        mirror: &str,
+        include_acceptance: bool,
+        surface_key_mode: &str,
+    ) -> (String, SharedFamilySideStats) {
+        let turn_status = trace
+            .candidate
+            .turn_engine
+            .as_ref()
+            .map(|engine| format!("{:?}", engine.status))
+            .unwrap_or_else(|| "None".to_string());
+        let candidate_family = trace
+            .candidate
+            .turn_engine
+            .as_ref()
+            .and_then(|engine| engine.candidate_family)
+            .map(|family| format!("{:?}", family))
+            .unwrap_or_else(|| "None".to_string());
+        let head_selected = trace
+            .candidate
+            .turn_engine
+            .as_ref()
+            .and_then(|engine| engine.candidate_move_fen.as_ref())
+            .map(|move_fen| move_fen == &trace.candidate.move_fen);
+        let accepted_after_search = trace
+            .candidate
+            .turn_engine
+            .as_ref()
+            .and_then(|engine| engine.accepted_after_search);
+        let game = MonsGame::from_fen(trace.fen.as_str(), false)
+            .expect("real-gate shared family probe fen should be valid");
+        let direct = loss_probe_direct_runtime_decision_with_options(
+            candidate_profile,
+            SmartAutomovePreference::Pro,
+            &game,
+            include_acceptance,
+        );
+        let wrapper_owned = direct.move_fen != trace.candidate.move_fen;
+        let move_len = trace.candidate.inputs.len();
+
+        let mut stats = SharedFamilySideStats {
+            exacts: 1,
+            ..SharedFamilySideStats::default()
+        };
+        stats.unique_fens.insert(trace.fen.clone());
+        if wrapper_owned {
+            stats.wrapper_owned_exacts = 1;
+        } else {
+            stats.internal_exacts = 1;
+        }
+        if direct.move_fen == trace.baseline.move_fen {
+            stats.direct_matches_baseline = 1;
+        }
+        match head_selected {
+            Some(true) => stats.head_selected_true = 1,
+            Some(false) => stats.head_selected_false = 1,
+            None => stats.head_selected_none = 1,
+        }
+        match accepted_after_search {
+            Some(true) => stats.accepted_true = 1,
+            Some(false) => stats.accepted_false = 1,
+            None => stats.accepted_none = 1,
+        }
+        stats.samples.push(format!(
+            "repeat={} opening_index={} mirror={} ply={} fen={} profile_move={} baseline_move={} direct_move={} wrapper_owned={} direct_stage={} head_selected={:?} accepted_after_search={:?}",
+            repeat_index,
+            opening_index,
+            mirror,
+            trace.ply,
+            trace.fen,
+            trace.candidate.move_fen,
+            trace.baseline.move_fen,
+            direct.move_fen,
+            wrapper_owned,
+            direct.selector_last_stage,
+            head_selected,
+            accepted_after_search,
+        ));
+
+        let surface_key = match surface_key_mode {
+            "aligned" => format!(
+                "profile_stage={} direct_stage={} turn_status={} candidate_family={} active_color={:?} turn={} mons_moves={} can_action={} can_move_mana={} move_len={} wrapper_owned={} head_selected={:?} accepted_after_search={:?}",
+                trace.candidate.selector_last_stage,
+                direct.selector_last_stage,
+                turn_status,
+                candidate_family,
+                game.active_color,
+                game.turn_number,
+                game.mons_moves_count,
+                game.player_can_use_action(),
+                game.player_can_move_mana(),
+                move_len,
+                wrapper_owned,
+                head_selected,
+                accepted_after_search,
+            ),
+            _ => format!(
+                "profile_stage={} turn_status={} candidate_family={}",
+                trace.candidate.selector_last_stage,
+                turn_status,
+                candidate_family,
+            ),
+        };
+
+        (surface_key, stats)
+    }
+
+    fn merge_shared_family_side_stats(
+        dest: &mut SharedFamilySideStats,
+        src: SharedFamilySideStats,
+        sample_limit: usize,
+    ) {
+        dest.exacts += src.exacts;
+        dest.internal_exacts += src.internal_exacts;
+        dest.wrapper_owned_exacts += src.wrapper_owned_exacts;
+        dest.direct_matches_baseline += src.direct_matches_baseline;
+        dest.head_selected_true += src.head_selected_true;
+        dest.head_selected_false += src.head_selected_false;
+        dest.head_selected_none += src.head_selected_none;
+        dest.accepted_true += src.accepted_true;
+        dest.accepted_false += src.accepted_false;
+        dest.accepted_none += src.accepted_none;
+        dest.unique_fens.extend(src.unique_fens);
+        for sample in src.samples {
+            if dest.samples.len() >= sample_limit {
+                break;
+            }
+            dest.samples.push(sample);
+        }
+    }
+
+    let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
+        .unwrap_or_else(|| "runtime_pro_turn_engine_v30".into());
+    let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_current".into());
+    let repeats = env_usize("SMART_PRO_RELIABILITY_REPEATS")
+        .unwrap_or(1)
+        .max(1);
+    let games_per_repeat = env_usize("SMART_PRO_RELIABILITY_GAMES").unwrap_or(2).max(1);
+    let max_plies = env_usize("SMART_PRO_RELIABILITY_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let trace_limit = env_usize("SMART_PROBE_TRACE_LIMIT").unwrap_or(4).max(1);
+    let include_acceptance = env_bool("SMART_PROBE_INCLUDE_ACCEPTANCE").unwrap_or(true);
+    let sample_limit = env_usize("SMART_PROBE_SHARED_SURFACE_SAMPLE_LIMIT")
+        .unwrap_or(1)
+        .max(1);
+    let surface_key_mode = env::var("SMART_PROBE_SHARED_FAMILY_KEY_MODE")
+        .ok()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "family".to_string());
+    let reliability_seed_tag = env_profile_name("SMART_PRO_RELIABILITY_SEED_TAG")
+        .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
+    let seed_tag_pro = reliability_seed_tag.clone();
+    let seed_tag_normal = format!("{}_vs_normal", reliability_seed_tag);
+    let budget_pro = SearchBudget::from_preference(SmartAutomovePreference::Pro);
+    let budget_normal = SearchBudget::from_preference(SmartAutomovePreference::Normal);
+    let mut total_vs_pro_games = 0usize;
+    let mut total_vs_normal_games = 0usize;
+    let mut vs_pro_loss_games = 0usize;
+    let mut vs_normal_loss_games = 0usize;
+    let mut surface_stats =
+        std::collections::BTreeMap::<String, SharedFamilySurfaceStats>::new();
+
+    eprintln!(
+        "pro reliability shared-family probe config: candidate_profile={} baseline_profile={} seed_tag_pro={} seed_tag_normal={} repeats={} games_per_repeat={} max_plies={} trace_limit={} include_acceptance={} sample_limit={} key_mode={}",
+        candidate_profile,
+        baseline_profile,
+        seed_tag_pro,
+        seed_tag_normal,
+        repeats,
+        games_per_repeat,
+        max_plies,
+        trace_limit,
+        include_acceptance,
+        sample_limit,
+        surface_key_mode,
+    );
+
+    for repeat_index in 0..repeats {
+        let seed = seed_for_budget_duel_repeat_and_tag(
+            budget_pro,
+            budget_pro,
+            repeat_index,
+            seed_tag_pro.as_str(),
+        );
+        let opening_fens = generate_opening_fens_cached(seed, games_per_repeat);
+
+        for (opening_index, opening_fen) in opening_fens.iter().enumerate() {
+            let candidate_white_ab = opening_index % 2 == 0;
+            for (mirror, candidate_is_white) in [("ab", candidate_white_ab), ("ba", !candidate_white_ab)] {
+                total_vs_pro_games += 1;
+                let (result, traces) = replay_cross_budget_loss_probe_game_with_options(
+                    candidate_profile.as_str(),
+                    SmartAutomovePreference::Pro,
+                    baseline_profile.as_str(),
+                    SmartAutomovePreference::Pro,
+                    opening_fen.as_str(),
+                    candidate_is_white,
+                    max_plies,
+                    trace_limit,
+                    include_acceptance,
+                );
+                if result != MatchResult::OpponentWin {
+                    continue;
+                }
+                vs_pro_loss_games += 1;
+                for trace in &traces {
+                    let (surface_key, side_stats) = build_shared_family_trace_stats(
+                        candidate_profile.as_str(),
+                        trace,
+                        repeat_index,
+                        opening_index,
+                        mirror,
+                        include_acceptance,
+                        surface_key_mode.as_str(),
+                    );
+                    let entry = surface_stats.entry(surface_key).or_default();
+                    merge_shared_family_side_stats(&mut entry.vs_pro, side_stats, sample_limit);
+                }
+            }
+        }
+    }
+
+    for repeat_index in 0..repeats {
+        let seed = seed_for_budget_duel_repeat_and_tag(
+            budget_pro,
+            budget_normal,
+            repeat_index,
+            seed_tag_normal.as_str(),
+        );
+        let opening_fens = generate_opening_fens_cached(seed, games_per_repeat);
+
+        for (opening_index, opening_fen) in opening_fens.iter().enumerate() {
+            let candidate_white_ab = opening_index % 2 == 0;
+            for (mirror, candidate_is_white) in [("ab", candidate_white_ab), ("ba", !candidate_white_ab)] {
+                total_vs_normal_games += 1;
+                let (result, traces) = replay_cross_budget_loss_probe_game_with_options(
+                    candidate_profile.as_str(),
+                    SmartAutomovePreference::Pro,
+                    baseline_profile.as_str(),
+                    SmartAutomovePreference::Normal,
+                    opening_fen.as_str(),
+                    candidate_is_white,
+                    max_plies,
+                    trace_limit,
+                    include_acceptance,
+                );
+                if result != MatchResult::OpponentWin {
+                    continue;
+                }
+                vs_normal_loss_games += 1;
+                for trace in &traces {
+                    let (surface_key, side_stats) = build_shared_family_trace_stats(
+                        candidate_profile.as_str(),
+                        trace,
+                        repeat_index,
+                        opening_index,
+                        mirror,
+                        include_acceptance,
+                        surface_key_mode.as_str(),
+                    );
+                    let entry = surface_stats.entry(surface_key).or_default();
+                    merge_shared_family_side_stats(&mut entry.vs_normal, side_stats, sample_limit);
+                }
+            }
+        }
+    }
+
+    let mut shared_surfaces = 0usize;
+    let mut shared_surfaces_with_internal_on_both = 0usize;
+    let mut shared_surfaces_wrapper_only = 0usize;
+    let mut shared_surface_exact_hits = 0usize;
+    let mut shared_surface_internal_hits = 0usize;
+
+    for (surface_key, stats) in &surface_stats {
+        if stats.vs_pro.exacts == 0 || stats.vs_normal.exacts == 0 {
+            continue;
+        }
+        shared_surfaces += 1;
+        shared_surface_exact_hits += stats.vs_pro.exacts + stats.vs_normal.exacts;
+        shared_surface_internal_hits +=
+            stats.vs_pro.internal_exacts + stats.vs_normal.internal_exacts;
+        if stats.vs_pro.internal_exacts > 0 && stats.vs_normal.internal_exacts > 0 {
+            shared_surfaces_with_internal_on_both += 1;
+        }
+        if stats.vs_pro.internal_exacts == 0 && stats.vs_normal.internal_exacts == 0 {
+            shared_surfaces_wrapper_only += 1;
+        }
+
+        eprintln!(
+            "RELIABILITY_SHARED_FAMILY count_pro={} count_normal={} internal_pro={} internal_normal={} wrapper_pro={} wrapper_normal={} direct_matches_baseline_pro={} direct_matches_baseline_normal={} unique_fens_pro={} unique_fens_normal={} head_selected_pro=[t:{} f:{} n:{}] head_selected_normal=[t:{} f:{} n:{}] accepted_pro=[t:{} f:{} n:{}] accepted_normal=[t:{} f:{} n:{}] {}",
+            stats.vs_pro.exacts,
+            stats.vs_normal.exacts,
+            stats.vs_pro.internal_exacts,
+            stats.vs_normal.internal_exacts,
+            stats.vs_pro.wrapper_owned_exacts,
+            stats.vs_normal.wrapper_owned_exacts,
+            stats.vs_pro.direct_matches_baseline,
+            stats.vs_normal.direct_matches_baseline,
+            stats.vs_pro.unique_fens.len(),
+            stats.vs_normal.unique_fens.len(),
+            stats.vs_pro.head_selected_true,
+            stats.vs_pro.head_selected_false,
+            stats.vs_pro.head_selected_none,
+            stats.vs_normal.head_selected_true,
+            stats.vs_normal.head_selected_false,
+            stats.vs_normal.head_selected_none,
+            stats.vs_pro.accepted_true,
+            stats.vs_pro.accepted_false,
+            stats.vs_pro.accepted_none,
+            stats.vs_normal.accepted_true,
+            stats.vs_normal.accepted_false,
+            stats.vs_normal.accepted_none,
+            surface_key,
+        );
+        for sample in &stats.vs_pro.samples {
+            eprintln!("  RELIABILITY_SHARED_FAMILY_PRO_SAMPLE {}", sample);
+        }
+        for sample in &stats.vs_normal.samples {
+            eprintln!("  RELIABILITY_SHARED_FAMILY_NORMAL_SAMPLE {}", sample);
+        }
+    }
+
+    eprintln!(
+        "pro reliability shared-family probe summary: key_mode={} total_vs_pro_games={} total_vs_normal_games={} vs_pro_loss_games={} vs_normal_loss_games={} shared_surfaces={} shared_surfaces_with_internal_on_both={} shared_surfaces_wrapper_only={} shared_surface_exact_hits={} shared_surface_internal_hits={}",
+        surface_key_mode,
+        total_vs_pro_games,
+        total_vs_normal_games,
+        vs_pro_loss_games,
+        vs_normal_loss_games,
+        shared_surfaces,
+        shared_surfaces_with_internal_on_both,
+        shared_surfaces_wrapper_only,
+        shared_surface_exact_hits,
+        shared_surface_internal_hits,
+    );
+
+    assert!(
+        vs_pro_loss_games + vs_normal_loss_games > 0,
+        "reliability shared-family probe found no candidate losses"
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: inspect one pro fast-screen opening against the normal baseline"]
 fn smart_automove_pro_fast_screen_opening_probe_vs_normal() {
     let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
