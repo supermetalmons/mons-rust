@@ -4074,6 +4074,7 @@ fn smart_automove_pro_fast_screen_shared_family_probe_vs_current() {
         opening_index: usize,
         mirror: &str,
         include_acceptance: bool,
+        surface_key_mode: &str,
     ) -> (String, SharedFamilySideStats) {
         let turn_status = trace
             .candidate
@@ -4108,6 +4109,7 @@ fn smart_automove_pro_fast_screen_shared_family_probe_vs_current() {
             include_acceptance,
         );
         let wrapper_owned = direct.move_fen != trace.candidate.move_fen;
+        let move_len = trace.candidate.inputs.len();
 
         let mut stats = SharedFamilySideStats {
             exacts: 1,
@@ -4148,15 +4150,32 @@ fn smart_automove_pro_fast_screen_shared_family_probe_vs_current() {
             accepted_after_search,
         ));
 
-        (
-            format!(
+        let surface_key = match surface_key_mode {
+            "aligned" => format!(
+                "profile_stage={} direct_stage={} turn_status={} candidate_family={} active_color={:?} turn={} mons_moves={} can_action={} can_move_mana={} move_len={} wrapper_owned={} head_selected={:?} accepted_after_search={:?}",
+                trace.candidate.selector_last_stage,
+                direct.selector_last_stage,
+                turn_status,
+                candidate_family,
+                game.active_color,
+                game.turn_number,
+                game.mons_moves_count,
+                game.player_can_use_action(),
+                game.player_can_move_mana(),
+                move_len,
+                wrapper_owned,
+                head_selected,
+                accepted_after_search,
+            ),
+            _ => format!(
                 "profile_stage={} turn_status={} candidate_family={}",
                 trace.candidate.selector_last_stage,
                 turn_status,
                 candidate_family,
             ),
-            stats,
-        )
+        };
+
+        (surface_key, stats)
     }
 
     fn merge_shared_family_side_stats(
@@ -4199,6 +4218,11 @@ fn smart_automove_pro_fast_screen_shared_family_probe_vs_current() {
     let sample_limit = env_usize("SMART_PROBE_SHARED_SURFACE_SAMPLE_LIMIT")
         .unwrap_or(2)
         .max(1);
+    let surface_key_mode = env::var("SMART_PROBE_SHARED_FAMILY_KEY_MODE")
+        .ok()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "family".to_string());
     let seed_tag_pro = env_profile_name("SMART_PRO_FAST_SCREEN_SEED_TAG_PRO")
         .or_else(|| env_profile_name("SMART_PRO_FAST_SCREEN_SEED_TAG"))
         .unwrap_or_else(|| "pro_fast_screen_vs_pro_v1".to_string());
@@ -4215,7 +4239,7 @@ fn smart_automove_pro_fast_screen_shared_family_probe_vs_current() {
         std::collections::BTreeMap::<String, SharedFamilySurfaceStats>::new();
 
     eprintln!(
-        "pro fast-screen shared-family probe config: candidate_profile={} baseline_profile={} seed_tag_pro={} seed_tag_normal={} repeats={} games_per_repeat={} max_plies={} trace_limit={} include_acceptance={} sample_limit={}",
+        "pro fast-screen shared-family probe config: candidate_profile={} baseline_profile={} seed_tag_pro={} seed_tag_normal={} repeats={} games_per_repeat={} max_plies={} trace_limit={} include_acceptance={} sample_limit={} key_mode={}",
         candidate_profile,
         baseline_profile,
         seed_tag_pro,
@@ -4226,6 +4250,7 @@ fn smart_automove_pro_fast_screen_shared_family_probe_vs_current() {
         trace_limit,
         include_acceptance,
         sample_limit,
+        surface_key_mode,
     );
 
     for repeat_index in 0..repeats {
@@ -4264,6 +4289,7 @@ fn smart_automove_pro_fast_screen_shared_family_probe_vs_current() {
                         opening_index,
                         mirror,
                         include_acceptance,
+                        surface_key_mode.as_str(),
                     );
                     let entry = surface_stats.entry(surface_key).or_default();
                     merge_shared_family_side_stats(&mut entry.vs_pro, side_stats, sample_limit);
@@ -4308,6 +4334,7 @@ fn smart_automove_pro_fast_screen_shared_family_probe_vs_current() {
                         opening_index,
                         mirror,
                         include_acceptance,
+                        surface_key_mode.as_str(),
                     );
                     let entry = surface_stats.entry(surface_key).or_default();
                     merge_shared_family_side_stats(&mut entry.vs_normal, side_stats, sample_limit);
@@ -4372,7 +4399,8 @@ fn smart_automove_pro_fast_screen_shared_family_probe_vs_current() {
     }
 
     eprintln!(
-        "pro fast-screen shared-family probe summary: total_vs_pro_games={} total_vs_normal_games={} vs_pro_loss_games={} vs_normal_loss_games={} shared_surfaces={} shared_surfaces_with_internal_on_both={} shared_surfaces_wrapper_only={} shared_surface_exact_hits={} shared_surface_internal_hits={}",
+        "pro fast-screen shared-family probe summary: key_mode={} total_vs_pro_games={} total_vs_normal_games={} vs_pro_loss_games={} vs_normal_loss_games={} shared_surfaces={} shared_surfaces_with_internal_on_both={} shared_surfaces_wrapper_only={} shared_surface_exact_hits={} shared_surface_internal_hits={}",
+        surface_key_mode,
         total_vs_pro_games,
         total_vs_normal_games,
         vs_pro_loss_games,
