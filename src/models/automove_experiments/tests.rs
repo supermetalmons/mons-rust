@@ -549,8 +549,12 @@ fn probe_config_with_env_overrides(mut config: SmartSearchConfig) -> SmartSearch
             .ok()
             .and_then(|value| value.trim().parse::<i32>().ok())
     };
+    let env_bool_value = |name: &str| env_bool(name);
     if env_bool("SMART_PROBE_FORCE_ENGINE_DISABLED").unwrap_or(false) {
         config.enable_turn_engine = false;
+    }
+    if let Some(nodes) = env_usize("SMART_PROBE_FORCE_MAX_NODES") {
+        config.max_visited_nodes = nodes.max(1);
     }
     if let Some(limit) = env_usize("SMART_PROBE_FORCE_ROOT_LIMIT") {
         config.root_branch_limit = limit.max(1);
@@ -558,6 +562,40 @@ fn probe_config_with_env_overrides(mut config: SmartSearchConfig) -> SmartSearch
     }
     if let Some(limit) = env_usize("SMART_PROBE_FORCE_ENUM_LIMIT") {
         config.root_enum_limit = limit.max(config.root_branch_limit.max(1));
+    }
+    if let Some(limit) = env_usize("SMART_PROBE_FORCE_NODE_LIMIT") {
+        config.node_branch_limit = limit.max(1);
+        config.node_enum_limit = config.node_enum_limit.max(config.node_branch_limit);
+    }
+    if let Some(limit) = env_usize("SMART_PROBE_FORCE_NODE_ENUM_LIMIT") {
+        config.node_enum_limit = limit.max(config.node_branch_limit.max(1));
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_TWO_PASS_ROOT_ALLOCATION") {
+        config.enable_two_pass_root_allocation = value;
+    }
+    if let Some(value) = env_usize("SMART_PROBE_FORCE_FOCUS_K") {
+        config.root_focus_k = value.max(1);
+    }
+    if let Some(value) = env_i32("SMART_PROBE_FORCE_FOCUS_SHARE_BP") {
+        config.root_focus_budget_share_bp = value.max(0);
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_EVENT_ORDERING") {
+        config.enable_event_ordering_bonus = value;
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_SELECTIVE_EXTENSIONS") {
+        config.enable_selective_extensions = value;
+    }
+    if let Some(value) = env_i32("SMART_PROBE_FORCE_SELECTIVE_EXTENSION_SHARE_BP") {
+        config.selective_extension_node_share_bp = value.max(0);
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_QUIET_REDUCTIONS") {
+        config.enable_quiet_reductions = value;
+    }
+    if let Some(value) = env_usize("SMART_PROBE_FORCE_QUIET_REDUCTION_DEPTH") {
+        config.quiet_reduction_depth_threshold = value.max(1);
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_VOLATILITY_FOCUS") {
+        config.enable_two_pass_volatility_focus = value;
     }
     if let Some(limit) = env_usize("SMART_PROBE_FORCE_SHORTLIST_MAX") {
         config.root_reply_risk_shortlist_max = limit.max(1);
@@ -570,6 +608,42 @@ fn probe_config_with_env_overrides(mut config: SmartSearchConfig) -> SmartSearch
     }
     if let Some(margin) = env_i32("SMART_PROBE_FORCE_REPLY_MARGIN") {
         config.root_reply_risk_score_margin = margin;
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_CLEAN_REPLY") {
+        config.prefer_clean_reply_risk_roots = value;
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_HARD_SPIRIT_DEPLOY") {
+        config.enable_interview_hard_spirit_deploy = value;
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_SOFT_ROOT_PRIORS") {
+        config.enable_interview_soft_root_priors = value;
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_DETERMINISTIC_TIEBREAK") {
+        config.enable_interview_deterministic_tiebreak = value;
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_NORMAL_SAFETY_RERANK") {
+        config.enable_normal_root_safety_rerank = value;
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_NORMAL_SAFETY_DEEP_FLOOR") {
+        config.enable_normal_root_safety_deep_floor = value;
+    }
+    if let Some(value) = env_i32("SMART_PROBE_FORCE_DRAINER_MARGIN") {
+        config.root_drainer_safety_score_margin = value.max(0);
+    }
+    if let Some(value) = env_i32("SMART_PROBE_FORCE_EFFICIENCY_MARGIN") {
+        config.root_efficiency_score_margin = value.max(0);
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_QUIESCENCE") {
+        config.enable_quiescence_search = value;
+    }
+    if let Some(value) = env_usize("SMART_PROBE_FORCE_QUIESCENCE_BUDGET") {
+        config.quiescence_node_budget = value;
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_QUIESCENCE_TACTICAL_ONLY") {
+        config.enable_quiescence_tactical_children_only = value;
+    }
+    if let Some(value) = env_usize("SMART_PROBE_FORCE_QUIESCENCE_ENUM_LIMIT") {
+        config.quiescence_tactical_enum_limit = value;
     }
     config
 }
