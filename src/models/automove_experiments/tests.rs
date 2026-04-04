@@ -553,6 +553,15 @@ fn probe_config_with_env_overrides(mut config: SmartSearchConfig) -> SmartSearch
     if env_bool("SMART_PROBE_FORCE_ENGINE_DISABLED").unwrap_or(false) {
         config.enable_turn_engine = false;
     }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_TURN_PLANNER") {
+        config.enable_turn_opportunity_planner = value;
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_TURN_PLANNER_ROOT_INJECTION") {
+        config.enable_turn_planner_intent_root_injection = value;
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_SELECTED_FOLLOWUP_PROJECTION") {
+        config.enable_turn_engine_selected_followup_projection = value;
+    }
     if let Some(nodes) = env_usize("SMART_PROBE_FORCE_MAX_NODES") {
         config.max_visited_nodes = nodes.max(1);
     }
@@ -5514,6 +5523,7 @@ fn smart_automove_pro_turn_engine_selector_probe() {
     clear_exact_state_analysis_cache();
     clear_turn_engine_plan_cache();
     clear_turn_engine_selector_diagnostics();
+    clear_turn_planner_diagnostics();
     let decision = loss_probe_decision_with_options(profile.as_str(), preference, &game, true);
     println!("probe_profile={profile} probe_mode={preference:?}");
     println!(
@@ -5527,9 +5537,22 @@ fn smart_automove_pro_turn_engine_selector_probe() {
         "selector_diag={:?}",
         turn_engine_selector_diagnostics_snapshot()
     );
+    println!("planner_diag={:?}", turn_planner_diagnostics_snapshot());
     print_loss_probe_decision("decision", &decision);
     let config =
         probe_config_with_env_overrides(calibration_runtime_config(profile.as_str(), &game, preference));
+    clear_turn_engine_selector_diagnostics();
+    clear_turn_planner_diagnostics();
+    let direct_runtime_inputs = MonsGameModel::smart_search_best_inputs(&game, config);
+    println!(
+        "direct_runtime_move={}",
+        Input::fen_from_array(&direct_runtime_inputs)
+    );
+    println!(
+        "direct_selector_diag={:?}",
+        turn_engine_selector_diagnostics_snapshot()
+    );
+    println!("direct_planner_diag={:?}", turn_planner_diagnostics_snapshot());
     if let Some(selection_probe) = MonsGameModel::root_selection_probe_for_test(&game, config) {
         println!("root_selection_probe={:?}", selection_probe);
     } else {
@@ -5567,6 +5590,7 @@ fn smart_automove_pro_turn_engine_loss_probe_selector_probe() {
     clear_exact_state_analysis_cache();
     clear_turn_engine_plan_cache();
     clear_turn_engine_selector_diagnostics();
+    clear_turn_planner_diagnostics();
     let decision = loss_probe_decision_with_options(profile.as_str(), preference, &game, true);
     println!("probe_profile={profile} probe_mode={preference:?}");
     println!(
@@ -5580,9 +5604,22 @@ fn smart_automove_pro_turn_engine_loss_probe_selector_probe() {
         "selector_diag={:?}",
         turn_engine_selector_diagnostics_snapshot()
     );
+    println!("planner_diag={:?}", turn_planner_diagnostics_snapshot());
     print_loss_probe_decision("decision", &decision);
     let config =
         probe_config_with_env_overrides(loss_probe_runtime_config(profile.as_str(), &game, preference));
+    clear_turn_engine_selector_diagnostics();
+    clear_turn_planner_diagnostics();
+    let direct_runtime_inputs = MonsGameModel::smart_search_best_inputs(&game, config);
+    println!(
+        "direct_runtime_move={}",
+        Input::fen_from_array(&direct_runtime_inputs)
+    );
+    println!(
+        "direct_selector_diag={:?}",
+        turn_engine_selector_diagnostics_snapshot()
+    );
+    println!("direct_planner_diag={:?}", turn_planner_diagnostics_snapshot());
     if let Some(selection_probe) = MonsGameModel::root_selection_probe_for_test(&game, config) {
         println!("root_selection_probe={:?}", selection_probe);
     } else {
