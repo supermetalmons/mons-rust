@@ -5656,6 +5656,412 @@ fn smart_automove_pro_reliability_shared_family_probe_vs_current() {
 }
 
 #[test]
+#[ignore = "diagnostic: aggregate broader handoff/ownership overlap across the real vs-Pro and vs-Normal gate losses"]
+fn smart_automove_pro_reliability_shared_handoff_probe_vs_current() {
+    #[derive(Default)]
+    struct SharedHandoffSideStats {
+        exacts: usize,
+        internal_exacts: usize,
+        wrapper_owned_exacts: usize,
+        pro_matches_candidate: usize,
+        pro_matches_baseline: usize,
+        pro_matches_neither: usize,
+        unique_fens: std::collections::BTreeSet<String>,
+        samples: Vec<String>,
+    }
+
+    #[derive(Default)]
+    struct SharedHandoffStats {
+        vs_pro: SharedHandoffSideStats,
+        vs_normal: SharedHandoffSideStats,
+    }
+
+    fn handoff_stage_for_loss(
+        trace: &ReliabilityLossProbeTrace,
+        selection_probe: Option<&crate::models::mons_game_model::RootSelectionProbe>,
+        search_probe: Option<&crate::models::mons_game_model::RootSearchProbe>,
+        acceptance_probe: Option<&crate::models::mons_game_model::TurnEngineAcceptanceProbe>,
+    ) -> String {
+        let baseline_move = trace.baseline.move_fen.as_str();
+        let profile_move = trace.candidate.move_fen.as_str();
+        let selection_final = selection_probe
+            .as_ref()
+            .map(|probe| probe.final_selected_move_fen.as_str());
+        let search_final = search_probe
+            .as_ref()
+            .map(|probe| probe.final_selected_move_fen.as_str());
+        let acceptance_selected = acceptance_probe
+            .as_ref()
+            .map(|probe| Input::fen_from_array(&probe.selected_inputs));
+        let acceptance_selected = acceptance_selected.as_deref();
+        let acceptance_candidate = acceptance_probe
+            .as_ref()
+            .map(|probe| Input::fen_from_array(&probe.candidate_inputs));
+        let acceptance_candidate = acceptance_candidate.as_deref();
+        let accepted = acceptance_probe.as_ref().map(|probe| probe.accepted);
+
+        if trace.candidate.selector_last_stage == "engine_cached_resume" {
+            return "cached_resume_handoff".to_string();
+        }
+        if selection_final != Some(baseline_move) {
+            return "root_selection_miss".to_string();
+        }
+        if search_final != Some(baseline_move) {
+            return "root_search_miss".to_string();
+        }
+
+        match (acceptance_selected, acceptance_candidate, accepted) {
+            (Some(selected), Some(candidate), Some(true))
+                if selected == profile_move && candidate == profile_move =>
+            {
+                "selected_override_injection".to_string()
+            }
+            (Some(selected), Some(candidate), Some(true))
+                if selected == baseline_move && candidate == profile_move =>
+            {
+                "acceptance_override".to_string()
+            }
+            (Some(selected), Some(_candidate), Some(false)) if selected == baseline_move => {
+                "candidate_rejected_after_search".to_string()
+            }
+            (Some(selected), _, _) if selected == baseline_move => {
+                "selected_root_kept".to_string()
+            }
+            (Some(selected), _, _) if selected != baseline_move => {
+                "post_search_selected_root_replaced".to_string()
+            }
+            _ => "post_search_handoff_unknown".to_string(),
+        }
+    }
+
+    fn build_shared_handoff_trace_stats(
+        candidate_profile: &str,
+        shipping_pro_profile: &str,
+        trace: &ReliabilityLossProbeTrace,
+        repeat_index: usize,
+        opening_index: usize,
+        mirror: &str,
+        include_acceptance: bool,
+    ) -> (String, SharedHandoffSideStats) {
+        let game = MonsGame::from_fen(trace.fen.as_str(), false)
+            .expect("real-gate shared handoff probe fen should be valid");
+        let turn_status = trace
+            .candidate
+            .turn_engine
+            .as_ref()
+            .map(|engine| format!("{:?}", engine.status))
+            .unwrap_or_else(|| "None".to_string());
+        let head_selected = trace
+            .candidate
+            .turn_engine
+            .as_ref()
+            .and_then(|engine| engine.candidate_move_fen.as_ref())
+            .map(|move_fen| move_fen == &trace.candidate.move_fen);
+        let accepted_after_search = trace
+            .candidate
+            .turn_engine
+            .as_ref()
+            .and_then(|engine| engine.accepted_after_search);
+        let direct = loss_probe_direct_runtime_decision_with_options(
+            candidate_profile,
+            SmartAutomovePreference::Pro,
+            &game,
+            include_acceptance,
+        );
+        let shipping_pro = loss_probe_decision_with_options(
+            shipping_pro_profile,
+            SmartAutomovePreference::Pro,
+            &game,
+            include_acceptance,
+        );
+        let wrapper_owned = direct.move_fen != trace.candidate.move_fen;
+        let config = loss_probe_runtime_config(
+            candidate_profile,
+            &game,
+            SmartAutomovePreference::Pro,
+        );
+        let selection_probe = MonsGameModel::root_selection_probe_for_test(&game, config);
+        let search_probe = MonsGameModel::root_search_probe_for_test(&game, config);
+        let acceptance_probe = MonsGameModel::turn_engine_acceptance_probe_for_test(&game, config);
+        let handoff_stage = if wrapper_owned {
+            "wrapper_owned".to_string()
+        } else {
+            handoff_stage_for_loss(
+                trace,
+                selection_probe.as_ref(),
+                search_probe.as_ref(),
+                acceptance_probe.as_ref(),
+            )
+        };
+
+        let mut stats = SharedHandoffSideStats {
+            exacts: 1,
+            ..SharedHandoffSideStats::default()
+        };
+        stats.unique_fens.insert(trace.fen.clone());
+        if wrapper_owned {
+            stats.wrapper_owned_exacts = 1;
+        } else {
+            stats.internal_exacts = 1;
+        }
+        if shipping_pro.move_fen == trace.candidate.move_fen {
+            stats.pro_matches_candidate = 1;
+        } else if shipping_pro.move_fen == trace.baseline.move_fen {
+            stats.pro_matches_baseline = 1;
+        } else {
+            stats.pro_matches_neither = 1;
+        }
+        stats.samples.push(format!(
+            "repeat={} opening_index={} mirror={} ply={} fen={} candidate_move={} baseline_move={} direct_move={} shipping_pro_move={} wrapper_owned={} handoff_stage={} direct_stage={} shipping_pro_stage={} head_selected={:?} accepted_after_search={:?}",
+            repeat_index,
+            opening_index,
+            mirror,
+            trace.ply,
+            trace.fen,
+            trace.candidate.move_fen,
+            trace.baseline.move_fen,
+            direct.move_fen,
+            shipping_pro.move_fen,
+            wrapper_owned,
+            handoff_stage,
+            direct.selector_last_stage,
+            shipping_pro.selector_last_stage,
+            head_selected,
+            accepted_after_search,
+        ));
+
+        let mechanism_key = format!(
+            "ownership={} handoff_stage={} profile_stage={} direct_stage={} turn_status={} head_selected={:?} accepted_after_search={:?}",
+            if wrapper_owned { "wrapper" } else { "internal" },
+            handoff_stage,
+            trace.candidate.selector_last_stage,
+            direct.selector_last_stage,
+            turn_status,
+            head_selected,
+            accepted_after_search,
+        );
+
+        (mechanism_key, stats)
+    }
+
+    fn merge_shared_handoff_side_stats(
+        dest: &mut SharedHandoffSideStats,
+        src: SharedHandoffSideStats,
+        sample_limit: usize,
+    ) {
+        dest.exacts += src.exacts;
+        dest.internal_exacts += src.internal_exacts;
+        dest.wrapper_owned_exacts += src.wrapper_owned_exacts;
+        dest.pro_matches_candidate += src.pro_matches_candidate;
+        dest.pro_matches_baseline += src.pro_matches_baseline;
+        dest.pro_matches_neither += src.pro_matches_neither;
+        dest.unique_fens.extend(src.unique_fens);
+        for sample in src.samples {
+            if dest.samples.len() >= sample_limit {
+                break;
+            }
+            dest.samples.push(sample);
+        }
+    }
+
+    let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
+        .unwrap_or_else(|| "runtime_pro_turn_engine_v30".into());
+    let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_current".into());
+    let shipping_pro_profile = env_profile_name("SMART_PROBE_SHIPPING_PRO_PROFILE")
+        .unwrap_or_else(|| baseline_profile.clone());
+    let repeats = env_usize("SMART_PRO_RELIABILITY_REPEATS")
+        .unwrap_or(1)
+        .max(1);
+    let games_per_repeat = env_usize("SMART_PRO_RELIABILITY_GAMES").unwrap_or(2).max(1);
+    let max_plies = env_usize("SMART_PRO_RELIABILITY_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let trace_limit = env_usize("SMART_PROBE_TRACE_LIMIT").unwrap_or(4).max(1);
+    let include_acceptance = env_bool("SMART_PROBE_INCLUDE_ACCEPTANCE").unwrap_or(true);
+    let sample_limit = env_usize("SMART_PROBE_SHARED_SURFACE_SAMPLE_LIMIT")
+        .unwrap_or(1)
+        .max(1);
+    let reliability_seed_tag = env_profile_name("SMART_PRO_RELIABILITY_SEED_TAG")
+        .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
+    let seed_tag_pro = reliability_seed_tag.clone();
+    let seed_tag_normal = format!("{}_vs_normal", reliability_seed_tag);
+    let budget_pro = SearchBudget::from_preference(SmartAutomovePreference::Pro);
+    let budget_normal = SearchBudget::from_preference(SmartAutomovePreference::Normal);
+    let mut total_vs_pro_games = 0usize;
+    let mut total_vs_normal_games = 0usize;
+    let mut vs_pro_loss_games = 0usize;
+    let mut vs_normal_loss_games = 0usize;
+    let mut mechanism_stats =
+        std::collections::BTreeMap::<String, SharedHandoffStats>::new();
+
+    eprintln!(
+        "pro reliability shared-handoff probe config: candidate_profile={} baseline_profile={} shipping_pro_profile={} seed_tag_pro={} seed_tag_normal={} repeats={} games_per_repeat={} max_plies={} trace_limit={} include_acceptance={} sample_limit={}",
+        candidate_profile,
+        baseline_profile,
+        shipping_pro_profile,
+        seed_tag_pro,
+        seed_tag_normal,
+        repeats,
+        games_per_repeat,
+        max_plies,
+        trace_limit,
+        include_acceptance,
+        sample_limit,
+    );
+
+    for repeat_index in 0..repeats {
+        let seed = seed_for_budget_duel_repeat_and_tag(
+            budget_pro,
+            budget_pro,
+            repeat_index,
+            seed_tag_pro.as_str(),
+        );
+        let opening_fens = generate_opening_fens_cached(seed, games_per_repeat);
+
+        for (opening_index, opening_fen) in opening_fens.iter().enumerate() {
+            let candidate_white_ab = opening_index % 2 == 0;
+            for (mirror, candidate_is_white) in [("ab", candidate_white_ab), ("ba", !candidate_white_ab)] {
+                total_vs_pro_games += 1;
+                let (result, traces) = replay_cross_budget_loss_probe_game_with_options(
+                    candidate_profile.as_str(),
+                    SmartAutomovePreference::Pro,
+                    baseline_profile.as_str(),
+                    SmartAutomovePreference::Pro,
+                    opening_fen.as_str(),
+                    candidate_is_white,
+                    max_plies,
+                    trace_limit,
+                    include_acceptance,
+                );
+                if result != MatchResult::OpponentWin {
+                    continue;
+                }
+                vs_pro_loss_games += 1;
+                for trace in &traces {
+                    let (mechanism_key, side_stats) = build_shared_handoff_trace_stats(
+                        candidate_profile.as_str(),
+                        shipping_pro_profile.as_str(),
+                        trace,
+                        repeat_index,
+                        opening_index,
+                        mirror,
+                        include_acceptance,
+                    );
+                    let entry = mechanism_stats.entry(mechanism_key).or_default();
+                    merge_shared_handoff_side_stats(&mut entry.vs_pro, side_stats, sample_limit);
+                }
+            }
+        }
+    }
+
+    for repeat_index in 0..repeats {
+        let seed = seed_for_budget_duel_repeat_and_tag(
+            budget_pro,
+            budget_normal,
+            repeat_index,
+            seed_tag_normal.as_str(),
+        );
+        let opening_fens = generate_opening_fens_cached(seed, games_per_repeat);
+
+        for (opening_index, opening_fen) in opening_fens.iter().enumerate() {
+            let candidate_white_ab = opening_index % 2 == 0;
+            for (mirror, candidate_is_white) in [("ab", candidate_white_ab), ("ba", !candidate_white_ab)] {
+                total_vs_normal_games += 1;
+                let (result, traces) = replay_cross_budget_loss_probe_game_with_options(
+                    candidate_profile.as_str(),
+                    SmartAutomovePreference::Pro,
+                    baseline_profile.as_str(),
+                    SmartAutomovePreference::Normal,
+                    opening_fen.as_str(),
+                    candidate_is_white,
+                    max_plies,
+                    trace_limit,
+                    include_acceptance,
+                );
+                if result != MatchResult::OpponentWin {
+                    continue;
+                }
+                vs_normal_loss_games += 1;
+                for trace in &traces {
+                    let (mechanism_key, side_stats) = build_shared_handoff_trace_stats(
+                        candidate_profile.as_str(),
+                        shipping_pro_profile.as_str(),
+                        trace,
+                        repeat_index,
+                        opening_index,
+                        mirror,
+                        include_acceptance,
+                    );
+                    let entry = mechanism_stats.entry(mechanism_key).or_default();
+                    merge_shared_handoff_side_stats(&mut entry.vs_normal, side_stats, sample_limit);
+                }
+            }
+        }
+    }
+
+    let mut shared_mechanisms = 0usize;
+    let mut shared_mechanisms_with_internal_on_both = 0usize;
+    let mut shared_mechanism_exact_hits = 0usize;
+    let mut shared_mechanism_internal_hits = 0usize;
+
+    for (mechanism_key, stats) in &mechanism_stats {
+        if stats.vs_pro.exacts == 0 || stats.vs_normal.exacts == 0 {
+            continue;
+        }
+        shared_mechanisms += 1;
+        shared_mechanism_exact_hits += stats.vs_pro.exacts + stats.vs_normal.exacts;
+        shared_mechanism_internal_hits +=
+            stats.vs_pro.internal_exacts + stats.vs_normal.internal_exacts;
+        if stats.vs_pro.internal_exacts > 0 && stats.vs_normal.internal_exacts > 0 {
+            shared_mechanisms_with_internal_on_both += 1;
+        }
+
+        eprintln!(
+            "RELIABILITY_SHARED_HANDOFF count_pro={} count_normal={} internal_pro={} internal_normal={} wrapper_pro={} wrapper_normal={} pro_relation_pro=[candidate:{} baseline:{} neither:{}] pro_relation_normal=[candidate:{} baseline:{} neither:{}] unique_fens_pro={} unique_fens_normal={} {}",
+            stats.vs_pro.exacts,
+            stats.vs_normal.exacts,
+            stats.vs_pro.internal_exacts,
+            stats.vs_normal.internal_exacts,
+            stats.vs_pro.wrapper_owned_exacts,
+            stats.vs_normal.wrapper_owned_exacts,
+            stats.vs_pro.pro_matches_candidate,
+            stats.vs_pro.pro_matches_baseline,
+            stats.vs_pro.pro_matches_neither,
+            stats.vs_normal.pro_matches_candidate,
+            stats.vs_normal.pro_matches_baseline,
+            stats.vs_normal.pro_matches_neither,
+            stats.vs_pro.unique_fens.len(),
+            stats.vs_normal.unique_fens.len(),
+            mechanism_key,
+        );
+        for sample in &stats.vs_pro.samples {
+            eprintln!("  RELIABILITY_SHARED_HANDOFF_PRO_SAMPLE {}", sample);
+        }
+        for sample in &stats.vs_normal.samples {
+            eprintln!("  RELIABILITY_SHARED_HANDOFF_NORMAL_SAMPLE {}", sample);
+        }
+    }
+
+    eprintln!(
+        "pro reliability shared-handoff probe summary: total_vs_pro_games={} total_vs_normal_games={} vs_pro_loss_games={} vs_normal_loss_games={} shared_mechanisms={} shared_mechanisms_with_internal_on_both={} shared_mechanism_exact_hits={} shared_mechanism_internal_hits={}",
+        total_vs_pro_games,
+        total_vs_normal_games,
+        vs_pro_loss_games,
+        vs_normal_loss_games,
+        shared_mechanisms,
+        shared_mechanisms_with_internal_on_both,
+        shared_mechanism_exact_hits,
+        shared_mechanism_internal_hits,
+    );
+
+    assert!(
+        vs_pro_loss_games + vs_normal_loss_games > 0,
+        "reliability shared-handoff probe found no candidate losses"
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: inspect one pro fast-screen opening against the normal baseline"]
 fn smart_automove_pro_fast_screen_opening_probe_vs_normal() {
     let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
