@@ -4960,6 +4960,302 @@ fn smart_automove_pro_fast_screen_vs_normal_preserved_handoff_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: classify real pro-reliability current-Normal losses by aligned surface and shipping-Pro relation"]
+fn smart_automove_pro_reliability_vs_normal_surface_probe() {
+    #[derive(Default)]
+    struct SurfaceStats {
+        exacts: usize,
+        internal_exacts: usize,
+        wrapper_owned_exacts: usize,
+        pro_matches_candidate: usize,
+        pro_matches_baseline: usize,
+        pro_matches_neither: usize,
+        unique_fens: std::collections::BTreeSet<String>,
+        samples: Vec<String>,
+    }
+
+    fn build_surface_stats(
+        candidate_profile: &str,
+        shipping_pro_profile: &str,
+        trace: &ReliabilityLossProbeTrace,
+        repeat_index: usize,
+        opening_index: usize,
+        mirror: &str,
+        include_acceptance: bool,
+        surface_key_mode: &str,
+    ) -> (String, SurfaceStats) {
+        let game = MonsGame::from_fen(trace.fen.as_str(), false)
+            .expect("reliability vs-normal surface probe fen should be valid");
+        let turn_status = trace
+            .candidate
+            .turn_engine
+            .as_ref()
+            .map(|engine| format!("{:?}", engine.status))
+            .unwrap_or_else(|| "None".to_string());
+        let candidate_family = trace
+            .candidate
+            .turn_engine
+            .as_ref()
+            .and_then(|engine| engine.candidate_family)
+            .map(|family| format!("{:?}", family))
+            .unwrap_or_else(|| "None".to_string());
+        let head_selected = trace
+            .candidate
+            .turn_engine
+            .as_ref()
+            .and_then(|engine| engine.candidate_move_fen.as_ref())
+            .map(|move_fen| move_fen == &trace.candidate.move_fen);
+        let accepted_after_search = trace
+            .candidate
+            .turn_engine
+            .as_ref()
+            .and_then(|engine| engine.accepted_after_search);
+        let direct = loss_probe_direct_runtime_decision_with_options(
+            candidate_profile,
+            SmartAutomovePreference::Pro,
+            &game,
+            include_acceptance,
+        );
+        let shipping_pro = loss_probe_decision_with_options(
+            shipping_pro_profile,
+            SmartAutomovePreference::Pro,
+            &game,
+            include_acceptance,
+        );
+        let wrapper_owned = direct.move_fen != trace.candidate.move_fen;
+        let move_len = trace.candidate.inputs.len();
+
+        let mut stats = SurfaceStats {
+            exacts: 1,
+            ..SurfaceStats::default()
+        };
+        stats.unique_fens.insert(trace.fen.clone());
+        if wrapper_owned {
+            stats.wrapper_owned_exacts = 1;
+        } else {
+            stats.internal_exacts = 1;
+        }
+        if shipping_pro.move_fen == trace.candidate.move_fen {
+            stats.pro_matches_candidate = 1;
+        } else if shipping_pro.move_fen == trace.baseline.move_fen {
+            stats.pro_matches_baseline = 1;
+        } else {
+            stats.pro_matches_neither = 1;
+        }
+        stats.samples.push(format!(
+            "repeat={} opening_index={} mirror={} ply={} fen={} candidate_move={} baseline_move={} direct_move={} shipping_pro_move={} wrapper_owned={} direct_stage={} shipping_pro_stage={} head_selected={:?} accepted_after_search={:?}",
+            repeat_index,
+            opening_index,
+            mirror,
+            trace.ply,
+            trace.fen,
+            trace.candidate.move_fen,
+            trace.baseline.move_fen,
+            direct.move_fen,
+            shipping_pro.move_fen,
+            wrapper_owned,
+            direct.selector_last_stage,
+            shipping_pro.selector_last_stage,
+            head_selected,
+            accepted_after_search,
+        ));
+
+        let surface_key = match surface_key_mode {
+            "aligned" => format!(
+                "profile_stage={} direct_stage={} turn_status={} candidate_family={} active_color={:?} turn={} mons_moves={} can_action={} can_move_mana={} move_len={} wrapper_owned={} head_selected={:?} accepted_after_search={:?}",
+                trace.candidate.selector_last_stage,
+                direct.selector_last_stage,
+                turn_status,
+                candidate_family,
+                game.active_color,
+                game.turn_number,
+                game.mons_moves_count,
+                game.player_can_use_action(),
+                game.player_can_move_mana(),
+                move_len,
+                wrapper_owned,
+                head_selected,
+                accepted_after_search,
+            ),
+            _ => format!(
+                "profile_stage={} turn_status={} candidate_family={}",
+                trace.candidate.selector_last_stage,
+                turn_status,
+                candidate_family,
+            ),
+        };
+
+        (surface_key, stats)
+    }
+
+    fn merge_surface_stats(dest: &mut SurfaceStats, src: SurfaceStats, sample_limit: usize) {
+        dest.exacts += src.exacts;
+        dest.internal_exacts += src.internal_exacts;
+        dest.wrapper_owned_exacts += src.wrapper_owned_exacts;
+        dest.pro_matches_candidate += src.pro_matches_candidate;
+        dest.pro_matches_baseline += src.pro_matches_baseline;
+        dest.pro_matches_neither += src.pro_matches_neither;
+        dest.unique_fens.extend(src.unique_fens);
+        for sample in src.samples {
+            if dest.samples.len() >= sample_limit {
+                break;
+            }
+            dest.samples.push(sample);
+        }
+    }
+
+    let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
+        .unwrap_or_else(|| "runtime_pro_turn_engine_v30".into());
+    let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_current".into());
+    let shipping_pro_profile = env_profile_name("SMART_PROBE_SHIPPING_PRO_PROFILE")
+        .unwrap_or_else(|| baseline_profile.clone());
+    let repeats = env_usize("SMART_PRO_RELIABILITY_REPEATS")
+        .unwrap_or(3)
+        .max(1);
+    let games_per_repeat = env_usize("SMART_PRO_RELIABILITY_GAMES").unwrap_or(2).max(1);
+    let max_plies = env_usize("SMART_PRO_RELIABILITY_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let trace_limit = env_usize("SMART_PROBE_TRACE_LIMIT").unwrap_or(4).max(1);
+    let include_acceptance = env_bool("SMART_PROBE_INCLUDE_ACCEPTANCE").unwrap_or(true);
+    let sample_limit = env_usize("SMART_PROBE_SHARED_SURFACE_SAMPLE_LIMIT")
+        .unwrap_or(2)
+        .max(1);
+    let surface_key_mode = env::var("SMART_PROBE_SHARED_FAMILY_KEY_MODE")
+        .ok()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "aligned".to_string());
+    let reliability_seed_tag = env_profile_name("SMART_PRO_RELIABILITY_SEED_TAG")
+        .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
+    let seed_tag = format!("{}_vs_normal", reliability_seed_tag);
+    let budget_pro = SearchBudget::from_preference(SmartAutomovePreference::Pro);
+    let budget_normal = SearchBudget::from_preference(SmartAutomovePreference::Normal);
+    let mut total_games = 0usize;
+    let mut normal_loss_games = 0usize;
+    let mut surface_stats = std::collections::BTreeMap::<String, SurfaceStats>::new();
+
+    eprintln!(
+        "pro reliability vs-normal surface probe config: candidate_profile={} baseline_profile={} shipping_pro_profile={} seed_tag={} repeats={} games_per_repeat={} max_plies={} trace_limit={} include_acceptance={} sample_limit={} key_mode={}",
+        candidate_profile,
+        baseline_profile,
+        shipping_pro_profile,
+        seed_tag,
+        repeats,
+        games_per_repeat,
+        max_plies,
+        trace_limit,
+        include_acceptance,
+        sample_limit,
+        surface_key_mode,
+    );
+
+    for repeat_index in 0..repeats {
+        let seed = seed_for_budget_duel_repeat_and_tag(
+            budget_pro,
+            budget_normal,
+            repeat_index,
+            seed_tag.as_str(),
+        );
+        let opening_fens = generate_opening_fens_cached(seed, games_per_repeat);
+
+        for (opening_index, opening_fen) in opening_fens.iter().enumerate() {
+            let candidate_white_ab = opening_index % 2 == 0;
+            for (mirror, candidate_is_white) in [("ab", candidate_white_ab), ("ba", !candidate_white_ab)] {
+                total_games += 1;
+                let (result, traces) = replay_cross_budget_loss_probe_game_with_options(
+                    candidate_profile.as_str(),
+                    SmartAutomovePreference::Pro,
+                    baseline_profile.as_str(),
+                    SmartAutomovePreference::Normal,
+                    opening_fen.as_str(),
+                    candidate_is_white,
+                    max_plies,
+                    trace_limit,
+                    include_acceptance,
+                );
+                if result != MatchResult::OpponentWin {
+                    continue;
+                }
+                normal_loss_games += 1;
+                for trace in &traces {
+                    let (surface_key, stats) = build_surface_stats(
+                        candidate_profile.as_str(),
+                        shipping_pro_profile.as_str(),
+                        trace,
+                        repeat_index,
+                        opening_index,
+                        mirror,
+                        include_acceptance,
+                        surface_key_mode.as_str(),
+                    );
+                    let entry = surface_stats.entry(surface_key).or_default();
+                    merge_surface_stats(entry, stats, sample_limit);
+                }
+            }
+        }
+    }
+
+    let mut repeated_surface_count = 0usize;
+    let mut repeated_internal_surface_count = 0usize;
+    let mut repeated_non_pro_owned_surface_count = 0usize;
+    let mut repeated_internal_non_pro_owned_surface_count = 0usize;
+    let mut total_internal_exacts = 0usize;
+
+    for (surface_key, stats) in &surface_stats {
+        total_internal_exacts += stats.internal_exacts;
+        let repeated = stats.exacts > 1;
+        let non_pro_owned = stats.pro_matches_candidate == 0;
+        if repeated {
+            repeated_surface_count += 1;
+        }
+        if repeated && stats.internal_exacts > 0 {
+            repeated_internal_surface_count += 1;
+        }
+        if repeated && non_pro_owned {
+            repeated_non_pro_owned_surface_count += 1;
+        }
+        if repeated && non_pro_owned && stats.internal_exacts > 0 {
+            repeated_internal_non_pro_owned_surface_count += 1;
+        }
+
+        eprintln!(
+            "RELIABILITY_VS_NORMAL_SURFACE count={} internal={} wrapper={} pro_matches=[candidate:{} baseline:{} neither:{}] unique_fens={} {}",
+            stats.exacts,
+            stats.internal_exacts,
+            stats.wrapper_owned_exacts,
+            stats.pro_matches_candidate,
+            stats.pro_matches_baseline,
+            stats.pro_matches_neither,
+            stats.unique_fens.len(),
+            surface_key,
+        );
+        for sample in &stats.samples {
+            eprintln!("  RELIABILITY_VS_NORMAL_SURFACE_SAMPLE {}", sample);
+        }
+    }
+
+    eprintln!(
+        "pro reliability vs-normal surface probe summary: key_mode={} total_games={} normal_loss_games={} surface_count={} repeated_surface_count={} repeated_internal_surface_count={} repeated_non_pro_owned_surface_count={} repeated_internal_non_pro_owned_surface_count={} total_internal_exacts={}",
+        surface_key_mode,
+        total_games,
+        normal_loss_games,
+        surface_stats.len(),
+        repeated_surface_count,
+        repeated_internal_surface_count,
+        repeated_non_pro_owned_surface_count,
+        repeated_internal_non_pro_owned_surface_count,
+        total_internal_exacts,
+    );
+
+    assert!(
+        normal_loss_games > 0,
+        "reliability vs-normal surface probe found no candidate losses"
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: inspect one pro fast-screen opening against the normal baseline"]
 fn smart_automove_pro_fast_screen_opening_probe_vs_normal() {
     let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
