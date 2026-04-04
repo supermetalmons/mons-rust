@@ -6190,6 +6190,184 @@ fn smart_automove_pro_reliability_shared_handoff_probe_vs_current() {
 }
 
 #[test]
+#[ignore = "diagnostic: compare default challenger vs candidate-side override on the retained pro-reliability slice"]
+fn smart_automove_pro_reliability_override_delta_probe() {
+    let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
+        .unwrap_or_else(|| "runtime_pro_turn_engine_v30".into());
+    let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_current".into());
+    let baseline_mode = match std::env::var("SMART_PROBE_BASELINE_MODE")
+        .unwrap_or_else(|_| "normal".to_string())
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "pro" => SmartAutomovePreference::Pro,
+        _ => SmartAutomovePreference::Normal,
+    };
+    let repeats = env_usize("SMART_PRO_RELIABILITY_REPEATS")
+        .unwrap_or(1)
+        .max(1);
+    let games_per_repeat = env_usize("SMART_PRO_RELIABILITY_GAMES").unwrap_or(2).max(1);
+    let max_plies = env_usize("SMART_PRO_RELIABILITY_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let include_acceptance = env_bool("SMART_PROBE_INCLUDE_ACCEPTANCE").unwrap_or(true);
+    let trace_limit = env_usize("SMART_PROBE_TRACE_LIMIT").unwrap_or(8).max(1);
+    let reliability_seed_tag = env_profile_name("SMART_PRO_RELIABILITY_SEED_TAG")
+        .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
+    let seed_tag = if matches!(baseline_mode, SmartAutomovePreference::Normal) {
+        format!("{}_vs_normal", reliability_seed_tag)
+    } else {
+        reliability_seed_tag
+    };
+    let budget_a = SearchBudget::from_preference(SmartAutomovePreference::Pro);
+    let budget_b = SearchBudget::from_preference(baseline_mode);
+
+    let mut total_games = 0usize;
+    let mut changed_exacts = 0usize;
+    let mut changed_to_baseline = 0usize;
+    let mut changed_away_from_baseline = 0usize;
+    let mut changed_to_third = 0usize;
+
+    eprintln!(
+        "pro reliability override delta probe config: candidate_profile={} baseline_profile={} baseline_mode={:?} seed_tag={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} trace_limit={} override_secondary_analysis={:?} override_selected_followup_projection={:?} override_low_budget_guard={:?} override_mid_turn_tactical_guard={:?} override_late_safe_mana_root_preference={:?}",
+        candidate_profile,
+        baseline_profile,
+        baseline_mode,
+        seed_tag,
+        repeats,
+        games_per_repeat,
+        max_plies,
+        include_acceptance,
+        trace_limit,
+        env_bool("SMART_PROBE_FORCE_SECONDARY_ANALYSIS"),
+        env_bool("SMART_PROBE_FORCE_SELECTED_FOLLOWUP_PROJECTION"),
+        env_bool("SMART_PROBE_FORCE_LOW_BUDGET_GUARD"),
+        env_bool("SMART_PROBE_FORCE_MID_TURN_TACTICAL_GUARD"),
+        env_bool("SMART_PROBE_FORCE_LATE_SAFE_MANA_ROOT_PREFERENCE"),
+    );
+
+    for repeat_index in 0..repeats {
+        let seed =
+            seed_for_budget_duel_repeat_and_tag(budget_a, budget_b, repeat_index, seed_tag.as_str());
+        let opening_fens = generate_opening_fens_cached(seed, games_per_repeat);
+        for (opening_index, opening_fen) in opening_fens.iter().enumerate() {
+            let candidate_white_ab = opening_index % 2 == 0;
+            for (mirror, candidate_is_white) in [("ab", candidate_white_ab), ("ba", !candidate_white_ab)] {
+                total_games += 1;
+                let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
+                let baseline_selector =
+                    profile_selector_from_name(baseline_profile.as_str()).unwrap_or_else(|| {
+                        panic!(
+                            "profile '{}' not found for override delta baseline side",
+                            baseline_profile
+                        )
+                    });
+                let mut logged = 0usize;
+
+                for ply in 0..max_plies {
+                    if game.winner_color().is_some() {
+                        break;
+                    }
+
+                    let candidate_to_move = if candidate_is_white {
+                        game.active_color == Color::White
+                    } else {
+                        game.active_color == Color::Black
+                    };
+
+                    let inputs = if candidate_to_move {
+                        let default = loss_probe_decision_with_options(
+                            candidate_profile.as_str(),
+                            SmartAutomovePreference::Pro,
+                            &game,
+                            include_acceptance,
+                        );
+                        let overridden = loss_probe_decision_with_probe_overrides_options(
+                            candidate_profile.as_str(),
+                            SmartAutomovePreference::Pro,
+                            &game,
+                            include_acceptance,
+                        );
+                        let baseline = loss_probe_decision_with_options(
+                            baseline_profile.as_str(),
+                            baseline_mode,
+                            &game,
+                            include_acceptance,
+                        );
+
+                        if default.move_fen != overridden.move_fen {
+                            changed_exacts += 1;
+                            if overridden.move_fen == baseline.move_fen {
+                                changed_to_baseline += 1;
+                            } else if default.move_fen == baseline.move_fen {
+                                changed_away_from_baseline += 1;
+                            } else {
+                                changed_to_third += 1;
+                            }
+                            if logged < trace_limit {
+                                logged += 1;
+                                let default_engine = default.turn_engine.as_ref();
+                                let override_engine = overridden.turn_engine.as_ref();
+                                eprintln!(
+                                    "OVERRIDE_DELTA repeat={} opening_index={} mirror={} candidate_is_white={} ply={} fen={} default_move={} override_move={} baseline_move={} default_stage={} override_stage={} baseline_stage={} default_head={:?} override_head={:?} default_selected={:?} override_selected={:?} default_accepted={:?} override_accepted={:?}",
+                                    repeat_index,
+                                    opening_index,
+                                    mirror,
+                                    candidate_is_white,
+                                    ply,
+                                    game.fen(),
+                                    default.move_fen,
+                                    overridden.move_fen,
+                                    baseline.move_fen,
+                                    default.selector_last_stage,
+                                    overridden.selector_last_stage,
+                                    baseline.selector_last_stage,
+                                    default_engine.and_then(|engine| engine.candidate_family),
+                                    override_engine.and_then(|engine| engine.candidate_family),
+                                    default_engine.and_then(|engine| engine.root_search_selected_move_fen.as_ref()),
+                                    override_engine.and_then(|engine| engine.root_search_selected_move_fen.as_ref()),
+                                    default_engine.and_then(|engine| engine.accepted_after_search),
+                                    override_engine.and_then(|engine| engine.accepted_after_search),
+                                );
+                            }
+                        }
+
+                        overridden.inputs
+                    } else {
+                        let config = loss_probe_runtime_config(
+                            baseline_profile.as_str(),
+                            &game,
+                            baseline_mode,
+                        );
+                        select_inputs_with_runtime_fallback(baseline_selector, &game, config)
+                    };
+
+                    if inputs.is_empty() {
+                        break;
+                    }
+                    if !matches!(game.process_input(inputs, false, false), Output::Events(_)) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    eprintln!(
+        "pro reliability override delta probe summary: total_games={} changed_exacts={} changed_to_baseline={} changed_away_from_baseline={} changed_to_third={}",
+        total_games,
+        changed_exacts,
+        changed_to_baseline,
+        changed_away_from_baseline,
+        changed_to_third,
+    );
+
+    assert!(total_games > 0, "override delta probe found no games");
+}
+
+#[test]
 #[ignore = "diagnostic: replay the real pro-reliability slice with candidate-side probe config overrides"]
 fn smart_automove_pro_reliability_candidate_override_probe() {
     let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
