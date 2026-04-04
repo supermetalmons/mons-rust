@@ -565,6 +565,15 @@ fn probe_config_with_env_overrides(mut config: SmartSearchConfig) -> SmartSearch
     if let Some(value) = env_bool_value("SMART_PROBE_FORCE_SELECTED_FOLLOWUP_PROJECTION") {
         config.enable_turn_engine_selected_followup_projection = value;
     }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_LOW_BUDGET_GUARD") {
+        config.enable_turn_engine_low_budget_guard = value;
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_MID_TURN_TACTICAL_GUARD") {
+        config.enable_turn_engine_mid_turn_tactical_guard = value;
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_LATE_SAFE_MANA_ROOT_PREFERENCE") {
+        config.enable_turn_engine_late_safe_mana_root_preference = value;
+    }
     if let Some(nodes) = env_usize("SMART_PROBE_FORCE_MAX_NODES") {
         config.max_visited_nodes = nodes.max(1);
     }
@@ -6207,7 +6216,7 @@ fn smart_automove_pro_reliability_candidate_override_probe() {
     let mut normal_timing = DuelTimingStats::default();
 
     eprintln!(
-        "pro reliability candidate override probe config: candidate_profile={} baseline_profile={} seed_tag_pro={} seed_tag_normal={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} override_secondary_analysis={:?} override_selected_followup_projection={:?}",
+        "pro reliability candidate override probe config: candidate_profile={} baseline_profile={} seed_tag_pro={} seed_tag_normal={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} override_secondary_analysis={:?} override_selected_followup_projection={:?} override_low_budget_guard={:?} override_mid_turn_tactical_guard={:?} override_late_safe_mana_root_preference={:?}",
         candidate_profile,
         baseline_profile,
         seed_tag_pro,
@@ -6218,6 +6227,9 @@ fn smart_automove_pro_reliability_candidate_override_probe() {
         include_acceptance,
         env_bool("SMART_PROBE_FORCE_SECONDARY_ANALYSIS"),
         env_bool("SMART_PROBE_FORCE_SELECTED_FOLLOWUP_PROJECTION"),
+        env_bool("SMART_PROBE_FORCE_LOW_BUDGET_GUARD"),
+        env_bool("SMART_PROBE_FORCE_MID_TURN_TACTICAL_GUARD"),
+        env_bool("SMART_PROBE_FORCE_LATE_SAFE_MANA_ROOT_PREFERENCE"),
     );
 
     for repeat_index in 0..repeats {
