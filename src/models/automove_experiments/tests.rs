@@ -3478,6 +3478,284 @@ fn smart_automove_pro_fast_screen_shared_loss_direct_runtime_probe_vs_current() 
 }
 
 #[test]
+#[ignore = "diagnostic: find exact shared baseline targets across current Pro and current Normal on shared-loss openings"]
+fn smart_automove_pro_fast_screen_shared_exact_probe_vs_current() {
+    #[derive(Clone)]
+    struct SharedExactSide {
+        profile_move: String,
+        baseline_move: String,
+        profile_stage: &'static str,
+        turn_status: String,
+        candidate_family: String,
+    }
+
+    let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
+        .unwrap_or_else(|| "runtime_pro_turn_engine_v30".into());
+    let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_current".into());
+    let repeats = env_usize("SMART_PRO_FAST_SCREEN_REPEATS")
+        .unwrap_or(2)
+        .max(1);
+    let games_per_repeat = env_usize("SMART_PRO_FAST_SCREEN_GAMES").unwrap_or(2).max(1);
+    let max_plies = env_usize("SMART_PRO_FAST_SCREEN_MAX_PLIES")
+        .unwrap_or(84)
+        .max(56);
+    let trace_limit = env_usize("SMART_PROBE_TRACE_LIMIT").unwrap_or(3).max(1);
+    let include_acceptance = env_bool("SMART_PROBE_INCLUDE_ACCEPTANCE").unwrap_or(true);
+    let shared_exact_limit = env_usize("SMART_PROBE_SHARED_EXACT_LIMIT");
+    let repeat_filter = env_usize("SMART_PRO_FAST_SCREEN_REPEAT_INDEX");
+    let opening_filter = env_usize("SMART_PRO_FAST_SCREEN_OPENING_INDEX");
+    let mirror_filter = env::var("SMART_PRO_FAST_SCREEN_MIRROR")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let seed_tag = env_profile_name("SMART_PRO_FAST_SCREEN_SEED_TAG")
+        .unwrap_or_else(|| "pro_fast_screen_shared_vs_current_v1".to_string());
+    let budget = SearchBudget::from_preference(SmartAutomovePreference::Pro);
+    let mut total_games = 0usize;
+    let mut shared_loss_games = 0usize;
+    let mut shared_exact_hits = 0usize;
+    let mut shared_exact_internal_hits = 0usize;
+    let mut direct_matches_shared_baseline = 0usize;
+    let mut fen_hit_counts = std::collections::BTreeMap::<String, usize>::new();
+    let mut stage_counts = std::collections::BTreeMap::<String, usize>::new();
+
+    eprintln!(
+        "pro fast-screen shared-exact probe config: candidate_profile={} baseline_profile={} seed_tag={} repeats={} games_per_repeat={} max_plies={} trace_limit={} include_acceptance={}",
+        candidate_profile,
+        baseline_profile,
+        seed_tag,
+        repeats,
+        games_per_repeat,
+        max_plies,
+        trace_limit,
+        include_acceptance,
+    );
+
+    'repeat_loop: for repeat_index in 0..repeats {
+        if repeat_filter.is_some_and(|expected| expected != repeat_index) {
+            continue;
+        }
+        let seed =
+            seed_for_budget_duel_repeat_and_tag(budget, budget, repeat_index, seed_tag.as_str());
+        let opening_fens = generate_opening_fens_cached(seed, games_per_repeat);
+
+        for (opening_index, opening_fen) in opening_fens.iter().enumerate() {
+            if opening_filter.is_some_and(|expected| expected != opening_index) {
+                continue;
+            }
+            let candidate_white_ab = opening_index % 2 == 0;
+            for (mirror, candidate_is_white) in
+                [("ab", candidate_white_ab), ("ba", !candidate_white_ab)]
+            {
+                if mirror_filter
+                    .as_deref()
+                    .is_some_and(|expected| expected != mirror)
+                {
+                    continue;
+                }
+                total_games += 1;
+                let (vs_pro_result, vs_pro_traces) = replay_cross_budget_loss_probe_game_with_options(
+                    candidate_profile.as_str(),
+                    SmartAutomovePreference::Pro,
+                    baseline_profile.as_str(),
+                    SmartAutomovePreference::Pro,
+                    opening_fen.as_str(),
+                    candidate_is_white,
+                    max_plies,
+                    trace_limit,
+                    include_acceptance,
+                );
+                let (vs_normal_result, vs_normal_traces) =
+                    replay_cross_budget_loss_probe_game_with_options(
+                        candidate_profile.as_str(),
+                        SmartAutomovePreference::Pro,
+                        baseline_profile.as_str(),
+                        SmartAutomovePreference::Normal,
+                        opening_fen.as_str(),
+                        candidate_is_white,
+                        max_plies,
+                        trace_limit,
+                        include_acceptance,
+                    );
+                let lost_vs_pro = vs_pro_result == MatchResult::OpponentWin;
+                let lost_vs_normal = vs_normal_result == MatchResult::OpponentWin;
+                if !(lost_vs_pro && lost_vs_normal) {
+                    continue;
+                }
+
+                shared_loss_games += 1;
+                let mut per_fen = std::collections::BTreeMap::<
+                    String,
+                    (Option<SharedExactSide>, Option<SharedExactSide>),
+                >::new();
+
+                for trace in &vs_pro_traces {
+                    let turn_status = trace
+                        .candidate
+                        .turn_engine
+                        .as_ref()
+                        .map(|engine| format!("{:?}", engine.status))
+                        .unwrap_or_else(|| "None".to_string());
+                    let candidate_family = trace
+                        .candidate
+                        .turn_engine
+                        .as_ref()
+                        .and_then(|engine| engine.candidate_family)
+                        .map(|family| format!("{:?}", family))
+                        .unwrap_or_else(|| "None".to_string());
+                    per_fen.insert(
+                        trace.fen.clone(),
+                        (
+                            Some(SharedExactSide {
+                                profile_move: trace.candidate.move_fen.clone(),
+                                baseline_move: trace.baseline.move_fen.clone(),
+                                profile_stage: trace.candidate.selector_last_stage,
+                                turn_status,
+                                candidate_family,
+                            }),
+                            None,
+                        ),
+                    );
+                }
+                for trace in &vs_normal_traces {
+                    let turn_status = trace
+                        .candidate
+                        .turn_engine
+                        .as_ref()
+                        .map(|engine| format!("{:?}", engine.status))
+                        .unwrap_or_else(|| "None".to_string());
+                    let candidate_family = trace
+                        .candidate
+                        .turn_engine
+                        .as_ref()
+                        .and_then(|engine| engine.candidate_family)
+                        .map(|family| format!("{:?}", family))
+                        .unwrap_or_else(|| "None".to_string());
+                    per_fen
+                        .entry(trace.fen.clone())
+                        .and_modify(|entry| {
+                            entry.1 = Some(SharedExactSide {
+                                profile_move: trace.candidate.move_fen.clone(),
+                                baseline_move: trace.baseline.move_fen.clone(),
+                                profile_stage: trace.candidate.selector_last_stage,
+                                turn_status: turn_status.clone(),
+                                candidate_family: candidate_family.clone(),
+                            });
+                        })
+                        .or_insert((
+                            None,
+                            Some(SharedExactSide {
+                                profile_move: trace.candidate.move_fen.clone(),
+                                baseline_move: trace.baseline.move_fen.clone(),
+                                profile_stage: trace.candidate.selector_last_stage,
+                                turn_status,
+                                candidate_family,
+                            }),
+                        ));
+                }
+
+                for (fen, (pro_side, normal_side)) in per_fen {
+                    let (Some(pro_side), Some(normal_side)) = (pro_side, normal_side) else {
+                        continue;
+                    };
+                    if pro_side.baseline_move != normal_side.baseline_move {
+                        continue;
+                    }
+                    if pro_side.profile_move != normal_side.profile_move {
+                        eprintln!(
+                            "SHARED_EXACT_CANDIDATE_MISMATCH repeat={} opening_index={} mirror={} fen={} profile_pro={} profile_normal={} baseline_shared={}",
+                            repeat_index,
+                            opening_index,
+                            mirror,
+                            fen,
+                            pro_side.profile_move,
+                            normal_side.profile_move,
+                            pro_side.baseline_move,
+                        );
+                        continue;
+                    }
+                    if pro_side.profile_move == pro_side.baseline_move {
+                        continue;
+                    }
+
+                    shared_exact_hits += 1;
+                    *fen_hit_counts.entry(fen.clone()).or_default() += 1;
+
+                    let game = MonsGame::from_fen(fen.as_str(), false)
+                        .expect("shared exact fen should be valid");
+                    let direct = loss_probe_direct_runtime_decision_with_options(
+                        candidate_profile.as_str(),
+                        SmartAutomovePreference::Pro,
+                        &game,
+                        include_acceptance,
+                    );
+                    let wrapper_owned = direct.move_fen != pro_side.profile_move;
+                    if !wrapper_owned {
+                        shared_exact_internal_hits += 1;
+                    }
+                    if direct.move_fen == pro_side.baseline_move {
+                        direct_matches_shared_baseline += 1;
+                    }
+
+                    let stage_key = format!(
+                        "profile_stage={} direct_stage={} wrapper_owned={} turn_status={} candidate_family={}",
+                        pro_side.profile_stage,
+                        direct.selector_last_stage,
+                        wrapper_owned,
+                        pro_side.turn_status,
+                        pro_side.candidate_family,
+                    );
+                    *stage_counts.entry(stage_key.clone()).or_default() += 1;
+
+                    eprintln!(
+                        "SHARED_EXACT hit={} repeat={} opening_index={} mirror={} fen={} profile_move={} baseline_move={} direct_move={} wrapper_owned={} profile_stage={} direct_stage={} turn_status={} candidate_family={}",
+                        shared_exact_hits,
+                        repeat_index,
+                        opening_index,
+                        mirror,
+                        fen,
+                        pro_side.profile_move,
+                        pro_side.baseline_move,
+                        direct.move_fen,
+                        wrapper_owned,
+                        pro_side.profile_stage,
+                        direct.selector_last_stage,
+                        pro_side.turn_status,
+                        pro_side.candidate_family,
+                    );
+
+                    if shared_exact_limit
+                        .is_some_and(|limit| shared_exact_hits >= limit.max(1))
+                    {
+                        break 'repeat_loop;
+                    }
+                }
+            }
+        }
+    }
+
+    let repeated_exact_fens = fen_hit_counts
+        .values()
+        .filter(|&&hits| hits > 1)
+        .count();
+
+    eprintln!(
+        "pro fast-screen shared-exact probe summary: total_games={} shared_loss_games={} shared_exact_hits={} shared_exact_internal_hits={} direct_matches_shared_baseline={} unique_shared_exact_fens={} repeated_shared_exact_fens={}",
+        total_games,
+        shared_loss_games,
+        shared_exact_hits,
+        shared_exact_internal_hits,
+        direct_matches_shared_baseline,
+        fen_hit_counts.len(),
+        repeated_exact_fens,
+    );
+    for (stage_key, count) in stage_counts {
+        eprintln!("  SHARED_EXACT_SURFACE count={} {}", count, stage_key);
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: inspect one pro fast-screen opening against the normal baseline"]
 fn smart_automove_pro_fast_screen_opening_probe_vs_normal() {
     let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
