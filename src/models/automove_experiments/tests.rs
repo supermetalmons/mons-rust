@@ -6253,7 +6253,7 @@ fn smart_automove_pro_reliability_override_delta_probe() {
     let mut family_delta_stats = std::collections::BTreeMap::<String, FamilyDeltaStats>::new();
 
     eprintln!(
-        "pro reliability override delta probe config: candidate_profile={} baseline_profile={} baseline_mode={:?} seed_tag={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} trace_limit={} override_secondary_analysis={:?} override_selected_followup_projection={:?} override_low_budget_guard={:?} override_mid_turn_tactical_guard={:?} override_late_safe_mana_root_preference={:?}",
+        "pro reliability override delta probe config: candidate_profile={} baseline_profile={} baseline_mode={:?} seed_tag={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} trace_limit={} override_secondary_analysis={:?} override_selected_followup_projection={:?} override_quiescence={:?} override_quiescence_tactical_only={:?} override_low_budget_guard={:?} override_mid_turn_tactical_guard={:?} override_late_safe_mana_root_preference={:?}",
         candidate_profile,
         baseline_profile,
         baseline_mode,
@@ -6265,6 +6265,8 @@ fn smart_automove_pro_reliability_override_delta_probe() {
         trace_limit,
         env_bool("SMART_PROBE_FORCE_SECONDARY_ANALYSIS"),
         env_bool("SMART_PROBE_FORCE_SELECTED_FOLLOWUP_PROJECTION"),
+        env_bool("SMART_PROBE_FORCE_QUIESCENCE"),
+        env_bool("SMART_PROBE_FORCE_QUIESCENCE_TACTICAL_ONLY"),
         env_bool("SMART_PROBE_FORCE_LOW_BUDGET_GUARD"),
         env_bool("SMART_PROBE_FORCE_MID_TURN_TACTICAL_GUARD"),
         env_bool("SMART_PROBE_FORCE_LATE_SAFE_MANA_ROOT_PREFERENCE"),
