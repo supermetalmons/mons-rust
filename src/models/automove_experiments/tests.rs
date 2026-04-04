@@ -2909,9 +2909,11 @@ fn replay_pro_reliability_loss_probe_game(
     )
 }
 
-#[test]
-#[ignore = "diagnostic: replay pro fast-screen vs normal losses and print candidate-vs-baseline divergences"]
-fn smart_automove_pro_fast_screen_loss_probe_vs_normal() {
+fn run_smart_automove_pro_fast_screen_loss_probe(
+    baseline_preference: SmartAutomovePreference,
+    default_seed_tag: &str,
+    label: &str,
+) {
     let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
         .unwrap_or_else(|| "runtime_pro_turn_engine_v30".into());
     let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
@@ -2925,17 +2927,18 @@ fn smart_automove_pro_fast_screen_loss_probe_vs_normal() {
         .max(56);
     let trace_limit = env_usize("SMART_PROBE_TRACE_LIMIT").unwrap_or(3).max(1);
     let include_acceptance = env_bool("SMART_PROBE_INCLUDE_ACCEPTANCE").unwrap_or(true);
-    let seed_tag = env_profile_name("SMART_PRO_FAST_SCREEN_SEED_TAG")
-        .unwrap_or_else(|| "pro_fast_screen_vs_normal_v1".to_string());
+    let seed_tag =
+        env_profile_name("SMART_PRO_FAST_SCREEN_SEED_TAG").unwrap_or_else(|| default_seed_tag.into());
     let budget_a = SearchBudget::from_preference(SmartAutomovePreference::Pro);
-    let budget_b = SearchBudget::from_preference(SmartAutomovePreference::Normal);
+    let budget_b = SearchBudget::from_preference(baseline_preference);
     let mut aggregate = MatchupStats::default();
     let mut losses = 0usize;
     let mut losses_with_disagreement = 0usize;
     let mut disagreements_logged = 0usize;
 
     eprintln!(
-        "pro fast-screen loss probe config: candidate_profile={} baseline_profile={} seed_tag={} repeats={} games_per_repeat={} max_plies={} trace_limit={} include_acceptance={}",
+        "{} config: candidate_profile={} baseline_profile={} seed_tag={} repeats={} games_per_repeat={} max_plies={} trace_limit={} include_acceptance={}",
+        label,
         candidate_profile,
         baseline_profile,
         seed_tag,
@@ -2964,7 +2967,7 @@ fn smart_automove_pro_fast_screen_loss_probe_vs_normal() {
                     candidate_profile.as_str(),
                     SmartAutomovePreference::Pro,
                     baseline_profile.as_str(),
-                    SmartAutomovePreference::Normal,
+                    baseline_preference,
                     opening_fen.as_str(),
                     candidate_is_white,
                     max_plies,
@@ -3003,7 +3006,8 @@ fn smart_automove_pro_fast_screen_loss_probe_vs_normal() {
     }
 
     eprintln!(
-        "pro fast-screen loss probe summary: total_games={} wins={} losses={} draws={} win_rate={:.4} confidence={:.4} losses_with_disagreement={} disagreements_logged={}",
+        "{} summary: total_games={} wins={} losses={} draws={} win_rate={:.4} confidence={:.4} losses_with_disagreement={} disagreements_logged={}",
+        label,
         aggregate.total_games(),
         aggregate.wins,
         aggregate.losses,
@@ -3012,6 +3016,26 @@ fn smart_automove_pro_fast_screen_loss_probe_vs_normal() {
         aggregate.confidence_better_than_even(),
         losses_with_disagreement,
         disagreements_logged,
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: replay pro fast-screen vs normal losses and print candidate-vs-baseline divergences"]
+fn smart_automove_pro_fast_screen_loss_probe_vs_normal() {
+    run_smart_automove_pro_fast_screen_loss_probe(
+        SmartAutomovePreference::Normal,
+        "pro_fast_screen_vs_normal_v1",
+        "pro fast-screen loss probe",
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: replay pro fast-screen vs pro losses and print candidate-vs-baseline divergences"]
+fn smart_automove_pro_fast_screen_loss_probe_vs_pro() {
+    run_smart_automove_pro_fast_screen_loss_probe(
+        SmartAutomovePreference::Pro,
+        "pro_fast_screen_vs_pro_v1",
+        "pro fast-screen loss probe vs pro",
     );
 }
 
