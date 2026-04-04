@@ -559,6 +559,15 @@ fn probe_config_with_env_overrides(mut config: SmartSearchConfig) -> SmartSearch
     if let Some(value) = env_bool_value("SMART_PROBE_FORCE_TURN_PLANNER_ROOT_INJECTION") {
         config.enable_turn_planner_intent_root_injection = value;
     }
+    if let Some(limit) = env_usize("SMART_PROBE_FORCE_TURN_PLANNER_ROOT_INJECTION_LIMIT") {
+        config.turn_planner_intent_root_injection_limit = limit;
+    }
+    if let Some(value) = env_i32("SMART_PROBE_FORCE_TURN_PLANNER_ROOT_MAX_GAP") {
+        config.turn_planner_intent_root_max_heuristic_gap = value.max(0);
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_TURN_PLANNER_ROOT_EMERGENCY_ONLY") {
+        config.turn_planner_intent_root_emergency_only = value;
+    }
     if let Some(value) = env_bool_value("SMART_PROBE_FORCE_SECONDARY_ANALYSIS") {
         config.enable_turn_engine_secondary_analysis = value;
     }
@@ -6434,6 +6443,11 @@ fn smart_automove_pro_reliability_override_delta_probe() {
 #[test]
 #[ignore = "diagnostic: replay the real pro-reliability slice with candidate-side probe config overrides"]
 fn smart_automove_pro_reliability_candidate_override_probe() {
+    let env_i32 = |name: &str| {
+        std::env::var(name)
+            .ok()
+            .and_then(|value| value.trim().parse::<i32>().ok())
+    };
     let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
         .unwrap_or_else(|| "runtime_pro_turn_engine_v30".into());
     let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
@@ -6458,7 +6472,7 @@ fn smart_automove_pro_reliability_candidate_override_probe() {
     let mut normal_timing = DuelTimingStats::default();
 
     eprintln!(
-        "pro reliability candidate override probe config: candidate_profile={} baseline_profile={} seed_tag_pro={} seed_tag_normal={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} override_secondary_analysis={:?} override_selected_followup_projection={:?} override_low_budget_guard={:?} override_mid_turn_tactical_guard={:?} override_late_safe_mana_root_preference={:?}",
+        "pro reliability candidate override probe config: candidate_profile={} baseline_profile={} seed_tag_pro={} seed_tag_normal={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} override_turn_planner_root_injection={:?} override_turn_planner_root_injection_limit={:?} override_turn_planner_root_max_gap={:?} override_turn_planner_root_emergency_only={:?} override_secondary_analysis={:?} override_selected_followup_projection={:?} override_low_budget_guard={:?} override_mid_turn_tactical_guard={:?} override_late_safe_mana_root_preference={:?}",
         candidate_profile,
         baseline_profile,
         seed_tag_pro,
@@ -6467,6 +6481,10 @@ fn smart_automove_pro_reliability_candidate_override_probe() {
         games_per_repeat,
         max_plies,
         include_acceptance,
+        env_bool("SMART_PROBE_FORCE_TURN_PLANNER_ROOT_INJECTION"),
+        env_usize("SMART_PROBE_FORCE_TURN_PLANNER_ROOT_INJECTION_LIMIT"),
+        env_i32("SMART_PROBE_FORCE_TURN_PLANNER_ROOT_MAX_GAP"),
+        env_bool("SMART_PROBE_FORCE_TURN_PLANNER_ROOT_EMERGENCY_ONLY"),
         env_bool("SMART_PROBE_FORCE_SECONDARY_ANALYSIS"),
         env_bool("SMART_PROBE_FORCE_SELECTED_FOLLOWUP_PROJECTION"),
         env_bool("SMART_PROBE_FORCE_LOW_BUDGET_GUARD"),
