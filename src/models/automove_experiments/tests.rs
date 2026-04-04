@@ -559,6 +559,9 @@ fn probe_config_with_env_overrides(mut config: SmartSearchConfig) -> SmartSearch
     if let Some(value) = env_bool_value("SMART_PROBE_FORCE_TURN_PLANNER_ROOT_INJECTION") {
         config.enable_turn_planner_intent_root_injection = value;
     }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_SECONDARY_ANALYSIS") {
+        config.enable_turn_engine_secondary_analysis = value;
+    }
     if let Some(value) = env_bool_value("SMART_PROBE_FORCE_SELECTED_FOLLOWUP_PROJECTION") {
         config.enable_turn_engine_selected_followup_projection = value;
     }
@@ -2401,6 +2404,22 @@ fn loss_probe_decision_with_options(
     let selector = profile_selector_from_name(profile_name)
         .unwrap_or_else(|| panic!("profile '{}' not found for loss probe", profile_name));
     let config = loss_probe_runtime_config(profile_name, game, mode);
+    loss_probe_decision_for_config_with_options(
+        profile_name,
+        selector,
+        game,
+        include_acceptance,
+        config,
+    )
+}
+
+fn loss_probe_decision_for_config_with_options(
+    _profile_name: &str,
+    selector: AutomoveSelector,
+    game: &MonsGame,
+    include_acceptance: bool,
+    config: SmartSearchConfig,
+) -> LossProbeDecision {
     clear_turn_engine_selector_diagnostics();
     let inputs = select_inputs_with_runtime_fallback(selector, game, config);
     let selector_last_stage = turn_engine_selector_diagnostics_snapshot().last_return_stage;
@@ -2468,6 +2487,24 @@ fn loss_probe_decision_with_options(
             root_drainer_safety_score_margin: config.root_drainer_safety_score_margin,
         },
     }
+}
+
+fn loss_probe_decision_with_probe_overrides_options(
+    profile_name: &str,
+    mode: SmartAutomovePreference,
+    game: &MonsGame,
+    include_acceptance: bool,
+) -> LossProbeDecision {
+    let selector = profile_selector_from_name(profile_name)
+        .unwrap_or_else(|| panic!("profile '{}' not found for override loss probe", profile_name));
+    let config = probe_config_with_env_overrides(loss_probe_runtime_config(profile_name, game, mode));
+    loss_probe_decision_for_config_with_options(
+        profile_name,
+        selector,
+        game,
+        include_acceptance,
+        config,
+    )
 }
 
 fn loss_probe_direct_runtime_decision_with_options(
@@ -2556,6 +2593,88 @@ fn loss_probe_decision(
         mode,
         game,
         env_bool("SMART_PROBE_INCLUDE_ACCEPTANCE").unwrap_or(false),
+    )
+}
+
+fn replay_pro_reliability_candidate_override_probe_game_with_timing(
+    candidate_profile: &str,
+    baseline_profile: &str,
+    baseline_mode: SmartAutomovePreference,
+    opening_fen: &str,
+    candidate_is_white: bool,
+    max_plies: usize,
+    include_acceptance: bool,
+) -> (MatchResult, DuelTimingStats) {
+    use std::time::Instant;
+
+    let baseline_selector = profile_selector_from_name(baseline_profile).unwrap_or_else(|| {
+        panic!(
+            "profile '{}' not found for override reliability probe baseline side",
+            baseline_profile
+        )
+    });
+    let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
+    let mut timing = DuelTimingStats::default();
+
+    for _ in 0..max_plies {
+        if let Some(winner_color) = game.winner_color() {
+            return (match_result_from_winner(winner_color, candidate_is_white), timing);
+        }
+
+        let candidate_to_move = if candidate_is_white {
+            game.active_color == Color::White
+        } else {
+            game.active_color == Color::Black
+        };
+
+        let inputs = if candidate_to_move {
+            let start = Instant::now();
+            let candidate = loss_probe_decision_with_probe_overrides_options(
+                candidate_profile,
+                SmartAutomovePreference::Pro,
+                &game,
+                include_acceptance,
+            );
+            timing.record_candidate_turn(start.elapsed().as_secs_f64() * 1000.0);
+            candidate.inputs
+        } else {
+            let config =
+                loss_probe_runtime_config(baseline_profile, &game, baseline_mode);
+            let start = Instant::now();
+            let inputs = select_inputs_with_runtime_fallback(baseline_selector, &game, config);
+            timing.record_baseline_turn(start.elapsed().as_secs_f64() * 1000.0);
+            inputs
+        };
+
+        if inputs.is_empty() {
+            return (
+                if candidate_to_move {
+                    MatchResult::OpponentWin
+                } else {
+                    MatchResult::CandidateWin
+                },
+                timing,
+            );
+        }
+
+        if !matches!(game.process_input(inputs, false, false), Output::Events(_)) {
+            return (
+                if candidate_to_move {
+                    MatchResult::OpponentWin
+                } else {
+                    MatchResult::CandidateWin
+                },
+                timing,
+            );
+        }
+    }
+
+    (
+        match adjudicate_non_terminal_game(&game) {
+            Some(winner_color) => match_result_from_winner(winner_color, candidate_is_white),
+            None => MatchResult::Draw,
+        },
+        timing,
     )
 }
 
@@ -6058,6 +6177,131 @@ fn smart_automove_pro_reliability_shared_handoff_probe_vs_current() {
     assert!(
         vs_pro_loss_games + vs_normal_loss_games > 0,
         "reliability shared-handoff probe found no candidate losses"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: replay the real pro-reliability slice with candidate-side probe config overrides"]
+fn smart_automove_pro_reliability_candidate_override_probe() {
+    let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
+        .unwrap_or_else(|| "runtime_pro_turn_engine_v30".into());
+    let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_current".into());
+    let repeats = env_usize("SMART_PRO_RELIABILITY_REPEATS")
+        .unwrap_or(1)
+        .max(1);
+    let games_per_repeat = env_usize("SMART_PRO_RELIABILITY_GAMES").unwrap_or(2).max(1);
+    let max_plies = env_usize("SMART_PRO_RELIABILITY_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let include_acceptance = env_bool("SMART_PROBE_INCLUDE_ACCEPTANCE").unwrap_or(true);
+    let reliability_seed_tag = env_profile_name("SMART_PRO_RELIABILITY_SEED_TAG")
+        .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
+    let seed_tag_pro = reliability_seed_tag.clone();
+    let seed_tag_normal = format!("{}_vs_normal", reliability_seed_tag);
+    let budget_pro = SearchBudget::from_preference(SmartAutomovePreference::Pro);
+    let budget_normal = SearchBudget::from_preference(SmartAutomovePreference::Normal);
+    let mut pro_stats = MatchupStats::default();
+    let mut pro_timing = DuelTimingStats::default();
+    let mut normal_stats = MatchupStats::default();
+    let mut normal_timing = DuelTimingStats::default();
+
+    eprintln!(
+        "pro reliability candidate override probe config: candidate_profile={} baseline_profile={} seed_tag_pro={} seed_tag_normal={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} override_secondary_analysis={:?} override_selected_followup_projection={:?}",
+        candidate_profile,
+        baseline_profile,
+        seed_tag_pro,
+        seed_tag_normal,
+        repeats,
+        games_per_repeat,
+        max_plies,
+        include_acceptance,
+        env_bool("SMART_PROBE_FORCE_SECONDARY_ANALYSIS"),
+        env_bool("SMART_PROBE_FORCE_SELECTED_FOLLOWUP_PROJECTION"),
+    );
+
+    for repeat_index in 0..repeats {
+        let seed = seed_for_budget_duel_repeat_and_tag(
+            budget_pro,
+            budget_pro,
+            repeat_index,
+            seed_tag_pro.as_str(),
+        );
+        let opening_fens = generate_opening_fens_cached(seed, games_per_repeat);
+        for (opening_index, opening_fen) in opening_fens.iter().enumerate() {
+            let candidate_white_ab = opening_index % 2 == 0;
+            for candidate_is_white in [candidate_white_ab, !candidate_white_ab] {
+                let (result, timing) = replay_pro_reliability_candidate_override_probe_game_with_timing(
+                    candidate_profile.as_str(),
+                    baseline_profile.as_str(),
+                    SmartAutomovePreference::Pro,
+                    opening_fen.as_str(),
+                    candidate_is_white,
+                    max_plies,
+                    include_acceptance,
+                );
+                pro_stats.record(result);
+                pro_timing.merge(timing);
+            }
+        }
+    }
+
+    for repeat_index in 0..repeats {
+        let seed = seed_for_budget_duel_repeat_and_tag(
+            budget_pro,
+            budget_normal,
+            repeat_index,
+            seed_tag_normal.as_str(),
+        );
+        let opening_fens = generate_opening_fens_cached(seed, games_per_repeat);
+        for (opening_index, opening_fen) in opening_fens.iter().enumerate() {
+            let candidate_white_ab = opening_index % 2 == 0;
+            for candidate_is_white in [candidate_white_ab, !candidate_white_ab] {
+                let (result, timing) = replay_pro_reliability_candidate_override_probe_game_with_timing(
+                    candidate_profile.as_str(),
+                    baseline_profile.as_str(),
+                    SmartAutomovePreference::Normal,
+                    opening_fen.as_str(),
+                    candidate_is_white,
+                    max_plies,
+                    include_acceptance,
+                );
+                normal_stats.record(result);
+                normal_timing.merge(timing);
+            }
+        }
+    }
+
+    eprintln!(
+        "pro reliability candidate override probe vs current pro: total_games={} wins={} losses={} draws={} win_rate={:.4} confidence={:.4} candidate_avg_ms={:.2} baseline_avg_ms={:.2} candidate_turns={} baseline_turns={}",
+        pro_stats.total_games(),
+        pro_stats.wins,
+        pro_stats.losses,
+        pro_stats.draws,
+        pro_stats.win_rate_points(),
+        pro_stats.confidence_better_than_even(),
+        pro_timing.candidate_avg_ms(),
+        pro_timing.baseline_avg_ms(),
+        pro_timing.candidate_turns,
+        pro_timing.baseline_turns,
+    );
+    eprintln!(
+        "pro reliability candidate override probe vs current normal: total_games={} wins={} losses={} draws={} win_rate={:.4} confidence={:.4} candidate_avg_ms={:.2} baseline_avg_ms={:.2} candidate_turns={} baseline_turns={}",
+        normal_stats.total_games(),
+        normal_stats.wins,
+        normal_stats.losses,
+        normal_stats.draws,
+        normal_stats.win_rate_points(),
+        normal_stats.confidence_better_than_even(),
+        normal_timing.candidate_avg_ms(),
+        normal_timing.baseline_avg_ms(),
+        normal_timing.candidate_turns,
+        normal_timing.baseline_turns,
+    );
+
+    assert!(
+        pro_stats.total_games() + normal_stats.total_games() > 0,
+        "candidate override probe found no games"
     );
 }
 
