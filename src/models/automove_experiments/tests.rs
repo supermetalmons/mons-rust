@@ -543,6 +543,37 @@ fn calibration_runtime_config(
     })
 }
 
+fn probe_config_with_env_overrides(mut config: SmartSearchConfig) -> SmartSearchConfig {
+    let env_i32 = |name: &str| {
+        std::env::var(name)
+            .ok()
+            .and_then(|value| value.trim().parse::<i32>().ok())
+    };
+    if env_bool("SMART_PROBE_FORCE_ENGINE_DISABLED").unwrap_or(false) {
+        config.enable_turn_engine = false;
+    }
+    if let Some(limit) = env_usize("SMART_PROBE_FORCE_ROOT_LIMIT") {
+        config.root_branch_limit = limit.max(1);
+        config.root_enum_limit = config.root_enum_limit.max(config.root_branch_limit);
+    }
+    if let Some(limit) = env_usize("SMART_PROBE_FORCE_ENUM_LIMIT") {
+        config.root_enum_limit = limit.max(config.root_branch_limit.max(1));
+    }
+    if let Some(limit) = env_usize("SMART_PROBE_FORCE_SHORTLIST_MAX") {
+        config.root_reply_risk_shortlist_max = limit.max(1);
+    }
+    if let Some(limit) = env_usize("SMART_PROBE_FORCE_REPLY_LIMIT") {
+        config.root_reply_risk_reply_limit = limit.max(1);
+    }
+    if let Some(share_bp) = env_i32("SMART_PROBE_FORCE_REPLY_SHARE_BP") {
+        config.root_reply_risk_node_share_bp = share_bp.max(0);
+    }
+    if let Some(margin) = env_i32("SMART_PROBE_FORCE_REPLY_MARGIN") {
+        config.root_reply_risk_score_margin = margin;
+    }
+    config
+}
+
 fn calibration_turn_engine_config(config: SmartSearchConfig) -> TurnEngineConfig {
     TurnEngineConfig {
         mode: config.turn_engine_mode,
@@ -5281,7 +5312,8 @@ fn smart_automove_pro_turn_engine_selector_probe() {
         turn_engine_selector_diagnostics_snapshot()
     );
     print_loss_probe_decision("decision", &decision);
-    let config = calibration_runtime_config(profile.as_str(), &game, preference);
+    let config =
+        probe_config_with_env_overrides(calibration_runtime_config(profile.as_str(), &game, preference));
     if let Some(selection_probe) = MonsGameModel::root_selection_probe_for_test(&game, config) {
         println!("root_selection_probe={:?}", selection_probe);
     } else {
@@ -5333,7 +5365,8 @@ fn smart_automove_pro_turn_engine_loss_probe_selector_probe() {
         turn_engine_selector_diagnostics_snapshot()
     );
     print_loss_probe_decision("decision", &decision);
-    let config = loss_probe_runtime_config(profile.as_str(), &game, preference);
+    let config =
+        probe_config_with_env_overrides(loss_probe_runtime_config(profile.as_str(), &game, preference));
     if let Some(selection_probe) = MonsGameModel::root_selection_probe_for_test(&game, config) {
         println!("root_selection_probe={:?}", selection_probe);
     } else {
@@ -5348,6 +5381,67 @@ fn smart_automove_pro_turn_engine_loss_probe_selector_probe() {
         print_turn_engine_acceptance_probe("acceptance", Some(&acceptance));
     } else {
         println!("acceptance none");
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: inspect raw ranked root moves via SMART_PROBE_FEN using loss-probe runtime config"]
+fn smart_automove_ranked_root_moves_probe() {
+    let fen = std::env::var("SMART_PROBE_FEN").expect("SMART_PROBE_FEN should be set");
+    let profile = std::env::var("SMART_PROBE_PROFILE")
+        .unwrap_or_else(|_| "runtime_pro_turn_engine_v30".to_string());
+    let preference = match std::env::var("SMART_PROBE_MODE")
+        .unwrap_or_else(|_| "pro".to_string())
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "fast" => SmartAutomovePreference::Fast,
+        "normal" => SmartAutomovePreference::Normal,
+        _ => SmartAutomovePreference::Pro,
+    };
+    let game = MonsGame::from_fen(fen.as_str(), false).expect("SMART_PROBE_FEN should be valid");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let config =
+        probe_config_with_env_overrides(loss_probe_runtime_config(profile.as_str(), &game, preference));
+    let ranked_roots = MonsGameModel::ranked_root_moves(&game, game.active_color, config);
+
+    println!("probe_profile={profile} probe_mode={preference:?}");
+    println!(
+        "turn_state turn={} mons_moves={} can_action={} can_move_mana={}",
+        game.turn_number,
+        game.mons_moves_count,
+        game.player_can_use_action(),
+        game.player_can_move_mana(),
+    );
+    println!(
+        "config root={} enum={} node={} two_pass={} focus={}/{}",
+        config.root_branch_limit,
+        config.root_enum_limit,
+        config.node_branch_limit,
+        config.enable_two_pass_root_allocation,
+        config.root_focus_k,
+        config.root_focus_budget_share_bp,
+    );
+    println!("ranked_root_count={}", ranked_roots.len());
+    for (rank, root) in ranked_roots.iter().enumerate() {
+        println!(
+            "rank={} fen={} heuristic={} eff={} vuln={} walk_vuln={} handoff={} roundtrip={} supermana_progress={} opponent_progress={} score_window={} spirit_setup={} spirit_dev={}",
+            rank,
+            Input::fen_from_array(&root.inputs),
+            root.heuristic,
+            root.efficiency,
+            root.own_drainer_vulnerable,
+            root.own_drainer_walk_vulnerable,
+            root.mana_handoff_to_opponent,
+            root.has_roundtrip,
+            root.supermana_progress,
+            root.opponent_mana_progress,
+            root.same_turn_score_window_value,
+            root.spirit_own_mana_setup_now || root.spirit_same_turn_score_setup_now,
+            root.spirit_development,
+        );
     }
 }
 
