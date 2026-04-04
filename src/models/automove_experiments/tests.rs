@@ -3560,15 +3560,25 @@ fn smart_automove_pro_fast_screen_opening_probe_vs_normal() {
         );
         for trace in traces {
             let engine = trace.candidate.turn_engine.as_ref();
+            let direct = loss_probe_direct_runtime_decision_with_options(
+                candidate_profile.as_str(),
+                SmartAutomovePreference::Pro,
+                &MonsGame::from_fen(trace.fen.as_str(), false)
+                    .expect("fast-screen opening trace fen should be valid"),
+                include_acceptance,
+            );
             eprintln!(
-                "PRO_FAST_SCREEN_OPENING_TRACE opening_index={} mirror={} candidate_is_white={} ply={} fen={} candidate_move={} baseline_move={} engine_head={:?} root_search_selected={:?} accepted_after_search={:?} selected_utility={:?} candidate_utility={:?}",
+                "PRO_FAST_SCREEN_OPENING_TRACE opening_index={} mirror={} candidate_is_white={} ply={} fen={} candidate_move={} direct_move={} baseline_move={} wrapper_owned={} direct_stage={} engine_head={:?} root_search_selected={:?} accepted_after_search={:?} selected_utility={:?} candidate_utility={:?}",
                 opening_index,
                 mirror,
                 candidate_is_white,
                 trace.ply,
                 trace.fen,
                 trace.candidate.move_fen,
+                direct.move_fen,
                 trace.baseline.move_fen,
+                trace.candidate.move_fen != direct.move_fen,
+                direct.selector_last_stage,
                 engine.and_then(|engine| engine.candidate_move_fen.as_ref()),
                 engine.and_then(|engine| engine.root_search_selected_move_fen.as_ref()),
                 engine.and_then(|engine| engine.accepted_after_search),
