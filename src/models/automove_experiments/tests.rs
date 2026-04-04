@@ -2470,6 +2470,82 @@ fn loss_probe_decision_with_options(
     }
 }
 
+fn loss_probe_direct_runtime_decision_with_options(
+    profile_name: &str,
+    mode: SmartAutomovePreference,
+    game: &MonsGame,
+    include_acceptance: bool,
+) -> LossProbeDecision {
+    let config = loss_probe_runtime_config(profile_name, game, mode);
+    clear_turn_engine_selector_diagnostics();
+    let inputs = MonsGameModel::smart_search_best_inputs(game, config);
+    let selector_last_stage = turn_engine_selector_diagnostics_snapshot().last_return_stage;
+    let move_fen = Input::fen_from_array(&inputs);
+    let ranked_roots = MonsGameModel::ranked_root_moves(game, game.active_color, config);
+    let selected_rank = ranked_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == move_fen);
+    let selected_root = if let Some(rank) = selected_rank {
+        Some(triage_root_digest_entry(&ranked_roots[rank]))
+    } else {
+        let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            game,
+            game.active_color,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        MonsGameModel::build_scored_root_move(
+            game,
+            game.active_color,
+            config,
+            own_drainer_vulnerable_before,
+            &inputs,
+        )
+        .map(|selected| triage_root_digest_entry(&selected))
+    };
+    let top_roots = ranked_roots
+        .iter()
+        .take(TRIAGE_TOP_ROOT_DIGEST_SIZE)
+        .map(triage_root_digest_entry)
+        .collect::<Vec<_>>();
+    let turn_engine = loss_probe_turn_engine_decision_with_options(
+        game,
+        config,
+        ranked_roots.as_slice(),
+        include_acceptance,
+    );
+
+    LossProbeDecision {
+        inputs,
+        move_fen,
+        selected_rank,
+        selected_root,
+        top_roots,
+        turn_engine,
+        selector_last_stage,
+        config: LossProbeConfigDigest {
+            max_visited_nodes: config.max_visited_nodes,
+            root_branch_limit: config.root_branch_limit,
+            node_branch_limit: config.node_branch_limit,
+            root_focus_k: config.root_focus_k,
+            root_focus_budget_share_bp: config.root_focus_budget_share_bp,
+            enable_event_ordering_bonus: config.enable_event_ordering_bonus,
+            enable_two_pass_root_allocation: config.enable_two_pass_root_allocation,
+            enable_two_pass_volatility_focus: config.enable_two_pass_volatility_focus,
+            enable_quiet_reductions: config.enable_quiet_reductions,
+            quiet_reduction_depth_threshold: config.quiet_reduction_depth_threshold,
+            enable_normal_root_safety_rerank: config.enable_normal_root_safety_rerank,
+            enable_normal_root_safety_deep_floor: config.enable_normal_root_safety_deep_floor,
+            enable_interview_hard_spirit_deploy: config.enable_interview_hard_spirit_deploy,
+            prefer_clean_reply_risk_roots: config.prefer_clean_reply_risk_roots,
+            root_reply_risk_shortlist_max: config.root_reply_risk_shortlist_max,
+            root_reply_risk_reply_limit: config.root_reply_risk_reply_limit,
+            root_reply_risk_node_share_bp: config.root_reply_risk_node_share_bp,
+            root_efficiency_score_margin: config.root_efficiency_score_margin,
+            root_drainer_safety_score_margin: config.root_drainer_safety_score_margin,
+        },
+    }
+}
+
 fn loss_probe_decision(
     profile_name: &str,
     mode: SmartAutomovePreference,
@@ -3163,6 +3239,241 @@ fn smart_automove_pro_fast_screen_shared_loss_probe_vs_current() {
         shared_losses,
         pro_only_losses,
         normal_only_losses,
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: classify same-opening shared losses into wrapper-owned vs direct-runtime internal exacts"]
+fn smart_automove_pro_fast_screen_shared_loss_direct_runtime_probe_vs_current() {
+    let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
+        .unwrap_or_else(|| "runtime_pro_turn_engine_v30".into());
+    let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_current".into());
+    let repeats = env_usize("SMART_PRO_FAST_SCREEN_REPEATS")
+        .unwrap_or(2)
+        .max(1);
+    let games_per_repeat = env_usize("SMART_PRO_FAST_SCREEN_GAMES").unwrap_or(2).max(1);
+    let max_plies = env_usize("SMART_PRO_FAST_SCREEN_MAX_PLIES")
+        .unwrap_or(84)
+        .max(56);
+    let trace_limit = env_usize("SMART_PROBE_TRACE_LIMIT").unwrap_or(3).max(1);
+    let include_acceptance = env_bool("SMART_PROBE_INCLUDE_ACCEPTANCE").unwrap_or(true);
+    let shared_loss_limit = env_usize("SMART_PROBE_SHARED_LOSS_LIMIT");
+    let repeat_filter = env_usize("SMART_PRO_FAST_SCREEN_REPEAT_INDEX");
+    let opening_filter = env_usize("SMART_PRO_FAST_SCREEN_OPENING_INDEX");
+    let mirror_filter = env::var("SMART_PRO_FAST_SCREEN_MIRROR")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let seed_tag = env_profile_name("SMART_PRO_FAST_SCREEN_SEED_TAG")
+        .unwrap_or_else(|| "pro_fast_screen_shared_vs_current_v1".to_string());
+    let budget = SearchBudget::from_preference(SmartAutomovePreference::Pro);
+    let mut total_games = 0usize;
+    let mut shared_losses = 0usize;
+    let mut shared_losses_with_only_wrapper_owned_exacts = 0usize;
+    let mut shared_losses_with_internal_profile_exacts = 0usize;
+    let mut total_shared_exacts = 0usize;
+    let mut wrapper_owned_exacts = 0usize;
+    let mut profile_internal_exacts = 0usize;
+    let mut direct_matches_pro = 0usize;
+    let mut direct_matches_normal = 0usize;
+    let mut direct_matches_both = 0usize;
+    let mut direct_matches_neither = 0usize;
+
+    eprintln!(
+        "pro fast-screen shared-loss direct-runtime probe config: candidate_profile={} baseline_profile={} seed_tag={} repeats={} games_per_repeat={} max_plies={} trace_limit={} include_acceptance={}",
+        candidate_profile,
+        baseline_profile,
+        seed_tag,
+        repeats,
+        games_per_repeat,
+        max_plies,
+        trace_limit,
+        include_acceptance,
+    );
+
+    'repeat_loop: for repeat_index in 0..repeats {
+        if repeat_filter.is_some_and(|expected| expected != repeat_index) {
+            continue;
+        }
+        let seed =
+            seed_for_budget_duel_repeat_and_tag(budget, budget, repeat_index, seed_tag.as_str());
+        let opening_fens = generate_opening_fens_cached(seed, games_per_repeat);
+
+        for (opening_index, opening_fen) in opening_fens.iter().enumerate() {
+            if opening_filter.is_some_and(|expected| expected != opening_index) {
+                continue;
+            }
+            let candidate_white_ab = opening_index % 2 == 0;
+            for (mirror, candidate_is_white) in
+                [("ab", candidate_white_ab), ("ba", !candidate_white_ab)]
+            {
+                if mirror_filter
+                    .as_deref()
+                    .is_some_and(|expected| expected != mirror)
+                {
+                    continue;
+                }
+                total_games += 1;
+                let (vs_pro_result, vs_pro_traces) = replay_cross_budget_loss_probe_game_with_options(
+                    candidate_profile.as_str(),
+                    SmartAutomovePreference::Pro,
+                    baseline_profile.as_str(),
+                    SmartAutomovePreference::Pro,
+                    opening_fen.as_str(),
+                    candidate_is_white,
+                    max_plies,
+                    trace_limit,
+                    include_acceptance,
+                );
+                let (vs_normal_result, vs_normal_traces) =
+                    replay_cross_budget_loss_probe_game_with_options(
+                        candidate_profile.as_str(),
+                        SmartAutomovePreference::Pro,
+                        baseline_profile.as_str(),
+                        SmartAutomovePreference::Normal,
+                        opening_fen.as_str(),
+                        candidate_is_white,
+                        max_plies,
+                        trace_limit,
+                        include_acceptance,
+                    );
+                let lost_vs_pro = vs_pro_result == MatchResult::OpponentWin;
+                let lost_vs_normal = vs_normal_result == MatchResult::OpponentWin;
+                if !(lost_vs_pro && lost_vs_normal) {
+                    continue;
+                }
+
+                shared_losses += 1;
+                eprintln!(
+                    "PRO_FAST_SCREEN_SHARED_DIRECT_RUNTIME game={} repeat={} opening_index={} mirror={} candidate_is_white={} seed={} opening={}",
+                    shared_losses,
+                    repeat_index,
+                    opening_index,
+                    mirror,
+                    candidate_is_white,
+                    seed,
+                    opening_fen
+                );
+
+                let mut per_fen =
+                    std::collections::BTreeMap::<String, (Option<(String, String)>, Option<(String, String)>)>::new();
+                for trace in &vs_pro_traces {
+                    per_fen.insert(
+                        trace.fen.clone(),
+                        (
+                            Some((trace.candidate.move_fen.clone(), trace.baseline.move_fen.clone())),
+                            None,
+                        ),
+                    );
+                }
+                for trace in &vs_normal_traces {
+                    per_fen
+                        .entry(trace.fen.clone())
+                        .and_modify(|entry| {
+                            entry.1 = Some((
+                                trace.candidate.move_fen.clone(),
+                                trace.baseline.move_fen.clone(),
+                            ));
+                        })
+                        .or_insert((
+                            None,
+                            Some((trace.candidate.move_fen.clone(), trace.baseline.move_fen.clone())),
+                        ));
+                }
+
+                let mut opening_has_internal_profile_exact = false;
+                for (fen, (vs_pro_moves, vs_normal_moves)) in per_fen {
+                    total_shared_exacts += 1;
+                    let profile_move = vs_pro_moves
+                        .as_ref()
+                        .map(|(candidate, _)| candidate.as_str())
+                        .or_else(|| {
+                            vs_normal_moves
+                                .as_ref()
+                                .map(|(candidate, _)| candidate.as_str())
+                        })
+                        .expect("shared exact should include at least one candidate move");
+                    let baseline_pro_move =
+                        vs_pro_moves.as_ref().map(|(_, baseline)| baseline.as_str());
+                    let baseline_normal_move = vs_normal_moves
+                        .as_ref()
+                        .map(|(_, baseline)| baseline.as_str());
+                    let game = MonsGame::from_fen(fen.as_str(), false)
+                        .expect("shared-loss exact fen should be valid");
+                    let direct = loss_probe_direct_runtime_decision_with_options(
+                        candidate_profile.as_str(),
+                        SmartAutomovePreference::Pro,
+                        &game,
+                        include_acceptance,
+                    );
+                    let wrapper_owned = direct.move_fen != profile_move;
+                    if wrapper_owned {
+                        wrapper_owned_exacts += 1;
+                    } else {
+                        profile_internal_exacts += 1;
+                        opening_has_internal_profile_exact = true;
+                    }
+
+                    let direct_match_label = match (baseline_pro_move, baseline_normal_move) {
+                        (Some(pro_move), Some(normal_move))
+                            if direct.move_fen == pro_move && direct.move_fen == normal_move =>
+                        {
+                            direct_matches_both += 1;
+                            "both"
+                        }
+                        (Some(pro_move), _) if direct.move_fen == pro_move => {
+                            direct_matches_pro += 1;
+                            "pro"
+                        }
+                        (_, Some(normal_move)) if direct.move_fen == normal_move => {
+                            direct_matches_normal += 1;
+                            "normal"
+                        }
+                        _ => {
+                            direct_matches_neither += 1;
+                            "neither"
+                        }
+                    };
+
+                    eprintln!(
+                        "  EXACT fen={} profile_move={} direct_move={} wrapper_owned={} direct_matches={} baseline_pro={:?} baseline_normal={:?}",
+                        fen,
+                        profile_move,
+                        direct.move_fen,
+                        wrapper_owned,
+                        direct_match_label,
+                        baseline_pro_move,
+                        baseline_normal_move,
+                    );
+                }
+
+                if opening_has_internal_profile_exact {
+                    shared_losses_with_internal_profile_exacts += 1;
+                } else {
+                    shared_losses_with_only_wrapper_owned_exacts += 1;
+                }
+
+                if shared_loss_limit.is_some_and(|limit| shared_losses >= limit.max(1)) {
+                    break 'repeat_loop;
+                }
+            }
+        }
+    }
+
+    eprintln!(
+        "pro fast-screen shared-loss direct-runtime probe summary: total_games={} shared_losses={} shared_losses_with_only_wrapper_owned_exacts={} shared_losses_with_internal_profile_exacts={} total_shared_exacts={} wrapper_owned_exacts={} profile_internal_exacts={} direct_matches_pro={} direct_matches_normal={} direct_matches_both={} direct_matches_neither={}",
+        total_games,
+        shared_losses,
+        shared_losses_with_only_wrapper_owned_exacts,
+        shared_losses_with_internal_profile_exacts,
+        total_shared_exacts,
+        wrapper_owned_exacts,
+        profile_internal_exacts,
+        direct_matches_pro,
+        direct_matches_normal,
+        direct_matches_both,
+        direct_matches_neither,
     );
 }
 
