@@ -849,3 +849,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
   - `3/4`, `0.7500`, `0.6875`, `214.92ms` vs current Pro
   - `2/4`, `0.5000`, `0.0000`, `212.51ms` vs current Normal
 - The durable rule is tighter again. The earlier classical-ordering lift is not hiding inside `walk_threat_prefilter` alone. If that bundle is ever revisited, do not start from this flag in isolation; require a narrower coupled ordering diagnosis first.
+- I then checked the next narrow singleton from that same classical-ordering family on 2026-04-05: `enable_killer_move_ordering` by itself.
+- I screened exactly that one-flag variant directly on the retained cheap `1x2x96` gate with shipping Pro pinned to `runtime_current`, using only `SMART_PROBE_FORCE_KILLER_MOVE_ORDERING=true`.
+- It was dead on the only live wall:
+  - `3/4`, `0.7500`, `0.6875`, `215.93ms` vs current Pro
+  - `2/4`, `0.5000`, `0.0000`, `218.70ms` vs current Normal
+- The durable rule is tighter again. The earlier classical-ordering lift is not hiding inside `killer_move_ordering` alone either. If that bundle is ever revisited, do not start from this flag in isolation; require a narrower coupled ordering diagnosis first.
