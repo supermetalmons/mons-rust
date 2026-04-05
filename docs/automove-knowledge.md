@@ -827,3 +827,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
   - `280 / 220`: `3/4`, `0.7500`, `0.6875`, `200.03ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `209.53ms` vs current Normal
   - `220 / 140`: `3/4`, `0.7500`, `0.6875`, `200.21ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `210.11ms` vs current Normal
 - The durable rule is tighter again. Broad interview-soft handoff/roundtrip penalty lowering is not a hidden retained-gate lever either. Pulling those penalties back from the retained Pro values toward fast/normal or bare defaults leaves the current-Normal wall flat, so these soft-penalty numerics should stay parked unless a retained loss-surface diagnosis first isolates one handoff or roundtrip family that actually depends on them.
+- I then screened the next unswept live non-interview numeric surface on 2026-04-05: potion-spend penalties. To make that possible without runtime edits, I kept two new candidate-side override knobs in the retained reliability harness:
+  - `SMART_PROBE_FORCE_POTION_SPEND_PENALTY_FAST`
+  - `SMART_PROBE_FORCE_POTION_SPEND_PENALTY_NORMAL`
+- This is a genuinely live surface on the retained Pro path. `runtime_pro_turn_engine_v30` already keeps `enable_mana_start_mix_with_potion_actions=true` and `enable_potion_progress_compensation=true`, so uncompensated potion spends are still scored, and the retained Pro runtime uses a more permissive penalty pair than the defaults:
+  - retained Pro: `potion_spend_penalty_fast=340`, `potion_spend_penalty_normal=130`
+  - fast/normal-style block: `220 / 260`
+  - bare defaults: `340 / 260`
+- Those values feed directly into the root heuristic inside `evaluate_root_transition(...)` when a potion is spent without immediate tactical or progress compensation.
+- I screened the two grounded retained-value variants directly on the retained cheap `1x2x96` gate with shipping Pro pinned to `runtime_current`:
+  - restore only the normal-depth default penalty: `fast=340`, `normal=260`
+  - fast/normal-style penalties: `fast=220`, `normal=260`
+- Both were dead on the only live wall:
+  - `340 / 260`: `3/4`, `0.7500`, `0.6875`, `201.12ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `210.06ms` vs current Normal
+  - `220 / 260`: `3/4`, `0.7500`, `0.6875`, `200.87ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `209.26ms` vs current Normal
+- The durable rule is tighter again. Broad potion-spend penalty retunes are not a hidden retained-gate lever either. Restoring the normal-depth penalty to the default or reverting to the fast/normal-style pair leaves the current-Normal wall flat, so potion penalty numerics should stay parked unless a retained loss-surface diagnosis first isolates one uncompensated potion-spend family that actually depends on them.
