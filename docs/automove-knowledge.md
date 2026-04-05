@@ -794,3 +794,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
   - `220 / 280`: `3/4`, `0.7500`, `0.6875`, `197.04ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `205.40ms` vs current Normal
   - `200 / 310`: `3/4`, `0.7500`, `0.6875`, `197.41ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `205.75ms` vs current Normal
 - The durable rule is tighter again. Lowering the live interview-soft opponent-mana bonuses toward normal-like or fast-core values is not a hidden retained-gate lever. The current-Normal wall stays completely flat, so broad interview-soft opponent-mana retunes should stay parked unless a retained loss-surface diagnosis first isolates one progress-family seam that actually depends on these numerics.
+- I then closed the remaining broad interview-soft loopholes on 2026-04-05 without adding any more harness surface. Using the same retained knobs, I screened the two natural follow-ups on the cheap `1x2x96` gate:
+  - stronger opponent-mana bonuses: `interview_soft_opponent_mana_progress_bonus=360`, `interview_soft_opponent_mana_score_bonus=460`
+  - zero soft-priority tie-break margin: `interview_soft_score_margin=0`
+- Both were dead on the only live wall:
+  - stronger opponent-mana bonuses: `3/4`, `0.7500`, `0.6875`, `210.51ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `206.08ms` vs current Normal
+  - zero soft-score margin: `3/4`, `0.7500`, `0.6875`, `211.11ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `206.25ms` vs current Normal
+- The durable rule is tighter again. The broad interview-soft root-priority family is dead as a top-down lead in both directions. Lowering opponent-mana bonuses, raising them, or dropping the soft-priority score margin to zero all leave the current-Normal wall flat, so interview-soft numerics should stay parked unless a retained loss-surface diagnosis first proves one family actually depends on soft-priority tie-breaks.
