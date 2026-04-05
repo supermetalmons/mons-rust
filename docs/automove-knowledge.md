@@ -801,3 +801,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
   - stronger opponent-mana bonuses: `3/4`, `0.7500`, `0.6875`, `210.51ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `206.08ms` vs current Normal
   - zero soft-score margin: `3/4`, `0.7500`, `0.6875`, `211.11ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `206.25ms` vs current Normal
 - The durable rule is tighter again. The broad interview-soft root-priority family is dead as a top-down lead in both directions. Lowering opponent-mana bonuses, raising them, or dropping the soft-priority score margin to zero all leave the current-Normal wall flat, so interview-soft numerics should stay parked unless a retained loss-surface diagnosis first proves one family actually depends on soft-priority tie-breaks.
+- I then screened the next unswept active numeric surface on 2026-04-05: anti-help filter numerics. To make that possible without runtime edits, I kept two new candidate-side override knobs in the retained reliability harness:
+  - `SMART_PROBE_FORCE_ANTI_HELP_MARGIN`
+  - `SMART_PROBE_FORCE_ANTI_HELP_REPLY_LIMIT`
+- This is a genuinely live surface on the retained Pro path. `runtime_pro_turn_engine_v30` inherits `enable_strict_anti_help_filter=true`, `root_anti_help_score_margin=300`, and `root_anti_help_reply_limit=10` from the retained Pro runtime, and those values feed directly into the late root candidate cull inside `filtered_root_candidate_indices(...)`.
+- I screened the two grounded lowered-filter bundles directly on the retained cheap `1x2x96` gate with shipping Pro pinned to `runtime_current`:
+  - fast-core-like anti-help: `margin=220`, `reply_limit=6`
+  - default-floor anti-help: `margin=180`, `reply_limit=6`
+- Both were dead on the only live wall:
+  - `220 / 6`: `3/4`, `0.7500`, `0.6875`, `204.58ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `212.89ms` vs current Normal
+  - `180 / 6`: `3/4`, `0.7500`, `0.6875`, `204.42ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `212.79ms` vs current Normal
+- The durable rule is tighter again. Lowering the live anti-help margin and reply limit toward fast-core or default values is not a hidden retained-gate lever either. The current-Normal wall stays completely flat, so broad anti-help numeric retunes should stay parked unless a retained loss-surface diagnosis first isolates one handoff or roundtrip family that actually depends on the anti-help filter.

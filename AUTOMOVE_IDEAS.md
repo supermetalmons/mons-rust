@@ -1292,3 +1292,14 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - The zero-margin variant was the same story: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=211.11`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=206.25`.
   - Useful lesson: the broad interview-soft root-priority family is dead as a top-down lead, not just the lowering direction. Pushing opponent-mana bonuses higher or dropping the soft-priority score margin to zero still leaves the current-Normal wall completely flat.
 - Next hypothesis after that kill: stop spending on broad interview-soft root-priority retunes entirely. If interview soft priorities are revisited again, first isolate one retained loss family that already proves dependence on soft-priority tie-breaks before touching runtime numerics.
+- Kill result from 2026-04-05: lowering the live anti-help filter numerics is flat on the cheap retained gate too.
+  - I kept two new candidate-side override knobs in the retained reliability harness so the active anti-help numeric surface can be screened without runtime edits:
+    - `SMART_PROBE_FORCE_ANTI_HELP_MARGIN`
+    - `SMART_PROBE_FORCE_ANTI_HELP_REPLY_LIMIT`
+  - I screened the two grounded lowered-filter bundles directly on the retained `1x2x96` duel slice with shipping Pro pinned to `runtime_current`:
+    - fast-core-like anti-help: `margin=220`, `reply_limit=6`
+    - default-floor anti-help: `margin=180`, `reply_limit=6`
+  - Both were dead on the only live wall. The fast-core-like bundle finished at `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=204.58`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=212.89`.
+  - The lower default-floor bundle was the same story: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=204.42`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=212.79`.
+  - Useful lesson: the live anti-help family is not a hidden retained-gate lever in the lowering direction either. Pulling the active margin and reply limit back toward fast-core or default values leaves the current-Normal wall completely flat.
+- Next hypothesis after that kill: stop spending on broad anti-help numeric retunes without a family-specific proof path first. If anti-help is revisited again, require a retained loss-surface diagnosis that already isolates one handoff or roundtrip family before touching the numeric filter surface.
