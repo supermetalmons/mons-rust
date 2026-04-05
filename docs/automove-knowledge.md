@@ -744,3 +744,15 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - That looked superficially promising, but the retained slice-filtered `smart_automove_pro_reliability_vs_normal_exact_family_probe` killed it. On `repeat=0 opening=1 mirror=ab`, the widened current-Normal slice had `loss_games=0` and no exact families at all.
 - I then checked the only other widened current-Normal slice with multiple changed exacts from the broad eligibility-guard delta, `repeat=2 opening=0 mirror=ab`. That slice also had `loss_games=0` and no exact families on the real widened current-Normal loss surface.
 - The durable rule is tighter again. The cleanest changed-to-baseline exacts from `turn_engine_eligibility_guard=true` are replay-local improvements inside games the challenger already wins, not the real current-Normal loss wall. So the broad eligibility-guard family is now dead as a promotion lead: it is mixed at the widened changed-family level, and its best-looking changed slices are not even on the actual widened current-Normal loss surface.
+- I then revisited child ordering on 2026-04-05 only through retained loss-surface diagnosis, not another broad enable sweep. The candidate-side bundle was the same previously-live trio:
+  - `SMART_PROBE_FORCE_CHILD_EVAL_BUNDLE=true`
+  - `SMART_PROBE_FORCE_LOCAL_SCORING_EVAL_CTX=true`
+  - `SMART_PROBE_FORCE_TWO_STAGE_CHILD_ORDERING=true`
+- I ran the retained `smart_automove_pro_reliability_override_delta_probe` on the widened `3x2x96` current-Normal gate with shipping Pro pinned to `runtime_current`.
+- The widened current-Normal delta still moved, but it stayed too mixed to justify a runtime branch: `total_games=12`, `changed_exacts=23`, `changed_to_baseline=10`, `changed_away_from_baseline=5`, and `changed_to_third=8`.
+- The main changed surface was not a clean child-ordering seam. The largest bucket was a headless late post-search family, `default_family=None` and `override_family=None`, with `count=15`, split as `to_baseline=8`, `away_from_baseline=3`, and `to_third=4`.
+- The remaining buckets were also mixed instead of isolating one mechanism:
+  - `ManaTempo -> ManaTempo`, `accepted false -> true`: `count=4`, split `1 / 1 / 2`
+  - `SafeSupermanaProgress -> SafeSupermanaProgress`: `count=3`, split `0 / 1 / 2`
+  - `SpiritImpact -> SpiritImpact`, `accepted false -> false`: singleton `1 / 0 / 0`
+- The durable rule is tighter again. Even after following the backlog’s “direct retained-loss diagnosis” rule, the core child-analysis bundle still resolves to broad mixed late `engine_post_search` churn, not one branchable child-ordering family. Do not reopen this bundle as a runtime branch from the widened current-Normal surface. If child ordering is revisited again, it needs a prequalified single exact-family slice inside the real widened loss surface first.

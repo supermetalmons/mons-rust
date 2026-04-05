@@ -1240,3 +1240,14 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - Both probes came back with `loss_games=0`, `family_count=0`, and no repeated internal non-Pro-owned family at all.
   - Useful lesson: the cleanest changed-to-baseline exacts from the broad eligibility-guard line are not on the actual widened current-Normal loss surface. They are replay-local improvements inside games the challenger already wins, so they are not the real promotion wall and they do not justify a runtime branch.
 - Next hypothesis after that kill: stop spending on `turn_engine_eligibility_guard` for now. The mixed widened disable surface no longer has even one prequalified changed slice on the actual current-Normal loss surface, so the next Pro iteration needs a genuinely different lead than the eligibility-guard family.
+- Kill result from 2026-04-05: the core child-analysis bundle still does not narrow into one current-Normal family.
+  - I followed the retained rule for child ordering literally and revisited it only through retained loss-surface diagnosis, not another broad enable sweep. The candidate-side bundle was the same previously-live trio: `child_eval_bundle=true`, `local_scoring_eval_ctx=true`, and `two_stage_child_ordering=true`.
+  - I ran the retained `smart_automove_pro_reliability_override_delta_probe` on the widened `3x2x96` current-Normal gate with shipping Pro pinned to `runtime_current`.
+  - The widened current-Normal delta did move, but it still did not collapse to one branchable lane: `total_games=12`, `changed_exacts=23`, `changed_to_baseline=10`, `changed_away_from_baseline=5`, and `changed_to_third=8`.
+  - The largest bucket was still a mixed late post-search family with no candidate family at all: `default_family=None`, `override_family=None`, `count=15`, split as `to_baseline=8`, `away_from_baseline=3`, and `to_third=4`.
+  - The remaining changed families were also mixed instead of isolating one child-ordering seam:
+    - `ManaTempo -> ManaTempo`, `default_accepted=false`, `override_accepted=true`: `count=4`, split `1 / 1 / 2`
+    - `SafeSupermanaProgress -> SafeSupermanaProgress`: `count=3`, split `0 / 1 / 2`
+    - `SpiritImpact -> SpiritImpact`, `accepted=false -> false`: singleton `1 / 0 / 0`
+  - Useful lesson: even after following the “direct retained-loss diagnosis” rule, the child-analysis bundle still resolves to broad mixed late `engine_post_search` churn instead of one branchable child-ordering family. Do not reopen this bundle as a runtime branch from the widened current-Normal surface.
+- Next hypothesis after that kill: stop spending on core child-analysis narrowing too. If child ordering is revisited again, it needs a prequalified single exact-family slice inside the real widened loss surface before any runtime edit, not another bundle-level delta pass or enable sweep. Otherwise move to a genuinely different in-path mechanism.
