@@ -6613,6 +6613,303 @@ fn smart_automove_pro_reliability_override_delta_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: intersect override delta exacts across retained pro and normal duel slices"]
+fn smart_automove_pro_reliability_override_shared_delta_probe() {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum OverrideDeltaOutcome {
+        ToBaseline,
+        AwayFromBaseline,
+        ToThird,
+    }
+
+    impl OverrideDeltaOutcome {
+        fn label(self) -> &'static str {
+            match self {
+                Self::ToBaseline => "to_baseline",
+                Self::AwayFromBaseline => "away_from_baseline",
+                Self::ToThird => "to_third",
+            }
+        }
+    }
+
+    #[derive(Clone)]
+    struct OverrideDeltaExact {
+        default_move: String,
+        override_move: String,
+        baseline_move: String,
+        family_key: String,
+        outcome: OverrideDeltaOutcome,
+        sample: String,
+    }
+
+    #[derive(Default)]
+    struct SharedDeltaFamilyStats {
+        shared_exacts: usize,
+        normal_to_baseline: usize,
+        pro_to_baseline: usize,
+        pro_away_from_baseline: usize,
+        normal_to_baseline_without_pro_regression: usize,
+        to_both_baselines: usize,
+        samples: Vec<String>,
+    }
+
+    let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
+        .unwrap_or_else(|| "runtime_pro_turn_engine_v30".into());
+    let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_current".into());
+    let repeats = env_usize("SMART_PRO_RELIABILITY_REPEATS")
+        .unwrap_or(1)
+        .max(1);
+    let games_per_repeat = env_usize("SMART_PRO_RELIABILITY_GAMES").unwrap_or(2).max(1);
+    let max_plies = env_usize("SMART_PRO_RELIABILITY_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let include_acceptance = env_bool("SMART_PROBE_INCLUDE_ACCEPTANCE").unwrap_or(true);
+    let trace_limit = env_usize("SMART_PROBE_TRACE_LIMIT").unwrap_or(8).max(1);
+    let reliability_seed_tag = env_profile_name("SMART_PRO_RELIABILITY_SEED_TAG")
+        .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
+    let seed_tag_pro = reliability_seed_tag.clone();
+    let seed_tag_normal = format!("{}_vs_normal", reliability_seed_tag);
+    let budget_pro = SearchBudget::from_preference(SmartAutomovePreference::Pro);
+    let mut pro_records = std::collections::BTreeMap::<String, OverrideDeltaExact>::new();
+    let mut normal_records = std::collections::BTreeMap::<String, OverrideDeltaExact>::new();
+
+    let collect_mode_records =
+        |baseline_mode: SmartAutomovePreference,
+         seed_tag: &str,
+         target: &mut std::collections::BTreeMap<String, OverrideDeltaExact>| {
+            let budget_b = SearchBudget::from_preference(baseline_mode);
+            for repeat_index in 0..repeats {
+                let seed = seed_for_budget_duel_repeat_and_tag(
+                    budget_pro,
+                    budget_b,
+                    repeat_index,
+                    seed_tag,
+                );
+                let opening_fens = generate_opening_fens_cached(seed, games_per_repeat);
+                for (opening_index, opening_fen) in opening_fens.iter().enumerate() {
+                    let candidate_white_ab = opening_index % 2 == 0;
+                    for (mirror, candidate_is_white) in
+                        [("ab", candidate_white_ab), ("ba", !candidate_white_ab)]
+                    {
+                        let mut game =
+                            MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
+                        let baseline_selector = profile_selector_from_name(
+                            baseline_profile.as_str(),
+                        )
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "profile '{}' not found for override shared delta baseline side",
+                                baseline_profile
+                            )
+                        });
+
+                        for ply in 0..max_plies {
+                            if game.winner_color().is_some() {
+                                break;
+                            }
+
+                            let candidate_to_move = if candidate_is_white {
+                                game.active_color == Color::White
+                            } else {
+                                game.active_color == Color::Black
+                            };
+
+                            let inputs = if candidate_to_move {
+                                let default = loss_probe_decision_with_options(
+                                    candidate_profile.as_str(),
+                                    SmartAutomovePreference::Pro,
+                                    &game,
+                                    include_acceptance,
+                                );
+                                let overridden = loss_probe_decision_with_probe_overrides_options(
+                                    candidate_profile.as_str(),
+                                    SmartAutomovePreference::Pro,
+                                    &game,
+                                    include_acceptance,
+                                );
+                                let baseline = loss_probe_decision_with_options(
+                                    baseline_profile.as_str(),
+                                    baseline_mode,
+                                    &game,
+                                    include_acceptance,
+                                );
+
+                                if default.move_fen != overridden.move_fen {
+                                    let outcome = if overridden.move_fen == baseline.move_fen {
+                                        OverrideDeltaOutcome::ToBaseline
+                                    } else if default.move_fen == baseline.move_fen {
+                                        OverrideDeltaOutcome::AwayFromBaseline
+                                    } else {
+                                        OverrideDeltaOutcome::ToThird
+                                    };
+                                    let default_engine = default.turn_engine.as_ref();
+                                    let override_engine = overridden.turn_engine.as_ref();
+                                    let default_family = default_engine
+                                        .and_then(|engine| engine.candidate_family)
+                                        .map(|family| format!("{:?}", family))
+                                        .unwrap_or_else(|| "None".to_string());
+                                    let override_family = override_engine
+                                        .and_then(|engine| engine.candidate_family)
+                                        .map(|family| format!("{:?}", family))
+                                        .unwrap_or_else(|| "None".to_string());
+                                    let default_accepted = default_engine
+                                        .and_then(|engine| engine.accepted_after_search);
+                                    let override_accepted = override_engine
+                                        .and_then(|engine| engine.accepted_after_search);
+                                    let family_key = format!(
+                                        "default_family={} override_family={} default_accepted={:?} override_accepted={:?}",
+                                        default_family,
+                                        override_family,
+                                        default_accepted,
+                                        override_accepted,
+                                    );
+                                    let fen = game.fen();
+                                    target.entry(fen.clone()).or_insert_with(|| OverrideDeltaExact {
+                                        default_move: default.move_fen.clone(),
+                                        override_move: overridden.move_fen.clone(),
+                                        baseline_move: baseline.move_fen.clone(),
+                                        family_key,
+                                        outcome,
+                                        sample: format!(
+                                            "mode={:?} repeat={} opening_index={} mirror={} candidate_is_white={} ply={} fen={} default_move={} override_move={} baseline_move={} outcome={} default_stage={} override_stage={} baseline_stage={}",
+                                            baseline_mode,
+                                            repeat_index,
+                                            opening_index,
+                                            mirror,
+                                            candidate_is_white,
+                                            ply,
+                                            fen,
+                                            default.move_fen,
+                                            overridden.move_fen,
+                                            baseline.move_fen,
+                                            outcome.label(),
+                                            default.selector_last_stage,
+                                            overridden.selector_last_stage,
+                                            baseline.selector_last_stage,
+                                        ),
+                                    });
+                                }
+
+                                overridden.inputs
+                            } else {
+                                let config = loss_probe_runtime_config(
+                                    baseline_profile.as_str(),
+                                    &game,
+                                    baseline_mode,
+                                );
+                                select_inputs_with_runtime_fallback(baseline_selector, &game, config)
+                            };
+
+                            if inputs.is_empty() {
+                                break;
+                            }
+                            if !matches!(game.process_input(inputs, false, false), Output::Events(_))
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+    collect_mode_records(
+        SmartAutomovePreference::Pro,
+        seed_tag_pro.as_str(),
+        &mut pro_records,
+    );
+    collect_mode_records(
+        SmartAutomovePreference::Normal,
+        seed_tag_normal.as_str(),
+        &mut normal_records,
+    );
+
+    let mut shared_changed_exacts = 0usize;
+    let mut normal_to_baseline_shared = 0usize;
+    let mut normal_to_baseline_without_pro_regression = 0usize;
+    let mut to_both_baselines = 0usize;
+    let mut family_stats = std::collections::BTreeMap::<String, SharedDeltaFamilyStats>::new();
+
+    for (fen, normal_record) in &normal_records {
+        let Some(pro_record) = pro_records.get(fen) else {
+            continue;
+        };
+        shared_changed_exacts += 1;
+        let family_entry = family_stats
+            .entry(normal_record.family_key.clone())
+            .or_default();
+        family_entry.shared_exacts += 1;
+        if matches!(normal_record.outcome, OverrideDeltaOutcome::ToBaseline) {
+            normal_to_baseline_shared += 1;
+            family_entry.normal_to_baseline += 1;
+        }
+        if matches!(pro_record.outcome, OverrideDeltaOutcome::ToBaseline) {
+            family_entry.pro_to_baseline += 1;
+        }
+        if matches!(pro_record.outcome, OverrideDeltaOutcome::AwayFromBaseline) {
+            family_entry.pro_away_from_baseline += 1;
+        }
+        if matches!(normal_record.outcome, OverrideDeltaOutcome::ToBaseline)
+            && !matches!(pro_record.outcome, OverrideDeltaOutcome::AwayFromBaseline)
+        {
+            normal_to_baseline_without_pro_regression += 1;
+            family_entry.normal_to_baseline_without_pro_regression += 1;
+        }
+        if matches!(normal_record.outcome, OverrideDeltaOutcome::ToBaseline)
+            && matches!(pro_record.outcome, OverrideDeltaOutcome::ToBaseline)
+        {
+            to_both_baselines += 1;
+            family_entry.to_both_baselines += 1;
+        }
+        if family_entry.samples.len() < 2 && family_entry.samples.len() < trace_limit {
+            family_entry.samples.push(format!(
+                "fen={} normal_outcome={} pro_outcome={} default_move={} override_move={} normal_baseline_move={} pro_baseline_move={} normal_sample=[{}] pro_sample=[{}]",
+                fen,
+                normal_record.outcome.label(),
+                pro_record.outcome.label(),
+                normal_record.default_move,
+                normal_record.override_move,
+                normal_record.baseline_move,
+                pro_record.baseline_move,
+                normal_record.sample,
+                pro_record.sample,
+            ));
+        }
+    }
+
+    eprintln!(
+        "pro reliability override shared delta probe summary: pro_changed_exacts={} normal_changed_exacts={} shared_changed_exacts={} normal_to_baseline_shared={} normal_to_baseline_without_pro_regression={} to_both_baselines={}",
+        pro_records.len(),
+        normal_records.len(),
+        shared_changed_exacts,
+        normal_to_baseline_shared,
+        normal_to_baseline_without_pro_regression,
+        to_both_baselines,
+    );
+    for (family_key, stats) in &family_stats {
+        eprintln!(
+            "OVERRIDE_SHARED_DELTA_FAMILY shared_exacts={} normal_to_baseline={} pro_to_baseline={} pro_away_from_baseline={} normal_to_baseline_without_pro_regression={} to_both_baselines={} {}",
+            stats.shared_exacts,
+            stats.normal_to_baseline,
+            stats.pro_to_baseline,
+            stats.pro_away_from_baseline,
+            stats.normal_to_baseline_without_pro_regression,
+            stats.to_both_baselines,
+            family_key,
+        );
+        for sample in &stats.samples {
+            eprintln!("  OVERRIDE_SHARED_DELTA_FAMILY_SAMPLE {}", sample);
+        }
+    }
+
+    assert!(
+        !pro_records.is_empty() || !normal_records.is_empty(),
+        "override shared delta probe found no changed exacts"
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: replay the real pro-reliability slice with candidate-side probe config overrides"]
 fn smart_automove_pro_reliability_candidate_override_probe() {
     let env_i32 = |name: &str| {
