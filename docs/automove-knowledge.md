@@ -861,3 +861,20 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
   - `3/4`, `0.7500`, `0.6875`, `213.64ms` vs current Pro
   - `2/4`, `0.5000`, `0.0000`, `218.68ms` vs current Normal
 - The durable rule is tighter again. The earlier classical-ordering lift is not hiding inside `history_heuristic` alone either. If that bundle is ever revisited, do not start from this flag in isolation; require a narrower coupled ordering diagnosis first.
+- I then checked the last obvious singleton from that same classical-ordering family on 2026-04-05: `enable_pvs` by itself.
+- This one was different from the other three singletons. On the retained cheap `1x2x96` gate with shipping Pro pinned to `runtime_current`, `SMART_PROBE_FORCE_PVS=true` really did move both duels:
+  - `3/4`, `0.7500`, `0.6875`, `216.89ms` vs current Pro
+  - `3/4`, `0.7500`, `0.6875`, `231.87ms` vs current Normal
+- That was enough to earn a widened replay, but the widened retained `3x2x96` gate still killed it:
+  - `8/12`, `0.6667`, `0.8062`, `201.95ms` vs current Pro
+  - `9/12`, `0.7500`, `0.9270`, `203.46ms` vs current Normal
+- I then ran the widened current-Normal `smart_automove_pro_reliability_override_delta_probe` with the same singleton before considering any runtime edit. The summary stayed decisively mixed: `changed_exacts=30`, `changed_to_baseline=7`, `changed_away_from_baseline=11`, and `changed_to_third=12`.
+- The widened delta split across several late families instead of isolating one runtime seam:
+  - headless `None`
+  - `ManaTempo`
+  - `SafeSupermanaProgress`
+  - `SafeOpponentManaProgress`
+  - `SpiritImpact`
+  - `ImmediateScore`
+  - `DrainerSafetyRecovery`
+- The durable rule is tighter again. `PVS` is the only classical-ordering singleton that survives the cheap gate and still moves the widened gate, but it still resolves to broad mixed late post-search churn rather than one branchable family. Do not reopen `PVS` alone as a runtime branch from this widened surface. If that older ordering bundle is revisited again, require a narrower coupled ordering diagnosis first.
