@@ -1362,3 +1362,15 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - The `220 / 140` bundle was the same story: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=203.91`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=211.76`.
   - Useful lesson: the live root handoff/backtrack penalty numerics are not a hidden retained-gate lever either. Pulling them back from the retained Pro values toward fast/normal or bare defaults leaves the current-Normal wall completely flat.
 - Next hypothesis after that kill: stop spending on broad root handoff/backtrack penalty retunes without a family-specific proof path first. If this root-safety numeric surface is revisited, require a retained loss-surface diagnosis that already isolates one handoff or backtrack family before touching the numeric surface again.
+- Kill result from 2026-04-05: broad interview-soft supermana bonus retunes are flat on the cheap retained gate too.
+  - I kept two new candidate-side override knobs in the retained reliability harness so the live interview-soft supermana priority surface can be screened without runtime edits:
+    - `SMART_PROBE_FORCE_INTERVIEW_SOFT_SUPERMANA_PROGRESS_BONUS`
+    - `SMART_PROBE_FORCE_INTERVIEW_SOFT_SUPERMANA_SCORE_BONUS`
+  - This is a genuinely live surface on the retained Pro path. `runtime_pro_turn_engine_v30` keeps `enable_interview_soft_root_priors=true`, and those supermana bonuses feed directly into `interview_root_soft_priority(...)` before the final root tie-break.
+  - I screened the two grounded supermana bundles directly on the retained `1x2x96` duel slice with shipping Pro pinned to `runtime_current`:
+    - bare-default-style bonuses: `progress_bonus=240`, `score_bonus=420`
+    - fast/normal-style bonuses: `progress_bonus=320`, `score_bonus=600`
+  - Both were dead on the only live wall. The `240 / 420` bundle finished at `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=200.83`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=209.21`.
+  - The `320 / 600` bundle was effectively identical: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=200.55`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=208.86`.
+  - Useful lesson: the live interview-soft supermana numerics are not a hidden retained-gate lever either. Pulling them back toward the defaults or pushing them up toward the fast/normal block leaves the current-Normal wall completely flat.
+- Next hypothesis after that kill: stop spending on broad interview-soft supermana retunes without a family-specific proof path first. If interview-soft supermana is revisited again, require a retained loss-surface diagnosis that already isolates one supermana-priority family before touching the numeric surface.

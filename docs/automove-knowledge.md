@@ -892,3 +892,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
   - `300 / 220`: `3/4`, `0.7500`, `0.6875`, `204.27ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `211.62ms` vs current Normal
   - `220 / 140`: `3/4`, `0.7500`, `0.6875`, `203.91ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `211.76ms` vs current Normal
 - The durable rule is tighter again. Broad root mana-handoff/backtrack penalty retunes are not a hidden retained-gate lever either. Pulling those penalties back from the retained Pro values toward fast/normal or bare defaults leaves the current-Normal wall flat, so this root-safety numeric surface should stay parked unless a retained loss-surface diagnosis first isolates one handoff or backtrack family that actually depends on it.
+- I then screened the next unswept live interview-soft numeric surface on 2026-04-05: supermana priority bonuses. To make that possible without runtime edits, I kept two new candidate-side override knobs in the retained reliability harness:
+  - `SMART_PROBE_FORCE_INTERVIEW_SOFT_SUPERMANA_PROGRESS_BONUS`
+  - `SMART_PROBE_FORCE_INTERVIEW_SOFT_SUPERMANA_SCORE_BONUS`
+- This is a genuinely live surface on the retained Pro path. `runtime_pro_turn_engine_v30` keeps `enable_interview_soft_root_priors=true`, and these supermana bonuses feed directly into `interview_root_soft_priority(...)` before the final root tie-break.
+- I screened the two grounded supermana bundles directly on the retained cheap `1x2x96` gate with shipping Pro pinned to `runtime_current`:
+  - bare-default-style bonuses: `progress_bonus=240`, `score_bonus=420`
+  - fast/normal-style bonuses: `progress_bonus=320`, `score_bonus=600`
+- Both were dead on the only live wall:
+  - `240 / 420`: `3/4`, `0.7500`, `0.6875`, `200.83ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `209.21ms` vs current Normal
+  - `320 / 600`: `3/4`, `0.7500`, `0.6875`, `200.55ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `208.86ms` vs current Normal
+- The durable rule is tighter again. Broad interview-soft supermana bonus retunes are not a hidden retained-gate lever either. Pulling them back toward the defaults or pushing them up toward the fast/normal block leaves the current-Normal wall flat, so this supermana-priority numeric surface should stay parked unless a retained loss-surface diagnosis first isolates one family that actually depends on it.
