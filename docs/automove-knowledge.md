@@ -735,3 +735,12 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
   - `SpiritImpact -> SpiritImpact`: `count=2`
 - The repeated structural pattern is important: both sides were flipping from `engine_post_search` to `engine_disabled`, not from one accepted-head lane to another. So the broad eligibility guard is not rescuing one clean selector mistake; it is disabling ProV2 across a mixed late search surface.
 - The durable rule is tighter again. `turn_engine_eligibility_guard=true` remains the strongest broad live lever in the current backlog, but its widened behavior is still a mixed late `engine_post_search -> engine_disabled` disable surface, not a branchable family. Do not reopen the whole guard as a promotion line. If this mechanism is revisited, first isolate one changed late-family slice inside that surface before touching runtime code.
+- I then took that exact next step on 2026-04-05 and prequalified the cleanest changed-to-baseline current-Normal slices before any runtime edit.
+- I first inspected the black `SpiritImpact` exact from the widened delta output (`repeat=0 opening=1 mirror=ab ply=63`) with the retained selector probe. On that FEN:
+  - default `runtime_pro_turn_engine_v30` was `engine_post_search` and chose `l3,4;l2,3`;
+  - `turn_engine_eligibility_guard=true` disabled ProV2 and switched the challenger to `l1,5;l2,7;l1,8`;
+  - `runtime_current` Normal already used `l1,5;l2,7;l1,8`;
+  - `runtime_current` Pro also already used `l1,5;l2,7;l1,8`.
+- That looked superficially promising, but the retained slice-filtered `smart_automove_pro_reliability_vs_normal_exact_family_probe` killed it. On `repeat=0 opening=1 mirror=ab`, the widened current-Normal slice had `loss_games=0` and no exact families at all.
+- I then checked the only other widened current-Normal slice with multiple changed exacts from the broad eligibility-guard delta, `repeat=2 opening=0 mirror=ab`. That slice also had `loss_games=0` and no exact families on the real widened current-Normal loss surface.
+- The durable rule is tighter again. The cleanest changed-to-baseline exacts from `turn_engine_eligibility_guard=true` are replay-local improvements inside games the challenger already wins, not the real current-Normal loss wall. So the broad eligibility-guard family is now dead as a promotion lead: it is mixed at the widened changed-family level, and its best-looking changed slices are not even on the actual widened current-Normal loss surface.
