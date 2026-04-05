@@ -40,6 +40,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the scratch line changed `pro-triage`, but both the scratch line and the retained challenger stayed flat at `0.5000` on the cheap direct duel gate versus current Pro, Normal, and Fast.
 - Durable lesson: keep the shared selector repairs, but do not retain a new profile ID unless it moves direct duel evidence. Unsupported scratch profiles should be collapsed back into retained-shared code or retired immediately.
 
+## Apr 5, 2026: Speculative Immediate-Score Clamp Retired
+
+- What was tried: retained shared-code clamps that forced speculative `SpiritImpact` / `Safe*Progress -> ImmediateScore` heads to preserve first-chunk score or normal-safety, plus a setup-gain-only promotion for `spirit_own_mana_setup_now` roots.
+- Why it stopped: `pro-triage(primary_pro)` stayed at `5/52`, only reshuffling `primary_spirit_setup`, and `pro-reliability` regressed to `win_rate=0.7500` vs current Pro while staying flat at `0.5000` vs current Normal.
+- Durable lesson: on live ProV2 misses, inspect `pre_accept` vs final `engine_post_search` output first. Broad first-chunk non-regression clamps and setup-gain-only setup promotion are too blunt for the current wall.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps

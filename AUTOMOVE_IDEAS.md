@@ -9,6 +9,15 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest focused gate (`2026-04-05`):
+  - attempted retained shared split: speculative immediate-score non-regression clamp plus setup-gain-only spirit-setup promotion
+  - `pro-triage(primary_pro)` stayed at `5/52`; the only movement was `primary_spirit_setup` shifting from candidate rank `8` to `5`, not collapsing back to current
+  - `pro-reliability`
+  - `12` games
+  - `vs current Pro`: `win_rate=0.7500`, `confidence=0.9270`, `candidate_avg_ms=96.60`
+  - `vs current Normal`: `win_rate=0.5000`, `confidence=0.0000`, `candidate_avg_ms=100.04`
+  - `vs current Fast`: `win_rate=0.8333`, `confidence=0.9807`, `candidate_avg_ms=98.88`
+  - direct conclusion: kill the split; it regressed direct Pro-vs-Pro, stayed flat on the `vs current Normal` wall, and did not reduce retained `primary_pro` churn
+- Previous focused gate (`2026-04-05`):
   - `pro-reliability`
   - `12` games
   - `vs current Pro`: `win_rate=0.9167`, `confidence=0.9968`, `candidate_avg_ms=95.94`
@@ -101,4 +110,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Major direction 2: target the remaining retained-challenger deltas that still look like selector composition rather than root scoring, especially `primary_spirit_setup`, `primary_pvs_sensitive_search`, `primary_black_reliability_opening_3_ply4`, `primary_white_harvest_loss_c_ply24`, and `human_win_pro_c`.
 - Major direction 3: when a remaining miss is not another deferred progress-head bug, import current/normal safety discipline into shortlist ordering for safe non-progress and spirit-impact ties before touching broader exact/search budgets.
 - Major direction 4: only after the retained selector surface stops producing new regressions, spend more budget on shared exact shortlist comparison for close progress/spirit ties.
+- Immediate next split: use the retained churn probe to separate `pre_accept` search choice from final `engine_post_search` output on the five live misses, then target the exact divergence seam instead of adding another broad speculative immediate-score clamp.
+- Do not reopen:
+  - speculative immediate-score first-chunk non-regression clamps on `SpiritImpact` or `Safe*Progress` heads
+  - setup-gain-only spirit-setup promotion against safe non-spirit roots
 - Proof target for the next retained branch: reduce `runtime_pro_turn_engine_v30` vs `runtime_current` `primary_pro` churn below the current `5/52`, then rerun the canonical Pro loop against `runtime_current`.
