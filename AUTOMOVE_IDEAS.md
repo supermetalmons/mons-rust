@@ -1350,3 +1350,15 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - The widened delta split across multiple late families instead of collapsing into one seam, including headless `None`, `ManaTempo`, `SafeSupermanaProgress`, `SafeOpponentManaProgress`, `SpiritImpact`, `ImmediateScore`, and `DrainerSafetyRecovery`.
   - Useful lesson: `PVS` is the only classical-ordering singleton that actually moves both cheap duels and survives a widened replay, but it still resolves to broad mixed late post-search churn, not one branchable family. Do not reopen `PVS` alone as a runtime branch from this widened surface.
 - Next hypothesis after that kill: stop spending on classical-ordering singletons for now. If that older bundle is revisited again, the next spend needs a retained loss-surface diagnosis that already isolates a narrower coupled ordering family than any one of `walk_threat_prefilter`, `killer_move_ordering`, `history_heuristic`, or `PVS` by itself.
+- Kill result from 2026-04-05: lowering the live root mana-handoff/backtrack penalties is flat on the cheap retained gate too.
+  - I kept two new candidate-side override knobs in the retained reliability harness so the active root handoff/backtrack penalty surface can be screened without runtime edits:
+    - `SMART_PROBE_FORCE_ROOT_MANA_HANDOFF_PENALTY`
+    - `SMART_PROBE_FORCE_ROOT_BACKTRACK_PENALTY`
+  - This is a genuinely live surface on the retained Pro path. `runtime_pro_turn_engine_v30` already keeps `enable_root_mana_handoff_guard=true` and `enable_backtrack_penalty=true`, with the stronger retained Pro penalties `340 / 240`.
+  - I screened the two grounded lowered-penalty bundles directly on the retained `1x2x96` duel slice with shipping Pro pinned to `runtime_current`:
+    - fast/normal-style penalties: `mana_handoff_penalty=300`, `backtrack_penalty=220`
+    - base-default penalties: `mana_handoff_penalty=220`, `backtrack_penalty=140`
+  - Both were dead on the only live wall. The `300 / 220` bundle finished at `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=204.27`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=211.62`.
+  - The `220 / 140` bundle was the same story: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=203.91`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=211.76`.
+  - Useful lesson: the live root handoff/backtrack penalty numerics are not a hidden retained-gate lever either. Pulling them back from the retained Pro values toward fast/normal or bare defaults leaves the current-Normal wall completely flat.
+- Next hypothesis after that kill: stop spending on broad root handoff/backtrack penalty retunes without a family-specific proof path first. If this root-safety numeric surface is revisited, require a retained loss-surface diagnosis that already isolates one handoff or backtrack family before touching the numeric surface again.

@@ -878,3 +878,17 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
   - `ImmediateScore`
   - `DrainerSafetyRecovery`
 - The durable rule is tighter again. `PVS` is the only classical-ordering singleton that survives the cheap gate and still moves the widened gate, but it still resolves to broad mixed late post-search churn rather than one branchable family. Do not reopen `PVS` alone as a runtime branch from this widened surface. If that older ordering bundle is revisited again, require a narrower coupled ordering diagnosis first.
+- I then screened the next grounded live root-safety numeric surface on 2026-04-05: root mana-handoff and backtrack penalties. To make that possible without runtime edits, I kept two new candidate-side override knobs in the retained reliability harness:
+  - `SMART_PROBE_FORCE_ROOT_MANA_HANDOFF_PENALTY`
+  - `SMART_PROBE_FORCE_ROOT_BACKTRACK_PENALTY`
+- This is a genuinely live surface on the retained Pro path. `runtime_pro_turn_engine_v30` already keeps `enable_root_mana_handoff_guard=true` and `enable_backtrack_penalty=true`, so both penalties feed directly into the root-delta policy scoring, and the retained Pro runtime uses stronger values than the nearby retained surfaces:
+  - retained Pro: `mana_handoff_penalty=340`, `backtrack_penalty=240`
+  - fast/normal-style block: `300 / 220`
+  - bare defaults: `220 / 140`
+- I screened the two grounded lowered-penalty bundles directly on the retained cheap `1x2x96` gate with shipping Pro pinned to `runtime_current`:
+  - fast/normal-style penalties: `300 / 220`
+  - base-default penalties: `220 / 140`
+- Both were dead on the only live wall:
+  - `300 / 220`: `3/4`, `0.7500`, `0.6875`, `204.27ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `211.62ms` vs current Normal
+  - `220 / 140`: `3/4`, `0.7500`, `0.6875`, `203.91ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `211.76ms` vs current Normal
+- The durable rule is tighter again. Broad root mana-handoff/backtrack penalty retunes are not a hidden retained-gate lever either. Pulling those penalties back from the retained Pro values toward fast/normal or bare defaults leaves the current-Normal wall flat, so this root-safety numeric surface should stay parked unless a retained loss-surface diagnosis first isolates one handoff or backtrack family that actually depends on it.
