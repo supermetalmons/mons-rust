@@ -1259,3 +1259,16 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - I then tried to narrow that widened current-Normal lift with the retained `smart_automove_pro_reliability_override_delta_probe`, still without touching runtime code. A bounded `300s` run did not reach the summary line before termination, but the traced changed exacts were already decisively mixed across `ManaTempo`, `DrainerSafetyRecovery`, `SafeOpponentManaProgress`, `SafeSupermanaProgress`, `SpiritImpact`, `ImmediateScore`, and `None`.
   - Useful lesson: raising the selective-extension cap is a real live in-path lever and one of the stronger broad current-Normal lifts in the current backlog, but it is still not promotable and it inflates move time badly. The first narrowing attempt also did not expose a clean family quickly enough; even the traced widened deltas were mixed before the probe timed out.
 - Next hypothesis after that kill: do not reopen broad selective-extension-cap tuning as a runtime branch. If selective extensions are revisited again, the next spend needs either a prequalified exact-family slice or a bounded narrower corpus first, not another broad cap raise on the full widened gate.
+- Kill result from 2026-04-05: budgeted exact-lite is dead on the cheap retained gate too.
+  - I kept two new candidate-side override knobs in the retained reliability probes so exact-lite could be screened as a real live mechanism instead of a likely no-op boolean pair:
+    - `SMART_PROBE_FORCE_EXACT_LITE_ROOT_CALL_BUDGET`
+    - `SMART_PROBE_FORCE_EXACT_LITE_STATIC_CALL_BUDGET`
+  - This corrected a real gap in the earlier screen. The previous exact-lite sweep could only flip `enable_exact_lite_progress_checks` and `enable_exact_lite_spirit_window_checks`, but with both budgets still at `0`, so it was not proving much.
+  - I screened the first two plausible live budget bundles directly on the retained `1x2x96` duel slice with shipping Pro pinned to `runtime_current`:
+    - `progress_checks=true`, `spirit_window_checks=true`, `root_call_budget=1`, `static_call_budget=1`
+    - the same pair with `root_call_budget=2`, `static_call_budget=1`
+  - Both were dead immediately. Each finished at `vs current Pro: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000`. Move time also got worse than shipping Pro:
+    - `1 / 1`: `candidate_avg_ms=205.72` vs current Pro and `204.48` vs current Normal
+    - `2 / 1`: `candidate_avg_ms=214.21` vs current Pro and `205.40` vs current Normal
+  - Useful lesson: the “earlier exact-lite screen may have been a no-op” loophole is now closed. Once exact-lite is budgeted so it can actually run, it is still flat on the only live wall and slower than shipping Pro. Do not reopen exact-lite as a top-down lead.
+- Next hypothesis after that kill: stop spending on exact-lite budget tuning too. If another Pro line is attempted, it needs a genuinely different in-path mechanism or a direct exact-family diagnosis that already shows live movement before code, not another revisit of exact/static analysis knobs.

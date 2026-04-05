@@ -771,3 +771,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
   - `ImmediateScore`
   - `None`
 - The durable rule is tighter again. Raising the selective-extension cap is a real live in-path lever and one of the stronger broad current-Normal lifts in the current backlog, but it is still not promotable and it inflates move time badly. The first widening-era narrowing attempt also did not expose a clean family quickly enough; even the traced widened deltas were mixed before the bounded probe timed out. Do not reopen broad selective-extension-cap tuning as a runtime branch. If selective extensions are revisited again, first prequalify a narrower exact-family slice or a bounded smaller corpus.
+- I then closed a real harness loophole on 2026-04-05: the earlier exact-lite screen had only toggled `enable_exact_lite_progress_checks` and `enable_exact_lite_spirit_window_checks`, but it could not override the two budgets that actually make exact-lite run.
+- To fix that, I kept two new candidate-side override knobs in the retained reliability probes:
+  - `SMART_PROBE_FORCE_EXACT_LITE_ROOT_CALL_BUDGET`
+  - `SMART_PROBE_FORCE_EXACT_LITE_STATIC_CALL_BUDGET`
+- I screened the first two plausible budgeted exact-lite bundles directly on the retained cheap `1x2x96` gate with shipping Pro pinned to `runtime_current`:
+  - `progress_checks=true`, `spirit_window_checks=true`, `root_call_budget=1`, `static_call_budget=1`
+  - `progress_checks=true`, `spirit_window_checks=true`, `root_call_budget=2`, `static_call_budget=1`
+- Both were dead immediately once exact-lite was actually allowed to run:
+  - `1 / 1`: `2/4`, `0.5000`, `0.0000`, `205.72ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `204.48ms` vs current Normal
+  - `2 / 1`: `2/4`, `0.5000`, `0.0000`, `214.21ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `205.40ms` vs current Normal
+- The durable rule is tighter again. The “earlier exact-lite screen may have been a no-op” loophole is now closed. Once exact-lite is budgeted so it can actually run, it is still flat on the only live wall and slower than shipping Pro. Do not reopen exact-lite as a top-down lead.
