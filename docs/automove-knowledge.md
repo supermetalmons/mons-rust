@@ -22,6 +22,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - Production wasm still needs single-shot, predictable search. Deferred or post-return work is not release-safe.
 - The retained churn probe is worth keeping. For live ProV2 misses, distinguish `pre_accept` search choice from final `engine_post_search` output before changing shared heuristics.
 - The runtime-faithful retained churn probe is worth keeping too. It must inject forced engine inputs before `focused_root_candidates_with_forced_inputs(...)`, or it can misclassify injected-root seams as selector churn.
+- The compare-oriented hotspot probe is worth keeping. On Apr 5, 2026 it showed the bounded reliability hotspot corpus was move-identical to `runtime_current` on every real duel hotspot, with only a synthetic `quiet_positional` difference.
 - The current retained seam map is stable enough to plan around: `primary_pvs_sensitive_search` is a late `engine_post_search` acceptance seam, `human_win_pro_c` is a pure `pre_accept` safe-progress bias, and the previously live `primary_white_harvest_loss_c_ply24`, `primary_spirit_setup`, and `primary_black_reliability_opening_3_ply4` seams now have retained fixes.
 - `primary_spirit_setup` was a two-step bug, not one seam: the engine was force-pinning an existing low-ranked plain `SpiritImpact` head into the focused shortlist, then a completed-plan override was still allowed to replace an equivalent stronger selected plain spirit sibling. Both checks have to stay aligned.
 - The black turn-two low-budget clamp was too broad. On `turn=2`, `mons_moves=1`, `action+mana` states it could suppress a stronger spirit-own-setup root; the clamp should only fire on truly resource-constrained turn-two black states.
@@ -42,6 +43,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - Use `triage-calibrate` only when a retained triage surface is new or no longer calibrated.
 - Use `pro-opening-speed-probe` only for opening-specific regressions.
 - Use the hotspot probe only after a real duel stall, and only to narrow the next code surface.
+- If the compare hotspot probe shows decision parity on the real hotspot cases, kill the line immediately. Selector/exact counter deltas without candidate-vs-current move differences are not promotion evidence.
 - Logs, stamps, and process samples are disposable evidence, not durable memory.
 - Keep ignored harness test names unique; `cargo test` substring filters can hit the wrong stage.
 
@@ -61,5 +63,6 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - Speed is already acceptable on the retained Pro challenger. Promotion is blocked by quality, especially versus current Normal, not by the `700ms` move-time budget.
 - The remaining work should favor broader in-path selector and root-choice changes over wrapper fallbacks, fallback widening, or exact replay fixes.
 - The most credible future wins are shared selector/search families that move direct `runtime_pro_turn_engine_v30` vs `runtime_current` results, not local acceptance or wrapper repairs that only clear one traced seam.
+- `human_win_pro_c` may still be a retained triage drift, but it is not a hotspot-backed duel seam today. Do not reopen shared ProV2 selector work on that fixture alone without fresh direct duel evidence.
 - The latest retained shared win was a selector hygiene fix, not a new branch family: reject non-concrete one-chunk progress heads when they only override an unsafe non-progress selected root without a completed plan.
 - Reducing `primary_pro` churn is not enough on its own. The retained line now reaches `2/52` changed fixtures on `primary_pro`, but `pro-reliability` is still flat at `0.8333` vs current Pro, `0.5000` vs current Normal, and `0.6667` vs current Fast. Future spend needs a direct duel-quality hypothesis.

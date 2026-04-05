@@ -3,14 +3,16 @@ use super::profiles::*;
 use super::*;
 use crate::models::automove_exact::{
     clear_exact_query_diagnostics, clear_exact_state_analysis_cache,
-    exact_query_diagnostics_snapshot,
+    exact_query_diagnostics_snapshot, ExactQueryDiagnostics,
 };
 use crate::models::automove_turn_engine::{
     clear_turn_engine_diagnostics, clear_turn_engine_plan_cache, turn_engine_cached_step,
     turn_engine_candidate_plan, turn_engine_diagnostics_snapshot, TurnEngineConfig,
+    TurnEngineDiagnostics,
 };
 use crate::models::mons_game_model::{
     clear_turn_engine_selector_diagnostics, turn_engine_selector_diagnostics_snapshot,
+    TurnEngineSelectorDiagnostics,
 };
 use std::env;
 
@@ -1910,7 +1912,7 @@ fn smart_automove_pool_pro_reliability_gate() {
 #[test]
 #[ignore = "diagnostic: bounded selector/exact hotspot probe for pro reliability corpus"]
 fn smart_automove_pro_reliability_hotspot_probe() {
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
     use std::time::Instant;
 
     #[derive(Clone)]
@@ -1947,10 +1949,177 @@ fn smart_automove_pro_reliability_hotspot_probe() {
         game
     }
 
-    let profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
+    #[derive(Clone)]
+    struct ProbeResult {
+        move_fen: String,
+        elapsed_ms: f64,
+        selector_diag: TurnEngineSelectorDiagnostics,
+        exact_diag: ExactQueryDiagnostics,
+        engine_diag: TurnEngineDiagnostics,
+    }
+
+    fn run_probe_for_profile(profile_name: &str, case: &ProbeCase) -> ProbeResult {
+        let selector = profile_selector_from_name(profile_name)
+            .unwrap_or_else(|| panic!("profile '{}' not found", profile_name));
+        let base_config = case
+            .config_tweak
+            .map(|tweak| {
+                tweak(
+                    SearchBudget::from_preference(case.mode).runtime_config_for_game(&case.game),
+                )
+            })
+            .unwrap_or_else(|| SearchBudget::from_preference(case.mode).runtime_config_for_game(&case.game));
+        let config =
+            profile_runtime_config_for_name(profile_name, &case.game, base_config).unwrap_or(base_config);
+
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        clear_turn_engine_plan_cache();
+        clear_turn_engine_diagnostics();
+        clear_turn_engine_selector_diagnostics();
+
+        let start = Instant::now();
+        let inputs = select_inputs_with_runtime_fallback(selector, &case.game, config);
+        let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+        assert!(
+            !inputs.is_empty(),
+            "hotspot probe profile '{}' produced no legal move for '{}'",
+            profile_name,
+            case.label
+        );
+
+        ProbeResult {
+            move_fen: Input::fen_from_array(&inputs),
+            elapsed_ms,
+            selector_diag: turn_engine_selector_diagnostics_snapshot(),
+            exact_diag: exact_query_diagnostics_snapshot(),
+            engine_diag: turn_engine_diagnostics_snapshot(),
+        }
+    }
+
+    fn selector_metrics(result: &ProbeResult) -> BTreeMap<&'static str, u64> {
+        BTreeMap::from([
+            (
+                "child_calls",
+                result.selector_diag.ranked_child_states_calls as u64,
+            ),
+            (
+                "children",
+                result.selector_diag.ranked_child_states_children_enumerated as u64,
+            ),
+            (
+                "fully_scored",
+                result.selector_diag.ranked_child_states_children_fully_scored as u64,
+            ),
+            (
+                "shortlist",
+                result.selector_diag.child_ordering_shortlist_children as u64,
+            ),
+            (
+                "full_pass",
+                result.selector_diag.child_ordering_full_pass_children as u64,
+            ),
+            (
+                "move_eff_builds",
+                result.selector_diag.move_efficiency_snapshot_builds as u64,
+            ),
+            (
+                "move_eff_hits",
+                result.selector_diag.move_efficiency_snapshot_cache_hits as u64,
+            ),
+            (
+                "prefer_builds",
+                result.selector_diag.search_preferability_builds as u64,
+            ),
+            (
+                "prefer_hits",
+                result.selector_diag.search_preferability_cache_hits as u64,
+            ),
+            ("head_calls", result.selector_diag.head_plan_calls as u64),
+            ("head_hits", result.selector_diag.head_plan_hits as u64),
+        ])
+    }
+
+    fn exact_metrics(result: &ProbeResult) -> BTreeMap<&'static str, u64> {
+        BTreeMap::from([
+            (
+                "attack_summary_builds",
+                result.exact_diag.attack_reach_summary_builds as u64,
+            ),
+            ("attack_calls", result.exact_diag.attack_reach_calls as u64),
+            (
+                "attack_hits",
+                result.exact_diag.attack_reach_cache_hits as u64,
+            ),
+            (
+                "threat_calls",
+                result.exact_diag.drainer_immediate_threat_calls as u64,
+            ),
+            (
+                "payload_calls",
+                result.exact_diag.actor_payload_after_move_calls as u64,
+            ),
+            (
+                "tactical_spirit_calls",
+                result.exact_diag.tactical_spirit_summary_calls as u64,
+            ),
+            (
+                "tactical_spirit_hits",
+                result.exact_diag.tactical_spirit_summary_cache_hits as u64,
+            ),
+            (
+                "immediate_window_queries",
+                result.exact_diag.immediate_tactical_window_queries as u64,
+            ),
+            (
+                "tactical_window_calls",
+                result.exact_diag.tactical_spirit_after_window_calls as u64,
+            ),
+            (
+                "secure_mana_calls",
+                result.exact_diag.exact_secure_mana_calls as u64,
+            ),
+            (
+                "secure_mana_hits",
+                result.exact_diag.exact_secure_mana_cache_hits as u64,
+            ),
+            ("pickup_calls", result.exact_diag.pickup_path_calls as u64),
+            (
+                "pickup_hits",
+                result.exact_diag.pickup_path_cache_hits as u64,
+            ),
+        ])
+    }
+
+    fn engine_metrics(result: &ProbeResult) -> BTreeMap<&'static str, u64> {
+        BTreeMap::from([
+            ("cache_hits", result.engine_diag.cache_hits as u64),
+            ("cache_misses", result.engine_diag.cache_misses as u64),
+            ("accepted", result.engine_diag.accepted_plans as u64),
+            ("reply_calls", result.engine_diag.reply_search_calls as u64),
+        ])
+    }
+
+    fn format_metric_delta(
+        candidate: &BTreeMap<&'static str, u64>,
+        baseline: &BTreeMap<&'static str, u64>,
+    ) -> String {
+        candidate
+            .iter()
+            .map(|(label, candidate_value)| {
+                let baseline_value = baseline.get(label).copied().unwrap_or_default();
+                let delta = *candidate_value as i64 - baseline_value as i64;
+                format!("{label}={candidate_value}/{baseline_value}({delta:+})")
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
         .unwrap_or_else(|| "runtime_pro_turn_engine_v30".to_string());
-    let selector = profile_selector_from_name(profile.as_str())
-        .unwrap_or_else(|| panic!("profile '{}' not found", profile));
+    let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_current".to_string());
 
     let cases = vec![
         probe_case_from_fixture(
@@ -2016,8 +2185,9 @@ fn smart_automove_pro_reliability_hotspot_probe() {
     ];
 
     println!(
-        "pro reliability hotspot probe: profile={} positions={}",
-        profile,
+        "pro reliability hotspot probe: candidate={} baseline={} positions={}",
+        candidate_profile,
+        baseline_profile,
         cases.len()
     );
     for case in cases {
@@ -2029,71 +2199,27 @@ fn smart_automove_pro_reliability_hotspot_probe() {
                 "false"
             },
             || {
-                clear_exact_state_analysis_cache();
-                clear_exact_query_diagnostics();
-                clear_turn_engine_plan_cache();
-                clear_turn_engine_diagnostics();
-                clear_turn_engine_selector_diagnostics();
-
-                let base_config = case
-                    .config_tweak
-                    .map(|tweak| {
-                        tweak(
-                            SearchBudget::from_preference(case.mode)
-                                .runtime_config_for_game(&case.game),
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        SearchBudget::from_preference(case.mode).runtime_config_for_game(&case.game)
-                    });
-                let start = Instant::now();
-                let inputs = select_inputs_with_runtime_fallback(selector, &case.game, base_config);
-                let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-                let selector_diag = turn_engine_selector_diagnostics_snapshot();
-                let engine_diag = turn_engine_diagnostics_snapshot();
-                let exact_diag = exact_query_diagnostics_snapshot();
+                let candidate = run_probe_for_profile(candidate_profile.as_str(), &case);
+                let baseline = run_probe_for_profile(baseline_profile.as_str(), &case);
 
                 println!(
-                    "HOTSPOT label={} move={} ms={:.2} selector(child_calls={} children={} fully_scored={} shortlist={} full_pass={} move_eff_builds={} move_eff_hits={} prefer_builds={} prefer_hits={} head_calls={} head_hits={} last_stage={}) exact(attack_summary_builds={} attack_calls={} attack_hits={} threat_calls={} payload_calls={} tactical_spirit_calls={} tactical_spirit_hits={} immediate_window_queries={} tactical_window_calls={} secure_mana_calls={} secure_mana_hits={} pickup_calls={} pickup_hits={}) engine(cache_hits={} cache_misses={} accepted={} reply_calls={}) fen={}",
+                    "HOTSPOT label={} changed={} candidate_move={} baseline_move={} ms={:.2}/{:.2} selector(last_stage={}/{}) exact={} engine={} fen={}",
                     case.label,
-                    Input::fen_from_array(&inputs),
-                    elapsed_ms,
-                    selector_diag.ranked_child_states_calls,
-                    selector_diag.ranked_child_states_children_enumerated,
-                    selector_diag.ranked_child_states_children_fully_scored,
-                    selector_diag.child_ordering_shortlist_children,
-                    selector_diag.child_ordering_full_pass_children,
-                    selector_diag.move_efficiency_snapshot_builds,
-                    selector_diag.move_efficiency_snapshot_cache_hits,
-                    selector_diag.search_preferability_builds,
-                    selector_diag.search_preferability_cache_hits,
-                    selector_diag.head_plan_calls,
-                    selector_diag.head_plan_hits,
-                    selector_diag.last_return_stage,
-                    exact_diag.attack_reach_summary_builds,
-                    exact_diag.attack_reach_calls,
-                    exact_diag.attack_reach_cache_hits,
-                    exact_diag.drainer_immediate_threat_calls,
-                    exact_diag.actor_payload_after_move_calls,
-                    exact_diag.tactical_spirit_summary_calls,
-                    exact_diag.tactical_spirit_summary_cache_hits,
-                    exact_diag.immediate_tactical_window_queries,
-                    exact_diag.tactical_spirit_after_window_calls,
-                    exact_diag.exact_secure_mana_calls,
-                    exact_diag.exact_secure_mana_cache_hits,
-                    exact_diag.pickup_path_calls,
-                    exact_diag.pickup_path_cache_hits,
-                    engine_diag.cache_hits,
-                    engine_diag.cache_misses,
-                    engine_diag.accepted_plans,
-                    engine_diag.reply_search_calls,
+                    candidate.move_fen != baseline.move_fen,
+                    candidate.move_fen,
+                    baseline.move_fen,
+                    candidate.elapsed_ms,
+                    baseline.elapsed_ms,
+                    candidate.selector_diag.last_return_stage,
+                    baseline.selector_diag.last_return_stage,
+                    format_metric_delta(&exact_metrics(&candidate), &exact_metrics(&baseline)),
+                    format_metric_delta(&engine_metrics(&candidate), &engine_metrics(&baseline)),
                     case.game.fen(),
                 );
-                assert!(
-                    !inputs.is_empty(),
-                    "hotspot probe profile '{}' produced no legal move for '{}'",
-                    profile,
-                    case.label
+                println!(
+                    "HOTSPOT_SELECTOR label={} {}",
+                    case.label,
+                    format_metric_delta(&selector_metrics(&candidate), &selector_metrics(&baseline)),
                 );
             },
         );

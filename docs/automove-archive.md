@@ -58,6 +58,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: both fixes were real and reduced `primary_pro` churn from `4/52` to `2/52`, but `pro-reliability` stayed flat at `win_rate=0.8333` vs current Pro, `0.5000` vs current Normal, and `0.6667` vs current Fast.
 - Durable lesson: local runtime-faithful seam repairs can be correct and still fail promotion. Once the duel gate stays flat after the seam map collapses, stop the line and only reopen with a duel-linked hypothesis, not another local selector cleanup.
 
+## Apr 5, 2026: Reliability Hotspot Compare Diagnostic Killed
+
+- What was tried: extended `smart_automove_pro_reliability_hotspot_probe` so it compares `runtime_pro_turn_engine_v30` against `runtime_current` on the bounded reliability hotspot corpus and prints candidate-vs-baseline move plus selector/exact deltas.
+- Why it stopped: every real hotspot case was move-identical to current (`primary_spirit_setup`, `primary_black_loss_opening_a_ply19`, `human_win_pro_a`, `loss_opening_a`, `loss_opening_b`). The only changed move was the synthetic `quiet_positional` sample, so there was no credible duel-linked production seam to justify another canonical loop.
+- Durable lesson: use hotspot compare to kill flat lines quickly. Counter inflation or selector-stage differences without real candidate-vs-current move divergence are not promotion evidence.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps

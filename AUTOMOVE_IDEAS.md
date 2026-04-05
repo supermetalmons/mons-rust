@@ -8,6 +8,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest diagnostic close (`2026-04-05`):
+  - extended `smart_automove_pro_reliability_hotspot_probe` to compare `runtime_pro_turn_engine_v30` against `runtime_current` on the bounded reliability hotspot corpus
+  - all real hotspot positions were move-identical to current: `primary_spirit_setup`, `primary_black_loss_opening_a_ply19`, `human_win_pro_a`, `loss_opening_a`, and `loss_opening_b`
+  - the only move difference was the synthetic `quiet_positional` sample, so there is still no new duel-linked production seam worth another canonical Pro loop
+  - direct conclusion: kill the line here; do not reopen from hotspot counter deltas or synthetic-position drift alone
 - Latest probe-led split (`2026-04-05`):
   - attempted retained shared split: followup-tolerant `spirit_own_mana_setup_now` competition plus a close `Safe*Progress` head normal-safety block
   - runtime-faithful retained-churn seams were unchanged, so the split was killed before the canonical Pro loop
@@ -113,6 +118,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Major direction 1: continue deleting deferred `Safe*Progress -> ImmediateScore` composition mistakes in shared ProV2 code. The retained fix list now includes: safe-pickup post-search blocks, absent deferred progress-head injection blocks, non-concrete one-chunk progress-head rejection, weaker plain-spirit head rejection, and the black turn-two full-resource low-budget-clamp skip.
 - Major direction 2: treat `primary_pvs_sensitive_search` as an expected late `engine_post_search` win unless direct duel evidence says otherwise. It is still the only remaining changed `primary_pro` acceptance seam after the spirit and black-opening fixes.
 - Major direction 3: treat `human_win_pro_c` as the only remaining unexplained retained-challenger drift. The retained selector probe still says it is a pure `pre_accept` safe-progress bias where the chosen root has better followup floor than the baseline spirit-own-setup root.
+- Major direction 3a: the bounded reliability hotspot corpus does not support a new duel seam right now. Its compare probe is decision-identical to `runtime_current` on every real hotspot case, so do not spend another shared-code split unless a fresh duel sample or a broader compare probe exposes a real move difference.
 - Major direction 4: do not spend another local seam-repair split unless it has a direct duel story. Cutting `primary_pro` churn from `4/52` to `2/52` did not move `pro-reliability`.
 - Immediate next split:
   - keep `primary_white_harvest_loss_c_ply24`, `primary_spirit_setup`, and `primary_black_reliability_opening_3_ply4` closed unless new duel evidence reopens them
