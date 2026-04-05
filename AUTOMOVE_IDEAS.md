@@ -16,13 +16,22 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Latest cheap cross-check on the same line:
   - `pro_fast_screen vs normal`
   - `delta=-0.2500`
+- Latest local selector-composition repair pass (`2026-04-05`, shared ProV2 code):
+  - fixed deferred progress-head overrides on `primary_supermana_progress` and `primary_opponent_mana_progress`
+  - fixed absent deferred progress-head injections on `human_win_pro_a`, `human_win_pro_c`, and `primary_black_gate_loss_b_ply31`
+  - fixed non-concrete one-chunk progress-head override on `primary_ext_sensitive_no_ext_a`
+  - retained challenger check after the shared fix is still flat on the tiny `1x1` mirrored sample:
+    - `runtime_pro_turn_engine_v30` vs current Pro: `win_rate=0.5000`, `candidate_avg_ms=87.71`
+    - `runtime_pro_turn_engine_v30` vs current Normal: `win_rate=0.5000`, `candidate_avg_ms=154.51`
+    - `runtime_pro_turn_engine_v30` vs current Fast: `win_rate=0.5000`, `candidate_avg_ms=56.89`
+  - scratch selective-allowed-root profile line stayed flat and was retired instead of being retained as a new profile ID
 - Last retained larger confirmation result on the same line:
   - `pro-reliability-confirm`
   - `32` games
   - `win_rate=0.7812`
   - `confidence=0.9989`
   - `candidate_avg_ms=100.11`
-- `pro-triage(primary_pro)` still moves on `10/52`, while `opening_reply` stays `0/3`.
+- `pro-triage(primary_pro)` on the retained challenger still moves on `5/52`, while `opening_reply` stays `0/3`.
 - Direct conclusion: speed is already acceptable. The live wall is broad `primary_pro` root-choice composition against current `Normal`, not the `700ms` move-time budget and not opening guards.
 
 ## Promotion Rule
@@ -87,9 +96,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 ## Next Live Split
 
-- Keep the retained challenger ID and stay out of new wrapper-only branches.
-- Major direction 1: selectively re-enable the shipping allowed-root planner path inside ProV2 for close non-tactical clusters. `runtime_current` keeps planner guidance while v30 disables it entirely; the first split should test whether planner guidance restores the safer current pickup/setup choice without reopening wrapper families.
-- Major direction 2: import normal-style safety / deep-floor discipline into ProV2 reply-risk arbitration for non-tactical progress and spirit-setup competitions. The branch should let safe pickup-now, shorter secure progress, and safer same-opening setup roots beat marginally higher unsafe progress roots across the full shortlist, not only in the current late-white mana-only and late-black rescue special cases.
-- Major direction 3: restore a cheap live setup-quality signal in root evaluation. `spirit_setup_gain` is effectively dead when static exact eval is off; populate an equivalent from exact-lite / tactical spirit summary so ProV2 can tell concrete setup from soft progress before override logic fires.
-- Major direction 4: if the first three still stall, spend extra budget on shared exact shortlist comparison, not wrappers. Use exact secure progress, same-turn score window, deny gain, and drainer-threat deltas to break close progress ties in `pick_root_move_with_reply_risk_guard`.
-- Proof target for the next branch: move the six diagnostic fixtures above in the same direction as `runtime_current`, then rerun the canonical Pro loop against `runtime_current`.
+- Keep the retained challenger ID and stay out of new unsupported scratch profiles.
+- Major direction 1: continue deleting deferred `Safe*Progress -> ImmediateScore` composition mistakes in shared ProV2 code. The retained fix list is now: safe-pickup post-search blocks, absent deferred progress-head injection blocks, and non-concrete one-chunk progress-head rejection.
+- Major direction 2: target the remaining retained-challenger deltas that still look like selector composition rather than root scoring, especially `primary_spirit_setup`, `primary_pvs_sensitive_search`, `primary_black_reliability_opening_3_ply4`, `primary_white_harvest_loss_c_ply24`, and `human_win_pro_c`.
+- Major direction 3: when a remaining miss is not another deferred progress-head bug, import current/normal safety discipline into shortlist ordering for safe non-progress and spirit-impact ties before touching broader exact/search budgets.
+- Major direction 4: only after the retained selector surface stops producing new regressions, spend more budget on shared exact shortlist comparison for close progress/spirit ties.
+- Proof target for the next retained branch: reduce `runtime_pro_turn_engine_v30` vs `runtime_current` `primary_pro` churn below the current `5/52`, then rerun the canonical Pro loop against `runtime_current`.

@@ -3204,6 +3204,47 @@ impl MonsGameModel {
         )
     }
 
+    fn live_spirit_setup_gain(
+        exact_turn: &ExactTurnSummary,
+        spirit_development: bool,
+        spirit_same_turn_score_setup_now: bool,
+        spirit_own_mana_setup_now: bool,
+    ) -> i32 {
+        let mut gain = 0;
+        if spirit_same_turn_score_setup_now {
+            gain += 80;
+        }
+        if spirit_own_mana_setup_now {
+            gain += 48;
+        }
+        if spirit_development {
+            gain += 24;
+        }
+        if exact_turn.spirit_assisted_score {
+            gain += 72;
+        }
+        if exact_turn.spirit_assisted_denial {
+            gain += 40;
+        }
+        if exact_turn.spirit_assisted_supermana_progress {
+            gain += 36;
+        }
+        if exact_turn.spirit_assisted_opponent_mana_progress {
+            gain += 36;
+        }
+        gain += exact_turn.same_turn_score_window_value.max(0) * 20;
+        if let Some(steps) = exact_turn.safe_supermana_progress_steps {
+            gain += 12i32.saturating_sub(steps.max(0).min(12)) * 4;
+        }
+        if let Some(steps) = exact_turn.safe_opponent_mana_progress_steps {
+            gain += 12i32.saturating_sub(steps.max(0).min(12)) * 4;
+        }
+        if let Some(steps) = exact_turn.score_path_best_steps {
+            gain += 8i32.saturating_sub(steps.max(0).min(8)) * 3;
+        }
+        gain
+    }
+
     fn build_scored_root_move_from_transition(
         game: &MonsGame,
         perspective: Color,
@@ -3296,17 +3337,24 @@ impl MonsGameModel {
         let score_path_best_steps = exact_turn
             .score_path_best_steps
             .unwrap_or(unknown_score_path_steps);
+        let spirit_same_turn_score_setup_now = Self::events_include_spirit_target_move(&events)
+            && simulated_game.active_color == perspective
+            && same_turn_score_window_value > 0;
+        let spirit_own_mana_setup_now =
+            Self::events_spirit_scoring_mana_setup(&events, &simulated_game.board, perspective);
         let spirit_setup_gain = if config.enable_static_exact_evaluation {
             exact_strategic_analysis(&simulated_game)
                 .color_summary(perspective)
                 .spirit
                 .next_turn_setup_gain
         } else {
-            0
+            Self::live_spirit_setup_gain(
+                &exact_turn,
+                spirit_development,
+                spirit_same_turn_score_setup_now,
+                spirit_own_mana_setup_now,
+            )
         };
-        let spirit_same_turn_score_setup_now = Self::events_include_spirit_target_move(&events)
-            && simulated_game.active_color == perspective
-            && same_turn_score_window_value > 0;
         let safe_supermana_pickup_now = Self::events_pickup_supermana(&events)
             && Self::own_drainer_carries_specific_mana_safely(
                 &simulated_game.board,
@@ -3319,8 +3367,6 @@ impl MonsGameModel {
                 perspective,
                 Mana::Regular(perspective.other()),
             );
-        let spirit_own_mana_setup_now =
-            Self::events_spirit_scoring_mana_setup(&events, &simulated_game.board, perspective);
         let supermana_progress = scores_supermana_this_turn
             || Self::events_pickup_supermana(&events)
             || Self::events_move_supermana_toward_color(&events, perspective)
@@ -5159,7 +5205,7 @@ impl MonsGameModel {
                 .spirit
                 .next_turn_setup_gain
         } else {
-            0
+            Self::live_spirit_setup_gain(&exact_turn_before, false, false, false)
         };
         if exact_turn_before.safe_supermana_progress
             && !root_transitions.iter().any(|transition| {
@@ -7260,6 +7306,9 @@ impl MonsGameModel {
         }
         let top_unsafe = Self::turn_engine_root_move_is_unsafe(top);
         let candidate_unsafe = Self::turn_engine_root_move_is_unsafe(&candidate);
+        let top_family = Self::turn_engine_root_move_family(top);
+        let top_utility =
+            Self::turn_engine_scored_root_utility(game, top, perspective, config, top_family);
         let mut projected_state = game.clone_for_simulation();
         let mut projected_events = Vec::new();
         let mut projected_complete = true;
@@ -7305,9 +7354,6 @@ impl MonsGameModel {
                 && !projected_mana_handoff
                 && !projected_roundtrip
                 && !projected_end_vulnerable;
-            let top_family = Self::turn_engine_root_move_family(top);
-            let top_utility =
-                Self::turn_engine_scored_root_utility(game, top, perspective, config, top_family);
             projected_end_safe
                 && plan.compiled_chunks.len() > 1
                 && !matches!(plan.goal_family, TurnPlanFamily::ManaTempo)
@@ -7324,6 +7370,91 @@ impl MonsGameModel {
         } else {
             false
         };
+        let injected_progress_head_regresses_top_surface = macro_mode
+            && existing_candidate.is_none()
+            && matches!(
+                plan.head_family,
+                TurnPlanFamily::SafeSupermanaProgress | TurnPlanFamily::SafeOpponentManaProgress
+            )
+            && matches!(plan.goal_family, TurnPlanFamily::ImmediateScore)
+            && plan.compiled_chunks.len() > 1
+            && !candidate_unsafe
+            && root_moves.iter().take(3).any(|root| {
+                let root_unsafe = Self::turn_engine_root_move_is_unsafe(root);
+                let root_surface = root.spirit_development
+                    || root.spirit_same_turn_score_setup_now
+                    || root.spirit_own_mana_setup_now
+                    || root.safe_supermana_pickup_now
+                    || root.safe_opponent_mana_pickup_now
+                    || root.wins_immediately
+                    || root.scores_supermana_this_turn
+                    || root.scores_opponent_mana_this_turn;
+                if root_unsafe || !root_surface {
+                    return false;
+                }
+                let root_family = Self::turn_engine_root_move_family(root);
+                let root_utility = Self::turn_engine_scored_root_utility(
+                    game,
+                    root,
+                    perspective,
+                    config,
+                    root_family,
+                );
+                crate::models::automove_turn_engine::compare_utility_primary_axes(
+                    plan.head_utility,
+                    root_utility,
+                ) == std::cmp::Ordering::Less
+            });
+        let injected_progress_head_blocks_concrete_spirit_top = macro_mode
+            && existing_candidate.is_none()
+            && matches!(
+                plan.head_family,
+                TurnPlanFamily::SafeSupermanaProgress | TurnPlanFamily::SafeOpponentManaProgress
+            )
+            && matches!(plan.goal_family, TurnPlanFamily::ImmediateScore)
+            && plan.compiled_chunks.len() > 1
+            && root_moves.iter().take(3).any(|root| {
+                root.spirit_same_turn_score_setup_now
+                    || root.spirit_own_mana_setup_now
+                    || root.same_turn_score_window_value > 0
+            });
+        let injected_progress_head_duplicates_safe_progress_top = macro_mode
+            && existing_candidate.is_none()
+            && matches!(
+                plan.head_family,
+                TurnPlanFamily::SafeSupermanaProgress | TurnPlanFamily::SafeOpponentManaProgress
+            )
+            && matches!(plan.goal_family, TurnPlanFamily::ImmediateScore)
+            && plan.compiled_chunks.len() > 1
+            && root_moves.iter().take(3).any(|root| {
+                !Self::turn_engine_root_move_is_unsafe(root)
+                    && Self::turn_engine_root_move_has_progress_surface(root)
+            });
+        let injected_progress_head_blocks_safe_non_progress_top = macro_mode
+            && existing_candidate.is_none()
+            && matches!(
+                plan.head_family,
+                TurnPlanFamily::SafeSupermanaProgress | TurnPlanFamily::SafeOpponentManaProgress
+            )
+            && matches!(plan.goal_family, TurnPlanFamily::ImmediateScore)
+            && plan.compiled_chunks.len() > 1
+            && !top_unsafe
+            && !top.wins_immediately
+            && !top.attacks_opponent_drainer
+            && !top.scores_supermana_this_turn
+            && !top.scores_opponent_mana_this_turn
+            && !top.spirit_development
+            && !top.spirit_same_turn_score_setup_now
+            && !top.spirit_own_mana_setup_now
+            && !Self::turn_engine_root_move_has_progress_surface(top);
+        let completed_plan_override =
+            completed_plan_override
+                && !injected_progress_head_regresses_top_surface
+                && !injected_progress_head_blocks_concrete_spirit_top;
+        let completed_plan_override =
+            completed_plan_override
+                && !injected_progress_head_duplicates_safe_progress_top
+                && !injected_progress_head_blocks_safe_non_progress_top;
         let utility_override = if macro_mode {
             root_moves.iter().take(3).all(|root| {
                 let root_family = Self::turn_engine_root_move_family(root);
@@ -7594,6 +7725,21 @@ impl MonsGameModel {
                 plan.utility,
                 selected_utility_value(),
             ) != std::cmp::Ordering::Less;
+        let projected_head_primary_axes_not_worse =
+            crate::models::automove_turn_engine::compare_utility_primary_axes(
+                plan.head_utility,
+                selected_utility_value(),
+            ) != std::cmp::Ordering::Less;
+        let selected_safe_pickup_now = !selected_unsafe
+            && (selected.safe_supermana_pickup_now || selected.safe_opponent_mana_pickup_now);
+        let projected_progress_head_regresses_safe_pickup = macro_mode
+            && selected_safe_pickup_now
+            && matches!(
+                plan.head_family,
+                TurnPlanFamily::SafeSupermanaProgress | TurnPlanFamily::SafeOpponentManaProgress
+            )
+            && !pickup_upgrade
+            && !projected_head_primary_axes_not_worse;
         let projected_completed_plan_override = macro_mode
             && projected_end_safe
             && !selected.wins_immediately
@@ -7629,6 +7775,7 @@ impl MonsGameModel {
         let projected_completed_plan_override =
             projected_completed_plan_override
                 && !projected_safe_root_blocks_plain_spirit_override
+                && !projected_progress_head_regresses_safe_pickup
                 && !narrow_black_mana_only_unsafe_score_override
                 && !narrow_white_mana_only_progress_tie_override;
         if candidate_unsafe && !selected_unsafe && !projected_completed_plan_override {
@@ -7663,7 +7810,6 @@ impl MonsGameModel {
                 TurnPlanFamily::SafeSupermanaProgress | TurnPlanFamily::SafeOpponentManaProgress
             )
             && !candidate_progress_surface
-            && !selected_unsafe
             && !projected_completed_plan_override
             && !allow_non_concrete_white_progress_head
         {
@@ -8725,8 +8871,8 @@ impl MonsGameModel {
                     &mut root_moves,
                 );
             }
-            if config.enable_turn_opportunity_planner
-                && root_moves.len() > 1
+            if root_moves.len() > 1
+                && config.enable_turn_opportunity_planner
                 && Self::should_invoke_turn_planner(root_moves.as_slice())
             {
                 let planner_config = Self::turn_planner_search_config(config);
@@ -9041,8 +9187,8 @@ impl MonsGameModel {
                 &mut root_moves,
             );
         }
-        if config.enable_turn_opportunity_planner
-            && root_moves.len() > 1
+        if root_moves.len() > 1
+            && config.enable_turn_opportunity_planner
             && Self::should_invoke_turn_planner(root_moves.as_slice())
         {
             let planner_config = Self::turn_planner_search_config(config);
@@ -16781,6 +16927,191 @@ impl MonsGameModel {
         })
     }
 
+    fn is_quiet_non_tactical_reply_risk_root(root: &RootEvaluation) -> bool {
+        !root.wins_immediately
+            && !root.attacks_opponent_drainer
+            && !root.classes.is_tactical_priority()
+            && !root.scores_supermana_this_turn
+            && !root.scores_opponent_mana_this_turn
+            && !root.safe_supermana_pickup_now
+            && !root.safe_opponent_mana_pickup_now
+            && root.same_turn_score_window_value == 0
+    }
+
+    fn pro_v2_safe_pickup_reply_order(
+        candidate: &RootEvaluation,
+        candidate_snapshot: RootReplyRiskSnapshot,
+        incumbent: &RootEvaluation,
+        incumbent_snapshot: RootReplyRiskSnapshot,
+        config: SmartSearchConfig,
+    ) -> Option<std::cmp::Ordering> {
+        if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2) {
+            return None;
+        }
+
+        let candidate_pickup =
+            candidate.safe_supermana_pickup_now || candidate.safe_opponent_mana_pickup_now;
+        let incumbent_pickup =
+            incumbent.safe_supermana_pickup_now || incumbent.safe_opponent_mana_pickup_now;
+        if candidate_pickup == incumbent_pickup {
+            return None;
+        }
+
+        let (pickup, pickup_snapshot, other, other_snapshot, candidate_is_pickup) =
+            if candidate_pickup {
+                (candidate, candidate_snapshot, incumbent, incumbent_snapshot, true)
+            } else {
+                (incumbent, incumbent_snapshot, candidate, candidate_snapshot, false)
+            };
+
+        if Self::turn_engine_root_evaluation_is_unsafe(pickup)
+            || pickup_snapshot.allows_immediate_opponent_win
+            || pickup_snapshot.opponent_reaches_match_point
+            || other_snapshot.allows_immediate_opponent_win
+            || other_snapshot.opponent_reaches_match_point
+            || pickup.mana_handoff_to_opponent
+            || pickup.has_roundtrip
+            || other.wins_immediately
+            || other.attacks_opponent_drainer
+        {
+            return None;
+        }
+
+        let other_progress_like = other.supermana_progress
+            || other.opponent_mana_progress
+            || other.spirit_own_mana_setup_now
+            || other.spirit_same_turn_score_setup_now
+            || other.spirit_development;
+        if !other_progress_like {
+            return None;
+        }
+
+        const SCORE_MARGIN: i32 = 144;
+        const REPLY_FLOOR_MARGIN: i32 = 192;
+        if pickup.score.saturating_add(SCORE_MARGIN) < other.score
+            || pickup_snapshot
+                .worst_reply_score
+                .saturating_add(REPLY_FLOOR_MARGIN)
+                < other_snapshot.worst_reply_score
+        {
+            return None;
+        }
+
+        Some(if candidate_is_pickup {
+            std::cmp::Ordering::Greater
+        } else {
+            std::cmp::Ordering::Less
+        })
+    }
+
+    fn pro_v2_normal_safety_reply_order(
+        game: &MonsGame,
+        candidate: &RootEvaluation,
+        candidate_snapshot: RootReplyRiskSnapshot,
+        incumbent: &RootEvaluation,
+        incumbent_snapshot: RootReplyRiskSnapshot,
+        perspective: Color,
+        config: SmartSearchConfig,
+    ) -> Option<std::cmp::Ordering> {
+        if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
+            || !config.enable_normal_root_safety_rerank
+            || !Self::is_quiet_non_tactical_reply_risk_root(candidate)
+            || !Self::is_quiet_non_tactical_reply_risk_root(incumbent)
+            || candidate.root_rank.abs_diff(incumbent.root_rank) > 8
+            || (candidate.score - incumbent.score).abs() > 160
+            || (candidate_snapshot.worst_reply_score - incumbent_snapshot.worst_reply_score).abs()
+                > 320
+        {
+            return None;
+        }
+
+        let progress_or_setup_pair = Self::turn_engine_root_evaluation_has_progress_surface(candidate)
+            || Self::turn_engine_root_evaluation_has_progress_surface(incumbent)
+            || candidate.spirit_own_mana_setup_now
+            || incumbent.spirit_own_mana_setup_now
+            || candidate.spirit_same_turn_score_setup_now
+            || incumbent.spirit_same_turn_score_setup_now
+            || Self::is_same_non_tactical_progress_lane_root_pair(candidate, incumbent)
+            || Self::is_same_opening_safe_setup_pair(candidate, incumbent, config)
+            || Self::is_same_opening_safe_setup_progress_pair(game, candidate, incumbent, config);
+        if !progress_or_setup_pair {
+            return None;
+        }
+
+        let reply_limit = config.node_enum_limit.clamp(
+            SMART_NORMAL_ROOT_SAFETY_REPLY_LIMIT_MIN,
+            SMART_NORMAL_ROOT_SAFETY_REPLY_LIMIT_MAX,
+        );
+        let my_score_before = Self::score_for_color(game, perspective);
+        let start_options = Self::automove_start_input_options(config);
+        let candidate_normal_snapshot = Self::normal_root_safety_snapshot(
+            &candidate.game,
+            perspective,
+            my_score_before,
+            config,
+            reply_limit,
+            start_options,
+        );
+        let incumbent_normal_snapshot = Self::normal_root_safety_snapshot(
+            &incumbent.game,
+            perspective,
+            my_score_before,
+            config,
+            reply_limit,
+            start_options,
+        );
+        let safety_axes_differ = candidate_normal_snapshot.allows_immediate_opponent_win
+            != incumbent_normal_snapshot.allows_immediate_opponent_win
+            || candidate_normal_snapshot.opponent_reaches_match_point
+                != incumbent_normal_snapshot.opponent_reaches_match_point
+            || candidate_normal_snapshot.opponent_max_score_gain
+                != incumbent_normal_snapshot.opponent_max_score_gain
+            || candidate_normal_snapshot.my_score_gain != incumbent_normal_snapshot.my_score_gain
+            || candidate_normal_snapshot.worst_reply_score
+                != incumbent_normal_snapshot.worst_reply_score;
+
+        if safety_axes_differ {
+            if Self::is_better_normal_root_safety_candidate(
+                candidate_normal_snapshot,
+                candidate.score,
+                incumbent_normal_snapshot,
+                incumbent.score,
+            ) {
+                return Some(std::cmp::Ordering::Greater);
+            }
+            if Self::is_better_normal_root_safety_candidate(
+                incumbent_normal_snapshot,
+                incumbent.score,
+                candidate_normal_snapshot,
+                candidate.score,
+            ) {
+                return Some(std::cmp::Ordering::Less);
+            }
+        }
+
+        if config.enable_normal_root_safety_deep_floor
+            && Self::should_apply_normal_root_safety_deep_floor(game, perspective)
+        {
+            let candidate_floor = Self::normal_root_safety_deep_floor_score(
+                &candidate.game,
+                perspective,
+                config,
+                reply_limit,
+            );
+            let incumbent_floor = Self::normal_root_safety_deep_floor_score(
+                &incumbent.game,
+                perspective,
+                config,
+                reply_limit,
+            );
+            if candidate_floor != incumbent_floor {
+                return Some(candidate_floor.cmp(&incumbent_floor));
+            }
+        }
+
+        None
+    }
+
     fn pro_v2_mixed_plain_spirit_reply_floor_order(
         candidate_snapshot: RootReplyRiskSnapshot,
         candidate_projection: &TurnEngineRootProjection,
@@ -16949,6 +17280,26 @@ impl MonsGameModel {
             candidate_snapshot,
             incumbent,
             incumbent_snapshot,
+            config,
+        ) {
+            return order == std::cmp::Ordering::Greater;
+        }
+        if let Some(order) = Self::pro_v2_safe_pickup_reply_order(
+            candidate,
+            candidate_snapshot,
+            incumbent,
+            incumbent_snapshot,
+            config,
+        ) {
+            return order == std::cmp::Ordering::Greater;
+        }
+        if let Some(order) = Self::pro_v2_normal_safety_reply_order(
+            game,
+            candidate,
+            candidate_snapshot,
+            incumbent,
+            incumbent_snapshot,
+            perspective,
             config,
         ) {
             return order == std::cmp::Ordering::Greater;
@@ -20762,6 +21113,427 @@ mod opening_book_tests {
         assert_eq!(
             diagnostics.injected_root_attempts,
             diagnostics.injected_root_accepts + total_rejects
+        );
+    }
+
+    #[test]
+    fn live_spirit_setup_gain_marks_runtime_setup_root_positive() {
+        let mut game = game_with_items(
+            vec![
+                (
+                    Location::new(4, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 0),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(5, 2),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+                (
+                    Location::new(0, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.enable_static_exact_evaluation = false;
+        let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            &game,
+            Color::White,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        let candidate = MonsGameModel::build_scored_root_move(
+            &game,
+            Color::White,
+            config,
+            own_drainer_vulnerable_before,
+            &[
+                Input::Location(Location::new(4, 0)),
+                Input::Location(Location::new(5, 2)),
+                Input::Location(Location::new(6, 1)),
+            ],
+        )
+        .expect("runtime spirit setup inputs should build a scored root");
+
+        assert!(
+            candidate.spirit_setup_gain > 0,
+            "runtime setup roots should retain a live positive setup signal when static exact eval is disabled"
+        );
+    }
+
+    #[test]
+    fn pro_v2_safe_pickup_reply_order_prefers_close_safe_pickup_over_progress_root() {
+        let game = MonsGame::new(false);
+        let mut pickup = root_evaluation_for_projection_test(
+            &game,
+            Location::new(1, 1),
+            920,
+            false,
+            false,
+            false,
+        );
+        pickup.safe_supermana_pickup_now = true;
+
+        let mut progress = root_evaluation_for_projection_test(
+            &game,
+            Location::new(1, 2),
+            980,
+            false,
+            false,
+            false,
+        );
+        progress.supermana_progress = true;
+
+        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.enable_turn_engine = true;
+        config.turn_engine_mode = TurnEngineMode::ProV2;
+
+        assert_eq!(
+            MonsGameModel::pro_v2_safe_pickup_reply_order(
+                &pickup,
+                RootReplyRiskSnapshot {
+                    allows_immediate_opponent_win: false,
+                    opponent_reaches_match_point: false,
+                    worst_reply_score: 480,
+                },
+                &progress,
+                RootReplyRiskSnapshot {
+                    allows_immediate_opponent_win: false,
+                    opponent_reaches_match_point: false,
+                    worst_reply_score: 620,
+                },
+                config,
+            ),
+            Some(std::cmp::Ordering::Greater),
+        );
+    }
+
+    #[test]
+    fn pro_v2_completed_progress_plan_does_not_override_safe_pickup_root() {
+        fn pro_v2_candidate_config(game: &MonsGame) -> SmartSearchConfig {
+            let mut config =
+                MonsGameModel::with_game(game.clone()).runtime_config_for_preference(
+                    SmartAutomovePreference::Pro,
+                );
+            if config.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
+                && config.enable_normal_root_safety_deep_floor
+            {
+                config.enable_turn_opportunity_planner = false;
+                config.enable_turn_engine = true;
+                config.turn_engine_mode = TurnEngineMode::ProV2;
+                config.turn_engine_seed_cap = 14;
+                config.turn_engine_beam_width = 5;
+                config.turn_engine_per_node_family_cap = 4;
+                config.turn_engine_step_cap = 6;
+                config.turn_engine_opponent_seed_cap = 6;
+                config.turn_engine_opponent_beam_width = 2;
+                config.turn_engine_reply_seed_cap = 3;
+                config.turn_engine_reply_beam_width = 1;
+                config.turn_engine_expansion_cap = 176;
+                config.turn_engine_enable_spirit_family = true;
+                config.root_reply_risk_reply_limit = config.root_reply_risk_reply_limit.min(24);
+                config.root_reply_risk_node_share_bp = config.root_reply_risk_node_share_bp.min(2_000);
+                config.enable_turn_engine_low_budget_guard = true;
+                config.enable_turn_engine_mid_turn_tactical_guard = true;
+                config.enable_turn_engine_late_safe_mana_root_preference = true;
+            }
+            config
+        }
+
+        fn assert_case(
+            game: MonsGame,
+            expected_selected: &str,
+            expected_head: &str,
+            expected_head_family: TurnPlanFamily,
+        ) {
+            let perspective = game.active_color;
+            let config = pro_v2_candidate_config(&game);
+            let root_moves = MonsGameModel::ranked_root_moves(&game, perspective, config);
+            let mut visited_nodes = 0usize;
+            let mut alpha = i32::MIN;
+            let mut scored_roots = Vec::with_capacity(root_moves.len());
+            let mut transposition_table = U64HashMap::default();
+            let extension_node_budget =
+                if config.enable_selective_extensions && config.selective_extension_node_share_bp > 0
+                {
+                    ((config.max_visited_nodes * config.selective_extension_node_share_bp as usize)
+                        / 10_000)
+                        .max(1)
+                } else {
+                    0
+                };
+            let mut extension_nodes_used = 0usize;
+            let mut killer_table: KillerTable = [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
+            let mut history_table: HistoryTable = HistoryTable::default();
+            let mut quiescence_nodes_used = 0usize;
+
+            for candidate in root_moves {
+                if visited_nodes >= config.max_visited_nodes {
+                    break;
+                }
+                visited_nodes += 1;
+                let candidate_score = MonsGameModel::evaluate_root_candidate_score(
+                    &candidate,
+                    perspective,
+                    alpha,
+                    &mut visited_nodes,
+                    config,
+                    &mut transposition_table,
+                    &mut extension_nodes_used,
+                    extension_node_budget,
+                    true,
+                    &mut killer_table,
+                    &mut history_table,
+                    &mut quiescence_nodes_used,
+                );
+                alpha = alpha.max(candidate_score);
+                scored_roots.push(root_evaluation_for_test(&candidate, candidate_score));
+            }
+
+            let selected_inputs = MonsGameModel::pick_root_move_with_exploration(
+                &game,
+                &scored_roots,
+                perspective,
+                config,
+            );
+            assert_eq!(Input::fen_from_array(&selected_inputs), expected_selected);
+
+            let plan = turn_engine_candidate_plan(
+                &game,
+                perspective,
+                MonsGameModel::turn_engine_search_config(config),
+            )
+            .expect("fixture should materialize a turn-engine plan");
+            assert_eq!(plan.head_family, expected_head_family);
+            assert_eq!(
+                Input::fen_from_array(
+                    plan.compiled_chunks
+                        .first()
+                        .expect("turn-engine plan should have a first chunk"),
+                ),
+                expected_head,
+            );
+            assert!(plan.compiled_chunks.len() > 1);
+
+            assert!(
+                !MonsGameModel::accept_turn_engine_head_after_search(
+                    &game,
+                    perspective,
+                    config,
+                    &scored_roots,
+                    selected_inputs.as_slice(),
+                    &plan,
+                ),
+                "a deferred progress head should not override a safe immediate pickup root",
+            );
+        }
+
+        assert_case(
+            game_with_items(
+                vec![
+                    (
+                        Location::new(6, 5),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(10, 0),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Angel, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(5, 5),
+                        Item::Mana {
+                            mana: Mana::Supermana,
+                        },
+                    ),
+                    (
+                        Location::new(0, 10),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                        },
+                    ),
+                ],
+                Color::White,
+                2,
+            ),
+            "l6,5;l5,5",
+            "l6,5;l5,6",
+            TurnPlanFamily::SafeSupermanaProgress,
+        );
+        assert_case(
+            game_with_items(
+                vec![
+                    (
+                        Location::new(8, 5),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(10, 0),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Angel, Color::White, 0),
+                        },
+                    ),
+                    (
+                        Location::new(7, 5),
+                        Item::Mana {
+                            mana: Mana::Regular(Color::Black),
+                        },
+                    ),
+                    (
+                        Location::new(0, 10),
+                        Item::Mon {
+                            mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                        },
+                    ),
+                ],
+                Color::White,
+                2,
+            ),
+            "l8,5;l7,5",
+            "l8,5;l8,4",
+            TurnPlanFamily::SafeOpponentManaProgress,
+        );
+    }
+
+    #[test]
+    fn pro_v2_non_concrete_progress_head_does_not_override_unsafe_non_progress_root() {
+        fn pro_v2_candidate_config(game: &MonsGame) -> SmartSearchConfig {
+            let mut config =
+                MonsGameModel::with_game(game.clone()).runtime_config_for_preference(
+                    SmartAutomovePreference::Pro,
+                );
+            if config.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
+                && config.enable_normal_root_safety_deep_floor
+            {
+                config.enable_turn_opportunity_planner = false;
+                config.enable_turn_engine = true;
+                config.turn_engine_mode = TurnEngineMode::ProV2;
+                config.turn_engine_seed_cap = 14;
+                config.turn_engine_beam_width = 5;
+                config.turn_engine_per_node_family_cap = 4;
+                config.turn_engine_step_cap = 6;
+                config.turn_engine_opponent_seed_cap = 6;
+                config.turn_engine_opponent_beam_width = 2;
+                config.turn_engine_reply_seed_cap = 3;
+                config.turn_engine_reply_beam_width = 1;
+                config.turn_engine_expansion_cap = 176;
+                config.turn_engine_enable_spirit_family = true;
+                config.root_reply_risk_reply_limit = config.root_reply_risk_reply_limit.min(24);
+                config.root_reply_risk_node_share_bp = config.root_reply_risk_node_share_bp.min(2_000);
+                config.enable_turn_engine_low_budget_guard = true;
+                config.enable_turn_engine_mid_turn_tactical_guard = true;
+                config.enable_turn_engine_late_safe_mana_root_preference = true;
+            }
+            config
+        }
+
+        let game = MonsGame::from_fen(
+            "0 0 b 1 0 4 0 0 6 n03y0xn07/n07e0xn03/n06d0xa0xn03/n03xxmn03xxmn03/n02s0xxxmxxmn02xxmn03/xxQn04xxUn01xxMn02xxQ/n05xxMn05/n02xxMn03xxMn03Y0x/n03xxMn03D0xn03/n05A0xn05/n03E0xn02S0xn04",
+            false,
+        )
+        .expect("primary_ext_sensitive_no_ext_a fen should be valid");
+        let perspective = game.active_color;
+        let config = pro_v2_candidate_config(&game);
+        let root_moves = MonsGameModel::ranked_root_moves(&game, perspective, config);
+        let mut visited_nodes = 0usize;
+        let mut alpha = i32::MIN;
+        let mut scored_roots = Vec::with_capacity(root_moves.len());
+        let mut transposition_table = U64HashMap::default();
+        let extension_node_budget =
+            if config.enable_selective_extensions && config.selective_extension_node_share_bp > 0 {
+                ((config.max_visited_nodes * config.selective_extension_node_share_bp as usize)
+                    / 10_000)
+                    .max(1)
+            } else {
+                0
+            };
+        let mut extension_nodes_used = 0usize;
+        let mut killer_table: KillerTable = [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
+        let mut history_table: HistoryTable = HistoryTable::default();
+        let mut quiescence_nodes_used = 0usize;
+
+        for candidate in root_moves {
+            if visited_nodes >= config.max_visited_nodes {
+                break;
+            }
+            visited_nodes += 1;
+            let candidate_score = MonsGameModel::evaluate_root_candidate_score(
+                &candidate,
+                perspective,
+                alpha,
+                &mut visited_nodes,
+                config,
+                &mut transposition_table,
+                &mut extension_nodes_used,
+                extension_node_budget,
+                true,
+                &mut killer_table,
+                &mut history_table,
+                &mut quiescence_nodes_used,
+            );
+            alpha = alpha.max(candidate_score);
+            scored_roots.push(root_evaluation_for_test(&candidate, candidate_score));
+        }
+
+        let selected_inputs = MonsGameModel::pick_root_move_with_exploration(
+            &game,
+            &scored_roots,
+            perspective,
+            config,
+        );
+        assert_eq!(Input::fen_from_array(&selected_inputs), "l0,3;l1,3");
+
+        let plan = turn_engine_candidate_plan(
+            &game,
+            perspective,
+            MonsGameModel::turn_engine_search_config(config),
+        )
+        .expect("fixture should produce a progress head");
+        assert_eq!(plan.head_family, TurnPlanFamily::SafeSupermanaProgress);
+        assert_eq!(
+            Input::fen_from_array(
+                plan.compiled_chunks
+                    .first()
+                    .expect("turn-engine plan should have a first chunk"),
+            ),
+            "l2,6;l3,7",
+        );
+        assert_eq!(plan.compiled_chunks.len(), 1);
+
+        assert!(
+            !MonsGameModel::accept_turn_engine_head_after_search(
+                &game,
+                perspective,
+                config,
+                &scored_roots,
+                selected_inputs.as_slice(),
+                &plan,
+            ),
+            "a non-concrete one-chunk progress head should not override an unsafe non-progress selected root",
+        );
+        assert_eq!(
+            Input::fen_from_array(&MonsGameModel::smart_search_best_inputs(&game, config)),
+            "l0,3;l1,3",
         );
     }
 
