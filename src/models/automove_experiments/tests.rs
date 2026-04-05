@@ -6390,6 +6390,8 @@ fn smart_automove_pro_reliability_vs_normal_exact_family_probe() {
     let repeats = env_usize("SMART_PRO_RELIABILITY_REPEATS")
         .unwrap_or(3)
         .max(1);
+    let repeat_filter = env_usize("SMART_PRO_RELIABILITY_REPEAT_INDEX");
+    let opening_filter = env_usize("SMART_PRO_RELIABILITY_OPENING_INDEX");
     let games_per_repeat = env_usize("SMART_PRO_RELIABILITY_GAMES").unwrap_or(2).max(1);
     let max_plies = env_usize("SMART_PRO_RELIABILITY_MAX_PLIES")
         .unwrap_or(96)
@@ -6399,6 +6401,10 @@ fn smart_automove_pro_reliability_vs_normal_exact_family_probe() {
     let sample_limit = env_usize("SMART_PROBE_SHARED_SURFACE_SAMPLE_LIMIT")
         .unwrap_or(2)
         .max(1);
+    let mirror_filter = env::var("SMART_PRO_RELIABILITY_MIRROR")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
     let reliability_seed_tag = env_profile_name("SMART_PRO_RELIABILITY_SEED_TAG")
         .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
     let seed_tag_normal = format!("{}_vs_normal", reliability_seed_tag);
@@ -6409,7 +6415,7 @@ fn smart_automove_pro_reliability_vs_normal_exact_family_probe() {
     let mut family_stats = std::collections::BTreeMap::<String, ExactFamilyStats>::new();
 
     eprintln!(
-        "pro reliability vs-normal exact-family probe config: candidate_profile={} baseline_profile={} shipping_pro_profile={} seed_tag={} repeats={} games_per_repeat={} max_plies={} trace_limit={} include_acceptance={} sample_limit={}",
+        "pro reliability vs-normal exact-family probe config: candidate_profile={} baseline_profile={} shipping_pro_profile={} seed_tag={} repeats={} games_per_repeat={} max_plies={} trace_limit={} include_acceptance={} sample_limit={} repeat_filter={:?} opening_filter={:?} mirror_filter={:?}",
         candidate_profile,
         baseline_profile,
         shipping_pro_profile,
@@ -6420,9 +6426,15 @@ fn smart_automove_pro_reliability_vs_normal_exact_family_probe() {
         trace_limit,
         include_acceptance,
         sample_limit,
+        repeat_filter,
+        opening_filter,
+        mirror_filter,
     );
 
     for repeat_index in 0..repeats {
+        if repeat_filter.is_some_and(|expected| expected != repeat_index) {
+            continue;
+        }
         let seed = seed_for_budget_duel_repeat_and_tag(
             budget_pro,
             budget_normal,
@@ -6432,8 +6444,17 @@ fn smart_automove_pro_reliability_vs_normal_exact_family_probe() {
         let opening_fens = generate_opening_fens_cached(seed, games_per_repeat);
 
         for (opening_index, opening_fen) in opening_fens.iter().enumerate() {
+            if opening_filter.is_some_and(|expected| expected != opening_index) {
+                continue;
+            }
             let candidate_white_ab = opening_index % 2 == 0;
             for (mirror, candidate_is_white) in [("ab", candidate_white_ab), ("ba", !candidate_white_ab)] {
+                if mirror_filter
+                    .as_deref()
+                    .is_some_and(|expected| expected != mirror)
+                {
+                    continue;
+                }
                 total_games += 1;
                 let (result, traces) = replay_pro_reliability_loss_probe_game_with_options(
                     candidate_profile.as_str(),
