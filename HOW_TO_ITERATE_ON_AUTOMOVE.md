@@ -66,7 +66,7 @@ Operator defaults:
 
 Baseline rules:
 - For Pro work, compare directly against `runtime_current`.
-- The script default baseline, `runtime_release_safe_pre_exact`, exists for compatibility and non-Pro stages. Do not let it drive Pro examples or Pro decisions.
+- The script now defaults Pro stages to `runtime_current`. The non-Pro compatibility default, `runtime_release_safe_pre_exact`, still exists for calibration-only work.
 - Use `opening_reply` only when the change touches opening-book fallback ordering, early-turn fallback guards, or an opening-specific latency regression.
 
 ## Step Rules
@@ -142,8 +142,13 @@ Use diagnostics only after the canonical loop tells you why they are needed.
 1. Prefer a fresh live `pro-reliability` sample when the wall is unclear or has moved.
 2. Use `triage-calibrate` only when the triage surface itself is new or no longer calibrated.
 3. Use `pro-opening-speed-probe` only for opening-specific regressions.
-4. Use `pro-audit-screen` only as a cheap sanity check on a clean `pro-triage` reject.
-5. Use the hotspot probe only after a real duel stall, and only to narrow the next code surface.
+4. Use the hotspot probe only after a real duel stall, and only to narrow the next code surface.
+
+Manual diagnostics:
+
+```sh
+cargo test --release --lib smart_automove_pro_reliability_hotspot_probe -- --ignored --nocapture
+```
 
 Do not do these by default:
 - archive reopenings
@@ -151,15 +156,12 @@ Do not do these by default:
 - hotspot-first micro-optimization loops
 - broad split families without a new code hypothesis
 
-## Promotion Follow-Up Only
+## Confirmation Only
 
-These stages are not part of the default Pro loop. Use them only after `pro-reliability` earns more spend.
+This stage is not part of the default Pro loop. Use it only after `pro-reliability` earns more spend.
 
 ```sh
 ./scripts/run-automove-experiment.sh pro-reliability-confirm runtime_pro_turn_engine_v30 runtime_current
-./scripts/run-automove-experiment.sh pro-fast-screen runtime_pro_turn_engine_v30 runtime_current
-./scripts/run-automove-experiment.sh pro-progressive runtime_pro_turn_engine_v30 runtime_current
-./scripts/run-automove-experiment.sh pro-ladder runtime_pro_turn_engine_v30 runtime_current
 ```
 
 `pro-reliability-confirm` is the final Pro-vs-current confirmation stage before promotion:
@@ -169,18 +171,10 @@ These stages are not part of the default Pro loop. Use them only after `pro-reli
 
 ## Compatibility Surface
 
-These commands still exist, but they are not the main story and they are not promotion proof for the Pro frontier:
+These tools still exist, but they are not the main story and they are not promotion proof for the Pro frontier:
 - `triage-calibrate`
-- `triage`
-- `preflight`
-- `audit-screen`
-- `pre-screen`
-- `fast-screen`
-- `progressive`
-- `ladder`
 - `pro-opening-speed-probe`
-- `pro-audit-screen`
-- `pro-pre-screen`
+- `smart_automove_pro_reliability_hotspot_probe`
 - `docs/automove-experiments.md`
 
 ## Artifacts

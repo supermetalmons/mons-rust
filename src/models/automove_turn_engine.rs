@@ -519,26 +519,6 @@ enum PlanBuildStatus {
     BudgetExceeded,
 }
 
-#[cfg(test)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TurnEngineProbeStatus {
-    InactiveColor,
-    CachedOnly,
-    Planned,
-    NoPlan,
-    BudgetExceeded,
-}
-
-#[cfg(test)]
-#[derive(Debug, Clone)]
-pub(crate) struct TurnEngineProbe {
-    pub status: TurnEngineProbeStatus,
-    pub cached_step: Option<Vec<Input>>,
-    pub candidate_family: Option<TurnPlanFamily>,
-    pub candidate_chunk: Option<Vec<Input>>,
-    pub chunk_count: usize,
-}
-
 thread_local! {
     static TURN_ENGINE_CONTINUATION_CACHE: RefCell<HashMap<TurnEngineContinuationCacheKey, Vec<Input>>> =
         RefCell::new(HashMap::new());
@@ -910,53 +890,6 @@ pub(crate) fn turn_engine_evaluate_plan_with_replies(
     config: TurnEngineConfig,
 ) -> TurnEngineUtility {
     evaluate_plan_with_replies(root, plan, perspective, config)
-}
-
-#[cfg(test)]
-pub(crate) fn turn_engine_probe(
-    game: &MonsGame,
-    perspective: Color,
-    _mode: TurnEngineMode,
-    config: TurnEngineConfig,
-) -> TurnEngineProbe {
-    if game.active_color != perspective {
-        return TurnEngineProbe {
-            status: TurnEngineProbeStatus::InactiveColor,
-            cached_step: None,
-            candidate_family: None,
-            candidate_chunk: None,
-            chunk_count: 0,
-        };
-    }
-
-    let cached_step = cached_step_if_legal(game, config);
-    match build_best_plan(game, perspective, config) {
-        Ok(Some(plan)) => TurnEngineProbe {
-            status: TurnEngineProbeStatus::Planned,
-            cached_step,
-            candidate_family: Some(plan.head_family),
-            candidate_chunk: plan.compiled_chunks.first().cloned(),
-            chunk_count: plan.compiled_chunks.len(),
-        },
-        Ok(None) | Err(PlanBuildStatus::NoPlan) => TurnEngineProbe {
-            status: if cached_step.is_some() {
-                TurnEngineProbeStatus::CachedOnly
-            } else {
-                TurnEngineProbeStatus::NoPlan
-            },
-            cached_step,
-            candidate_family: None,
-            candidate_chunk: None,
-            chunk_count: 0,
-        },
-        Err(PlanBuildStatus::BudgetExceeded) => TurnEngineProbe {
-            status: TurnEngineProbeStatus::BudgetExceeded,
-            cached_step,
-            candidate_family: None,
-            candidate_chunk: None,
-            chunk_count: 0,
-        },
-    }
 }
 
 fn build_best_plan(
