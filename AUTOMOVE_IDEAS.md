@@ -1374,3 +1374,15 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - The `320 / 600` bundle was effectively identical: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=200.55`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=208.86`.
   - Useful lesson: the live interview-soft supermana numerics are not a hidden retained-gate lever either. Pulling them back toward the defaults or pushing them up toward the fast/normal block leaves the current-Normal wall completely flat.
 - Next hypothesis after that kill: stop spending on broad interview-soft supermana retunes without a family-specific proof path first. If interview-soft supermana is revisited again, require a retained loss-surface diagnosis that already isolates one supermana-priority family before touching the numeric surface.
+- Kill result from 2026-04-05: lowering the live root drainer-safety / efficiency pair is flat on the cheap retained gate too.
+  - I reused the retained root-safety override knobs in the reliability harness so the live Pro safety pair could be screened without runtime edits:
+    - `SMART_PROBE_FORCE_DRAINER_MARGIN`
+    - `SMART_PROBE_FORCE_EFFICIENCY_MARGIN`
+  - This is a genuinely live retained-Pro surface. `runtime_pro_turn_engine_v30` currently keeps the stronger pair `root_drainer_safety_score_margin=4800` and `root_efficiency_score_margin=1400`, while nearby retained blocks already define two grounded lower alternatives:
+    - near-Pro predecessor: `4200 / 1400`
+    - fast/normal-style pair: `4000 / 1700`
+  - I screened both bundles directly on the retained `1x2x96` duel slice with shipping Pro pinned to `runtime_current`.
+  - The `4200 / 1400` bundle was dead on the only live wall: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=203.05`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=211.23`.
+  - The `4000 / 1700` bundle was the same story: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=201.41`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=208.98`.
+  - Useful lesson: the live retained-Pro root drainer-safety / efficiency numerics are not a hidden retained-gate lever in the lowering direction either. Pulling that pair back toward the nearby retained blocks leaves the current-Normal wall completely flat.
+- Next hypothesis after that kill: stop spending on broad root drainer-safety / efficiency retunes without a family-specific proof path first. If this root-safety pair is revisited again, require a retained loss-surface diagnosis that already isolates one drainer-safety or efficiency family before touching the numeric surface.

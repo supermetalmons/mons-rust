@@ -903,3 +903,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
   - `240 / 420`: `3/4`, `0.7500`, `0.6875`, `200.83ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `209.21ms` vs current Normal
   - `320 / 600`: `3/4`, `0.7500`, `0.6875`, `200.55ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `208.86ms` vs current Normal
 - The durable rule is tighter again. Broad interview-soft supermana bonus retunes are not a hidden retained-gate lever either. Pulling them back toward the defaults or pushing them up toward the fast/normal block leaves the current-Normal wall flat, so this supermana-priority numeric surface should stay parked unless a retained loss-surface diagnosis first isolates one family that actually depends on it.
+- I then screened the next grounded live retained-Pro root-safety numeric surface on 2026-04-05: the drainer-safety / efficiency pair. No new harness work was needed because both knobs were already exposed in the retained reliability probes:
+  - `SMART_PROBE_FORCE_DRAINER_MARGIN`
+  - `SMART_PROBE_FORCE_EFFICIENCY_MARGIN`
+- This is a genuinely live retained-Pro surface. `runtime_pro_turn_engine_v30` currently keeps `root_drainer_safety_score_margin=4800` and `root_efficiency_score_margin=1400`, while nearby retained blocks already define two grounded lower alternatives:
+  - near-Pro predecessor: `4200 / 1400`
+  - fast/normal-style pair: `4000 / 1700`
+- I screened both bundles directly on the retained cheap `1x2x96` gate with shipping Pro pinned to `runtime_current`.
+- Both were dead on the only live wall:
+  - `4200 / 1400`: `3/4`, `0.7500`, `0.6875`, `203.05ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `211.23ms` vs current Normal
+  - `4000 / 1700`: `3/4`, `0.7500`, `0.6875`, `201.41ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `208.98ms` vs current Normal
+- The durable rule is tighter again. Broad lowering of the retained-Pro root drainer-safety / efficiency pair is not a hidden retained-gate lever either. Pulling that pair back toward the nearby retained blocks leaves the current-Normal wall flat, so this root-safety numeric surface should stay parked unless a retained loss-surface diagnosis first isolates one drainer-safety or efficiency family that actually depends on it.
