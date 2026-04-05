@@ -643,3 +643,15 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
   - the start exact is a spirit-competition filter seam driven by `safe_progress_competes` plus `followup_progress_competes`;
   - the followup exact becomes a later plain-spirit-over-concrete-setup acceptance seam once the filter is repaired.
 - Do not reopen this later-black family as one branchable lane. If it is revisited, treat filter competition and post-search acceptance as separate mechanisms from the start.
+- I then moved off that mixed later-black family on 2026-04-05 and screened the unswept broad exact-evaluation family directly on the retained duel harness instead of writing more runtime code.
+- To do that cleanly, I kept five new candidate-side override knobs in the retained `smart_automove_pro_reliability_candidate_override_probe` harness:
+  - `SMART_PROBE_FORCE_ROOT_EXACT_TACTICS`
+  - `SMART_PROBE_FORCE_CHILD_EXACT_TACTICS`
+  - `SMART_PROBE_FORCE_STATIC_EXACT_EVALUATION`
+  - `SMART_PROBE_FORCE_EXACT_LITE_PROGRESS_CHECKS`
+  - `SMART_PROBE_FORCE_EXACT_LITE_SPIRIT_WINDOW_CHECKS`
+- I screened the first coherent live bundle on the retained `1x2x96` duel slice with shipping Pro pinned to `runtime_current`: `root_exact_tactics=false`, `child_exact_tactics=false`, and `static_exact_evaluation=false`.
+- It was flat on the only live wall. The bundle finished at `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=201.96`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=209.31`.
+- I then screened the complementary exact-lite pair on the same retained cheap gate: `exact_lite_progress_checks=true` and `exact_lite_spirit_window_checks=true`.
+- That pair was equally flat: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=201.42`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=207.99`.
+- The durable rule is tighter again. Broad exact/static disable and the complementary exact-lite pair are both dead on the retained cheap gate. Do not reopen the broad exact-evaluation family without a much tighter family-specific proof path first.

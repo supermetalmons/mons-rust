@@ -1135,3 +1135,16 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
     - the followup exact becomes a later plain-spirit-over-concrete-setup acceptance seam once the filter is repaired.
   - Useful lesson: do not reopen black turn-six action+mana `SpiritImpact` as one branchable later-black lane. If this family is ever revisited, treat filter competition and post-search acceptance as separate mechanisms from the start.
 - Next hypothesis after that kill: stop spending on black turn-six `SpiritImpact` family repairs as a unified branch. If another Pro line is attempted, it needs a genuinely different in-path mechanism than this mixed filter-plus-acceptance family.
+- Kill result from 2026-04-05: the broad exact-evaluation family is flat on the retained cheap gate too.
+  - I kept five new candidate-side override knobs in the retained reliability harness:
+    - `SMART_PROBE_FORCE_ROOT_EXACT_TACTICS`
+    - `SMART_PROBE_FORCE_CHILD_EXACT_TACTICS`
+    - `SMART_PROBE_FORCE_STATIC_EXACT_EVALUATION`
+    - `SMART_PROBE_FORCE_EXACT_LITE_PROGRESS_CHECKS`
+    - `SMART_PROBE_FORCE_EXACT_LITE_SPIRIT_WINDOW_CHECKS`
+  - I screened the first coherent live exact-evaluation bundle directly on the retained `1x2x96` duel slice with shipping Pro pinned to `runtime_current`: `root_exact_tactics=false`, `child_exact_tactics=false`, and `static_exact_evaluation=false`.
+  - It was flat on the only live wall. The bundle finished at `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=201.96`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=209.31`.
+  - I then screened the complementary exact-lite pair directly on the same retained cheap gate: `exact_lite_progress_checks=true` and `exact_lite_spirit_window_checks=true`.
+  - That pair was the same story: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=201.42`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=207.99`.
+  - Useful lesson: neither broad exact/static disable nor the complementary exact-lite pair is a hidden retained-gate lever. Do not reopen the broad exact-evaluation family without a much tighter family-specific proof path first.
+- Next hypothesis after that kill: stop spending on broad exact-evaluation toggles too. If another Pro line is attempted, it needs either a genuinely different in-path mechanism or a family-specific diagnosis that proves where exact/static evaluation is misfiring before code changes.
