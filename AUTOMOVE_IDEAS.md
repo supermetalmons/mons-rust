@@ -1303,3 +1303,14 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - The lower default-floor bundle was the same story: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=204.42`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=212.79`.
   - Useful lesson: the live anti-help family is not a hidden retained-gate lever in the lowering direction either. Pulling the active margin and reply limit back toward fast-core or default values leaves the current-Normal wall completely flat.
 - Next hypothesis after that kill: stop spending on broad anti-help numeric retunes without a family-specific proof path first. If anti-help is revisited again, require a retained loss-surface diagnosis that already isolates one handoff or roundtrip family before touching the numeric filter surface.
+- Kill result from 2026-04-05: lowering the live interview-soft handoff/roundtrip penalties is flat on the cheap retained gate too.
+  - I kept two new candidate-side override knobs in the retained reliability harness so the active soft handoff/roundtrip penalty surface can be screened without runtime edits:
+    - `SMART_PROBE_FORCE_INTERVIEW_SOFT_MANA_HANDOFF_PENALTY`
+    - `SMART_PROBE_FORCE_INTERVIEW_SOFT_ROUNDTRIP_PENALTY`
+  - I screened the two grounded lowered-penalty bundles directly on the retained `1x2x96` duel slice with shipping Pro pinned to `runtime_current`:
+    - fast/normal-like penalties: `mana_handoff_penalty=280`, `roundtrip_penalty=220`
+    - base-default penalties: `mana_handoff_penalty=220`, `roundtrip_penalty=140`
+  - Both were dead on the only live wall. The fast/normal-like bundle finished at `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=200.03`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=209.53`.
+  - The base-default bundle was the same story: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=200.21`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=210.11`.
+  - Useful lesson: broad interview-soft handoff/roundtrip penalty lowering is not a hidden retained-gate lever either. Pulling those penalties back from the retained Pro `340 / 260` values toward fast/normal or bare defaults leaves the current-Normal wall completely flat.
+- Next hypothesis after that kill: stop spending on broad interview-soft handoff/roundtrip penalty retunes without a family-specific proof path first. If these soft penalties are revisited, require a retained loss-surface diagnosis that already isolates one handoff or roundtrip family before touching the numeric surface again.

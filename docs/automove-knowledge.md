@@ -812,3 +812,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
   - `220 / 6`: `3/4`, `0.7500`, `0.6875`, `204.58ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `212.89ms` vs current Normal
   - `180 / 6`: `3/4`, `0.7500`, `0.6875`, `204.42ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `212.79ms` vs current Normal
 - The durable rule is tighter again. Lowering the live anti-help margin and reply limit toward fast-core or default values is not a hidden retained-gate lever either. The current-Normal wall stays completely flat, so broad anti-help numeric retunes should stay parked unless a retained loss-surface diagnosis first isolates one handoff or roundtrip family that actually depends on the anti-help filter.
+- I then screened the next unswept active interview-soft numeric surface on 2026-04-05: handoff and roundtrip penalties. To make that possible without runtime edits, I kept two new candidate-side override knobs in the retained reliability harness:
+  - `SMART_PROBE_FORCE_INTERVIEW_SOFT_MANA_HANDOFF_PENALTY`
+  - `SMART_PROBE_FORCE_INTERVIEW_SOFT_ROUNDTRIP_PENALTY`
+- This is a genuinely live surface on the retained Pro path. `runtime_pro_turn_engine_v30` keeps `enable_interview_soft_root_priors=true`, and the retained Pro runtime carries stronger soft penalties than both the fast/normal block and the bare defaults:
+  - retained Pro: `mana_handoff_penalty=340`, `roundtrip_penalty=260`
+  - retained fast/normal block: `280 / 220`
+  - bare defaults: `220 / 140`
+- Those values feed directly into `interview_root_soft_priority(...)`, where mana handoffs and roundtrips are penalized before the final root tie-break.
+- I screened the two grounded lowered-penalty bundles directly on the retained cheap `1x2x96` gate with shipping Pro pinned to `runtime_current`:
+  - fast/normal-like penalties: `mana_handoff_penalty=280`, `roundtrip_penalty=220`
+  - bare-default penalties: `mana_handoff_penalty=220`, `roundtrip_penalty=140`
+- Both were dead on the only live wall:
+  - `280 / 220`: `3/4`, `0.7500`, `0.6875`, `200.03ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `209.53ms` vs current Normal
+  - `220 / 140`: `3/4`, `0.7500`, `0.6875`, `200.21ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `210.11ms` vs current Normal
+- The durable rule is tighter again. Broad interview-soft handoff/roundtrip penalty lowering is not a hidden retained-gate lever either. Pulling those penalties back from the retained Pro values toward fast/normal or bare defaults leaves the current-Normal wall flat, so these soft-penalty numerics should stay parked unless a retained loss-surface diagnosis first isolates one handoff or roundtrip family that actually depends on them.
