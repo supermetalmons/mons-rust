@@ -842,3 +842,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
   - `340 / 260`: `3/4`, `0.7500`, `0.6875`, `201.12ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `210.06ms` vs current Normal
   - `220 / 260`: `3/4`, `0.7500`, `0.6875`, `200.87ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `209.26ms` vs current Normal
 - The durable rule is tighter again. Broad potion-spend penalty retunes are not a hidden retained-gate lever either. Restoring the normal-depth penalty to the default or reverting to the fast/normal-style pair leaves the current-Normal wall flat, so potion penalty numerics should stay parked unless a retained loss-surface diagnosis first isolates one uncompensated potion-spend family that actually depends on them.
+- I then checked the narrowest unscreened part of the old classical-ordering bundle on 2026-04-05: `enable_walk_threat_prefilter` by itself.
+- This closed an important loophole. The broader `walk_threat_prefilter + killer + history + PVS` bundle had been the strongest broad current-Normal lift screened so far before failing the widened gate, but I had not yet tested whether `walk_threat_prefilter` alone was carrying any of that movement.
+- I screened exactly that one-flag variant directly on the retained cheap `1x2x96` gate with shipping Pro pinned to `runtime_current`, using only `SMART_PROBE_FORCE_WALK_THREAT_PREFILTER=true`.
+- It was dead on the only live wall:
+  - `3/4`, `0.7500`, `0.6875`, `214.92ms` vs current Pro
+  - `2/4`, `0.5000`, `0.0000`, `212.51ms` vs current Normal
+- The durable rule is tighter again. The earlier classical-ordering lift is not hiding inside `walk_threat_prefilter` alone. If that bundle is ever revisited, do not start from this flag in isolation; require a narrower coupled ordering diagnosis first.
