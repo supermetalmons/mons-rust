@@ -1148,3 +1148,11 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - That pair was the same story: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=201.42`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=207.99`.
   - Useful lesson: neither broad exact/static disable nor the complementary exact-lite pair is a hidden retained-gate lever. Do not reopen the broad exact-evaluation family without a much tighter family-specific proof path first.
 - Next hypothesis after that kill: stop spending on broad exact-evaluation toggles too. If another Pro line is attempted, it needs either a genuinely different in-path mechanism or a family-specific diagnosis that proves where exact/static evaluation is misfiring before code changes.
+- Kill result from 2026-04-05: the broad root-stage preference pair is flat on the retained cheap gate too.
+  - I kept two new candidate-side override knobs in the retained reliability harness:
+    - `SMART_PROBE_FORCE_ROOT_DRAINER_SAFETY_PREFILTER`
+    - `SMART_PROBE_FORCE_ROOT_SPIRIT_DEVELOPMENT_PREF`
+  - I screened the coherent live pair directly on the retained `1x2x96` duel slice with shipping Pro pinned to `runtime_current`: `root_drainer_safety_prefilter=false` and `root_spirit_development_pref=false`.
+  - It was flat on the only live wall. The pair finished at `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=191.53`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=174.45`.
+  - Useful lesson: the broad root drainer-safety / spirit-development preference pair is not a hidden retained-gate lever either. It only trims move time slightly while staying completely flat on the current-Normal wall. Do not reopen this broad root-preference family without a much tighter family-specific proof path first.
+- Next hypothesis after that kill: stop spending on broad root-preference toggles too. If another Pro line is attempted, it needs a genuinely different in-path mechanism or a family-specific diagnosis, not another root-stage preference retune.

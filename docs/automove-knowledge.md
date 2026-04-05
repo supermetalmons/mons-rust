@@ -655,3 +655,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - I then screened the complementary exact-lite pair on the same retained cheap gate: `exact_lite_progress_checks=true` and `exact_lite_spirit_window_checks=true`.
 - That pair was equally flat: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=201.42`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=207.99`.
 - The durable rule is tighter again. Broad exact/static disable and the complementary exact-lite pair are both dead on the retained cheap gate. Do not reopen the broad exact-evaluation family without a much tighter family-specific proof path first.
+- I then screened the next unswept live retained family on 2026-04-05: root-stage preference filters, not another exact-evaluation retune.
+- To do that cleanly, I kept two new candidate-side override knobs in the retained `smart_automove_pro_reliability_candidate_override_probe` harness:
+  - `SMART_PROBE_FORCE_ROOT_DRAINER_SAFETY_PREFILTER`
+  - `SMART_PROBE_FORCE_ROOT_SPIRIT_DEVELOPMENT_PREF`
+- I screened the coherent live pair directly on the retained `1x2x96` duel slice with shipping Pro pinned to `runtime_current`: `root_drainer_safety_prefilter=false` and `root_spirit_development_pref=false`.
+- It was flat on the only live wall. The pair finished at `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=191.53`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=174.45`.
+- The durable rule is tighter again. Broad root drainer-safety / spirit-development preference disable is not a hidden retained-gate lever either. It only trims move time slightly while staying completely flat on the current-Normal wall. Do not reopen the broad root-preference family without a much tighter family-specific proof path first.
