@@ -1386,3 +1386,17 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - The `4000 / 1700` bundle was the same story: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=201.41`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=208.98`.
   - Useful lesson: the live retained-Pro root drainer-safety / efficiency numerics are not a hidden retained-gate lever in the lowering direction either. Pulling that pair back toward the nearby retained blocks leaves the current-Normal wall completely flat.
 - Next hypothesis after that kill: stop spending on broad root drainer-safety / efficiency retunes without a family-specific proof path first. If this root-safety pair is revisited again, require a retained loss-surface diagnosis that already isolates one drainer-safety or efficiency family before touching the numeric surface.
+- Kill result from 2026-04-05: the grounded reply-risk rollback bundles are flat on the cheap retained gate too.
+  - I reused the retained reply-risk override knobs in the reliability harness so the full live quartet could be screened as coherent grounded bundles instead of more singleton nudges:
+    - `SMART_PROBE_FORCE_REPLY_MARGIN`
+    - `SMART_PROBE_FORCE_SHORTLIST_MAX`
+    - `SMART_PROBE_FORCE_REPLY_LIMIT`
+    - `SMART_PROBE_FORCE_REPLY_SHARE_BP`
+  - This is a genuinely live retained-Pro surface. `runtime_pro_turn_engine_v30` currently keeps `root_reply_risk_score_margin=165`, `root_reply_risk_shortlist_max=9`, `root_reply_risk_reply_limit=24`, and `root_reply_risk_node_share_bp=2000`, while nearby retained blocks already define two grounded lower alternatives:
+    - near-Pro predecessor: `145 / 7 / 16 / 1350`
+    - fast/normal-style quartet: `125 / 4 / 10 / 650`
+  - I screened both bundles directly on the retained `1x2x96` duel slice with shipping Pro pinned to `runtime_current`.
+  - The `145 / 7 / 16 / 1350` bundle was dead on the only live wall: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=207.81`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=214.17`.
+  - The `125 / 4 / 10 / 650` bundle was also dead: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=198.34`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=169.44`.
+  - Useful lesson: the live retained-Pro reply-risk quartet is not a hidden retained-gate lever in the lowering direction either. Pulling the whole quartet back toward the nearby retained blocks can buy speed, but it still leaves the current-Normal wall completely flat.
+- Next hypothesis after that kill: stop spending on broad reply-risk quartet rollbacks without a family-specific proof path first. If reply risk is revisited again, require a retained loss-surface diagnosis that already isolates one shortlist or reply-floor family before touching the live quartet again.
