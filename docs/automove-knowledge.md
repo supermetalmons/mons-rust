@@ -933,3 +933,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
   - `3/4`, `0.7500`, `0.6875`, `218.99ms` vs current Pro
   - `2/4`, `0.5000`, `0.0000`, `211.30ms` vs current Normal
 - The durable rule is tighter again. Event ordering is not a hidden retained-gate lever in either direction. The earlier `false` screen should be treated as no-op history only, and the actual meaningful direction, `true`, still leaves the current-Normal wall flat while costing time. Do not reopen event ordering without a retained loss-surface diagnosis that already isolates one ordering-sensitive family.
+- I then corrected another older interview-policy bookkeeping mistake on 2026-04-05. Retained Pro already keeps `enable_interview_deterministic_tiebreak=false`, so the old `SMART_PROBE_FORCE_DETERMINISTIC_TIEBREAK=false` note was only a no-op screen, not a real test of the live direction.
+- I screened the only meaningful direction directly on the retained cheap `1x2x96` gate with shipping Pro pinned to `runtime_current`, using `SMART_PROBE_FORCE_DETERMINISTIC_TIEBREAK=true`.
+- It was dead on the only live wall and slower:
+  - `3/4`, `0.7500`, `0.6875`, `220.25ms` vs current Pro
+  - `2/4`, `0.5000`, `0.0000`, `211.21ms` vs current Normal
+- The durable rule is tighter again. Deterministic tiebreak is not a hidden retained-gate lever in either direction. The earlier `false` screen should be treated as no-op history only, and the actual meaningful direction, `true`, still leaves the current-Normal wall flat while costing time. Do not reopen deterministic tiebreak without a retained loss-surface diagnosis that already isolates one tie-break-sensitive family.
