@@ -6310,6 +6310,309 @@ fn smart_automove_pro_reliability_shared_handoff_probe_vs_current() {
 }
 
 #[test]
+#[ignore = "diagnostic: mine real vs-current-Normal losses by reduced exact-family key and shipping-Pro relation"]
+fn smart_automove_pro_reliability_vs_normal_exact_family_probe() {
+    #[derive(Default)]
+    struct ExactFamilyStats {
+        exacts: usize,
+        internal_exacts: usize,
+        wrapper_owned_exacts: usize,
+        pro_matches_candidate: usize,
+        pro_matches_baseline: usize,
+        pro_matches_neither: usize,
+        direct_matches_baseline: usize,
+        unique_fens: std::collections::BTreeSet<String>,
+        samples: Vec<String>,
+    }
+
+    fn handoff_stage_for_trace(
+        trace: &ReliabilityLossProbeTrace,
+        selection_probe: Option<&crate::models::mons_game_model::RootSelectionProbe>,
+        search_probe: Option<&crate::models::mons_game_model::RootSearchProbe>,
+        acceptance_probe: Option<&crate::models::mons_game_model::TurnEngineAcceptanceProbe>,
+    ) -> String {
+        let baseline_move = trace.baseline.move_fen.as_str();
+        let profile_move = trace.candidate.move_fen.as_str();
+        let selection_final = selection_probe
+            .as_ref()
+            .map(|probe| probe.final_selected_move_fen.as_str());
+        let search_final = search_probe
+            .as_ref()
+            .map(|probe| probe.final_selected_move_fen.as_str());
+        let acceptance_selected = acceptance_probe
+            .as_ref()
+            .map(|probe| Input::fen_from_array(&probe.selected_inputs));
+        let acceptance_selected = acceptance_selected.as_deref();
+        let acceptance_candidate = acceptance_probe
+            .as_ref()
+            .map(|probe| Input::fen_from_array(&probe.candidate_inputs));
+        let acceptance_candidate = acceptance_candidate.as_deref();
+        let accepted = acceptance_probe.as_ref().map(|probe| probe.accepted);
+
+        if trace.candidate.selector_last_stage == "engine_cached_resume" {
+            return "cached_resume_handoff".to_string();
+        }
+        if selection_final != Some(baseline_move) {
+            return "root_selection_miss".to_string();
+        }
+        if search_final != Some(baseline_move) {
+            return "root_search_miss".to_string();
+        }
+
+        match (acceptance_selected, acceptance_candidate, accepted) {
+            (Some(selected), Some(candidate), Some(true))
+                if selected == profile_move && candidate == profile_move =>
+            {
+                "selected_override_injection".to_string()
+            }
+            (Some(selected), Some(candidate), Some(true))
+                if selected == baseline_move && candidate == profile_move =>
+            {
+                "acceptance_override".to_string()
+            }
+            (Some(selected), Some(_candidate), Some(false)) if selected == baseline_move => {
+                "candidate_rejected_after_search".to_string()
+            }
+            (Some(selected), _, _) if selected == baseline_move => "selected_root_kept".to_string(),
+            (Some(selected), _, _) if selected != baseline_move => {
+                "post_search_selected_root_replaced".to_string()
+            }
+            _ => "post_search_handoff_unknown".to_string(),
+        }
+    }
+
+    let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
+        .unwrap_or_else(|| "runtime_pro_turn_engine_v30".into());
+    let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_current".into());
+    let shipping_pro_profile = env_profile_name("SMART_PROBE_SHIPPING_PRO_PROFILE")
+        .unwrap_or_else(|| baseline_profile.clone());
+    let repeats = env_usize("SMART_PRO_RELIABILITY_REPEATS")
+        .unwrap_or(3)
+        .max(1);
+    let games_per_repeat = env_usize("SMART_PRO_RELIABILITY_GAMES").unwrap_or(2).max(1);
+    let max_plies = env_usize("SMART_PRO_RELIABILITY_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let trace_limit = env_usize("SMART_PROBE_TRACE_LIMIT").unwrap_or(4).max(1);
+    let include_acceptance = env_bool("SMART_PROBE_INCLUDE_ACCEPTANCE").unwrap_or(true);
+    let sample_limit = env_usize("SMART_PROBE_SHARED_SURFACE_SAMPLE_LIMIT")
+        .unwrap_or(2)
+        .max(1);
+    let reliability_seed_tag = env_profile_name("SMART_PRO_RELIABILITY_SEED_TAG")
+        .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
+    let seed_tag_normal = format!("{}_vs_normal", reliability_seed_tag);
+    let budget_pro = SearchBudget::from_preference(SmartAutomovePreference::Pro);
+    let budget_normal = SearchBudget::from_preference(SmartAutomovePreference::Normal);
+    let mut total_games = 0usize;
+    let mut loss_games = 0usize;
+    let mut family_stats = std::collections::BTreeMap::<String, ExactFamilyStats>::new();
+
+    eprintln!(
+        "pro reliability vs-normal exact-family probe config: candidate_profile={} baseline_profile={} shipping_pro_profile={} seed_tag={} repeats={} games_per_repeat={} max_plies={} trace_limit={} include_acceptance={} sample_limit={}",
+        candidate_profile,
+        baseline_profile,
+        shipping_pro_profile,
+        seed_tag_normal,
+        repeats,
+        games_per_repeat,
+        max_plies,
+        trace_limit,
+        include_acceptance,
+        sample_limit,
+    );
+
+    for repeat_index in 0..repeats {
+        let seed = seed_for_budget_duel_repeat_and_tag(
+            budget_pro,
+            budget_normal,
+            repeat_index,
+            seed_tag_normal.as_str(),
+        );
+        let opening_fens = generate_opening_fens_cached(seed, games_per_repeat);
+
+        for (opening_index, opening_fen) in opening_fens.iter().enumerate() {
+            let candidate_white_ab = opening_index % 2 == 0;
+            for (mirror, candidate_is_white) in [("ab", candidate_white_ab), ("ba", !candidate_white_ab)] {
+                total_games += 1;
+                let (result, traces) = replay_pro_reliability_loss_probe_game_with_options(
+                    candidate_profile.as_str(),
+                    baseline_profile.as_str(),
+                    opening_fen.as_str(),
+                    candidate_is_white,
+                    max_plies,
+                    trace_limit,
+                    include_acceptance,
+                );
+                if result != MatchResult::OpponentWin {
+                    continue;
+                }
+                loss_games += 1;
+
+                for trace in &traces {
+                    let game = MonsGame::from_fen(trace.fen.as_str(), false)
+                        .expect("vs-normal exact-family probe fen should be valid");
+                    let direct = loss_probe_direct_runtime_decision_with_options(
+                        candidate_profile.as_str(),
+                        SmartAutomovePreference::Pro,
+                        &game,
+                        include_acceptance,
+                    );
+                    let config = loss_probe_runtime_config(
+                        candidate_profile.as_str(),
+                        &game,
+                        SmartAutomovePreference::Pro,
+                    );
+                    let shipping_pro = loss_probe_decision_with_options(
+                        shipping_pro_profile.as_str(),
+                        SmartAutomovePreference::Pro,
+                        &game,
+                        include_acceptance,
+                    );
+                    let wrapper_owned = direct.move_fen != trace.candidate.move_fen;
+                    let selection_probe =
+                        MonsGameModel::root_selection_probe_for_test(&game, config);
+                    let search_probe = MonsGameModel::root_search_probe_for_test(&game, config);
+                    let acceptance_probe =
+                        MonsGameModel::turn_engine_acceptance_probe_for_test(&game, config);
+                    let handoff_stage = handoff_stage_for_trace(
+                        trace,
+                        selection_probe.as_ref(),
+                        search_probe.as_ref(),
+                        acceptance_probe.as_ref(),
+                    );
+                    let turn_status = trace
+                        .candidate
+                        .turn_engine
+                        .as_ref()
+                        .map(|engine| format!("{:?}", engine.status))
+                        .unwrap_or_else(|| "None".to_string());
+                    let candidate_family = trace
+                        .candidate
+                        .turn_engine
+                        .as_ref()
+                        .and_then(|engine| engine.candidate_family)
+                        .map(|family| format!("{:?}", family))
+                        .unwrap_or_else(|| "None".to_string());
+                    let head_selected = trace
+                        .candidate
+                        .turn_engine
+                        .as_ref()
+                        .and_then(|engine| engine.candidate_move_fen.as_ref())
+                        .map(|move_fen| move_fen == &trace.candidate.move_fen);
+                    let accepted_after_search = trace
+                        .candidate
+                        .turn_engine
+                        .as_ref()
+                        .and_then(|engine| engine.accepted_after_search);
+                    let shipping_pro_relation = if shipping_pro.move_fen == trace.candidate.move_fen {
+                        "pro_matches_candidate"
+                    } else if shipping_pro.move_fen == trace.baseline.move_fen {
+                        "pro_matches_baseline"
+                    } else {
+                        "pro_matches_neither"
+                    };
+                    let move_len = trace.candidate.inputs.len();
+                    let family_key = format!(
+                        "profile_stage={} direct_stage={} handoff_stage={} turn_status={} candidate_family={} active_color={:?} can_action={} can_move_mana={} move_len={} wrapper_owned={} shipping_pro_relation={} head_selected={:?} accepted_after_search={:?}",
+                        trace.candidate.selector_last_stage,
+                        direct.selector_last_stage,
+                        handoff_stage,
+                        turn_status,
+                        candidate_family,
+                        game.active_color,
+                        game.player_can_use_action(),
+                        game.player_can_move_mana(),
+                        move_len,
+                        wrapper_owned,
+                        shipping_pro_relation,
+                        head_selected,
+                        accepted_after_search,
+                    );
+
+                    let entry = family_stats.entry(family_key).or_default();
+                    entry.exacts += 1;
+                    if wrapper_owned {
+                        entry.wrapper_owned_exacts += 1;
+                    } else {
+                        entry.internal_exacts += 1;
+                    }
+                    if direct.move_fen == trace.baseline.move_fen {
+                        entry.direct_matches_baseline += 1;
+                    }
+                    match shipping_pro_relation {
+                        "pro_matches_candidate" => entry.pro_matches_candidate += 1,
+                        "pro_matches_baseline" => entry.pro_matches_baseline += 1,
+                        _ => entry.pro_matches_neither += 1,
+                    }
+                    entry.unique_fens.insert(trace.fen.clone());
+                    if entry.samples.len() < sample_limit {
+                        entry.samples.push(format!(
+                            "repeat={} opening_index={} mirror={} ply={} fen={} candidate_move={} baseline_move={} direct_move={} shipping_pro_move={} wrapper_owned={} head_selected={:?} accepted_after_search={:?}",
+                            repeat_index,
+                            opening_index,
+                            mirror,
+                            trace.ply,
+                            trace.fen,
+                            trace.candidate.move_fen,
+                            trace.baseline.move_fen,
+                            direct.move_fen,
+                            shipping_pro.move_fen,
+                            wrapper_owned,
+                            head_selected,
+                            accepted_after_search,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    let mut repeated_families = 0usize;
+    let mut repeated_internal_families = 0usize;
+    let mut repeated_internal_non_pro_owned_families = 0usize;
+
+    for (family_key, stats) in &family_stats {
+        if stats.exacts > 1 {
+            repeated_families += 1;
+            if stats.internal_exacts > 0 {
+                repeated_internal_families += 1;
+            }
+            if stats.internal_exacts > 0 && stats.pro_matches_candidate == 0 {
+                repeated_internal_non_pro_owned_families += 1;
+            }
+        }
+        eprintln!(
+            "RELIABILITY_VS_NORMAL_EXACT_FAMILY count={} internal={} wrapper={} pro_matches=[candidate:{} baseline:{} neither:{}] direct_matches_baseline={} unique_fens={} {}",
+            stats.exacts,
+            stats.internal_exacts,
+            stats.wrapper_owned_exacts,
+            stats.pro_matches_candidate,
+            stats.pro_matches_baseline,
+            stats.pro_matches_neither,
+            stats.direct_matches_baseline,
+            stats.unique_fens.len(),
+            family_key,
+        );
+        for sample in &stats.samples {
+            eprintln!("  RELIABILITY_VS_NORMAL_EXACT_FAMILY_SAMPLE {}", sample);
+        }
+    }
+
+    eprintln!(
+        "pro reliability vs-normal exact-family probe summary: total_games={} loss_games={} family_count={} repeated_families={} repeated_internal_families={} repeated_internal_non_pro_owned_families={}",
+        total_games,
+        loss_games,
+        family_stats.len(),
+        repeated_families,
+        repeated_internal_families,
+        repeated_internal_non_pro_owned_families,
+    );
+
+    assert!(total_games > 0, "vs-normal exact-family probe found no games");
+}
+
+#[test]
 #[ignore = "diagnostic: compare default challenger vs candidate-side override on the retained pro-reliability slice"]
 fn smart_automove_pro_reliability_override_delta_probe() {
     #[derive(Default)]
