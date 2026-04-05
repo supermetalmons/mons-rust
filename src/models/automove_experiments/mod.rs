@@ -12,25 +12,11 @@ use std::time::Instant;
 type AutomoveSelector = fn(&MonsGame, SmartSearchConfig) -> Vec<Input>;
 
 const CURATED_POOL_SIZE: usize = 5;
-const MAX_GAME_PLIES: usize = 320;
 const OPENING_RANDOM_PLIES_MAX: usize = 6;
-const MIN_CONFIDENCE_TO_PROMOTE: f64 = 0.75;
-const MIN_OPPONENTS_BEAT_TO_PROMOTE: usize = 4;
 const LEGACY_NORMAL_MAX_VISITED_NODES: i32 = 2300;
-const SMART_BUDGET_CONVERSION_REGRESSION_TOLERANCE: f64 = 0.04;
-const SMART_REDUCED_NON_REGRESSION_DELTA_MIN: f64 = -0.03;
-const SMART_REDUCED_IMPROVEMENT_DELTA_MIN_FAST: f64 = 0.02;
-const SMART_REDUCED_IMPROVEMENT_DELTA_MIN_NORMAL: f64 = 0.06;
-const SMART_REDUCED_IMPROVEMENT_CONFIDENCE_MIN: f64 = 0.60;
-const SMART_PRO_FAST_SCREEN_DELTA_MIN: f64 = 0.0;
-const SMART_PRO_PROGRESSIVE_MEANINGFUL_DELTA_MIN: f64 = 0.04;
-const SMART_PRO_PROGRESSIVE_MEANINGFUL_CONFIDENCE_MIN: f64 = 0.65;
 pub(super) const SMART_PRO_RELIABILITY_WIN_RATE_MIN: f64 = 0.90;
 pub(super) const SMART_PRO_RELIABILITY_CONFIDENCE_MIN: f64 = 0.99;
 pub(super) const SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX: f64 = 700.0;
-const SMART_PRO_PRIMARY_IMPROVEMENT_DELTA_MIN_VS_NORMAL: f64 = 0.08;
-const SMART_PRO_PRIMARY_IMPROVEMENT_DELTA_MIN_VS_FAST: f64 = 0.08;
-const SMART_PRO_PRIMARY_IMPROVEMENT_CONFIDENCE_MIN: f64 = 0.90;
 // Stronger pro candidates may also be cheaper than the current runtime; keep a
 // floor that preserves a meaningful pro budget without blocking genuinely stronger
 // but cheaper search configurations (e.g. breadth-over-depth wins).
@@ -210,30 +196,19 @@ struct OpponentEvaluation {
 
 #[derive(Debug)]
 struct ModeEvaluation {
-    budget: SearchBudget,
-    aggregate_stats: MatchupStats,
     opponents: Vec<OpponentEvaluation>,
 }
 
 #[derive(Debug)]
 struct CandidateEvaluation {
     games_per_matchup: usize,
-    beaten_opponents: usize,
-    aggregate_stats: MatchupStats,
     opponents: Vec<OpponentEvaluation>,
-    mode_results: Vec<ModeEvaluation>,
 }
 
 #[derive(Clone, Copy)]
 struct ModeSpeedStat {
     budget: SearchBudget,
     avg_ms: f64,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct BudgetConversionDiagnostic {
-    fast_win_rate: f64,
-    normal_edge: f64,
 }
 
 mod harness;
