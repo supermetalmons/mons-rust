@@ -756,3 +756,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
   - `SafeSupermanaProgress -> SafeSupermanaProgress`: `count=3`, split `0 / 1 / 2`
   - `SpiritImpact -> SpiritImpact`, `accepted false -> false`: singleton `1 / 0 / 0`
 - The durable rule is tighter again. Even after following the backlog’s “direct retained-loss diagnosis” rule, the core child-analysis bundle still resolves to broad mixed late `engine_post_search` churn, not one branchable child-ordering family. Do not reopen this bundle as a runtime branch from the widened current-Normal surface. If child ordering is revisited again, it needs a prequalified single exact-family slice inside the real widened loss surface first.
+- I then moved to a genuinely different in-path mechanism on 2026-04-05: selective-extension cap tuning via the retained `SMART_PROBE_FORCE_MAX_EXTENSIONS_PER_PATH` override.
+- This was a live surface, not a dormant margin. The retained Pro challenger already uses `max_extensions_per_path=1`, so the first useful screens were higher caps.
+- On the retained cheap `1x2x96` gate with shipping Pro pinned to `runtime_current`, both `max_extensions_per_path=2` and `max_extensions_per_path=3` were real. Each finished at `3/4` vs current Pro and `3/4` vs current Normal, but move time was already poor:
+  - `max_extensions_per_path=2`: `candidate_avg_ms=310.52` vs current Pro and `350.24` vs current Normal
+  - `max_extensions_per_path=3`: `candidate_avg_ms=321.35` vs current Pro and `348.13` vs current Normal
+- I widened the cheaper live cap, `max_extensions_per_path=2`, to the retained `3x2x96` gate before considering any runtime edit. The widened result stayed real but still missed promotion badly: `9/12`, `0.7500`, `0.9270`, `278.71ms` vs current Pro, and `10/12`, `0.8333`, `0.9807`, `400.68ms` vs current Normal.
+- I then tried to narrow that widened current-Normal lift with the retained `smart_automove_pro_reliability_override_delta_probe`, still without touching runtime code. A bounded `300s` run did not reach the summary line before termination, but the traced changed exacts were already mixed across several families:
+  - `ManaTempo`
+  - `DrainerSafetyRecovery`
+  - `SafeOpponentManaProgress`
+  - `SafeSupermanaProgress`
+  - `SpiritImpact`
+  - `ImmediateScore`
+  - `None`
+- The durable rule is tighter again. Raising the selective-extension cap is a real live in-path lever and one of the stronger broad current-Normal lifts in the current backlog, but it is still not promotable and it inflates move time badly. The first widening-era narrowing attempt also did not expose a clean family quickly enough; even the traced widened deltas were mixed before the bounded probe timed out. Do not reopen broad selective-extension-cap tuning as a runtime branch. If selective extensions are revisited again, first prequalify a narrower exact-family slice or a bounded smaller corpus.
