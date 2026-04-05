@@ -782,3 +782,15 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
   - `1 / 1`: `2/4`, `0.5000`, `0.0000`, `205.72ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `204.48ms` vs current Normal
   - `2 / 1`: `2/4`, `0.5000`, `0.0000`, `214.21ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `205.40ms` vs current Normal
 - The durable rule is tighter again. The “earlier exact-lite screen may have been a no-op” loophole is now closed. Once exact-lite is budgeted so it can actually run, it is still flat on the only live wall and slower than shipping Pro. Do not reopen exact-lite as a top-down lead.
+- I then screened the next unswept active numeric surface on 2026-04-05: interview-soft opponent-mana root-priority bonuses. To make that possible without runtime edits, I kept three new candidate-side override knobs in the retained reliability harness:
+  - `SMART_PROBE_FORCE_INTERVIEW_SOFT_SCORE_MARGIN`
+  - `SMART_PROBE_FORCE_INTERVIEW_SOFT_OPPONENT_MANA_PROGRESS_BONUS`
+  - `SMART_PROBE_FORCE_INTERVIEW_SOFT_OPPONENT_MANA_SCORE_BONUS`
+- This is a genuinely live surface on the retained Pro path. `runtime_pro_turn_engine_v30` keeps `enable_interview_soft_root_priors=true`, and `apply_pro_primary_profile(...)` explicitly boosts the two opponent-mana soft bonuses over the retained fast-core policy block. Those values feed directly into `interview_root_soft_priority(...)` and then into the final root tie-break inside `pick_root_move_with_exploration(...)`.
+- I screened the two grounded lowered-bonus bundles directly on the retained cheap `1x2x96` gate with shipping Pro pinned to `runtime_current`:
+  - normal-like opponent-mana bonuses: `progress_bonus=220`, `score_bonus=280`
+  - fast-core-like opponent-mana bonuses: `progress_bonus=200`, `score_bonus=310`
+- Both were dead on the only live wall:
+  - `220 / 280`: `3/4`, `0.7500`, `0.6875`, `197.04ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `205.40ms` vs current Normal
+  - `200 / 310`: `3/4`, `0.7500`, `0.6875`, `197.41ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `205.75ms` vs current Normal
+- The durable rule is tighter again. Lowering the live interview-soft opponent-mana bonuses toward normal-like or fast-core values is not a hidden retained-gate lever. The current-Normal wall stays completely flat, so broad interview-soft opponent-mana retunes should stay parked unless a retained loss-surface diagnosis first isolates one progress-family seam that actually depends on these numerics.

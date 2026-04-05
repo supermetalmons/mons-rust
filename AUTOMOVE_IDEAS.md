@@ -1272,3 +1272,15 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
     - `2 / 1`: `candidate_avg_ms=214.21` vs current Pro and `205.40` vs current Normal
   - Useful lesson: the “earlier exact-lite screen may have been a no-op” loophole is now closed. Once exact-lite is budgeted so it can actually run, it is still flat on the only live wall and slower than shipping Pro. Do not reopen exact-lite as a top-down lead.
 - Next hypothesis after that kill: stop spending on exact-lite budget tuning too. If another Pro line is attempted, it needs a genuinely different in-path mechanism or a direct exact-family diagnosis that already shows live movement before code, not another revisit of exact/static analysis knobs.
+- Kill result from 2026-04-05: lowering the live interview-soft opponent-mana bonuses is flat on the cheap retained gate.
+  - I kept three new candidate-side override knobs in the retained reliability harness so the active interview-soft root-priority numerics can be screened without runtime edits:
+    - `SMART_PROBE_FORCE_INTERVIEW_SOFT_SCORE_MARGIN`
+    - `SMART_PROBE_FORCE_INTERVIEW_SOFT_OPPONENT_MANA_PROGRESS_BONUS`
+    - `SMART_PROBE_FORCE_INTERVIEW_SOFT_OPPONENT_MANA_SCORE_BONUS`
+  - I screened the two grounded lowered-bonus bundles directly on the retained `1x2x96` duel slice with shipping Pro pinned to `runtime_current`:
+    - normal-like opponent-mana bonuses: `progress_bonus=220`, `score_bonus=280`
+    - fast-core-like opponent-mana bonuses: `progress_bonus=200`, `score_bonus=310`
+  - Both were dead on the only live wall. The normal-like bundle finished at `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=197.04`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=205.40`.
+  - The fast-core-like bundle was the same story: `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=197.41`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=205.75`.
+  - Useful lesson: the live interview-soft opponent-mana priority surface is not a hidden retained-gate lever in the lowering direction. Pulling those bonuses back toward normal-like or fast-core values leaves the current-Normal wall completely flat while only shaving a few milliseconds off the usual cheap-gate timing.
+- Next hypothesis after that kill: stop spending on broad interview-soft opponent-mana retunes without a family-specific proof path first. If interview soft priorities are revisited again, require a retained loss-surface diagnosis that already isolates one progress-family seam, not another top-down numeric sweep.
