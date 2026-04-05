@@ -927,3 +927,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
   - `145 / 7 / 16 / 1350`: `3/4`, `0.7500`, `0.6875`, `207.81ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `214.17ms` vs current Normal
   - `125 / 4 / 10 / 650`: `3/4`, `0.7500`, `0.6875`, `198.34ms` vs current Pro; `2/4`, `0.5000`, `0.0000`, `169.44ms` vs current Normal
 - The durable rule is tighter again. Broad lowering of the retained-Pro reply-risk quartet is not a hidden retained-gate lever either. Pulling the whole quartet back toward the nearby retained blocks can buy speed, but it still leaves the current-Normal wall completely flat, so this reply-risk surface should stay parked unless a retained loss-surface diagnosis first isolates one shortlist or reply-floor family that actually depends on it.
+- I then corrected an older event-ordering bookkeeping mistake on 2026-04-05. Retained Pro already keeps `enable_event_ordering_bonus=false`, so the old `SMART_PROBE_FORCE_EVENT_ORDERING=false` note was only a no-op screen, not a real test of the live direction.
+- I screened the only meaningful direction directly on the retained cheap `1x2x96` gate with shipping Pro pinned to `runtime_current`, using `SMART_PROBE_FORCE_EVENT_ORDERING=true`.
+- It was dead on the only live wall and slower:
+  - `3/4`, `0.7500`, `0.6875`, `218.99ms` vs current Pro
+  - `2/4`, `0.5000`, `0.0000`, `211.30ms` vs current Normal
+- The durable rule is tighter again. Event ordering is not a hidden retained-gate lever in either direction. The earlier `false` screen should be treated as no-op history only, and the actual meaningful direction, `true`, still leaves the current-Normal wall flat while costing time. Do not reopen event ordering without a retained loss-surface diagnosis that already isolates one ordering-sensitive family.
