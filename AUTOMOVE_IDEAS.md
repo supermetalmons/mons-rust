@@ -1072,6 +1072,18 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - The widened retained `3x2x96` gate still killed it. The same bundle finished at `vs current Pro: total_games=12, wins=9, losses=3, win_rate=0.7500, confidence=0.9270, candidate_avg_ms=176.01`, and `vs current Normal: total_games=12, wins=7, losses=5, win_rate=0.5833, confidence=0.6128, candidate_avg_ms=188.35`.
   - Useful lesson: the core child-analysis bundle is a real live mechanism on the retained v30 path and it preserves the Pro duel better than many earlier broad sweeps, but it still fails badly on the widened current-Normal gate. Do not reopen this broad child-eval/local-scoring/two-stage bundle as a promotion line without a tighter family-specific proof path first.
 - Next hypothesis after that kill: if child analysis is revisited, do not reopen the broad core bundle. Start from a narrower attack-reach / vulnerability reuse family or a direct exact-family diagnosis inside child ordering, not another coupled top-down enable sweep.
+- Kill result from 2026-04-05: the narrower child attack-reach / vulnerability-reuse family is even worse.
+  - I kept a second narrow child-analysis hook set in the retained reliability probes:
+    - `SMART_PROBE_FORCE_SCORING_ATTACK_REACH_SUMMARY`
+    - `SMART_PROBE_FORCE_SCORING_ATTACK_REACH_TARGET_NARROWING`
+    - `SMART_PROBE_FORCE_SCORING_DRAINER_ATTACK_REACH_TARGET_NARROWING`
+    - `SMART_PROBE_FORCE_CHILD_VULNERABILITY_SCORING_CTX_REUSE`
+    - `SMART_PROBE_FORCE_CHILD_VULNERABILITY_ATTACK_PLAUSIBILITY_SCREEN`
+  - I screened the narrower family directly on top of the child-eval substrate, but without reopening the two-stage shortlist path: `child_eval_bundle=true`, `local_scoring_eval_ctx=true`, the three attack-reach flags `true`, and both child-vulnerability reuse/plausibility flags `true`.
+  - The cheap retained `1x2x96` slice still looked superficially live, finishing at `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=218.95`, and `vs current Normal: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=254.31`.
+  - The widened retained `3x2x96` gate killed it harder than the broader core child-analysis bundle: `vs current Pro: total_games=12, wins=7, losses=5, win_rate=0.5833, confidence=0.6128, candidate_avg_ms=249.28`, and `vs current Normal: total_games=12, wins=8, losses=4, win_rate=0.6667, confidence=0.8062, candidate_avg_ms=284.64`.
+  - Useful lesson: the attack-reach / vulnerability-reuse child-scoring family is not the narrowing hidden inside the broader child-analysis lift. It is more Pro-hostile, slower, and still not close to the current-Normal gate. Do not reopen this family without direct exact-family evidence first.
+- Next hypothesis after that kill: stop spending on broad child-analysis enables entirely. If child ordering is revisited, it needs a direct exact-family diagnosis inside the retained loss surface, not another coupled scoring-context or vulnerability-reuse screen.
 - Kill result from 2026-04-05: the widened current-Normal side of the classical ordering bundle is also too mixed to narrow into one branch.
   - After the coupled `walk_threat_prefilter + killer + history + PVS` bundle reached the strongest broad current-Normal lift screened so far (`10/12`, `0.8333`, `0.9807`) while still failing current-Pro (`8/12`, `0.6667`, `0.8062`), I ran the retained `smart_automove_pro_reliability_override_delta_probe` against the widened current-Normal side before considering any runtime edit.
   - The widened current-Normal delta summary was still decisively mixed: `changed_exacts=30`, `changed_to_baseline=8`, `changed_away_from_baseline=10`, `changed_to_third=12`.
