@@ -630,3 +630,16 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - The in-path experiment was the narrowest wrapper reroute consistent with that evidence: in `runtime_pro_turn_engine_v30_guarded_inputs(...)`, black `turn=6`, `mons_moves=0`, action+mana states used `model_current_best(...)`. The branch was real. Both exact FENs flipped, `runtime_pro_turn_engine_v30_profile_` stayed green, `guardrails` passed, `pro-triage` passed with `target_changed=9` and `off_target_changed=0`, and `runtime-preflight` passed.
 - The real gate still killed it. `pro-reliability` finished at `vs current Pro: total_games=12, wins=11, losses=1, win_rate=0.9167, confidence=0.9968, candidate_avg_ms=96.95`, but `vs current Normal` got worse at `total_games=12, wins=5, losses=7, win_rate=0.4167, confidence=0.0000, candidate_avg_ms=98.33`.
 - The durable rule is tighter again. This later-black `turn=6` action+mana wrapper seam is real, but it is not promotable and it is not even neutral on the only live wall. Reopening the shipping-Pro/current-Normal line on those two exacts pushes the broader current-Normal duel farther away. Do not reopen simple later-black turn-six current-best wrapper reroutes as a default lead.
+- I then tested the only remaining direct follow-up inside that same repeated later-black slice on 2026-04-05: not another wrapper reroute, but the in-path `SpiritImpact` family itself.
+- To make that diagnosable without another speculative runtime branch, I kept one new probe helper in `MonsGameModel`:
+  - `spirit_competition_probe_for_test(...)`
+- I also kept one matching ignored harness:
+  - `smart_automove_spirit_competition_probe`
+- On the two traced `turn=6`, `mons_moves=0`, black, action+mana exacts from the repeated `repeat=1, opening=0, mirror=ba` current-Normal slice, the new probe showed a real shared filter surface but not a single shared end-to-end runtime seam.
+- Shared part first: both exacts widened the spirit-setup cluster through `safe_progress_competes=true`. Only the start exact also had `followup_progress_competes=true`.
+- I tested the obvious narrow repair in `filtered_root_candidate_indices(...)`: a turn-six black spirit-setup progress clamp. That was real but mixed. It fixed the start exact outright. On the followup exact it narrowed the filtered root set to the concrete spirit-setup trio and let root search land on the shared shipping-Pro/current-Normal root `l1,5;l2,7;l1,8`.
+- The followup exact still failed after that. `accept_turn_engine_head_after_search(...)` re-accepted plain `SpiritImpact` head `l1,5;l1,7;l0,7` over the searched concrete setup root, and two successive narrow acceptance guards did not close the branch.
+- The durable rule is tighter again. The repeated black turn-six action+mana `SpiritImpact` family is already split inside the runtime path:
+  - the start exact is a spirit-competition filter seam driven by `safe_progress_competes` plus `followup_progress_competes`;
+  - the followup exact becomes a later plain-spirit-over-concrete-setup acceptance seam once the filter is repaired.
+- Do not reopen this later-black family as one branchable lane. If it is revisited, treat filter competition and post-search acceptance as separate mechanisms from the start.

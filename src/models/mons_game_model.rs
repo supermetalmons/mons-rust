@@ -1658,6 +1658,22 @@ pub(crate) struct RootSearchProbe {
 #[cfg(test)]
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
+pub(crate) struct SpiritCompetitionProbe {
+    pub candidate_root_move_fens: Vec<String>,
+    pub spirit_setup_move_fens: Vec<String>,
+    pub filtered_root_move_fens: Vec<String>,
+    pub safe_progress_competes: bool,
+    pub followup_progress_competes: bool,
+    pub risky_score_competes: bool,
+    pub negative_deny_competes: bool,
+    pub score_competes: bool,
+    pub projection_competes: bool,
+    pub risky_recovery_competes: bool,
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
 pub(crate) struct ChildOrderingProbeEntry {
     pub input_fen: String,
     pub heuristic: i32,
@@ -8854,6 +8870,124 @@ impl MonsGameModel {
                 .collect(),
             reply_guard_selected_move_fen,
             final_selected_move_fen,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn spirit_competition_probe_for_test(
+        game: &MonsGame,
+        config: SmartSearchConfig,
+    ) -> Option<SpiritCompetitionProbe> {
+        let perspective = game.active_color;
+        let scored_roots = Self::ranked_root_moves(game, perspective, config)
+            .into_iter()
+            .map(|candidate| RootEvaluation {
+                root_rank: candidate.root_rank,
+                score: candidate.heuristic,
+                efficiency: candidate.efficiency,
+                inputs: candidate.inputs,
+                game: candidate.game,
+                wins_immediately: candidate.wins_immediately,
+                attacks_opponent_drainer: candidate.attacks_opponent_drainer,
+                own_drainer_vulnerable: candidate.own_drainer_vulnerable,
+                own_drainer_walk_vulnerable: candidate.own_drainer_walk_vulnerable,
+                spirit_development: candidate.spirit_development,
+                keeps_awake_spirit_on_base: candidate.keeps_awake_spirit_on_base,
+                mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
+                has_roundtrip: candidate.has_roundtrip,
+                scores_supermana_this_turn: candidate.scores_supermana_this_turn,
+                scores_opponent_mana_this_turn: candidate.scores_opponent_mana_this_turn,
+                safe_supermana_pickup_now: candidate.safe_supermana_pickup_now,
+                safe_opponent_mana_pickup_now: candidate.safe_opponent_mana_pickup_now,
+                safe_supermana_progress_steps: candidate.safe_supermana_progress_steps,
+                safe_opponent_mana_progress_steps: candidate.safe_opponent_mana_progress_steps,
+                score_path_best_steps: candidate.score_path_best_steps,
+                same_turn_score_window_value: candidate.same_turn_score_window_value,
+                spirit_setup_gain: candidate.spirit_setup_gain,
+                spirit_same_turn_score_setup_now: candidate.spirit_same_turn_score_setup_now,
+                spirit_own_mana_setup_now: candidate.spirit_own_mana_setup_now,
+                supermana_progress: candidate.supermana_progress,
+                opponent_mana_progress: candidate.opponent_mana_progress,
+                interview_soft_priority: candidate.interview_soft_priority,
+                classes: candidate.classes,
+            })
+            .collect::<Vec<_>>();
+        if scored_roots.is_empty() {
+            return None;
+        }
+
+        let candidate_indices = (0..scored_roots.len()).collect::<Vec<_>>();
+        let spirit_setup_indices = candidate_indices
+            .iter()
+            .copied()
+            .filter(|index| {
+                let root = &scored_roots[*index];
+                root.spirit_own_mana_setup_now
+                    && !root.own_drainer_vulnerable
+                    && !root.mana_handoff_to_opponent
+            })
+            .collect::<Vec<_>>();
+        let filtered_root_indices = Self::filtered_root_candidate_indices(
+            game,
+            scored_roots.as_slice(),
+            perspective,
+            config,
+        );
+
+        Some(SpiritCompetitionProbe {
+            candidate_root_move_fens: candidate_indices
+                .iter()
+                .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+                .collect(),
+            spirit_setup_move_fens: spirit_setup_indices
+                .iter()
+                .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+                .collect(),
+            filtered_root_move_fens: filtered_root_indices
+                .iter()
+                .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+                .collect(),
+            safe_progress_competes: Self::safe_progress_competes_with_spirit_pref(
+                scored_roots.as_slice(),
+                candidate_indices.as_slice(),
+                config.turn_engine_mode,
+            ),
+            followup_progress_competes: Self::followup_progress_competes_with_spirit_pref(
+                game,
+                scored_roots.as_slice(),
+                candidate_indices.as_slice(),
+                perspective,
+                config,
+            ),
+            risky_score_competes: Self::risky_score_competes_with_spirit_pref(
+                scored_roots.as_slice(),
+                candidate_indices.as_slice(),
+                config.turn_engine_mode,
+            ),
+            negative_deny_competes: Self::negative_deny_competes_with_spirit_pref(
+                scored_roots.as_slice(),
+                candidate_indices.as_slice(),
+                perspective,
+                config,
+            ),
+            score_competes: Self::score_competes_with_spirit_pref(
+                scored_roots.as_slice(),
+                candidate_indices.as_slice(),
+                config.turn_engine_mode,
+            ),
+            projection_competes: Self::projection_competes_with_spirit_pref(
+                scored_roots.as_slice(),
+                candidate_indices.as_slice(),
+                perspective,
+                config,
+            ),
+            risky_recovery_competes: Self::risky_recovery_competes_with_spirit_pref(
+                game,
+                scored_roots.as_slice(),
+                candidate_indices.as_slice(),
+                perspective,
+                config,
+            ),
         })
     }
 

@@ -9979,6 +9979,41 @@ fn smart_automove_ranked_root_moves_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: inspect spirit-competition gates via SMART_PROBE_FEN using loss-probe runtime config"]
+fn smart_automove_spirit_competition_probe() {
+    let fen = std::env::var("SMART_PROBE_FEN").expect("SMART_PROBE_FEN should be set");
+    let profile = std::env::var("SMART_PROBE_PROFILE")
+        .unwrap_or_else(|_| "runtime_pro_turn_engine_v30".to_string());
+    let preference = match std::env::var("SMART_PROBE_MODE")
+        .unwrap_or_else(|_| "pro".to_string())
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "fast" => SmartAutomovePreference::Fast,
+        "normal" => SmartAutomovePreference::Normal,
+        _ => SmartAutomovePreference::Pro,
+    };
+    let game = MonsGame::from_fen(fen.as_str(), false).expect("SMART_PROBE_FEN should be valid");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    let config =
+        probe_config_with_env_overrides(loss_probe_runtime_config(profile.as_str(), &game, preference));
+    let probe = MonsGameModel::spirit_competition_probe_for_test(&game, config)
+        .expect("probe should produce spirit competition data");
+
+    println!("probe_profile={profile} probe_mode={preference:?}");
+    println!(
+        "turn_state turn={} mons_moves={} can_action={} can_move_mana={}",
+        game.turn_number,
+        game.mons_moves_count,
+        game.player_can_use_action(),
+        game.player_can_move_mana(),
+    );
+    println!("spirit_competition_probe={probe:?}");
+}
+
+#[test]
 #[ignore = "diagnostic: inspect ranked child ordering after applying SMART_PROBE_ROOT_INPUT_FEN"]
 fn smart_automove_ranked_child_states_probe() {
     let fen = std::env::var("SMART_PROBE_FEN").expect("SMART_PROBE_FEN should be set");
