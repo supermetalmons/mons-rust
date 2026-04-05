@@ -697,3 +697,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - This one was real on the cheap retained gate. It finished at `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=223.15`, and `vs current Normal: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=316.67`.
 - The widened retained `3x2x96` gate still killed it. The same override finished at `vs current Pro: total_games=12, wins=9, losses=3, win_rate=0.7500, confidence=0.9270, candidate_avg_ms=232.21`, and `vs current Normal: total_games=12, wins=7, losses=5, win_rate=0.5833, confidence=0.6128, candidate_avg_ms=288.93`.
 - The durable rule is tighter again. The remaining drainer-attack softening family is not the promotion path either. Conditional forced attack does not move current Normal at all, and full-pool softening is just another cheap-gate false positive that still fails badly once widened. Do not reopen nuanced drainer-attack softening without a tighter family-specific proof path first.
+- I then moved off drainer attack again on 2026-04-05 and screened the remaining unswept challenger-only ProV2 beam/cap family instead of another whole-search retune.
+- To do that cleanly, I kept ten new candidate-side override knobs in the retained `smart_automove_pro_reliability_candidate_override_probe` harness:
+  - `SMART_PROBE_FORCE_TURN_ENGINE_SEED_CAP`
+  - `SMART_PROBE_FORCE_TURN_ENGINE_BEAM_WIDTH`
+  - `SMART_PROBE_FORCE_TURN_ENGINE_PER_NODE_FAMILY_CAP`
+  - `SMART_PROBE_FORCE_TURN_ENGINE_STEP_CAP`
+  - `SMART_PROBE_FORCE_TURN_ENGINE_OPPONENT_SEED_CAP`
+  - `SMART_PROBE_FORCE_TURN_ENGINE_OPPONENT_BEAM_WIDTH`
+  - `SMART_PROBE_FORCE_TURN_ENGINE_REPLY_SEED_CAP`
+  - `SMART_PROBE_FORCE_TURN_ENGINE_REPLY_BEAM_WIDTH`
+  - `SMART_PROBE_FORCE_TURN_ENGINE_EXPANSION_CAP`
+  - `SMART_PROBE_FORCE_TURN_ENGINE_ENABLE_SPIRIT_FAMILY`
+- I screened one coherent wider-ProV2 bundle directly on the retained `1x2x96` duel slice with shipping Pro pinned to `runtime_current`: `16 / 6 / 4 / 7 / 8 / 3 / 4 / 2 / 192` for the seed/beam/family/step/opponent/reply/expansion caps, plus `turn_engine_enable_spirit_family=true`.
+- The result was flat on the only live wall and clearly slower. It finished at `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=263.86`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=258.83`.
+- The durable rule is tighter again. Broad ProV2 turn-engine widening is not a hidden retained-gate lever either. It only inflates candidate move time while leaving current-Normal completely flat on the cheap gate, so this family does not earn a widened replay or a runtime branch.

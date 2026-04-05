@@ -691,6 +691,36 @@ fn probe_config_with_env_overrides(mut config: SmartSearchConfig) -> SmartSearch
     if let Some(value) = env_bool_value("SMART_PROBE_FORCE_LATE_SAFE_MANA_ROOT_PREFERENCE") {
         config.enable_turn_engine_late_safe_mana_root_preference = value;
     }
+    if let Some(value) = env_usize("SMART_PROBE_FORCE_TURN_ENGINE_SEED_CAP") {
+        config.turn_engine_seed_cap = value.max(1);
+    }
+    if let Some(value) = env_usize("SMART_PROBE_FORCE_TURN_ENGINE_BEAM_WIDTH") {
+        config.turn_engine_beam_width = value.max(1);
+    }
+    if let Some(value) = env_usize("SMART_PROBE_FORCE_TURN_ENGINE_PER_NODE_FAMILY_CAP") {
+        config.turn_engine_per_node_family_cap = value.max(1);
+    }
+    if let Some(value) = env_usize("SMART_PROBE_FORCE_TURN_ENGINE_STEP_CAP") {
+        config.turn_engine_step_cap = value.max(1);
+    }
+    if let Some(value) = env_usize("SMART_PROBE_FORCE_TURN_ENGINE_OPPONENT_SEED_CAP") {
+        config.turn_engine_opponent_seed_cap = value.max(1);
+    }
+    if let Some(value) = env_usize("SMART_PROBE_FORCE_TURN_ENGINE_OPPONENT_BEAM_WIDTH") {
+        config.turn_engine_opponent_beam_width = value.max(1);
+    }
+    if let Some(value) = env_usize("SMART_PROBE_FORCE_TURN_ENGINE_REPLY_SEED_CAP") {
+        config.turn_engine_reply_seed_cap = value.max(1);
+    }
+    if let Some(value) = env_usize("SMART_PROBE_FORCE_TURN_ENGINE_REPLY_BEAM_WIDTH") {
+        config.turn_engine_reply_beam_width = value.max(1);
+    }
+    if let Some(value) = env_usize("SMART_PROBE_FORCE_TURN_ENGINE_EXPANSION_CAP") {
+        config.turn_engine_expansion_cap = value.max(1);
+    }
+    if let Some(value) = env_bool_value("SMART_PROBE_FORCE_TURN_ENGINE_ENABLE_SPIRIT_FAMILY") {
+        config.turn_engine_enable_spirit_family = value;
+    }
     if let Some(nodes) = env_usize("SMART_PROBE_FORCE_MAX_NODES") {
         config.max_visited_nodes = nodes.max(1);
     }
@@ -7328,7 +7358,7 @@ fn smart_automove_pro_reliability_candidate_override_probe() {
     let mut normal_timing = DuelTimingStats::default();
 
     eprintln!(
-        "pro reliability candidate override probe config: candidate_profile={} baseline_profile={} seed_tag_pro={} seed_tag_normal={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} override_turn_planner_root_injection={:?} override_turn_planner_root_injection_limit={:?} override_turn_planner_root_max_gap={:?} override_turn_planner_root_emergency_only={:?} override_engine_disabled={:?} override_max_nodes={:?} override_root_limit={:?} override_enum_limit={:?} override_node_limit={:?} override_node_enum_limit={:?} override_secondary_analysis={:?} override_selected_followup_projection={:?} override_lazy_oracle_score_window_projection={:?} override_late_black_setup_progress_rescue={:?} override_supermana_prepass_exception={:?} override_opponent_mana_prepass_exception={:?} override_mana_start_mix_with_potion_actions={:?} override_potion_progress_compensation={:?} override_walk_threat_prefilter={:?} override_killer_move_ordering={:?} override_history_heuristic={:?} override_pvs={:?} override_targeted_exact_turn_summary_memo={:?} override_targeted_score_window_narrowing={:?} override_move_efficiency_tactical_narrowing={:?} override_futility={:?} override_futility_margin={:?} override_root_reply_risk_guard={:?} override_forced_tactical_prepass={:?} override_root_exact_tactics={:?} override_child_exact_tactics={:?} override_static_exact_evaluation={:?} override_exact_lite_progress_checks={:?} override_exact_lite_spirit_window_checks={:?} override_root_drainer_safety_prefilter={:?} override_root_spirit_development_pref={:?} override_child_eval_bundle={:?} override_local_scoring_eval_ctx={:?} override_scoring_attack_reach_summary={:?} override_scoring_attack_reach_target_narrowing={:?} override_scoring_drainer_attack_reach_target_narrowing={:?} override_child_vulnerability_scoring_ctx_reuse={:?} override_child_vulnerability_attack_plausibility_screen={:?} override_two_stage_child_ordering={:?} override_root_efficiency={:?} override_enhanced_drainer_vulnerability={:?} override_root_aspiration={:?} override_tt_best_child_ordering={:?} override_backtrack_penalty={:?} override_root_mana_handoff_guard={:?} override_forced_drainer_attack={:?} override_forced_drainer_attack_fallback={:?} override_targeted_drainer_attack_fallback={:?} override_per_mon_drainer_attack_fallback={:?} override_drainer_attack_priority_enum={:?} override_drainer_attack_priority_enum_boost={:?} override_drainer_attack_minimax_selection={:?} override_drainer_attack_full_pool={:?} override_conditional_forced_drainer_attack={:?} override_conditional_forced_attack_score_margin={:?} override_strict_anti_help_filter={:?} override_strict_tactical_class_coverage={:?} override_child_move_class_coverage={:?} override_move_class_coverage={:?} override_two_pass_root_allocation={:?} override_volatility_focus={:?} override_event_ordering={:?} override_selective_extensions={:?} override_focus_k={:?} override_focus_share_bp={:?} override_reply_limit={:?} override_reply_share_bp={:?} override_reply_margin={:?} override_drainer_margin={:?} override_efficiency_margin={:?} override_selective_extension_share_bp={:?} override_shortlist_max={:?} override_quiet_reductions={:?} override_quiet_reduction_depth={:?} override_normal_safety_rerank={:?} override_normal_safety_deep_floor={:?} override_clean_reply={:?} override_hard_spirit_deploy={:?} override_soft_root_priors={:?} override_deterministic_tiebreak={:?} override_quiescence={:?} override_quiescence_tactical_only={:?} override_quiescence_budget={:?} override_quiescence_enum_limit={:?} override_tt_depth_preferred_replacement={:?} override_iterative_deepening={:?} override_iterative_deepening_depth_offset={:?} override_iterative_deepening_alpha_margin={:?} override_low_budget_guard={:?} override_mid_turn_tactical_guard={:?} override_late_safe_mana_root_preference={:?}",
+        "pro reliability candidate override probe config: candidate_profile={} baseline_profile={} seed_tag_pro={} seed_tag_normal={} repeats={} games_per_repeat={} max_plies={} include_acceptance={} override_turn_planner_root_injection={:?} override_turn_planner_root_injection_limit={:?} override_turn_planner_root_max_gap={:?} override_turn_planner_root_emergency_only={:?} override_engine_disabled={:?} override_max_nodes={:?} override_root_limit={:?} override_enum_limit={:?} override_node_limit={:?} override_node_enum_limit={:?} override_secondary_analysis={:?} override_selected_followup_projection={:?} override_lazy_oracle_score_window_projection={:?} override_late_black_setup_progress_rescue={:?} override_supermana_prepass_exception={:?} override_opponent_mana_prepass_exception={:?} override_mana_start_mix_with_potion_actions={:?} override_potion_progress_compensation={:?} override_walk_threat_prefilter={:?} override_killer_move_ordering={:?} override_history_heuristic={:?} override_pvs={:?} override_targeted_exact_turn_summary_memo={:?} override_targeted_score_window_narrowing={:?} override_move_efficiency_tactical_narrowing={:?} override_futility={:?} override_futility_margin={:?} override_root_reply_risk_guard={:?} override_forced_tactical_prepass={:?} override_root_exact_tactics={:?} override_child_exact_tactics={:?} override_static_exact_evaluation={:?} override_exact_lite_progress_checks={:?} override_exact_lite_spirit_window_checks={:?} override_root_drainer_safety_prefilter={:?} override_root_spirit_development_pref={:?} override_child_eval_bundle={:?} override_local_scoring_eval_ctx={:?} override_scoring_attack_reach_summary={:?} override_scoring_attack_reach_target_narrowing={:?} override_scoring_drainer_attack_reach_target_narrowing={:?} override_child_vulnerability_scoring_ctx_reuse={:?} override_child_vulnerability_attack_plausibility_screen={:?} override_two_stage_child_ordering={:?} override_root_efficiency={:?} override_enhanced_drainer_vulnerability={:?} override_root_aspiration={:?} override_tt_best_child_ordering={:?} override_backtrack_penalty={:?} override_root_mana_handoff_guard={:?} override_forced_drainer_attack={:?} override_forced_drainer_attack_fallback={:?} override_targeted_drainer_attack_fallback={:?} override_per_mon_drainer_attack_fallback={:?} override_drainer_attack_priority_enum={:?} override_drainer_attack_priority_enum_boost={:?} override_drainer_attack_minimax_selection={:?} override_drainer_attack_full_pool={:?} override_conditional_forced_drainer_attack={:?} override_conditional_forced_attack_score_margin={:?} override_strict_anti_help_filter={:?} override_strict_tactical_class_coverage={:?} override_child_move_class_coverage={:?} override_move_class_coverage={:?} override_two_pass_root_allocation={:?} override_volatility_focus={:?} override_event_ordering={:?} override_selective_extensions={:?} override_focus_k={:?} override_focus_share_bp={:?} override_reply_limit={:?} override_reply_share_bp={:?} override_reply_margin={:?} override_drainer_margin={:?} override_efficiency_margin={:?} override_selective_extension_share_bp={:?} override_shortlist_max={:?} override_quiet_reductions={:?} override_quiet_reduction_depth={:?} override_normal_safety_rerank={:?} override_normal_safety_deep_floor={:?} override_clean_reply={:?} override_hard_spirit_deploy={:?} override_soft_root_priors={:?} override_deterministic_tiebreak={:?} override_quiescence={:?} override_quiescence_tactical_only={:?} override_quiescence_budget={:?} override_quiescence_enum_limit={:?} override_tt_depth_preferred_replacement={:?} override_iterative_deepening={:?} override_iterative_deepening_depth_offset={:?} override_iterative_deepening_alpha_margin={:?} override_low_budget_guard={:?} override_mid_turn_tactical_guard={:?} override_late_safe_mana_root_preference={:?} override_turn_engine_seed_cap={:?} override_turn_engine_beam_width={:?} override_turn_engine_per_node_family_cap={:?} override_turn_engine_step_cap={:?} override_turn_engine_opponent_seed_cap={:?} override_turn_engine_opponent_beam_width={:?} override_turn_engine_reply_seed_cap={:?} override_turn_engine_reply_beam_width={:?} override_turn_engine_expansion_cap={:?} override_turn_engine_enable_spirit_family={:?}",
         candidate_profile,
         baseline_profile,
         seed_tag_pro,
@@ -7433,6 +7463,16 @@ fn smart_automove_pro_reliability_candidate_override_probe() {
         env_bool("SMART_PROBE_FORCE_LOW_BUDGET_GUARD"),
         env_bool("SMART_PROBE_FORCE_MID_TURN_TACTICAL_GUARD"),
         env_bool("SMART_PROBE_FORCE_LATE_SAFE_MANA_ROOT_PREFERENCE"),
+        env_usize("SMART_PROBE_FORCE_TURN_ENGINE_SEED_CAP"),
+        env_usize("SMART_PROBE_FORCE_TURN_ENGINE_BEAM_WIDTH"),
+        env_usize("SMART_PROBE_FORCE_TURN_ENGINE_PER_NODE_FAMILY_CAP"),
+        env_usize("SMART_PROBE_FORCE_TURN_ENGINE_STEP_CAP"),
+        env_usize("SMART_PROBE_FORCE_TURN_ENGINE_OPPONENT_SEED_CAP"),
+        env_usize("SMART_PROBE_FORCE_TURN_ENGINE_OPPONENT_BEAM_WIDTH"),
+        env_usize("SMART_PROBE_FORCE_TURN_ENGINE_REPLY_SEED_CAP"),
+        env_usize("SMART_PROBE_FORCE_TURN_ENGINE_REPLY_BEAM_WIDTH"),
+        env_usize("SMART_PROBE_FORCE_TURN_ENGINE_EXPANSION_CAP"),
+        env_bool("SMART_PROBE_FORCE_TURN_ENGINE_ENABLE_SPIRIT_FAMILY"),
     );
 
     for repeat_index in 0..repeats {
