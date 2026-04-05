@@ -1176,3 +1176,20 @@ Rank revived work only by its chance to improve direct-vs-`runtime_current` resu
   - I widened the same pair to the retained `3x2x96` gate before considering any runtime edit. The widened result still killed it cleanly: `vs current Pro: total_games=12, wins=7, losses=5, win_rate=0.5833, confidence=0.6128, candidate_avg_ms=213.01`, and `vs current Normal: total_games=12, wins=7, losses=5, win_rate=0.5833, confidence=0.6128, candidate_avg_ms=239.76`.
   - Useful lesson: broad iterative deepening plus TT depth-preferred replacement is another cheap-gate false positive. It moves both tiny duels together, but it is still well below the widened dual-duel promotion bar and materially slower than shipping Pro. Do not reopen this family as a default promotion lead without a tighter family-specific proof path first.
 - Next hypothesis after that kill: stop spending on broad iterative-deepening / TT replacement enables too. If another Pro line is attempted, it needs a genuinely different in-path mechanism or a family-specific diagnosis, not another broad search-control enable sweep.
+- Kill result from 2026-04-05: the nuanced drainer-attack softening family is also dead.
+  - I kept eight new candidate-side override knobs in the retained reliability harness so the remaining drainer-attack subfamily can be screened without runtime edits:
+    - `SMART_PROBE_FORCE_TARGETED_DRAINER_ATTACK_FALLBACK`
+    - `SMART_PROBE_FORCE_PER_MON_DRAINER_ATTACK_FALLBACK`
+    - `SMART_PROBE_FORCE_DRAINER_ATTACK_PRIORITY_ENUM`
+    - `SMART_PROBE_FORCE_DRAINER_ATTACK_PRIORITY_ENUM_BOOST`
+    - `SMART_PROBE_FORCE_DRAINER_ATTACK_MINIMAX_SELECTION`
+    - `SMART_PROBE_FORCE_DRAINER_ATTACK_FULL_POOL`
+    - `SMART_PROBE_FORCE_CONDITIONAL_FORCED_DRAINER_ATTACK`
+    - `SMART_PROBE_FORCE_CONDITIONAL_FORCED_ATTACK_SCORE_MARGIN`
+  - I screened the smallest plausible softening first on the retained `1x2x96` duel slice with shipping Pro pinned to `runtime_current`: `enable_conditional_forced_drainer_attack=true`.
+  - That variant was flat on the only live wall. It finished at `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=202.58`, and `vs current Normal: total_games=4, wins=2, losses=2, win_rate=0.5000, confidence=0.0000, candidate_avg_ms=212.12`.
+  - I then screened the last plausible softening in the same family: `enable_drainer_attack_full_pool=true`.
+  - This one was real on the cheap retained gate. It finished at `vs current Pro: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=223.15`, and `vs current Normal: total_games=4, wins=3, losses=1, win_rate=0.7500, confidence=0.6875, candidate_avg_ms=316.67`.
+  - The widened retained `3x2x96` gate still killed it. The same override finished at `vs current Pro: total_games=12, wins=9, losses=3, win_rate=0.7500, confidence=0.9270, candidate_avg_ms=232.21`, and `vs current Normal: total_games=12, wins=7, losses=5, win_rate=0.5833, confidence=0.6128, candidate_avg_ms=288.93`.
+  - Useful lesson: the remaining drainer-attack softening family is not the promotion path either. Conditional forced attack does not move current Normal at all, and full-pool softening is just another cheap-gate false positive that still fails badly once widened. Do not reopen nuanced drainer-attack softening without a tighter family-specific proof path first.
+- Next hypothesis after that kill: stop spending on drainer-attack subfamily screens too. If another Pro line is attempted, it needs a genuinely different in-path mechanism or a tighter exact-family diagnosis, not another drainer-attack filter/fallback retune.
