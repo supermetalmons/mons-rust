@@ -8,6 +8,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest probe-led split (`2026-04-05`):
+  - attempted retained shared split: followup-tolerant `spirit_own_mana_setup_now` competition plus a close `Safe*Progress` head normal-safety block
+  - runtime-faithful retained-churn seams were unchanged, so the split was killed before the canonical Pro loop
+  - direct conclusion: do not spend another loop on soft followup-tolerance or close quiet-root normal-safety guards unless a new exact seam proves they fire
 - Latest focused gate (`2026-04-05`):
   - attempted retained shared split: speculative immediate-score non-regression clamp plus setup-gain-only spirit-setup promotion
   - `pro-triage(primary_pro)` stayed at `5/52`; the only movement was `primary_spirit_setup` shifting from candidate rank `8` to `5`, not collapsing back to current
@@ -107,10 +111,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Keep the retained challenger ID and stay out of new unsupported scratch profiles.
 - Major direction 1: continue deleting deferred `Safe*Progress -> ImmediateScore` composition mistakes in shared ProV2 code. The retained fix list is now: safe-pickup post-search blocks, absent deferred progress-head injection blocks, and non-concrete one-chunk progress-head rejection.
-- Major direction 2: target the remaining retained-challenger deltas that still look like selector composition rather than root scoring, especially `primary_spirit_setup`, `primary_pvs_sensitive_search`, `primary_black_reliability_opening_3_ply4`, `primary_white_harvest_loss_c_ply24`, and `human_win_pro_c`.
+- Major direction 2: target the remaining retained-challenger deltas that still look like selector composition rather than root scoring, especially `primary_spirit_setup`, `primary_pvs_sensitive_search`, `primary_white_harvest_loss_c_ply24`, and `human_win_pro_c`.
 - Major direction 3: when a remaining miss is not another deferred progress-head bug, import current/normal safety discipline into shortlist ordering for safe non-progress and spirit-impact ties before touching broader exact/search budgets.
 - Major direction 4: only after the retained selector surface stops producing new regressions, spend more budget on shared exact shortlist comparison for close progress/spirit ties.
-- Immediate next split: use the retained churn probe to separate `pre_accept` search choice from final `engine_post_search` output on the five live misses, then target the exact divergence seam instead of adding another broad speculative immediate-score clamp.
+- Immediate next split:
+  - treat `primary_pvs_sensitive_search` as a late `engine_post_search` acceptance seam
+  - treat `primary_white_harvest_loss_c_ply24` as a forced/injected-root shortlist seam
+  - treat `human_win_pro_c` as a pure `pre_accept` safe-progress bias
+  - do not spend a shared-code split on `primary_black_reliability_opening_3_ply4` until the runtime-faithful probe says it is live again
 - Do not reopen:
   - speculative immediate-score first-chunk non-regression clamps on `SpiritImpact` or `Safe*Progress` heads
   - setup-gain-only spirit-setup promotion against safe non-spirit roots

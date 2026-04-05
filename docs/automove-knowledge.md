@@ -21,7 +21,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - Weak deferred progress heads are a repeat failure mode. Keep blocking them when the real selected root already offers a safer immediate pickup, a concrete setup window, or an unsafe non-progress root that the head does not concretely improve.
 - Production wasm still needs single-shot, predictable search. Deferred or post-return work is not release-safe.
 - The retained churn probe is worth keeping. For live ProV2 misses, distinguish `pre_accept` search choice from final `engine_post_search` output before changing shared heuristics.
+- The runtime-faithful retained churn probe is worth keeping too. It must inject forced engine inputs before `focused_root_candidates_with_forced_inputs(...)`, or it can misclassify injected-root seams as selector churn.
+- The current retained seam map is stable enough to plan around: `primary_pvs_sensitive_search` is a late `engine_post_search` acceptance seam, `primary_white_harvest_loss_c_ply24` is a forced/injected-root shortlist seam, `human_win_pro_c` is a pure `pre_accept` safe-progress bias, and `primary_black_reliability_opening_3_ply4` is not a live runtime-faithful seam right now.
 - Simple speculative immediate-score non-regression clamps and setup-gain-only spirit-setup promotion are not enough. They can reshuffle `primary_pro` fixtures and regress direct Pro-vs-Pro without moving the `vs current Normal` wall.
+- Soft followup-tolerance for `spirit_own_mana_setup_now` roots and close quiet-root normal-safety blocks are also not enough by themselves. If the runtime-faithful seam stays unchanged, kill the split before spending the canonical loop.
 
 ## Durable Workflow Rules
 

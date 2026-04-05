@@ -46,6 +46,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: `pro-triage(primary_pro)` stayed at `5/52`, only reshuffling `primary_spirit_setup`, and `pro-reliability` regressed to `win_rate=0.7500` vs current Pro while staying flat at `0.5000` vs current Normal.
 - Durable lesson: on live ProV2 misses, inspect `pre_accept` vs final `engine_post_search` output first. Broad first-chunk non-regression clamps and setup-gain-only setup promotion are too blunt for the current wall.
 
+## Apr 5, 2026: Probe-Led Followup/Safety Split Retired
+
+- What was tried: a retained shared-code split that loosened `spirit_own_mana_setup_now` followup competition and added a close `Safe*Progress` head normal-safety block after the runtime-faithful retained-churn probe identified exact seams.
+- Why it stopped: the runtime-faithful retained-churn probe was unchanged on the targeted seams, so the split was killed before `guardrails` and `pro-reliability`.
+- Durable lesson: when a shared selector or acceptance tweak does not fire on the exact runtime-faithful seam, stop immediately and keep only the probe or seam map.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps

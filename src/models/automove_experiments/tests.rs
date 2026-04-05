@@ -279,6 +279,113 @@ fn format_normal_safety_probe(snapshot: Option<NormalRootSafetySnapshot>) -> Str
         .unwrap_or_else(|| "none".to_string())
 }
 
+fn profile_runtime_scored_roots_with_forced_engine_inputs(
+    profile_name: &str,
+    mode: SmartAutomovePreference,
+    game: &MonsGame,
+) -> (SmartSearchConfig, Vec<RootEvaluation>, Option<TurnPlan>, Option<Vec<Input>>) {
+    let config = calibration_runtime_config(profile_name, game, mode);
+    let perspective = game.active_color;
+    let mut root_moves = MonsGameModel::ranked_root_moves(game, perspective, config);
+    let engine_plan = if config.enable_turn_engine {
+        turn_engine_candidate_plan(
+            game,
+            perspective,
+            MonsGameModel::turn_engine_search_config_for_game(game, config),
+        )
+    } else {
+        None
+    };
+    let forced_engine_inputs = engine_plan.as_ref().and_then(|plan| {
+        MonsGameModel::inject_turn_engine_root_candidate(
+            game,
+            perspective,
+            config,
+            &mut root_moves,
+            plan,
+        )
+    });
+    let (root_moves, scout_visited_nodes) = MonsGameModel::focused_root_candidates_with_forced_inputs(
+        game,
+        perspective,
+        root_moves,
+        config,
+        true,
+        forced_engine_inputs.as_deref(),
+    );
+    let mut visited_nodes = scout_visited_nodes;
+    let mut alpha = i32::MIN;
+    let mut scored_roots = Vec::with_capacity(root_moves.len());
+    let mut transposition_table = U64HashMap::default();
+    let extension_node_budget =
+        if config.enable_selective_extensions && config.selective_extension_node_share_bp > 0 {
+            ((config.max_visited_nodes * config.selective_extension_node_share_bp as usize) / 10_000)
+                .max(1)
+        } else {
+            0
+        };
+    let mut extension_nodes_used = 0usize;
+    let mut killer_table: KillerTable = [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
+    let mut history_table: HistoryTable = HistoryTable::default();
+    let mut quiescence_nodes_used = 0usize;
+
+    for candidate in root_moves {
+        if visited_nodes >= config.max_visited_nodes {
+            break;
+        }
+        visited_nodes += 1;
+        let candidate_score = MonsGameModel::evaluate_root_candidate_score(
+            &candidate,
+            perspective,
+            alpha,
+            &mut visited_nodes,
+            config,
+            &mut transposition_table,
+            &mut extension_nodes_used,
+            extension_node_budget,
+            true,
+            &mut killer_table,
+            &mut history_table,
+            &mut quiescence_nodes_used,
+        );
+        if candidate_score > alpha {
+            alpha = candidate_score;
+        }
+        scored_roots.push(RootEvaluation {
+            root_rank: candidate.root_rank,
+            score: candidate_score,
+            efficiency: candidate.efficiency,
+            inputs: candidate.inputs,
+            game: candidate.game,
+            wins_immediately: candidate.wins_immediately,
+            attacks_opponent_drainer: candidate.attacks_opponent_drainer,
+            own_drainer_vulnerable: candidate.own_drainer_vulnerable,
+            own_drainer_walk_vulnerable: candidate.own_drainer_walk_vulnerable,
+            spirit_development: candidate.spirit_development,
+            keeps_awake_spirit_on_base: candidate.keeps_awake_spirit_on_base,
+            mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
+            has_roundtrip: candidate.has_roundtrip,
+            scores_supermana_this_turn: candidate.scores_supermana_this_turn,
+            scores_opponent_mana_this_turn: candidate.scores_opponent_mana_this_turn,
+            safe_supermana_pickup_now: candidate.safe_supermana_pickup_now,
+            safe_opponent_mana_pickup_now: candidate.safe_opponent_mana_pickup_now,
+            safe_supermana_progress_steps: candidate.safe_supermana_progress_steps,
+            safe_opponent_mana_progress_steps: candidate.safe_opponent_mana_progress_steps,
+            score_path_best_steps: candidate.score_path_best_steps,
+            same_turn_score_window_value: candidate.same_turn_score_window_value,
+            spirit_setup_gain: candidate.spirit_setup_gain,
+            spirit_same_turn_score_setup_now: candidate.spirit_same_turn_score_setup_now,
+            spirit_own_mana_setup_now: candidate.spirit_own_mana_setup_now,
+            supermana_progress: candidate.supermana_progress,
+            opponent_mana_progress: candidate.opponent_mana_progress,
+            interview_soft_priority: candidate.interview_soft_priority,
+            classes: candidate.classes,
+        });
+    }
+
+    (config, scored_roots, engine_plan, forced_engine_inputs)
+}
+
 fn opening_reply_speed_probe_avg_ms(
     profile_name: &str,
     selector: AutomoveSelector,
@@ -2114,5 +2221,108 @@ fn smart_automove_pro_triage_retained_churn_probe() {
                 );
             }
         });
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: inspect runtime-faithful forced-engine acceptance on retained churn fixtures"]
+fn smart_automove_pro_runtime_faithful_retained_churn_probe() {
+    let fixture_ids = [
+        "primary_spirit_setup",
+        "primary_pvs_sensitive_search",
+        "primary_black_reliability_opening_3_ply4",
+        "primary_white_harvest_loss_c_ply24",
+        "human_win_pro_c",
+    ];
+
+    for fixture_id in fixture_ids {
+        let fixture = primary_pro_fixture_by_id(fixture_id);
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        clear_turn_engine_plan_cache();
+        clear_turn_engine_diagnostics();
+        clear_turn_engine_selector_diagnostics();
+
+        let (config, scored_roots, head_plan, forced_engine_inputs) =
+            profile_runtime_scored_roots_with_forced_engine_inputs(
+                "runtime_pro_turn_engine_v30",
+                fixture.mode,
+                &fixture.game,
+            );
+        let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
+            &fixture.game,
+            scored_roots.as_slice(),
+            fixture.game.active_color,
+            config,
+        );
+        let pre_accept_rank = scored_roots
+            .iter()
+            .position(|root| root.inputs == pre_accept_selected);
+        let head_rank = head_plan.as_ref().and_then(|plan| {
+            plan.compiled_chunks.first().and_then(|chunk| {
+                scored_roots
+                    .iter()
+                    .position(|root| root.inputs.as_slice() == chunk.as_slice())
+            })
+        });
+        let accepted = head_plan.as_ref().is_some_and(|plan| {
+            MonsGameModel::accept_turn_engine_head_after_search(
+                &fixture.game,
+                fixture.game.active_color,
+                config,
+                scored_roots.as_slice(),
+                pre_accept_selected.as_slice(),
+                plan,
+            )
+        });
+        let selected_root = pre_accept_rank.and_then(|index| scored_roots.get(index));
+        let head_root = head_rank.and_then(|index| scored_roots.get(index));
+        let reply_limit = config.node_enum_limit.clamp(
+            SMART_NORMAL_ROOT_SAFETY_REPLY_LIMIT_MIN,
+            SMART_NORMAL_ROOT_SAFETY_REPLY_LIMIT_MAX,
+        );
+        let my_score_before =
+            MonsGameModel::score_for_color(&fixture.game, fixture.game.active_color);
+        let start_options = MonsGameModel::automove_start_input_options(config);
+        let selected_normal_snapshot = selected_root.map(|root| {
+            MonsGameModel::normal_root_safety_snapshot(
+                &root.game,
+                fixture.game.active_color,
+                my_score_before,
+                config,
+                reply_limit,
+                start_options,
+            )
+        });
+        let head_normal_snapshot = head_root.map(|root| {
+            MonsGameModel::normal_root_safety_snapshot(
+                &root.game,
+                fixture.game.active_color,
+                my_score_before,
+                config,
+                reply_limit,
+                start_options,
+            )
+        });
+
+        println!(
+            "RUNTIME_FAITHFUL fixture={} forced_inputs={:?} pre_accept_rank={:?} pre_accept={} head_rank={:?} head={:?} accepted={} selected_root=\"{}\" head_root=\"{}\" normal_safety(selected=\"{}\" head=\"{}\")",
+            fixture.id,
+            forced_engine_inputs
+                .as_ref()
+                .map(|inputs| Input::fen_from_array(inputs)),
+            pre_accept_rank,
+            Input::fen_from_array(&pre_accept_selected),
+            head_rank,
+            head_plan
+                .as_ref()
+                .and_then(|plan| plan.compiled_chunks.first())
+                .map(|chunk| Input::fen_from_array(chunk)),
+            accepted,
+            format_root_probe(selected_root),
+            format_root_probe(head_root),
+            format_normal_safety_probe(selected_normal_snapshot),
+            format_normal_safety_probe(head_normal_snapshot),
+        );
     }
 }
