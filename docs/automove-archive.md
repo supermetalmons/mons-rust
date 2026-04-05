@@ -52,6 +52,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the runtime-faithful retained-churn probe was unchanged on the targeted seams, so the split was killed before `guardrails` and `pro-reliability`.
 - Durable lesson: when a shared selector or acceptance tweak does not fire on the exact runtime-faithful seam, stop immediately and keep only the probe or seam map.
 
+## Apr 5, 2026: Runtime-Faithful Spirit/Clamp Repairs Retained But Not Promotable
+
+- What was tried: two retained shared-code repairs on `runtime_pro_turn_engine_v30`: reject a forced low-ranked plain `SpiritImpact` sibling on `primary_spirit_setup`, and skip the broad black turn-two low-budget clamp on full-resource `action+mana` states that regressed `primary_black_reliability_opening_3_ply4`.
+- Why it stopped: both fixes were real and reduced `primary_pro` churn from `4/52` to `2/52`, but `pro-reliability` stayed flat at `win_rate=0.8333` vs current Pro, `0.5000` vs current Normal, and `0.6667` vs current Fast.
+- Durable lesson: local runtime-faithful seam repairs can be correct and still fail promotion. Once the duel gate stays flat after the seam map collapses, stop the line and only reopen with a duel-linked hypothesis, not another local selector cleanup.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps

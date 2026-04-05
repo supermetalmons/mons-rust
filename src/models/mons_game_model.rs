@@ -7447,6 +7447,78 @@ impl MonsGameModel {
             && !top.spirit_same_turn_score_setup_now
             && !top.spirit_own_mana_setup_now
             && !Self::turn_engine_root_move_has_progress_surface(top);
+        let injected_progress_head_replaces_concrete_progress_cluster_with_window = macro_mode
+            && existing_candidate.is_none()
+            && matches!(
+                plan.head_family,
+                TurnPlanFamily::SafeSupermanaProgress | TurnPlanFamily::SafeOpponentManaProgress
+            )
+            && matches!(plan.goal_family, TurnPlanFamily::ImmediateScore)
+            && !candidate.wins_immediately
+            && !candidate.attacks_opponent_drainer
+            && !candidate.safe_supermana_pickup_now
+            && !candidate.safe_opponent_mana_pickup_now
+            && !candidate.spirit_development
+            && !candidate.spirit_same_turn_score_setup_now
+            && !candidate.spirit_own_mana_setup_now
+            && candidate.same_turn_score_window_value > 0
+            && !candidate.supermana_progress
+            && !candidate.opponent_mana_progress
+            && root_moves
+                .iter()
+                .take(6)
+                .filter(|root| {
+                    Self::turn_engine_root_move_has_progress_surface(root)
+                        && root.same_turn_score_window_value == 0
+                        && !root.spirit_same_turn_score_setup_now
+                        && !root.spirit_own_mana_setup_now
+                })
+                .count()
+                >= 3;
+        let forced_plain_spirit_head_regresses_top_spirit_cluster = macro_mode
+            && existing_candidate.is_some()
+            && matches!(plan.head_family, TurnPlanFamily::SpiritImpact)
+            && matches!(plan.goal_family, TurnPlanFamily::ImmediateScore)
+            && candidate.spirit_development
+            && !candidate.spirit_same_turn_score_setup_now
+            && !candidate.spirit_own_mana_setup_now
+            && !candidate.attacks_opponent_drainer
+            && !candidate.scores_supermana_this_turn
+            && !candidate.scores_opponent_mana_this_turn
+            && !candidate.safe_supermana_pickup_now
+            && !candidate.safe_opponent_mana_pickup_now
+            && root_moves.iter().take(3).any(|root| {
+                if root.inputs == candidate.inputs {
+                    return false;
+                }
+                let root_is_plain_spirit = root.spirit_development
+                    && !root.spirit_same_turn_score_setup_now
+                    && !root.spirit_own_mana_setup_now
+                    && !root.attacks_opponent_drainer
+                    && !root.scores_supermana_this_turn
+                    && !root.scores_opponent_mana_this_turn
+                    && !root.safe_supermana_pickup_now
+                    && !root.safe_opponent_mana_pickup_now;
+                if !root_is_plain_spirit {
+                    return false;
+                }
+                let root_utility = Self::turn_engine_scored_root_utility(
+                    game,
+                    root,
+                    perspective,
+                    config,
+                    Self::turn_engine_root_move_family(root),
+                );
+                root.spirit_setup_gain >= candidate.spirit_setup_gain
+                    && root.safe_supermana_progress_steps
+                        <= candidate.safe_supermana_progress_steps
+                    && root.safe_opponent_mana_progress_steps
+                        <= candidate.safe_opponent_mana_progress_steps
+                    && crate::models::automove_turn_engine::compare_utility_primary_axes(
+                        root_utility,
+                        plan.head_utility,
+                    ) != std::cmp::Ordering::Less
+            });
         let completed_plan_override =
             completed_plan_override
                 && !injected_progress_head_regresses_top_surface
@@ -7486,6 +7558,12 @@ impl MonsGameModel {
             || candidate.safe_opponent_mana_pickup_now;
         let candidate_progress_surface =
             Self::turn_engine_root_move_has_progress_surface(&candidate);
+        if injected_progress_head_replaces_concrete_progress_cluster_with_window {
+            return None;
+        }
+        if forced_plain_spirit_head_regresses_top_spirit_cluster {
+            return None;
+        }
         if macro_mode {
             if matches!(plan.head_family, TurnPlanFamily::DrainerKill)
                 && !candidate.attacks_opponent_drainer
@@ -7772,9 +7850,32 @@ impl MonsGameModel {
             && !candidate.spirit_own_mana_setup_now
             && score_gap > 96
             && !strategic_override_axes_better;
+        let projected_plain_spirit_sibling_blocks_override = macro_mode
+            && matches!(plan.head_family, TurnPlanFamily::SpiritImpact)
+            && !selected_unsafe
+            && !candidate_unsafe
+            && selected.spirit_development
+            && !selected.spirit_same_turn_score_setup_now
+            && !selected.spirit_own_mana_setup_now
+            && candidate.spirit_development
+            && !candidate.spirit_same_turn_score_setup_now
+            && !candidate.spirit_own_mana_setup_now
+            && score_gap >= 0
+            && !progress_better
+            && candidate.spirit_setup_gain <= selected.spirit_setup_gain
+            && candidate.safe_supermana_progress_steps >= selected.safe_supermana_progress_steps
+            && candidate.safe_opponent_mana_progress_steps
+                >= selected.safe_opponent_mana_progress_steps
+            && candidate.own_drainer_vulnerable == selected.own_drainer_vulnerable
+            && candidate.mana_handoff_to_opponent == selected.mana_handoff_to_opponent
+            && candidate.has_roundtrip == selected.has_roundtrip
+            && !scores_now_better
+            && !drainer_attack_better
+            && !candidate_spirit_tactical;
         let projected_completed_plan_override =
             projected_completed_plan_override
                 && !projected_safe_root_blocks_plain_spirit_override
+                && !projected_plain_spirit_sibling_blocks_override
                 && !projected_progress_head_regresses_safe_pickup
                 && !narrow_black_mana_only_unsafe_score_override
                 && !narrow_white_mana_only_progress_tie_override;
@@ -7975,6 +8076,29 @@ impl MonsGameModel {
                         && !scores_now_better
                         && !drainer_attack_better;
                     if plain_followup_overrides_concrete_setup {
+                        return false;
+                    }
+                    let plain_spirit_head_regresses_selected_spirit = selected.spirit_development
+                        && !selected.spirit_same_turn_score_setup_now
+                        && !selected.spirit_own_mana_setup_now
+                        && candidate.spirit_development
+                        && !candidate.spirit_same_turn_score_setup_now
+                        && !candidate.spirit_own_mana_setup_now
+                        && score_gap >= 0
+                        && !progress_better
+                        && candidate.spirit_setup_gain <= selected.spirit_setup_gain
+                        && candidate.safe_supermana_progress_steps
+                            >= selected.safe_supermana_progress_steps
+                        && candidate.safe_opponent_mana_progress_steps
+                            >= selected.safe_opponent_mana_progress_steps
+                        && candidate.own_drainer_vulnerable == selected.own_drainer_vulnerable
+                        && candidate.mana_handoff_to_opponent
+                            == selected.mana_handoff_to_opponent
+                        && candidate.has_roundtrip == selected.has_roundtrip
+                        && !scores_now_better
+                        && !drainer_attack_better
+                        && !candidate_spirit_tactical;
+                    if plain_spirit_head_regresses_selected_spirit {
                         return false;
                     }
                     let candidate_rank_cap = if plan.compiled_chunks.len() > 1 {
@@ -14318,7 +14442,10 @@ impl MonsGameModel {
             return config;
         }
 
-        if game.active_color == Color::Black && game.turn_number == 2 && game.mons_moves_count <= 1
+        if game.active_color == Color::Black
+            && game.turn_number == 2
+            && game.mons_moves_count <= 1
+            && (!game.player_can_use_action() || !game.player_can_move_mana())
         {
             config.max_visited_nodes = config.max_visited_nodes.min(6_000);
             config.root_branch_limit = config.root_branch_limit.min(12).max(1);

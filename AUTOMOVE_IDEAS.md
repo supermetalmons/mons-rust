@@ -110,16 +110,15 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 ## Next Live Split
 
 - Keep the retained challenger ID and stay out of new unsupported scratch profiles.
-- Major direction 1: continue deleting deferred `Safe*Progress -> ImmediateScore` composition mistakes in shared ProV2 code. The retained fix list is now: safe-pickup post-search blocks, absent deferred progress-head injection blocks, and non-concrete one-chunk progress-head rejection.
-- Major direction 2: target the remaining retained-challenger deltas that still look like selector composition rather than root scoring, especially `primary_spirit_setup`, `primary_pvs_sensitive_search`, `primary_white_harvest_loss_c_ply24`, and `human_win_pro_c`.
-- Major direction 3: when a remaining miss is not another deferred progress-head bug, import current/normal safety discipline into shortlist ordering for safe non-progress and spirit-impact ties before touching broader exact/search budgets.
-- Major direction 4: only after the retained selector surface stops producing new regressions, spend more budget on shared exact shortlist comparison for close progress/spirit ties.
+- Major direction 1: continue deleting deferred `Safe*Progress -> ImmediateScore` composition mistakes in shared ProV2 code. The retained fix list now includes: safe-pickup post-search blocks, absent deferred progress-head injection blocks, non-concrete one-chunk progress-head rejection, weaker plain-spirit head rejection, and the black turn-two full-resource low-budget-clamp skip.
+- Major direction 2: treat `primary_pvs_sensitive_search` as an expected late `engine_post_search` win unless direct duel evidence says otherwise. It is still the only remaining changed `primary_pro` acceptance seam after the spirit and black-opening fixes.
+- Major direction 3: treat `human_win_pro_c` as the only remaining unexplained retained-challenger drift. The retained selector probe still says it is a pure `pre_accept` safe-progress bias where the chosen root has better followup floor than the baseline spirit-own-setup root.
+- Major direction 4: do not spend another local seam-repair split unless it has a direct duel story. Cutting `primary_pro` churn from `4/52` to `2/52` did not move `pro-reliability`.
 - Immediate next split:
-  - treat `primary_pvs_sensitive_search` as a late `engine_post_search` acceptance seam
-  - treat `primary_white_harvest_loss_c_ply24` as a forced/injected-root shortlist seam
-  - treat `human_win_pro_c` as a pure `pre_accept` safe-progress bias
-  - do not spend a shared-code split on `primary_black_reliability_opening_3_ply4` until the runtime-faithful probe says it is live again
+  - keep `primary_white_harvest_loss_c_ply24`, `primary_spirit_setup`, and `primary_black_reliability_opening_3_ply4` closed unless new duel evidence reopens them
+  - if the line is revived, start from a duel-linked explanation for `human_win_pro_c` before touching more turn-engine head logic
+  - only reopen `primary_pvs_sensitive_search` if its expected acceptance win correlates with a real duel loss
 - Do not reopen:
   - speculative immediate-score first-chunk non-regression clamps on `SpiritImpact` or `Safe*Progress` heads
   - setup-gain-only spirit-setup promotion against safe non-spirit roots
-- Proof target for the next retained branch: reduce `runtime_pro_turn_engine_v30` vs `runtime_current` `primary_pro` churn below the current `5/52`, then rerun the canonical Pro loop against `runtime_current`.
+- Proof target for the next retained branch: beat the current unchanged `pro-reliability` wall with a duel-linked fix, not just another local reduction from the present `2/52` `primary_pro` churn.

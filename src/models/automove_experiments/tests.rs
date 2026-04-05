@@ -279,6 +279,34 @@ fn format_normal_safety_probe(snapshot: Option<NormalRootSafetySnapshot>) -> Str
         .unwrap_or_else(|| "none".to_string())
 }
 
+fn format_scored_root_move_probe(root: Option<&ScoredRootMove>) -> String {
+    root.map(|root| {
+        format!(
+            "root_rank={} eff={} win={} attack={} window={} same_turn_setup={} own_setup={} spirit={} supermana_progress={} super_steps={} opponent_progress={} opp_steps={} score_path_steps={} setup_gain={} pickup_super={} pickup_opp={} vulnerable={} handoff={} roundtrip={}",
+            root.root_rank,
+            root.efficiency,
+            root.wins_immediately,
+            root.attacks_opponent_drainer,
+            root.same_turn_score_window_value,
+            root.spirit_same_turn_score_setup_now,
+            root.spirit_own_mana_setup_now,
+            root.spirit_development,
+            root.supermana_progress,
+            root.safe_supermana_progress_steps,
+            root.opponent_mana_progress,
+            root.safe_opponent_mana_progress_steps,
+            root.score_path_best_steps,
+            root.spirit_setup_gain,
+            root.safe_supermana_pickup_now,
+            root.safe_opponent_mana_pickup_now,
+            root.own_drainer_vulnerable,
+            root.mana_handoff_to_opponent,
+            root.has_roundtrip,
+        )
+    })
+    .unwrap_or_else(|| "none".to_string())
+}
+
 fn profile_runtime_scored_roots_with_forced_engine_inputs(
     profile_name: &str,
     mode: SmartAutomovePreference,
@@ -1351,7 +1379,7 @@ fn runtime_pro_turn_engine_v30_profile_prefers_current_black_turn_four_start_act
 }
 
 #[test]
-fn runtime_pro_turn_engine_v30_profile_resumes_cached_spirit_setup_continuation() {
+fn runtime_pro_turn_engine_v30_profile_does_not_seed_cached_plain_spirit_continuation_when_head_is_rejected() {
     fn game_with_items(items: Vec<(Location, Item)>, active_color: Color) -> MonsGame {
         let mut game = MonsGame::new(false);
         game.board = Board::new_with_items(items.into_iter().collect());
@@ -1404,6 +1432,7 @@ fn runtime_pro_turn_engine_v30_profile_resumes_cached_spirit_setup_continuation(
         SmartAutomovePreference::Pro,
     );
     let first = model_runtime_pro_turn_engine_v30(&game, config);
+    assert_eq!(Input::fen_from_array(&first), "l9,7;l7,8;l7,7");
     let after_first = MonsGameModel::apply_inputs_for_search(&game, first.as_slice())
         .expect("v30 first spirit-setup chunk should be legal");
     let after_config = calibration_runtime_config(
@@ -1411,14 +1440,10 @@ fn runtime_pro_turn_engine_v30_profile_resumes_cached_spirit_setup_continuation(
         &after_first,
         SmartAutomovePreference::Pro,
     );
-    let cached =
+    assert!(
         turn_engine_cached_step(&after_first, calibration_turn_engine_config(after_config))
-            .expect("v30 should seed a cached continuation after the first spirit-setup chunk");
-    let resumed = model_runtime_pro_turn_engine_v30(&after_first, after_config);
-
-    assert_eq!(
-        resumed, cached,
-        "v30 should resume the cached continuation on the post-chunk live state"
+            .is_none(),
+        "v30 should not seed a cached continuation when the plain spirit head is rejected"
     );
 }
 
@@ -2325,4 +2350,540 @@ fn smart_automove_pro_runtime_faithful_retained_churn_probe() {
             format_normal_safety_probe(head_normal_snapshot),
         );
     }
+}
+
+#[test]
+#[ignore = "diagnostic: inspect selector competition gates on human_win_pro_c"]
+fn smart_automove_pro_human_win_pro_c_selector_probe() {
+    let fixture = primary_pro_fixture_by_id("human_win_pro_c");
+    let (config, scored_roots) =
+        profile_scored_roots("runtime_pro_turn_engine_v30", fixture.mode, &fixture.game);
+    let perspective = fixture.game.active_color;
+    let filtered = MonsGameModel::filtered_root_candidate_indices(
+        &fixture.game,
+        scored_roots.as_slice(),
+        perspective,
+        config,
+    );
+    let projections = MonsGameModel::turn_engine_spirit_root_projections(
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        perspective,
+        config,
+    );
+    let progress_competes = MonsGameModel::safe_progress_competes_with_spirit_pref(
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        config.turn_engine_mode,
+    );
+    let followup_progress_competes = MonsGameModel::followup_progress_competes_with_spirit_pref(
+        &fixture.game,
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        perspective,
+        config,
+    );
+    let risky_score_competes = MonsGameModel::risky_score_competes_with_spirit_pref(
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        config.turn_engine_mode,
+    );
+    let negative_deny_competes = MonsGameModel::negative_deny_competes_with_spirit_pref(
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        perspective,
+        config,
+    );
+    let score_competes = MonsGameModel::score_competes_with_spirit_pref(
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        config.turn_engine_mode,
+    );
+    let projection_competes = MonsGameModel::projection_competes_with_spirit_pref(
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        perspective,
+        config,
+    );
+    let risky_recovery_competes = MonsGameModel::risky_recovery_competes_with_spirit_pref(
+        &fixture.game,
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        perspective,
+        config,
+    );
+    let final_progress_reentry = MonsGameModel::pro_v2_plain_spirit_cluster_progress_reentry(
+        &fixture.game,
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        perspective,
+        config,
+    );
+    let selected = MonsGameModel::pick_root_move_with_exploration(
+        &fixture.game,
+        scored_roots.as_slice(),
+        perspective,
+        config,
+    );
+    let baseline_selected = profile_decision_inputs("runtime_current", fixture.mode, &fixture.game);
+    let selected_fen = Input::fen_from_array(&selected);
+    let baseline_selected_fen = Input::fen_from_array(&baseline_selected);
+
+    println!(
+        "HUMAN_WIN_PRO_C_SELECTOR selected={} baseline_selected={} filtered_len={} progress_competes={} followup_progress_competes={} risky_score_competes={} negative_deny_competes={} score_competes={} projection_competes={} risky_recovery_competes={} final_progress_reentry={:?}",
+        selected_fen,
+        baseline_selected_fen,
+        filtered.len(),
+        progress_competes,
+        followup_progress_competes,
+        risky_score_competes,
+        negative_deny_competes,
+        score_competes,
+        projection_competes,
+        risky_recovery_competes,
+        final_progress_reentry.map(|index| Input::fen_from_array(&scored_roots[index].inputs)),
+    );
+
+    let mut followup_scores = std::collections::HashMap::new();
+    for (rank, root) in scored_roots.iter().enumerate().take(18) {
+        let fen = Input::fen_from_array(&root.inputs);
+        let projection = projections.get(&rank).map(|plan| {
+            (
+                plan.plan.head_family,
+                plan.plan.goal_family,
+                plan.plan.utility,
+                plan.plan.head_utility,
+            )
+        });
+        let followup_floor = *followup_scores.entry(rank).or_insert_with(|| {
+            MonsGameModel::pro_v2_spirit_followup_floor_score(&root.game, perspective, config)
+        });
+        println!(
+            "HUMAN_WIN_PRO_C_ROOT rank={} fen={} filtered={} projected={} projection={:?} followup_floor={} root=\"{}\"",
+            rank,
+            fen,
+            filtered.contains(&rank),
+            projections.contains_key(&rank),
+            projection,
+            followup_floor,
+            format_root_probe(Some(root)),
+        );
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: inspect forced engine shortlist seam on primary_white_harvest_loss_c_ply24"]
+fn smart_automove_pro_white_harvest_forced_root_probe() {
+    let fixture = primary_pro_fixture_by_id("primary_white_harvest_loss_c_ply24");
+    let config = calibration_runtime_config("runtime_pro_turn_engine_v30", &fixture.game, fixture.mode);
+    let perspective = fixture.game.active_color;
+    let root_moves = MonsGameModel::ranked_root_moves(&fixture.game, perspective, config);
+    let root_target = "l7,2;l6,1";
+
+    let root_target_rank = root_moves
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == root_target);
+    let engine_plan = turn_engine_candidate_plan(
+        &fixture.game,
+        perspective,
+        MonsGameModel::turn_engine_search_config_for_game(&fixture.game, config),
+    )
+    .expect("white harvest fixture should materialize a turn-engine plan");
+    let forced_chunk = engine_plan
+        .compiled_chunks
+        .first()
+        .cloned()
+        .expect("engine plan should have a first chunk");
+
+    let mut injected_root_moves = root_moves.clone();
+    let forced_engine_inputs = MonsGameModel::inject_turn_engine_root_candidate(
+        &fixture.game,
+        perspective,
+        config,
+        &mut injected_root_moves,
+        &engine_plan,
+    );
+    let injected_target_rank = injected_root_moves
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == root_target);
+    let injected_forced_rank = injected_root_moves
+        .iter()
+        .position(|root| root.inputs == forced_chunk);
+    let (focused_root_moves, _) = MonsGameModel::focused_root_candidates_with_forced_inputs(
+        &fixture.game,
+        perspective,
+        injected_root_moves.clone(),
+        config,
+        true,
+        forced_engine_inputs.as_deref(),
+    );
+    let focused_target_rank = focused_root_moves
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == root_target);
+    let focused_forced_rank = focused_root_moves
+        .iter()
+        .position(|root| root.inputs == forced_chunk);
+
+    println!(
+        "WHITE_HARVEST_FORCED_ROOT raw_target_rank={:?} injected_target_rank={:?} injected_forced_rank={:?} focused_target_rank={:?} focused_forced_rank={:?} forced_inputs={:?} head_family={:?} goal_family={:?}",
+        root_target_rank,
+        injected_target_rank,
+        injected_forced_rank,
+        focused_target_rank,
+        focused_forced_rank,
+        forced_engine_inputs
+            .as_ref()
+            .map(|inputs| Input::fen_from_array(inputs)),
+        engine_plan.head_family,
+        engine_plan.goal_family,
+    );
+
+    for (rank, root) in root_moves.iter().enumerate().take(10) {
+        println!(
+            "WHITE_HARVEST_RAW rank={} fen={} root=\"{}\"",
+            rank,
+            Input::fen_from_array(&root.inputs),
+            format_scored_root_move_probe(Some(root)),
+        );
+    }
+    for (rank, root) in focused_root_moves.iter().enumerate().take(10) {
+        println!(
+            "WHITE_HARVEST_FOCUSED rank={} fen={} forced_match={} root=\"{}\"",
+            rank,
+            Input::fen_from_array(&root.inputs),
+            root.inputs == forced_chunk,
+            format_scored_root_move_probe(Some(root)),
+        );
+    }
+
+    assert!(
+        forced_engine_inputs.is_none(),
+        "white harvest forced-root probe should reflect the retained rejection of the non-progress window head",
+    );
+    assert_eq!(focused_forced_rank, None);
+}
+
+#[test]
+#[ignore = "diagnostic: inspect forced engine shortlist seam on primary_spirit_setup"]
+fn smart_automove_pro_spirit_setup_forced_root_probe() {
+    let fixture = primary_pro_fixture_by_id("primary_spirit_setup");
+    let config =
+        calibration_runtime_config("runtime_pro_turn_engine_v30", &fixture.game, fixture.mode);
+    let perspective = fixture.game.active_color;
+    let root_moves = MonsGameModel::ranked_root_moves(&fixture.game, perspective, config);
+    let baseline_target = "l9,7;l7,8;l7,7";
+    let safe_progress_target = "l9,5;l8,6";
+
+    let baseline_target_rank = root_moves
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == baseline_target);
+    let safe_progress_target_rank = root_moves
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == safe_progress_target);
+    let engine_plan = turn_engine_candidate_plan(
+        &fixture.game,
+        perspective,
+        MonsGameModel::turn_engine_search_config_for_game(&fixture.game, config),
+    )
+    .expect("spirit setup fixture should materialize a turn-engine plan");
+    let forced_chunk = engine_plan
+        .compiled_chunks
+        .first()
+        .cloned()
+        .expect("engine plan should have a first chunk");
+
+    let mut injected_root_moves = root_moves.clone();
+    let forced_engine_inputs = MonsGameModel::inject_turn_engine_root_candidate(
+        &fixture.game,
+        perspective,
+        config,
+        &mut injected_root_moves,
+        &engine_plan,
+    );
+    let injected_baseline_rank = injected_root_moves
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == baseline_target);
+    let injected_safe_progress_rank = injected_root_moves
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == safe_progress_target);
+    let injected_forced_rank = injected_root_moves
+        .iter()
+        .position(|root| root.inputs == forced_chunk);
+    let (focused_root_moves, _) = MonsGameModel::focused_root_candidates_with_forced_inputs(
+        &fixture.game,
+        perspective,
+        injected_root_moves.clone(),
+        config,
+        true,
+        forced_engine_inputs.as_deref(),
+    );
+    let focused_baseline_rank = focused_root_moves
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == baseline_target);
+    let focused_safe_progress_rank = focused_root_moves
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == safe_progress_target);
+    let focused_forced_rank = focused_root_moves
+        .iter()
+        .position(|root| root.inputs == forced_chunk);
+
+    println!(
+        "SPIRIT_SETUP_FORCED_ROOT raw_baseline_rank={:?} raw_safe_progress_rank={:?} injected_baseline_rank={:?} injected_safe_progress_rank={:?} injected_forced_rank={:?} focused_baseline_rank={:?} focused_safe_progress_rank={:?} focused_forced_rank={:?} forced_inputs={:?} head_family={:?} goal_family={:?}",
+        baseline_target_rank,
+        safe_progress_target_rank,
+        injected_baseline_rank,
+        injected_safe_progress_rank,
+        injected_forced_rank,
+        focused_baseline_rank,
+        focused_safe_progress_rank,
+        focused_forced_rank,
+        forced_engine_inputs
+            .as_ref()
+            .map(|inputs| Input::fen_from_array(inputs)),
+        engine_plan.head_family,
+        engine_plan.goal_family,
+    );
+
+    for (rank, root) in root_moves.iter().enumerate().take(8) {
+        println!(
+            "SPIRIT_SETUP_RAW rank={} fen={} baseline_match={} safe_progress_match={} forced_match={} root=\"{}\"",
+            rank,
+            Input::fen_from_array(&root.inputs),
+            Input::fen_from_array(&root.inputs) == baseline_target,
+            Input::fen_from_array(&root.inputs) == safe_progress_target,
+            root.inputs == forced_chunk,
+            format_scored_root_move_probe(Some(root)),
+        );
+    }
+    for (rank, root) in focused_root_moves.iter().enumerate().take(8) {
+        println!(
+            "SPIRIT_SETUP_FOCUSED rank={} fen={} baseline_match={} safe_progress_match={} forced_match={} root=\"{}\"",
+            rank,
+            Input::fen_from_array(&root.inputs),
+            Input::fen_from_array(&root.inputs) == baseline_target,
+            Input::fen_from_array(&root.inputs) == safe_progress_target,
+            root.inputs == forced_chunk,
+            format_scored_root_move_probe(Some(root)),
+        );
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: inspect full selector path on primary_black_reliability_opening_3_ply4"]
+fn smart_automove_pro_black_reliability_opening_3_selector_probe() {
+    let fixture = primary_pro_fixture_by_id("primary_black_reliability_opening_3_ply4");
+    let candidate_profile = "runtime_pro_turn_engine_v30";
+    let baseline_profile = "runtime_current";
+    let pro_runtime = SearchBudget::from_preference(SmartAutomovePreference::Pro)
+        .runtime_config_for_game(&fixture.game);
+    let configured_runtime =
+        calibration_runtime_config("runtime_pro_turn_engine_v30", &fixture.game, fixture.mode);
+    let mut low_budget_disabled_runtime = configured_runtime;
+    low_budget_disabled_runtime.enable_turn_engine_low_budget_guard = false;
+    let guarded_inputs = model_runtime_pro_turn_engine_v30(&fixture.game, pro_runtime);
+    let direct_configured_inputs =
+        MonsGameModel::smart_search_best_inputs(&fixture.game, configured_runtime);
+    let low_budget_disabled_inputs =
+        MonsGameModel::smart_search_best_inputs(&fixture.game, low_budget_disabled_runtime);
+    let plain_current_best_inputs =
+        MonsGameModel::smart_search_best_inputs(&fixture.game, pro_runtime);
+
+    println!(
+        "BLACK_RELIABILITY_GUARDS turn={} mons_moves={} can_action={} can_mana={} guarded={} direct_configured={} low_budget_disabled={} plain_current_best={} black_turn_two_turn_start_action_mana={} black_turn_two_mana_only={} black_turn_four_turn_start_action_mana={}",
+        fixture.game.turn_number,
+        fixture.game.mons_moves_count,
+        fixture.game.player_can_use_action(),
+        fixture.game.player_can_move_mana(),
+        Input::fen_from_array(&guarded_inputs),
+        Input::fen_from_array(&direct_configured_inputs),
+        Input::fen_from_array(&low_budget_disabled_inputs),
+        Input::fen_from_array(&plain_current_best_inputs),
+        fixture.game.active_color == Color::Black
+            && fixture.game.turn_number == 2
+            && fixture.game.mons_moves_count == 0
+            && fixture.game.player_can_use_action()
+            && fixture.game.player_can_move_mana(),
+        fixture.game.active_color == Color::Black
+            && fixture.game.turn_number == 2
+            && fixture.game.mons_moves_count > 0
+            && !fixture.game.player_can_use_action()
+            && fixture.game.player_can_move_mana(),
+        fixture.game.active_color == Color::Black
+            && fixture.game.turn_number == 4
+            && fixture.game.mons_moves_count == 0
+            && fixture.game.player_can_use_action()
+            && fixture.game.player_can_move_mana(),
+    );
+
+    for profile_name in [candidate_profile, baseline_profile] {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        clear_turn_engine_plan_cache();
+        clear_turn_engine_diagnostics();
+        clear_turn_engine_selector_diagnostics();
+
+        let selected = profile_decision_inputs(profile_name, fixture.mode, &fixture.game);
+        let selected_fen = Input::fen_from_array(&selected);
+        let selector_diag = turn_engine_selector_diagnostics_snapshot();
+        let engine_diag = turn_engine_diagnostics_snapshot();
+        let exact_diag = exact_query_diagnostics_snapshot();
+        let (config, scored_roots) = profile_scored_roots(profile_name, fixture.mode, &fixture.game);
+        let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
+            &fixture.game,
+            scored_roots.as_slice(),
+            fixture.game.active_color,
+            config,
+        );
+
+        println!(
+            "BLACK_RELIABILITY_SELECTOR profile={} selected={} pre_accept={} selector(last_stage={} head_calls={} head_hits={} child_calls={} children={} shortlist={} full_pass={} prefer_builds={} prefer_hits={}) engine(accepted={} cache_hits={} cache_misses={} reply_calls={}) exact(tactical_spirit_calls={} tactical_spirit_hits={} secure_mana_calls={} secure_mana_hits={} pickup_calls={} pickup_hits={})",
+            profile_name,
+            selected_fen,
+            Input::fen_from_array(&pre_accept_selected),
+            selector_diag.last_return_stage,
+            selector_diag.head_plan_calls,
+            selector_diag.head_plan_hits,
+            selector_diag.ranked_child_states_calls,
+            selector_diag.ranked_child_states_children_enumerated,
+            selector_diag.child_ordering_shortlist_children,
+            selector_diag.child_ordering_full_pass_children,
+            selector_diag.search_preferability_builds,
+            selector_diag.search_preferability_cache_hits,
+            engine_diag.accepted_plans,
+            engine_diag.cache_hits,
+            engine_diag.cache_misses,
+            engine_diag.reply_search_calls,
+            exact_diag.tactical_spirit_summary_calls,
+            exact_diag.tactical_spirit_summary_cache_hits,
+            exact_diag.exact_secure_mana_calls,
+            exact_diag.exact_secure_mana_cache_hits,
+            exact_diag.pickup_path_calls,
+            exact_diag.pickup_path_cache_hits,
+        );
+
+        for (rank, root) in scored_roots.iter().enumerate().take(12) {
+            println!(
+                "BLACK_RELIABILITY_ROOT profile={} rank={} fen={} selected_match={} pre_accept_match={} root=\"{}\"",
+                profile_name,
+                rank,
+                Input::fen_from_array(&root.inputs),
+                root.inputs == selected,
+                root.inputs == pre_accept_selected,
+                format_root_probe(Some(root)),
+            );
+        }
+    }
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_rejects_white_harvest_non_progress_window_injection() {
+    let fixture = primary_pro_fixture_by_id("primary_white_harvest_loss_c_ply24");
+    let config = calibration_runtime_config("runtime_pro_turn_engine_v30", &fixture.game, fixture.mode);
+    let perspective = fixture.game.active_color;
+    let mut root_moves = MonsGameModel::ranked_root_moves(&fixture.game, perspective, config);
+    let engine_plan = turn_engine_candidate_plan(
+        &fixture.game,
+        perspective,
+        MonsGameModel::turn_engine_search_config_for_game(&fixture.game, config),
+    )
+    .expect("white harvest fixture should materialize a turn-engine plan");
+
+    assert_eq!(engine_plan.head_family, TurnPlanFamily::SafeOpponentManaProgress);
+    assert_eq!(
+        Input::fen_from_array(
+            engine_plan
+                .compiled_chunks
+                .first()
+                .expect("plan should include a first chunk"),
+        ),
+        "l8,5;l7,4",
+    );
+    assert!(
+        MonsGameModel::inject_turn_engine_root_candidate(
+            &fixture.game,
+            perspective,
+            config,
+            &mut root_moves,
+            &engine_plan,
+        )
+        .is_none(),
+        "a non-progress score-window first chunk should not be forced ahead of a concrete progress cluster",
+    );
+    assert_eq!(
+        profile_decision_move_fen("runtime_pro_turn_engine_v30", fixture.mode, &fixture.game),
+        "l7,2;l6,1",
+    );
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_rejects_weaker_plain_spirit_head_on_primary_spirit_setup() {
+    let fixture = primary_pro_fixture_by_id("primary_spirit_setup");
+    let (config, scored_roots, head_plan, forced_engine_inputs) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(
+            "runtime_pro_turn_engine_v30",
+            fixture.mode,
+            &fixture.game,
+        );
+    let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
+        &fixture.game,
+        scored_roots.as_slice(),
+        fixture.game.active_color,
+        config,
+    );
+    let head_plan = head_plan.expect("spirit setup fixture should retain a head plan");
+
+    assert_eq!(forced_engine_inputs, None);
+    assert_eq!(Input::fen_from_array(&pre_accept_selected), "l9,7;l7,8;l7,7");
+    assert_eq!(
+        Input::fen_from_array(
+            head_plan
+                .compiled_chunks
+                .first()
+                .expect("head plan should include a first chunk"),
+        ),
+        "l9,7;l7,8;l8,7",
+    );
+    assert!(
+        !MonsGameModel::accept_turn_engine_head_after_search(
+            &fixture.game,
+            fixture.game.active_color,
+            config,
+            scored_roots.as_slice(),
+            pre_accept_selected.as_slice(),
+            &head_plan,
+        ),
+        "a weaker plain spirit sibling should not override the stronger selected spirit root",
+    );
+    assert_eq!(
+        profile_decision_move_fen("runtime_pro_turn_engine_v30", fixture.mode, &fixture.game),
+        "l9,7;l7,8;l7,7",
+    );
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_skips_black_turn_two_low_budget_clamp_with_full_resources() {
+    let fixture = primary_pro_fixture_by_id("primary_black_reliability_opening_3_ply4");
+    let configured_runtime =
+        calibration_runtime_config("runtime_pro_turn_engine_v30", &fixture.game, fixture.mode);
+    let mut low_budget_disabled_runtime = configured_runtime;
+    low_budget_disabled_runtime.enable_turn_engine_low_budget_guard = false;
+
+    assert_eq!(
+        Input::fen_from_array(&MonsGameModel::smart_search_best_inputs(
+            &fixture.game,
+            configured_runtime,
+        )),
+        "l1,3;l3,4;l3,3",
+    );
+    assert_eq!(
+        Input::fen_from_array(&MonsGameModel::smart_search_best_inputs(
+            &fixture.game,
+            low_budget_disabled_runtime,
+        )),
+        "l1,3;l3,4;l3,3",
+    );
+    assert_eq!(
+        profile_decision_move_fen("runtime_pro_turn_engine_v30", fixture.mode, &fixture.game),
+        "l1,3;l3,4;l3,3",
+    );
 }
