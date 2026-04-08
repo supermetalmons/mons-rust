@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Fresh Seed v5 Duel Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v5` after the cheap gate reconfirmed the retained frontier was stalled at `human_win_pro_c` alone.
+- Why it stopped: the replay was still all count-`1` churn. `vs current Pro` finished `5` regressions / `4` improvements / `3` flat, `vs current Normal` `2` / `2` / `8`, and `vs current Fast` `1` / `1` / `10`, with every move pair unique inside its duel bucket. The replay did bring back familiar shapes, including early-black `negative_deny`, later-black accepted-head `l1,5;l1,7;l0,7` vs current `l4,1;l5,0;mb`, and a white `search_only_forced_prepass` drift `l9,4;l8,5` vs current `l9,4;l8,3`, but none repeated strongly enough to justify another production cut.
+- Durable lesson: do not treat the return of known live families as actionable by itself. If a fresh replay still spreads them across count-`1` move pairs, keep only the lesson and wait for a stronger repeated seam or a retained-surface foothold.
+
 ## Apr 8, 2026: Cheap Frontier Reconfirmed As Human-Only Stall
 
 - What was tried: refreshed `smart_automove_pro_human_win_pro_c_selector_probe` again on the retained challenger, then reran the canonical cheap gate via `SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage runtime_pro_turn_engine_v30 runtime_current` to see whether any bounded production split still had a credible path.

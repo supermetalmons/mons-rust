@@ -9,6 +9,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v5` because the cheap frontier is fully stalled at `human_win_pro_c`
+  - duel summary:
+    - `vs current Pro`: `5` regressions, `4` improvements, `3` flat; every move pair stayed at count `1`
+    - `vs current Normal`: `2` regressions, `2` improvements, `8` flat; both move pairs stayed at count `1`
+    - `vs current Fast`: `1` regression, `1` improvement, `10` flat; the only move pair stayed at count `1`
+  - the replay reintroduced only sparse one-offs: early-black `negative_deny` `l0,5;l1,6` vs current `l1,5;l3,6;l2,7`, later-black accepted-head `l1,5;l1,7;l0,7` vs current `l4,1;l5,0;mb`, white forced-prepass `l9,4;l8,5` vs current `l9,4;l8,3`, and several white spirit/setup reranks
+  - direct conclusion: kill this turn at diagnostics before code edits; even with known black families resurfacing, the fresh replay is still all count-`1` churn and does not earn another retained-surface production split
+- Latest diagnostic close (`2026-04-08`, latest):
   - refreshed `smart_automove_pro_human_win_pro_c_selector_probe` on the retained challenger to recheck the only remaining retained cheap drift before spending any new production code
   - `human_win_pro_c` is still the same safe-progress / followup-floor surface: `progress_competes=true`, `followup_progress_competes=true`, `risky_score_competes=false`, selected `l10,5;l9,6`, baseline `l7,5;l6,3;l7,3`
   - reran the canonical cheap gate with `SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage runtime_pro_turn_engine_v30 runtime_current`; it reconfirmed the exact stall: `opening_reply` stayed `0/3`, `primary_pro` stayed `1/55`, `off_target_changed=0`, and the only changed fixture was still `human_win_pro_c`
