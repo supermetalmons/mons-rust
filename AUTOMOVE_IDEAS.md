@@ -8,6 +8,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest diagnostic close (`2026-04-08`, latest):
+  - compared the remaining `human_win_pro_c` drift against the sampled fast-duel black turn-four board with a shared projection probe before cutting more ProV2 code
+  - `human_win_pro_c` is not the same seam: selected `l10,5;l9,6` is a safe progress root, but its post-root projection becomes `SpiritImpact -> ImmediateScore` and it beats the current spirit-own-setup root mostly on followup floor (`810871` vs `810407`), not on a distinct projected score delta
+  - the sampled fast-duel board is different: injected `l1,6;l2,7` is a vulnerable `ManaTempo` root whose post-root projection becomes `SafeSupermanaProgress -> ImmediateScore`, while current `l2,3;l3,2` is another vulnerable `ManaTempo` root with a weaker projected followup
+  - direct conclusion: kill the shared clamp idea before code edits; do not bundle `human_win_pro_c` and the sampled fast black turn-four divergence into one projection-family split without fresh duel evidence that they really share a code path
 - Latest focused gate (`2026-04-08`, latest):
   - paired the duel-backed wrapper bundle with a narrow late-white omitted-root reply-risk rescue so `human_win_pro_c` would match current again without reopening `primary_black_reliability_opening_3_ply4`
   - cheap-gate result: `guardrails` passed, `opening_reply` stayed `0/3`, and `pro-triage(primary_pro)` collapsed to `0/52` because the challenger now matched `runtime_current` on every cheap Pro fixture, so the split still died before `runtime-preflight`
@@ -171,6 +176,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Do not reopen:
   - wrapper-only white `turn=3` plus black `turn=2`/`turn=4` one-move current-Pro guard bundles by themselves; on Apr 8 they fixed multiple traced duel boards but still left `pro-triage(primary_pro)` unchanged at `1/52`
   - isolated black `turn=4`, one-move `action+mana` current-Pro guards by themselves; on Apr 8 they fixed the sampled fast-duel `l1,6;l2,7` -> `l2,3;l3,2` divergence but still left `pro-triage(primary_pro)` unchanged at the same `human_win_pro_c`-only `1/52`
+  - shared `human_win_pro_c` plus sampled fast-duel black turn-four projection clamps by themselves; on Apr 8 the probe showed the human drift was a higher-followup-floor `SpiritImpact -> ImmediateScore` story while the fast board was an injected vulnerable `ManaTempo` `SafeSupermanaProgress -> ImmediateScore` seam
   - late white full-resource current-Pro guards as a `human_win_pro_c` lever; on Apr 8 the guard did not alter the selected move at all
   - white `turn=3` mana-only mid-turn wrapper reroutes by themselves; the traced guard repair fixed real duel boards but left `pro-triage(primary_pro)` unchanged at `1/52`
   - same-lane `spirit_own_mana_setup_now` progress overrides or larger own-setup reply-floor allowances by themselves; the Apr 8 combined split collapsed `human_win_pro_c` but reopened `primary_black_reliability_opening_3_ply4` and cratered direct duels

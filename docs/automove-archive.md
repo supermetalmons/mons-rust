@@ -112,6 +112,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the live duel board was fixed and `guardrails` passed, but `pro-triage(primary_pro)` still stayed unchanged at `1/52`, with only the old `human_win_pro_c` drift. Per the retained runbook, that meant the target surface had not moved, so the split was killed before `runtime-preflight` and `pro-reliability`.
 - Durable lesson: even a real black one-move `action+mana` wrapper miss can be too local. Do not retain the isolated guard without a broader selector or duel story that also moves the cheap target surface.
 
+## Apr 8, 2026: Shared Human Plus Fast-Duel Projection Clamp Killed Before Code Edits
+
+- What was tried: added a shared diagnostic probe to compare the remaining `human_win_pro_c` drift against the sampled fast-duel black turn-four divergence before cutting more ProV2 code, looking specifically for one common `Safe*Progress -> ImmediateScore` projection seam.
+- Why it stopped: the probe showed the seam was not actually shared. On `human_win_pro_c`, selected `l10,5;l9,6` won mainly on followup floor (`810871` vs `810407`) and its post-root projection became `SpiritImpact -> ImmediateScore`; on the fast duel board, injected `l1,6;l2,7` was instead a vulnerable `ManaTempo` root whose post-root projection became `SafeSupermanaProgress -> ImmediateScore` against another vulnerable `ManaTempo` current root.
+- Durable lesson: do not bundle `human_win_pro_c` and the sampled fast black turn-four board into one shared projection clamp unless fresh duel evidence proves the same projection family is responsible.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
