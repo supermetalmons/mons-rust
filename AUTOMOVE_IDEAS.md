@@ -9,6 +9,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v2`
+  - duel summary:
+    - `vs current Pro`: `3` regressions, `5` improvements, `4` flat; every recorded move pair stayed at count `1`
+    - `vs current Normal`: `5` regressions, `2` improvements, `5` flat; every recorded move pair stayed at count `1`
+    - `vs current Fast`: `3` regressions, `2` improvements, `7` flat; every recorded move pair stayed at count `1`
+  - the only plausible live-family candidates were still too weak to justify code: the later black `SpiritImpact` takeover (`l1,5;l1,7;l0,7` vs current mana-tempo replies) appeared only once each in `vs current Pro` and `vs current Fast`, and the old early black `l0,5;l1,6` negative-deny seam resurfaced only once each in `vs current Pro` and `vs current Normal`
+  - direct conclusion: kill this turn at diagnostics before code edits; a fresh replay that produces only one-off seams still gives no retained `primary_pro` foothold, so the next spend must wait for a repeated duel family again
+- Latest diagnostic close (`2026-04-08`, latest):
   - drilled into the white normal-duel one-off `l10,4;l9,4` vs current `l8,6;l7,7`
   - the board is another white `turn=3`, mana-only wrapper miss: `turn=3`, `mons_moves=2`, `action=false`, `mana=true`
   - the probe showed configured v30 still pre-accepts current `l8,6;l7,7`, while the live path returns lower-ranked `l10,4;l9,4`

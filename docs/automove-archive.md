@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Fresh Seed v2 Duel Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with a new seed tag, `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v2`, to see whether the live wall had moved onto a new repeated family that could justify another retained `runtime_pro_turn_engine_v30` split.
+- Why it stopped: the replay finished cleanly but every recorded move pair stayed at count `1`: `vs current Pro` ended at `3` regressions / `5` improvements / `4` flat, `vs current Normal` at `5` / `2` / `5`, and `vs current Fast` at `3` / `2` / `7`. The closest thing to a new family was a later black `SpiritImpact` takeover (`l1,5;l1,7;l0,7` vs current mana-tempo replies) that appeared once each in Pro and Fast, while the old early black `l0,5;l1,6` negative-deny seam resurfaced once each in Pro and Normal. Per the retained runbook, that still was not enough: there was no repeated duel seam and no retained `primary_pro` foothold, so the line died before code edits.
+- Durable lesson: a fresh replay that produces only count-`1` seams is itself a stop signal. Do not force a production split out of cross-duel similarities alone; wait for a repeated family that also lands on retained `primary_pro`.
+
 ## Mar 9-16, 2026: Config Knob Exhaustion
 
 - What was tried: remaining `SmartSearchConfig` tuning across Fast, Normal, and Pro, including scoring retunes, quiescence, null-move, history heuristic, and wider-search variants.
