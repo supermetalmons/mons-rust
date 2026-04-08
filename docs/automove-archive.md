@@ -484,6 +484,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the replay did settle, but only onto an already-killed local family. Direct Pro finished `1` regression / `4` improvements / `7` flat, Normal `2` / `1` / `9`, and Fast `4` / `2` / `6`. Fast repeated black spirit-bridge `l1,5;l1,7;l0,7` vs current `l4,1;l5,0;mb` three times and added one black mana-bridge `l0,5;l1,4` vs `l4,1;l5,0;mb`, while direct Pro and Normal only contributed one-off early-black `negative_deny`, accepted black mana rerank `l1,5;l2,5` vs `l3,2;l4,1`, and white mana-sibling `l9,5;l8,6` vs `l9,6;l8,6` drift. That would normally justify a bridge-family reopen, except both the older broad bridge fallback and the later spirit-only bridge fallback already closed those retained seams and still failed full loops.
 - Durable lesson: if a fresh seed repeats the retained `l4,1;l5,0;mb` bridge family again, do not reopen it with another fallback-to-current branch by itself. That replay only reconfirms that the bridge baseline is live, not that the previously killed fallback strategy has become promotable.
 
+## Apr 9, 2026: v24 White Engine-Disabled Revival Killed Before Code Edits
+
+- What was tried: added `smart_automove_pro_white_engine_disabled_runtime_probe` to compare the fresh `v24` Normal white drift `l9,5;l8,6` vs current `l9,6;l8,6` against the closed `primary_spirit_setup` surface and the nearby engine-disabled white opening board.
+- Why it stopped: the traced board was neither nearby retained surface. Runtime-faithful v30 already had `selected=l9,5;l8,6`, `pre_accept=baseline=l9,6;l8,6`, `stage=engine_disabled`, `accepted=false`, and a nearby head `l8,5;l7,4` under `SafeSupermanaProgress -> ImmediateScore`. `primary_spirit_setup` stayed different: `engine_post_search`, spirit-root selected/current `l9,7;...`, and head `l9,7;l7,8;l8,7`. The nearby engine-disabled opening board also stayed different: `selected=baseline=l9,6;l8,6`, `pre_accept=l10,6;l9,5`, head `l9,6;l8,5`, and `l9,5;l8,6` was absent from the shortlist entirely.
+- Durable lesson: do not reopen a white engine-disabled drift just because it shares `l9,5;l8,6` or `l9,6;l8,6` with older retained probes. Shared neighborhood is still weaker than runtime-faithful stage shape; this was another local white `ManaTempo` sibling seam, not a real `primary_spirit_setup` or opening-family revival.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
