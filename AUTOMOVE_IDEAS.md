@@ -9,6 +9,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v13`
+  - duel summary:
+    - `vs current Pro`: `3` regressions, `4` improvements, `5` flat; all three move pairs stayed at count `1`
+    - `vs current Normal`: `1` regression, `2` improvements, `9` flat; the only move pair stayed at count `1`
+    - `vs current Fast`: `3` regressions, `2` improvements, `7` flat; all three move pairs stayed at count `1`
+  - the replay briefly resurfaced three retained black seams without producing a code-ready family: direct Pro replayed the retained mana-bridge `l0,5;l1,4` vs current `l4,1;l5,0;mb` and the retained early-black `negative_deny` `l0,5;l1,6` vs current `l1,5;l3,6;l2,7`, while Fast replayed the retained black turn-four action+mana seam `l1,6;l2,7` vs current `l3,2;l4,1`; Normal added only another one-off accepted black drainer-safety rerank `l1,6;l1,5` vs `l3,2;l4,1`
+  - direct conclusion: kill the `v13` replay at diagnostics before code edits; even when several retained black seams resurface in one seed, exact-pair count still matters more than the broad family label, and this seed stayed fragmented count-`1` churn
+- Latest diagnostic close (`2026-04-08`, latest):
   - widened `smart_automove_pro_black_forced_runtime_probe` with the fresh `v12` Normal black board `l1,5;l2,5` vs current `l1,6;l0,6`
   - the traced board is another accepted non-vulnerable black `ManaTempo` rerank, but it is still not the retained mana-bridge seam and not the traced fast `v10` black rerank: runtime-faithful v30 keeps `pre_accept` on current `l1,6;l0,6`, then accepts `l1,5;l2,5` under `head_family=ManaTempo`, `goal_family=DrainerSafetyRecovery`, and `stage=engine_cached_resume`
   - direct conclusion: keep the widened black runtime probe, but kill the `v12` Normal black revival before code edits; accepted non-vulnerable `ManaTempo` alone is still too broad for a shared black production rule

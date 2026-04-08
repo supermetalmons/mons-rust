@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Fresh Seed v13 Replay Killed At Diagnostics
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v13` after the `v12` Pro/Normal one-offs died at diagnostics, to see whether the next duel sample would finally concentrate the wall onto one retained black family strongly enough for a real production retry.
+- Why it stopped: the replay briefly resurfaced several retained black seams, but still not in a code-ready way. `vs current Pro` finished `3` regressions / `4` improvements / `5` flat, `vs current Normal` `1` / `2` / `9`, and `vs current Fast` `3` / `2` / `7`, with every exact move pair staying count `1`. Direct Pro replayed the retained mana-bridge seam `l0,5;l1,4` vs current `l4,1;l5,0;mb` and the retained early-black `negative_deny` seam `l0,5;l1,6` vs current `l1,5;l3,6;l2,7`, Fast replayed the retained black turn-four action+mana seam `l1,6;l2,7` vs current `l3,2;l4,1`, and Normal added only another one-off accepted black drainer-safety rerank `l1,6;l1,5` vs `l3,2;l4,1`.
+- Durable lesson: even a replay that brings back multiple retained black seams is still only diagnostics if each exact pair stays count `1`. Do not reopen a shared black branch from that shape; exact-pair repeat count still matters more than the broad family label.
+
 ## Apr 8, 2026: Traced Normal V12 Black Mana Rerank Killed At Diagnostics
 
 - What was tried: widened `smart_automove_pro_black_forced_runtime_probe` so it compares the fresh `v12` Normal black board `l1,5;l2,5` vs current `l1,6;l0,6` against the retained black forced-engine seams and the traced fast `v10` black mana rerank.
