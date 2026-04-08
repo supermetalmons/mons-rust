@@ -9,6 +9,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - added `smart_automove_pro_white_score_route_probe` to compare the fresh `v5` direct-Pro white rerank `l7,4;l8,3` vs current `l9,7;l7,6;l8,7` against the retained harvest fixture `primary_harvest_white_score_route_win_a`
+  - the traced board is not the retained harvest surface: it is an `engine_post_search` accepted `SafeSupermanaProgress -> ImmediateScore` override with `forced_inputs=Some("l7,4;l8,3")`, `accepted=true`, and current/pre-accept both on the same vulnerable spirit-own-setup root
+  - the retained harvest fixture stays different: `forced_inputs=Some("l9,6;l7,4;l6,3")`, `accepted=false`, and current/candidate/pre-accept already match on `l9,6;l7,4;l8,3` while the plain `l7,4;l8,3` mana route is only a lower-ranked sibling
+  - direct conclusion: kill the white score-route revival before code edits; the fresh direct-Pro seam is not a retained harvest foothold, just another isolated accepted-head override
+- Latest diagnostic close (`2026-04-08`, latest):
   - expanded `smart_automove_pro_white_fast_forced_prepass_probe` to compare the old traced Fast board with the new `pro_turn_planner_reliability_v5` Normal board `l9,4;l8,5` vs current `l9,4;l8,3`
   - both traced boards are the same live-only family: `drainer_vulnerable=true`, `drainer_walk_vulnerable=false`, current and `pre_accept` stay on vulnerable `ManaTempo`, while `search_only_forced_prepass` returns a safe `DrainerSafetyRecovery` root (`l8,4;l8,5` on Fast, `l9,4;l8,5` on Normal)
   - the retained comparison fixture `primary_white_fast_screen_opening_0_ply9` still does not share that surface: `drainer_vulnerable=false`, stage `engine_disabled`, and the selected/current roots remain spirit-progress choices

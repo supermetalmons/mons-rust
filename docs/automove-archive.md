@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: White Score-Route Comparison Killed At Diagnostics
+
+- What was tried: added `smart_automove_pro_white_score_route_probe` to compare the fresh `pro_turn_planner_reliability_v5` direct-Pro seam `l7,4;l8,3` vs current `l9,7;l7,6;l8,7` against the retained harvest fixture `primary_harvest_white_score_route_win_a`.
+- Why it stopped: the traced board was not the retained harvest surface. On the traced board, `runtime_pro_turn_engine_v30` accepted a forced `SafeSupermanaProgress -> ImmediateScore` head and returned the plain `ManaTempo` root `l7,4;l8,3`, while current and `pre_accept` both stayed on the same vulnerable spirit-own-setup route. On the retained harvest fixture, current, candidate, and `pre_accept` already matched on `l9,6;l7,4;l8,3`, the injected head was rejected, and the plain `l7,4;l8,3` mana route sat only as a lower-ranked sibling.
+- Durable lesson: do not treat a fresh white `l7,4;l8,3` replay as evidence that the retained harvest score-route surface is live again. If the traced board is an accepted progress-head override while the retained fixture is an unaccepted spirit cluster, kill the production idea and keep only the probe.
+
 ## Apr 8, 2026: White Forced-Prepass Comparison Killed At Diagnostics
 
 - What was tried: widened `smart_automove_pro_white_fast_forced_prepass_probe` so it compares the older traced Fast board with the fresh `pro_turn_planner_reliability_v5` Normal drift `l9,4;l8,5` vs current `l9,4;l8,3`, while keeping `primary_white_fast_screen_opening_0_ply9` as the retained comparison fixture.
