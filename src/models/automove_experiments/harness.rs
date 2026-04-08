@@ -1607,6 +1607,14 @@ fn black_negative_deny_ply4_triage_game() -> MonsGame {
     .expect("black_negative_deny_ply4: valid fen")
 }
 
+fn black_late_accepted_head_ply4_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "1 0 b 0 0 1 0 0 4 n06a0xn04/n05s0xd0xe0xn03/n07xxmn03/n02y0xxxmn07/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n03xxMn03xxMn03/n11/n03E0xA0xS0xn05/D0xn06Y0xn03",
+        false,
+    )
+    .expect("black_late_accepted_head_ply4: valid fen")
+}
+
 fn black_reliability_opening_3_ply3_triage_game() -> MonsGame {
     MonsGame::from_fen(
         "0 0 b 0 0 0 0 0 2 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n03E0xA0xD0xS0xn01Y0xn02/n11",
@@ -2125,6 +2133,14 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,5;l1,6"),
+        },
+        TriageFixture {
+            id: "primary_black_late_accepted_head_ply4",
+            game: black_late_accepted_head_ply4_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l1,5;l1,7;l0,7"),
         },
         TriageFixture {
             id: "primary_black_reliability_opening_3_ply3",

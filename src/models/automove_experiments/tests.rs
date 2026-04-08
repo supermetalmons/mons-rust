@@ -2751,6 +2751,7 @@ fn smart_automove_pro_triage_retained_churn_probe() {
         "primary_pvs_sensitive_search",
         "primary_black_reliability_opening_3_ply4",
         "primary_black_negative_deny_ply4",
+        "primary_black_late_accepted_head_ply4",
         "primary_white_harvest_loss_c_ply24",
         "human_win_pro_c",
     ];
@@ -2899,6 +2900,7 @@ fn smart_automove_pro_runtime_faithful_retained_churn_probe() {
         "primary_pvs_sensitive_search",
         "primary_black_reliability_opening_3_ply4",
         "primary_black_negative_deny_ply4",
+        "primary_black_late_accepted_head_ply4",
         "primary_white_harvest_loss_c_ply24",
         "human_win_pro_c",
     ];
@@ -3559,6 +3561,98 @@ fn smart_automove_pro_black_reliability_opening_3_selector_probe() {
                 format_root_probe(Some(root)),
             );
         }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: inspect accepted later black spirit head on primary_black_late_accepted_head_ply4"]
+fn smart_automove_pro_black_late_accepted_head_probe() {
+    let fixture = primary_pro_fixture_by_id("primary_black_late_accepted_head_ply4");
+    let (config, scored_roots, head_plan, forced_engine_inputs) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(
+            "runtime_pro_turn_engine_v30",
+            fixture.mode,
+            &fixture.game,
+        );
+    let perspective = fixture.game.active_color;
+    let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
+        &fixture.game,
+        scored_roots.as_slice(),
+        perspective,
+        config,
+    );
+    let selected = profile_decision_inputs("runtime_pro_turn_engine_v30", fixture.mode, &fixture.game);
+    let baseline_selected = profile_decision_inputs("runtime_current", fixture.mode, &fixture.game);
+    let head_plan = head_plan.expect("later black accepted-head fixture should retain a head plan");
+    let head_inputs = head_plan
+        .compiled_chunks
+        .first()
+        .expect("head plan should include a first chunk");
+    let accepted = MonsGameModel::accept_turn_engine_head_after_search(
+        &fixture.game,
+        perspective,
+        config,
+        scored_roots.as_slice(),
+        pre_accept_selected.as_slice(),
+        &head_plan,
+    );
+    let pre_accept_root = scored_roots
+        .iter()
+        .find(|root| root.inputs == pre_accept_selected)
+        .expect("pre-accept selected root should be present");
+    let head_root = scored_roots
+        .iter()
+        .find(|root| root.inputs.as_slice() == head_inputs.as_slice())
+        .expect("head root should be present");
+    let baseline_root = scored_roots
+        .iter()
+        .find(|root| root.inputs == baseline_selected)
+        .expect("baseline selected root should be present");
+    let pre_accept_family = MonsGameModel::turn_engine_root_evaluation_family(pre_accept_root);
+    let baseline_family = MonsGameModel::turn_engine_root_evaluation_family(baseline_root);
+    let pre_accept_utility = MonsGameModel::turn_engine_root_plan_utility(
+        &fixture.game,
+        pre_accept_root,
+        perspective,
+        config,
+        pre_accept_family,
+    );
+    let baseline_utility = MonsGameModel::turn_engine_root_plan_utility(
+        &fixture.game,
+        baseline_root,
+        perspective,
+        config,
+        baseline_family,
+    );
+
+    println!(
+        "BLACK_LATE_ACCEPTED_HEAD selected={} pre_accept={} baseline_selected={} head={} accepted={} forced_inputs={:?} head_family={:?} goal_family={:?} plan_utility={:?} head_utility={:?} pre_accept_utility={:?} baseline_utility={:?}",
+        Input::fen_from_array(&selected),
+        Input::fen_from_array(&pre_accept_selected),
+        Input::fen_from_array(&baseline_selected),
+        Input::fen_from_array(head_inputs),
+        accepted,
+        forced_engine_inputs
+            .as_ref()
+            .map(|inputs| Input::fen_from_array(inputs)),
+        head_plan.head_family,
+        head_plan.goal_family,
+        head_plan.utility,
+        head_plan.head_utility,
+        pre_accept_utility,
+        baseline_utility,
+    );
+    println!(
+        "BLACK_LATE_ACCEPTED_HEAD_ROOT pre_accept=\"{}\" baseline=\"{}\" head=\"{}\"",
+        format_root_probe(Some(pre_accept_root)),
+        format_root_probe(Some(baseline_root)),
+        format_root_probe(Some(head_root)),
+    );
+    for target in ["l1,5;l1,7;l0,7", "l3,2;l4,1"] {
+        let rank = scored_roots
+            .iter()
+            .position(|root| Input::fen_from_array(&root.inputs) == target);
+        println!("target={} rank={:?}", target, rank);
     }
 }
 
