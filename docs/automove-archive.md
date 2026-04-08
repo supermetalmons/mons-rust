@@ -436,6 +436,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the focused probe showed another wrapper mismatch. The board was again `turn=3`, `mons_moves=2`, `action=false`, `mana=true`; configured `runtime_pro_turn_engine_v30` still pre-accepted current `l8,6;l7,7`, while the live path returned lower-ranked `l10,4;l9,4`. That made it another member of the already-closed white turn-three mana-only wrapper family, so the idea died before code edits.
 - Durable lesson: if configured v30 still pre-accepts current on a white `turn=3`, mana-only board, treat the live mismatch as wrapper churn rather than a new retained selector seam.
 
+## Apr 9, 2026: Seed v17 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v17` to look for the next repeatable direct-duel seam after the black bridge fallback died.
+- Why it stopped: the replay stayed non-actionable. Direct Pro finished `2` regressions / `6` improvements / `4` flat, Normal `0` / `1` / `11`, and Fast `3` / `3` / `6`, but every exact move pair still stayed at count `1`. The surviving regressions were only live-only white forced-prepass drift `l8,4;l8,5` vs current `l8,4;l8,3`, white `ManaTempo` sibling drift `l8,3;l8,2` vs `l8,3;l9,2`, and a late black spirit-head rerank `l1,5;l1,7;l0,7` vs `l1,6;l2,7`, with no repeated retained `primary_pro` foothold.
+- Durable lesson: do not spend from a cleaner replay just because Normal nearly clears. If Pro and Fast still fragment into count-`1` white sibling/forced-prepass drift plus a one-off late black spirit-head rerank, keep only the note and wait for a replay that actually repeats on the retained surface.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
