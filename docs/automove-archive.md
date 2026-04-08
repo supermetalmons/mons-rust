@@ -22,6 +22,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the replay was still all count-`1` churn. `vs current Pro` finished `1` regression / `4` improvements / `7` flat, `vs current Normal` `3` / `1` / `8`, and `vs current Fast` `2` / `1` / `9`, with every move pair unique inside its duel bucket. The traces included a direct-Pro white vulnerable `ManaTempo` rerank `l10,0;l9,1` vs current `l9,2;l9,1`, two different white Normal reranks, one later-black accepted-head resurfacing `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, one Fast black `l0,5;l1,4` vs `l4,1;l5,0;mb`, and one Fast white `l10,4;l9,3` vs `l9,5;l7,6;l8,7`, but none repeated strongly enough to justify a retained fixture or production split.
 - Durable lesson: even after a new retained black foothold lands, a fresh replay that only remixes one-off white and black seams is still a diagnostics-only kill. Do not reopen code until a replay repeats one family on a retained surface.
 
+## Apr 8, 2026: Black Forced-Root Comparison Killed At Diagnostics
+
+- What was tried: added `smart_automove_pro_black_forced_root_probe` to compare the retained `primary_black_turn_four_action_mana_ply15` seam against the retained `primary_black_late_accepted_head_ply4` seam at raw, injected, and focused root stages.
+- Why it stopped: the probe showed only a superficial match. In both cases the forced root was absent from raw roots and got injected directly to rank `0`, demoting the current raw top to rank `1`. But the injected roots themselves diverged sharply: the action+mana seam injects a vulnerable non-spirit `ManaTempo` root `l1,6;l2,7` even though the head family is `SafeSupermanaProgress`, while the later black family injects a genuine `SpiritImpact` progress root `l1,5;l1,7;l0,7`.
+- Durable lesson: do not reopen a shared black injection-family production split from these two seams alone. The useful retained artifact is the comparison probe; the code path still branches earlier than a single shared injected-root rule.
+
 ## Apr 8, 2026: Retain White Mana-Sibling Seam
 
 - What was tried: after the `v6` replay left only one repeated multi-bucket family, added `primary_white_mana_sibling_ply9` and `smart_automove_pro_white_mana_sibling_probe` to compare the direct-Pro `l5,0;l5,1` vs current `l5,0;l4,1` board against the sibling Normal `l5,0;l6,1` vs `l5,0;l4,1` board.

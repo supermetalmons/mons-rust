@@ -3934,6 +3934,119 @@ fn smart_automove_pro_black_turn_four_action_mana_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: compare retained black forced-root families at injection stage"]
+fn smart_automove_pro_black_forced_root_probe() {
+    fn run_probe(label: &str, fixture_id: &str, targets: &[&str]) {
+        let fixture = primary_pro_fixture_by_id(fixture_id);
+        let config =
+            calibration_runtime_config("runtime_pro_turn_engine_v30", &fixture.game, fixture.mode);
+        let perspective = fixture.game.active_color;
+        let root_moves = MonsGameModel::ranked_root_moves(&fixture.game, perspective, config);
+        let engine_plan = turn_engine_candidate_plan(
+            &fixture.game,
+            perspective,
+            MonsGameModel::turn_engine_search_config_for_game(&fixture.game, config),
+        )
+        .expect("black forced-root fixture should materialize a turn-engine plan");
+        let forced_chunk = engine_plan
+            .compiled_chunks
+            .first()
+            .cloned()
+            .expect("engine plan should have a first chunk");
+        let existing_forced_rank = root_moves
+            .iter()
+            .position(|root| root.inputs == forced_chunk);
+
+        let mut injected_root_moves = root_moves.clone();
+        let forced_engine_inputs = MonsGameModel::inject_turn_engine_root_candidate(
+            &fixture.game,
+            perspective,
+            config,
+            &mut injected_root_moves,
+            &engine_plan,
+        );
+        let injected_forced_rank = injected_root_moves
+            .iter()
+            .position(|root| root.inputs == forced_chunk);
+        let (focused_root_moves, _) = MonsGameModel::focused_root_candidates_with_forced_inputs(
+            &fixture.game,
+            perspective,
+            injected_root_moves.clone(),
+            config,
+            true,
+            forced_engine_inputs.as_deref(),
+        );
+        let focused_forced_rank = focused_root_moves
+            .iter()
+            .position(|root| root.inputs == forced_chunk);
+
+        println!(
+            "BLACK_FORCED_ROOT label={} forced={} existing_forced_rank={:?} injected_forced_rank={:?} focused_forced_rank={:?} forced_inputs={:?} head_family={:?} goal_family={:?} plan_utility={:?} head_utility={:?}",
+            label,
+            Input::fen_from_array(&forced_chunk),
+            existing_forced_rank,
+            injected_forced_rank,
+            focused_forced_rank,
+            forced_engine_inputs
+                .as_ref()
+                .map(|inputs| Input::fen_from_array(inputs)),
+            engine_plan.head_family,
+            engine_plan.goal_family,
+            engine_plan.utility,
+            engine_plan.head_utility,
+        );
+
+        for target in targets {
+            let raw_rank = root_moves
+                .iter()
+                .position(|root| Input::fen_from_array(&root.inputs) == *target);
+            let injected_rank = injected_root_moves
+                .iter()
+                .position(|root| Input::fen_from_array(&root.inputs) == *target);
+            let focused_rank = focused_root_moves
+                .iter()
+                .position(|root| Input::fen_from_array(&root.inputs) == *target);
+            println!(
+                "BLACK_FORCED_ROOT_TARGET label={} target={} raw_rank={:?} injected_rank={:?} focused_rank={:?}",
+                label, target, raw_rank, injected_rank, focused_rank,
+            );
+        }
+
+        for (rank, root) in root_moves.iter().enumerate().take(8) {
+            println!(
+                "BLACK_FORCED_ROOT_RAW label={} rank={} fen={} forced_match={} root=\"{}\"",
+                label,
+                rank,
+                Input::fen_from_array(&root.inputs),
+                root.inputs == forced_chunk,
+                format_scored_root_move_probe(Some(root)),
+            );
+        }
+        for (rank, root) in focused_root_moves.iter().enumerate().take(8) {
+            println!(
+                "BLACK_FORCED_ROOT_FOCUSED label={} rank={} fen={} forced_match={} root=\"{}\"",
+                label,
+                rank,
+                Input::fen_from_array(&root.inputs),
+                root.inputs == forced_chunk,
+                format_scored_root_move_probe(Some(root)),
+            );
+        }
+    }
+
+    run_probe(
+        "primary_black_turn_four_action_mana_ply15",
+        "primary_black_turn_four_action_mana_ply15",
+        &["l1,6;l2,7", "l2,3;l3,2"],
+    );
+    run_probe(
+        "primary_black_late_accepted_head_ply4",
+        "primary_black_late_accepted_head_ply4",
+        &["l1,5;l1,7;l0,7", "l3,2;l4,1"],
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: inspect white forced-prepass families on traced duel boards"]
 fn smart_automove_pro_white_fast_forced_prepass_probe() {
     fn run_probe(label: &str, game: &MonsGame, targets: &[&str]) {

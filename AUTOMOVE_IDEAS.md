@@ -19,6 +19,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
   - probe result: raw ranked roots/current still prefer `l2,3;l3,2`, but runtime-faithful v30 injects and selects `l1,6;l2,7`; `stage=engine_post_search`, `head_family=SafeSupermanaProgress`, `goal_family=ImmediateScore`, and selected/pre-accept/head all collapse onto the same injected vulnerable `ManaTempo` root
   - direct conclusion: keep the fixture and widened probe, but do not reopen wrapper-only or acceptance-only fixes from this seam alone; the live lever is earlier forced-engine injection, not a final accept clamp
 - Latest diagnostic close (`2026-04-08`, latest):
+  - added `smart_automove_pro_black_forced_root_probe` to compare the retained `primary_black_turn_four_action_mana_ply15` seam against the retained `primary_black_late_accepted_head_ply4` seam at raw/injected/focused root stages
+  - both black families share the outer injection shape: the forced root is absent from raw roots, injected straight to rank `0`, and demotes the current raw top to rank `1`
+  - the actual injected roots are different enough to kill a shared production idea: `primary_black_turn_four_action_mana_ply15` injects a vulnerable non-spirit `ManaTempo` root `l1,6;l2,7` even though the head family is `SafeSupermanaProgress`, while `primary_black_late_accepted_head_ply4` injects a genuine `SpiritImpact` progress root `l1,5;l1,7;l0,7`
+  - direct conclusion: keep the new probe, but kill any shared black injection-family split before code edits; the later black action+mana seam and the retained late-black spirit-head seam diverge at the injected-root semantics, not just at final accept
+- Latest diagnostic close (`2026-04-08`, latest):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v7`
   - duel summary:
     - `vs current Pro`: `1` regression, `4` improvements, `7` flat; the only move pair stayed at count `1`
@@ -348,6 +353,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Major direction 3: the retained cheap surface now has two drifts, not one: `human_win_pro_c` plus `primary_black_turn_four_action_mana_ply15`.
 - Major direction 3a: the bounded reliability hotspot corpus still does not support a new duel seam right now, even after the retained PVS repair. Its compare probe is decision-identical to `runtime_current` on every real hotspot case, so use the duel-trace probe when the direct wall is unclear instead of spending another hotspot-first split.
 - Major direction 4: the new black seam is not a final accept-after-search clamp. Raw ranked roots still prefer current `l2,3;l3,2`, but runtime-faithful forced engine injection turns `l1,6;l2,7` into the selected/pre-accept/head root under a `SafeSupermanaProgress -> ImmediateScore` plan, so future spend must target earlier forced-engine behavior or a broader duel family.
+- Major direction 4b: the retained black seams do not currently share one injected-root rule. The new black forced-root comparison probe shows both seams get injected from outside the raw root list, but the action+mana seam injects a vulnerable non-progress `ManaTempo` root while the later black family injects a genuine spirit-progress root.
 - Major direction 4a: the fresh `v7` replay still does not supply that broader family. It resurfaced the later-black accepted-head story only once in Normal, plus new white one-offs in Pro/Normal/Fast, so there is still no repeated duel family worth code.
 - Immediate next split:
   - keep `primary_white_harvest_loss_c_ply24`, `primary_spirit_setup`, `primary_black_reliability_opening_3_ply4`, and `primary_pvs_sensitive_search` closed unless new duel evidence reopens them
