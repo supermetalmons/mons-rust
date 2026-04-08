@@ -8,6 +8,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest diagnostic close (`2026-04-08`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v8`
+  - duel summary:
+    - `vs current Pro`: `2` regressions, `4` improvements, `6` flat; both move pairs stayed at count `1`
+    - `vs current Normal`: `2` regressions, `1` improvement, `9` flat; both move pairs stayed at count `1`
+    - `vs current Fast`: `2` regressions, `2` improvements, `8` flat; both move pairs stayed at count `1`
+  - the replay exposed only fresh one-offs: Pro black top-ranked `SafeSupermanaProgress` `l1,4;l2,5` vs current `l2,3;l3,4`, Pro white mana rerank `l8,7;l8,8` vs `l9,6;l8,5`, Normal white spirit-own-setup rerank `l3,8;l1,7;l2,8` vs `l3,8;l3,6;l4,7`, Normal black `l0,5;l1,4` vs `l4,1;l5,0;mb`, Fast black `l1,5;l1,7;l0,7` vs `l5,0;l4,1`, and Fast black spirit cluster `l1,5;l3,3;l2,4` vs `l1,5;l2,7;l1,8`
+  - direct conclusion: kill the `v8` replay at diagnostics before code edits; it still does not expose a repeated duel family or a retained `primary_pro` foothold worth a new branch
 - Latest focused gate (`2026-04-08`, latest):
   - widened `smart_automove_pro_black_forced_root_probe` to compare the retained `primary_black_turn_four_action_mana_ply15` seam, the retained `primary_black_late_accepted_head_ply4` seam, and the traced fast-duel `v7` black board `l0,5;l1,4` vs current `l4,1;l5,0;mb`
   - tried one shared production cut in `runtime_pro_turn_engine_v30`: reject black macro progress-head injections when the forced root is absent from raw roots and still has no real progress, tactical, safety, or spirit surface
