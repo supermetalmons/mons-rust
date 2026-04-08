@@ -496,6 +496,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the traced board was another distinct accepted runtime surface, not a shared black family. Runtime-faithful v30 already had `selected=pre_accept=head=l1,5;l2,5`, `forced_inputs=Some("l1,5;l2,5")`, `stage=engine_post_search`, `accepted=true`, `head_family=ManaTempo`, and `goal_family=SpiritImpact`, while current stayed on non-vulnerable `ManaTempo` `l3,2;l4,1`. That differs from the retained late-head seam, from the traced fast `v10` black rerank where `pre_accept` stayed on current, and from the traced `v13` drainer-safety branch.
 - Durable lesson: do not reopen a black drift just because it shares current `l3,2;l4,1` with several older probes. That baseline still branches into multiple accepted black runtime surfaces, so shared baseline alone is not enough for another production split.
 
+## Apr 9, 2026: Seed v25 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v25` to see whether the post-`v24` wall would move onto a new retained exact family after the black and white side branches were classified.
+- Why it stopped: the replay fell back into mixed count-`1` churn again. Direct Pro finished `4` regressions / `3` improvements / `5` flat, Normal `3` / `3` / `6`, and Fast `1` / `3` / `8`, with every exact move pair still at count `1`. The seed only remixed one-off direct-Pro black safe-progress `l0,6;l1,6` vs current `l1,5;l2,7;l1,8`, white engine-disabled `ManaTempo` ties `l8,3;l8,2` vs `l8,3;l9,2`, white forced-prepass `l9,6;l8,5` vs `l9,6;l8,7`, white spirit-own-setup `l9,5;l7,4;l7,3` vs `l9,5;l7,6;l7,7`, Normal white ties `l9,2;l9,1` vs `l9,2;l10,1` and `l9,4;l8,4` vs `l9,2;l8,2`, one Normal black spirit-bridge replay `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, and one Fast black drainer-safety rerank `l1,4;l0,5` vs `l4,1;l5,0;mb`.
+- Durable lesson: do not spend from a seed like `v25` just because it introduces a new black rerank on a familiar baseline. If Pro, Normal, and Fast all still end with only count-`1` exact pairs across unrelated black and white families, keep only the note and wait for a replay that actually repeats on one retained surface.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
