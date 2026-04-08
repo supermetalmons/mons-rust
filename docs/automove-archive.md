@@ -106,6 +106,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the split fixed the bounded duel-accept seams, cleared `human_win_pro_c`, passed `guardrails`, moved `pro-triage(primary_pro)` to `1/52` with `off_target_changed=0`, and passed `runtime-preflight`, but `pro-reliability` still failed at `win_rate=0.7500` vs current Pro, `0.6667` vs current Normal, and `0.5000` vs current Fast. A sampled duel trace still diverged later in a fast black turn-four `engine_post_search` decision (`l1,6;l2,7` vs current `l2,3;l3,2`).
 - Durable lesson: even a real accepted-head repair can be too local. If the cheap gates are green but the live duel wall stays broad, kill the line and reopen only from the remaining duel-trace divergence, not another `human_win_pro_c` or near-tie acceptance clamp.
 
+## Apr 8, 2026: Isolated Black Turn-Four Wrapper Repair Killed At Triage
+
+- What was tried: added a narrow `runtime_pro_turn_engine_v30` current-Pro wrapper for black `turn=4`, `mons_moves=1`, `action+mana` states so the sampled fast-duel board would route from the injected `l1,6;l2,7` back to current `l2,3;l3,2`, plus a bounded regression test and focused selector probe.
+- Why it stopped: the live duel board was fixed and `guardrails` passed, but `pro-triage(primary_pro)` still stayed unchanged at `1/52`, with only the old `human_win_pro_c` drift. Per the retained runbook, that meant the target surface had not moved, so the split was killed before `runtime-preflight` and `pro-reliability`.
+- Durable lesson: even a real black one-move `action+mana` wrapper miss can be too local. Do not retain the isolated guard without a broader selector or duel story that also moves the cheap target surface.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps

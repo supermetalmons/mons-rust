@@ -170,6 +170,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
   - do not spend another acceptance-only split unless the traced seam also changes the cheap target surface
 - Do not reopen:
   - wrapper-only white `turn=3` plus black `turn=2`/`turn=4` one-move current-Pro guard bundles by themselves; on Apr 8 they fixed multiple traced duel boards but still left `pro-triage(primary_pro)` unchanged at `1/52`
+  - isolated black `turn=4`, one-move `action+mana` current-Pro guards by themselves; on Apr 8 they fixed the sampled fast-duel `l1,6;l2,7` -> `l2,3;l3,2` divergence but still left `pro-triage(primary_pro)` unchanged at the same `human_win_pro_c`-only `1/52`
   - late white full-resource current-Pro guards as a `human_win_pro_c` lever; on Apr 8 the guard did not alter the selected move at all
   - white `turn=3` mana-only mid-turn wrapper reroutes by themselves; the traced guard repair fixed real duel boards but left `pro-triage(primary_pro)` unchanged at `1/52`
   - same-lane `spirit_own_mana_setup_now` progress overrides or larger own-setup reply-floor allowances by themselves; the Apr 8 combined split collapsed `human_win_pro_c` but reopened `primary_black_reliability_opening_3_ply4` and cratered direct duels
