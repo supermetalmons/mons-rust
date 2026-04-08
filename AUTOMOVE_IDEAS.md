@@ -9,6 +9,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - probed the remaining fresh `v5` direct-Pro white seam `l8,3;l8,2` vs current `l8,3;l9,2` with a temporary traced-board diagnostic and removed the probe after classification
+  - the board has no retained fixture footprint and is another live-only white `ManaTempo` sibling tie: `stage=engine_disabled`, `forced_inputs=Some("l8,3;l9,2")`, `head=Some("l8,3;l9,2")`, `accepted=true`, and both candidate and baseline roots have identical utility and vulnerability
+  - current and `pre_accept` already match on `l8,3;l9,2`; the challenger differs only by taking the equal-utility sibling `l8,3;l8,2` with swapped root rank
+  - direct conclusion: kill the white mana-sibling idea before code edits; it is another one-off live tie with no retained surface or bounded production story
+- Latest diagnostic close (`2026-04-08`, latest):
   - widened `smart_automove_pro_black_late_accepted_head_probe` to compare the retained `primary_black_late_accepted_head_ply4` board against the fresh `v5` Normal drift `l1,5;l1,7;l0,7` vs current `l4,1;l5,0;mb`
   - the traced board is not the retained late-black family even though it reuses the same move string: current/pre-accept already choose `l1,5;l1,7;l0,7`, `accepted=true`, `goal_family=SpiritImpact`, and current differs only because shipping still selects the weaker `ManaTempo` sibling `l4,1;l5,0;mb`
   - the retained fixture stays different: `pre_accept` and current both choose `l3,2;l4,1`, the injected `l1,5;l1,7;l0,7` head is `accepted=false`, and the rejected head is a `SpiritImpact -> ImmediateScore` story with `supermana_progress=true`

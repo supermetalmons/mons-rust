@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: White Mana-Sibling Tie Killed At Diagnostics
+
+- What was tried: used a temporary traced-board probe on the fresh `pro_turn_planner_reliability_v5` direct-Pro seam `l8,3;l8,2` vs current `l8,3;l9,2`, then removed the probe after classification.
+- Why it stopped: the board had no retained fixture footprint and turned out to be a live-only `ManaTempo` sibling tie. `stage=engine_disabled`, `forced_inputs` and the traced head already matched current `l8,3;l9,2`, `accepted=true`, and both candidate and baseline roots had identical utility and identical vulnerability; the challenger differed only by picking the equal-utility sibling `l8,3;l8,2`.
+- Durable lesson: do not spend a production split on a fresh white sibling rerank when the traced board is only an equal-utility `ManaTempo` tie and there is no retained surface. Keep the lesson, not the probe.
+
 ## Apr 8, 2026: Late-Black Accepted-Head Comparison Killed At Diagnostics
 
 - What was tried: widened `smart_automove_pro_black_late_accepted_head_probe` so it compares the retained `primary_black_late_accepted_head_ply4` board against the fresh `pro_turn_planner_reliability_v5` Normal drift `l1,5;l1,7;l0,7` vs current `l4,1;l5,0;mb`.
