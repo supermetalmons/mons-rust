@@ -2750,6 +2750,7 @@ fn smart_automove_pro_triage_retained_churn_probe() {
         "primary_spirit_setup",
         "primary_pvs_sensitive_search",
         "primary_black_reliability_opening_3_ply4",
+        "primary_black_negative_deny_ply4",
         "primary_white_harvest_loss_c_ply24",
         "human_win_pro_c",
     ];
@@ -2897,6 +2898,7 @@ fn smart_automove_pro_runtime_faithful_retained_churn_probe() {
         "primary_spirit_setup",
         "primary_pvs_sensitive_search",
         "primary_black_reliability_opening_3_ply4",
+        "primary_black_negative_deny_ply4",
         "primary_white_harvest_loss_c_ply24",
         "human_win_pro_c",
     ];
@@ -3109,6 +3111,148 @@ fn smart_automove_pro_human_win_pro_c_selector_probe() {
             followup_floor,
             format_root_probe(Some(root)),
         );
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: inspect selector competition gates on primary_black_negative_deny_ply4"]
+fn smart_automove_pro_black_negative_deny_selector_probe() {
+    let fixture = primary_pro_fixture_by_id("primary_black_negative_deny_ply4");
+    let (config, scored_roots) =
+        profile_scored_roots("runtime_pro_turn_engine_v30", fixture.mode, &fixture.game);
+    let perspective = fixture.game.active_color;
+    let filtered = MonsGameModel::filtered_root_candidate_indices(
+        &fixture.game,
+        scored_roots.as_slice(),
+        perspective,
+        config,
+    );
+    let projections = MonsGameModel::turn_engine_spirit_root_projections(
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        perspective,
+        config,
+    );
+    let progress_competes = MonsGameModel::safe_progress_competes_with_spirit_pref(
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        config.turn_engine_mode,
+    );
+    let followup_progress_competes = MonsGameModel::followup_progress_competes_with_spirit_pref(
+        &fixture.game,
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        perspective,
+        config,
+    );
+    let risky_score_competes = MonsGameModel::risky_score_competes_with_spirit_pref(
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        config.turn_engine_mode,
+    );
+    let negative_deny_competes = MonsGameModel::negative_deny_competes_with_spirit_pref(
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        perspective,
+        config,
+    );
+    let score_competes = MonsGameModel::score_competes_with_spirit_pref(
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        config.turn_engine_mode,
+    );
+    let projection_competes = MonsGameModel::projection_competes_with_spirit_pref(
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        perspective,
+        config,
+    );
+    let risky_recovery_competes = MonsGameModel::risky_recovery_competes_with_spirit_pref(
+        &fixture.game,
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        perspective,
+        config,
+    );
+    let final_progress_reentry = MonsGameModel::pro_v2_plain_spirit_cluster_progress_reentry(
+        &fixture.game,
+        scored_roots.as_slice(),
+        filtered.as_slice(),
+        perspective,
+        config,
+    );
+    let selected = MonsGameModel::pick_root_move_with_exploration(
+        &fixture.game,
+        scored_roots.as_slice(),
+        perspective,
+        config,
+    );
+    let baseline_selected = profile_decision_inputs("runtime_current", fixture.mode, &fixture.game);
+
+    println!(
+        "BLACK_NEGATIVE_DENY_SELECTOR selected={} baseline_selected={} filtered_len={} progress_competes={} followup_progress_competes={} risky_score_competes={} negative_deny_competes={} score_competes={} projection_competes={} risky_recovery_competes={} final_progress_reentry={:?}",
+        Input::fen_from_array(&selected),
+        Input::fen_from_array(&baseline_selected),
+        filtered.len(),
+        progress_competes,
+        followup_progress_competes,
+        risky_score_competes,
+        negative_deny_competes,
+        score_competes,
+        projection_competes,
+        risky_recovery_competes,
+        final_progress_reentry.map(|index| Input::fen_from_array(&scored_roots[index].inputs)),
+    );
+
+    let interesting = [
+        "l0,5;l1,6",
+        "l1,5;l3,4;l2,3",
+        "l1,5;l3,6;l2,7",
+        "l1,5;l0,3;l1,3",
+        "l1,5;l0,7;l1,7",
+    ];
+    let mut followup_scores = std::collections::HashMap::new();
+    for target in interesting {
+        let rank = scored_roots
+            .iter()
+            .position(|root| Input::fen_from_array(&root.inputs) == target);
+        println!("target={} rank={:?}", target, rank);
+        if let Some(index) = rank {
+            let root = &scored_roots[index];
+            let projection = projections.get(&index).map(|plan| {
+                (
+                    plan.plan.head_family,
+                    plan.plan.goal_family,
+                    plan.plan.utility,
+                    plan.plan.head_utility,
+                )
+            });
+            let followup_floor = *followup_scores.entry(index).or_insert_with(|| {
+                MonsGameModel::pro_v2_spirit_followup_floor_score(&root.game, perspective, config)
+            });
+            println!(
+                "  fen={} score={} eff={} root_rank={} spirit={} plain_spirit={} setup_now={} own_setup={} vuln={} walk_vuln={} handoff={} roundtrip={} supermana_progress={} opponent_progress={} filtered={} projected={} projection={:?} followup_floor={} root=\"{}\"",
+                target,
+                root.score,
+                root.efficiency,
+                root.root_rank,
+                root.spirit_development,
+                MonsGameModel::is_plain_spirit_development_root(root),
+                root.spirit_same_turn_score_setup_now,
+                root.spirit_own_mana_setup_now,
+                root.own_drainer_vulnerable,
+                root.own_drainer_walk_vulnerable,
+                root.mana_handoff_to_opponent,
+                root.has_roundtrip,
+                root.supermana_progress,
+                root.opponent_mana_progress,
+                filtered.contains(&index),
+                projections.contains_key(&index),
+                projection,
+                followup_floor,
+                format_root_probe(Some(root)),
+            );
+        }
     }
 }
 

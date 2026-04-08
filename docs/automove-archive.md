@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Repeated Black Negative-Deny Selector Override Killed At Triage
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v3`, which finally repeated the early black `l0,5;l1,6` vs current `l1,5;l3,6;l2,7` family across all three direct duels. Added a new retained foothold for that seam, `primary_black_negative_deny_ply4`, plus `smart_automove_pro_black_negative_deny_selector_probe`, then tried one narrow shared selector override that ignored the plain-spirit `negative_deny` block for spirit-setup narrowing when a spirit-setup root already beat every non-spirit challenger.
+- Why it stopped: the new retained fixture did collapse to current, the focused selector probe matched the intended shape, and `guardrails` passed, but `pro-triage(primary_pro)` still returned only the stale `human_win_pro_c` drift at `1/53` with `off_target_changed=0`. Per the retained runbook, that meant the selector cut was still too local, so it died before `runtime-preflight` and `pro-reliability`.
+- Durable lesson: a repeated cross-duel family can deserve a retained fixture addition, but the first shared fix for that family still has to move the cheap frontier in a broader way. If the line closes the new retained seam and immediately snaps back to stale human-only churn, keep the fixture and probe but kill the production change.
+
 ## Apr 8, 2026: Fresh Seed v2 Duel Replay Killed Before Code Edits
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with a new seed tag, `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v2`, to see whether the live wall had moved onto a new repeated family that could justify another retained `runtime_pro_turn_engine_v30` split.
