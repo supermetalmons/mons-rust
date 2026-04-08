@@ -4224,6 +4224,11 @@ fn smart_automove_pro_black_forced_runtime_probe() {
         false,
     )
     .expect("valid traced fast v10 black mana rerank fen");
+    let traced_pro_v12_game = MonsGame::from_fen(
+        "1 0 b 0 0 1 0 0 4 n05d0xa0xn04/n06xxme0xn03/n05s0xn05/n02y0xn01xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn05/n06xxMxxMn03/n11/n07S0xn03/D0xn01A0xE0xn04Y0xn02",
+        false,
+    )
+    .expect("valid traced pro v12 black spirit head fen");
 
     run_probe(
         "primary_black_turn_four_action_mana_ply15",
@@ -4248,6 +4253,12 @@ fn smart_automove_pro_black_forced_runtime_probe() {
         &traced_fast_v10_game,
         SmartAutomovePreference::Pro,
         &["l1,5;l1,4", "l3,2;l4,1"],
+    );
+    run_probe(
+        "traced_pro_duel_v12",
+        &traced_pro_v12_game,
+        SmartAutomovePreference::Pro,
+        &["l2,5;l0,5;l1,6", "l3,2;l4,1"],
     );
 }
 

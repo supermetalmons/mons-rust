@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Traced Pro V12 Black Spirit Head Killed At Diagnostics
+
+- What was tried: widened `smart_automove_pro_black_forced_runtime_probe` so it compares the retained black seams against the fresh `v12` direct-Pro board `l2,5;l0,5;l1,6` vs current `l3,2;l4,1`.
+- Why it stopped: the traced board was not any retained black seam. It was not the retained later-black accepted-head family, because runtime-faithful v30 already had `selected=pre_accept=head=l2,5;l0,5;l1,6`, `accepted=true`, and a vulnerable `SpiritImpact -> ImmediateScore` plan, while the retained `primary_black_late_accepted_head_ply4` surface still keeps `pre_accept` on current `l3,2;l4,1` and rejects `l1,5;l1,7;l0,7`. It was not the retained mana-bridge family either: both differ from current `l3,2;l4,1`, but the retained bridge is an accepted non-vulnerable `ManaTempo` root under `head_family=SafeSupermanaProgress`, not an accepted vulnerable spirit head.
+- Durable lesson: keep the widened runtime probe, but do not reopen a shared black branch just because a fresh board reuses current `l3,2;l4,1`. That baseline now supports multiple distinct black live families, and runtime-faithful stage shape still matters more than the baseline move string.
+
 ## Apr 8, 2026: Fresh Seed v12 Replay Killed At Diagnostics
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v12` after the `v11` Normal repeat died off the Pro surface, to see whether the next duel sample would finally produce a repeatable retained family or at least collapse the wall into one exact code target.
