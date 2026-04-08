@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Fresh Seed v12 Replay Killed At Diagnostics
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v12` after the `v11` Normal repeat died off the Pro surface, to see whether the next duel sample would finally produce a repeatable retained family or at least collapse the wall into one exact code target.
+- Why it stopped: the replay got cleaner, but not actionable. `vs current Pro` finished `2` regressions / `2` improvements / `8` flat, `vs current Normal` `2` / `0` / `10`, and `vs current Fast` `0` / `4` / `8`, with no repeated move pair anywhere. The only regressions were one-off boards: direct-Pro black spirit reranks `l0,4;l1,3` vs current `l0,4;l1,5` and `l2,5;l0,5;l1,6` vs `l3,2;l4,1`, a Normal black `ManaTempo` rerank `l1,5;l2,5` vs `l1,6;l0,6`, and a Normal white non-vulnerable safe-progress rerank `l9,5;l8,5` vs `l10,7;l9,8`.
+- Durable lesson: even a replay that goes clean in Fast is still only diagnostics if Pro and Normal remain count-`1` churn. Do not retain new fixtures or cut code from that shape until one exact family repeats strongly enough to survive on the retained Pro surface.
+
 ## Apr 8, 2026: Fresh Seed v11 Normal Repeat Killed At Diagnostics
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v11`, then briefly widened `smart_automove_pro_white_score_route_probe` around the only exact repeated pair from that replay, the Normal white move `l9,5;l7,4;l8,3` vs current `l9,5;l7,6;l7,7`.

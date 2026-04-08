@@ -9,6 +9,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v12`
+  - duel summary:
+    - `vs current Pro`: `2` regressions, `2` improvements, `8` flat; both move pairs stayed at count `1`
+    - `vs current Normal`: `2` regressions, `0` improvements, `10` flat; both move pairs stayed at count `1`
+    - `vs current Fast`: `0` regressions, `4` improvements, `8` flat; no repeated move pair
+  - the replay brought cleaner direct evidence, but still no code-ready family: direct Pro had one black spirit sibling rerank `l0,4;l1,3` vs current `l0,4;l1,5` and one accepted black spirit head `l2,5;l0,5;l1,6` vs `l3,2;l4,1`, while Normal had one accepted black `ManaTempo` rerank `l1,5;l2,5` vs `l1,6;l0,6` and one white non-vulnerable safe-progress rerank `l9,5;l8,5` vs `l10,7;l9,8`
+  - direct conclusion: kill the `v12` replay at diagnostics before code edits; even with Fast clean, Pro and Normal still exposed only count-`1` one-offs and no retained `primary_pro` foothold
+- Latest diagnostic close (`2026-04-08`, latest):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v11`
   - duel summary:
     - `vs current Pro`: `3` regressions, `3` improvements, `6` flat; all three move pairs stayed at count `1`
