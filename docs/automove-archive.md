@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Fresh Seed v14 Replay Killed At Diagnostics
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v14` after classifying the `v13` Normal black drainer-safety board, to see whether the cleaner direct-Pro bucket would finally line up with a repeated Normal or Fast exact family.
+- Why it stopped: the replay stayed cleaner, but still not actionable. `vs current Pro` finished `1` regression / `4` improvements / `7` flat, `vs current Normal` `2` / `0` / `10`, and `vs current Fast` `2` / `5` / `5`, with every exact move pair staying count `1`. Direct Pro had only black spirit-sibling `l0,4;l1,4` vs current `l0,4;l1,5`; Normal had later-black accepted-head `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb` plus accepted black spirit rerank `l1,4;l0,6;l1,6` vs `l1,4;l3,4;l3,3`; Fast had only the white forced-prepass drift `l9,6;l8,5` vs `l9,6;l8,7` and the retained black mana-bridge seam `l0,5;l1,4` vs `l4,1;l5,0;mb`.
+- Durable lesson: a cleaner direct-Pro bucket still is not enough when Normal and Fast remain pure count-`1` churn. Keep only the replay note and wait for a seed that repeats one exact family strongly enough to justify code.
+
 ## Apr 8, 2026: Traced Normal V13 Black Drainer-Safety Rerank Killed At Diagnostics
 
 - What was tried: widened `smart_automove_pro_black_forced_runtime_probe` so it compares the fresh `v13` Normal black board `l1,6;l1,5` vs current `l3,2;l4,1` against the retained black seams plus the earlier traced black reranks on that same baseline.
