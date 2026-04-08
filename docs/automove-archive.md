@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Fresh Seed v15 Replay Killed At Diagnostics
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v15` after the `v14` direct-Pro sibling board died against the retained opening surface, to see whether the next replay would finally repeat one exact retained family strongly enough for a real branch.
+- Why it stopped: the replay mixed retained seams with nearby sibling reranks, but every exact pair still stayed count `1`. `vs current Pro` finished `3` regressions / `3` improvements / `6` flat, `vs current Normal` `3` / `2` / `7`, and `vs current Fast` `2` / `2` / `8`. Direct Pro replayed the retained mana-bridge seam `l0,5;l1,4` vs `l4,1;l5,0;mb` plus sibling ties `l0,4;l1,3` vs `l0,4;l1,5` and `l8,4;l7,3` vs `l8,4;l9,3`; Normal added later-black accepted-head `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, black spirit rerank `l1,5;l2,3;l1,4` vs `l1,5;l2,3;l1,2`, and white safe-progress rerank `l10,5;l9,4` vs `l4,9;l4,7;l5,7`; Fast added only white `l10,4;l9,3` vs `l9,5;l7,6;l8,7` and black `l2,7;l2,8` vs `l2,7;l1,8`.
+- Durable lesson: even a replay that mixes real retained seams with nearby sibling ties is still only diagnostics when every exact pair stays count `1`. Do not cut code from that blend; wait for one exact family to repeat strongly enough to justify a real branch.
+
 ## Apr 8, 2026: Traced Pro V14 Black Spirit Sibling Killed At Diagnostics
 
 - What was tried: widened `smart_automove_pro_black_spirit_sibling_probe` so it compares the fresh `v14` direct-Pro black board `l0,4;l1,4` vs current `l0,4;l1,5` against the older traced `v12` sibling board and the retained early-black opening fixtures, including `primary_black_loss_opening_b_black_turn`.

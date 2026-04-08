@@ -9,6 +9,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v15`
+  - duel summary:
+    - `vs current Pro`: `3` regressions, `3` improvements, `6` flat; all three move pairs stayed at count `1`
+    - `vs current Normal`: `3` regressions, `2` improvements, `7` flat; all three move pairs stayed at count `1`
+    - `vs current Fast`: `2` regressions, `2` improvements, `8` flat; both move pairs stayed at count `1`
+  - the replay mixed old and new one-offs without producing a retained code target: direct Pro replayed the retained black mana-bridge seam `l0,5;l1,4` vs `l4,1;l5,0;mb` plus black/white sibling ties `l0,4;l1,3` vs `l0,4;l1,5` and `l8,4;l7,3` vs `l8,4;l9,3`; Normal added later-black accepted-head `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, a black spirit rerank `l1,5;l2,3;l1,4` vs `l1,5;l2,3;l1,2`, and a white safe-progress rerank `l10,5;l9,4` vs `l4,9;l4,7;l5,7`; Fast added only white `l10,4;l9,3` vs `l9,5;l7,6;l8,7` and black `l2,7;l2,8` vs `l2,7;l1,8`
+  - direct conclusion: kill the `v15` replay at diagnostics before code edits; this seed still does not repeat one exact family strongly enough to justify code
+- Latest diagnostic close (`2026-04-08`, latest):
   - widened `smart_automove_pro_black_spirit_sibling_probe` with the fresh `v14` direct-Pro board `l0,4;l1,4` vs current `l0,4;l1,5` and the retained `primary_black_loss_opening_b_black_turn` fixture
   - the traced board is not the retained opening-`b` family even though it reuses the same nearby move string: runtime-faithful v30 already has `selected=pre_accept=l0,4;l1,4`, `forced_inputs=None`, `stage=engine_post_search`, `accepted=false`, and a rejected head `l0,5;l1,6` with `goal_family=DrainerSafetyRecovery`
   - the retained `primary_black_loss_opening_b_black_turn` surface stays different: `selected=pre_accept=baseline=l0,4;l1,5`, `forced_inputs=None`, `stage=engine_disabled`, and no head at all, while `l0,4;l1,4` remains only the lower-ranked spirit sibling
