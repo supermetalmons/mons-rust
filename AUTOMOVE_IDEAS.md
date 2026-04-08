@@ -9,6 +9,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v9`
+  - duel summary:
+    - `vs current Pro`: `0` regressions, `4` improvements, `8` flat; no repeated move pair
+    - `vs current Normal`: `1` regression, `0` improvements, `11` flat; the only move pair stayed at count `1`
+    - `vs current Fast`: `6` regressions, `0` improvements, `6` flat; all six move pairs stayed at count `1`
+  - the seed was much cleaner in direct Pro and almost clean in Normal, but Fast scattered across unrelated one-offs: black spirit-family drifts `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb` and `l1,5;l1,7;l2,6` vs `l5,0;l4,1`, black `ManaTempo` sibling reranks `l0,4;l1,3` vs `l0,4;l1,4` and `l2,7;l2,8` vs `l2,7;l1,8`, and white reranks `l9,6;l10,4;l9,4` vs `l9,6;l7,6;l7,7` plus forced-prepass `l9,6;l8,5` vs `l9,6;l8,7`
+  - direct conclusion: kill the `v9` replay at diagnostics before code edits; the live wall now looks narrower, but it still does not expose one repeated family with a retained `primary_pro` foothold
+- Latest diagnostic close (`2026-04-08`, latest):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v8`
   - duel summary:
     - `vs current Pro`: `2` regressions, `4` improvements, `6` flat; both move pairs stayed at count `1`
