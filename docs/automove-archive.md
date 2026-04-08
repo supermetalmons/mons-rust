@@ -100,6 +100,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the targeted human regression and the black reliability selector probe both passed, `guardrails` stayed green, and `human_win_pro_c` matched current again, but that only collapsed `pro-triage(primary_pro)` to `0/52`, which still fails the gate because the cheap target surface no longer changes. A fresh duel replay on the same line showed the wrapper misses were gone and `vs current Pro` improved to `0` regressions / `2` improvements, but the live wall remained later `engine_post_search` drift: `vs current Normal` stayed at `2` regressions / `1` improvement and `vs current Fast` stayed at `3` regressions / `3` improvements.
 - Durable lesson: do not retain a `human_win_pro_c`-only omitted-root rescue just because it neutralizes the last cheap drift. If the split drives `pro-triage(primary_pro)` to `0/52`, it is still non-promotable, and the next hypothesis has to target the remaining post-search duel wall rather than more wrapper or human-only fixes.
 
+## Apr 8, 2026: ImmediateScore Near-Tie Acceptance Repair Killed After Reliability
+
+- What was tried: added retained shared-code post-search guards for non-concrete deferred progress heads, unsafe delayed recovery heads, and a multi-chunk `ImmediateScore` near-tie `ManaTempo` sibling override, plus bounded duel-accept regression fixtures and a diagnostic post-search probe.
+- Why it stopped: the split fixed the bounded duel-accept seams, cleared `human_win_pro_c`, passed `guardrails`, moved `pro-triage(primary_pro)` to `1/52` with `off_target_changed=0`, and passed `runtime-preflight`, but `pro-reliability` still failed at `win_rate=0.7500` vs current Pro, `0.6667` vs current Normal, and `0.5000` vs current Fast. A sampled duel trace still diverged later in a fast black turn-four `engine_post_search` decision (`l1,6;l2,7` vs current `l2,3;l3,2`).
+- Durable lesson: even a real accepted-head repair can be too local. If the cheap gates are green but the live duel wall stays broad, kill the line and reopen only from the remaining duel-trace divergence, not another `human_win_pro_c` or near-tie acceptance clamp.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps

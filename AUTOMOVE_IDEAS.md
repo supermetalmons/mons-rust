@@ -174,8 +174,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
   - white `turn=3` mana-only mid-turn wrapper reroutes by themselves; the traced guard repair fixed real duel boards but left `pro-triage(primary_pro)` unchanged at `1/52`
   - same-lane `spirit_own_mana_setup_now` progress overrides or larger own-setup reply-floor allowances by themselves; the Apr 8 combined split collapsed `human_win_pro_c` but reopened `primary_black_reliability_opening_3_ply4` and cratered direct duels
   - speculative immediate-score first-chunk non-regression clamps on `SpiritImpact` or `Safe*Progress` heads
+  - multi-chunk `ImmediateScore` near-tie `ManaTempo` sibling clamps by themselves; on Apr 8 they cleared `human_win_pro_c`, fixed the bounded duel-accept seams, and passed `guardrails`, `pro-triage(primary_pro)=1/52`, and `runtime-preflight`, but `pro-reliability` still failed at `0.7500` vs current Pro, `0.6667` vs current Normal, and `0.5000` vs current Fast
   - setup-gain-only spirit-setup promotion against safe non-spirit roots
   - eval-only unsafe `Safe*Progress` late-head overrides on lower-scored non-progress roots; the retained PVS repair already closes that seam and did not move direct duels
   - traced fast-duel `Safe*Progress` acceptance clamps by themselves; the Apr 8 duel-replay split found a real repeated seed but still left `pro-triage(primary_pro)` unchanged
   - `human_win_pro_c` selector-only reranks without a new real-hotspot or direct-duel seam
 - Proof target for the next retained branch: beat the current unchanged `pro-reliability` wall with a duel-linked fix, not just another local reduction from the present `1/52` `primary_pro` churn.
+- Start from the sampled fast-duel black turn-four `engine_post_search` divergence (`l1,6;l2,7` vs current `l2,3;l3,2`) instead of reopening more white-only accept or `human_win_pro_c` clamps.
