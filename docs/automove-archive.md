@@ -118,6 +118,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the probe showed the seam was not actually shared. On `human_win_pro_c`, selected `l10,5;l9,6` won mainly on followup floor (`810871` vs `810407`) and its post-root projection became `SpiritImpact -> ImmediateScore`; on the fast duel board, injected `l1,6;l2,7` was instead a vulnerable `ManaTempo` root whose post-root projection became `SafeSupermanaProgress -> ImmediateScore` against another vulnerable `ManaTempo` current root.
 - Durable lesson: do not bundle `human_win_pro_c` and the sampled fast black turn-four board into one shared projection clamp unless fresh duel evidence proves the same projection family is responsible.
 
+## Apr 8, 2026: Broad White Turn-Three Mana-Only Reroute Killed At Triage
+
+- What was tried: refreshed the live duel trace, then grouped three fresh white turn-three regressions under one wrapper family: `turn=3`, `mons_moves>0`, `action=false`, `mana=true` states that were still routing through the broad fallback instead of the challenger’s own pre-accept/current root. Rerouted that whole family back to the current Pro surface and added focused regression tests for the live Pro/Normal/Fast boards.
+- Why it stopped: the replayed duel boards all matched current after the reroute and `guardrails` passed, but `pro-triage(primary_pro)` still stayed unchanged at the same stale `human_win_pro_c`-only `1/52`. Per the retained runbook, that meant the target surface still had not moved, so the split was killed before `runtime-preflight` and `pro-reliability`.
+- Durable lesson: even a broader white turn-three wrapper family that fixes three live duel boards can still be too local. Do not retain it without a target-surface story that also moves `primary_pro`.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps

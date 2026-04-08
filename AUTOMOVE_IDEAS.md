@@ -8,6 +8,16 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest focused gate (`2026-04-08`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` on the retained challenger; the live wall moved into a broader white turn-three family plus the old fast black turn-four miss
+  - duel summary:
+    - `vs current Pro`: `1` regression, `5` improvements, `6` flat; repeated pair `l9,2;l8,3` vs current `l10,7;l9,7`
+    - `vs current Normal`: `3` regressions, `2` improvements, `7` flat; one-off pairs `l0,5;l1,6` vs `l1,5;l3,6;l2,7`, `l10,4;l9,4` vs `l8,6;l7,7`, and `l2,4;l3,3` vs `l3,6;l2,7`
+    - `vs current Fast`: `4` regressions, `5` improvements, `3` flat; repeated white turn-three pair `l9,4;l8,4` vs current `l8,7;l7,8` twice, plus `l1,6;l2,7` vs `l2,3;l3,2` once and `l9,5;l8,5` vs `l7,5;l6,4` once
+  - a focused live-seam probe showed three of those white turn-three misses were the same wrapper family: `turn=3`, `mons_moves>0`, `action=false`, `mana=true` states that still routed through the broad fallback instead of the challenger’s own pre-accept/current root
+  - tried a broader white turn-three mana-only reroute: route those `turn=3`, `mons_moves>0`, `!action`, `mana` boards back to the current Pro surface; focused regression tests on the live Pro/Normal/Fast boards all passed
+  - cheap-gate result: `guardrails` passed, but `pro-triage(primary_pro)` stayed unchanged at the same stale `human_win_pro_c`-only `1/52`
+  - direct conclusion: kill the broader white turn-three mana-only reroute before `runtime-preflight`; even a three-board duel-backed wrapper family is still too local if the cheap target surface does not move
 - Latest diagnostic close (`2026-04-08`, latest):
   - compared the remaining `human_win_pro_c` drift against the sampled fast-duel black turn-four board with a shared projection probe before cutting more ProV2 code
   - `human_win_pro_c` is not the same seam: selected `l10,5;l9,6` is a safe progress root, but its post-root projection becomes `SpiritImpact -> ImmediateScore` and it beats the current spirit-own-setup root mostly on followup floor (`810871` vs `810407`), not on a distinct projected score delta
@@ -176,6 +186,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Do not reopen:
   - wrapper-only white `turn=3` plus black `turn=2`/`turn=4` one-move current-Pro guard bundles by themselves; on Apr 8 they fixed multiple traced duel boards but still left `pro-triage(primary_pro)` unchanged at `1/52`
   - isolated black `turn=4`, one-move `action+mana` current-Pro guards by themselves; on Apr 8 they fixed the sampled fast-duel `l1,6;l2,7` -> `l2,3;l3,2` divergence but still left `pro-triage(primary_pro)` unchanged at the same `human_win_pro_c`-only `1/52`
+  - broader white `turn=3`, `mons_moves>0`, `action=false`, `mana=true` current-Pro reroutes by themselves; on Apr 8 they fixed three live duel boards across Pro/Normal/Fast but still left `pro-triage(primary_pro)` unchanged at the same `human_win_pro_c`-only `1/52`
   - shared `human_win_pro_c` plus sampled fast-duel black turn-four projection clamps by themselves; on Apr 8 the probe showed the human drift was a higher-followup-floor `SpiritImpact -> ImmediateScore` story while the fast board was an injected vulnerable `ManaTempo` `SafeSupermanaProgress -> ImmediateScore` seam
   - late white full-resource current-Pro guards as a `human_win_pro_c` lever; on Apr 8 the guard did not alter the selected move at all
   - white `turn=3` mana-only mid-turn wrapper reroutes by themselves; the traced guard repair fixed real duel boards but left `pro-triage(primary_pro)` unchanged at `1/52`
@@ -187,4 +198,4 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
   - traced fast-duel `Safe*Progress` acceptance clamps by themselves; the Apr 8 duel-replay split found a real repeated seed but still left `pro-triage(primary_pro)` unchanged
   - `human_win_pro_c` selector-only reranks without a new real-hotspot or direct-duel seam
 - Proof target for the next retained branch: beat the current unchanged `pro-reliability` wall with a duel-linked fix, not just another local reduction from the present `1/52` `primary_pro` churn.
-- Start from the sampled fast-duel black turn-four `engine_post_search` divergence (`l1,6;l2,7` vs current `l2,3;l3,2`) instead of reopening more white-only accept or `human_win_pro_c` clamps.
+- Start from the repeated white turn-three `action+mana` accepted-head seam (`l9,4;l8,4` vs current `l8,7;l7,8`) only if it can be tied to a target-surface story; the broader white turn-three mana-only wrapper family is now closed again.
