@@ -508,6 +508,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the replay still mixed multiple one-off families across buckets. Direct Pro finished `2` regressions / `4` improvements / `6` flat and Fast `2` / `5` / `5`, with every exact pair in those buckets still at count `1`; only Normal repeated one exact pair. The widened white safe-progress probe showed that repeated board is not the retained white safe-progress rerank and not the retained fast-screen surface: runtime-faithful v30 already has `selected=pre_accept=l9,5;l8,5`, `forced_inputs=None`, `stage=engine_post_search`, `accepted=false`, and a `SafeOpponentManaProgress -> DrainerSafetyRecovery` head shell, while `primary_white_safe_progress_rerank_ply27` stays an accepted vulnerable `ManaTempo` rerank under `ImmediateScore`, and `primary_white_fast_screen_opening_0_ply9` keeps `l9,5;l8,5` only as a rejected head over spirit-progress pre-accept/current roots.
 - Durable lesson: do not reopen a repeated white `l9,5;l8,5` seam just because it repeats in Normal. If the traced board still fails both retained white-surface matches on runtime-faithful stage, acceptance, and selected-root shape, keep only the widened probe and the note.
 
+## Apr 9, 2026: Seed v27 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v27` to see whether the post-`v26` wall would finally collapse onto one repeated retained seam.
+- Why it stopped: the replay was cleaner, but still fragmented. Direct Pro finished `1` regression / `3` improvements / `8` flat, Normal `2` / `2` / `8`, and Fast `2` / `7` / `3`, yet every exact move pair still stayed at count `1`. The seed only produced one-off direct-Pro white engine-disabled `ManaTempo` sibling drift `l7,4;l8,3` vs current `l6,7;l6,6`, one-off Normal black spirit reranks `l1,5;l2,7;l3,7` vs `l1,5;l2,7;l1,8` and `l2,5;l4,3;l5,3` vs `l2,5;l2,7;l1,6`, and one-off Fast white safe-progress / mana reranks `l8,5;l8,6` vs `l7,0;l6,1` and `l10,5;l9,6` vs `l9,7;l8,6`.
+- Durable lesson: do not spend from a replay just because it is cleaner or because one bucket improves more often than it regresses. If Pro, Normal, and Fast still end with only count-`1` exact pairs, keep only the note and wait for a seed that repeats on one retained surface.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
