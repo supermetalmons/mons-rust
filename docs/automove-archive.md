@@ -136,6 +136,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the full replay still showed the same broad wall, and the only repeated live seam remained the white fast-duel accepted-head pair with no retained foothold. The focused selector probe on the black normal board showed `negative_deny_competes=true` and `followup_progress_competes=false`, while `human_win_pro_c` is the opposite shape: a followup-progress bias rather than a negative-deny one-off. That meant the black seam was both separate and still off the retained `primary_pro` surface, so the shared spirit-setup idea was killed before code edits.
 - Durable lesson: do not merge an early black `negative_deny` spirit-preference drift with the retained human followup-progress seam unless fresh retained evidence proves they share the same selector gate.
 
+## Apr 8, 2026: White Pro-Duel Wrapper Probe Killed Before Code Edits
+
+- What was tried: after the black negative-deny merge died, drilled into the lone `vs current Pro` regression `l9,2;l8,3` vs current `l10,7;l9,7` to see whether it was a fresh Pro-only selector surface.
+- Why it stopped: the board turned out to be another member of the already-closed white mid-turn wrapper family: `turn=3`, `mons_moves=4`, `action=false`, `mana=true`. The focused probe showed the configured `runtime_pro_turn_engine_v30` path itself still pre-accepted the current-style root `l10,7;l9,7`, but the outer `runtime_pro_turn_engine_v30_guarded_inputs(...)` wrapper rerouted the board through the broad fast pre-exact fallback and returned `l9,2;l8,3`. That meant the Pro regression was not a new in-path selector seam, so the idea was killed before code edits.
+- Durable lesson: do not reopen a lone white Pro-duel regression if the probe shows configured v30 already matches current and only the outer white turn-three mana-only wrapper is still responsible.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
