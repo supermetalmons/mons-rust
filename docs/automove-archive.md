@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Traced Fast V10 Black Rerank Killed At Diagnostics
+
+- What was tried: widened `smart_automove_pro_black_forced_runtime_probe` so it compares the retained black seams against the fresh `v10` Fast black board `l1,5;l1,4` vs current `l3,2;l4,1`.
+- Why it stopped: the traced board was not any retained black seam. It was not the retained later-black accepted-head family, because `pre_accept` already stayed on current `l3,2;l4,1` and the accepted head was a different non-vulnerable `ManaTempo` rerank `l1,5;l1,4` under `goal_family=SpiritImpact`, not the retained rejected `SpiritImpact -> ImmediateScore` head `l1,5;l1,7;l0,7`. It was not the retained mana-bridge family either: both boards ended as accepted non-vulnerable `ManaTempo` reranks, but the traced board used a different forced head and current-shaped five-step root instead of the retained `l0,5;l1,4` bridge.
+- Durable lesson: keep the widened runtime probe, but do not reopen a shared black branch just because a fresh board reuses the same current baseline `l3,2;l4,1` or lands in the same broad black `ManaTempo` bucket. Runtime-faithful stage shape still has to match the retained seam, not just the baseline move.
+
 ## Apr 8, 2026: Fresh Seed v10 Duel Replay Killed Before Code Edits
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v10` after the retained black forced-runtime comparison died at diagnostics, to see whether the next duel sample would finally repeat a retained family strongly enough to justify new code.

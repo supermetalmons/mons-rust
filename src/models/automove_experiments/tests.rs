@@ -4071,7 +4071,7 @@ fn smart_automove_pro_black_forced_root_probe() {
 }
 
 #[test]
-#[ignore = "diagnostic: compare retained black forced-engine seams at runtime-faithful selection stage"]
+#[ignore = "diagnostic: compare retained and traced black forced-engine seams at runtime-faithful selection stage"]
 fn smart_automove_pro_black_forced_runtime_probe() {
     fn run_probe(label: &str, game: &MonsGame, mode: SmartAutomovePreference, targets: &[&str]) {
         clear_exact_state_analysis_cache();
@@ -4215,7 +4215,13 @@ fn smart_automove_pro_black_forced_runtime_probe() {
     }
 
     let action_mana_fixture = primary_pro_fixture_by_id("primary_black_turn_four_action_mana_ply15");
+    let late_head_fixture = primary_pro_fixture_by_id("primary_black_late_accepted_head_ply4");
     let mana_bridge_fixture = primary_pro_fixture_by_id("primary_black_mana_bridge_ply20");
+    let traced_fast_v10_game = MonsGame::from_fen(
+        "1 0 b 0 0 1 0 0 4 n05d0xn05/n05s0xa0xe0xn03/n07xxmn03/n02y0xn01xxmn06/n03xxmn01xxmn02xxmn02/xxQn04xxUn04xxQ/n03xxMn03xxMn03/n04xxMn01xxMn04/n11/n04A0xn01S0xn04/D0xn02E0xn04Y0xn02",
+        false,
+    )
+    .expect("valid traced fast v10 black mana rerank fen");
 
     run_probe(
         "primary_black_turn_four_action_mana_ply15",
@@ -4224,10 +4230,22 @@ fn smart_automove_pro_black_forced_runtime_probe() {
         &["l1,6;l2,7", "l2,3;l3,2"],
     );
     run_probe(
+        "primary_black_late_accepted_head_ply4",
+        &late_head_fixture.game,
+        late_head_fixture.mode,
+        &["l1,5;l1,7;l0,7", "l3,2;l4,1"],
+    );
+    run_probe(
         "primary_black_mana_bridge_ply20",
         &mana_bridge_fixture.game,
         mana_bridge_fixture.mode,
         &["l0,5;l1,4", "l4,1;l5,0;mb"],
+    );
+    run_probe(
+        "traced_fast_duel_v10",
+        &traced_fast_v10_game,
+        SmartAutomovePreference::Pro,
+        &["l1,5;l1,4", "l3,2;l4,1"],
     );
 }
 

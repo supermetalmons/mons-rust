@@ -9,6 +9,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - widened `smart_automove_pro_black_forced_runtime_probe` with the fresh `v10` Fast black board `l1,5;l1,4` vs current `l3,2;l4,1`
+  - the new board is not the retained later-black accepted-head family even though it reuses the same current baseline `l3,2;l4,1`: runtime-faithful v30 keeps `pre_accept` on current, then accepts a different head `l1,5;l1,4` and returns a non-vulnerable `ManaTempo` rerank under `goal_family=SpiritImpact`
+  - it is also not the retained mana-bridge seam: both are accepted non-vulnerable `ManaTempo` reranks, but the traced `v10` board uses `forced_inputs=Some("l1,5;l1,4")`, `head_family=ManaTempo`, and the same five-step current-shaped root rather than the retained `l0,5;l1,4` `SafeSupermanaProgress` bridge
+  - direct conclusion: keep the widened runtime probe, but kill the `v10` Fast black revival before code edits; sharing the same current baseline or broad family is still not enough for a shared black production rule
+- Latest diagnostic close (`2026-04-08`, latest):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v10`
   - duel summary:
     - `vs current Pro`: `2` regressions, `4` improvements, `6` flat; both move pairs stayed at count `1`
