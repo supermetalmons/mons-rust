@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Late-Black Accepted-Head Comparison Killed At Diagnostics
+
+- What was tried: widened `smart_automove_pro_black_late_accepted_head_probe` so it compares the retained `primary_black_late_accepted_head_ply4` board against the fresh `pro_turn_planner_reliability_v5` Normal drift `l1,5;l1,7;l0,7` vs current `l4,1;l5,0;mb`.
+- Why it stopped: the traced board was not the retained late-black family. On the fresh board, `pre_accept` already chose `l1,5;l1,7;l0,7`, the head was accepted, and the plan stayed in `goal_family=SpiritImpact`, with shipping differing only because it still selected the weaker `ManaTempo` sibling `l4,1;l5,0;mb`. On the retained fixture, current and `pre_accept` still chose `l3,2;l4,1`, while the injected `l1,5;l1,7;l0,7` head remained rejected as a `SpiritImpact -> ImmediateScore` override.
+- Durable lesson: do not treat a repeated head move string as proof that the retained late-black accepted-head seam is live again. If the fresh board already selects that spirit head at `pre_accept`, it is a different story than the retained rejected-head family and does not justify reopening the production guard.
+
 ## Apr 8, 2026: White Score-Route Comparison Killed At Diagnostics
 
 - What was tried: added `smart_automove_pro_white_score_route_probe` to compare the fresh `pro_turn_planner_reliability_v5` direct-Pro seam `l7,4;l8,3` vs current `l9,7;l7,6;l8,7` against the retained harvest fixture `primary_harvest_white_score_route_win_a`.

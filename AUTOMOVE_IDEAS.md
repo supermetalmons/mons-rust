@@ -9,6 +9,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - widened `smart_automove_pro_black_late_accepted_head_probe` to compare the retained `primary_black_late_accepted_head_ply4` board against the fresh `v5` Normal drift `l1,5;l1,7;l0,7` vs current `l4,1;l5,0;mb`
+  - the traced board is not the retained late-black family even though it reuses the same move string: current/pre-accept already choose `l1,5;l1,7;l0,7`, `accepted=true`, `goal_family=SpiritImpact`, and current differs only because shipping still selects the weaker `ManaTempo` sibling `l4,1;l5,0;mb`
+  - the retained fixture stays different: `pre_accept` and current both choose `l3,2;l4,1`, the injected `l1,5;l1,7;l0,7` head is `accepted=false`, and the rejected head is a `SpiritImpact -> ImmediateScore` story with `supermana_progress=true`
+  - direct conclusion: kill the late-black revival before code edits; sharing the same head move is not enough when the traced board is already a spirit-head root-selection case rather than the retained rejected-head family
+- Latest diagnostic close (`2026-04-08`, latest):
   - added `smart_automove_pro_white_score_route_probe` to compare the fresh `v5` direct-Pro white rerank `l7,4;l8,3` vs current `l9,7;l7,6;l8,7` against the retained harvest fixture `primary_harvest_white_score_route_win_a`
   - the traced board is not the retained harvest surface: it is an `engine_post_search` accepted `SafeSupermanaProgress -> ImmediateScore` override with `forced_inputs=Some("l7,4;l8,3")`, `accepted=true`, and current/pre-accept both on the same vulnerable spirit-own-setup root
   - the retained harvest fixture stays different: `forced_inputs=Some("l9,6;l7,4;l6,3")`, `accepted=false`, and current/candidate/pre-accept already match on `l9,6;l7,4;l8,3` while the plain `l7,4;l8,3` mana route is only a lower-ranked sibling
