@@ -8,6 +8,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest focused gate (`2026-04-08`, latest):
+  - paired the duel-backed wrapper bundle with a narrow late-white omitted-root reply-risk rescue so `human_win_pro_c` would match current again without reopening `primary_black_reliability_opening_3_ply4`
+  - cheap-gate result: `guardrails` passed, `opening_reply` stayed `0/3`, and `pro-triage(primary_pro)` collapsed to `0/52` because the challenger now matched `runtime_current` on every cheap Pro fixture, so the split still died before `runtime-preflight`
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` on that line anyway; the traced wrapper misses were gone and `vs current Pro` improved to `0` regressions / `2` improvements, but the remaining wall was still real `engine_post_search` drift: `vs current Normal` stayed at `2` regressions / `1` improvement and `vs current Fast` stayed at `3` regressions / `3` improvements
+  - direct conclusion: kill the late-white omitted-root rescue too; neutralizing the last cheap drift is still non-promotable if the target surface no longer changes, and the live wall is no longer wrapper-local
 - Latest focused gate (`2026-04-08`, later):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` on the retained challenger and the live seam map stayed split across three families: one white `turn=3` wrapper miss in `vs current Pro`, three misses in `vs current Normal` (one black turn-two engine-enabled pre-accept miss, one black turn-four engine-enabled miss, one white turn-three wrapper miss), and four misses in `vs current Fast` (the repeated white `SafeSupermanaProgress` accepted-head seam twice, one black turn-four engine-enabled miss, and one white turn-three wrapper miss)
   - tried a duel-backed wrapper bundle: route all white `turn=3` mid-turn states plus black `turn=2`/`turn=4` one-move `action+mana` states back to the current Pro surface; focused regression tests on the traced boards all passed

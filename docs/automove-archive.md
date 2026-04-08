@@ -94,6 +94,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the traced-board regression tests all passed and `guardrails` stayed green, but `pro-triage(primary_pro)` still stayed unchanged at `1/52`, with only `human_win_pro_c`, so the duel-backed wrapper bundle was still too local. The late white full-resource guard was even weaker: it did not change the selected move on `human_win_pro_c` at all.
 - Durable lesson: a wrapper bundle can fix several real duel boards and still be non-promotable if the cheap target surface does not move, and late white full-resource current-Pro guards are not a useful shortcut for clearing `human_win_pro_c`.
 
+## Apr 8, 2026: Late-White Omitted-Root Rescue Killed Before Preflight
+
+- What was tried: kept the traced white `turn=3` plus black `turn=2`/`turn=4` wrapper bundle, then replaced the dead late-white exploration carve-out with a narrower reply-risk omitted-root rescue so late white turn-start `spirit_own_mana_setup_now + supermana_progress` roots could still beat safe non-setup progress heads on `human_win_pro_c`.
+- Why it stopped: the targeted human regression and the black reliability selector probe both passed, `guardrails` stayed green, and `human_win_pro_c` matched current again, but that only collapsed `pro-triage(primary_pro)` to `0/52`, which still fails the gate because the cheap target surface no longer changes. A fresh duel replay on the same line showed the wrapper misses were gone and `vs current Pro` improved to `0` regressions / `2` improvements, but the live wall remained later `engine_post_search` drift: `vs current Normal` stayed at `2` regressions / `1` improvement and `vs current Fast` stayed at `3` regressions / `3` improvements.
+- Durable lesson: do not retain a `human_win_pro_c`-only omitted-root rescue just because it neutralizes the last cheap drift. If the split drives `pro-triage(primary_pro)` to `0/52`, it is still non-promotable, and the next hypothesis has to target the remaining post-search duel wall rather than more wrapper or human-only fixes.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps

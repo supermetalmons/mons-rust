@@ -33,9 +33,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - Simple speculative immediate-score non-regression clamps and setup-gain-only spirit-setup promotion are not enough. They can reshuffle `primary_pro` fixtures and regress direct Pro-vs-Pro without moving the `vs current Normal` wall.
 - Broad same-lane `spirit_own_mana_setup_now` overrides are too blunt as well. On Apr 8, 2026 a shared ProV2 override collapsed `human_win_pro_c` and fixed one traced normal-duel board, but it reopened `primary_black_reliability_opening_3_ply4` and regressed `pro-reliability` to `0.7500` vs current Pro and `0.4167` vs current Normal/Fast.
 - Late-white full-resource current-Pro guards are not a useful `human_win_pro_c` lever either. On Apr 8, 2026 a late white turn-start safe-supermana wrapper did not change the selected move on the live `human_win_pro_c` fixture.
+- A late-white omitted-root reply-risk rescue is too local as well. On Apr 8, 2026 it cleared `human_win_pro_c` without reopening black reliability, but that only collapsed `pro-triage(primary_pro)` to `0/52`, which still fails because the cheap target surface must move.
 - Soft followup-tolerance for `spirit_own_mana_setup_now` roots and close quiet-root normal-safety blocks are also not enough by themselves. If the runtime-faithful seam stays unchanged, kill the split before spending the canonical loop.
 - Eval-only progress-head wins are too soft for unsafe late overrides. When both the selected root and the `Safe*Progress` head stay unsafe, do not let a lower-scored progress head replace the selected non-progress root unless it brings a non-eval strategic gain or a forced `score_delta` jump.
 - Even a real duel-traced acceptance seam can still be too local. On Apr 8, 2026 a bounded fast-duel `Safe*Progress` override clamp matched the traced seed, but it left `pro-triage(primary_pro)` unchanged at `1/52`, so the production split was killed before `runtime-preflight` and `pro-reliability`.
+- Once the wrapper-local misses are gone, the live wall can shift cleanly into later `engine_post_search` drift. On Apr 8, 2026 the wrapper bundle plus late-white omitted-root rescue left `vs current Pro` at `0` regressions / `2` improvements, but `vs current Normal` still sat at `2` regressions / `1` improvement and `vs current Fast` at `3` regressions / `3` improvements, so the next spend would have to attack post-search head acceptance rather than more wrapper or human-only fixes.
 
 ## Durable Workflow Rules
 
@@ -67,6 +69,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - Do not keep branches just because disagreement counts shrink or hotspot counters move. If direct duel quality stays flat or regresses, kill the line.
 - Do not retain a duel-traced acceptance clamp just because it fixes one repeated seed. If `pro-triage(primary_pro)` does not move, kill the production split and keep only the probe or lesson.
 - Do not treat late white full-resource current-Pro wrappers as a safe way to clear `human_win_pro_c`; if the fixture does not move immediately, kill the idea.
+- Do not retain a late-white omitted-root rescue that only drives `pro-triage(primary_pro)` to `0/52`; matching current everywhere on the cheap surface is still a dead line.
 - Do not retain a same-lane own-setup-vs-progress override just because it clears `human_win_pro_c`; if it reopens black reliability fixtures or tanks direct duels, kill it immediately.
 - Do not retain white-only or black-only local seam repairs that fail to move the broader `vs current Normal` wall.
 - Do not treat the relaxed `700ms` move-time cap as permission to reopen parity-preserving speed regressions.
