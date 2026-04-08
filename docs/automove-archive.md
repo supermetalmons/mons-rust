@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Black Spirit-Bridge Injection Comparison Killed At Diagnostics
+
+- What was tried: widened `smart_automove_pro_black_forced_root_probe` with retained `primary_black_spirit_bridge_ply19` to compare its raw, injected, and focused root ranks directly against the retained late-head and mana-bridge black seams.
+- Why it stopped: the new spirit-bridge seam matched the retained mana-bridge seam at injection stage rather than the retained late-head seam. Both `primary_black_spirit_bridge_ply19` and `primary_black_mana_bridge_ply20` kept current `l4,1;l5,0;mb` at raw rank `0`, injected the forced bridge root only at rank `1`, and then promoted it to focused rank `0`. The late-head seam stayed different: `primary_black_late_accepted_head_ply4` injected `l1,5;l1,7;l0,7` directly to rank `0` and remained the rejected `ImmediateScore` head story.
+- Durable lesson: keep the widened black forced-root probe, but do not reopen a shared black production branch from this alone. The `l4,1;l5,0;mb` current baseline now has a small bridge-injection family, but that still is not one promotable rule.
+
 ## Apr 8, 2026: Fresh Seed v16 Replay Retained Black Spirit-Bridge Foothold
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v16`, then widened the black forced-runtime comparison when the Normal black pair `l1,5;l1,7;l0,7` vs current `l4,1;l5,0;mb` repeated twice.

@@ -8,6 +8,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest diagnostic close (`2026-04-08`, latest):
+  - widened `smart_automove_pro_black_forced_root_probe` with retained `primary_black_spirit_bridge_ply19`
+  - the new black spirit-bridge seam matches the retained mana-bridge seam at raw/injected/focused root stages, not the retained late-head seam: both `primary_black_spirit_bridge_ply19` and `primary_black_mana_bridge_ply20` keep current `l4,1;l5,0;mb` at raw rank `0`, inject the forced bridge root only at rank `1`, and then promote it to focused rank `0`
+  - the retained late-head seam stays different: `primary_black_late_accepted_head_ply4` injects `l1,5;l1,7;l0,7` directly to rank `0`, not rank `1`, and still belongs to the rejected `ImmediateScore` head story rather than the accepted bridge story
+  - direct conclusion: keep the widened black forced-root probe, but do not cut production code yet; current `l4,1;l5,0;mb` now anchors a small bridge-injection family, but it still does not collapse the accepted black reranks onto one promotable rule
 - Latest retained foothold (`2026-04-08`, latest):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v16`
   - duel summary:
