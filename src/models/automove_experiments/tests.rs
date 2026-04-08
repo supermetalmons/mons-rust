@@ -3751,6 +3751,113 @@ fn smart_automove_pro_white_fast_accepted_head_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: inspect white fast forced-prepass family on traced duel board"]
+fn smart_automove_pro_white_fast_forced_prepass_probe() {
+    fn run_probe(label: &str, game: &MonsGame) {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        clear_turn_engine_plan_cache();
+        clear_turn_engine_diagnostics();
+        clear_turn_engine_selector_diagnostics();
+
+        let (config, scored_roots, head_plan, forced_engine_inputs) =
+            profile_runtime_scored_roots_with_forced_engine_inputs(
+                "runtime_pro_turn_engine_v30",
+                SmartAutomovePreference::Pro,
+                game,
+            );
+        let perspective = game.active_color;
+        let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
+            game,
+            scored_roots.as_slice(),
+            perspective,
+            config,
+        );
+        let selected = profile_decision_inputs("runtime_pro_turn_engine_v30", SmartAutomovePreference::Pro, game);
+        let selector_diag = turn_engine_selector_diagnostics_snapshot();
+        let baseline_selected =
+            profile_decision_inputs("runtime_current", SmartAutomovePreference::Pro, game);
+        let selected_root = scored_roots.iter().find(|root| root.inputs == selected);
+        let pre_accept_root = scored_roots
+            .iter()
+            .find(|root| root.inputs == pre_accept_selected);
+        let baseline_root = scored_roots.iter().find(|root| root.inputs == baseline_selected);
+        let head_root = head_plan.as_ref().and_then(|plan| {
+            plan.compiled_chunks.first().and_then(|chunk| {
+                scored_roots
+                    .iter()
+                    .find(|root| root.inputs.as_slice() == chunk.as_slice())
+            })
+        });
+        let accepted = head_plan.as_ref().is_some_and(|plan| {
+            MonsGameModel::accept_turn_engine_head_after_search(
+                game,
+                perspective,
+                config,
+                scored_roots.as_slice(),
+                pre_accept_selected.as_slice(),
+                plan,
+            )
+        });
+
+        println!(
+            "WHITE_FAST_FORCED_PREPASS label={} selected={} pre_accept={} baseline_selected={} forced_inputs={:?} stage={} accepted={} head={:?} fen={}",
+            label,
+            Input::fen_from_array(&selected),
+            Input::fen_from_array(&pre_accept_selected),
+            Input::fen_from_array(&baseline_selected),
+            forced_engine_inputs
+                .as_ref()
+                .map(|inputs| Input::fen_from_array(inputs)),
+            selector_diag.last_return_stage,
+            accepted,
+            head_plan
+                .as_ref()
+                .and_then(|plan| plan.compiled_chunks.first())
+                .map(|chunk| Input::fen_from_array(chunk)),
+            game.fen(),
+        );
+        println!(
+            "WHITE_FAST_FORCED_PREPASS_ROOTS label={} selected=\"{}\" pre_accept=\"{}\" baseline=\"{}\" head=\"{}\"",
+            label,
+            format_root_probe(selected_root),
+            format_root_probe(pre_accept_root),
+            format_root_probe(baseline_root),
+            format_root_probe(head_root),
+        );
+        for target in ["l8,4;l8,5", "l8,4;l7,3", "l8,4;l8,3"] {
+            let rank = scored_roots
+                .iter()
+                .position(|root| Input::fen_from_array(&root.inputs) == target);
+            println!("WHITE_FAST_FORCED_PREPASS_TARGET label={} target={} rank={:?}", label, target, rank);
+        }
+        for (rank, root) in scored_roots.iter().enumerate().take(8) {
+            println!(
+                "WHITE_FAST_FORCED_PREPASS_TOP label={} rank={} fen={} root=\"{}\"",
+                label,
+                rank,
+                Input::fen_from_array(&root.inputs),
+                format_root_probe(Some(root)),
+            );
+        }
+    }
+
+    let traced_game = MonsGame::from_fen(
+        "0 0 w 1 0 1 0 0 3 n05d0xn05/n05s0xa0xe0xn03/n03y0xn03xxmn03/n02xxmn01xxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n03xxMn02xxMn04/n04D0xn06/n04E0xn01S0xn04/n04A0xn01Y0xn03",
+        false,
+    )
+    .expect("valid traced white fast forced-prepass fen");
+    let retained_fixture = primary_pro_fixture_by_id("primary_white_fast_screen_opening_0_ply9");
+
+    for (label, game) in [
+        ("traced_fast_duel", &traced_game),
+        ("primary_white_fast_screen_opening_0_ply9", &retained_fixture.game),
+    ] {
+        run_probe(label, game);
+    }
+}
+
+#[test]
 fn runtime_pro_turn_engine_v30_rejects_late_black_plain_spirit_progress_head_without_concrete_gain() {
     let fixture = primary_pro_fixture_by_id("primary_black_late_accepted_head_ply4");
     let (config, scored_roots, head_plan, forced_engine_inputs) =

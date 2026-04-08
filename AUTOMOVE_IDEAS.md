@@ -8,6 +8,13 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest diagnostic close (`2026-04-08`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` on the retained challenger with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v3`
+  - duel summary: `vs current Pro` finished at `1` regression / `5` improvements / `6` flat, `vs current Normal` at `3` / `2` / `7`, and `vs current Fast` at `3` / `2` / `7`
+  - the only repeated live candidate family was white fast `l8,4;l8,5`, which surfaced twice in `vs current Fast`, once against current `l8,4;l7,3` and once against current `l8,4;l8,3`; the later black `l2,7;l2,8` drift stayed one-off
+  - added `smart_automove_pro_white_fast_forced_prepass_probe` and used it on the traced fast-duel FEN plus nearby `primary_white_fast_screen_opening_0_ply9`
+  - probe result: on the traced board, current and `pre_accept` both choose `l8,4;l7,3`, while the challenger returns `l8,4;l8,5` only because `search_only_forced_prepass` overrides search; the nearby retained white fast screen fixture does not share the same targets or selector stage
+  - direct conclusion: kill the white fast forced-prepass idea before production edits; keep the probe, but do not spend a new opening or prepass split until that family also lands on a retained cheap-surface fixture
 - Latest focused gate (`2026-04-08`, latest):
   - added a retained foothold for the repeated white fast accepted-head live family: `primary_white_fast_accepted_head_ply13` plus `smart_automove_pro_white_fast_accepted_head_probe`
   - retained a combined shared branch under `runtime_pro_turn_engine_v30`: keep the early-black `negative_deny` selector override, keep the later-black plain-spirit-progress rejection, and add a white deferred `Safe*Progress -> DrainerSafetyRecovery` block so `l9,4;l8,4` no longer overrides current `l8,7;l7,8`

@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: White Fast Forced-Prepass Family Killed At Diagnostics
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` on the retained challenger with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v3`, which exposed one repeated white fast candidate family in `vs current Fast`: `l8,4;l8,5` appeared twice, once against current `l8,4;l7,3` and once against current `l8,4;l8,3`. Added a focused diagnostic probe, `smart_automove_pro_white_fast_forced_prepass_probe`, to compare the traced fast-duel board with the nearby retained `primary_white_fast_screen_opening_0_ply9` surface.
+- Why it stopped: the probe showed the traced board already matched current at the real search surface, with both current and `pre_accept` choosing `l8,4;l7,3`; the challenger only diverged because `search_only_forced_prepass` overrode that search result and returned `l8,4;l8,5`. The nearby retained white fast screen fixture did not share the same targets or selector stage, so there still was no retained cheap-surface foothold strong enough to justify a production split.
+- Durable lesson: even a repeated candidate-only early white family is not enough if the divergence lives only in `search_only_forced_prepass` and does not appear on a retained cheap surface. Keep the probe, kill the production idea.
+
 ## Apr 8, 2026: Negative-Deny Full-Loop Retry Killed At Reliability
 
 - What was tried: reran the first shared early-black `negative_deny` selector override and, unlike the first diagnostic-only pass, carried it through the full canonical loop. The retained `primary_black_negative_deny_ply4` seam closed to current, `guardrails` passed, `pro-triage(primary_pro)` moved to `1/53` with only `human_win_pro_c`, `off_target_changed=0`, and `runtime-preflight` passed.
