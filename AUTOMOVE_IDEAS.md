@@ -8,6 +8,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest diagnostic close (`2026-04-08`, latest):
+  - added `smart_automove_pro_black_forced_runtime_probe` to compare `primary_black_turn_four_action_mana_ply15` and `primary_black_mana_bridge_ply20` directly at runtime-faithful selection stage
+  - both retained black seams now share the same late shape inside `runtime_pro_turn_engine_v30`: `stage=engine_post_search`, `selected=pre_accept=head=forced`, `accepted=true`, and the selected root family stays `ManaTempo` under a `SafeSupermanaProgress` head
+  - that still is not a safe shared production lever: `primary_black_turn_four_action_mana_ply15` remains a vulnerable `SafeSupermanaProgress -> ImmediateScore` drift, while `primary_black_mana_bridge_ply20` is a safer `SafeSupermanaProgress -> SpiritImpact` rerank; in both cases the selected root utility already edges current
+  - direct conclusion: keep the new runtime-faithful comparison probe, but kill the shared-black revival before code edits; the retained black seams still do not expose one promotable bounded rule
 - Latest retained foothold (`2026-04-08`, latest):
   - added `primary_black_mana_bridge_ply20` for the recurring black `l0,5;l1,4` vs current `l4,1;l5,0;mb` family and widened `smart_automove_pro_black_forced_root_probe`
   - the new retained fixture matches the old traced fast `v7` board exactly at injection stage: `forced_inputs=Some("l0,5;l1,4")`, `existing_forced_rank=None`, `injected_forced_rank=Some(1)`, `focused_forced_rank=Some(0)`, `head_family=SafeSupermanaProgress`, and `goal_family=SpiritImpact`

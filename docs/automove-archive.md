@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Black Forced-Runtime Comparison Killed At Diagnostics
+
+- What was tried: added `smart_automove_pro_black_forced_runtime_probe` so the two retained black forced-engine footholds, `primary_black_turn_four_action_mana_ply15` and `primary_black_mana_bridge_ply20`, could be compared at runtime-faithful selection stage instead of only at raw, injected, and focused root ranks.
+- Why it stopped: the probe showed the two seams are closer late than early, but still not in a code-ready way. In both cases `runtime_pro_turn_engine_v30` reaches `stage=engine_post_search`, accepts the head, and collapses `selected`, `pre_accept`, and `head` onto the same forced `ManaTempo` root under a `SafeSupermanaProgress` head. But the remaining differences are exactly the kind of broad preference split that is not safe to codify: `primary_black_turn_four_action_mana_ply15` stays a vulnerable `SafeSupermanaProgress -> ImmediateScore` drift, while `primary_black_mana_bridge_ply20` is a non-vulnerable `SafeSupermanaProgress -> SpiritImpact` rerank, and on both boards the selected root utility already narrowly beats current.
+- Durable lesson: keep the runtime-faithful comparison probe, but do not reopen a shared black current-forcing repair from these two seams alone. If both retained boards already converge on accepted `ManaTempo` roots and differ mainly by narrow utility and risk shape, the next production branch still needs a stronger duel-backed explanation than “pick current instead.”
+
 ## Apr 8, 2026: Retain White Turn-Three Full-Resources Fallback
 
 - What was tried: traced the retained `primary_white_mana_sibling_ply9` seam back to a white `turn=3`, `mons_moves=3`, `action+mana` wrapper miss. Guarded `runtime_pro_turn_engine_v30` was falling through to `runtime_release_safe_pre_exact` and selecting `l5,0;l5,1`, while current Pro still chose `l5,0;l4,1`. Kept a narrow production repair by lowering the existing white turn-three full-resources current-Pro fallback from `mons_moves>=5` to `mons_moves>=3`, and added `runtime_pro_turn_engine_v30_profile_prefers_current_white_turn_three_full_resources_root`.
