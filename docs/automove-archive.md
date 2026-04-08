@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Negative-Deny Full-Loop Retry Killed At Reliability
+
+- What was tried: reran the first shared early-black `negative_deny` selector override and, unlike the first diagnostic-only pass, carried it through the full canonical loop. The retained `primary_black_negative_deny_ply4` seam closed to current, `guardrails` passed, `pro-triage(primary_pro)` moved to `1/53` with only `human_win_pro_c`, `off_target_changed=0`, and `runtime-preflight` passed.
+- Why it stopped: `pro-reliability` still failed at `0.8333` vs current Pro, `0.4167` vs current Normal, and `0.5833` vs current Fast. A fresh `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v3` duel trace showed the live wall had shifted to a later black accepted-head seam `l1,5;l1,7;l0,7` vs current `l3,2;l4,1`, repeated `2x` in direct Pro and `3x` in Normal, while the old early-black `l0,5;l1,6` seam still resurfaced once in Pro.
+- Durable lesson: clearing the retained early-black foothold is not enough if the live wall simply moves later in the turn-engine path. When the first full-loop retry trades one black family for another and direct duel quality stays weak, kill the production change and keep only the knowledge.
+
 ## Apr 8, 2026: Repeated Black Negative-Deny Selector Override Killed At Triage
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v3`, which finally repeated the early black `l0,5;l1,6` vs current `l1,5;l3,6;l2,7` family across all three direct duels. Added a new retained foothold for that seam, `primary_black_negative_deny_ply4`, plus `smart_automove_pro_black_negative_deny_selector_probe`, then tried one narrow shared selector override that ignored the plain-spirit `negative_deny` block for spirit-setup narrowing when a spirit-setup root already beat every non-spirit challenger.

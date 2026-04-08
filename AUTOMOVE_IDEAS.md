@@ -9,6 +9,15 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest focused gate (`2026-04-08`, latest):
+  - reran the first shared early-black `negative_deny` selector override, but carried it through the full canonical loop this time instead of killing it at surface change
+  - cheap-gate result: the retained `primary_black_negative_deny_ply4` seam collapsed cleanly to current, `guardrails` passed, `pro-triage(primary_pro)` moved to `1/53` with only `human_win_pro_c`, `off_target_changed=0`, and `runtime-preflight` passed
+  - `pro-reliability` still failed: `win_rate=0.8333` vs current Pro, `0.4167` vs current Normal, and `0.5833` vs current Fast
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` on the same `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v3` sample:
+    - `vs current Pro`: repeated later black accepted-head seam `l1,5;l1,7;l0,7` vs current `l3,2;l4,1` `2` times, plus the old early black `l0,5;l1,6` vs current `l1,5;l3,6;l2,7` once
+    - `vs current Normal`: the same later black accepted-head seam repeated `3` times; the white `l9,5;l8,5` vs current `l9,9;l8,8` and `l8,1;l7,0` vs current `l8,1;l7,1` misses stayed one-offs
+    - `vs current Fast`: one later black accepted-head seam and two one-off white forced-prepass drifts, `l8,4;l8,5` vs current `l8,4;l7,3` and `l8,4;l8,5` vs current `l8,4;l8,3`
+  - direct conclusion: kill the override; closing the retained early-black seam alone only moved the live wall onto a later black accepted-head family and still left duel quality well below promotion
+- Latest focused gate (`2026-04-08`, latest):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v3`; the live wall finally collapsed onto one repeated black family:
     - `vs current Pro`: repeated pair `l0,5;l1,6` vs current `l1,5;l3,6;l2,7` `3` times
     - `vs current Normal`: the same pair repeated `2` times
@@ -228,6 +237,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Immediate next split:
   - keep `primary_white_harvest_loss_c_ply24`, `primary_spirit_setup`, `primary_black_reliability_opening_3_ply4`, and `primary_pvs_sensitive_search` closed unless new duel evidence reopens them
   - keep the new retained foothold `primary_black_negative_deny_ply4` live; it is now the cheap-surface handle for the repeated early black duel family
+  - before the next production edit, find a retained foothold or a stronger shared explanation for the later black accepted-head seam `l1,5;l1,7;l0,7` vs current `l3,2;l4,1`; the first full-loop retry proved the early negative-deny foothold alone is not enough
   - refresh direct duel evidence first with `smart_automove_pro_reliability_duel_trace_probe` when the wall is unclear; the bounded hotspot corpus alone is no longer enough
   - if the line is revived, start from a duel-linked explanation that moves more than the current `1/52` `primary_pro` drift before touching more turn-engine head logic; `human_win_pro_c` alone is still not enough
   - do not spend another acceptance-only split unless the traced seam also changes the cheap target surface
@@ -252,5 +262,6 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
   - traced fast-duel `Safe*Progress` acceptance clamps by themselves; the Apr 8 duel-replay split found a real repeated seed but still left `pro-triage(primary_pro)` unchanged
   - `human_win_pro_c` selector-only reranks without a new real-hotspot or direct-duel seam
   - the first shared negative-deny selector override by itself; on Apr 8 it fixed the new retained `primary_black_negative_deny_ply4` seam and kept off-target churn at `0`, but `pro-triage(primary_pro)` still fell back to the stale `human_win_pro_c`-only `1/53`
+  - the first shared negative-deny selector override even when it clears the full cheap loop; on Apr 8 the full-loop retry closed `primary_black_negative_deny_ply4`, passed `guardrails`, `pro-triage(primary_pro)=1/53`, and `runtime-preflight`, but `pro-reliability` still failed at `0.8333` vs current Pro, `0.4167` vs current Normal, and `0.5833` vs current Fast while the live wall moved to later black accepted-head drift
 - Proof target for the next retained branch: beat the current unchanged `pro-reliability` wall with a duel-linked fix, not just another local reduction from the present `1/52` `primary_pro` churn.
-- Do not spend another production split until a fresh duel replay exposes a repeated seam that also has a retained `primary_pro` foothold; the new black negative-deny family now has that foothold, but the first shared fix for it still proved too local at cheap gates.
+- Do not spend another production split until a fresh duel replay exposes a repeated seam that also has a retained `primary_pro` foothold; the new black negative-deny family now has that foothold, but even the full-loop retry of its first shared fix still only moved the wall later.
