@@ -4376,7 +4376,13 @@ fn smart_automove_pro_black_spirit_sibling_probe() {
         false,
     )
     .expect("valid traced pro v12 black spirit sibling fen");
+    let traced_pro_v14_game = MonsGame::from_fen(
+        "0 0 b 0 0 1 0 0 2 n04s0xd0xa0xe0xn03/n02y0xn08/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n06A0xn04/n06Y0xn04/n03E0xn01D0xS0xn04",
+        false,
+    )
+    .expect("valid traced pro v14 black spirit sibling fen");
     let opening_a_fixture = primary_pro_fixture_by_id("primary_black_loss_opening_a_black_turn");
+    let opening_b_fixture = primary_pro_fixture_by_id("primary_black_loss_opening_b_black_turn");
     let reliability_ba_fixture =
         primary_pro_fixture_by_id("primary_black_reliability_opening_0_ba_black_turn");
     let reliability_live_fixture =
@@ -4385,7 +4391,9 @@ fn smart_automove_pro_black_spirit_sibling_probe() {
 
     for (label, game) in [
         ("traced_pro_duel_v12", &traced_pro_v12_game),
+        ("traced_pro_duel_v14", &traced_pro_v14_game),
         ("primary_black_loss_opening_a_black_turn", &opening_a_fixture.game),
+        ("primary_black_loss_opening_b_black_turn", &opening_b_fixture.game),
         (
             "primary_black_reliability_opening_0_ba_black_turn",
             &reliability_ba_fixture.game,
@@ -4396,7 +4404,12 @@ fn smart_automove_pro_black_spirit_sibling_probe() {
         ),
         ("primary_black_gate_loss_a_ply4", &gate_fixture.game),
     ] {
-        run_probe(label, game, SmartAutomovePreference::Pro, &["l0,4;l1,3", "l0,4;l1,5"]);
+        run_probe(
+            label,
+            game,
+            SmartAutomovePreference::Pro,
+            &["l0,4;l1,3", "l0,4;l1,4", "l0,4;l1,5"],
+        );
     }
 }
 

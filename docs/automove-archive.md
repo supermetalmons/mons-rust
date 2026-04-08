@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Traced Pro V14 Black Spirit Sibling Killed At Diagnostics
+
+- What was tried: widened `smart_automove_pro_black_spirit_sibling_probe` so it compares the fresh `v14` direct-Pro black board `l0,4;l1,4` vs current `l0,4;l1,5` against the older traced `v12` sibling board and the retained early-black opening fixtures, including `primary_black_loss_opening_b_black_turn`.
+- Why it stopped: the traced `v14` board was not the retained opening-`b` family. Runtime-faithful v30 already had `selected=pre_accept=l0,4;l1,4`, `forced_inputs=None`, `stage=engine_post_search`, `accepted=false`, and a rejected head `l0,5;l1,6` under `goal_family=DrainerSafetyRecovery`, while the retained `primary_black_loss_opening_b_black_turn` surface stayed `engine_disabled` on current `l0,4;l1,5` with no head at all. The other retained opening fixtures also remained different: some stayed fully unforced on current, while others still carried forced `SafeSupermanaProgress` heads like `l0,5;l1,6`.
+- Durable lesson: keep the widened sibling probe, but do not reopen a shared early-black opening branch just because a fresh direct-Pro board lands on a nearby spirit sibling like `l0,4;l1,4`. Runtime-faithful stage shape still matters more than the baseline cluster or the neighboring move string.
+
 ## Apr 8, 2026: Fresh Seed v14 Replay Killed At Diagnostics
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v14` after classifying the `v13` Normal black drainer-safety board, to see whether the cleaner direct-Pro bucket would finally line up with a repeated Normal or Fast exact family.

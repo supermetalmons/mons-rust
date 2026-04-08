@@ -9,6 +9,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - widened `smart_automove_pro_black_spirit_sibling_probe` with the fresh `v14` direct-Pro board `l0,4;l1,4` vs current `l0,4;l1,5` and the retained `primary_black_loss_opening_b_black_turn` fixture
+  - the traced board is not the retained opening-`b` family even though it reuses the same nearby move string: runtime-faithful v30 already has `selected=pre_accept=l0,4;l1,4`, `forced_inputs=None`, `stage=engine_post_search`, `accepted=false`, and a rejected head `l0,5;l1,6` with `goal_family=DrainerSafetyRecovery`
+  - the retained `primary_black_loss_opening_b_black_turn` surface stays different: `selected=pre_accept=baseline=l0,4;l1,5`, `forced_inputs=None`, `stage=engine_disabled`, and no head at all, while `l0,4;l1,4` remains only the lower-ranked spirit sibling
+  - direct conclusion: keep the widened black spirit-sibling probe, but kill the `v14` direct-Pro revival before code edits; sharing the same baseline cluster or nearby sibling move is still not enough for an early-black opening-family production rule
+- Latest diagnostic close (`2026-04-08`, latest):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v14`
   - duel summary:
     - `vs current Pro`: `1` regression, `4` improvements, `7` flat; the only move pair stayed at count `1`
