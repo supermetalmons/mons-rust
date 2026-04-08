@@ -19,6 +19,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
   - probe result: raw ranked roots/current still prefer `l2,3;l3,2`, but runtime-faithful v30 injects and selects `l1,6;l2,7`; `stage=engine_post_search`, `head_family=SafeSupermanaProgress`, `goal_family=ImmediateScore`, and selected/pre-accept/head all collapse onto the same injected vulnerable `ManaTempo` root
   - direct conclusion: keep the fixture and widened probe, but do not reopen wrapper-only or acceptance-only fixes from this seam alone; the live lever is earlier forced-engine injection, not a final accept clamp
 - Latest diagnostic close (`2026-04-08`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v7`
+  - duel summary:
+    - `vs current Pro`: `1` regression, `4` improvements, `7` flat; the only move pair stayed at count `1`
+    - `vs current Normal`: `3` regressions, `1` improvement, `8` flat; all three move pairs stayed at count `1`
+    - `vs current Fast`: `2` regressions, `1` improvement, `9` flat; both move pairs stayed at count `1`
+  - the fresh seams were still sparse one-offs: direct-Pro white vulnerable `ManaTempo` rerank `l10,0;l9,1` vs current `l9,2;l9,1`, Normal white reranks `l10,8;l9,7` vs `l10,7;l9,6` and `l9,2;l9,1` vs `l9,2;l10,1`, one later-black accepted-head resurfacing `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, Fast black `l0,5;l1,4` vs `l4,1;l5,0;mb`, and Fast white `l10,4;l9,3` vs `l9,5;l7,6;l8,7`
+  - direct conclusion: kill the `v7` replay at diagnostics before code edits; even with the retained black action+mana seam in hand, this seed still does not expose a repeated duel family or a stronger shared in-path explanation
+- Latest diagnostic close (`2026-04-08`, latest):
   - widened `smart_automove_pro_white_score_route_probe` to compare the fresh `v6` direct-Pro spirit rerank `l9,6;l8,4;l7,4` vs current `l9,6;l7,4;l7,3` against the retained harvest fixture `primary_harvest_white_score_route_win_a`
   - the traced `v6` board is still not the retained harvest surface: `selected=head=l9,6;l8,4;l7,4`, `accepted=true`, `pre_accept=l9,6;l7,4;l8,4`, and current differs only by another nearby vulnerable spirit-own-setup root `l9,6;l7,4;l7,3`
   - the retained harvest fixture stays different: current/candidate/pre-accept already match on `l9,6;l7,4;l8,3`, the injected head `l9,6;l7,4;l6,3` is still `accepted=false`, and the same-lane spirit sibling cluster remains a separate rejected-head story
@@ -340,6 +348,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Major direction 3: the retained cheap surface now has two drifts, not one: `human_win_pro_c` plus `primary_black_turn_four_action_mana_ply15`.
 - Major direction 3a: the bounded reliability hotspot corpus still does not support a new duel seam right now, even after the retained PVS repair. Its compare probe is decision-identical to `runtime_current` on every real hotspot case, so use the duel-trace probe when the direct wall is unclear instead of spending another hotspot-first split.
 - Major direction 4: the new black seam is not a final accept-after-search clamp. Raw ranked roots still prefer current `l2,3;l3,2`, but runtime-faithful forced engine injection turns `l1,6;l2,7` into the selected/pre-accept/head root under a `SafeSupermanaProgress -> ImmediateScore` plan, so future spend must target earlier forced-engine behavior or a broader duel family.
+- Major direction 4a: the fresh `v7` replay still does not supply that broader family. It resurfaced the later-black accepted-head story only once in Normal, plus new white one-offs in Pro/Normal/Fast, so there is still no repeated duel family worth code.
 - Immediate next split:
   - keep `primary_white_harvest_loss_c_ply24`, `primary_spirit_setup`, `primary_black_reliability_opening_3_ply4`, and `primary_pvs_sensitive_search` closed unless new duel evidence reopens them
   - keep the retained footholds `primary_black_negative_deny_ply4` and `primary_black_turn_four_action_mana_ply15` live; they are the cheap-surface handles for the current early-black selector family and the later black forced-engine family

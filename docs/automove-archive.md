@@ -16,6 +16,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the wrapper line still failed `pro-reliability` at `0.7500` vs current Pro, `0.5000` vs current Normal, and `0.5833` vs current Fast, so the production guard was reverted. The widened retained probe then showed why a follow-up accept clamp would also be the wrong lever: raw ranked roots and current still prefer `l2,3;l3,2`, but runtime-faithful v30 injects `l1,6;l2,7` and already collapses selected, `pre_accept`, and head onto that same vulnerable `ManaTempo` root under a `SafeSupermanaProgress -> ImmediateScore` plan.
 - Durable lesson: keep the retained fixture and widened probe, but do not reopen either a wrapper-only reroute or an acceptance-only clamp from this seam alone. The live behavior is earlier forced-engine injection, and the isolated black repair still is not enough to move the direct duel wall.
 
+## Apr 8, 2026: Fresh Seed v7 Duel Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v7` after retaining the black `primary_black_turn_four_action_mana_ply15` foothold, to check whether the live wall had converged onto a repeated family worth code.
+- Why it stopped: the replay was still all count-`1` churn. `vs current Pro` finished `1` regression / `4` improvements / `7` flat, `vs current Normal` `3` / `1` / `8`, and `vs current Fast` `2` / `1` / `9`, with every move pair unique inside its duel bucket. The traces included a direct-Pro white vulnerable `ManaTempo` rerank `l10,0;l9,1` vs current `l9,2;l9,1`, two different white Normal reranks, one later-black accepted-head resurfacing `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, one Fast black `l0,5;l1,4` vs `l4,1;l5,0;mb`, and one Fast white `l10,4;l9,3` vs `l9,5;l7,6;l8,7`, but none repeated strongly enough to justify a retained fixture or production split.
+- Durable lesson: even after a new retained black foothold lands, a fresh replay that only remixes one-off white and black seams is still a diagnostics-only kill. Do not reopen code until a replay repeats one family on a retained surface.
+
 ## Apr 8, 2026: Retain White Mana-Sibling Seam
 
 - What was tried: after the `v6` replay left only one repeated multi-bucket family, added `primary_white_mana_sibling_ply9` and `smart_automove_pro_white_mana_sibling_probe` to compare the direct-Pro `l5,0;l5,1` vs current `l5,0;l4,1` board against the sibling Normal `l5,0;l6,1` vs `l5,0;l4,1` board.
