@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Fresh Seed v6 Duel Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v6` after the `v5` replay seams were fully classified and killed.
+- Why it stopped: the replay still produced only count-`1` seams. `vs current Pro` finished `3` regressions / `4` improvements / `5` flat, `vs current Normal` `1` / `0` / `11`, and `vs current Fast` `2` / `4` / `6`, with no repeated move pair in any duel bucket. The recorded regressions were all already-classified live-only shapes: a white forced-prepass drainer-safety board `l8,4;l8,5` vs current `l8,4;l9,3`, white `ManaTempo` sibling reranks around `l5,0;*` and `l8,3;*`, one white accepted spirit rerank `l9,6;l8,4;l7,4` vs current `l9,6;l7,4;l7,3`, the non-retained late-black `l1,5;l1,7;l0,7` spirit-head case, and one black mana rerank `l1,5;l2,5` vs current `l1,6;l0,6`.
+- Durable lesson: another fresh replay that only remixes already-classified one-off seam shapes is still not a reason to spend code. Wait for a replay that repeats one family on a retained surface, not for a broader list of count-`1` misses.
+
 ## Apr 8, 2026: White Mana-Sibling Tie Killed At Diagnostics
 
 - What was tried: used a temporary traced-board probe on the fresh `pro_turn_planner_reliability_v5` direct-Pro seam `l8,3;l8,2` vs current `l8,3;l9,2`, then removed the probe after classification.

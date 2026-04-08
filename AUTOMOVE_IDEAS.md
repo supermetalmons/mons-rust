@@ -9,6 +9,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v6`
+  - duel summary:
+    - `vs current Pro`: `3` regressions, `4` improvements, `5` flat; every move pair stayed at count `1`
+    - `vs current Normal`: `1` regression, `0` improvements, `11` flat; the only move pair stayed at count `1`
+    - `vs current Fast`: `2` regressions, `4` improvements, `6` flat; both move pairs stayed at count `1`
+  - the fresh seams were still sparse and already-classified shapes: a white forced-prepass drainer-safety board `l8,4;l8,5` vs current `l8,4;l9,3`, white mana-sibling reranks `l5,0;l5,1` or `l5,0;l6,1` vs current `l5,0;l4,1`, one white accepted spirit rerank `l9,6;l8,4;l7,4` vs current `l9,6;l7,4;l7,3`, the already-killed late-black non-retained spirit-head `l1,5;l1,7;l0,7` vs current `l4,1;l5,0;mb`, and a black mana rerank `l1,5;l2,5` vs current `l1,6;l0,6`
+  - direct conclusion: kill the `v6` replay at diagnostics before code edits; it still does not expose a repeated duel family or a retained-surface foothold worth a production split
+- Latest diagnostic close (`2026-04-08`, latest):
   - probed the remaining fresh `v5` direct-Pro white seam `l8,3;l8,2` vs current `l8,3;l9,2` with a temporary traced-board diagnostic and removed the probe after classification
   - the board has no retained fixture footprint and is another live-only white `ManaTempo` sibling tie: `stage=engine_disabled`, `forced_inputs=Some("l8,3;l9,2")`, `head=Some("l8,3;l9,2")`, `accepted=true`, and both candidate and baseline roots have identical utility and vulnerability
   - current and `pre_accept` already match on `l8,3;l9,2`; the challenger differs only by taking the equal-utility sibling `l8,3;l8,2` with swapped root rank
