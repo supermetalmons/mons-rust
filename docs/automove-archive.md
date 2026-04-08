@@ -142,6 +142,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the board turned out to be another member of the already-closed white mid-turn wrapper family: `turn=3`, `mons_moves=4`, `action=false`, `mana=true`. The focused probe showed the configured `runtime_pro_turn_engine_v30` path itself still pre-accepted the current-style root `l10,7;l9,7`, but the outer `runtime_pro_turn_engine_v30_guarded_inputs(...)` wrapper rerouted the board through the broad fast pre-exact fallback and returned `l9,2;l8,3`. That meant the Pro regression was not a new in-path selector seam, so the idea was killed before code edits.
 - Durable lesson: do not reopen a lone white Pro-duel regression if the probe shows configured v30 already matches current and only the outer white turn-three mana-only wrapper is still responsible.
 
+## Apr 8, 2026: Later Black ManaTempo Shortlist Probe Killed Before Code Edits
+
+- What was tried: drilled into the later black normal-duel drift `l2,4;l3,3` vs current `l3,6;l2,7` to see whether it was a new retained in-path selector seam.
+- Why it stopped: the focused probe showed a one-off forced-shortlist distortion instead. `runtime_pro_turn_engine_v30` injected a terrible `ManaTempo` head `l3,6;l3,7` at the top of the forced root set, left that head unaccepted, and still pre-accepted `l2,4;l3,3` over current `l3,6;l2,7`. A fresh `smart_automove_pro_runtime_faithful_retained_churn_probe` confirmed the retained surface still had forced inputs only on the already-closed `primary_pvs_sensitive_search` fixture, so this later black seam had no retained `primary_pro` foothold.
+- Durable lesson: do not reopen a later black `ManaTempo` shortlist repair without a matching retained forced-input seam on `primary_pro`; a one-off injected head with `accepted=false` is still just diagnostic noise.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
