@@ -466,6 +466,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the replay broke back into pure count-`1` churn. Direct Pro finished `3` regressions / `1` improvement / `8` flat, Normal `3` / `2` / `7`, and Fast `1` / `4` / `7`, with every exact move pair staying at count `1`. The seed only remixed one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, early-black `negative_deny` `l0,5;l1,6` vs `l1,5;l3,6;l2,7`, black mana rerank `l1,5;l2,5` vs `l1,6;l0,6`, white mana-sibling `l8,3;l8,2` vs `l8,3;l9,2`, white spirit-own-setup `l9,5;l7,4;l7,3` vs `l9,5;l7,6;l7,7`, and a direct-Pro black tie `l1,2;l1,1` vs `l1,2;l0,1`.
 - Durable lesson: do not spend from the next seed just because the previous one finally repeated a retained seam. If the follow-up replay immediately falls back into count-`1` mixed churn across Pro, Normal, and Fast, keep only the note and wait for a cleaner repeated family.
 
+## Apr 9, 2026: Seed v22 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v22` to see whether the post-`v21` wall would finally settle on one repeated exact family.
+- Why it stopped: the replay stayed in the same churn bucket. Direct Pro finished `2` regressions / `6` improvements / `4` flat, Normal `3` / `1` / `8`, and Fast `1` / `4` / `7`, but every exact move pair still stayed at count `1`. The seed only remixed one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, white mana-sibling `l8,3;l8,2` vs `l8,3;l9,2`, a direct-Pro black `ManaTempo` tie `l1,2;l1,1` vs `l1,2;l0,1`, early-black `negative_deny` `l0,5;l1,6` vs `l1,5;l3,6;l2,7`, black mana-bridge `l0,5;l1,4` vs `l4,1;l5,0;mb`, and white spirit-own-setup `l9,5;l7,4;l7,3` vs `l9,5;l7,6;l7,7`.
+- Durable lesson: if the next replay after a dead local fix still mixes only count-`1` versions of the same black and white families, keep only the note. That is replay churn again, not a code-ready continuation.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
