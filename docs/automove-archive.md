@@ -130,6 +130,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the runtime-faithful retained churn probe still showed `accepted=false` on every retained `primary_pro` fixture (`primary_spirit_setup`, `primary_pvs_sensitive_search`, `primary_black_reliability_opening_3_ply4`, `primary_white_harvest_loss_c_ply24`, and `human_win_pro_c`). That meant the repeated fast-duel seam still had no retained target-surface foothold, so per the runbook the idea was killed before code edits.
 - Durable lesson: do not spend another production split on a repeated accepted-head duel seam unless the same acceptance family also appears on the retained `primary_pro` surface.
 
+## Apr 8, 2026: Early Black Negative-Deny Spirit Merge Killed Before Code Edits
+
+- What was tried: refreshed the full `smart_automove_pro_reliability_duel_trace_probe` corpus again, then drilled into the new early black normal-duel miss `l0,5;l1,6` vs current `l1,5;l3,6;l2,7` to see whether it was the same family as the retained `human_win_pro_c` spirit-vs-progress drift.
+- Why it stopped: the full replay still showed the same broad wall, and the only repeated live seam remained the white fast-duel accepted-head pair with no retained foothold. The focused selector probe on the black normal board showed `negative_deny_competes=true` and `followup_progress_competes=false`, while `human_win_pro_c` is the opposite shape: a followup-progress bias rather than a negative-deny one-off. That meant the black seam was both separate and still off the retained `primary_pro` surface, so the shared spirit-setup idea was killed before code edits.
+- Durable lesson: do not merge an early black `negative_deny` spirit-preference drift with the retained human followup-progress seam unless fresh retained evidence proves they share the same selector gate.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
