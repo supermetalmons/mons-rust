@@ -124,6 +124,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the replayed duel boards all matched current after the reroute and `guardrails` passed, but `pro-triage(primary_pro)` still stayed unchanged at the same stale `human_win_pro_c`-only `1/52`. Per the retained runbook, that meant the target surface still had not moved, so the split was killed before `runtime-preflight` and `pro-reliability`.
 - Durable lesson: even a broader white turn-three wrapper family that fixes three live duel boards can still be too local. Do not retain it without a target-surface story that also moves `primary_pro`.
 
+## Apr 8, 2026: White Turn-Three Accepted-Head Idea Killed Before Code Edits
+
+- What was tried: after the broader white mana-only reroute died, checked the only remaining repeated live lead before touching production code: the white `turn=3`, `mons_moves=1`, `action+mana` fast-duel accepted-head seam `l9,4;l8,4` vs current `l8,7;l7,8`.
+- Why it stopped: the runtime-faithful retained churn probe still showed `accepted=false` on every retained `primary_pro` fixture (`primary_spirit_setup`, `primary_pvs_sensitive_search`, `primary_black_reliability_opening_3_ply4`, `primary_white_harvest_loss_c_ply24`, and `human_win_pro_c`). That meant the repeated fast-duel seam still had no retained target-surface foothold, so per the runbook the idea was killed before code edits.
+- Durable lesson: do not spend another production split on a repeated accepted-head duel seam unless the same acceptance family also appears on the retained `primary_pro` surface.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
