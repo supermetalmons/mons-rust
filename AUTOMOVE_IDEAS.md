@@ -8,6 +8,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest diagnostic close (`2026-04-08`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v11`
+  - duel summary:
+    - `vs current Pro`: `3` regressions, `3` improvements, `6` flat; all three move pairs stayed at count `1`
+    - `vs current Normal`: `6` regressions, `0` improvements, `6` flat; the only exact repeat was white `l9,5;l7,4;l8,3` vs current `l9,5;l7,6;l7,7` twice
+    - `vs current Fast`: `4` regressions, `4` improvements, `4` flat; all four move pairs stayed at count `1`
+  - tried retaining the repeated Normal white pair by widening `smart_automove_pro_white_score_route_probe`, but the traced board died immediately under Pro-mode classification: `selected=pre_accept=baseline=l10,4;l9,4`, `forced_inputs=None`, `accepted=false`, and both repeated `l9,5;...` targets were absent from the Pro shortlist
+  - direct conclusion: kill the `v11` replay at diagnostics before code edits; even a repeated Normal duel pair is not actionable when the same board disappears on the retained Pro surface
 - Latest retained foothold (`2026-04-08`, latest):
   - added `primary_white_safe_progress_rerank_ply27` for the fresh Normal white board `l9,4;l8,3` vs current `l5,2;l4,1`, widened `smart_automove_pro_white_score_route_probe`, and added the new fixture to the retained churn probes
   - the new board is not the retained harvest white score-route surface: runtime-faithful v30 already has `selected=pre_accept=head=l9,4;l8,3`, `accepted=true`, `forced_inputs=Some("l9,4;l8,3")`, `drainer_vulnerable=false`, and a vulnerable `ManaTempo` root, while current stays on a non-vulnerable `SafeSupermanaProgress` baseline `l5,2;l4,1`

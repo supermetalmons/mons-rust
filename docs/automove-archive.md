@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Fresh Seed v11 Normal Repeat Killed At Diagnostics
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v11`, then briefly widened `smart_automove_pro_white_score_route_probe` around the only exact repeated pair from that replay, the Normal white move `l9,5;l7,4;l8,3` vs current `l9,5;l7,6;l7,7`.
+- Why it stopped: the replay still was not code-ready. `vs current Pro` finished `3` regressions / `3` improvements / `6` flat, `vs current Normal` `6` / `0` / `6`, and `vs current Fast` `4` / `4` / `4`; only the Normal white pair repeated, and even that died immediately when checked on the retained Pro surface. On the traced board in Pro mode, `runtime_pro_turn_engine_v30` and current both selected `l10,4;l9,4`, `forced_inputs` stayed `None`, `accepted=false`, and the repeated `l9,5;...` targets were absent from the Pro shortlist.
+- Durable lesson: a repeated Normal duel pair still is not enough to retain as `primary_pro` unless the same board reproduces as an actual Pro-mode seam. If the traced board collapses to current and the repeated targets vanish from the Pro shortlist, kill the branch at diagnostics and keep only the note.
+
 ## Apr 8, 2026: Retain White Safe-Progress Rerank Seam
 
 - What was tried: widened `smart_automove_pro_white_score_route_probe` with the fresh `v10` Normal white board `l9,4;l8,3` vs current `l5,2;l4,1`, then retained that exact board as `primary_white_safe_progress_rerank_ply27` and added it to the retained churn probes to see whether it moved the clean cheap surface.
