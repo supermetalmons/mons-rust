@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Traced Normal V15 White Score-Route Win-B Revival Killed At Diagnostics
+
+- What was tried: widened `smart_automove_pro_white_score_route_probe` so it compares the fresh `v15` Normal white board `l10,5;l9,4` vs current `l4,9;l4,7;l5,7` against the retained `primary_harvest_white_score_route_win_b` fixture, which already carries the same forced head `l10,5;l9,4`.
+- Why it stopped: the traced board was not the retained `win_b` harvest surface. Runtime-faithful v30 already had `selected=pre_accept=head=l10,5;l9,4`, `forced_inputs=Some("l10,5;l9,4")`, `stage=engine_post_search`, and `goal_family=DrainerSafetyRecovery`, while current stayed on `l4,9;l4,7;l5,7`. The retained `primary_harvest_white_score_route_win_b` fixture stayed different: `selected=baseline=l10,7;l9,8`, `pre_accept=l10,6;l9,5`, `head=l10,5;l9,4`, `stage=engine_disabled`, and `goal_family=ImmediateScore`.
+- Durable lesson: keep the widened white score-route probe, but do not reopen a white harvest/score-route branch just because a fresh board reuses the same forced head. Runtime-faithful stage, selected root, and goal family still matter more than the injected move string.
+
 ## Apr 8, 2026: Traced Pro V15 White L8,4 Sibling Split Killed At Diagnostics
 
 - What was tried: widened `smart_automove_pro_white_fast_forced_prepass_probe` so it compares the fresh `v15` direct-Pro white board `l8,4;l7,3` vs current `l8,4;l9,3` against the older traced forced-prepass boards and the retained `primary_white_fast_screen_opening_0_ply9` fixture.

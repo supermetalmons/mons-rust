@@ -4825,7 +4825,13 @@ fn smart_automove_pro_white_score_route_probe() {
         false,
     )
     .expect("valid traced white score-route v6 fen");
+    let traced_v15_normal_game = MonsGame::from_fen(
+        "0 0 w 0 0 0 0 1 5 n05d1xn05/n05a0xn01e0xn03/n04xxmn02xxmn03/n06s0xn04/n03xxmn01xxmn01xxmn01S0xn01/y0xn04xxUn05/n05xxMn01xxMn03/n02xxMn01xxMn01xxMn04/n01E0xn09/n11/n04A0xD0xn03Y0xn01",
+        false,
+    )
+    .expect("valid traced white score-route v15 normal fen");
     let retained_fixture = primary_pro_fixture_by_id("primary_harvest_white_score_route_win_a");
+    let retained_b_fixture = primary_pro_fixture_by_id("primary_harvest_white_score_route_win_b");
     let retained_v10_fixture =
         primary_pro_fixture_by_id("primary_white_safe_progress_rerank_ply27");
 
@@ -4846,9 +4852,19 @@ fn smart_automove_pro_white_score_route_probe() {
             &["l9,4;l8,3", "l5,2;l4,1"][..],
         ),
         (
+            "traced_normal_duel_v15",
+            &traced_v15_normal_game,
+            &["l10,5;l9,4", "l4,9;l4,7;l5,7"][..],
+        ),
+        (
             "primary_harvest_white_score_route_win_a",
             &retained_fixture.game,
             &["l9,6;l7,4;l8,3", "l9,6;l7,6;l7,7"][..],
+        ),
+        (
+            "primary_harvest_white_score_route_win_b",
+            &retained_b_fixture.game,
+            &["l10,5;l9,4", "l4,9;l4,7;l5,7"][..],
         ),
     ] {
         run_probe(label, game, targets);
