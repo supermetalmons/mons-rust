@@ -10,6 +10,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the seam itself closed cleanly, `guardrails` passed, `pro-triage(primary_pro)` returned to the familiar `human_win_pro_c`-only `1/56`, `runtime-preflight` passed, and `pro-reliability` still failed at `0.8333` vs current Pro, `0.5000` vs current Normal, and `0.7500` vs current Fast. The default duel trace did not expose a new repeated family; it stayed on the same one-off Pro/Normal/Fast wall as before.
 - Durable lesson: a retained white mana-sibling seam can still be only another white turn-three full-resource wrapper miss. Closing it is safe enough to keep when it cleanly collapses the retained fixture with no churn, but it does not justify more wrapper-only spend if the default live wall remains unchanged one-offs.
 
+## Apr 8, 2026: Retain Black Turn-Four Action+Mana Seam
+
+- What was tried: retained the later black duel seam `l1,6;l2,7` vs current `l2,3;l3,2` as `primary_black_turn_four_action_mana_ply15`, added `smart_automove_pro_black_turn_four_action_mana_probe`, and briefly retried the narrow current-Pro wrapper reroute for black `turn=4`, `mons_moves=1`, `action+mana` boards. That wrapper fix closed the new retained seam, passed `guardrails`, returned `pro-triage(primary_pro)` to `1/57` with only `human_win_pro_c`, and passed `runtime-preflight`.
+- Why it stopped: the wrapper line still failed `pro-reliability` at `0.7500` vs current Pro, `0.5000` vs current Normal, and `0.5833` vs current Fast, so the production guard was reverted. The widened retained probe then showed why a follow-up accept clamp would also be the wrong lever: raw ranked roots and current still prefer `l2,3;l3,2`, but runtime-faithful v30 injects `l1,6;l2,7` and already collapses selected, `pre_accept`, and head onto that same vulnerable `ManaTempo` root under a `SafeSupermanaProgress -> ImmediateScore` plan.
+- Durable lesson: keep the retained fixture and widened probe, but do not reopen either a wrapper-only reroute or an acceptance-only clamp from this seam alone. The live behavior is earlier forced-engine injection, and the isolated black repair still is not enough to move the direct duel wall.
+
 ## Apr 8, 2026: Retain White Mana-Sibling Seam
 
 - What was tried: after the `v6` replay left only one repeated multi-bucket family, added `primary_white_mana_sibling_ply9` and `smart_automove_pro_white_mana_sibling_probe` to compare the direct-Pro `l5,0;l5,1` vs current `l5,0;l4,1` board against the sibling Normal `l5,0;l6,1` vs `l5,0;l4,1` board.

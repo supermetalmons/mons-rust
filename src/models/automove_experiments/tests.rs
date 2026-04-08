@@ -2767,6 +2767,7 @@ fn smart_automove_pro_triage_retained_churn_probe() {
         "primary_black_reliability_opening_3_ply4",
         "primary_black_negative_deny_ply4",
         "primary_black_late_accepted_head_ply4",
+        "primary_black_turn_four_action_mana_ply15",
         "primary_white_mana_sibling_ply9",
         "primary_white_harvest_loss_c_ply24",
         "primary_white_fast_accepted_head_ply13",
@@ -2918,6 +2919,7 @@ fn smart_automove_pro_runtime_faithful_retained_churn_probe() {
         "primary_black_reliability_opening_3_ply4",
         "primary_black_negative_deny_ply4",
         "primary_black_late_accepted_head_ply4",
+        "primary_black_turn_four_action_mana_ply15",
         "primary_white_mana_sibling_ply9",
         "primary_white_harvest_loss_c_ply24",
         "primary_white_fast_accepted_head_ply13",
@@ -3816,6 +3818,119 @@ fn smart_automove_pro_white_fast_accepted_head_probe() {
             .position(|root| Input::fen_from_array(&root.inputs) == target);
         println!("target={} rank={:?}", target, rank);
     }
+}
+
+#[test]
+#[ignore = "diagnostic: inspect black turn-four one-move action+mana forced progress-head seam"]
+fn smart_automove_pro_black_turn_four_action_mana_probe() {
+    let fixture = primary_pro_fixture_by_id("primary_black_turn_four_action_mana_ply15");
+    clear_exact_state_analysis_cache();
+    clear_exact_query_diagnostics();
+    clear_turn_engine_plan_cache();
+    clear_turn_engine_diagnostics();
+    clear_turn_engine_selector_diagnostics();
+
+    let base_runtime = SearchBudget::from_preference(fixture.mode).runtime_config_for_game(&fixture.game);
+    let configured_runtime =
+        calibration_runtime_config("runtime_pro_turn_engine_v30", &fixture.game, fixture.mode);
+    let guarded_inputs = model_runtime_pro_turn_engine_v30(&fixture.game, base_runtime);
+    let selected_inputs =
+        profile_decision_inputs("runtime_pro_turn_engine_v30", fixture.mode, &fixture.game);
+    let selector_diag = turn_engine_selector_diagnostics_snapshot();
+    let direct_configured_inputs =
+        MonsGameModel::smart_search_best_inputs(&fixture.game, configured_runtime);
+    let current_inputs = model_current_best(
+        &fixture.game,
+        SearchBudget::from_preference(SmartAutomovePreference::Pro)
+            .runtime_config_for_game(&fixture.game),
+    );
+    let (config, scored_roots, head_plan, forced_engine_inputs) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(
+            "runtime_pro_turn_engine_v30",
+            fixture.mode,
+            &fixture.game,
+        );
+    let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
+        &fixture.game,
+        scored_roots.as_slice(),
+        fixture.game.active_color,
+        config,
+    );
+    let head_rank = head_plan.as_ref().and_then(|plan| {
+        plan.compiled_chunks.first().and_then(|chunk| {
+            scored_roots
+                .iter()
+                .position(|root| root.inputs.as_slice() == chunk.as_slice())
+        })
+    });
+    let accepted = head_plan.as_ref().is_some_and(|plan| {
+        MonsGameModel::accept_turn_engine_head_after_search(
+            &fixture.game,
+            fixture.game.active_color,
+            config,
+            scored_roots.as_slice(),
+            pre_accept_selected.as_slice(),
+            plan,
+        )
+    });
+    let guarded_root = scored_roots.iter().find(|root| root.inputs == guarded_inputs);
+    let pre_accept_root = scored_roots
+        .iter()
+        .find(|root| root.inputs == pre_accept_selected);
+    let current_root = scored_roots.iter().find(|root| root.inputs == current_inputs);
+    let head_root = head_rank.and_then(|index| scored_roots.get(index));
+    let pre_accept_family = pre_accept_root.map(MonsGameModel::turn_engine_root_evaluation_family);
+    let current_family = current_root.map(MonsGameModel::turn_engine_root_evaluation_family);
+    let pre_accept_utility = pre_accept_root.map(|root| {
+        MonsGameModel::turn_engine_root_plan_utility(
+            &fixture.game,
+            root,
+            fixture.game.active_color,
+            config,
+            pre_accept_family.expect("pre_accept family should exist"),
+        )
+    });
+    let current_utility = current_root.map(|root| {
+        MonsGameModel::turn_engine_root_plan_utility(
+            &fixture.game,
+            root,
+            fixture.game.active_color,
+            config,
+            current_family.expect("current family should exist"),
+        )
+    });
+
+    println!(
+        "BLACK_TURN_FOUR_ACTION_MANA guarded={} selected={} configured={} current={} pre_accept={} forced_inputs={:?} head={:?} accepted={} stage={} turn={} mons_moves={} action={} mana={} head_family={:?} goal_family={:?} plan_utility={:?} head_utility={:?} pre_accept_utility={:?} current_utility={:?} guarded_root=\"{}\" pre_accept_root=\"{}\" current_root=\"{}\" head_root=\"{}\"",
+        Input::fen_from_array(&guarded_inputs),
+        Input::fen_from_array(&selected_inputs),
+        Input::fen_from_array(&direct_configured_inputs),
+        Input::fen_from_array(&current_inputs),
+        Input::fen_from_array(&pre_accept_selected),
+        forced_engine_inputs
+            .as_ref()
+            .map(|inputs| Input::fen_from_array(inputs)),
+        head_plan
+            .as_ref()
+            .and_then(|plan| plan.compiled_chunks.first())
+            .map(|chunk| Input::fen_from_array(chunk)),
+        accepted,
+        selector_diag.last_return_stage,
+        fixture.game.turn_number,
+        fixture.game.mons_moves_count,
+        fixture.game.player_can_use_action(),
+        fixture.game.player_can_move_mana(),
+        head_plan.as_ref().map(|plan| plan.head_family),
+        head_plan.as_ref().map(|plan| plan.goal_family),
+        head_plan.as_ref().map(|plan| plan.utility),
+        head_plan.as_ref().map(|plan| plan.head_utility),
+        pre_accept_utility,
+        current_utility,
+        format_root_probe(guarded_root),
+        format_root_probe(pre_accept_root),
+        format_root_probe(current_root),
+        format_root_probe(head_root),
+    );
 }
 
 #[test]
