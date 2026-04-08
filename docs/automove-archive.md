@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Direct-Pro White Spirit Cluster Probe Killed At Diagnostics
+
+- What was tried: after ruling out the fresh black direct-Pro seam, drilled into the one-off white regression `l4,9;l4,7;l5,7` vs current `l9,4;l8,3` and compared it to the retained `human_win_pro_c` selector surface.
+- Why it stopped: the traced board was not the retained human seam. The focused probe showed `followup_progress_competes=false`, `progress_competes=false`, and `risky_score_competes=true`, with both the candidate spirit-own-setup root and the current non-spirit root still vulnerable; the forced head `l4,9;l4,7;l3,7` was present but still rejected. That made it another isolated risky-score spirit cluster rather than a duel-backed version of `human_win_pro_c`.
+- Durable lesson: do not reopen `human_win_pro_c`-style production fixes from a one-off direct-Pro white spirit-own-setup drift unless the probe actually shows the retained followup-progress pattern. Reverse-polarity spirit-vs-progress intuition is not enough.
+
 ## Apr 8, 2026: Direct-Pro Black Spirit Cluster Probe Killed At Diagnostics
 
 - What was tried: after the fresh `pro_turn_planner_reliability_v4` replay, drilled into the one-off direct-Pro black regression `l1,5;l2,3;l3,3` vs current `l1,5;l2,7;l1,8` and compared it to both retained black footholds, `primary_black_negative_deny_ply4` and `primary_black_late_accepted_head_ply4`.

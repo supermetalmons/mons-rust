@@ -9,6 +9,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - drilled into the fresh direct-Pro white one-off `l4,9;l4,7;l5,7` vs current `l9,4;l8,3`
+  - the traced board is not `human_win_pro_c`: `followup_progress_competes=false`, `progress_competes=false`, and `risky_score_competes=true`, while both candidate and baseline roots remain vulnerable
+  - candidate stays on a vulnerable spirit-own-setup cluster with higher `setup_gain`, current stays on a vulnerable non-spirit root, and the forced head `l4,9;l4,7;l3,7` is still `accepted=false`
+  - direct conclusion: kill the direct-Pro white spirit-cluster idea before code edits; it is not the retained human followup-progress seam and still has no retained cheap-surface foothold
+- Latest diagnostic close (`2026-04-08`, latest):
   - drilled into the fresh direct-Pro black one-off `l1,5;l2,3;l3,3` vs current `l1,5;l2,7;l1,8`
   - the traced board does not land on either retained black seam family: compared against `primary_black_negative_deny_ply4` and `primary_black_late_accepted_head_ply4`, every spirit-pref competition flag stayed `false`, the forced head `l1,5;l1,7;l0,7` was present but still `accepted=false`, and the candidate cluster stayed all vulnerable plain-spirit `supermana_progress` roots with identical setup gain
   - current differs only by taking a lower-ranked own-setup spirit root with higher `setup_gain`, not by reopening the retained early-black `negative_deny` or later-black accepted-head stories
