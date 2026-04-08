@@ -70,6 +70,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the fix was real and collapsed `primary_pro` retained churn from `2/52` to `1/52`, but `pro-reliability` stayed flat at `win_rate=0.8333` vs current Pro, `0.5000` vs current Normal, and `0.6667` vs current Fast.
 - Durable lesson: even the last live `engine_post_search` seam can be too local to matter. Once a retained late-head repair lands and the duel wall still does not move, stop the acceptance-only loop and reopen only with a broader duel-linked selector story.
 
+## Apr 8, 2026: Human-Win-Pro-C Selector Split Killed Before Code Edits
+
+- What was tried: reran the retained `human_win_pro_c` selector probe and the bounded `smart_automove_pro_reliability_hotspot_probe` after the PVS repair to check whether the remaining `1/52` triage drift had turned into a real duel seam.
+- Why it stopped: the selector probe still showed a pure `pre_accept` safe-progress bias, but the hotspot compare remained move-identical to current on every real duel hotspot. Only the synthetic `quiet_positional` sample changed.
+- Durable lesson: do not spend another shared ProV2 selector split on `human_win_pro_c` alone. If the real hotspot corpus stays unchanged, kill the line before code edits.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
