@@ -4224,6 +4224,11 @@ fn smart_automove_pro_black_forced_runtime_probe() {
         false,
     )
     .expect("valid traced fast v10 black mana rerank fen");
+    let traced_normal_v12_mana_game = MonsGame::from_fen(
+        "0 0 b 1 0 0 0 0 4 n05d0xn05/n05s0xa0xe0xn03/n03y0xn03xxmn03/n02xxmxxmn07/n05xxmn01xxmn03/E0xn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn06/n05D0xn02xxMn02/n04A0xn01S0xn04/n08Y0xn02",
+        false,
+    )
+    .expect("valid traced normal v12 black mana rerank fen");
     let traced_pro_v12_game = MonsGame::from_fen(
         "1 0 b 0 0 1 0 0 4 n05d0xa0xn04/n06xxme0xn03/n05s0xn05/n02y0xn01xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn05/n06xxMxxMn03/n11/n07S0xn03/D0xn01A0xE0xn04Y0xn02",
         false,
@@ -4253,6 +4258,12 @@ fn smart_automove_pro_black_forced_runtime_probe() {
         &traced_fast_v10_game,
         SmartAutomovePreference::Pro,
         &["l1,5;l1,4", "l3,2;l4,1"],
+    );
+    run_probe(
+        "traced_normal_duel_v12_mana",
+        &traced_normal_v12_mana_game,
+        SmartAutomovePreference::Pro,
+        &["l1,5;l2,5", "l1,6;l0,6"],
     );
     run_probe(
         "traced_pro_duel_v12",

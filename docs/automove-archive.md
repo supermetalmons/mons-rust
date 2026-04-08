@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Traced Normal V12 Black Mana Rerank Killed At Diagnostics
+
+- What was tried: widened `smart_automove_pro_black_forced_runtime_probe` so it compares the fresh `v12` Normal black board `l1,5;l2,5` vs current `l1,6;l0,6` against the retained black forced-engine seams and the traced fast `v10` black mana rerank.
+- Why it stopped: the traced board was another accepted non-vulnerable black `ManaTempo` rerank, but not a retained family. Runtime-faithful v30 kept `pre_accept` on current `l1,6;l0,6`, then accepted `l1,5;l2,5` under `head_family=ManaTempo`, `goal_family=DrainerSafetyRecovery`, and `stage=engine_cached_resume`. That differs from the retained mana-bridge seam, which uses a different current baseline and `goal_family=SpiritImpact`, and from the traced fast `v10` rerank, which also used a different current baseline and stage.
+- Durable lesson: keep the widened runtime probe, but do not reopen a shared black branch just because a fresh board is another accepted non-vulnerable `ManaTempo` rerank. Goal family, baseline move, and late selector stage still matter.
+
 ## Apr 8, 2026: Traced Normal V12 White Safe-Progress Rerank Killed At Diagnostics
 
 - What was tried: added `smart_automove_pro_white_safe_progress_probe` to compare the fresh `v12` Normal board `l9,5;l8,5` vs current `l10,7;l9,8` against the retained `primary_white_safe_progress_rerank_ply27` and `primary_white_fast_screen_opening_0_ply9` white surfaces.

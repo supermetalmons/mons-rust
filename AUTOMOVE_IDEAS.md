@@ -9,6 +9,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - widened `smart_automove_pro_black_forced_runtime_probe` with the fresh `v12` Normal black board `l1,5;l2,5` vs current `l1,6;l0,6`
+  - the traced board is another accepted non-vulnerable black `ManaTempo` rerank, but it is still not the retained mana-bridge seam and not the traced fast `v10` black rerank: runtime-faithful v30 keeps `pre_accept` on current `l1,6;l0,6`, then accepts `l1,5;l2,5` under `head_family=ManaTempo`, `goal_family=DrainerSafetyRecovery`, and `stage=engine_cached_resume`
+  - direct conclusion: keep the widened black runtime probe, but kill the `v12` Normal black revival before code edits; accepted non-vulnerable `ManaTempo` alone is still too broad for a shared black production rule
+- Latest diagnostic close (`2026-04-08`, latest):
   - added `smart_automove_pro_white_safe_progress_probe` to compare the fresh `v12` Normal white board `l9,5;l8,5` vs current `l10,7;l9,8` against the retained `primary_white_safe_progress_rerank_ply27` and `primary_white_fast_screen_opening_0_ply9` surfaces
   - the traced board is not the retained white safe-progress rerank: runtime-faithful v30 already has `selected=pre_accept=head=l9,5;l8,5`, `accepted=true`, `head_family=SafeSupermanaProgress`, `goal_family=DrainerSafetyRecovery`, and a non-vulnerable safe-progress root, while `primary_white_safe_progress_rerank_ply27` remains an accepted vulnerable `ManaTempo` rerank under `goal_family=ImmediateScore`
   - it is also not the retained white fast-screen surface: the traced board accepts `l9,5;l8,5` outright with `pre_accept` already on that root, while `primary_white_fast_screen_opening_0_ply9` keeps `pre_accept` and baseline on white spirit-progress lines and leaves the same `l9,5;l8,5` head `accepted=false`
