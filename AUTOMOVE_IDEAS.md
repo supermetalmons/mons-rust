@@ -9,6 +9,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - added `smart_automove_pro_white_safe_progress_probe` to compare the fresh `v12` Normal white board `l9,5;l8,5` vs current `l10,7;l9,8` against the retained `primary_white_safe_progress_rerank_ply27` and `primary_white_fast_screen_opening_0_ply9` surfaces
+  - the traced board is not the retained white safe-progress rerank: runtime-faithful v30 already has `selected=pre_accept=head=l9,5;l8,5`, `accepted=true`, `head_family=SafeSupermanaProgress`, `goal_family=DrainerSafetyRecovery`, and a non-vulnerable safe-progress root, while `primary_white_safe_progress_rerank_ply27` remains an accepted vulnerable `ManaTempo` rerank under `goal_family=ImmediateScore`
+  - it is also not the retained white fast-screen surface: the traced board accepts `l9,5;l8,5` outright with `pre_accept` already on that root, while `primary_white_fast_screen_opening_0_ply9` keeps `pre_accept` and baseline on white spirit-progress lines and leaves the same `l9,5;l8,5` head `accepted=false`
+  - direct conclusion: keep the new white safe-progress probe, but kill the `v12` Normal white revival before code edits; shared move string `l9,5;l8,5` is still not enough for a retained white production family
+- Latest diagnostic close (`2026-04-08`, latest):
   - added `smart_automove_pro_black_spirit_sibling_probe` to compare the fresh `v12` direct-Pro black spirit-sibling board `l0,4;l1,3` vs current `l0,4;l1,5` against existing early black opening fixtures that already target `l0,4;l1,5`
   - the traced board is not the existing opening family even though it shares the same current move string: on the traced board, `forced_inputs=None`, `stage=engine_post_search`, `accepted=false`, and `pre_accept` already sits on `l0,4;l1,3`; the opening fixtures either stay fully unforced on current or carry forced `SafeSupermanaProgress` heads like `l0,5;l1,6` or `l0,5;l1,5`
   - direct conclusion: keep the new black spirit-sibling probe, but kill the `v12` spirit-sibling revival before code edits; sharing baseline `l0,4;l1,5` is still not enough for a shared opening-family production rule

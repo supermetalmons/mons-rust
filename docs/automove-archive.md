@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Traced Normal V12 White Safe-Progress Rerank Killed At Diagnostics
+
+- What was tried: added `smart_automove_pro_white_safe_progress_probe` to compare the fresh `v12` Normal board `l9,5;l8,5` vs current `l10,7;l9,8` against the retained `primary_white_safe_progress_rerank_ply27` and `primary_white_fast_screen_opening_0_ply9` white surfaces.
+- Why it stopped: the traced board was not either retained white family. Runtime-faithful v30 already had `selected=pre_accept=head=l9,5;l8,5`, `accepted=true`, `head_family=SafeSupermanaProgress`, and `goal_family=DrainerSafetyRecovery`, with a non-vulnerable safe-progress root over current non-vulnerable `ManaTempo` `l10,7;l9,8`. The retained `primary_white_safe_progress_rerank_ply27` seam remains an accepted vulnerable `ManaTempo` rerank under `goal_family=ImmediateScore`, while `primary_white_fast_screen_opening_0_ply9` keeps `pre_accept` and baseline on spirit-progress lines and leaves the same `l9,5;l8,5` head rejected.
+- Durable lesson: keep the new white safe-progress probe, but do not reopen a white production branch just because `l9,5;l8,5` appears again on a non-vulnerable board. Runtime-faithful stage shape and goal family still matter more than the move string.
+
 ## Apr 8, 2026: Traced Pro V12 Black Spirit Sibling Killed At Diagnostics
 
 - What was tried: added `smart_automove_pro_black_spirit_sibling_probe` to compare the fresh `v12` direct-Pro board `l0,4;l1,3` vs current `l0,4;l1,5` against existing early black opening fixtures that already anchor on current `l0,4;l1,5`.
