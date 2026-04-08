@@ -8,6 +8,17 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest focused gate (`2026-04-08`):
+  - first tried a traced wrapper repair: route white `turn=3`, mana-only mid-turn states back to the current Pro surface instead of the broad fast fallback
+  - that wrapper fix corrected three replay-traced white turn-three mana-only duel boards, but `pro-triage(primary_pro)` stayed unchanged at `1/52` with only `human_win_pro_c`, so the local guard split was killed before `runtime-preflight`
+  - then tried a broader shared ProV2 selector split: keep high-setup-gain `spirit_own_mana_setup_now` roots alive against same-lane non-spirit progress challengers, plus a narrow own-setup reply-order allowance on traced normal-duel ties
+  - cheap-gate result: `human_win_pro_c` collapsed, but `primary_black_reliability_opening_3_ply4` reopened, so `pro-triage(primary_pro)` moved to `2/52` with `opening_reply` still `0/3`
+  - `pro-reliability`
+  - `12` games
+  - `vs current Pro`: `win_rate=0.7500`, `confidence=0.9270`, `candidate_avg_ms=88.82`
+  - `vs current Normal`: `win_rate=0.4167`, `confidence=0.0000`, `candidate_avg_ms=84.35`
+  - `vs current Fast`: `win_rate=0.4167`, `confidence=0.0000`, `candidate_avg_ms=92.73`
+  - direct conclusion: kill both production splits; the white turn-three guard repair was too local to earn more spend by itself, and the broader same-lane own-setup override was too aggressive and cratered direct duel quality
 - Latest diagnostic close (`2026-04-08`):
   - added `smart_automove_pro_reliability_duel_trace_probe` to replay the exact `pro-reliability` seed corpus and compare candidate turns against a shadow `runtime_current` Pro continuation
   - the probe exposed one repeated real fast-duel `engine_post_search` `SafeSupermanaProgress` override plus several later non-head selector drifts that the bounded hotspot corpus had missed
@@ -147,6 +158,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
   - if the line is revived, start from a duel-linked explanation that moves more than the current `1/52` `primary_pro` drift before touching more turn-engine head logic; `human_win_pro_c` alone is still not enough
   - do not spend another acceptance-only split unless the traced seam also changes the cheap target surface
 - Do not reopen:
+  - white `turn=3` mana-only mid-turn wrapper reroutes by themselves; the traced guard repair fixed real duel boards but left `pro-triage(primary_pro)` unchanged at `1/52`
+  - same-lane `spirit_own_mana_setup_now` progress overrides or larger own-setup reply-floor allowances by themselves; the Apr 8 combined split collapsed `human_win_pro_c` but reopened `primary_black_reliability_opening_3_ply4` and cratered direct duels
   - speculative immediate-score first-chunk non-regression clamps on `SpiritImpact` or `Safe*Progress` heads
   - setup-gain-only spirit-setup promotion against safe non-spirit roots
   - eval-only unsafe `Safe*Progress` late-head overrides on lower-scored non-progress roots; the retained PVS repair already closes that seam and did not move direct duels

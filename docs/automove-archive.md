@@ -82,6 +82,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the probe was useful, but the production clamp left `pro-triage(primary_pro)` unchanged at `1/52`, still only `human_win_pro_c`. Per the retained Pro loop, the split was killed before `runtime-preflight` and `pro-reliability`.
 - Durable lesson: keep the duel-replay probe, but do not retain another traced acceptance-only repair unless it also moves the cheap target surface.
 
+## Apr 8, 2026: White Turn-Three Guard Plus Own-Setup Override Killed After Reliability
+
+- What was tried: first narrowed the `runtime_pro_turn_engine_v30` white `turn=3`, mana-only mid-turn wrapper so it routed traced duel boards back to the current Pro surface instead of the broad fast fallback. Then paired that local guard repair with shared ProV2 own-setup-vs-progress overrides so `human_win_pro_c` would collapse and the traced normal-duel spirit-setup board would keep the current root.
+- Why it stopped: the wrapper repair fixed the replayed white turn-three boards, but `pro-triage(primary_pro)` stayed flat at `1/52`, so it was too local on its own. The combined selector split moved `pro-triage(primary_pro)` to `2/52` by clearing `human_win_pro_c`, but it reopened `primary_black_reliability_opening_3_ply4` and regressed `pro-reliability` to `win_rate=0.7500` vs current Pro and `0.4167` vs current Normal/Fast.
+- Durable lesson: traced white turn-three mana-only wrapper seams are real but do not deserve retained code unless they also move the cheap target surface, and broad same-lane own-setup overrides are too blunt. Do not retain either split without a cleaner selector story that keeps black reliability stable.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps

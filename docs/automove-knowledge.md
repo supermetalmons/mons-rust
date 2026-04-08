@@ -28,7 +28,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - The current retained seam map is stable enough to plan around: `primary_pvs_sensitive_search` now has a retained late `engine_post_search` fix, `human_win_pro_c` is the only remaining retained `pre_accept` safe-progress bias, and the previously live `primary_white_harvest_loss_c_ply24`, `primary_spirit_setup`, and `primary_black_reliability_opening_3_ply4` seams still hold their retained fixes.
 - `primary_spirit_setup` was a two-step bug, not one seam: the engine was force-pinning an existing low-ranked plain `SpiritImpact` head into the focused shortlist, then a completed-plan override was still allowed to replace an equivalent stronger selected plain spirit sibling. Both checks have to stay aligned.
 - The black turn-two low-budget clamp was too broad. On `turn=2`, `mons_moves=1`, `action+mana` states it could suppress a stronger spirit-own-setup root; the clamp should only fire on truly resource-constrained turn-two black states.
+- White `turn=3`, mana-only mid-turn wrapper regressions are real, but still not enough by themselves. On Apr 8, 2026 routing those traced boards back to the current Pro surface fixed the replayed duel choices, yet `pro-triage(primary_pro)` stayed flat at `1/52`, so the guard repair was still too local to earn more spend.
 - Simple speculative immediate-score non-regression clamps and setup-gain-only spirit-setup promotion are not enough. They can reshuffle `primary_pro` fixtures and regress direct Pro-vs-Pro without moving the `vs current Normal` wall.
+- Broad same-lane `spirit_own_mana_setup_now` overrides are too blunt as well. On Apr 8, 2026 a shared ProV2 override collapsed `human_win_pro_c` and fixed one traced normal-duel board, but it reopened `primary_black_reliability_opening_3_ply4` and regressed `pro-reliability` to `0.7500` vs current Pro and `0.4167` vs current Normal/Fast.
 - Soft followup-tolerance for `spirit_own_mana_setup_now` roots and close quiet-root normal-safety blocks are also not enough by themselves. If the runtime-faithful seam stays unchanged, kill the split before spending the canonical loop.
 - Eval-only progress-head wins are too soft for unsafe late overrides. When both the selected root and the `Safe*Progress` head stay unsafe, do not let a lower-scored progress head replace the selected non-progress root unless it brings a non-eval strategic gain or a forced `score_delta` jump.
 - Even a real duel-traced acceptance seam can still be too local. On Apr 8, 2026 a bounded fast-duel `Safe*Progress` override clamp matched the traced seed, but it left `pro-triage(primary_pro)` unchanged at `1/52`, so the production split was killed before `runtime-preflight` and `pro-reliability`.
@@ -56,10 +58,12 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 
 - Do not reopen archived profile IDs or retired branch families without a brand-new hypothesis.
 - Do not spend another loop on wrapper-only reroutes, current-Normal fallbacks, or replay-specific acceptance clamps just because they fix a traced exact.
+- Do not retain a traced white turn-three mana-only wrapper reroute unless it also moves `primary_pro`; fixing replay boards alone was not enough.
 - Do not reopen cache-size, memo-shape, reserve-heavy, or hasher experiments without a direct quality story tied to the live duel wall.
 - Do not reopen broad search-budget, reply-budget, or generic search-knob clamps without evidence that the real wall lives on that surface.
 - Do not keep branches just because disagreement counts shrink or hotspot counters move. If direct duel quality stays flat or regresses, kill the line.
 - Do not retain a duel-traced acceptance clamp just because it fixes one repeated seed. If `pro-triage(primary_pro)` does not move, kill the production split and keep only the probe or lesson.
+- Do not retain a same-lane own-setup-vs-progress override just because it clears `human_win_pro_c`; if it reopens black reliability fixtures or tanks direct duels, kill it immediately.
 - Do not retain white-only or black-only local seam repairs that fail to move the broader `vs current Normal` wall.
 - Do not treat the relaxed `700ms` move-time cap as permission to reopen parity-preserving speed regressions.
 - Do not retain new scratch profile IDs when the shared fix can live under `runtime_pro_turn_engine_v30` and the scratch line still fails direct duel evidence.
