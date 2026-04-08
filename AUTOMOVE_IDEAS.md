@@ -8,6 +8,16 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest retained foothold (`2026-04-08`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v16`
+  - duel summary:
+    - `vs current Pro`: `2` regressions, `4` improvements, `6` flat; both move pairs stayed at count `1`
+    - `vs current Normal`: `3` regressions, `4` improvements, `5` flat; black `l1,5;l1,7;l0,7` vs current `l4,1;l5,0;mb` repeated `2x`
+    - `vs current Fast`: `3` regressions, `2` improvements, `7` flat; all three move pairs stayed at count `1`
+  - retained the repeated Normal black exact as `primary_black_spirit_bridge_ply19`, widened `smart_automove_pro_black_forced_runtime_probe`, and added the new fixture to the retained churn probes
+  - the new fixture is a third distinct black runtime surface, not the retained late-head or mana-bridge seam: runtime-faithful v30 already has `selected=pre_accept=head=l1,5;l1,7;l0,7`, `accepted=true`, `head_family=SpiritImpact`, and `goal_family=SpiritImpact`, while current stays on `l4,1;l5,0;mb`
+  - cheap-gate result on the clean challenger: `pro-triage(primary_pro)` moved to `5/60`, and only `primary_white_safe_progress_rerank_ply27`, `primary_black_turn_four_action_mana_ply15`, `primary_black_mana_bridge_ply20`, `primary_black_spirit_bridge_ply19`, and `human_win_pro_c` changed, with `off_target_changed=0`
+  - direct conclusion: keep the new black spirit-bridge fixture and runtime probe, but do not cut production code yet; a repeated current-`l4,1;l5,0;mb` black spirit rerank is still not proof that the old late-head or mana-bridge fixes should be reopened
 - Latest diagnostic close (`2026-04-08`, latest):
   - widened `smart_automove_pro_white_score_route_probe` with the fresh `v15` Normal white board `l10,5;l9,4` vs current `l4,9;l4,7;l5,7`, and compared it directly against the retained `primary_harvest_white_score_route_win_b` fixture
   - the traced board is not the retained `win_b` harvest surface: runtime-faithful v30 already has `selected=pre_accept=head=l10,5;l9,4`, `forced_inputs=Some("l10,5;l9,4")`, `stage=engine_post_search`, and `goal_family=DrainerSafetyRecovery`, while current stays on `l4,9;l4,7;l5,7`

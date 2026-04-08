@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Fresh Seed v16 Replay Retained Black Spirit-Bridge Foothold
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v16`, then widened the black forced-runtime comparison when the Normal black pair `l1,5;l1,7;l0,7` vs current `l4,1;l5,0;mb` repeated twice.
+- Why it stopped: the seed still was not a production branch. Direct Pro finished `2` regressions / `4` improvements / `6` flat and Fast `3` / `2` / `7`, with every exact pair count `1`; only Normal repeated one exact pair twice. The widened runtime probe showed that repeated board is not the retained late-black accepted-head seam and not the retained mana-bridge seam. Runtime-faithful v30 already has `selected=pre_accept=head=l1,5;l1,7;l0,7`, `accepted=true`, `head_family=SpiritImpact`, and `goal_family=SpiritImpact`, while current stays on `l4,1;l5,0;mb`.
+- Durable lesson: keep `primary_black_spirit_bridge_ply19` and the widened black forced-runtime probe, but do not reopen a shared black production branch from that repeat alone. The same current baseline `l4,1;l5,0;mb` now supports at least two distinct accepted black runtime stories.
+
 ## Apr 8, 2026: Traced Normal V15 White Score-Route Win-B Revival Killed At Diagnostics
 
 - What was tried: widened `smart_automove_pro_white_score_route_probe` so it compares the fresh `v15` Normal white board `l10,5;l9,4` vs current `l4,9;l4,7;l5,7` against the retained `primary_harvest_white_score_route_win_b` fixture, which already carries the same forced head `l10,5;l9,4`.
