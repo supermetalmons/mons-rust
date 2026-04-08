@@ -490,6 +490,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the traced board was neither nearby retained surface. Runtime-faithful v30 already had `selected=l9,5;l8,6`, `pre_accept=baseline=l9,6;l8,6`, `stage=engine_disabled`, `accepted=false`, and a nearby head `l8,5;l7,4` under `SafeSupermanaProgress -> ImmediateScore`. `primary_spirit_setup` stayed different: `engine_post_search`, spirit-root selected/current `l9,7;...`, and head `l9,7;l7,8;l8,7`. The nearby engine-disabled opening board also stayed different: `selected=baseline=l9,6;l8,6`, `pre_accept=l10,6;l9,5`, head `l9,6;l8,5`, and `l9,5;l8,6` was absent from the shortlist entirely.
 - Durable lesson: do not reopen a white engine-disabled drift just because it shares `l9,5;l8,6` or `l9,6;l8,6` with older retained probes. Shared neighborhood is still weaker than runtime-faithful stage shape; this was another local white `ManaTempo` sibling seam, not a real `primary_spirit_setup` or opening-family revival.
 
+## Apr 9, 2026: v24 Normal Black Baseline Revival Killed Before Code Edits
+
+- What was tried: widened `smart_automove_pro_black_forced_runtime_probe` with the fresh `v24` Normal black drift `l1,5;l2,5` vs current `l3,2;l4,1` to compare it directly against the retained late-head seam and the previously traced accepted black runtime branches on the same current baseline.
+- Why it stopped: the traced board was another distinct accepted runtime surface, not a shared black family. Runtime-faithful v30 already had `selected=pre_accept=head=l1,5;l2,5`, `forced_inputs=Some("l1,5;l2,5")`, `stage=engine_post_search`, `accepted=true`, `head_family=ManaTempo`, and `goal_family=SpiritImpact`, while current stayed on non-vulnerable `ManaTempo` `l3,2;l4,1`. That differs from the retained late-head seam, from the traced fast `v10` black rerank where `pre_accept` stayed on current, and from the traced `v13` drainer-safety branch.
+- Durable lesson: do not reopen a black drift just because it shares current `l3,2;l4,1` with several older probes. That baseline still branches into multiple accepted black runtime surfaces, so shared baseline alone is not enough for another production split.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
