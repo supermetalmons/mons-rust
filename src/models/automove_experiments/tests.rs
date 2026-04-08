@@ -3936,16 +3936,15 @@ fn smart_automove_pro_black_turn_four_action_mana_probe() {
 #[test]
 #[ignore = "diagnostic: compare retained black forced-root families at injection stage"]
 fn smart_automove_pro_black_forced_root_probe() {
-    fn run_probe(label: &str, fixture_id: &str, targets: &[&str]) {
-        let fixture = primary_pro_fixture_by_id(fixture_id);
+    fn run_probe(label: &str, game: &MonsGame, mode: SmartAutomovePreference, targets: &[&str]) {
         let config =
-            calibration_runtime_config("runtime_pro_turn_engine_v30", &fixture.game, fixture.mode);
-        let perspective = fixture.game.active_color;
-        let root_moves = MonsGameModel::ranked_root_moves(&fixture.game, perspective, config);
+            calibration_runtime_config("runtime_pro_turn_engine_v30", game, mode);
+        let perspective = game.active_color;
+        let root_moves = MonsGameModel::ranked_root_moves(game, perspective, config);
         let engine_plan = turn_engine_candidate_plan(
-            &fixture.game,
+            game,
             perspective,
-            MonsGameModel::turn_engine_search_config_for_game(&fixture.game, config),
+            MonsGameModel::turn_engine_search_config_for_game(game, config),
         )
         .expect("black forced-root fixture should materialize a turn-engine plan");
         let forced_chunk = engine_plan
@@ -3959,7 +3958,7 @@ fn smart_automove_pro_black_forced_root_probe() {
 
         let mut injected_root_moves = root_moves.clone();
         let forced_engine_inputs = MonsGameModel::inject_turn_engine_root_candidate(
-            &fixture.game,
+            game,
             perspective,
             config,
             &mut injected_root_moves,
@@ -3969,7 +3968,7 @@ fn smart_automove_pro_black_forced_root_probe() {
             .iter()
             .position(|root| root.inputs == forced_chunk);
         let (focused_root_moves, _) = MonsGameModel::focused_root_candidates_with_forced_inputs(
-            &fixture.game,
+            game,
             perspective,
             injected_root_moves.clone(),
             config,
@@ -4034,15 +4033,31 @@ fn smart_automove_pro_black_forced_root_probe() {
         }
     }
 
+    let action_mana_fixture = primary_pro_fixture_by_id("primary_black_turn_four_action_mana_ply15");
+    let late_head_fixture = primary_pro_fixture_by_id("primary_black_late_accepted_head_ply4");
+    let traced_fast_game = MonsGame::from_fen(
+        "1 0 b 0 0 2 0 0 4 n05d0xn05/n05s0xa0xe0xn03/n07xxmn03/n03xxmn07/n01y0xn01xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n02xxMn03xxMn04/n05S0xn05/n03A0xn04Y0xn02/D0xn02E0xn07",
+        false,
+    )
+    .expect("valid traced fast black forced-root fen");
+
     run_probe(
         "primary_black_turn_four_action_mana_ply15",
-        "primary_black_turn_four_action_mana_ply15",
+        &action_mana_fixture.game,
+        action_mana_fixture.mode,
         &["l1,6;l2,7", "l2,3;l3,2"],
     );
     run_probe(
         "primary_black_late_accepted_head_ply4",
-        "primary_black_late_accepted_head_ply4",
+        &late_head_fixture.game,
+        late_head_fixture.mode,
         &["l1,5;l1,7;l0,7", "l3,2;l4,1"],
+    );
+    run_probe(
+        "traced_fast_duel_v7",
+        &traced_fast_game,
+        SmartAutomovePreference::Pro,
+        &["l0,5;l1,4", "l4,1;l5,0;mb"],
     );
 }
 

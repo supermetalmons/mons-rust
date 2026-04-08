@@ -9,6 +9,12 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest focused gate (`2026-04-08`, latest):
+  - widened `smart_automove_pro_black_forced_root_probe` to compare the retained `primary_black_turn_four_action_mana_ply15` seam, the retained `primary_black_late_accepted_head_ply4` seam, and the traced fast-duel `v7` black board `l0,5;l1,4` vs current `l4,1;l5,0;mb`
+  - tried one shared production cut in `runtime_pro_turn_engine_v30`: reject black macro progress-head injections when the forced root is absent from raw roots and still has no real progress, tactical, safety, or spirit surface
+  - focused validation passed, `guardrails` passed, `pro-triage(primary_pro)` returned to `1/57` with only `human_win_pro_c`, `off_target_changed=0`, and `runtime-preflight` passed
+  - `pro-reliability` still failed at `0.5833` vs current Pro, `0.4167` vs current Normal, and `0.6667` vs current Fast
+  - direct conclusion: kill the shared injected non-progress progress-head block; keep only the widened probe, because the traced fast `v7` board is closer to the action+mana family than the retained late-black spirit-head family but still does not support one promotable shared rule
+- Latest focused gate (`2026-04-08`, latest):
   - retained the duel-backed black `turn=4`, `mons_moves=1`, `action+mana` seam `l1,6;l2,7` vs current `l2,3;l3,2`, then briefly retried the narrow current-Pro wrapper reroute on that board
   - focused validation passed, `guardrails` passed, the retained black seam collapsed to current, `pro-triage(primary_pro)` returned to `1/57` with only `human_win_pro_c`, `off_target_changed=0`, and `runtime-preflight` passed
   - `pro-reliability` still failed at `0.7500` vs current Pro, `0.5000` vs current Normal, and `0.5833` vs current Fast
