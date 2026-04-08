@@ -9,6 +9,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - widened `smart_automove_pro_white_score_route_probe` to compare the fresh `v6` direct-Pro spirit rerank `l9,6;l8,4;l7,4` vs current `l9,6;l7,4;l7,3` against the retained harvest fixture `primary_harvest_white_score_route_win_a`
+  - the traced `v6` board is still not the retained harvest surface: `selected=head=l9,6;l8,4;l7,4`, `accepted=true`, `pre_accept=l9,6;l7,4;l8,4`, and current differs only by another nearby vulnerable spirit-own-setup root `l9,6;l7,4;l7,3`
+  - the retained harvest fixture stays different: current/candidate/pre-accept already match on `l9,6;l7,4;l8,3`, the injected head `l9,6;l7,4;l6,3` is still `accepted=false`, and the same-lane spirit sibling cluster remains a separate rejected-head story
+  - direct conclusion: kill the white `v6` spirit-rerank revival before code edits; it is another live-only accepted spirit sibling story, not the retained harvest surface
+- Latest diagnostic close (`2026-04-08`, latest):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v6`
   - duel summary:
     - `vs current Pro`: `3` regressions, `4` improvements, `5` flat; every move pair stayed at count `1`

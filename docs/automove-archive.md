@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: White V6 Spirit-Rerank Comparison Killed At Diagnostics
+
+- What was tried: widened `smart_automove_pro_white_score_route_probe` so it compares the fresh `pro_turn_planner_reliability_v6` direct-Pro seam `l9,6;l8,4;l7,4` vs current `l9,6;l7,4;l7,3` against the retained harvest fixture `primary_harvest_white_score_route_win_a`.
+- Why it stopped: the traced `v6` board was still not the retained harvest surface. On the fresh board, `runtime_pro_turn_engine_v30` accepted and selected the spirit head `l9,6;l8,4;l7,4`, `pre_accept` already sat on the nearby spirit sibling `l9,6;l7,4;l8,4`, and shipping differed only by another nearby vulnerable spirit-own-setup root `l9,6;l7,4;l7,3`. On the retained harvest fixture, current, candidate, and `pre_accept` still matched on `l9,6;l7,4;l8,3`, while the injected head `l9,6;l7,4;l6,3` remained rejected.
+- Durable lesson: do not treat another vulnerable white `l9,6;...` spirit rerank as proof that the retained harvest score-route seam is live again. If the fresh board is an accepted spirit-sibling reshuffle while the retained fixture is still a rejected-head cluster, kill the production idea and keep only the widened probe.
+
 ## Apr 8, 2026: Fresh Seed v6 Duel Replay Killed Before Code Edits
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v6` after the `v5` replay seams were fully classified and killed.
