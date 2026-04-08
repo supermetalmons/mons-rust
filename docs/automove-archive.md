@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Human-Only Revival Killed At Diagnostics
+
+- What was tried: refreshed `smart_automove_pro_human_win_pro_c_selector_probe` after the fresh direct-Pro white spirit-cluster probe, to check whether the only remaining retained cheap drift now justified a bounded human-only production retry.
+- Why it stopped: `human_win_pro_c` still showed the same safe-progress / followup-floor selector shape, with `progress_competes=true` and `followup_progress_competes=true`, while the fresh direct-Pro white one-off remained a different risky-score spirit cluster. That meant the retained cheap surface was still isolated to `human_win_pro_c` and the live duel churn was still off-surface, so another human-only production split had no credible path through the cheap gate.
+- Durable lesson: once the retained cheap surface is down to `human_win_pro_c` alone, do not treat that as a reason to reopen a human-only fix. If fresh duel seams still stay off-surface and count-`1`, kill the idea before code edits.
+
 ## Apr 8, 2026: Direct-Pro White Spirit Cluster Probe Killed At Diagnostics
 
 - What was tried: after ruling out the fresh black direct-Pro seam, drilled into the one-off white regression `l4,9;l4,7;l5,7` vs current `l9,4;l8,3` and compared it to the retained `human_win_pro_c` selector surface.

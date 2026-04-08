@@ -9,6 +9,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - refreshed `smart_automove_pro_human_win_pro_c_selector_probe` on the retained challenger to confirm the only remaining cheap drift before any new production spend
+  - `human_win_pro_c` is still the same safe-progress / followup-floor surface: `progress_competes=true`, `followup_progress_competes=true`, `risky_score_competes=false`, selected `l10,5;l9,6`, baseline `l7,5;l6,3;l7,3`
+  - that shape does not match the fresh direct-Pro white one-off `l4,9;l4,7;l5,7` vs `l9,4;l8,3`, which stayed `followup_progress_competes=false`, `progress_competes=false`, and `risky_score_competes=true`
+  - direct conclusion: kill the human-only revival before code edits; the retained cheap surface is still isolated to `human_win_pro_c`, while the fresh direct-Pro churn remains off-surface and does not justify another human-only production split
+- Latest diagnostic close (`2026-04-08`, latest):
   - drilled into the fresh direct-Pro white one-off `l4,9;l4,7;l5,7` vs current `l9,4;l8,3`
   - the traced board is not `human_win_pro_c`: `followup_progress_competes=false`, `progress_competes=false`, and `risky_score_competes=true`, while both candidate and baseline roots remain vulnerable
   - candidate stays on a vulnerable spirit-own-setup cluster with higher `setup_gain`, current stays on a vulnerable non-spirit root, and the forced head `l4,9;l4,7;l3,7` is still `accepted=false`
