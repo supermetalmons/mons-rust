@@ -8,6 +8,12 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest focused gate (`2026-04-08`, later):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` on the retained challenger and the live seam map stayed split across three families: one white `turn=3` wrapper miss in `vs current Pro`, three misses in `vs current Normal` (one black turn-two engine-enabled pre-accept miss, one black turn-four engine-enabled miss, one white turn-three wrapper miss), and four misses in `vs current Fast` (the repeated white `SafeSupermanaProgress` accepted-head seam twice, one black turn-four engine-enabled miss, and one white turn-three wrapper miss)
+  - tried a duel-backed wrapper bundle: route all white `turn=3` mid-turn states plus black `turn=2`/`turn=4` one-move `action+mana` states back to the current Pro surface; focused regression tests on the traced boards all passed
+  - then tried one extra cheap lever for the surviving `1/52` surface: a late white full-resource current-Pro guard aimed at `human_win_pro_c`, but it did not change the selected move at all
+  - cheap-gate result: `guardrails` passed, but `pro-triage(primary_pro)` stayed unchanged at `1/52` with only `human_win_pro_c`, while `opening_reply` stayed `0/3`
+  - direct conclusion: kill both wrapper-only lines before `runtime-preflight`; even a multi-board duel-backed guard bundle is too local if the cheap target surface does not move, and the late-white full-resource current-Pro guard is not a real lever on `human_win_pro_c`
 - Latest focused gate (`2026-04-08`):
   - first tried a traced wrapper repair: route white `turn=3`, mana-only mid-turn states back to the current Pro surface instead of the broad fast fallback
   - that wrapper fix corrected three replay-traced white turn-three mana-only duel boards, but `pro-triage(primary_pro)` stayed unchanged at `1/52` with only `human_win_pro_c`, so the local guard split was killed before `runtime-preflight`
@@ -158,6 +164,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
   - if the line is revived, start from a duel-linked explanation that moves more than the current `1/52` `primary_pro` drift before touching more turn-engine head logic; `human_win_pro_c` alone is still not enough
   - do not spend another acceptance-only split unless the traced seam also changes the cheap target surface
 - Do not reopen:
+  - wrapper-only white `turn=3` plus black `turn=2`/`turn=4` one-move current-Pro guard bundles by themselves; on Apr 8 they fixed multiple traced duel boards but still left `pro-triage(primary_pro)` unchanged at `1/52`
+  - late white full-resource current-Pro guards as a `human_win_pro_c` lever; on Apr 8 the guard did not alter the selected move at all
   - white `turn=3` mana-only mid-turn wrapper reroutes by themselves; the traced guard repair fixed real duel boards but left `pro-triage(primary_pro)` unchanged at `1/52`
   - same-lane `spirit_own_mana_setup_now` progress overrides or larger own-setup reply-floor allowances by themselves; the Apr 8 combined split collapsed `human_win_pro_c` but reopened `primary_black_reliability_opening_3_ply4` and cratered direct duels
   - speculative immediate-score first-chunk non-regression clamps on `SpiritImpact` or `Safe*Progress` heads

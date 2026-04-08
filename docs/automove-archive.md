@@ -88,6 +88,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the wrapper repair fixed the replayed white turn-three boards, but `pro-triage(primary_pro)` stayed flat at `1/52`, so it was too local on its own. The combined selector split moved `pro-triage(primary_pro)` to `2/52` by clearing `human_win_pro_c`, but it reopened `primary_black_reliability_opening_3_ply4` and regressed `pro-reliability` to `win_rate=0.7500` vs current Pro and `0.4167` vs current Normal/Fast.
 - Durable lesson: traced white turn-three mana-only wrapper seams are real but do not deserve retained code unless they also move the cheap target surface, and broad same-lane own-setup overrides are too blunt. Do not retain either split without a cleaner selector story that keeps black reliability stable.
 
+## Apr 8, 2026: Wrapper Bundle Plus Late-White Human Guard Killed Before Preflight
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe`, then bundled the traced wrapper/guard repairs under `runtime_pro_turn_engine_v30`: route all white `turn=3` mid-turn states and black `turn=2`/`turn=4` one-move `action+mana` states back to the current Pro surface. After that, tried one extra late white full-resource current-Pro guard aimed directly at the remaining `human_win_pro_c` triage drift.
+- Why it stopped: the traced-board regression tests all passed and `guardrails` stayed green, but `pro-triage(primary_pro)` still stayed unchanged at `1/52`, with only `human_win_pro_c`, so the duel-backed wrapper bundle was still too local. The late white full-resource guard was even weaker: it did not change the selected move on `human_win_pro_c` at all.
+- Durable lesson: a wrapper bundle can fix several real duel boards and still be non-promotable if the cheap target surface does not move, and late white full-resource current-Pro guards are not a useful shortcut for clearing `human_win_pro_c`.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
