@@ -9,6 +9,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - widened `smart_automove_pro_white_fast_forced_prepass_probe` with the fresh `v15` direct-Pro white board `l8,4;l7,3` vs current `l8,4;l9,3`
+  - the traced board is not the retained white fast-screen surface and not the older white forced-prepass shell: runtime-faithful v30 already has `selected=l8,4;l7,3`, `pre_accept=baseline=head=l8,4;l9,3`, `forced_inputs=Some("l8,4;l9,3")`, `stage=engine_disabled`, and all three nearby `l8,4;*` roots are the same vulnerable `ManaTempo` family
+  - the retained `primary_white_fast_screen_opening_0_ply9` fixture stays completely different: `drainer_vulnerable=false`, spirit-progress roots dominate the shortlist, and none of the `l8,4;*` sibling moves appear at all
+  - direct conclusion: keep the widened white fast forced-prepass probe, but kill the `v15` direct-Pro white revival before code edits; shared move neighborhood around `l8,4` is still not enough for a retained white opening-family production rule
+- Latest diagnostic close (`2026-04-08`, latest):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v15`
   - duel summary:
     - `vs current Pro`: `3` regressions, `3` improvements, `6` flat; all three move pairs stayed at count `1`

@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Traced Pro V15 White L8,4 Sibling Split Killed At Diagnostics
+
+- What was tried: widened `smart_automove_pro_white_fast_forced_prepass_probe` so it compares the fresh `v15` direct-Pro white board `l8,4;l7,3` vs current `l8,4;l9,3` against the older traced forced-prepass boards and the retained `primary_white_fast_screen_opening_0_ply9` fixture.
+- Why it stopped: the traced board was neither retained white family. Runtime-faithful v30 already had `selected=l8,4;l7,3`, `pre_accept=baseline=head=l8,4;l9,3`, `forced_inputs=Some("l8,4;l9,3")`, `stage=engine_disabled`, and all nearby `l8,4;*` roots stayed the same vulnerable `ManaTempo` family. That differs from the older forced-prepass shell, which used `stage=search_only_forced_prepass` and a safe `DrainerSafetyRecovery` selected root, and from the retained fast-screen fixture, which stayed `drainer_vulnerable=false` on spirit-progress roots with no `l8,4;*` sibling roots present at all.
+- Durable lesson: keep the widened white fast forced-prepass probe, but do not reopen a white opening-family branch just because a fresh board lands in the same `l8,4` neighborhood. Runtime-faithful stage shape still matters more than the move neighborhood.
+
 ## Apr 8, 2026: Fresh Seed v15 Replay Killed At Diagnostics
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v15` after the `v14` direct-Pro sibling board died against the retained opening surface, to see whether the next replay would finally repeat one exact retained family strongly enough for a real branch.
