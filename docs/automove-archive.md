@@ -10,6 +10,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the seam itself closed cleanly, `guardrails` passed, `pro-triage(primary_pro)` returned to the familiar `human_win_pro_c`-only `1/56`, `runtime-preflight` passed, and `pro-reliability` still failed at `0.8333` vs current Pro, `0.5000` vs current Normal, and `0.7500` vs current Fast. The default duel trace did not expose a new repeated family; it stayed on the same one-off Pro/Normal/Fast wall as before.
 - Durable lesson: a retained white mana-sibling seam can still be only another white turn-three full-resource wrapper miss. Closing it is safe enough to keep when it cleanly collapses the retained fixture with no churn, but it does not justify more wrapper-only spend if the default live wall remains unchanged one-offs.
 
+## Apr 8, 2026: Retain Black Mana-Bridge Seam
+
+- What was tried: after the `v7`, `v8`, and `v9` replays kept reusing the black move pair `l0,5;l1,4` vs current `l4,1;l5,0;mb`, added `primary_black_mana_bridge_ply20` and widened `smart_automove_pro_black_forced_root_probe` so it compares the new retained board against the existing traced fast `v7` board and the two older retained black seams.
+- Why it stopped: this turn still did not justify production code, but it did produce a real retained foothold. The widened probe showed the new retained board matches the old traced fast board exactly at raw, injected, and focused root stages: forced root absent from raw roots, injected to rank `1`, promoted to focused rank `0`, `head_family=SafeSupermanaProgress`, and `goal_family=SpiritImpact`. The cheap gate moved to `3/58` with only `primary_black_turn_four_action_mana_ply15`, `primary_black_mana_bridge_ply20`, and `human_win_pro_c` changed, with `off_target_changed=0`.
+- Durable lesson: keep `primary_black_mana_bridge_ply20` as the second retained foothold for the later black forced-engine family. It is not enough to cut production code alone, but it gives the next branch a real second black surface to compare against `primary_black_turn_four_action_mana_ply15`.
+
 ## Apr 8, 2026: Fresh Seed v8 Duel Replay Killed Before Code Edits
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v8` after the shared black injected-root block was killed, to see whether a fresh duel sample would finally repeat one seam on a retained surface.

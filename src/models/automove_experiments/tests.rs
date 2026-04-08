@@ -2768,6 +2768,7 @@ fn smart_automove_pro_triage_retained_churn_probe() {
         "primary_black_negative_deny_ply4",
         "primary_black_late_accepted_head_ply4",
         "primary_black_turn_four_action_mana_ply15",
+        "primary_black_mana_bridge_ply20",
         "primary_white_mana_sibling_ply9",
         "primary_white_harvest_loss_c_ply24",
         "primary_white_fast_accepted_head_ply13",
@@ -2920,6 +2921,7 @@ fn smart_automove_pro_runtime_faithful_retained_churn_probe() {
         "primary_black_negative_deny_ply4",
         "primary_black_late_accepted_head_ply4",
         "primary_black_turn_four_action_mana_ply15",
+        "primary_black_mana_bridge_ply20",
         "primary_white_mana_sibling_ply9",
         "primary_white_harvest_loss_c_ply24",
         "primary_white_fast_accepted_head_ply13",
@@ -4035,6 +4037,7 @@ fn smart_automove_pro_black_forced_root_probe() {
 
     let action_mana_fixture = primary_pro_fixture_by_id("primary_black_turn_four_action_mana_ply15");
     let late_head_fixture = primary_pro_fixture_by_id("primary_black_late_accepted_head_ply4");
+    let mana_bridge_fixture = primary_pro_fixture_by_id("primary_black_mana_bridge_ply20");
     let traced_fast_game = MonsGame::from_fen(
         "1 0 b 0 0 2 0 0 4 n05d0xn05/n05s0xa0xe0xn03/n07xxmn03/n03xxmn07/n01y0xn01xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n02xxMn03xxMn04/n05S0xn05/n03A0xn04Y0xn02/D0xn02E0xn07",
         false,
@@ -4052,6 +4055,12 @@ fn smart_automove_pro_black_forced_root_probe() {
         &late_head_fixture.game,
         late_head_fixture.mode,
         &["l1,5;l1,7;l0,7", "l3,2;l4,1"],
+    );
+    run_probe(
+        "primary_black_mana_bridge_ply20",
+        &mana_bridge_fixture.game,
+        mana_bridge_fixture.mode,
+        &["l0,5;l1,4", "l4,1;l5,0;mb"],
     );
     run_probe(
         "traced_fast_duel_v7",

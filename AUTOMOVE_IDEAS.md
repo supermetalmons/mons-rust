@@ -8,6 +8,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest retained foothold (`2026-04-08`, latest):
+  - added `primary_black_mana_bridge_ply20` for the recurring black `l0,5;l1,4` vs current `l4,1;l5,0;mb` family and widened `smart_automove_pro_black_forced_root_probe`
+  - the new retained fixture matches the old traced fast `v7` board exactly at injection stage: `forced_inputs=Some("l0,5;l1,4")`, `existing_forced_rank=None`, `injected_forced_rank=Some(1)`, `focused_forced_rank=Some(0)`, `head_family=SafeSupermanaProgress`, and `goal_family=SpiritImpact`
+  - cheap-gate result on the clean challenger: `opening_reply` stayed `0/3`, `pro-triage(primary_pro)` moved to `3/58`, and only `primary_black_turn_four_action_mana_ply15`, `primary_black_mana_bridge_ply20`, and `human_win_pro_c` changed, with `off_target_changed=0`
+  - direct conclusion: keep the new fixture and widened probe, but do not cut production code from it alone yet; the repeated live move pair now has a retained foothold, but fresh replay `v9` still fragmented the remaining wall across unrelated Fast one-offs
 - Latest diagnostic close (`2026-04-08`, latest):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v9`
   - duel summary:
@@ -372,17 +377,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Keep the retained challenger ID and stay out of new unsupported scratch profiles.
 - Major direction 1: continue deleting deferred `Safe*Progress -> ImmediateScore` composition mistakes in shared ProV2 code. The retained fix list now includes: safe-pickup post-search blocks, absent deferred progress-head injection blocks, non-concrete one-chunk progress-head rejection, weaker plain-spirit head rejection, and the black turn-two full-resource low-budget-clamp skip.
 - Major direction 2: `primary_pvs_sensitive_search` is now closed as a retained late-head regression. Do not reopen it unless a fresh duel sample shows the seam alive again under a different runtime shape.
-- Major direction 3: the retained cheap surface now has two drifts, not one: `human_win_pro_c` plus `primary_black_turn_four_action_mana_ply15`.
+- Major direction 3: the retained cheap surface now has three drifts, not one: `human_win_pro_c`, `primary_black_turn_four_action_mana_ply15`, and `primary_black_mana_bridge_ply20`.
 - Major direction 3a: the bounded reliability hotspot corpus still does not support a new duel seam right now, even after the retained PVS repair. Its compare probe is decision-identical to `runtime_current` on every real hotspot case, so use the duel-trace probe when the direct wall is unclear instead of spending another hotspot-first split.
 - Major direction 4: the new black seam is not a final accept-after-search clamp. Raw ranked roots still prefer current `l2,3;l3,2`, but runtime-faithful forced engine injection turns `l1,6;l2,7` into the selected/pre-accept/head root under a `SafeSupermanaProgress -> ImmediateScore` plan, so future spend must target earlier forced-engine behavior or a broader duel family.
+- Major direction 4c: the recurring black `l0,5;l1,4` vs `l4,1;l5,0;mb` family now has a retained foothold too. Its new fixture matches the old traced fast `v7` board exactly: the forced root is absent from raw roots, injected only to rank `1`, then promoted to focused rank `0` under `SafeSupermanaProgress -> SpiritImpact`.
 - Major direction 4b: the retained black seams do not currently share one injected-root rule. The new black forced-root comparison probe shows both seams get injected from outside the raw root list, but the action+mana seam injects a vulnerable non-progress `ManaTempo` root while the later black family injects a genuine spirit-progress root.
 - Major direction 4a: the fresh `v7` replay still does not supply that broader family. It resurfaced the later-black accepted-head story only once in Normal, plus new white one-offs in Pro/Normal/Fast, so there is still no repeated duel family worth code.
 - Immediate next split:
   - keep `primary_white_harvest_loss_c_ply24`, `primary_spirit_setup`, `primary_black_reliability_opening_3_ply4`, and `primary_pvs_sensitive_search` closed unless new duel evidence reopens them
-  - keep the retained footholds `primary_black_negative_deny_ply4` and `primary_black_turn_four_action_mana_ply15` live; they are the cheap-surface handles for the current early-black selector family and the later black forced-engine family
-  - before the next production edit, find a second retained foothold or a stronger shared explanation that moves more than the current `2/57` cheap surface; the isolated black wrapper guard already proved this one seam is too local
+  - keep the retained footholds `primary_black_negative_deny_ply4`, `primary_black_turn_four_action_mana_ply15`, and `primary_black_mana_bridge_ply20` live; they are the cheap-surface handles for the current early-black selector family and the two later black forced-engine families
+  - before the next production edit, compare the two retained black forced-engine footholds directly; `primary_black_turn_four_action_mana_ply15` jumps its forced root to injected rank `0` under `SafeSupermanaProgress -> ImmediateScore`, while `primary_black_mana_bridge_ply20` only jumps to injected rank `1` under `SafeSupermanaProgress -> SpiritImpact`
   - refresh direct duel evidence first with `smart_automove_pro_reliability_duel_trace_probe` when the wall is unclear; the bounded hotspot corpus alone is no longer enough
-  - if the line is revived, start from a duel-linked explanation that moves more than the current `2/57` `primary_pro` drift before touching more turn-engine head logic; neither `human_win_pro_c` alone nor the black action+mana seam alone is enough
+  - if the line is revived, start from a duel-linked explanation that moves more than the current `3/58` `primary_pro` drift before touching more turn-engine head logic; neither `human_win_pro_c` alone nor one isolated black forced-root seam alone is enough
   - do not spend another acceptance-only split on the black action+mana seam; the runtime-faithful probe already shows selected/pre-accept/head all collapse to the injected root before any final accept guard could help
 - Do not reopen:
   - wrapper-only white `turn=3` plus black `turn=2`/`turn=4` one-move current-Pro guard bundles by themselves; on Apr 8 they fixed multiple traced duel boards but still left `pro-triage(primary_pro)` unchanged at `1/52`
