@@ -4555,29 +4555,47 @@ fn smart_automove_pro_white_safe_progress_probe() {
         false,
     )
     .expect("valid traced normal v12 white safe-progress fen");
+    let traced_normal_v26_game = MonsGame::from_fen(
+        "1 1 w 0 0 0 0 0 7 n11/n06a0xn04/n04y0xd0xe0xn04/n02s0xn01xxmn01xxmn04/n01E0xn02xxUxxmn01xxmn03/n10xxQ/n05xxMn01xxMn03/n06xxMn04/n02xxMn08/n05S0xn01Y0xn03/D0xn03A0xn06",
+        false,
+    )
+    .expect("valid traced normal v26 white safe-progress fen");
     let retained_safe_fixture =
         primary_pro_fixture_by_id("primary_white_safe_progress_rerank_ply27");
     let retained_fast_screen_fixture =
         primary_pro_fixture_by_id("primary_white_fast_screen_opening_0_ply9");
 
-    for (label, game, opening_book_driven) in [
-        ("traced_normal_duel_v12", &traced_normal_v12_game, false),
+    for (label, game, opening_book_driven, targets) in [
+        (
+            "traced_normal_duel_v12",
+            &traced_normal_v12_game,
+            false,
+            &["l9,5;l8,5", "l10,7;l9,8"][..],
+        ),
+        (
+            "traced_normal_duel_v26",
+            &traced_normal_v26_game,
+            false,
+            &["l9,5;l8,5", "l9,5;l7,6;l7,7", "l10,0;l9,0"][..],
+        ),
         (
             "primary_white_safe_progress_rerank_ply27",
             &retained_safe_fixture.game,
             retained_safe_fixture.opening_book_driven,
+            &["l9,5;l8,5", "l10,7;l9,8"][..],
         ),
         (
             "primary_white_fast_screen_opening_0_ply9",
             &retained_fast_screen_fixture.game,
             retained_fast_screen_fixture.opening_book_driven,
+            &["l9,5;l8,5", "l10,7;l9,8"][..],
         ),
     ] {
         println!(
             "WHITE_SAFE_PROGRESS_META label={} opening_book_driven={}",
             label, opening_book_driven
         );
-        run_probe(label, game, SmartAutomovePreference::Pro, &["l9,5;l8,5", "l10,7;l9,8"]);
+        run_probe(label, game, SmartAutomovePreference::Pro, targets);
     }
 }
 
