@@ -9,6 +9,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - drilled into the white normal-duel one-off `l10,4;l9,4` vs current `l8,6;l7,7`
+  - the board is another white `turn=3`, mana-only wrapper miss: `turn=3`, `mons_moves=2`, `action=false`, `mana=true`
+  - the probe showed configured v30 still pre-accepts current `l8,6;l7,7`, while the live path returns lower-ranked `l10,4;l9,4`
+  - direct conclusion: kill the normal white opening-family idea before code edits; it is another member of the already-closed white turn-three mana-only wrapper family, not a new selector seam
+- Latest diagnostic close (`2026-04-08`, latest):
   - drilled into the white fast-duel one-off `l9,5;l8,5` vs current `l7,5;l6,4`
   - the board is another white `turn=3`, mana-only wrapper miss: `turn=3`, `mons_moves=2`, `action=false`, `mana=true`
   - the probe showed configured v30 still pre-accepts current `l7,5;l6,4`, while the live path returns `l9,5;l8,5`, which is not even present in the configured root shortlist
@@ -211,6 +216,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
   - wrapper-only white `turn=3` plus black `turn=2`/`turn=4` one-move current-Pro guard bundles by themselves; on Apr 8 they fixed multiple traced duel boards but still left `pro-triage(primary_pro)` unchanged at `1/52`
   - isolated black `turn=4`, one-move `action+mana` current-Pro guards by themselves; on Apr 8 they fixed the sampled fast-duel `l1,6;l2,7` -> `l2,3;l3,2` divergence but still left `pro-triage(primary_pro)` unchanged at the same `human_win_pro_c`-only `1/52`
   - broader white `turn=3`, `mons_moves>0`, `action=false`, `mana=true` current-Pro reroutes by themselves; on Apr 8 they fixed three live duel boards across Pro/Normal/Fast but still left `pro-triage(primary_pro)` unchanged at the same `human_win_pro_c`-only `1/52`
+  - white normal-duel `l10,4;l9,4` vs current `l8,6;l7,7` repairs by themselves; on Apr 8 the focused probe showed configured v30 still pre-accepted current on another `turn=3`, `action=false`, `mana=true` board, so it was only wrapper churn
   - lone `vs current Pro` white `l9,2;l8,3` vs current `l10,7;l9,7` wrapper repairs by themselves; on Apr 8 the focused probe showed the board was only another `turn=3`, `action=false`, `mana=true` fast-fallback reroute, not a new selector surface
   - later black `l2,4;l3,3` vs current `l3,6;l2,7` mana-tempo shortlist repairs by themselves; on Apr 8 the focused probe showed the board was a one-off forced-head shortlist distortion with no retained `primary_pro` foothold
   - white fast-duel `l9,5;l8,5` vs current `l7,5;l6,4` repairs by themselves; on Apr 8 the focused probe showed configured v30 still pre-accepted current while the live path returned a move outside the configured shortlist, so it was only another white turn-three mana-only wrapper miss

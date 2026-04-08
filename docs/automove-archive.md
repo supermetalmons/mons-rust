@@ -154,6 +154,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the focused probe showed another outer-wrapper mismatch instead. The board was `turn=3`, `mons_moves=2`, `action=false`, `mana=true`; configured `runtime_pro_turn_engine_v30` still pre-accepted current `l7,5;l6,4`, while the live path returned `l9,5;l8,5`, which was not present in the configured root shortlist at all. That made it another member of the already-closed white turn-three mana-only wrapper family, so the idea died before code edits.
 - Durable lesson: if a white fast-duel move is missing from the configured v30 shortlist, treat it as wrapper churn, not a new retained selector seam.
 
+## Apr 8, 2026: White Normal-Duel Opening-Family Probe Killed Before Code Edits
+
+- What was tried: drilled into the white normal-duel one-off `l10,4;l9,4` vs current `l8,6;l7,7` to see whether it was a fresh opening-family selector seam.
+- Why it stopped: the focused probe showed another wrapper mismatch. The board was again `turn=3`, `mons_moves=2`, `action=false`, `mana=true`; configured `runtime_pro_turn_engine_v30` still pre-accepted current `l8,6;l7,7`, while the live path returned lower-ranked `l10,4;l9,4`. That made it another member of the already-closed white turn-three mana-only wrapper family, so the idea died before code edits.
+- Durable lesson: if configured v30 still pre-accepts current on a white `turn=3`, mana-only board, treat the live mismatch as wrapper churn rather than a new retained selector seam.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
