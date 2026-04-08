@@ -478,6 +478,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the replay stayed in the same churn bucket again. Direct Pro finished `3` regressions / `1` improvement / `8` flat, Normal `3` / `2` / `7`, and Fast `1` / `4` / `7`, but every exact move pair still stayed at count `1`. The seed only remixed one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, a direct-Pro black `ManaTempo` tie `l1,2;l1,1` vs `l1,2;l0,1`, early-black `negative_deny` `l0,5;l1,6` vs `l1,5;l3,6;l2,7`, black mana-bridge `l0,5;l1,4` vs `l4,1;l5,0;mb`, black mana rerank `l1,5;l2,5` vs `l1,6;l0,6`, white mana-sibling `l8,3;l8,2` vs `l8,3;l9,2`, and white spirit-own-setup `l9,5;l7,4;l7,3` vs `l9,5;l7,6;l7,7`.
 - Durable lesson: if the next replay still comes back as the same mixed black-bridge, early-black, white-sibling, and white setup families at count `1`, keep only the note. Adding one more direct-Pro black `ManaTempo` tie is still replay churn, not a code-ready continuation.
 
+## Apr 9, 2026: Seed v24 Bridge Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v24` to see whether the post-`v23` wall would finally settle onto a repeated retained seam worth reopening.
+- Why it stopped: the replay did settle, but only onto an already-killed local family. Direct Pro finished `1` regression / `4` improvements / `7` flat, Normal `2` / `1` / `9`, and Fast `4` / `2` / `6`. Fast repeated black spirit-bridge `l1,5;l1,7;l0,7` vs current `l4,1;l5,0;mb` three times and added one black mana-bridge `l0,5;l1,4` vs `l4,1;l5,0;mb`, while direct Pro and Normal only contributed one-off early-black `negative_deny`, accepted black mana rerank `l1,5;l2,5` vs `l3,2;l4,1`, and white mana-sibling `l9,5;l8,6` vs `l9,6;l8,6` drift. That would normally justify a bridge-family reopen, except both the older broad bridge fallback and the later spirit-only bridge fallback already closed those retained seams and still failed full loops.
+- Durable lesson: if a fresh seed repeats the retained `l4,1;l5,0;mb` bridge family again, do not reopen it with another fallback-to-current branch by itself. That replay only reconfirms that the bridge baseline is live, not that the previously killed fallback strategy has become promotable.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
