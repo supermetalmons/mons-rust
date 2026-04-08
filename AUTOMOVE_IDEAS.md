@@ -8,6 +8,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest focused gate (`2026-04-09`, latest):
+  - tried a narrow black turn-four mid-turn current-Pro fallback in `runtime_pro_turn_engine_v30`: only black `turn=4`, `mons_moves=2`, `action+mana` states where current Pro already selects `l4,1;l5,0;mb` were routed back to current
+  - the branch closed both retained bridge seams `primary_black_mana_bridge_ply20` and `primary_black_spirit_bridge_ply19`, passed the focused regression tests, `guardrails`, `pro-triage(primary_pro)=3/60` with `off_target_changed=0`, and `runtime-preflight`
+  - it still failed `pro-reliability` at `0.8333` vs current Pro, `0.5000` vs current Normal, and `0.7500` vs current Fast
+  - direct conclusion: kill the black turn-four mid-turn bridge fallback; even a narrow current-Pro repair that collapses both retained `l4,1;l5,0;mb` bridge seams is still too local to be promotable
 - Latest diagnostic close (`2026-04-08`, latest):
   - widened `smart_automove_pro_black_forced_root_probe` with retained `primary_black_spirit_bridge_ply19`
   - the new black spirit-bridge seam matches the retained mana-bridge seam at raw/injected/focused root stages, not the retained late-head seam: both `primary_black_spirit_bridge_ply19` and `primary_black_mana_bridge_ply20` keep current `l4,1;l5,0;mb` at raw rank `0`, inject the forced bridge root only at rank `1`, and then promote it to focused rank `0`

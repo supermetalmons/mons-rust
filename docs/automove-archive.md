@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 9, 2026: Black Turn-Four Bridge Fallback Killed After Full Loop
+
+- What was tried: added a narrow `runtime_pro_turn_engine_v30` profile guard that routed only black `turn=4`, `mons_moves=2`, `action+mana` states back to current Pro when current already selected `l4,1;l5,0;mb`. The branch specifically targeted the retained bridge seams `primary_black_mana_bridge_ply20` and `primary_black_spirit_bridge_ply19`.
+- Why it stopped: the branch was clean but still not promotable. It closed both retained bridge seams, passed the focused regression tests, `guardrails`, `pro-triage(primary_pro)=3/60` with `off_target_changed=0`, and `runtime-preflight`, but `pro-reliability` still failed at `0.8333` vs current Pro, `0.5000` vs current Normal, and `0.7500` vs current Fast.
+- Durable lesson: do not reopen that bridge-family current fallback. Even collapsing both retained `l4,1;l5,0;mb` bridge seams to current is still too local to clear the real duel wall.
+
 ## Apr 8, 2026: Black Spirit-Bridge Injection Comparison Killed At Diagnostics
 
 - What was tried: widened `smart_automove_pro_black_forced_root_probe` with retained `primary_black_spirit_bridge_ply19` to compare its raw, injected, and focused root ranks directly against the retained late-head and mana-bridge black seams.
