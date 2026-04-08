@@ -76,6 +76,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the selector probe still showed a pure `pre_accept` safe-progress bias, but the hotspot compare remained move-identical to current on every real duel hotspot. Only the synthetic `quiet_positional` sample changed.
 - Durable lesson: do not spend another shared ProV2 selector split on `human_win_pro_c` alone. If the real hotspot corpus stays unchanged, kill the line before code edits.
 
+## Apr 8, 2026: Duel-Replay Progress Clamp Killed Before Preflight
+
+- What was tried: added `smart_automove_pro_reliability_duel_trace_probe` to replay the exact `pro-reliability` seed corpus, compare candidate turns against a shadow `runtime_current` Pro continuation, and trace the first real divergence. Then tried a bounded large-search-deficit `Safe*Progress` acceptance clamp on one repeated fast-duel seam.
+- Why it stopped: the probe was useful, but the production clamp left `pro-triage(primary_pro)` unchanged at `1/52`, still only `human_win_pro_c`. Per the retained Pro loop, the split was killed before `runtime-preflight` and `pro-reliability`.
+- Durable lesson: keep the duel-replay probe, but do not retain another traced acceptance-only repair unless it also moves the cheap target surface.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps

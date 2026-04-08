@@ -10,6 +10,7 @@ use crate::models::automove_turn_engine::{
     turn_engine_candidate_plan, turn_engine_diagnostics_snapshot, TurnEngineConfig,
     TurnEngineDiagnostics,
 };
+use crate::models::automove_turn_planner::clear_turn_opportunity_plan_cache;
 use crate::models::mons_game_model::{
     clear_turn_engine_selector_diagnostics, turn_engine_selector_diagnostics_snapshot,
     TurnEngineSelectorDiagnostics,
@@ -103,8 +104,12 @@ fn calibration_runtime_config(
     mode: SmartAutomovePreference,
 ) -> SmartSearchConfig {
     let base = SearchBudget::from_preference(mode).runtime_config_for_game(game);
-    profile_runtime_config_for_name(profile_name, game, base)
-        .unwrap_or_else(|| panic!("profile '{}' does not expose a runtime config", profile_name))
+    profile_runtime_config_for_name(profile_name, game, base).unwrap_or_else(|| {
+        panic!(
+            "profile '{}' does not expose a runtime config",
+            profile_name
+        )
+    })
 }
 
 fn calibration_turn_engine_config(config: SmartSearchConfig) -> TurnEngineConfig {
@@ -132,11 +137,8 @@ fn profile_decision_inputs(
     mode: SmartAutomovePreference,
     game: &MonsGame,
 ) -> Vec<Input> {
-    let selector = profile_selector_from_name(profile_name)
-        .unwrap_or_else(|| panic!("profile '{}' not found", profile_name));
-    let config = calibration_runtime_config(profile_name, game, mode);
     clear_turn_engine_selector_diagnostics();
-    select_inputs_with_runtime_fallback(selector, game, config)
+    profile_runtime_inputs(profile_name, mode, game)
 }
 
 fn profile_decision_move_fen(
@@ -145,6 +147,17 @@ fn profile_decision_move_fen(
     game: &MonsGame,
 ) -> String {
     Input::fen_from_array(&profile_decision_inputs(profile_name, mode, game))
+}
+
+fn profile_runtime_inputs(
+    profile_name: &str,
+    mode: SmartAutomovePreference,
+    game: &MonsGame,
+) -> Vec<Input> {
+    let selector = profile_selector_from_name(profile_name)
+        .unwrap_or_else(|| panic!("profile '{}' not found", profile_name));
+    let config = calibration_runtime_config(profile_name, game, mode);
+    select_inputs_with_runtime_fallback(selector, game, config)
 }
 
 fn primary_pro_fixture_by_id(id: &str) -> TriageFixture {
@@ -168,13 +181,14 @@ fn profile_scored_roots(
     let mut alpha = i32::MIN;
     let mut scored_roots = Vec::with_capacity(root_moves.len());
     let mut transposition_table = U64HashMap::default();
-    let extension_node_budget =
-        if config.enable_selective_extensions && config.selective_extension_node_share_bp > 0 {
-            ((config.max_visited_nodes * config.selective_extension_node_share_bp as usize) / 10_000)
-                .max(1)
-        } else {
-            0
-        };
+    let extension_node_budget = if config.enable_selective_extensions
+        && config.selective_extension_node_share_bp > 0
+    {
+        ((config.max_visited_nodes * config.selective_extension_node_share_bp as usize) / 10_000)
+            .max(1)
+    } else {
+        0
+    };
     let mut extension_nodes_used = 0usize;
     let mut killer_table: KillerTable = [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
     let mut history_table: HistoryTable = HistoryTable::default();
@@ -309,11 +323,283 @@ fn format_scored_root_move_probe(root: Option<&ScoredRootMove>) -> String {
     .unwrap_or_else(|| "none".to_string())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RuntimeDecisionProbe {
+    selected_input_fen: String,
+    selected_rank: Option<usize>,
+    pre_accept_input_fen: String,
+    pre_accept_rank: Option<usize>,
+    top_root_fens: Vec<String>,
+    selector_last_stage: &'static str,
+    selector_head_calls: usize,
+    selector_head_hits: usize,
+    head_input_fen: Option<String>,
+    head_rank: Option<usize>,
+    head_accepted: bool,
+    selected_root: String,
+    head_root: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DuelTraceTurn {
+    ply: usize,
+    board_fen: String,
+    move_fen: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DuelTraceGame {
+    result: MatchResult,
+    final_fen: String,
+    candidate_turns: Vec<DuelTraceTurn>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FirstDivergence {
+    ply: usize,
+    board_fen: String,
+    candidate_move_fen: String,
+    baseline_move_fen: String,
+}
+
+fn runtime_decision_probe(
+    profile_name: &str,
+    mode: SmartAutomovePreference,
+    game: &MonsGame,
+) -> RuntimeDecisionProbe {
+    clear_exact_state_analysis_cache();
+    clear_exact_query_diagnostics();
+    clear_turn_opportunity_plan_cache();
+    clear_turn_engine_plan_cache();
+    clear_turn_engine_diagnostics();
+    clear_turn_engine_selector_diagnostics();
+
+    let selected = profile_runtime_inputs(profile_name, mode, game);
+    let selected_input_fen = Input::fen_from_array(&selected);
+    let selector_diag = turn_engine_selector_diagnostics_snapshot();
+
+    clear_exact_state_analysis_cache();
+    clear_exact_query_diagnostics();
+    clear_turn_opportunity_plan_cache();
+    clear_turn_engine_plan_cache();
+    clear_turn_engine_diagnostics();
+    clear_turn_engine_selector_diagnostics();
+
+    let (config, scored_roots, head_plan, _) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(profile_name, mode, game);
+    let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
+        game,
+        scored_roots.as_slice(),
+        game.active_color,
+        config,
+    );
+    let pre_accept_input_fen = Input::fen_from_array(&pre_accept_selected);
+    let selected_rank = scored_roots.iter().position(|root| root.inputs == selected);
+    let pre_accept_rank = scored_roots
+        .iter()
+        .position(|root| root.inputs == pre_accept_selected);
+    let head_rank = head_plan.as_ref().and_then(|plan| {
+        plan.compiled_chunks.first().and_then(|chunk| {
+            scored_roots
+                .iter()
+                .position(|root| root.inputs.as_slice() == chunk.as_slice())
+        })
+    });
+    let head_accepted = head_plan.as_ref().is_some_and(|plan| {
+        MonsGameModel::accept_turn_engine_head_after_search(
+            game,
+            game.active_color,
+            config,
+            scored_roots.as_slice(),
+            pre_accept_selected.as_slice(),
+            plan,
+        )
+    });
+    let selected_root = format_root_probe(scored_roots.iter().find(|root| root.inputs == selected));
+    let head_root = format_root_probe(head_rank.and_then(|index| scored_roots.get(index)));
+
+    RuntimeDecisionProbe {
+        selected_input_fen,
+        selected_rank,
+        pre_accept_input_fen,
+        pre_accept_rank,
+        top_root_fens: scored_roots
+            .iter()
+            .take(TRIAGE_TOP_ROOT_DIGEST_SIZE)
+            .map(|root| Input::fen_from_array(&root.inputs))
+            .collect(),
+        selector_last_stage: selector_diag.last_return_stage,
+        selector_head_calls: selector_diag.head_plan_calls,
+        selector_head_hits: selector_diag.head_plan_hits,
+        head_input_fen: head_plan
+            .as_ref()
+            .and_then(|plan| plan.compiled_chunks.first())
+            .map(|chunk| Input::fen_from_array(chunk)),
+        head_rank,
+        head_accepted,
+        selected_root,
+        head_root,
+    }
+}
+
+fn advance_profile_duel_game(
+    game: &mut MonsGame,
+    candidate_profile: &str,
+    opponent_profile: &str,
+    opponent_mode: SmartAutomovePreference,
+    candidate_is_white: bool,
+) -> Option<MatchResult> {
+    if let Some(winner_color) = game.winner_color() {
+        return Some(match_result_from_winner(winner_color, candidate_is_white));
+    }
+
+    let candidate_to_move = if candidate_is_white {
+        game.active_color == Color::White
+    } else {
+        game.active_color == Color::Black
+    };
+    let (profile_name, mode) = if candidate_to_move {
+        (candidate_profile, SmartAutomovePreference::Pro)
+    } else {
+        (opponent_profile, opponent_mode)
+    };
+    let inputs = profile_runtime_inputs(profile_name, mode, game);
+    if inputs.is_empty() {
+        return Some(if candidate_to_move {
+            MatchResult::OpponentWin
+        } else {
+            MatchResult::CandidateWin
+        });
+    }
+    if !matches!(game.process_input(inputs, false, false), Output::Events(_)) {
+        return Some(if candidate_to_move {
+            MatchResult::OpponentWin
+        } else {
+            MatchResult::CandidateWin
+        });
+    }
+
+    None
+}
+
+fn play_profile_duel_trace(
+    candidate_profile: &str,
+    opponent_profile: &str,
+    opponent_mode: SmartAutomovePreference,
+    opening_fen: &str,
+    candidate_is_white: bool,
+    max_plies: usize,
+) -> DuelTraceGame {
+    let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
+    clear_exact_state_analysis_cache();
+    clear_exact_query_diagnostics();
+    clear_turn_opportunity_plan_cache();
+    clear_turn_engine_plan_cache();
+    clear_turn_engine_diagnostics();
+    clear_turn_engine_selector_diagnostics();
+
+    let mut candidate_turns = Vec::new();
+    for ply in 0..max_plies {
+        if let Some(winner_color) = game.winner_color() {
+            return DuelTraceGame {
+                result: match_result_from_winner(winner_color, candidate_is_white),
+                final_fen: game.fen(),
+                candidate_turns,
+            };
+        }
+
+        let candidate_to_move = if candidate_is_white {
+            game.active_color == Color::White
+        } else {
+            game.active_color == Color::Black
+        };
+        if candidate_to_move {
+            candidate_turns.push(DuelTraceTurn {
+                ply,
+                board_fen: game.fen(),
+                move_fen: Input::fen_from_array(&profile_runtime_inputs(
+                    candidate_profile,
+                    SmartAutomovePreference::Pro,
+                    &game,
+                )),
+            });
+        }
+
+        if let Some(result) = advance_profile_duel_game(
+            &mut game,
+            candidate_profile,
+            opponent_profile,
+            opponent_mode,
+            candidate_is_white,
+        ) {
+            return DuelTraceGame {
+                result,
+                final_fen: game.fen(),
+                candidate_turns,
+            };
+        }
+    }
+
+    DuelTraceGame {
+        result: match adjudicate_non_terminal_game(&game) {
+            Some(winner_color) => match_result_from_winner(winner_color, candidate_is_white),
+            None => MatchResult::Draw,
+        },
+        final_fen: game.fen(),
+        candidate_turns,
+    }
+}
+
+fn first_duel_trace_divergence(
+    candidate: &DuelTraceGame,
+    baseline: &DuelTraceGame,
+) -> Option<FirstDivergence> {
+    candidate
+        .candidate_turns
+        .iter()
+        .zip(baseline.candidate_turns.iter())
+        .find_map(|(candidate_turn, baseline_turn)| {
+            if candidate_turn.board_fen == baseline_turn.board_fen
+                && candidate_turn.move_fen != baseline_turn.move_fen
+            {
+                Some(FirstDivergence {
+                    ply: candidate_turn.ply,
+                    board_fen: candidate_turn.board_fen.clone(),
+                    candidate_move_fen: candidate_turn.move_fen.clone(),
+                    baseline_move_fen: baseline_turn.move_fen.clone(),
+                })
+            } else {
+                None
+            }
+        })
+}
+
+fn match_result_points(result: MatchResult) -> i32 {
+    match result {
+        MatchResult::CandidateWin => 2,
+        MatchResult::Draw => 1,
+        MatchResult::OpponentWin => 0,
+    }
+}
+
+fn format_match_result(result: MatchResult) -> &'static str {
+    match result {
+        MatchResult::CandidateWin => "win",
+        MatchResult::OpponentWin => "loss",
+        MatchResult::Draw => "draw",
+    }
+}
+
 fn profile_runtime_scored_roots_with_forced_engine_inputs(
     profile_name: &str,
     mode: SmartAutomovePreference,
     game: &MonsGame,
-) -> (SmartSearchConfig, Vec<RootEvaluation>, Option<TurnPlan>, Option<Vec<Input>>) {
+) -> (
+    SmartSearchConfig,
+    Vec<RootEvaluation>,
+    Option<TurnPlan>,
+    Option<Vec<Input>>,
+) {
     let config = calibration_runtime_config(profile_name, game, mode);
     let perspective = game.active_color;
     let mut root_moves = MonsGameModel::ranked_root_moves(game, perspective, config);
@@ -335,25 +621,27 @@ fn profile_runtime_scored_roots_with_forced_engine_inputs(
             plan,
         )
     });
-    let (root_moves, scout_visited_nodes) = MonsGameModel::focused_root_candidates_with_forced_inputs(
-        game,
-        perspective,
-        root_moves,
-        config,
-        true,
-        forced_engine_inputs.as_deref(),
-    );
+    let (root_moves, scout_visited_nodes) =
+        MonsGameModel::focused_root_candidates_with_forced_inputs(
+            game,
+            perspective,
+            root_moves,
+            config,
+            true,
+            forced_engine_inputs.as_deref(),
+        );
     let mut visited_nodes = scout_visited_nodes;
     let mut alpha = i32::MIN;
     let mut scored_roots = Vec::with_capacity(root_moves.len());
     let mut transposition_table = U64HashMap::default();
-    let extension_node_budget =
-        if config.enable_selective_extensions && config.selective_extension_node_share_bp > 0 {
-            ((config.max_visited_nodes * config.selective_extension_node_share_bp as usize) / 10_000)
-                .max(1)
-        } else {
-            0
-        };
+    let extension_node_budget = if config.enable_selective_extensions
+        && config.selective_extension_node_share_bp > 0
+    {
+        ((config.max_visited_nodes * config.selective_extension_node_share_bp as usize) / 10_000)
+            .max(1)
+    } else {
+        0
+    };
     let mut extension_nodes_used = 0usize;
     let mut killer_table: KillerTable = [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
     let mut history_table: HistoryTable = HistoryTable::default();
@@ -1315,7 +1603,11 @@ fn runtime_pro_turn_engine_v30_profile_prefers_safe_white_opening_turn_one_tail_
     .expect("white opening turn-one tail fen should be valid");
     clear_turn_engine_plan_cache();
     assert_eq!(
-        profile_decision_move_fen("runtime_pro_turn_engine_v30", SmartAutomovePreference::Pro, &game),
+        profile_decision_move_fen(
+            "runtime_pro_turn_engine_v30",
+            SmartAutomovePreference::Pro,
+            &game
+        ),
         "l10,3;l9,3"
     );
 }
@@ -1330,7 +1622,11 @@ fn runtime_pro_turn_engine_v30_profile_prefers_current_white_three_move_opening_
     clear_exact_state_analysis_cache();
     clear_turn_engine_plan_cache();
     assert_eq!(
-        profile_decision_move_fen("runtime_pro_turn_engine_v30", SmartAutomovePreference::Pro, &game),
+        profile_decision_move_fen(
+            "runtime_pro_turn_engine_v30",
+            SmartAutomovePreference::Pro,
+            &game
+        ),
         "l10,7;l9,7"
     );
 }
@@ -1345,7 +1641,11 @@ fn runtime_pro_turn_engine_v30_profile_keeps_current_planner_on_engine_disabled_
     clear_exact_state_analysis_cache();
     clear_turn_engine_plan_cache();
     assert_eq!(
-        profile_decision_move_fen("runtime_pro_turn_engine_v30", SmartAutomovePreference::Pro, &game),
+        profile_decision_move_fen(
+            "runtime_pro_turn_engine_v30",
+            SmartAutomovePreference::Pro,
+            &game
+        ),
         "l9,6;l8,6"
     );
 }
@@ -1360,7 +1660,11 @@ fn runtime_pro_turn_engine_v30_profile_prefers_current_black_turn_two_mana_only_
     clear_exact_state_analysis_cache();
     clear_turn_engine_plan_cache();
     assert_eq!(
-        profile_decision_move_fen("runtime_pro_turn_engine_v30", SmartAutomovePreference::Pro, &game),
+        profile_decision_move_fen(
+            "runtime_pro_turn_engine_v30",
+            SmartAutomovePreference::Pro,
+            &game
+        ),
         "l0,3;l1,3"
     );
 }
@@ -1375,13 +1679,18 @@ fn runtime_pro_turn_engine_v30_profile_prefers_current_black_turn_four_start_act
     clear_exact_state_analysis_cache();
     clear_turn_engine_plan_cache();
     assert_eq!(
-        profile_decision_move_fen("runtime_pro_turn_engine_v30", SmartAutomovePreference::Pro, &game),
+        profile_decision_move_fen(
+            "runtime_pro_turn_engine_v30",
+            SmartAutomovePreference::Pro,
+            &game
+        ),
         "l1,5;l3,3;l2,2"
     );
 }
 
 #[test]
-fn runtime_pro_turn_engine_v30_profile_does_not_seed_cached_plain_spirit_continuation_when_head_is_rejected() {
+fn runtime_pro_turn_engine_v30_profile_does_not_seed_cached_plain_spirit_continuation_when_head_is_rejected(
+) {
     fn game_with_items(items: Vec<(Location, Item)>, active_color: Color) -> MonsGame {
         let mut game = MonsGame::new(false);
         game.board = Board::new_with_items(items.into_iter().collect());
@@ -1470,7 +1779,11 @@ fn runtime_pro_turn_engine_v30_prefers_safe_black_plain_spirit_followup_root() {
     clear_exact_state_analysis_cache();
     clear_turn_engine_plan_cache();
     assert_eq!(
-        profile_decision_move_fen("runtime_pro_turn_engine_v30", SmartAutomovePreference::Pro, &game),
+        profile_decision_move_fen(
+            "runtime_pro_turn_engine_v30",
+            SmartAutomovePreference::Pro,
+            &game
+        ),
         "l4,2;l5,1"
     );
 }
@@ -1485,7 +1798,11 @@ fn runtime_pro_turn_engine_v30_prefers_concrete_white_spirit_followup_root() {
     clear_exact_state_analysis_cache();
     clear_turn_engine_plan_cache();
     assert_eq!(
-        profile_decision_move_fen("runtime_pro_turn_engine_v30", SmartAutomovePreference::Pro, &game),
+        profile_decision_move_fen(
+            "runtime_pro_turn_engine_v30",
+            SmartAutomovePreference::Pro,
+            &game
+        ),
         "l4,9;l4,7;l5,7"
     );
 }
@@ -1500,7 +1817,11 @@ fn runtime_pro_turn_engine_v30_prefers_searched_white_progress_tail_root() {
     clear_exact_state_analysis_cache();
     clear_turn_engine_plan_cache();
     assert_eq!(
-        profile_decision_move_fen("runtime_pro_turn_engine_v30", SmartAutomovePreference::Pro, &game),
+        profile_decision_move_fen(
+            "runtime_pro_turn_engine_v30",
+            SmartAutomovePreference::Pro,
+            &game
+        ),
         "l9,5;l8,4"
     );
 }
@@ -1910,6 +2231,195 @@ fn smart_automove_pool_pro_reliability_gate() {
 }
 
 #[test]
+#[ignore = "diagnostic: replay exact pro-reliability duel seeds against runtime_current and log first regression divergence"]
+fn smart_automove_pro_reliability_duel_trace_probe() {
+    use std::collections::BTreeMap;
+
+    #[derive(Clone)]
+    struct DuelSpec {
+        label: &'static str,
+        opponent_mode: SmartAutomovePreference,
+        seed_tag: String,
+    }
+
+    let candidate_profile = env_profile_name("SMART_PRO_RELIABILITY_CANDIDATE_PROFILE")
+        .unwrap_or_else(|| "runtime_pro_turn_engine_v30".to_string());
+    let baseline_profile = env_profile_name("SMART_PRO_RELIABILITY_BASELINE_PROFILE")
+        .unwrap_or_else(|| "runtime_current".to_string());
+    let repeats = env_usize("SMART_PRO_RELIABILITY_REPEATS")
+        .unwrap_or(3)
+        .max(1);
+    let games = env_usize("SMART_PRO_RELIABILITY_GAMES").unwrap_or(2).max(1);
+    let max_plies = env_usize("SMART_PRO_RELIABILITY_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let trace_limit = env_usize("SMART_PRO_RELIABILITY_TRACE_LIMIT")
+        .unwrap_or(12)
+        .max(1);
+    let seed_tag = env_profile_name("SMART_PRO_RELIABILITY_SEED_TAG")
+        .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
+    let duel_specs = vec![
+        DuelSpec {
+            label: "vs_current_pro",
+            opponent_mode: SmartAutomovePreference::Pro,
+            seed_tag: seed_tag.clone(),
+        },
+        DuelSpec {
+            label: "vs_current_normal",
+            opponent_mode: SmartAutomovePreference::Normal,
+            seed_tag: format!("{}_vs_normal", seed_tag),
+        },
+        DuelSpec {
+            label: "vs_current_fast",
+            opponent_mode: SmartAutomovePreference::Fast,
+            seed_tag: format!("{}_vs_fast", seed_tag),
+        },
+    ];
+
+    with_env_override("SMART_USE_WHITE_OPENING_BOOK", "false", || {
+        println!(
+            "pro reliability duel trace probe: candidate={} baseline={} repeats={} games_per_repeat={} max_plies={} trace_limit={}",
+            candidate_profile,
+            baseline_profile,
+            repeats,
+            games,
+            max_plies,
+            trace_limit,
+        );
+
+        for duel in duel_specs {
+            let opponent_budget = SearchBudget::from_preference(duel.opponent_mode);
+            let mut regressions = 0usize;
+            let mut improvements = 0usize;
+            let mut total_games = 0usize;
+            let mut printed = 0usize;
+            let mut move_pair_counts = BTreeMap::<(String, String), usize>::new();
+
+            for repeat_index in 0..repeats {
+                let seed = seed_for_budget_duel_repeat_and_tag(
+                    pro_budget(),
+                    opponent_budget,
+                    repeat_index,
+                    duel.seed_tag.as_str(),
+                );
+                let opening_fens = generate_opening_fens_cached(seed, games);
+                for (game_index, opening_fen) in opening_fens.iter().enumerate() {
+                    for candidate_is_white in [true, false] {
+                        total_games += 1;
+                        let candidate_trace = play_profile_duel_trace(
+                            candidate_profile.as_str(),
+                            baseline_profile.as_str(),
+                            duel.opponent_mode,
+                            opening_fen.as_str(),
+                            candidate_is_white,
+                            max_plies,
+                        );
+                        let baseline_trace = play_profile_duel_trace(
+                            baseline_profile.as_str(),
+                            baseline_profile.as_str(),
+                            duel.opponent_mode,
+                            opening_fen.as_str(),
+                            candidate_is_white,
+                            max_plies,
+                        );
+                        let delta = match_result_points(candidate_trace.result)
+                            - match_result_points(baseline_trace.result);
+                        if delta < 0 {
+                            regressions += 1;
+                            let first_divergence =
+                                first_duel_trace_divergence(&candidate_trace, &baseline_trace);
+                            if let Some(divergence) = first_divergence.as_ref() {
+                                *move_pair_counts
+                                    .entry((
+                                        divergence.candidate_move_fen.clone(),
+                                        divergence.baseline_move_fen.clone(),
+                                    ))
+                                    .or_default() += 1;
+                            }
+                            if printed < trace_limit {
+                                let detail = first_divergence.as_ref().map(|divergence| {
+                                    let board = MonsGame::from_fen(
+                                        divergence.board_fen.as_str(),
+                                        false,
+                                    )
+                                    .expect("trace board fen should be valid");
+                                    let candidate_probe = runtime_decision_probe(
+                                        candidate_profile.as_str(),
+                                        SmartAutomovePreference::Pro,
+                                        &board,
+                                    );
+                                    let baseline_probe = runtime_decision_probe(
+                                        baseline_profile.as_str(),
+                                        SmartAutomovePreference::Pro,
+                                        &board,
+                                    );
+                                    format!(
+                                        "first_diff_ply={} board={} candidate_move={} baseline_move={} candidate(selected={} rank={:?} pre_accept={} pre_rank={:?} stage={} head={:?} head_rank={:?} accepted={} top={:?} selected_root=\"{}\" head_root=\"{}\") baseline(selected={} rank={:?} pre_accept={} pre_rank={:?} stage={} head={:?} head_rank={:?} accepted={} top={:?} selected_root=\"{}\" head_root=\"{}\")",
+                                        divergence.ply,
+                                        divergence.board_fen,
+                                        divergence.candidate_move_fen,
+                                        divergence.baseline_move_fen,
+                                        candidate_probe.selected_input_fen,
+                                        candidate_probe.selected_rank,
+                                        candidate_probe.pre_accept_input_fen,
+                                        candidate_probe.pre_accept_rank,
+                                        candidate_probe.selector_last_stage,
+                                        candidate_probe.head_input_fen,
+                                        candidate_probe.head_rank,
+                                        candidate_probe.head_accepted,
+                                        candidate_probe.top_root_fens,
+                                        candidate_probe.selected_root,
+                                        candidate_probe.head_root,
+                                        baseline_probe.selected_input_fen,
+                                        baseline_probe.selected_rank,
+                                        baseline_probe.pre_accept_input_fen,
+                                        baseline_probe.pre_accept_rank,
+                                        baseline_probe.selector_last_stage,
+                                        baseline_probe.head_input_fen,
+                                        baseline_probe.head_rank,
+                                        baseline_probe.head_accepted,
+                                        baseline_probe.top_root_fens,
+                                        baseline_probe.selected_root,
+                                        baseline_probe.head_root,
+                                    )
+                                });
+
+                                println!(
+                                    "PRO_RELIABILITY_TRACE duel={} repeat={} opening_index={} candidate_is_white={} opening={} candidate_result={} baseline_result={} candidate_final={} baseline_final={} {}",
+                                    duel.label,
+                                    repeat_index,
+                                    game_index,
+                                    candidate_is_white,
+                                    opening_fen,
+                                    format_match_result(candidate_trace.result),
+                                    format_match_result(baseline_trace.result),
+                                    candidate_trace.final_fen,
+                                    baseline_trace.final_fen,
+                                    detail.unwrap_or_else(|| "first_diff=none".to_string()),
+                                );
+                                printed += 1;
+                            }
+                        } else if delta > 0 {
+                            improvements += 1;
+                        }
+                    }
+                }
+            }
+
+            println!(
+                "PRO_RELIABILITY_TRACE_SUMMARY duel={} total_games={} regressions={} improvements={} flat={} repeated_move_pairs={:?}",
+                duel.label,
+                total_games,
+                regressions,
+                improvements,
+                total_games.saturating_sub(regressions + improvements),
+                move_pair_counts,
+            );
+        }
+    });
+}
+
+#[test]
 #[ignore = "diagnostic: bounded selector/exact hotspot probe for pro reliability corpus"]
 fn smart_automove_pro_reliability_hotspot_probe() {
     use std::collections::{BTreeMap, HashMap};
@@ -1964,13 +2474,13 @@ fn smart_automove_pro_reliability_hotspot_probe() {
         let base_config = case
             .config_tweak
             .map(|tweak| {
-                tweak(
-                    SearchBudget::from_preference(case.mode).runtime_config_for_game(&case.game),
-                )
+                tweak(SearchBudget::from_preference(case.mode).runtime_config_for_game(&case.game))
             })
-            .unwrap_or_else(|| SearchBudget::from_preference(case.mode).runtime_config_for_game(&case.game));
-        let config =
-            profile_runtime_config_for_name(profile_name, &case.game, base_config).unwrap_or(base_config);
+            .unwrap_or_else(|| {
+                SearchBudget::from_preference(case.mode).runtime_config_for_game(&case.game)
+            });
+        let config = profile_runtime_config_for_name(profile_name, &case.game, base_config)
+            .unwrap_or(base_config);
 
         clear_exact_state_analysis_cache();
         clear_exact_query_diagnostics();
@@ -2010,7 +2520,9 @@ fn smart_automove_pro_reliability_hotspot_probe() {
             ),
             (
                 "fully_scored",
-                result.selector_diag.ranked_child_states_children_fully_scored as u64,
+                result
+                    .selector_diag
+                    .ranked_child_states_children_fully_scored as u64,
             ),
             (
                 "shortlist",
@@ -2219,7 +2731,10 @@ fn smart_automove_pro_reliability_hotspot_probe() {
                 println!(
                     "HOTSPOT_SELECTOR label={} {}",
                     case.label,
-                    format_metric_delta(&selector_metrics(&candidate), &selector_metrics(&baseline)),
+                    format_metric_delta(
+                        &selector_metrics(&candidate),
+                        &selector_metrics(&baseline)
+                    ),
                 );
             },
         );
@@ -2263,13 +2778,12 @@ fn smart_automove_pro_triage_retained_churn_probe() {
                 );
                 let (config, scored_roots) =
                     profile_scored_roots(profile_name, fixture.mode, &fixture.game);
-                let pre_accept_selected =
-                    MonsGameModel::pick_root_move_with_exploration(
-                        &fixture.game,
-                        scored_roots.as_slice(),
-                        fixture.game.active_color,
-                        config,
-                    );
+                let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
+                    &fixture.game,
+                    scored_roots.as_slice(),
+                    fixture.game.active_color,
+                    config,
+                );
                 let pre_accept_selected_fen = Input::fen_from_array(&pre_accept_selected);
                 let pre_accept_selected_rank = scored_roots
                     .iter()
@@ -2287,9 +2801,9 @@ fn smart_automove_pro_triage_retained_churn_probe() {
                 let selector_diag = turn_engine_selector_diagnostics_snapshot();
                 let engine_diag = turn_engine_diagnostics_snapshot();
                 let exact_diag = exact_query_diagnostics_snapshot();
-                let selected_root = scored_roots
-                    .iter()
-                    .find(|root| Input::fen_from_array(&root.inputs) == snapshot.selected_input_fen);
+                let selected_root = scored_roots.iter().find(|root| {
+                    Input::fen_from_array(&root.inputs) == snapshot.selected_input_fen
+                });
                 let head_root = head_plan
                     .as_ref()
                     .and_then(|plan| plan.compiled_chunks.first())
@@ -2302,7 +2816,8 @@ fn smart_automove_pro_triage_retained_churn_probe() {
                     SMART_NORMAL_ROOT_SAFETY_REPLY_LIMIT_MIN,
                     SMART_NORMAL_ROOT_SAFETY_REPLY_LIMIT_MAX,
                 );
-                let my_score_before = MonsGameModel::score_for_color(&fixture.game, fixture.game.active_color);
+                let my_score_before =
+                    MonsGameModel::score_for_color(&fixture.game, fixture.game.active_color);
                 let start_options = MonsGameModel::automove_start_input_options(config);
                 let selected_normal_snapshot = selected_root.map(|root| {
                     MonsGameModel::normal_root_safety_snapshot(
@@ -2601,7 +3116,8 @@ fn smart_automove_pro_human_win_pro_c_selector_probe() {
 #[ignore = "diagnostic: inspect forced engine shortlist seam on primary_white_harvest_loss_c_ply24"]
 fn smart_automove_pro_white_harvest_forced_root_probe() {
     let fixture = primary_pro_fixture_by_id("primary_white_harvest_loss_c_ply24");
-    let config = calibration_runtime_config("runtime_pro_turn_engine_v30", &fixture.game, fixture.mode);
+    let config =
+        calibration_runtime_config("runtime_pro_turn_engine_v30", &fixture.game, fixture.mode);
     let perspective = fixture.game.active_color;
     let root_moves = MonsGameModel::ranked_root_moves(&fixture.game, perspective, config);
     let root_target = "l7,2;l6,1";
@@ -2853,7 +3369,8 @@ fn smart_automove_pro_black_reliability_opening_3_selector_probe() {
         let selector_diag = turn_engine_selector_diagnostics_snapshot();
         let engine_diag = turn_engine_diagnostics_snapshot();
         let exact_diag = exact_query_diagnostics_snapshot();
-        let (config, scored_roots) = profile_scored_roots(profile_name, fixture.mode, &fixture.game);
+        let (config, scored_roots) =
+            profile_scored_roots(profile_name, fixture.mode, &fixture.game);
         let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
             &fixture.game,
             scored_roots.as_slice(),
@@ -2904,7 +3421,8 @@ fn smart_automove_pro_black_reliability_opening_3_selector_probe() {
 #[test]
 fn runtime_pro_turn_engine_v30_rejects_white_harvest_non_progress_window_injection() {
     let fixture = primary_pro_fixture_by_id("primary_white_harvest_loss_c_ply24");
-    let config = calibration_runtime_config("runtime_pro_turn_engine_v30", &fixture.game, fixture.mode);
+    let config =
+        calibration_runtime_config("runtime_pro_turn_engine_v30", &fixture.game, fixture.mode);
     let perspective = fixture.game.active_color;
     let mut root_moves = MonsGameModel::ranked_root_moves(&fixture.game, perspective, config);
     let engine_plan = turn_engine_candidate_plan(
@@ -2914,7 +3432,10 @@ fn runtime_pro_turn_engine_v30_rejects_white_harvest_non_progress_window_injecti
     )
     .expect("white harvest fixture should materialize a turn-engine plan");
 
-    assert_eq!(engine_plan.head_family, TurnPlanFamily::SafeOpponentManaProgress);
+    assert_eq!(
+        engine_plan.head_family,
+        TurnPlanFamily::SafeOpponentManaProgress
+    );
     assert_eq!(
         Input::fen_from_array(
             engine_plan
@@ -2959,7 +3480,10 @@ fn runtime_pro_turn_engine_v30_rejects_weaker_plain_spirit_head_on_primary_spiri
     let head_plan = head_plan.expect("spirit setup fixture should retain a head plan");
 
     assert_eq!(forced_engine_inputs, None);
-    assert_eq!(Input::fen_from_array(&pre_accept_selected), "l9,7;l7,8;l7,7");
+    assert_eq!(
+        Input::fen_from_array(&pre_accept_selected),
+        "l9,7;l7,8;l7,7"
+    );
     assert_eq!(
         Input::fen_from_array(
             head_plan
@@ -3044,11 +3568,18 @@ fn runtime_pro_turn_engine_v30_rejects_lower_scored_pvs_progress_head_without_ma
     assert!(head_root.own_drainer_vulnerable);
     assert!(head_root.supermana_progress);
     assert!(!pre_accept_root.supermana_progress);
-    assert!(!head_plan.utility.improves_non_score_override_axes(pre_accept_utility));
-    assert!(!head_plan.utility.has_score_delta_force(pre_accept_utility, 220));
+    assert!(!head_plan
+        .utility
+        .improves_non_score_override_axes(pre_accept_utility));
+    assert!(!head_plan
+        .utility
+        .has_score_delta_force(pre_accept_utility, 220));
     assert!(
         !accepted,
-        "a lower-scored unsafe progress head should not override the selected PVS root without a material primary-axis or safety gain",
+        "a lower-scored unsafe progress head should not override the selected PVS root without a material primary-axis or safety gain: selected_utility={:?} head_utility={:?} plan_utility={:?}",
+        pre_accept_utility,
+        head_plan.head_utility,
+        head_plan.utility,
     );
     assert_eq!(
         profile_decision_move_fen("runtime_pro_turn_engine_v30", fixture.mode, &fixture.game),

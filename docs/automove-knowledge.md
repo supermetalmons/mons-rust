@@ -23,6 +23,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - The retained churn probe is worth keeping. For live ProV2 misses, distinguish `pre_accept` search choice from final `engine_post_search` output before changing shared heuristics.
 - The runtime-faithful retained churn probe is worth keeping too. It must inject forced engine inputs before `focused_root_candidates_with_forced_inputs(...)`, or it can misclassify injected-root seams as selector churn.
 - The compare-oriented hotspot probe is worth keeping. On Apr 5, 2026 it showed the bounded reliability hotspot corpus was move-identical to `runtime_current` on every real duel hotspot, with only a synthetic `quiet_positional` difference.
+- The duel-replay probe is worth keeping too. On Apr 8, 2026 `smart_automove_pro_reliability_duel_trace_probe` replayed the exact `pro-reliability` seeds, exposed a repeated real fast-duel `engine_post_search` `SafeSupermanaProgress` override, and showed that the hotspot corpus was no longer sufficient by itself to explain the live wall.
 - Re-running the hotspot compare after the retained `primary_pvs_sensitive_search` repair did not expose a new real duel seam. On Apr 8, 2026 every real hotspot was still move-identical to `runtime_current`, so `human_win_pro_c` remained a triage-only selector drift rather than promotion evidence.
 - The current retained seam map is stable enough to plan around: `primary_pvs_sensitive_search` now has a retained late `engine_post_search` fix, `human_win_pro_c` is the only remaining retained `pre_accept` safe-progress bias, and the previously live `primary_white_harvest_loss_c_ply24`, `primary_spirit_setup`, and `primary_black_reliability_opening_3_ply4` seams still hold their retained fixes.
 - `primary_spirit_setup` was a two-step bug, not one seam: the engine was force-pinning an existing low-ranked plain `SpiritImpact` head into the focused shortlist, then a completed-plan override was still allowed to replace an equivalent stronger selected plain spirit sibling. Both checks have to stay aligned.
@@ -30,6 +31,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - Simple speculative immediate-score non-regression clamps and setup-gain-only spirit-setup promotion are not enough. They can reshuffle `primary_pro` fixtures and regress direct Pro-vs-Pro without moving the `vs current Normal` wall.
 - Soft followup-tolerance for `spirit_own_mana_setup_now` roots and close quiet-root normal-safety blocks are also not enough by themselves. If the runtime-faithful seam stays unchanged, kill the split before spending the canonical loop.
 - Eval-only progress-head wins are too soft for unsafe late overrides. When both the selected root and the `Safe*Progress` head stay unsafe, do not let a lower-scored progress head replace the selected non-progress root unless it brings a non-eval strategic gain or a forced `score_delta` jump.
+- Even a real duel-traced acceptance seam can still be too local. On Apr 8, 2026 a bounded fast-duel `Safe*Progress` override clamp matched the traced seed, but it left `pro-triage(primary_pro)` unchanged at `1/52`, so the production split was killed before `runtime-preflight` and `pro-reliability`.
 
 ## Durable Workflow Rules
 
@@ -45,6 +47,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - Use `triage-calibrate` only when a retained triage surface is new or no longer calibrated.
 - Use `pro-opening-speed-probe` only for opening-specific regressions.
 - Use the hotspot probe only after a real duel stall, and only to narrow the next code surface.
+- When the hotspot corpus stays flat but the direct wall is still unclear, use the duel-replay probe before changing shared code.
 - If the compare hotspot probe shows decision parity on the real hotspot cases, kill the line immediately. Selector/exact counter deltas without candidate-vs-current move differences are not promotion evidence.
 - Logs, stamps, and process samples are disposable evidence, not durable memory.
 - Keep ignored harness test names unique; `cargo test` substring filters can hit the wrong stage.
@@ -56,6 +59,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator loop and `AUTOMOVE_IDEAS.md
 - Do not reopen cache-size, memo-shape, reserve-heavy, or hasher experiments without a direct quality story tied to the live duel wall.
 - Do not reopen broad search-budget, reply-budget, or generic search-knob clamps without evidence that the real wall lives on that surface.
 - Do not keep branches just because disagreement counts shrink or hotspot counters move. If direct duel quality stays flat or regresses, kill the line.
+- Do not retain a duel-traced acceptance clamp just because it fixes one repeated seed. If `pro-triage(primary_pro)` does not move, kill the production split and keep only the probe or lesson.
 - Do not retain white-only or black-only local seam repairs that fail to move the broader `vs current Normal` wall.
 - Do not treat the relaxed `700ms` move-time cap as permission to reopen parity-preserving speed regressions.
 - Do not retain new scratch profile IDs when the shared fix can live under `runtime_pro_turn_engine_v30` and the scratch line still fails direct duel evidence.
