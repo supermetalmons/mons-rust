@@ -4249,6 +4249,11 @@ fn smart_automove_pro_black_forced_runtime_probe() {
         false,
     )
     .expect("valid traced pro v12 black spirit head fen");
+    let traced_normal_v20_spirit_bridge_game = MonsGame::from_fen(
+        "1 0 b 0 0 2 0 0 4 n05d0xn05/n05s0xa0xe0xn03/n07xxmn03/n03xxmn07/n01y0xn01xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n03xxMn02xxMn04/n05S0xn05/n04E0xA0xn05/D0xn06Y0xn03",
+        false,
+    )
+    .expect("valid traced normal v20 black spirit bridge fen");
 
     run_probe(
         "primary_black_turn_four_action_mana_ply15",
@@ -4290,6 +4295,12 @@ fn smart_automove_pro_black_forced_runtime_probe() {
         "primary_black_spirit_bridge_ply19",
         &spirit_bridge_fixture.game,
         spirit_bridge_fixture.mode,
+        &["l1,5;l1,7;l0,7", "l4,1;l5,0;mb"],
+    );
+    run_probe(
+        "traced_normal_duel_v20_spirit_bridge",
+        &traced_normal_v20_spirit_bridge_game,
+        SmartAutomovePreference::Pro,
         &["l1,5;l1,7;l0,7", "l4,1;l5,0;mb"],
     );
     run_probe(

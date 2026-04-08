@@ -454,6 +454,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the replay stayed fragmented. Direct Pro finished `1` regression / `5` improvements / `6` flat, Normal `3` / `2` / `7`, and Fast `2` / `5` / `5`, but every exact move pair still stayed at count `1`. The seed only resurfaced already-known retained black seams in different buckets: accepted non-vulnerable `ManaTempo` rerank `l1,5;l2,5` vs current `l1,6;l0,6`, mana-bridge `l0,5;l1,4` vs `l4,1;l5,0;mb`, action+mana `l1,6;l2,7` vs `l3,2;l4,1`, and late spirit-head `l1,5;l1,7;l0,7` vs `l1,6;l2,7`, plus one white spirit-own-setup rerank `l9,5;l8,5` vs `l9,5;l7,6;l7,7`.
 - Durable lesson: do not spend from a replay just because several retained black seams reappear together. If they still arrive as count-`1` exact pairs in different duel buckets, keep only the note and wait for a seed that repeats one exact black family strongly enough to justify a shared in-path split.
 
+## Apr 9, 2026: Spirit-Only Black Bridge Fallback Killed After Full Loop
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v20`, which repeated black `l1,5;l1,7;l0,7` vs current `l4,1;l5,0;mb` twice in Normal and once in Fast. Widened `smart_automove_pro_black_forced_runtime_probe` with the traced Normal board, confirmed it matches retained `primary_black_spirit_bridge_ply19` at runtime-faithful selection stage, then cut one narrow production guard that only routed that exact spirit-bridge pair back to current while leaving `primary_black_mana_bridge_ply20` alone.
+- Why it stopped: the branch closed `primary_black_spirit_bridge_ply19`, passed the focused bridge tests, `guardrails`, `pro-triage(primary_pro)=4/60` with `off_target_changed=0`, and `runtime-preflight`, but `pro-reliability` still failed at `0.8333` vs current Pro, `0.5000` vs current Normal, and `0.7500` vs current Fast. Those are the exact same duel scores the older broad black bridge fallback already hit, which means over-clamping the mana-bridge seam was not the reason that family failed to promote.
+- Durable lesson: do not reopen a spirit-only fallback on the `l4,1;l5,0;mb` baseline. If closing only `l1,5;l1,7;l0,7` still lands on the same full-loop duel scores as the broader bridge fallback, the bridge family itself is too local to move promotion.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
