@@ -460,6 +460,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the branch closed `primary_black_spirit_bridge_ply19`, passed the focused bridge tests, `guardrails`, `pro-triage(primary_pro)=4/60` with `off_target_changed=0`, and `runtime-preflight`, but `pro-reliability` still failed at `0.8333` vs current Pro, `0.5000` vs current Normal, and `0.7500` vs current Fast. Those are the exact same duel scores the older broad black bridge fallback already hit, which means over-clamping the mana-bridge seam was not the reason that family failed to promote.
 - Durable lesson: do not reopen a spirit-only fallback on the `l4,1;l5,0;mb` baseline. If closing only `l1,5;l1,7;l0,7` still lands on the same full-loop duel scores as the broader bridge fallback, the bridge family itself is too local to move promotion.
 
+## Apr 9, 2026: Seed v21 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v21` immediately after killing the spirit-only black bridge fallback, to see whether the wall stayed on that retained family or broke back into churn.
+- Why it stopped: the replay broke back into pure count-`1` churn. Direct Pro finished `3` regressions / `1` improvement / `8` flat, Normal `3` / `2` / `7`, and Fast `1` / `4` / `7`, with every exact move pair staying at count `1`. The seed only remixed one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, early-black `negative_deny` `l0,5;l1,6` vs `l1,5;l3,6;l2,7`, black mana rerank `l1,5;l2,5` vs `l1,6;l0,6`, white mana-sibling `l8,3;l8,2` vs `l8,3;l9,2`, white spirit-own-setup `l9,5;l7,4;l7,3` vs `l9,5;l7,6;l7,7`, and a direct-Pro black tie `l1,2;l1,1` vs `l1,2;l0,1`.
+- Durable lesson: do not spend from the next seed just because the previous one finally repeated a retained seam. If the follow-up replay immediately falls back into count-`1` mixed churn across Pro, Normal, and Fast, keep only the note and wait for a cleaner repeated family.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
