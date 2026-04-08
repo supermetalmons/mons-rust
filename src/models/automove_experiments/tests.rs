@@ -4681,6 +4681,11 @@ fn smart_automove_pro_white_fast_forced_prepass_probe() {
         false,
     )
     .expect("valid traced white pro v15 forced-prepass fen");
+    let traced_normal_v18_game = MonsGame::from_fen(
+        "0 0 w 1 0 1 0 0 3 n07e0xn03/n02y0xn02s0xn01a0xn03/n06d0xxxmn03/n03xxmxxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn06/n04S0xn02xxMn03/n03E0xn02D0xn04/n04A0xn02Y0xn03",
+        false,
+    )
+    .expect("valid traced white normal v18 forced-prepass fen");
     let retained_fixture = primary_pro_fixture_by_id("primary_white_fast_screen_opening_0_ply9");
 
     for (label, game, targets) in [
@@ -4698,6 +4703,11 @@ fn smart_automove_pro_white_fast_forced_prepass_probe() {
             "traced_pro_duel_v15",
             &traced_pro_v15_game,
             &["l8,4;l7,3", "l8,4;l9,3", "l8,4;l8,3"][..],
+        ),
+        (
+            "traced_normal_duel_v18",
+            &traced_normal_v18_game,
+            &["l9,6;l8,5", "l9,6;l8,7", "l9,6;l8,6"][..],
         ),
         (
             "primary_white_fast_screen_opening_0_ply9",

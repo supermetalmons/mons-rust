@@ -442,6 +442,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the replay stayed non-actionable. Direct Pro finished `2` regressions / `6` improvements / `4` flat, Normal `0` / `1` / `11`, and Fast `3` / `3` / `6`, but every exact move pair still stayed at count `1`. The surviving regressions were only live-only white forced-prepass drift `l8,4;l8,5` vs current `l8,4;l8,3`, white `ManaTempo` sibling drift `l8,3;l8,2` vs `l8,3;l9,2`, and a late black spirit-head rerank `l1,5;l1,7;l0,7` vs `l1,6;l2,7`, with no repeated retained `primary_pro` foothold.
 - Durable lesson: do not spend from a cleaner replay just because Normal nearly clears. If Pro and Fast still fragment into count-`1` white sibling/forced-prepass drift plus a one-off late black spirit-head rerank, keep only the note and wait for a replay that actually repeats on the retained surface.
 
+## Apr 9, 2026: Seed v18 White Forced-Prepass Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v18`, then widened `smart_automove_pro_white_fast_forced_prepass_probe` after Normal repeated white `l9,6;l8,5` vs current `l9,6;l8,7` twice.
+- Why it stopped: direct Pro finished clean at `0` regressions / `5` improvements / `7` flat and Fast also finished clean at `0` / `5` / `7`, but Normal still lost `5` / `1` / `6`. The repeated Normal white pair looked promising until the widened probe showed it was still the old live-only forced-prepass family: runtime-faithful v30 had `selected=l9,6;l8,5`, `pre_accept=baseline=head=l9,6;l8,7`, `stage=search_only_forced_prepass`, `accepted=true`, and `drainer_vulnerable=true`, while the retained `primary_white_fast_screen_opening_0_ply9` fixture stayed `drainer_vulnerable=false`, `engine_disabled`, and on spirit-progress roots. That left no retained `primary_pro` foothold for a production split.
+- Durable lesson: do not spend from a replay just because one Normal white pair repeats while Pro and Fast are clean. If the repeated pair still maps to the old live-only forced-prepass drainer-safety override and the retained comparison fixture stays on a different non-vulnerable spirit-progress surface, keep only the widened probe and the note.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
