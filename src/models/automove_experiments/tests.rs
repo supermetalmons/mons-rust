@@ -2753,6 +2753,7 @@ fn smart_automove_pro_triage_retained_churn_probe() {
         "primary_black_negative_deny_ply4",
         "primary_black_late_accepted_head_ply4",
         "primary_white_harvest_loss_c_ply24",
+        "primary_white_fast_accepted_head_ply13",
         "human_win_pro_c",
     ];
 
@@ -2902,6 +2903,7 @@ fn smart_automove_pro_runtime_faithful_retained_churn_probe() {
         "primary_black_negative_deny_ply4",
         "primary_black_late_accepted_head_ply4",
         "primary_white_harvest_loss_c_ply24",
+        "primary_white_fast_accepted_head_ply13",
         "human_win_pro_c",
     ];
 
@@ -3654,6 +3656,237 @@ fn smart_automove_pro_black_late_accepted_head_probe() {
             .position(|root| Input::fen_from_array(&root.inputs) == target);
         println!("target={} rank={:?}", target, rank);
     }
+}
+
+#[test]
+#[ignore = "diagnostic: inspect repeated white fast accepted head on primary_white_fast_accepted_head_ply13"]
+fn smart_automove_pro_white_fast_accepted_head_probe() {
+    let fixture = primary_pro_fixture_by_id("primary_white_fast_accepted_head_ply13");
+    let (config, scored_roots, head_plan, forced_engine_inputs) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(
+            "runtime_pro_turn_engine_v30",
+            fixture.mode,
+            &fixture.game,
+        );
+    let perspective = fixture.game.active_color;
+    let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
+        &fixture.game,
+        scored_roots.as_slice(),
+        perspective,
+        config,
+    );
+    let selected = profile_decision_inputs("runtime_pro_turn_engine_v30", fixture.mode, &fixture.game);
+    let baseline_selected = profile_decision_inputs("runtime_current", fixture.mode, &fixture.game);
+    let head_plan = head_plan.expect("white fast accepted-head fixture should retain a head plan");
+    let head_inputs = head_plan
+        .compiled_chunks
+        .first()
+        .expect("head plan should include a first chunk");
+    let accepted = MonsGameModel::accept_turn_engine_head_after_search(
+        &fixture.game,
+        perspective,
+        config,
+        scored_roots.as_slice(),
+        pre_accept_selected.as_slice(),
+        &head_plan,
+    );
+    let pre_accept_root = scored_roots
+        .iter()
+        .find(|root| root.inputs == pre_accept_selected)
+        .expect("pre-accept selected root should be present");
+    let head_root = scored_roots
+        .iter()
+        .find(|root| root.inputs.as_slice() == head_inputs.as_slice())
+        .expect("head root should be present");
+    let baseline_root = scored_roots
+        .iter()
+        .find(|root| root.inputs == baseline_selected)
+        .expect("baseline selected root should be present");
+    let pre_accept_family = MonsGameModel::turn_engine_root_evaluation_family(pre_accept_root);
+    let baseline_family = MonsGameModel::turn_engine_root_evaluation_family(baseline_root);
+    let pre_accept_utility = MonsGameModel::turn_engine_root_plan_utility(
+        &fixture.game,
+        pre_accept_root,
+        perspective,
+        config,
+        pre_accept_family,
+    );
+    let baseline_utility = MonsGameModel::turn_engine_root_plan_utility(
+        &fixture.game,
+        baseline_root,
+        perspective,
+        config,
+        baseline_family,
+    );
+
+    println!(
+        "WHITE_FAST_ACCEPTED_HEAD selected={} pre_accept={} baseline_selected={} head={} accepted={} forced_inputs={:?} head_family={:?} goal_family={:?} plan_utility={:?} head_utility={:?} pre_accept_utility={:?} baseline_utility={:?}",
+        Input::fen_from_array(&selected),
+        Input::fen_from_array(&pre_accept_selected),
+        Input::fen_from_array(&baseline_selected),
+        Input::fen_from_array(head_inputs),
+        accepted,
+        forced_engine_inputs
+            .as_ref()
+            .map(|inputs| Input::fen_from_array(inputs)),
+        head_plan.head_family,
+        head_plan.goal_family,
+        head_plan.utility,
+        head_plan.head_utility,
+        pre_accept_utility,
+        baseline_utility,
+    );
+    println!(
+        "WHITE_FAST_ACCEPTED_HEAD_ROOT pre_accept=\"{}\" baseline=\"{}\" head=\"{}\"",
+        format_root_probe(Some(pre_accept_root)),
+        format_root_probe(Some(baseline_root)),
+        format_root_probe(Some(head_root)),
+    );
+    for target in ["l9,4;l8,4", "l8,7;l7,8"] {
+        let rank = scored_roots
+            .iter()
+            .position(|root| Input::fen_from_array(&root.inputs) == target);
+        println!("target={} rank={:?}", target, rank);
+    }
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_rejects_late_black_plain_spirit_progress_head_without_concrete_gain() {
+    let fixture = primary_pro_fixture_by_id("primary_black_late_accepted_head_ply4");
+    let (config, scored_roots, head_plan, forced_engine_inputs) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(
+            "runtime_pro_turn_engine_v30",
+            fixture.mode,
+            &fixture.game,
+        );
+    let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
+        &fixture.game,
+        scored_roots.as_slice(),
+        fixture.game.active_color,
+        config,
+    );
+    let head_plan = head_plan.expect("late black fixture should retain a head plan");
+    let head_inputs = head_plan
+        .compiled_chunks
+        .first()
+        .expect("head plan should include a first chunk");
+    let pre_accept_root = scored_roots
+        .iter()
+        .find(|root| root.inputs == pre_accept_selected)
+        .expect("pre-accept selected root should be present");
+    let head_root = scored_roots
+        .iter()
+        .find(|root| root.inputs.as_slice() == head_inputs.as_slice())
+        .expect("head root should be present");
+    let pre_accept_family = MonsGameModel::turn_engine_root_evaluation_family(pre_accept_root);
+    let pre_accept_utility = MonsGameModel::turn_engine_root_plan_utility(
+        &fixture.game,
+        pre_accept_root,
+        fixture.game.active_color,
+        config,
+        pre_accept_family,
+    );
+    let accepted = MonsGameModel::accept_turn_engine_head_after_search(
+        &fixture.game,
+        fixture.game.active_color,
+        config,
+        scored_roots.as_slice(),
+        pre_accept_selected.as_slice(),
+        &head_plan,
+    );
+
+    assert_eq!(
+        forced_engine_inputs
+            .as_ref()
+            .map(|inputs| Input::fen_from_array(inputs)),
+        Some("l1,5;l1,7;l0,7".to_string()),
+    );
+    assert_eq!(Input::fen_from_array(&pre_accept_selected), "l3,2;l4,1");
+    assert_eq!(Input::fen_from_array(head_inputs), "l1,5;l1,7;l0,7");
+    assert!(pre_accept_root.score > head_root.score);
+    assert!(!pre_accept_root.spirit_development);
+    assert!(head_root.spirit_development);
+    assert!(head_root.supermana_progress);
+    assert!(!pre_accept_root.supermana_progress);
+    assert!(!head_root.spirit_same_turn_score_setup_now);
+    assert!(!head_root.spirit_own_mana_setup_now);
+    assert!(!head_plan
+        .utility
+        .improves_non_score_override_axes(pre_accept_utility));
+    assert!(
+        !accepted,
+        "a late black plain spirit progress head should not override a stronger safe non-spirit root without concrete setup, tactical, or primary-axis gain: selected_utility={:?} head_utility={:?} plan_utility={:?}",
+        pre_accept_utility,
+        head_plan.head_utility,
+        head_plan.utility,
+    );
+    assert_eq!(
+        profile_decision_move_fen("runtime_pro_turn_engine_v30", fixture.mode, &fixture.game),
+        "l3,2;l4,1",
+    );
+}
+
+#[test]
+fn runtime_pro_turn_engine_v30_rejects_white_fast_deferred_recovery_progress_head_without_concrete_gain() {
+    let fixture = primary_pro_fixture_by_id("primary_white_fast_accepted_head_ply13");
+    let (config, scored_roots, head_plan, forced_engine_inputs) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(
+            "runtime_pro_turn_engine_v30",
+            fixture.mode,
+            &fixture.game,
+        );
+    let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
+        &fixture.game,
+        scored_roots.as_slice(),
+        fixture.game.active_color,
+        config,
+    );
+    let head_plan = head_plan.expect("white fast fixture should retain a head plan");
+    let head_inputs = head_plan
+        .compiled_chunks
+        .first()
+        .expect("head plan should include a first chunk");
+    let pre_accept_root = scored_roots
+        .iter()
+        .find(|root| root.inputs == pre_accept_selected)
+        .expect("pre-accept selected root should be present");
+    let head_root = scored_roots
+        .iter()
+        .find(|root| root.inputs.as_slice() == head_inputs.as_slice())
+        .expect("head root should be present");
+    let accepted = MonsGameModel::accept_turn_engine_head_after_search(
+        &fixture.game,
+        fixture.game.active_color,
+        config,
+        scored_roots.as_slice(),
+        pre_accept_selected.as_slice(),
+        &head_plan,
+    );
+
+    assert_eq!(
+        forced_engine_inputs
+            .as_ref()
+            .map(|inputs| Input::fen_from_array(inputs)),
+        Some("l9,4;l8,4".to_string()),
+    );
+    assert_eq!(Input::fen_from_array(&pre_accept_selected), "l8,7;l7,8");
+    assert_eq!(Input::fen_from_array(head_inputs), "l9,4;l8,4");
+    assert!(pre_accept_root.own_drainer_vulnerable);
+    assert!(head_root.own_drainer_vulnerable);
+    assert!(!pre_accept_root.supermana_progress);
+    assert!(head_root.supermana_progress);
+    assert!(!head_root.classes.drainer_safety_recover);
+    assert_eq!(head_plan.goal_family, TurnPlanFamily::DrainerSafetyRecovery);
+    assert!(
+        !accepted,
+        "a deferred unsafe progress head should not override an unsafe non-progress root when the head itself brings no concrete immediate recovery: head_utility={:?} plan_utility={:?}",
+        head_plan.head_utility,
+        head_plan.utility,
+    );
+    assert_eq!(
+        profile_decision_move_fen("runtime_pro_turn_engine_v30", fixture.mode, &fixture.game),
+        "l8,7;l7,8",
+    );
 }
 
 #[test]

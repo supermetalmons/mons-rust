@@ -7818,6 +7818,24 @@ impl MonsGameModel {
             )
             && !pickup_upgrade
             && !projected_head_primary_axes_not_worse;
+        let projected_deferred_recovery_progress_head_without_concrete_gain = macro_mode
+            && selected_unsafe
+            && candidate_unsafe
+            && !selected_spirit_phase
+            && !selected_progress_surface
+            && candidate_progress_surface
+            && matches!(
+                plan.head_family,
+                TurnPlanFamily::SafeSupermanaProgress | TurnPlanFamily::SafeOpponentManaProgress
+            )
+            && matches!(plan.goal_family, TurnPlanFamily::DrainerSafetyRecovery)
+            && !candidate.classes.drainer_safety_recover
+            && candidate.own_drainer_vulnerable
+            && !pickup_upgrade
+            && !scores_now_better
+            && !drainer_attack_better
+            && !same_turn_window_better
+            && score_gap > 48;
         let projected_completed_plan_override = macro_mode
             && projected_end_safe
             && !selected.wins_immediately
@@ -7850,6 +7868,29 @@ impl MonsGameModel {
             && !candidate.spirit_own_mana_setup_now
             && score_gap > 96
             && !strategic_override_axes_better;
+        let projected_safe_root_blocks_plain_spirit_progress_override = macro_mode
+            && game.active_color == Color::Black
+            && matches!(plan.head_family, TurnPlanFamily::SpiritImpact)
+            && !selected_unsafe
+            && !candidate_unsafe
+            && !selected_progress_surface
+            && !selected_spirit_phase
+            && candidate.spirit_development
+            && !candidate.spirit_same_turn_score_setup_now
+            && !candidate.spirit_own_mana_setup_now
+            && candidate_progress_surface
+            && !candidate_spirit_tactical
+            && !progress_better
+            && candidate.safe_supermana_progress_steps >= selected.safe_supermana_progress_steps
+            && candidate.safe_opponent_mana_progress_steps
+                >= selected.safe_opponent_mana_progress_steps
+            && candidate.own_drainer_vulnerable == selected.own_drainer_vulnerable
+            && candidate.mana_handoff_to_opponent == selected.mana_handoff_to_opponent
+            && candidate.has_roundtrip == selected.has_roundtrip
+            && !scores_now_better
+            && !drainer_attack_better
+            && score_gap > 64
+            && !strategic_override_axes_better;
         let projected_plain_spirit_sibling_blocks_override = macro_mode
             && matches!(plan.head_family, TurnPlanFamily::SpiritImpact)
             && !selected_unsafe
@@ -7875,8 +7916,10 @@ impl MonsGameModel {
         let projected_completed_plan_override =
             projected_completed_plan_override
                 && !projected_safe_root_blocks_plain_spirit_override
+                && !projected_safe_root_blocks_plain_spirit_progress_override
                 && !projected_plain_spirit_sibling_blocks_override
                 && !projected_progress_head_regresses_safe_pickup
+                && !projected_deferred_recovery_progress_head_without_concrete_gain
                 && !narrow_black_mana_only_unsafe_score_override
                 && !narrow_white_mana_only_progress_tie_override;
         if candidate_unsafe && !selected_unsafe && !projected_completed_plan_override {
@@ -8062,6 +8105,34 @@ impl MonsGameModel {
                     if selected_safe_projected_root_blocks_plain_spirit {
                         return false;
                     }
+                    let selected_safe_projected_root_blocks_plain_spirit_progress =
+                        game.active_color == Color::Black
+                            && !selected_unsafe
+                            && !candidate_unsafe
+                            && !selected_spirit_phase
+                            && !selected_progress_surface
+                            && candidate.spirit_development
+                            && !candidate.spirit_same_turn_score_setup_now
+                            && !candidate.spirit_own_mana_setup_now
+                            && candidate_progress_surface
+                            && !candidate_spirit_tactical
+                            && !progress_better
+                            && candidate.safe_supermana_progress_steps
+                                >= selected.safe_supermana_progress_steps
+                            && candidate.safe_opponent_mana_progress_steps
+                                >= selected.safe_opponent_mana_progress_steps
+                            && candidate.own_drainer_vulnerable
+                                == selected.own_drainer_vulnerable
+                            && candidate.mana_handoff_to_opponent
+                                == selected.mana_handoff_to_opponent
+                            && candidate.has_roundtrip == selected.has_roundtrip
+                            && !scores_now_better
+                            && !drainer_attack_better
+                            && score_gap > 64
+                            && !strategic_override_axes_better;
+                    if selected_safe_projected_root_blocks_plain_spirit_progress {
+                        return false;
+                    }
                     let selected_concrete_spirit_setup = selected.spirit_same_turn_score_setup_now
                         || selected.spirit_own_mana_setup_now
                         || selected.same_turn_score_window_value > 0;
@@ -8170,6 +8241,19 @@ impl MonsGameModel {
                         && !drainer_attack_better
                         && !same_turn_window_better
                         && !unsafe_progress_head_has_material_override;
+                    let deferred_recovery_progress_head_without_concrete_gain = selected_unsafe
+                        && candidate_unsafe
+                        && !selected_spirit_phase
+                        && !selected_progress_surface
+                        && candidate_progress_surface
+                        && matches!(plan.goal_family, TurnPlanFamily::DrainerSafetyRecovery)
+                        && !candidate.classes.drainer_safety_recover
+                        && candidate.own_drainer_vulnerable
+                        && !pickup_upgrade
+                        && !scores_now_better
+                        && !drainer_attack_better
+                        && !same_turn_window_better
+                        && score_gap > 48;
                     let allow_safe_progress_fallback =
                         selected_unsafe || (!selected_spirit_phase && !selected_safe_progress);
                     let large_safe_search_lead =
@@ -8207,6 +8291,9 @@ impl MonsGameModel {
                         6
                     };
                     if unsafe_progress_head_needs_material_override {
+                        return false;
+                    }
+                    if deferred_recovery_progress_head_without_concrete_gain {
                         return false;
                     }
                     let near_tie_progress = candidate.safe_supermana_progress_steps
@@ -13223,6 +13310,27 @@ impl MonsGameModel {
                     perspective,
                     config,
                 );
+                let negative_deny_competes = if negative_deny_competes
+                    && spirit_setup_indices.iter().copied().any(|spirit_index| {
+                        candidate_indices
+                            .iter()
+                            .copied()
+                            .filter(|index| !scored_roots[*index].spirit_development)
+                            .all(|index| {
+                                Self::pro_v2_spirit_setup_competes_with_non_spirit_root(
+                                    game,
+                                    &scored_roots[spirit_index],
+                                    &scored_roots[index],
+                                    perspective,
+                                    config,
+                                )
+                            })
+                    })
+                {
+                    false
+                } else {
+                    negative_deny_competes
+                };
                 let score_competes = Self::score_competes_with_spirit_pref(
                     scored_roots,
                     candidate_indices.as_slice(),

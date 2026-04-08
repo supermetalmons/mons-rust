@@ -1759,6 +1759,14 @@ fn white_harvest_loss_d_ply25_triage_game() -> MonsGame {
     .expect("white_harvest_loss_d_ply25: valid fen")
 }
 
+fn white_fast_accepted_head_ply13_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 w 0 0 1 0 0 3 n07e0xn03/n03y0xn01s0xn01a0xn03/n06d0xxxmn03/n03xxmxxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n01E0xn05Y0xn03/n04D0xn01S0xn04/n04A0xn06",
+        false,
+    )
+    .expect("white_fast_accepted_head_ply13: valid fen")
+}
+
 fn white_fast_screen_opening_0_ply9_triage_game() -> MonsGame {
     MonsGame::from_fen(
         "1 0 w 0 0 0 0 0 3 n06a0xn04/n03y0xn01d0xxxmn01e0xn02/n04s0xn06/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn01xxMn02/n11/n05D0xS0xn01Y0xn02/n02E0xn01A0xn06",
@@ -2285,6 +2293,14 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
+        },
+        TriageFixture {
+            id: "primary_white_fast_accepted_head_ply13",
+            game: white_fast_accepted_head_ply13_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l9,4;l8,4"),
         },
         TriageFixture {
             id: "primary_white_fast_screen_opening_0_ply9",

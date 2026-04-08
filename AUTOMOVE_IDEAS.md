@@ -9,6 +9,16 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest focused gate (`2026-04-08`, latest):
+  - added a retained foothold for the repeated white fast accepted-head live family: `primary_white_fast_accepted_head_ply13` plus `smart_automove_pro_white_fast_accepted_head_probe`
+  - retained a combined shared branch under `runtime_pro_turn_engine_v30`: keep the early-black `negative_deny` selector override, keep the later-black plain-spirit-progress rejection, and add a white deferred `Safe*Progress -> DrainerSafetyRecovery` block so `l9,4;l8,4` no longer overrides current `l8,7;l7,8`
+  - cheap-gate result: `primary_black_negative_deny_ply4`, `primary_black_late_accepted_head_ply4`, and `primary_white_fast_accepted_head_ply13` all collapsed to current, `guardrails` passed, `pro-triage(primary_pro)` moved to `1/55` with only `human_win_pro_c`, `off_target_changed=0`, and `runtime-preflight` passed
+  - `pro-reliability` still failed: `win_rate=0.8333` vs current Pro, `0.5000` vs current Normal, and `0.7500` vs current Fast
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` on the default `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v1` corpus:
+    - `vs current Pro`: unchanged at one one-off white wrapper miss `l9,2;l8,3` vs current `l10,7;l9,7`
+    - `vs current Normal`: unchanged at the same three one-offs `l9,5;l8,5` vs current `l9,5;l7,6;l7,7`, `l2,4;l3,3` vs current `l3,6;l2,7`, and `l10,4;l9,4` vs current `l8,6;l7,7`
+    - `vs current Fast`: improved to `3` regressions / `5` improvements / `4` flat; the old repeated white accepted-head pair is gone, and the remaining regressions are all one-offs `l1,6;l2,7` vs `l2,3;l3,2`, `l8,4;l8,5` vs `l8,4;l7,3`, and `l9,5;l8,5` vs `l7,5;l6,4`
+  - direct conclusion: keep the shared code and the new retained white fixture/probe; the branch is still not promotable, but it meaningfully simplified the live fast wall and left no repeated move pair outside one-off churn
+- Latest focused gate (`2026-04-08`, latest):
   - added a retained foothold for the later black accepted-head live family: `primary_black_late_accepted_head_ply4` plus `smart_automove_pro_black_late_accepted_head_probe`
   - retried the full black branch under `runtime_pro_turn_engine_v30`: reapply the early-black `negative_deny` selector override and add a late-black plain-spirit-progress rejection so `l1,5;l1,7;l0,7` would stop overriding current `l3,2;l4,1`
   - cheap-gate result: both retained black seams collapsed to current, `guardrails` passed, `pro-triage(primary_pro)` moved to `1/54` with only `human_win_pro_c`, `off_target_changed=0`, and `runtime-preflight` passed
