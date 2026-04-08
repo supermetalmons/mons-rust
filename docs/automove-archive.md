@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Fresh Seed v10 Duel Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v10` after the retained black forced-runtime comparison died at diagnostics, to see whether the next duel sample would finally repeat a retained family strongly enough to justify new code.
+- Why it stopped: the replay resurfaced several familiar stories, but still not in a code-ready way. `vs current Pro` finished `2` regressions / `4` improvements / `6` flat, `vs current Normal` `4` / `0` / `8`, and `vs current Fast` `4` / `0` / `8`, with every exact move pair staying count `1`. The sample brought back the retained early-black `negative_deny` move pair `l0,5;l1,6` vs current `l1,5;l3,6;l2,7`, the retained later-black accepted-head pair `l1,5;l1,7;l0,7` vs current `l4,1;l5,0;mb`, and the known white forced-prepass family around `l9,4;l8,5` or `l8,4;l8,5`, but each bucket still fragmented into separate one-offs with different exact baselines.
+- Durable lesson: do not treat “the same family is back in multiple duel buckets” as enough on its own. If the exact move pairs still do not repeat, keep only the replay note and wait for a seed that repeats on one retained surface cleanly enough to justify a real branch.
+
 ## Apr 8, 2026: Black Forced-Runtime Comparison Killed At Diagnostics
 
 - What was tried: added `smart_automove_pro_black_forced_runtime_probe` so the two retained black forced-engine footholds, `primary_black_turn_four_action_mana_ply15` and `primary_black_mana_bridge_ply20`, could be compared at runtime-faithful selection stage instead of only at raw, injected, and focused root ranks.

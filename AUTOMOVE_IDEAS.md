@@ -9,6 +9,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v10`
+  - duel summary:
+    - `vs current Pro`: `2` regressions, `4` improvements, `6` flat; both move pairs stayed at count `1`
+    - `vs current Normal`: `4` regressions, `0` improvements, `8` flat; all four move pairs stayed at count `1`
+    - `vs current Fast`: `4` regressions, `0` improvements, `8` flat; all four move pairs stayed at count `1`
+  - the replay resurfaced several known families without giving one repeatable code target: early-black `negative_deny` `l0,5;l1,6` vs current `l1,5;l3,6;l2,7` in direct Pro, later-black accepted-head `l1,5;l1,7;l0,7` vs current `l4,1;l5,0;mb` in Normal and Fast, white forced-prepass `l9,4;l8,5` vs `l9,4;l8,3` in Normal and `l8,4;l8,5` vs `l8,4;l7,3` or `l8,4;l8,3` in Fast, plus new one-off white and black reranks
+  - direct conclusion: kill the `v10` replay at diagnostics before code edits; multiple old families resurfacing is still not enough when every exact move pair remains count `1`
+- Latest diagnostic close (`2026-04-08`, latest):
   - added `smart_automove_pro_black_forced_runtime_probe` to compare `primary_black_turn_four_action_mana_ply15` and `primary_black_mana_bridge_ply20` directly at runtime-faithful selection stage
   - both retained black seams now share the same late shape inside `runtime_pro_turn_engine_v30`: `stage=engine_post_search`, `selected=pre_accept=head=forced`, `accepted=true`, and the selected root family stays `ManaTempo` under a `SafeSupermanaProgress` head
   - that still is not a safe shared production lever: `primary_black_turn_four_action_mana_ply15` remains a vulnerable `SafeSupermanaProgress -> ImmediateScore` drift, while `primary_black_mana_bridge_ply20` is a safer `SafeSupermanaProgress -> SpiritImpact` rerank; in both cases the selected root utility already edges current
