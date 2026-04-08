@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Cheap Frontier Reconfirmed As Human-Only Stall
+
+- What was tried: refreshed `smart_automove_pro_human_win_pro_c_selector_probe` again on the retained challenger, then reran the canonical cheap gate via `SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage runtime_pro_turn_engine_v30 runtime_current` to see whether any bounded production split still had a credible path.
+- Why it stopped: the retained human fixture still showed the same safe-progress / followup-floor selector shape, and the cheap gate explicitly reconfirmed the frontier stall: `opening_reply` stayed `0/3`, `primary_pro` stayed `1/55`, `off_target_changed=0`, and the only changed fixture was still `human_win_pro_c`. That meant there was no new cheap-surface foothold beyond the already-rejected human-only drift.
+- Durable lesson: once the canonical cheap gate itself reconfirms a `human_win_pro_c`-only `1/55` stall with no off-target churn, stop reopening human-only production ideas. Wait for a fresh duel replay to land on a retained surface again.
+
 ## Apr 8, 2026: Human-Only Revival Killed At Diagnostics
 
 - What was tried: refreshed `smart_automove_pro_human_win_pro_c_selector_probe` after the fresh direct-Pro white spirit-cluster probe, to check whether the only remaining retained cheap drift now justified a bounded human-only production retry.
