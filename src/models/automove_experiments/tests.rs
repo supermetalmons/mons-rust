@@ -2987,6 +2987,76 @@ fn runtime_pro_turn_engine_v30_rejects_weaker_plain_spirit_head_on_primary_spiri
 }
 
 #[test]
+fn runtime_pro_turn_engine_v30_rejects_lower_scored_pvs_progress_head_without_material_override() {
+    let fixture = primary_pro_fixture_by_id("primary_pvs_sensitive_search");
+    let (config, scored_roots, head_plan, forced_engine_inputs) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(
+            "runtime_pro_turn_engine_v30",
+            fixture.mode,
+            &fixture.game,
+        );
+    let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
+        &fixture.game,
+        scored_roots.as_slice(),
+        fixture.game.active_color,
+        config,
+    );
+    let head_plan = head_plan.expect("pvs fixture should retain a head plan");
+    let head_inputs = head_plan
+        .compiled_chunks
+        .first()
+        .expect("head plan should include a first chunk");
+    let pre_accept_root = scored_roots
+        .iter()
+        .find(|root| root.inputs == pre_accept_selected)
+        .expect("pre-accept selected root should be present");
+    let head_root = scored_roots
+        .iter()
+        .find(|root| root.inputs.as_slice() == head_inputs.as_slice())
+        .expect("head root should be present");
+    let pre_accept_family = MonsGameModel::turn_engine_root_evaluation_family(pre_accept_root);
+    let pre_accept_utility = MonsGameModel::turn_engine_root_plan_utility(
+        &fixture.game,
+        pre_accept_root,
+        fixture.game.active_color,
+        config,
+        pre_accept_family,
+    );
+    let accepted = MonsGameModel::accept_turn_engine_head_after_search(
+        &fixture.game,
+        fixture.game.active_color,
+        config,
+        scored_roots.as_slice(),
+        pre_accept_selected.as_slice(),
+        &head_plan,
+    );
+
+    assert_eq!(
+        forced_engine_inputs
+            .as_ref()
+            .map(|inputs| Input::fen_from_array(inputs)),
+        Some("l0,5;l1,5".to_string()),
+    );
+    assert_eq!(Input::fen_from_array(&pre_accept_selected), "l0,6;l1,6");
+    assert_eq!(Input::fen_from_array(head_inputs), "l0,5;l1,5");
+    assert!(pre_accept_root.score > head_root.score);
+    assert!(pre_accept_root.own_drainer_vulnerable);
+    assert!(head_root.own_drainer_vulnerable);
+    assert!(head_root.supermana_progress);
+    assert!(!pre_accept_root.supermana_progress);
+    assert!(!head_plan.utility.improves_non_score_override_axes(pre_accept_utility));
+    assert!(!head_plan.utility.has_score_delta_force(pre_accept_utility, 220));
+    assert!(
+        !accepted,
+        "a lower-scored unsafe progress head should not override the selected PVS root without a material primary-axis or safety gain",
+    );
+    assert_eq!(
+        profile_decision_move_fen("runtime_pro_turn_engine_v30", fixture.mode, &fixture.game),
+        "l0,6;l1,6",
+    );
+}
+
+#[test]
 fn runtime_pro_turn_engine_v30_skips_black_turn_two_low_budget_clamp_with_full_resources() {
     let fixture = primary_pro_fixture_by_id("primary_black_reliability_opening_3_ply4");
     let configured_runtime =

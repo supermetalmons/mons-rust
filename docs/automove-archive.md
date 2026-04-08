@@ -64,6 +64,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: every real hotspot case was move-identical to current (`primary_spirit_setup`, `primary_black_loss_opening_a_ply19`, `human_win_pro_a`, `loss_opening_a`, `loss_opening_b`). The only changed move was the synthetic `quiet_positional` sample, so there was no credible duel-linked production seam to justify another canonical loop.
 - Durable lesson: use hotspot compare to kill flat lines quickly. Counter inflation or selector-stage differences without real candidate-vs-current move divergence are not promotion evidence.
 
+## Apr 8, 2026: PVS Acceptance Repair Retained But Not Promotable
+
+- What was tried: a retained shared-code repair on `runtime_pro_turn_engine_v30` that blocks lower-scored unsafe `Safe*Progress` late heads from overriding the selected `primary_pvs_sensitive_search` root unless they bring a material non-eval override win, plus a retained regression fixture for that exact runtime seam.
+- Why it stopped: the fix was real and collapsed `primary_pro` retained churn from `2/52` to `1/52`, but `pro-reliability` stayed flat at `win_rate=0.8333` vs current Pro, `0.5000` vs current Normal, and `0.6667` vs current Fast.
+- Durable lesson: even the last live `engine_post_search` seam can be too local to matter. Once a retained late-head repair lands and the duel wall still does not move, stop the acceptance-only loop and reopen only with a broader duel-linked selector story.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps

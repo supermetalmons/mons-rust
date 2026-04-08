@@ -8118,6 +8118,8 @@ impl MonsGameModel {
                 }
                 TurnPlanFamily::SafeSupermanaProgress
                 | TurnPlanFamily::SafeOpponentManaProgress => {
+                    const PROGRESS_HEAD_SCORE_DELTA_FORCE: i32 = 220;
+
                     let selected_utility = selected_utility_value();
                     let primary_axes_order =
                         crate::models::automove_turn_engine::compare_utility_primary_axes(
@@ -8149,6 +8151,25 @@ impl MonsGameModel {
                         && !Self::turn_engine_root_evaluation_has_progress_surface(selected);
                     let selected_safe_progress = !selected_unsafe
                         && Self::turn_engine_root_evaluation_has_progress_surface(selected);
+                    let unsafe_progress_head_has_material_override = plan
+                        .utility
+                        .improves_non_score_override_axes(selected_utility)
+                        || plan.utility.has_score_delta_force(
+                            selected_utility,
+                            PROGRESS_HEAD_SCORE_DELTA_FORCE,
+                        );
+                    let unsafe_progress_head_needs_material_override = selected_unsafe
+                        && candidate_unsafe
+                        && !selected_spirit_phase
+                        && !selected_progress_surface
+                        && candidate_progress_surface
+                        && score_gap > 0
+                        && !pickup_upgrade
+                        && !safety_recover_better
+                        && !scores_now_better
+                        && !drainer_attack_better
+                        && !same_turn_window_better
+                        && !unsafe_progress_head_has_material_override;
                     let allow_safe_progress_fallback =
                         selected_unsafe || (!selected_spirit_phase && !selected_safe_progress);
                     let large_safe_search_lead =
@@ -8185,6 +8206,9 @@ impl MonsGameModel {
                     } else {
                         6
                     };
+                    if unsafe_progress_head_needs_material_override {
+                        return false;
+                    }
                     let near_tie_progress = candidate.safe_supermana_progress_steps
                         == selected.safe_supermana_progress_steps
                         && candidate.safe_opponent_mana_progress_steps

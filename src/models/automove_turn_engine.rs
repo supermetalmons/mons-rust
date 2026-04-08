@@ -198,6 +198,10 @@ impl TurnEngineUtility {
             || self.drainer_safety > other.drainer_safety
     }
 
+    pub(crate) fn has_score_delta_force(self, other: Self, min_gain: i32) -> bool {
+        self.score_delta >= other.score_delta + min_gain
+    }
+
     pub(crate) fn supports_primary_axes_eval_tolerance(
         self,
         other: Self,

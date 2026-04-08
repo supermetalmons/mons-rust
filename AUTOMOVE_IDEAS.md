@@ -8,6 +8,15 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest focused gate (`2026-04-08`):
+  - retained shared split: reject lower-scored unsafe `Safe*Progress` late heads on `primary_pvs_sensitive_search` unless they bring a material non-eval override win
+  - retained-churn result: `primary_pvs_sensitive_search` now matches `runtime_current`; `pro-triage(primary_pro)` moved only `human_win_pro_c`, so the retained challenger is down to `1/52` changed primary-Pro fixtures with `opening_reply` still `0/3`
+  - `pro-reliability`
+  - `12` games
+  - `vs current Pro`: `win_rate=0.8333`, `confidence=0.9807`, `candidate_avg_ms=97.99`
+  - `vs current Normal`: `win_rate=0.5000`, `confidence=0.0000`, `candidate_avg_ms=91.00`
+  - `vs current Fast`: `win_rate=0.6667`, `confidence=0.8062`, `candidate_avg_ms=110.13`
+  - direct conclusion: kill the split; it closed the remaining late `engine_post_search` seam but did not move the direct duel wall, so do not spend another local acceptance-only repair loop
 - Latest diagnostic close (`2026-04-05`):
   - extended `smart_automove_pro_reliability_hotspot_probe` to compare `runtime_pro_turn_engine_v30` against `runtime_current` on the bounded reliability hotspot corpus
   - all real hotspot positions were move-identical to current: `primary_spirit_setup`, `primary_black_loss_opening_a_ply19`, `human_win_pro_a`, `loss_opening_a`, and `loss_opening_b`
@@ -49,8 +58,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
   - `win_rate=0.7812`
   - `confidence=0.9989`
   - `candidate_avg_ms=100.11`
-- `pro-triage(primary_pro)` on the retained challenger still moves on `5/52`, while `opening_reply` stays `0/3`.
+- `pro-triage(primary_pro)` on the retained challenger now moves only on `1/52`, while `opening_reply` stays `0/3`.
 - Direct conclusion: speed is already acceptable. The live wall is broad `primary_pro` root-choice composition against current `Normal`, not the `700ms` move-time budget and not opening guards.
+- Closing `primary_pvs_sensitive_search` reduced retained churn, but it did not change the duel wall. Remaining spend must come from a broader duel-linked selector story, not another local `engine_post_search` clamp.
 
 ## Promotion Rule
 
@@ -116,15 +126,16 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Keep the retained challenger ID and stay out of new unsupported scratch profiles.
 - Major direction 1: continue deleting deferred `Safe*Progress -> ImmediateScore` composition mistakes in shared ProV2 code. The retained fix list now includes: safe-pickup post-search blocks, absent deferred progress-head injection blocks, non-concrete one-chunk progress-head rejection, weaker plain-spirit head rejection, and the black turn-two full-resource low-budget-clamp skip.
-- Major direction 2: treat `primary_pvs_sensitive_search` as an expected late `engine_post_search` win unless direct duel evidence says otherwise. It is still the only remaining changed `primary_pro` acceptance seam after the spirit and black-opening fixes.
-- Major direction 3: treat `human_win_pro_c` as the only remaining unexplained retained-challenger drift. The retained selector probe still says it is a pure `pre_accept` safe-progress bias where the chosen root has better followup floor than the baseline spirit-own-setup root.
-- Major direction 3a: the bounded reliability hotspot corpus does not support a new duel seam right now. Its compare probe is decision-identical to `runtime_current` on every real hotspot case, so do not spend another shared-code split unless a fresh duel sample or a broader compare probe exposes a real move difference.
-- Major direction 4: do not spend another local seam-repair split unless it has a direct duel story. Cutting `primary_pro` churn from `4/52` to `2/52` did not move `pro-reliability`.
+- Major direction 2: `primary_pvs_sensitive_search` is now closed as a retained late-head regression. Do not reopen it unless a fresh duel sample shows the seam alive again under a different runtime shape.
+- Major direction 3: `human_win_pro_c` is the only remaining retained-challenger drift. The retained selector probe still says it is a pure `pre_accept` safe-progress bias where the chosen root has better followup floor than the baseline spirit-own-setup root.
+- Major direction 3a: the bounded reliability hotspot corpus still does not support a new duel seam right now. Its compare probe is decision-identical to `runtime_current` on every real hotspot case, so do not spend another shared-code split unless a fresh duel sample or a broader compare probe exposes a real move difference.
+- Major direction 4: do not spend another local seam-repair split unless it has a direct duel story. Cutting `primary_pro` churn from `2/52` to `1/52` still did not move `pro-reliability`.
 - Immediate next split:
-  - keep `primary_white_harvest_loss_c_ply24`, `primary_spirit_setup`, and `primary_black_reliability_opening_3_ply4` closed unless new duel evidence reopens them
+  - keep `primary_white_harvest_loss_c_ply24`, `primary_spirit_setup`, `primary_black_reliability_opening_3_ply4`, and `primary_pvs_sensitive_search` closed unless new duel evidence reopens them
   - if the line is revived, start from a duel-linked explanation for `human_win_pro_c` before touching more turn-engine head logic
-  - only reopen `primary_pvs_sensitive_search` if its expected acceptance win correlates with a real duel loss
+  - refresh direct duel evidence first if the wall is unclear; otherwise do not spend another acceptance-only split
 - Do not reopen:
   - speculative immediate-score first-chunk non-regression clamps on `SpiritImpact` or `Safe*Progress` heads
   - setup-gain-only spirit-setup promotion against safe non-spirit roots
-- Proof target for the next retained branch: beat the current unchanged `pro-reliability` wall with a duel-linked fix, not just another local reduction from the present `2/52` `primary_pro` churn.
+  - eval-only unsafe `Safe*Progress` late-head overrides on lower-scored non-progress roots; the retained PVS repair already closes that seam and did not move direct duels
+- Proof target for the next retained branch: beat the current unchanged `pro-reliability` wall with a duel-linked fix, not just another local reduction from the present `1/52` `primary_pro` churn.
