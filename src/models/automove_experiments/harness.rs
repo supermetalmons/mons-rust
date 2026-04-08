@@ -1413,6 +1413,14 @@ fn white_mana_sibling_ply9_triage_game() -> MonsGame {
     .expect("white_mana_sibling_ply9: valid fen")
 }
 
+fn white_safe_progress_rerank_ply27_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "0 0 w 1 0 0 0 0 5 n05d1xn05/n01xxmn04a0xe0xn03/n11/n03y0xxxmn01xxmn04/n03s0xn01xxmn01xxmn03/n02E0xn02xxUn04xxQ/n03xxMn01xxMn05/n06xxMn04/n03xxMn04xxMn02/n04D0xn01S0xY0xn03/n04A0xn06",
+        false,
+    )
+    .expect("white_safe_progress_rerank_ply27: valid fen")
+}
+
 fn derived_triage_game_after_inputs(start_fen: &str, input_fen: &str, label: &str) -> MonsGame {
     let game = MonsGame::from_fen(start_fen, false)
         .unwrap_or_else(|| panic!("{}: valid start fen", label));
@@ -2053,6 +2061,14 @@ pub(super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l5,0;l5,1"),
+        },
+        TriageFixture {
+            id: "primary_white_safe_progress_rerank_ply27",
+            game: white_safe_progress_rerank_ply27_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: Some("l9,4;l8,3"),
         },
         TriageFixture {
             id: "primary_black_loss_opening_a",

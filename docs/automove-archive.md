@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Retain White Safe-Progress Rerank Seam
+
+- What was tried: widened `smart_automove_pro_white_score_route_probe` with the fresh `v10` Normal white board `l9,4;l8,3` vs current `l5,2;l4,1`, then retained that exact board as `primary_white_safe_progress_rerank_ply27` and added it to the retained churn probes to see whether it moved the clean cheap surface.
+- Why it stopped: this turn did not justify production code, but it did produce a real new white foothold. The widened probe showed the board is not the retained harvest white score-route family: `runtime_pro_turn_engine_v30` already has `selected=pre_accept=head=l9,4;l8,3`, `accepted=true`, `forced_inputs=Some("l9,4;l8,3")`, `drainer_vulnerable=false`, and a vulnerable `ManaTempo` root, while current stays on a non-vulnerable `SafeSupermanaProgress` baseline `l5,2;l4,1`. Adding the fixture moved `pro-triage(primary_pro)` to `4/59`, and only `primary_white_safe_progress_rerank_ply27`, `primary_black_turn_four_action_mana_ply15`, `primary_black_mana_bridge_ply20`, and `human_win_pro_c` changed, with `off_target_changed=0`.
+- Durable lesson: keep `primary_white_safe_progress_rerank_ply27` as a separate retained white accepted rerank. Do not merge it into the harvest-family white score-route story from this evidence alone; the stage shape, safety story, and selected/root family all differ.
+
 ## Apr 8, 2026: Traced Fast V10 Black Rerank Killed At Diagnostics
 
 - What was tried: widened `smart_automove_pro_black_forced_runtime_probe` so it compares the retained black seams against the fresh `v10` Fast black board `l1,5;l1,4` vs current `l3,2;l4,1`.

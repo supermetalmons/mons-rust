@@ -2770,6 +2770,7 @@ fn smart_automove_pro_triage_retained_churn_probe() {
         "primary_black_turn_four_action_mana_ply15",
         "primary_black_mana_bridge_ply20",
         "primary_white_mana_sibling_ply9",
+        "primary_white_safe_progress_rerank_ply27",
         "primary_white_harvest_loss_c_ply24",
         "primary_white_fast_accepted_head_ply13",
         "human_win_pro_c",
@@ -2923,6 +2924,7 @@ fn smart_automove_pro_runtime_faithful_retained_churn_probe() {
         "primary_black_turn_four_action_mana_ply15",
         "primary_black_mana_bridge_ply20",
         "primary_white_mana_sibling_ply9",
+        "primary_white_safe_progress_rerank_ply27",
         "primary_white_harvest_loss_c_ply24",
         "primary_white_fast_accepted_head_ply13",
         "human_win_pro_c",
@@ -4390,7 +4392,7 @@ fn smart_automove_pro_white_fast_forced_prepass_probe() {
 }
 
 #[test]
-#[ignore = "diagnostic: inspect white score-route accepted-head family on traced duel board"]
+#[ignore = "diagnostic: inspect white score-route accepted-head family on traced duel boards"]
 fn smart_automove_pro_white_score_route_probe() {
     fn run_probe(label: &str, game: &MonsGame, targets: &[&str]) {
         clear_exact_state_analysis_cache();
@@ -4522,6 +4524,8 @@ fn smart_automove_pro_white_score_route_probe() {
     )
     .expect("valid traced white score-route v6 fen");
     let retained_fixture = primary_pro_fixture_by_id("primary_harvest_white_score_route_win_a");
+    let retained_v10_fixture =
+        primary_pro_fixture_by_id("primary_white_safe_progress_rerank_ply27");
 
     for (label, game, targets) in [
         (
@@ -4533,6 +4537,11 @@ fn smart_automove_pro_white_score_route_probe() {
             "traced_pro_duel_v6",
             &traced_v6_game,
             &["l9,6;l8,4;l7,4", "l9,6;l7,4;l7,3"][..],
+        ),
+        (
+            "primary_white_safe_progress_rerank_ply27",
+            &retained_v10_fixture.game,
+            &["l9,4;l8,3", "l5,2;l4,1"][..],
         ),
         (
             "primary_harvest_white_score_route_win_a",
