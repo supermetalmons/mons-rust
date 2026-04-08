@@ -421,7 +421,7 @@ fn runtime_pro_turn_engine_v30_guarded_inputs(
 
     let white_turn_three_mid_turn_full_resources = game.active_color == Color::White
         && game.turn_number == 3
-        && game.mons_moves_count >= 5
+        && game.mons_moves_count >= 3
         && game.player_can_use_action()
         && game.player_can_move_mana();
     if white_turn_three_mid_turn_full_resources {

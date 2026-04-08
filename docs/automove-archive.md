@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Retain White Turn-Three Full-Resources Fallback
+
+- What was tried: traced the retained `primary_white_mana_sibling_ply9` seam back to a white `turn=3`, `mons_moves=3`, `action+mana` wrapper miss. Guarded `runtime_pro_turn_engine_v30` was falling through to `runtime_release_safe_pre_exact` and selecting `l5,0;l5,1`, while current Pro still chose `l5,0;l4,1`. Kept a narrow production repair by lowering the existing white turn-three full-resources current-Pro fallback from `mons_moves>=5` to `mons_moves>=3`, and added `runtime_pro_turn_engine_v30_profile_prefers_current_white_turn_three_full_resources_root`.
+- Why it stopped: the seam itself closed cleanly, `guardrails` passed, `pro-triage(primary_pro)` returned to the familiar `human_win_pro_c`-only `1/56`, `runtime-preflight` passed, and `pro-reliability` still failed at `0.8333` vs current Pro, `0.5000` vs current Normal, and `0.7500` vs current Fast. The default duel trace did not expose a new repeated family; it stayed on the same one-off Pro/Normal/Fast wall as before.
+- Durable lesson: a retained white mana-sibling seam can still be only another white turn-three full-resource wrapper miss. Closing it is safe enough to keep when it cleanly collapses the retained fixture with no churn, but it does not justify more wrapper-only spend if the default live wall remains unchanged one-offs.
+
 ## Apr 8, 2026: Retain White Mana-Sibling Seam
 
 - What was tried: after the `v6` replay left only one repeated multi-bucket family, added `primary_white_mana_sibling_ply9` and `smart_automove_pro_white_mana_sibling_probe` to compare the direct-Pro `l5,0;l5,1` vs current `l5,0;l4,1` board against the sibling Normal `l5,0;l6,1` vs `l5,0;l4,1` board.

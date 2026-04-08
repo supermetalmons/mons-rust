@@ -8,6 +8,12 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest focused gate (`2026-04-08`, latest):
+  - traced the retained `primary_white_mana_sibling_ply9` seam back to the outer wrapper: the board is `turn=3`, `mons_moves=3`, `action=true`, `mana=true`, guarded `runtime_pro_turn_engine_v30` was falling through to `runtime_release_safe_pre_exact` and selecting `l5,0;l5,1`, while current Pro still chose `l5,0;l4,1`
+  - kept a narrow wrapper repair in production code: extended the existing white turn-three full-resource current-Pro fallback from `mons_moves>=5` to `mons_moves>=3`, and added `runtime_pro_turn_engine_v30_profile_prefers_current_white_turn_three_full_resources_root`
+  - focused validation passed, `guardrails` passed, `primary_white_mana_sibling_ply9` collapsed to current, `pro-triage(primary_pro)` returned to `1/56` with only `human_win_pro_c`, `off_target_changed=0`, and `runtime-preflight` passed
+  - `pro-reliability` still failed at `0.8333` vs current Pro, `0.5000` vs current Normal, and `0.7500` vs current Fast; the default duel trace stayed on the same one-off wall (`l9,2;l8,3` vs `l10,7;l9,7`, `l9,5;l8,5` vs `l9,5;l7,6;l7,7`, `l2,4;l3,3` vs `l3,6;l2,7`, `l10,4;l9,4` vs `l8,6;l7,7`, `l1,6;l2,7` vs `l2,3;l3,2`, `l8,4;l8,5` vs `l8,4;l7,3`, `l9,5;l8,5` vs `l7,5;l6,4`)
+  - direct conclusion: keep the narrow wrapper fix and regression test, but do not spend another broad white-wrapper split from this seam; the next live hypothesis still has to attack the unchanged one-off default reliability wall
 - Latest retained foothold (`2026-04-08`, latest):
   - added `primary_white_mana_sibling_ply9` plus `smart_automove_pro_white_mana_sibling_probe` for the repeated `v6` white `l5,0;*` family
   - probe result: the retained direct-Pro board and the sibling Normal board share the same shape, `stage=engine_disabled`, `drainer_vulnerable=false`, `drainer_walk_vulnerable=false`, current/pre-accept both stay on `l5,0;l4,1`, and the challenger instead takes a lower-ranked same-family `ManaTempo` sibling (`l5,0;l5,1` on Pro, `l5,0;l6,1` on Normal)

@@ -1689,6 +1689,21 @@ fn runtime_pro_turn_engine_v30_profile_prefers_current_black_turn_four_start_act
 }
 
 #[test]
+fn runtime_pro_turn_engine_v30_profile_prefers_current_white_turn_three_full_resources_root() {
+    let fixture = primary_pro_fixture_by_id("primary_white_mana_sibling_ply9");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    assert_eq!(
+        profile_decision_move_fen(
+            "runtime_pro_turn_engine_v30",
+            SmartAutomovePreference::Pro,
+            &fixture.game
+        ),
+        "l5,0;l4,1"
+    );
+}
+
+#[test]
 fn runtime_pro_turn_engine_v30_profile_does_not_seed_cached_plain_spirit_continuation_when_head_is_rejected(
 ) {
     fn game_with_items(items: Vec<(Location, Item)>, active_color: Color) -> MonsGame {
