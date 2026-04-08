@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: White Forced-Prepass Comparison Killed At Diagnostics
+
+- What was tried: widened `smart_automove_pro_white_fast_forced_prepass_probe` so it compares the older traced Fast board with the fresh `pro_turn_planner_reliability_v5` Normal drift `l9,4;l8,5` vs current `l9,4;l8,3`, while keeping `primary_white_fast_screen_opening_0_ply9` as the retained comparison fixture.
+- Why it stopped: the new Normal board was not a new family. Both traced boards showed the same live-only `search_only_forced_prepass` shape: `drainer_vulnerable=true`, `drainer_walk_vulnerable=false`, a safe `DrainerSafetyRecovery` selected root, and vulnerable `ManaTempo` pre-accept/current roots underneath. The retained fixture still stayed `drainer_vulnerable=false` and `engine_disabled`, so there was still no retained cheap-surface foothold for a production split.
+- Durable lesson: when a fresh white replay only reproduces the existing live-only forced-prepass drainer-safety pattern, keep the widened probe and kill the production idea. Wait for that family to land on a retained surface before spending code.
+
 ## Apr 8, 2026: Fresh Seed v5 Duel Replay Killed Before Code Edits
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v5` after the cheap gate reconfirmed the retained frontier was stalled at `human_win_pro_c` alone.

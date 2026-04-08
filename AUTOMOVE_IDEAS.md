@@ -9,6 +9,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - expanded `smart_automove_pro_white_fast_forced_prepass_probe` to compare the old traced Fast board with the new `pro_turn_planner_reliability_v5` Normal board `l9,4;l8,5` vs current `l9,4;l8,3`
+  - both traced boards are the same live-only family: `drainer_vulnerable=true`, `drainer_walk_vulnerable=false`, current and `pre_accept` stay on vulnerable `ManaTempo`, while `search_only_forced_prepass` returns a safe `DrainerSafetyRecovery` root (`l8,4;l8,5` on Fast, `l9,4;l8,5` on Normal)
+  - the retained comparison fixture `primary_white_fast_screen_opening_0_ply9` still does not share that surface: `drainer_vulnerable=false`, stage `engine_disabled`, and the selected/current roots remain spirit-progress choices
+  - direct conclusion: kill the white Normal forced-prepass idea before code edits; it is not a new retained foothold, just another member of the already-known live-only white forced-prepass family
+- Latest diagnostic close (`2026-04-08`, latest):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v5` because the cheap frontier is fully stalled at `human_win_pro_c`
   - duel summary:
     - `vs current Pro`: `5` regressions, `4` improvements, `3` flat; every move pair stayed at count `1`

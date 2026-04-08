@@ -3751,9 +3751,9 @@ fn smart_automove_pro_white_fast_accepted_head_probe() {
 }
 
 #[test]
-#[ignore = "diagnostic: inspect white fast forced-prepass family on traced duel board"]
+#[ignore = "diagnostic: inspect white forced-prepass families on traced duel boards"]
 fn smart_automove_pro_white_fast_forced_prepass_probe() {
-    fn run_probe(label: &str, game: &MonsGame) {
+    fn run_probe(label: &str, game: &MonsGame, targets: &[&str]) {
         clear_exact_state_analysis_cache();
         clear_exact_query_diagnostics();
         clear_turn_engine_plan_cache();
@@ -3767,6 +3767,16 @@ fn smart_automove_pro_white_fast_forced_prepass_probe() {
                 game,
             );
         let perspective = game.active_color;
+        let drainer_vulnerable = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            game,
+            perspective,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        let drainer_walk_vulnerable = MonsGameModel::is_own_drainer_walk_vulnerable_next_turn(
+            game,
+            perspective,
+            config.enable_enhanced_drainer_vulnerability,
+        );
         let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
             game,
             scored_roots.as_slice(),
@@ -3801,7 +3811,7 @@ fn smart_automove_pro_white_fast_forced_prepass_probe() {
         });
 
         println!(
-            "WHITE_FAST_FORCED_PREPASS label={} selected={} pre_accept={} baseline_selected={} forced_inputs={:?} stage={} accepted={} head={:?} fen={}",
+            "WHITE_FAST_FORCED_PREPASS label={} selected={} pre_accept={} baseline_selected={} forced_inputs={:?} stage={} accepted={} drainer_vulnerable={} drainer_walk_vulnerable={} head={:?} fen={}",
             label,
             Input::fen_from_array(&selected),
             Input::fen_from_array(&pre_accept_selected),
@@ -3811,6 +3821,8 @@ fn smart_automove_pro_white_fast_forced_prepass_probe() {
                 .map(|inputs| Input::fen_from_array(inputs)),
             selector_diag.last_return_stage,
             accepted,
+            drainer_vulnerable,
+            drainer_walk_vulnerable,
             head_plan
                 .as_ref()
                 .and_then(|plan| plan.compiled_chunks.first())
@@ -3825,11 +3837,14 @@ fn smart_automove_pro_white_fast_forced_prepass_probe() {
             format_root_probe(baseline_root),
             format_root_probe(head_root),
         );
-        for target in ["l8,4;l8,5", "l8,4;l7,3", "l8,4;l8,3"] {
+        for target in targets {
             let rank = scored_roots
                 .iter()
-                .position(|root| Input::fen_from_array(&root.inputs) == target);
-            println!("WHITE_FAST_FORCED_PREPASS_TARGET label={} target={} rank={:?}", label, target, rank);
+                .position(|root| Input::fen_from_array(&root.inputs) == *target);
+            println!(
+                "WHITE_FAST_FORCED_PREPASS_TARGET label={} target={} rank={:?}",
+                label, target, rank
+            );
         }
         for (rank, root) in scored_roots.iter().enumerate().take(8) {
             println!(
@@ -3847,13 +3862,31 @@ fn smart_automove_pro_white_fast_forced_prepass_probe() {
         false,
     )
     .expect("valid traced white fast forced-prepass fen");
+    let traced_normal_v5_game = MonsGame::from_fen(
+        "0 0 w 1 0 1 0 0 3 n06a0xn04/n02y0xn03d0xe0xn03/n04s0xn02xxmn03/n04xxmn02xxmn03/n03xxmn01xxmn05/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxME0xn06/n04D0xn01S0xn04/n04A0xn02Y0xn03",
+        false,
+    )
+    .expect("valid traced white normal forced-prepass fen");
     let retained_fixture = primary_pro_fixture_by_id("primary_white_fast_screen_opening_0_ply9");
 
-    for (label, game) in [
-        ("traced_fast_duel", &traced_game),
-        ("primary_white_fast_screen_opening_0_ply9", &retained_fixture.game),
+    for (label, game, targets) in [
+        (
+            "traced_fast_duel",
+            &traced_game,
+            &["l8,4;l8,5", "l8,4;l7,3", "l8,4;l8,3"][..],
+        ),
+        (
+            "traced_normal_duel_v5",
+            &traced_normal_v5_game,
+            &["l9,4;l8,5", "l9,4;l8,3"][..],
+        ),
+        (
+            "primary_white_fast_screen_opening_0_ply9",
+            &retained_fixture.game,
+            &["l8,4;l8,5", "l8,4;l7,3", "l8,4;l8,3"][..],
+        ),
     ] {
-        run_probe(label, game);
+        run_probe(label, game, targets);
     }
 }
 
