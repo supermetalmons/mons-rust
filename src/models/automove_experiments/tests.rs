@@ -2752,6 +2752,7 @@ fn smart_automove_pro_triage_retained_churn_probe() {
         "primary_black_reliability_opening_3_ply4",
         "primary_black_negative_deny_ply4",
         "primary_black_late_accepted_head_ply4",
+        "primary_white_mana_sibling_ply9",
         "primary_white_harvest_loss_c_ply24",
         "primary_white_fast_accepted_head_ply13",
         "human_win_pro_c",
@@ -2902,6 +2903,7 @@ fn smart_automove_pro_runtime_faithful_retained_churn_probe() {
         "primary_black_reliability_opening_3_ply4",
         "primary_black_negative_deny_ply4",
         "primary_black_late_accepted_head_ply4",
+        "primary_white_mana_sibling_ply9",
         "primary_white_harvest_loss_c_ply24",
         "primary_white_fast_accepted_head_ply13",
         "human_win_pro_c",
@@ -4090,6 +4092,151 @@ fn smart_automove_pro_white_score_route_probe() {
             "primary_harvest_white_score_route_win_a",
             &retained_fixture.game,
             &["l9,6;l7,4;l8,3", "l9,6;l7,6;l7,7"][..],
+        ),
+    ] {
+        run_probe(label, game, targets);
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: inspect white mana sibling family on retained and traced duel boards"]
+fn smart_automove_pro_white_mana_sibling_probe() {
+    fn run_probe(label: &str, game: &MonsGame, targets: &[&str]) {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        clear_turn_engine_plan_cache();
+        clear_turn_engine_diagnostics();
+        clear_turn_engine_selector_diagnostics();
+
+        let (config, scored_roots, head_plan, forced_engine_inputs) =
+            profile_runtime_scored_roots_with_forced_engine_inputs(
+                "runtime_pro_turn_engine_v30",
+                SmartAutomovePreference::Pro,
+                game,
+            );
+        let perspective = game.active_color;
+        let drainer_vulnerable = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+            game,
+            perspective,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        let drainer_walk_vulnerable = MonsGameModel::is_own_drainer_walk_vulnerable_next_turn(
+            game,
+            perspective,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
+            game,
+            scored_roots.as_slice(),
+            perspective,
+            config,
+        );
+        let selected =
+            profile_decision_inputs("runtime_pro_turn_engine_v30", SmartAutomovePreference::Pro, game);
+        let selector_diag = turn_engine_selector_diagnostics_snapshot();
+        let baseline_selected =
+            profile_decision_inputs("runtime_current", SmartAutomovePreference::Pro, game);
+        let selected_root = scored_roots.iter().find(|root| root.inputs == selected);
+        let pre_accept_root = scored_roots
+            .iter()
+            .find(|root| root.inputs == pre_accept_selected);
+        let baseline_root = scored_roots.iter().find(|root| root.inputs == baseline_selected);
+        let head_root = head_plan.as_ref().and_then(|plan| {
+            plan.compiled_chunks.first().and_then(|chunk| {
+                scored_roots
+                    .iter()
+                    .find(|root| root.inputs.as_slice() == chunk.as_slice())
+            })
+        });
+        let accepted = head_plan.as_ref().is_some_and(|plan| {
+            MonsGameModel::accept_turn_engine_head_after_search(
+                game,
+                perspective,
+                config,
+                scored_roots.as_slice(),
+                pre_accept_selected.as_slice(),
+                plan,
+            )
+        });
+        let pre_accept_utility = pre_accept_root.map(|root| {
+            let family = MonsGameModel::turn_engine_root_evaluation_family(root);
+            MonsGameModel::turn_engine_root_plan_utility(game, root, perspective, config, family)
+        });
+        let baseline_utility = baseline_root.map(|root| {
+            let family = MonsGameModel::turn_engine_root_evaluation_family(root);
+            MonsGameModel::turn_engine_root_plan_utility(game, root, perspective, config, family)
+        });
+
+        println!(
+            "WHITE_MANA_SIBLING label={} selected={} pre_accept={} baseline_selected={} forced_inputs={:?} stage={} accepted={} drainer_vulnerable={} drainer_walk_vulnerable={} head={:?} head_family={:?} goal_family={:?} plan_utility={:?} head_utility={:?} pre_accept_utility={:?} baseline_utility={:?} fen={}",
+            label,
+            Input::fen_from_array(&selected),
+            Input::fen_from_array(&pre_accept_selected),
+            Input::fen_from_array(&baseline_selected),
+            forced_engine_inputs
+                .as_ref()
+                .map(|inputs| Input::fen_from_array(inputs)),
+            selector_diag.last_return_stage,
+            accepted,
+            drainer_vulnerable,
+            drainer_walk_vulnerable,
+            head_plan
+                .as_ref()
+                .and_then(|plan| plan.compiled_chunks.first())
+                .map(|chunk| Input::fen_from_array(chunk)),
+            head_plan.as_ref().map(|plan| plan.head_family),
+            head_plan.as_ref().map(|plan| plan.goal_family),
+            head_plan.as_ref().map(|plan| plan.utility),
+            head_plan.as_ref().map(|plan| plan.head_utility),
+            pre_accept_utility,
+            baseline_utility,
+            game.fen(),
+        );
+        println!(
+            "WHITE_MANA_SIBLING_ROOTS label={} selected=\"{}\" pre_accept=\"{}\" baseline=\"{}\" head=\"{}\"",
+            label,
+            format_root_probe(selected_root),
+            format_root_probe(pre_accept_root),
+            format_root_probe(baseline_root),
+            format_root_probe(head_root),
+        );
+        for target in targets {
+            let rank = scored_roots
+                .iter()
+                .position(|root| Input::fen_from_array(&root.inputs) == *target);
+            println!(
+                "WHITE_MANA_SIBLING_TARGET label={} target={} rank={:?}",
+                label, target, rank
+            );
+        }
+        for (rank, root) in scored_roots.iter().enumerate().take(8) {
+            println!(
+                "WHITE_MANA_SIBLING_TOP label={} rank={} fen={} root=\"{}\"",
+                label,
+                rank,
+                Input::fen_from_array(&root.inputs),
+                format_root_probe(Some(root)),
+            );
+        }
+    }
+
+    let retained_fixture = primary_pro_fixture_by_id("primary_white_mana_sibling_ply9");
+    let traced_normal_game = MonsGame::from_fen(
+        "0 0 w 0 0 3 0 0 3 n07e0xn03/n03s0xn01a0xn05/n01y0xn03d0xn05/n03xxmxxmn01xxmn04/n05xxmn01xxmn03/E0Bn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n06D0xY0xn03/n04A0xn01S0xn04",
+        false,
+    )
+    .expect("valid traced white mana sibling normal fen");
+
+    for (label, game, targets) in [
+        (
+            "primary_white_mana_sibling_ply9",
+            &retained_fixture.game,
+            &["l5,0;l5,1", "l5,0;l4,1"][..],
+        ),
+        (
+            "traced_normal_duel_v6",
+            &traced_normal_game,
+            &["l5,0;l6,1", "l5,0;l4,1"][..],
         ),
     ] {
         run_probe(label, game, targets);

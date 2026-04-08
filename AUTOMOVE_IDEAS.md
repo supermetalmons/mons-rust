@@ -8,6 +8,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest retained foothold (`2026-04-08`, latest):
+  - added `primary_white_mana_sibling_ply9` plus `smart_automove_pro_white_mana_sibling_probe` for the repeated `v6` white `l5,0;*` family
+  - probe result: the retained direct-Pro board and the sibling Normal board share the same shape, `stage=engine_disabled`, `drainer_vulnerable=false`, `drainer_walk_vulnerable=false`, current/pre-accept both stay on `l5,0;l4,1`, and the challenger instead takes a lower-ranked same-family `ManaTempo` sibling (`l5,0;l5,1` on Pro, `l5,0;l6,1` on Normal)
+  - cheap-gate result after retaining the new seam: `pro-triage(primary_pro)` moved to `2/56` with only `primary_white_mana_sibling_ply9` and `human_win_pro_c` changed, `off_target_changed=0`
+  - direct conclusion: keep the fixture and probe, but do not cut production code yet; this is now a retained white selector foothold, not a bounded shared fix
 - Latest diagnostic close (`2026-04-08`, latest):
   - widened `smart_automove_pro_white_score_route_probe` to compare the fresh `v6` direct-Pro spirit rerank `l9,6;l8,4;l7,4` vs current `l9,6;l7,4;l7,3` against the retained harvest fixture `primary_harvest_white_score_route_win_a`
   - the traced `v6` board is still not the retained harvest surface: `selected=head=l9,6;l8,4;l7,4`, `accepted=true`, `pre_accept=l9,6;l7,4;l8,4`, and current differs only by another nearby vulnerable spirit-own-setup root `l9,6;l7,4;l7,3`

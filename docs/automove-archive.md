@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Retain White Mana-Sibling Seam
+
+- What was tried: after the `v6` replay left only one repeated multi-bucket family, added `primary_white_mana_sibling_ply9` and `smart_automove_pro_white_mana_sibling_probe` to compare the direct-Pro `l5,0;l5,1` vs current `l5,0;l4,1` board against the sibling Normal `l5,0;l6,1` vs `l5,0;l4,1` board.
+- Why it stopped: the seam was real enough to retain but still not ready for production code. Both boards were `engine_disabled`, `drainer_vulnerable=false`, and stayed entirely inside the same non-spirit `ManaTempo` family. Current and `pre_accept` already matched `l5,0;l4,1`, while the challenger picked a lower-ranked sibling (`l5,0;l5,1` or `l5,0;l6,1`). The cheap gate moved to `2/56` changed primary-Pro fixtures with only this new seam plus `human_win_pro_c`, but there was still no bounded shared fix to try safely.
+- Durable lesson: repeated sibling reranks can be worth retaining as fixtures even before there is a production hypothesis. Preserve the foothold and wait for a clear selector rule, rather than inventing a risky tie-break change.
+
 ## Apr 8, 2026: White V6 Spirit-Rerank Comparison Killed At Diagnostics
 
 - What was tried: widened `smart_automove_pro_white_score_route_probe` so it compares the fresh `pro_turn_planner_reliability_v6` direct-Pro seam `l9,6;l8,4;l7,4` vs current `l9,6;l7,4;l7,3` against the retained harvest fixture `primary_harvest_white_score_route_win_a`.
