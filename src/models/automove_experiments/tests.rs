@@ -4263,6 +4263,122 @@ fn smart_automove_pro_black_forced_runtime_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: compare traced black spirit sibling board against early black opening fixtures"]
+fn smart_automove_pro_black_spirit_sibling_probe() {
+    fn run_probe(label: &str, game: &MonsGame, mode: SmartAutomovePreference, targets: &[&str]) {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        clear_turn_engine_plan_cache();
+        clear_turn_engine_diagnostics();
+        clear_turn_engine_selector_diagnostics();
+
+        let (config, scored_roots, head_plan, forced_engine_inputs) =
+            profile_runtime_scored_roots_with_forced_engine_inputs(
+                "runtime_pro_turn_engine_v30",
+                mode,
+                game,
+            );
+        let perspective = game.active_color;
+        let selected = profile_decision_inputs("runtime_pro_turn_engine_v30", mode, game);
+        let selector_diag = turn_engine_selector_diagnostics_snapshot();
+        let baseline_selected = profile_decision_inputs("runtime_current", mode, game);
+        let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
+            game,
+            scored_roots.as_slice(),
+            perspective,
+            config,
+        );
+        let selected_root = scored_roots.iter().find(|root| root.inputs == selected);
+        let pre_accept_root = scored_roots
+            .iter()
+            .find(|root| root.inputs == pre_accept_selected);
+        let baseline_root = scored_roots.iter().find(|root| root.inputs == baseline_selected);
+        let head_root = head_plan.as_ref().and_then(|plan| {
+            plan.compiled_chunks.first().and_then(|chunk| {
+                scored_roots
+                    .iter()
+                    .find(|root| root.inputs.as_slice() == chunk.as_slice())
+            })
+        });
+        let accepted = head_plan.as_ref().is_some_and(|plan| {
+            MonsGameModel::accept_turn_engine_head_after_search(
+                game,
+                perspective,
+                config,
+                scored_roots.as_slice(),
+                pre_accept_selected.as_slice(),
+                plan,
+            )
+        });
+
+        println!(
+            "BLACK_SPIRIT_SIBLING label={} selected={} pre_accept={} baseline_selected={} forced_inputs={:?} stage={} accepted={} head={:?} head_family={:?} goal_family={:?} fen={}",
+            label,
+            Input::fen_from_array(&selected),
+            Input::fen_from_array(&pre_accept_selected),
+            Input::fen_from_array(&baseline_selected),
+            forced_engine_inputs
+                .as_ref()
+                .map(|inputs| Input::fen_from_array(inputs)),
+            selector_diag.last_return_stage,
+            accepted,
+            head_plan
+                .as_ref()
+                .and_then(|plan| plan.compiled_chunks.first())
+                .map(|chunk| Input::fen_from_array(chunk)),
+            head_plan.as_ref().map(|plan| plan.head_family),
+            head_plan.as_ref().map(|plan| plan.goal_family),
+            game.fen(),
+        );
+        println!(
+            "BLACK_SPIRIT_SIBLING_ROOTS label={} selected=\"{}\" pre_accept=\"{}\" baseline=\"{}\" head=\"{}\"",
+            label,
+            format_root_probe(selected_root),
+            format_root_probe(pre_accept_root),
+            format_root_probe(baseline_root),
+            format_root_probe(head_root),
+        );
+        for target in targets {
+            let rank = scored_roots
+                .iter()
+                .position(|root| Input::fen_from_array(&root.inputs) == *target);
+            println!(
+                "BLACK_SPIRIT_SIBLING_TARGET label={} target={} rank={:?}",
+                label, target, rank
+            );
+        }
+    }
+
+    let traced_pro_v12_game = MonsGame::from_fen(
+        "0 0 b 0 0 1 0 0 2 n04s0xd0xa0xe0xn03/n04y0xn06/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n04A0xn03S0xn02/n11/n03E0xn01D0xn02Y0xn02",
+        false,
+    )
+    .expect("valid traced pro v12 black spirit sibling fen");
+    let opening_a_fixture = primary_pro_fixture_by_id("primary_black_loss_opening_a_black_turn");
+    let reliability_ba_fixture =
+        primary_pro_fixture_by_id("primary_black_reliability_opening_0_ba_black_turn");
+    let reliability_live_fixture =
+        primary_pro_fixture_by_id("primary_black_reliability_opening_0_ba_live_black_turn");
+    let gate_fixture = primary_pro_fixture_by_id("primary_black_gate_loss_a_ply4");
+
+    for (label, game) in [
+        ("traced_pro_duel_v12", &traced_pro_v12_game),
+        ("primary_black_loss_opening_a_black_turn", &opening_a_fixture.game),
+        (
+            "primary_black_reliability_opening_0_ba_black_turn",
+            &reliability_ba_fixture.game,
+        ),
+        (
+            "primary_black_reliability_opening_0_ba_live_black_turn",
+            &reliability_live_fixture.game,
+        ),
+        ("primary_black_gate_loss_a_ply4", &gate_fixture.game),
+    ] {
+        run_probe(label, game, SmartAutomovePreference::Pro, &["l0,4;l1,3", "l0,4;l1,5"]);
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: inspect white forced-prepass families on traced duel boards"]
 fn smart_automove_pro_white_fast_forced_prepass_probe() {
     fn run_probe(label: &str, game: &MonsGame, targets: &[&str]) {

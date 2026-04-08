@@ -9,6 +9,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - added `smart_automove_pro_black_spirit_sibling_probe` to compare the fresh `v12` direct-Pro black spirit-sibling board `l0,4;l1,3` vs current `l0,4;l1,5` against existing early black opening fixtures that already target `l0,4;l1,5`
+  - the traced board is not the existing opening family even though it shares the same current move string: on the traced board, `forced_inputs=None`, `stage=engine_post_search`, `accepted=false`, and `pre_accept` already sits on `l0,4;l1,3`; the opening fixtures either stay fully unforced on current or carry forced `SafeSupermanaProgress` heads like `l0,5;l1,6` or `l0,5;l1,5`
+  - direct conclusion: keep the new black spirit-sibling probe, but kill the `v12` spirit-sibling revival before code edits; sharing baseline `l0,4;l1,5` is still not enough for a shared opening-family production rule
+- Latest diagnostic close (`2026-04-08`, latest):
   - widened `smart_automove_pro_black_forced_runtime_probe` with the fresh `v12` direct-Pro black board `l2,5;l0,5;l1,6` vs current `l3,2;l4,1`
   - the traced board is not the retained later-black accepted-head family even though it shares the same current baseline and the same broad `SpiritImpact -> ImmediateScore` label: runtime-faithful v30 already has `selected=pre_accept=head=l2,5;l0,5;l1,6`, `accepted=true`, and a vulnerable spirit head, while the retained `primary_black_late_accepted_head_ply4` surface still keeps `pre_accept` on current `l3,2;l4,1` and leaves `l1,5;l1,7;l0,7` rejected
   - it is also not the retained mana-bridge family: that seam ends as an accepted non-vulnerable `ManaTempo` root under `head_family=SafeSupermanaProgress`, while the traced `v12` board is already an accepted vulnerable `SpiritImpact` head under `goal_family=ImmediateScore`

@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Traced Pro V12 Black Spirit Sibling Killed At Diagnostics
+
+- What was tried: added `smart_automove_pro_black_spirit_sibling_probe` to compare the fresh `v12` direct-Pro board `l0,4;l1,3` vs current `l0,4;l1,5` against existing early black opening fixtures that already anchor on current `l0,4;l1,5`.
+- Why it stopped: the traced board was not the existing opening family. On the traced board, `runtime_pro_turn_engine_v30` had `forced_inputs=None`, `stage=engine_post_search`, `accepted=false`, and `pre_accept` already on `l0,4;l1,3`, while the opening fixtures either stayed fully unforced on current `l0,4;l1,5` or carried forced `SafeSupermanaProgress` heads like `l0,5;l1,6` or `l0,5;l1,5`. Sharing the same current move string did not produce a shared runtime-faithful surface.
+- Durable lesson: keep the new probe, but do not reopen a shared early-black opening branch just because a fresh board reuses current `l0,4;l1,5`. Runtime-faithful stage shape and forced-input story still matter more than the baseline move string.
+
 ## Apr 8, 2026: Traced Pro V12 Black Spirit Head Killed At Diagnostics
 
 - What was tried: widened `smart_automove_pro_black_forced_runtime_probe` so it compares the retained black seams against the fresh `v12` direct-Pro board `l2,5;l0,5;l1,6` vs current `l3,2;l4,1`.
