@@ -148,6 +148,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the focused probe showed a one-off forced-shortlist distortion instead. `runtime_pro_turn_engine_v30` injected a terrible `ManaTempo` head `l3,6;l3,7` at the top of the forced root set, left that head unaccepted, and still pre-accepted `l2,4;l3,3` over current `l3,6;l2,7`. A fresh `smart_automove_pro_runtime_faithful_retained_churn_probe` confirmed the retained surface still had forced inputs only on the already-closed `primary_pvs_sensitive_search` fixture, so this later black seam had no retained `primary_pro` foothold.
 - Durable lesson: do not reopen a later black `ManaTempo` shortlist repair without a matching retained forced-input seam on `primary_pro`; a one-off injected head with `accepted=false` is still just diagnostic noise.
 
+## Apr 8, 2026: White Fast-Duel Opening-Family Probe Killed Before Code Edits
+
+- What was tried: drilled into the white fast-duel one-off `l9,5;l8,5` vs current `l7,5;l6,4` to see whether it was a fresh opening-family selector seam.
+- Why it stopped: the focused probe showed another outer-wrapper mismatch instead. The board was `turn=3`, `mons_moves=2`, `action=false`, `mana=true`; configured `runtime_pro_turn_engine_v30` still pre-accepted current `l7,5;l6,4`, while the live path returned `l9,5;l8,5`, which was not present in the configured root shortlist at all. That made it another member of the already-closed white turn-three mana-only wrapper family, so the idea died before code edits.
+- Durable lesson: if a white fast-duel move is missing from the configured v30 shortlist, treat it as wrapper churn, not a new retained selector seam.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
