@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Fresh Seed v4 Duel Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with another new seed tag, `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v4`, after the retained white forced-prepass probe ruled out the previous Fast family as live-only shell churn.
+- Why it stopped: the replay again produced only count-`1` seams. `vs current Pro` finished at `2` regressions / `4` improvements / `6` flat, `vs current Normal` at `3` / `1` / `8`, and `vs current Fast` at `2` / `4` / `6`, with every recorded move pair unique. The traced regressions ranged across black accepted-spirit drift, white spirit-own-setup reranks, a white accepted head, and a white mana-tempo rerank, but none repeated and none landed on a retained cheap-surface foothold.
+- Durable lesson: once two fresh replays in the same retained branch collapse into count-`1` churn, treat the apparent new families as seed-local noise unless they repeat and land on a retained surface. Do not cut production code from one-off accepted-head or spirit-setup-looking seams.
+
 ## Apr 8, 2026: White Fast Forced-Prepass Family Killed At Diagnostics
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` on the retained challenger with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v3`, which exposed one repeated white fast candidate family in `vs current Fast`: `l8,4;l8,5` appeared twice, once against current `l8,4;l7,3` and once against current `l8,4;l8,3`. Added a focused diagnostic probe, `smart_automove_pro_white_fast_forced_prepass_probe`, to compare the traced fast-duel board with the nearby retained `primary_white_fast_screen_opening_0_ply9` surface.

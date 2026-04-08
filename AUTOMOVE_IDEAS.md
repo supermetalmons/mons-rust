@@ -9,6 +9,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v4`
+  - duel summary:
+    - `vs current Pro`: `2` regressions, `4` improvements, `6` flat; both move pairs stayed at count `1`
+    - `vs current Normal`: `3` regressions, `1` improvement, `8` flat; all three move pairs stayed at count `1`
+    - `vs current Fast`: `2` regressions, `4` improvements, `6` flat; both move pairs stayed at count `1`
+  - the traced seams were all seed-local one-offs: a black accepted spirit line `l1,5;l2,3;l3,3` vs current `l1,5;l2,7;l1,8`, white spirit/setup reranks `l9,5;l7,4;l8,3` and `l9,5;l8,5` vs current `l9,5;l7,6;l7,7`, a white accepted head `l4,9;l4,7;l3,7` vs current `l4,9;l3,9`, and a white mana-tempo rerank `l10,4;l9,4` vs current `l10,4;l9,3`
+  - direct conclusion: kill this turn at diagnostics before code edits; even after the retained white forced-prepass probe, the next fresh replay still did not expose a repeated duel family with a retained cheap-surface foothold
+- Latest diagnostic close (`2026-04-08`, latest):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` on the retained challenger with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v3`
   - duel summary: `vs current Pro` finished at `1` regression / `5` improvements / `6` flat, `vs current Normal` at `3` / `2` / `7`, and `vs current Fast` at `3` / `2` / `7`
   - the only repeated live candidate family was white fast `l8,4;l8,5`, which surfaced twice in `vs current Fast`, once against current `l8,4;l7,3` and once against current `l8,4;l8,3`; the later black `l2,7;l2,8` drift stayed one-off
