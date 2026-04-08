@@ -9,6 +9,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-08`, latest):
+  - drilled into the fresh direct-Pro black one-off `l1,5;l2,3;l3,3` vs current `l1,5;l2,7;l1,8`
+  - the traced board does not land on either retained black seam family: compared against `primary_black_negative_deny_ply4` and `primary_black_late_accepted_head_ply4`, every spirit-pref competition flag stayed `false`, the forced head `l1,5;l1,7;l0,7` was present but still `accepted=false`, and the candidate cluster stayed all vulnerable plain-spirit `supermana_progress` roots with identical setup gain
+  - current differs only by taking a lower-ranked own-setup spirit root with higher `setup_gain`, not by reopening the retained early-black `negative_deny` or later-black accepted-head stories
+  - direct conclusion: kill the black direct-Pro spirit-cluster idea before code edits; it is another one-off live seam with no retained black foothold
+- Latest diagnostic close (`2026-04-08`, latest):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v4`
   - duel summary:
     - `vs current Pro`: `2` regressions, `4` improvements, `6` flat; both move pairs stayed at count `1`

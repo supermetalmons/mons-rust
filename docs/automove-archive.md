@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 8, 2026: Direct-Pro Black Spirit Cluster Probe Killed At Diagnostics
+
+- What was tried: after the fresh `pro_turn_planner_reliability_v4` replay, drilled into the one-off direct-Pro black regression `l1,5;l2,3;l3,3` vs current `l1,5;l2,7;l1,8` and compared it to both retained black footholds, `primary_black_negative_deny_ply4` and `primary_black_late_accepted_head_ply4`.
+- Why it stopped: the traced board did not match either retained black family. All spirit-pref competition gates stayed `false`, the forced head `l1,5;l1,7;l0,7` was present but still `accepted=false`, and the shortlist was just a vulnerable plain-spirit `supermana_progress` cluster with identical setup gain, while current differed only by taking a lower-ranked own-setup spirit root. That made it another isolated live seam rather than a retained early-black `negative_deny` or later-black accepted-head story.
+- Durable lesson: do not reopen black production seams from a one-off spirit-vs-spirit drift unless a focused probe shows it actually lands on one of the retained black competition families. A rejected forced head plus all-false competition flags is a kill signal.
+
 ## Apr 8, 2026: Fresh Seed v4 Duel Replay Killed Before Code Edits
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with another new seed tag, `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v4`, after the retained white forced-prepass probe ruled out the previous Fast family as live-only shell churn.
