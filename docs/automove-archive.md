@@ -730,6 +730,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the seed stayed count-`1` everywhere. Direct Pro finished `1` regression / `4` improvements / `7` flat and only had one-off black drainer-safety `l0,5;l1,4` vs current `l2,8;l3,8`. Normal finished `2` / `2` / `8` and split across one-off white spirit-own-setup `l9,5;l7,4;l8,3` vs `l9,5;l7,6;l7,7` and one-off black spirit rerank `l2,5;l0,6;l1,6` vs `l2,5;l2,3;l1,2`. Fast finished `1` / `3` / `8` and only added one-off black mana-bridge `l0,5;l1,4` vs `l4,1;l5,0;mb`. Every exact move pair across all three buckets stayed at count `1`.
 - Durable lesson: do not spend from a replay just because direct Pro nearly goes clean again. If Normal and Fast still contribute only separate one-off seams, keep only the note and wait for one exact family that actually survives the whole sample.
 
+## Apr 9, 2026: Seed v65 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v65` to see whether a cleaner `ManaTempo`-shaped replay would finally collapse onto one exact family across the three duel buckets.
+- Why it stopped: the seed stayed count-`1` everywhere. Direct Pro finished `1` regression / `3` improvements / `8` flat and only had one-off black `ManaTempo` tie `l1,2;l1,1` vs current `l1,2;l0,1`. Normal finished `2` / `3` / `7` and split across one-off black accepted `ManaTempo` rerank `l0,9;l0,10` vs `l2,5;l4,3;l3,3` and one-off white `ManaTempo` tie `l8,3;l8,2` vs `l8,3;l9,2`. Fast finished `3` / `4` / `5` and split across one-off black `ManaTempo` tie `l1,8;l1,9` vs `l1,8;l0,9`, one-off white `ManaTempo` tie `l8,5;l7,4` vs `l8,5;l9,4`, and one-off black bridge-adjacent drainer-safety `l0,5;l1,4` vs `l4,1;l5,0;mb`.
+- Durable lesson: do not spend from a replay just because the surviving losses all look like tidy `ManaTempo` ties and reranks. If every exact pair still stays at count `1`, keep only the note and wait for one exact family that actually survives the whole sample.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
