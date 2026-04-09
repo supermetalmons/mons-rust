@@ -748,6 +748,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the seed still fractured into count-`1` seams. Direct Pro finished `1` regression / `4` improvements / `7` flat and only had one-off white `l9,6;l8,5` vs current `l9,6;l8,7`. Normal finished `2` / `1` / `9` and only mixed one-off early-black `negative_deny` `l0,5;l1,6` vs `l1,5;l3,6;l2,7` with one return of the already-killed white `ManaTempo` tie `l6,5;l6,6` vs `l6,5;l7,4`. Fast finished `5` / `2` / `5` and fractured across one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, one-off white forced-prepass `l8,4;l8,5` vs `l8,4;l9,3`, one-off black drainer-safety `l1,4;l2,3` vs `l1,6;l1,5`, one-off black `ManaTempo` tie `l2,7;l2,8` vs `l7,1;l6,1`, and one-off black spirit rerank `l2,4;l0,6;l1,6` vs `l1,7;l2,6`. Every exact move pair across all three buckets stayed at count `1`.
 - Durable lesson: do not spend from a replay just because direct Pro stays quiet and the old Normal white `l6,5;l6,6` tie returns. If Fast still breaks into unrelated bridge, forced-prepass, drainer-safety, and local `ManaTempo` one-offs, keep only the note and wait for one exact family that actually survives the whole sample.
 
+## Apr 9, 2026: Black Risky-Window Inject Block Killed After Reliability
+
+- What was tried: added a narrow inject-time cut in `runtime_pro_turn_engine_v30` to reject absent forced `ManaTempo` same-turn-window roots under `Safe*Progress -> ImmediateScore` when they only replaced an equally unsafe non-progress `ManaTempo` top with a weaker setup surface. The target seam was retained `primary_black_turn_four_action_mana_ply15`.
+- Why it stopped: the change only closed that one retained later-black seam. It passed the focused regression test, `guardrails`, moved `pro-triage(primary_pro)` to `4/60` with `off_target_changed=0`, and passed `runtime-preflight`, but `pro-reliability` got worse than the clean challenger at `0.7500` vs current Pro, `0.5000` vs current Normal, and `0.5833` vs current Fast.
+- Durable lesson: do not keep a narrow absent-forced black risky-window inject block just because it collapses `primary_black_turn_four_action_mana_ply15`. If the other retained wall stays on the white risky rerank, both bridge seams, and `human_win_pro_c`, the action+mana seam alone is still too local and can degrade direct duel evidence.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps

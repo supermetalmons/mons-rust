@@ -9,6 +9,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest focused gate (`2026-04-09`, latest):
+  - tried a narrow inject-time black action+mana cut in `runtime_pro_turn_engine_v30`: reject absent forced `ManaTempo` same-turn-window roots under `Safe*Progress -> ImmediateScore` when they only replace an equally unsafe non-progress `ManaTempo` top with a weaker setup surface
+  - the branch closed the retained `primary_black_turn_four_action_mana_ply15` seam, passed the focused regression test, `guardrails`, `pro-triage(primary_pro)=4/60` with `off_target_changed=0`, and `runtime-preflight`
+  - it still failed `pro-reliability`, and worse than the clean challenger, at `0.7500` vs current Pro, `0.5000` vs current Normal, and `0.5833` vs current Fast
+  - direct conclusion: kill the absent forced black risky-window inject block; collapsing only the retained later-black action+mana seam is still too local and degrades direct Pro/Fast evidence
+- Latest focused gate (`2026-04-09`, latest):
   - tried a narrow black turn-four mid-turn current-Pro fallback in `runtime_pro_turn_engine_v30`: only black `turn=4`, `mons_moves=2`, `action+mana` states where current Pro already selects `l4,1;l5,0;mb` were routed back to current
   - the branch closed both retained bridge seams `primary_black_mana_bridge_ply20` and `primary_black_spirit_bridge_ply19`, passed the focused regression tests, `guardrails`, `pro-triage(primary_pro)=3/60` with `off_target_changed=0`, and `runtime-preflight`
   - it still failed `pro-reliability` at `0.8333` vs current Pro, `0.5000` vs current Normal, and `0.7500` vs current Fast
