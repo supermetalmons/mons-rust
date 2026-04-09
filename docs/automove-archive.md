@@ -682,6 +682,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: direct Pro did repeat one exact pair, but the other buckets did not line up. Direct Pro finished `3` regressions / `3` improvements / `6` flat and repeated `l10,5;l9,4` vs current `l9,5;l7,4;l8,3` twice, while also adding one-off black `ManaTempo` tie `l2,7;l2,6` vs `l2,7;l3,8`. Normal finished `2` / `4` / `6` and only showed one-off black spirit rerank `l2,5;l0,6;l1,6` vs `l2,5;l2,3;l1,2` plus one-off white spirit-own-setup `l9,5;l7,4;l8,3` vs `l9,5;l7,6;l7,7`. Fast finished `3` / `0` / `9` and only showed one-off black mana-bridge `l0,5;l1,4` vs `l4,1;l5,0;mb`, one-off black `ManaTempo` tie `l2,7;l2,8` vs `l2,7;l1,8`, and one-off white forced-prepass `l8,4;l8,5` vs `l8,4;l8,3`.
 - Durable lesson: do not spend from a replay just because direct Pro repeats one white pair twice. If Normal and Fast do not share the same exact seam and every non-Pro pair stays count-`1`, keep only the note and wait for a repeated family with a retained foothold and a fresh shared lever.
 
+## Apr 9, 2026: Seed v57 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v57` to see whether an apparent direct-Pro white spirit-own-setup family would survive a full replay and line up across other buckets.
+- Why it stopped: the apparent repeat disappeared by the summaries. Direct Pro finished `2` regressions / `3` improvements / `7` flat and only mixed one-off white reranks `l9,5;l7,4;l7,3` vs current `l9,5;l7,6;l7,7` and `l8,1;l7,0` vs `l9,4;l8,3`. Normal finished `2` / `2` / `8` and only mixed one-off white `l9,6;l8,5` vs `l9,7;l7,6;l7,7` and one-off black `l3,2;l3,4;l2,3` vs `l3,2;l4,1`. Fast finished clean at `0` / `2` / `10`. Every exact move pair across all three buckets stayed at count `1`.
+- Durable lesson: do not spend from a replay just because the first direct-Pro trace looks like a repeated white family. If the final summaries collapse back to count-`1` seams and Fast goes clean, keep only the note and wait for one exact family that survives the whole sample.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
