@@ -580,6 +580,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the replay got quieter in Fast, but Pro and Normal still mixed unrelated count-`1` seams. Direct Pro finished `2` regressions / `4` improvements / `6` flat and split immediately across one-off black spirit rerank `l1,5;l2,3;l3,3` vs current `l1,5;l2,7;l1,8` and one-off black mana-bridge `l0,5;l1,4` vs `l4,1;l5,0;mb`. Normal finished `4` / `1` / `7` and added one-off white `ManaTempo` sibling `l8,5;l7,4` vs `l8,5;l9,4`, one-off white forced-prepass `l9,4;l8,5` vs `l9,4;l8,3`, one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, and one-off black action+mana `l1,6;l2,7` vs `l3,2;l4,1`. Fast finished `1` / `2` / `9` and only added one-off black `ManaTempo` rerank `l2,7;l2,8` vs `l7,1;l6,1`.
 - Durable lesson: do not spend from a quieter replay just because Fast mostly goes flat again. If direct Pro and Normal are still mixing unrelated count-`1` black and white seams, keep only the note and wait for one repeated exact family with a retained foothold and a fresh shared lever.
 
+## Apr 9, 2026: Seed v40 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v40` to see whether the post-`v39` wall would finally collapse once direct Pro returned to one old black seam.
+- Why it stopped: the replay stayed count-`1` across all three buckets again. Direct Pro finished `1` regression / `4` improvements / `7` flat and only replayed early-black `negative_deny` `l0,5;l1,6` vs current `l1,5;l3,6;l2,7`. Normal finished `3` / `1` / `8` and mixed one-off white safe-progress `l10,7;l9,6` vs `l9,8;l8,7`, one-off white `l9,5;l8,5` vs `l9,5;l7,6;l7,7`, and one-off black mana-bridge `l0,5;l1,4` vs `l4,1;l5,0;mb`. Fast finished `2` / `2` / `8` and added one-off white forced-prepass `l9,6;l8,5` vs `l9,6;l8,7` plus one-off white `ManaTempo` sibling `l6,3;l7,2` vs `l6,3;l7,3`.
+- Durable lesson: do not spend from a seed just because direct Pro drops back to one known regression. If Normal and Fast still contribute only unrelated count-`1` white and black seams, keep only the note and wait for one repeated exact family with a retained foothold and a fresh shared lever.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
