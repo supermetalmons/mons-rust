@@ -9,6 +9,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-09`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v72`
+  - duel summary: direct Pro finished `3` regressions / `4` improvements / `5` flat, Normal `1` / `1` / `10`, and Fast `5` / `2` / `5`, with every exact move pair still at count `1`
+  - the seed stayed fully fragmented: direct Pro only mixed one-off white `l9,4;l8,5` vs current `l7,7;l6,8`, one-off black `l0,10;l1,9` vs `l0,6;l1,6`, and one-off black `l0,5;l1,6` vs `l1,5;l1,3;l2,3`; Normal only showed one-off white `l9,5;l8,4` vs `l9,6;l7,7;l7,8`; Fast split across one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, one-off black spirit rerank `l1,5;l1,7;l0,7` vs `l3,2;l4,1`, one-off black action+mana `l1,6;l2,7` vs `l2,3;l3,2`, one-off white `l10,4;l9,3` vs `l9,5;l7,6;l8,7`, and one-off white forced-prepass `l7,4;l8,5` vs `l7,4;l8,3`
+  - direct conclusion: kill `v72` at diagnostics and keep only the note; this is still another mixed replay across already-classified black bridge/action-mana and white forced-prepass/engine-disabled families rather than one promotable branch story
+- Latest diagnostic close (`2026-04-09`, latest):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v71`
   - duel summary: direct Pro finished `2` regressions / `2` improvements / `8` flat, Normal `2` / `0` / `10`, and Fast `1` / `4` / `7`, with every exact move pair still at count `1`
   - the replay still split across already-classified one-offs: direct Pro only mixed black spirit sibling `l0,4;l1,3` vs current `l0,4;l1,4` plus white `engine_disabled` `ManaTempo` tie `l8,7;l8,8` vs `l9,6;l8,5`; Normal only replayed two distinct black variants on the old `l4,1;l5,0;mb` baseline, `l0,5;l1,4` and `l2,5;l0,5;l1,5`; Fast only replayed the old white forced-prepass shell `l8,4;l8,5` vs `l8,4;l9,3`

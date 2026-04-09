@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 9, 2026: Fresh Seed v72 Replay Killed At Diagnostics
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v72` to see whether a cleaner Normal bucket would finally expose one exact family worth real code.
+- Why it stopped: the replay stayed fully fragmented. Direct Pro finished `3` regressions / `4` improvements / `5` flat, Normal `1` / `1` / `10`, and Fast `5` / `2` / `5`, with every exact move pair count `1`. Direct Pro only mixed one-off white `l9,4;l8,5` vs current `l7,7;l6,8`, one-off black `l0,10;l1,9` vs `l0,6;l1,6`, and one-off black `l0,5;l1,6` vs `l1,5;l1,3;l2,3`. Normal only showed one-off white `l9,5;l8,4` vs `l9,6;l7,7;l7,8`. Fast then fractured across one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, one-off black spirit rerank `l1,5;l1,7;l0,7` vs `l3,2;l4,1`, one-off black action+mana `l1,6;l2,7` vs `l2,3;l3,2`, one-off white `l10,4;l9,3` vs `l9,5;l7,6;l8,7`, and one-off white forced-prepass `l7,4;l8,5` vs `l7,4;l8,3`.
+- Durable lesson: do not spend code from `v72`; a cleaner Normal bucket is still not enough when direct Pro and Fast split across already-classified bridge, action+mana, engine-disabled, and forced-prepass families.
+
 ## Apr 9, 2026: Fresh Seed v71 Replay Killed At Diagnostics
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v71` to see whether a quieter Normal/Fast sample would finally collapse onto one known exact family.
