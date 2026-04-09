@@ -526,6 +526,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the replay got cleaner again, but still stayed count-`1` across every bucket. Direct Pro finished `2` regressions / `4` improvements / `6` flat, Normal `2` / `3` / `7`, and Fast `3` / `2` / `7`; every exact move pair still stayed at count `1`. The seed only remixed one-off direct-Pro early-black `negative_deny` `l0,5;l1,6` vs current `l1,5;l3,6;l2,7`, one-off direct-Pro black spirit sibling `l0,4;l1,3` vs `l0,4;l1,4`, one-off Normal black spirit rerank `l2,4;l0,5;l1,5` vs `l2,4;l4,2;l3,2`, one-off Normal white engine-disabled tie `l8,7;l8,8` vs `l8,7;l9,8`, and one-off Fast black bridge plus white forced-prepass drift.
 - Durable lesson: do not spend from a replay just because it gets cleaner after a mixed-seam kill. If Pro, Normal, and Fast still end with only count-`1` exact pairs, keep only the note and wait for a seed that repeats on one retained surface.
 
+## Apr 9, 2026: Seed v30 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v30` to see whether the post-`v29` wall would finally collapse once Pro and Fast cleaned up.
+- Why it stopped: the replay got cleaner again, but there was still no repeated retained seam. Direct Pro finished clean at `0` regressions / `4` improvements / `8` flat, Normal `3` / `3` / `6`, and Fast clean at `0` / `2` / `10`; every exact move pair still stayed at count `1`. The only regressions were one-off Normal white `ManaTempo` reranks `l7,4;l8,3` vs `l7,6;l8,7`, `l6,3;l7,3` vs `l6,7;l7,7`, and `l9,4;l8,3` vs `l5,2;l4,1`.
+- Durable lesson: do not spend from a replay just because Pro and Fast go clean. If Normal is still losing only on count-`1` local reranks, keep only the note and wait for a seed that actually repeats on one retained surface.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
