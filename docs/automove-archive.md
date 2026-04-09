@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 9, 2026: Fresh Seed v71 Replay Killed At Diagnostics
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v71` to see whether a quieter Normal/Fast sample would finally collapse onto one known exact family.
+- Why it stopped: the replay stayed split across already-killed families. Direct Pro finished `2` regressions / `2` improvements / `8` flat, Normal `2` / `0` / `10`, and Fast `1` / `4` / `7`, with every exact move pair count `1`. Direct Pro only mixed the old black spirit sibling `l0,4;l1,3` vs current `l0,4;l1,4` and a white `engine_disabled` `ManaTempo` tie `l8,7;l8,8` vs `l9,6;l8,5`. Normal only replayed two distinct black variants on the old `l4,1;l5,0;mb` baseline, `l0,5;l1,4` and `l2,5;l0,5;l1,5`. Fast only replayed the old white forced-prepass shell `l8,4;l8,5` vs `l8,4;l9,3`.
+- Durable lesson: do not spend code from `v71`; narrower losing buckets are still not enough when they still reduce to already-killed bridge, spirit-sibling, and forced-prepass families.
+
 ## Apr 9, 2026: Fresh Seed v70 Replay Killed At Diagnostics
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v70` after the `v69` black runtime classification, to see whether a cleaner direct-Pro sample would finally line up the other buckets behind one exact family.

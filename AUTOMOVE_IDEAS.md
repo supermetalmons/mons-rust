@@ -9,6 +9,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-09`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v71`
+  - duel summary: direct Pro finished `2` regressions / `2` improvements / `8` flat, Normal `2` / `0` / `10`, and Fast `1` / `4` / `7`, with every exact move pair still at count `1`
+  - the replay still split across already-classified one-offs: direct Pro only mixed black spirit sibling `l0,4;l1,3` vs current `l0,4;l1,4` plus white `engine_disabled` `ManaTempo` tie `l8,7;l8,8` vs `l9,6;l8,5`; Normal only replayed two distinct black variants on the old `l4,1;l5,0;mb` baseline, `l0,5;l1,4` and `l2,5;l0,5;l1,5`; Fast only replayed the old white forced-prepass shell `l8,4;l8,5` vs `l8,4;l9,3`
+  - direct conclusion: kill `v71` at diagnostics and keep only the note; this is still another split replay on already-killed bridge, spirit-sibling, and forced-prepass families rather than one promotable branch story
+- Latest diagnostic close (`2026-04-09`, latest):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v70`
   - duel summary: direct Pro finished `1` regression / `5` improvements / `6` flat, Normal `4` / `3` / `5`, and Fast `2` / `4` / `6`, with every exact move pair still at count `1`
   - the seed got cleaner in direct Pro, but it still fractured across known one-offs: direct Pro only showed one white `engine_disabled` rerank `l10,6;l9,5` vs current `l10,5;l9,4`; Normal mixed one-off white forced-prepass `l9,6;l8,5` vs `l9,6;l8,7`, one-off white accepted spirit `l8,5;l6,5;l6,4` vs `l7,6;l8,7`, one-off black mana-bridge `l0,5;l1,4` vs `l4,1;l5,0;mb`, and one-off early-black `negative_deny` `l0,5;l1,6` vs `l1,5;l3,6;l2,7`; Fast only added one-off black spirit sibling `l0,4;l1,3` vs `l0,4;l1,4` plus one-off white forced-prepass `l9,6;l8,5` vs `l9,6;l8,7`
