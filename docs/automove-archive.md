@@ -532,6 +532,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the replay got cleaner again, but there was still no repeated retained seam. Direct Pro finished clean at `0` regressions / `4` improvements / `8` flat, Normal `3` / `3` / `6`, and Fast clean at `0` / `2` / `10`; every exact move pair still stayed at count `1`. The only regressions were one-off Normal white `ManaTempo` reranks `l7,4;l8,3` vs `l7,6;l8,7`, `l6,3;l7,3` vs `l6,7;l7,7`, and `l9,4;l8,3` vs `l5,2;l4,1`.
 - Durable lesson: do not spend from a replay just because Pro and Fast go clean. If Normal is still losing only on count-`1` local reranks, keep only the note and wait for a seed that actually repeats on one retained surface.
 
+## Apr 9, 2026: Seed v31 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v31` to see whether the post-`v30` wall would finally justify reopening one of the retained black bridge seams.
+- Why it stopped: the replay still split across the already-killed `l4,1;l5,0;mb` bridge family and unrelated one-off drift. Direct Pro finished `1` regression / `5` improvements / `6` flat, Normal `2` / `3` / `7`, and Fast `3` / `0` / `9`. Normal did repeat black spirit-bridge `l1,5;l1,7;l0,7` vs current `l4,1;l5,0;mb` twice, but Fast only added one old black mana-bridge `l0,5;l1,4` vs `l4,1;l5,0;mb` plus one-off white `l10,4;l9,3` vs `l9,5;l7,6;l8,7` and one-off black `ManaTempo` rerank `l2,7;l2,8` vs `l7,1;l6,1`, while direct Pro only added one-off black `l0,5;l1,4` vs `l1,5;l2,4`.
+- Durable lesson: do not reopen the `l4,1;l5,0;mb` bridge fallback family just because Normal repeats the spirit-bridge seam again. If the same seed still splits across bridge variants and unrelated one-off drift in the other buckets, keep only the note and wait for a genuinely new branch story.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
