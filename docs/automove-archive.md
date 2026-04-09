@@ -736,6 +736,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the seed stayed count-`1` everywhere. Direct Pro finished `1` regression / `3` improvements / `8` flat and only had one-off black `ManaTempo` tie `l1,2;l1,1` vs current `l1,2;l0,1`. Normal finished `2` / `3` / `7` and split across one-off black accepted `ManaTempo` rerank `l0,9;l0,10` vs `l2,5;l4,3;l3,3` and one-off white `ManaTempo` tie `l8,3;l8,2` vs `l8,3;l9,2`. Fast finished `3` / `4` / `5` and split across one-off black `ManaTempo` tie `l1,8;l1,9` vs `l1,8;l0,9`, one-off white `ManaTempo` tie `l8,5;l7,4` vs `l8,5;l9,4`, and one-off black bridge-adjacent drainer-safety `l0,5;l1,4` vs `l4,1;l5,0;mb`.
 - Durable lesson: do not spend from a replay just because the surviving losses all look like tidy `ManaTempo` ties and reranks. If every exact pair still stays at count `1`, keep only the note and wait for one exact family that actually survives the whole sample.
 
+## Apr 9, 2026: Seed v66 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v66` to see whether the repeated Normal white spirit-own-setup rerank would finally become a cross-bucket family worth code.
+- Why it stopped: the seed still fractured. Direct Pro finished `1` regression / `4` improvements / `7` flat and only had one-off black accepted spirit `l1,4;l0,6;l1,6` vs current `l5,10;l6,9`. Normal finished `4` / `1` / `7` and did repeat `l9,5;l7,4;l8,3` vs `l9,5;l7,6;l7,7` twice, but also added one-off white `ManaTempo` tie `l9,2;l9,1` vs `l9,2;l10,1` and one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`. Fast finished `3` / `2` / `7` and split across one-off black mana-bridge `l0,5;l1,4` vs `l4,1;l5,0;mb`, one-off white forced-prepass `l7,4;l8,5` vs `l7,4;l8,3`, and one-off black `ManaTempo` rerank `l1,5;l2,5` vs `l1,6;l0,6`.
+- Durable lesson: do not spend from a replay just because Normal repeats the white spirit-own-setup rerank twice. If direct Pro and Fast still split across unrelated one-off black and white seams, keep only the note and wait for one exact family that actually survives the whole sample.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
