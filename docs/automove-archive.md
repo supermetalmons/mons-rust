@@ -550,6 +550,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the replay stayed count-`1` across every bucket again. Direct Pro finished `3` regressions / `3` improvements / `6` flat and only mixed one old early-black `negative_deny` replay `l0,5;l1,6` vs current `l1,5;l3,6;l2,7` with two unrelated white reranks `l9,4;l8,5` vs `l9,6;l8,7` and `l8,7;l8,8` vs `l8,7;l9,8`. Normal finished `4` / `2` / `6` and only mixed the two old `l4,1;l5,0;mb` bridge variants `l0,5;l1,4` and `l1,5;l1,7;l0,7` with one white sibling tie `l10,4;l9,3` vs `l9,4;l9,3` and one black sibling tie `l2,7;l2,8` vs `l2,7;l1,8`. Fast finished `1` / `2` / `9` and added only one old `l0,5;l1,4` mana-bridge replay.
 - Durable lesson: do not spend from a seed just because it replays several already-known families at once. If direct Pro, Normal, and Fast all stay count-`1` and no exact seam repeats across buckets, keep only the note and wait for one repeated exact family with a retained match.
 
+## Apr 9, 2026: Seed v34 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v34` to see whether the cleaner post-`v33` wall would justify reopening the retained black mana-bridge seam.
+- Why it stopped: the seed still reduced to the same already-killed bridge-fallback family. Direct Pro finished `1` regression / `3` improvements / `8` flat and only had one white `ManaTempo` rerank `l6,7;l7,7` vs current `l6,4;l7,3`. Normal finished `2` / `2` / `8` and repeated only the old black mana-bridge seam `l0,5;l1,4` vs current `l4,1;l5,0;mb` twice. Fast finished `1` / `1` / `10` and added only one white `ManaTempo` tie `l9,4;l8,3` vs `l9,4;l8,4`. There was no new repeated exact family beyond the bridge seam, and the older broad bridge fallback already proved that routing that family back to current is too local to clear `pro-reliability`.
+- Durable lesson: do not reopen the black mana-bridge fallback just because a cleaner seed repeats it twice while Pro and Fast are otherwise quiet. If the only repeated exact pair is still the already-killed bridge family, keep only the note and wait for a new repeated seam with a fresh in-path explanation.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
