@@ -586,6 +586,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the replay stayed count-`1` across all three buckets again. Direct Pro finished `1` regression / `4` improvements / `7` flat and only replayed early-black `negative_deny` `l0,5;l1,6` vs current `l1,5;l3,6;l2,7`. Normal finished `3` / `1` / `8` and mixed one-off white safe-progress `l10,7;l9,6` vs `l9,8;l8,7`, one-off white `l9,5;l8,5` vs `l9,5;l7,6;l7,7`, and one-off black mana-bridge `l0,5;l1,4` vs `l4,1;l5,0;mb`. Fast finished `2` / `2` / `8` and added one-off white forced-prepass `l9,6;l8,5` vs `l9,6;l8,7` plus one-off white `ManaTempo` sibling `l6,3;l7,2` vs `l6,3;l7,3`.
 - Durable lesson: do not spend from a seed just because direct Pro drops back to one known regression. If Normal and Fast still contribute only unrelated count-`1` white and black seams, keep only the note and wait for one repeated exact family with a retained foothold and a fresh shared lever.
 
+## Apr 9, 2026: Seed v41 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v41` after the accidental `v40` rerun was discarded, to see whether the wall would finally line up behind one new exact family.
+- Why it stopped: the replay stayed count-`1` across all three buckets again. Direct Pro finished `1` regression / `5` improvements / `6` flat and only replayed white spirit-own-setup rerank `l9,6;l7,4;l8,3` vs current `l9,6;l7,6;l7,7`. Normal finished `4` / `1` / `7` and mixed one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb` with three separate white `ManaTempo` boards `l7,4;l7,3` vs `l7,4;l7,5`, `l9,2;l9,1` vs `l9,2;l10,1`, and `l9,8;l8,9` vs `l9,2;l8,1`. Fast finished `3` / `4` / `5` and added one-off white `l10,4;l9,3` vs `l9,5;l7,6;l8,7`, one-off black `ManaTempo` rerank `l2,7;l2,8` vs `l2,7;l1,8`, and one-off white `l10,3;l9,2` vs `l7,3;l7,2`.
+- Durable lesson: do not spend from a replay just because direct Pro stays near-clean and Fast improves more often than it regresses. If every exact move pair still stays at count `1` and Normal/Fast split across several unrelated white and black seams, keep only the note and wait for one repeated exact family with a retained foothold and a fresh shared lever.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
