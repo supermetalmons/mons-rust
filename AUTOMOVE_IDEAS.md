@@ -9,6 +9,13 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-09`, latest):
+  - widened `smart_automove_pro_white_score_route_probe` with the repeated `v73` Fast white board `l10,4;l9,3` vs current `l9,5;l7,6;l8,7`
+  - the widened probe showed that board is another distinct vulnerable white runtime surface, not a retained score-route or safe-progress seam: runtime-faithful v30 already has `selected=pre_accept=l10,4;l9,3`, `forced_inputs=None`, `stage=engine_post_search`, `accepted=false`, and a top cluster of vulnerable `ManaTempo` siblings, while current stays on rank-`4` own-setup `SpiritImpact` `l9,5;l7,6;l8,7`; the nearby `l10,4;l9,4` is only another same-cluster `ManaTempo` sibling
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v74`
+  - duel summary: direct Pro finished `1` regression / `3` improvements / `8` flat, Normal `2` / `2` / `8`, and Fast `3` / `0` / `9`, with every exact move pair still at count `1`
+  - the seed still failed to collapse: direct Pro only showed one-off white `l10,5;l9,4` vs current `l7,7;l6,8`; Normal mixed one-off white spirit-own-setup `l9,5;l7,4;l8,3` vs `l9,5;l7,6;l7,7` and one-off white spirit rerank `l3,8;l1,7;l2,8` vs `l3,8;l3,6;l4,7`; Fast mixed one-off black `ManaTempo` rerank `l0,5;l1,5` vs `l2,2;l3,2`, one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, and one-off white forced-prepass `l9,4;l8,5` vs `l9,4;l8,3`
+  - direct conclusion: keep the widened white score-route probe, but kill `v74` at diagnostics; the new `l10,4;l9,3` probe only expands the white seam map, and the fresh replay still breaks into unrelated count-`1` white and black families
+- Latest diagnostic close (`2026-04-09`, latest):
   - ran `smart_automove_pro_triage_retained_churn_probe` before another duel spend; the retained `primary_pro` churn still did not collapse onto one selector family, because the three black seams remained late accepted injected heads over current rank-0 mana roots, `primary_white_safe_progress_rerank_ply27` stayed its own vulnerable white rerank, and `human_win_pro_c` stayed separate safe-progress drift
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v73`
   - duel summary: direct Pro finished `2` regressions / `3` improvements / `7` flat, Normal `2` / `0` / `10`, and Fast `5` / `0` / `7`; the only repeated exact pair was Fast white `l10,4;l9,3` vs current `l9,5;l7,6;l8,7` at count `2`, while every other exact pair stayed at count `1`

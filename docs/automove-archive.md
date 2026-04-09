@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 9, 2026: White Fast V73 Rerank Classified, Fresh Seed v74 Killed
+
+- What was tried: widened `smart_automove_pro_white_score_route_probe` with the repeated `v73` Fast white board `l10,4;l9,3` vs current `l9,5;l7,6;l8,7` to determine whether that repeat finally matched a retained white surface, then refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v74`.
+- Why it stopped: the widened probe showed the repeated Fast white board is another distinct vulnerable runtime surface, not a retained white seam. Runtime-faithful v30 already has `selected=pre_accept=l10,4;l9,3`, `forced_inputs=None`, `stage=engine_post_search`, and `accepted=false`, with a top cluster of vulnerable `ManaTempo` siblings, while current only appears at rank `4` as own-setup `SpiritImpact` `l9,5;l7,6;l8,7`. The fresh `v74` replay also stayed fragmented: direct Pro finished `1` regression / `3` improvements / `8` flat, Normal `2` / `2` / `8`, and Fast `3` / `0` / `9`, with every exact move pair count `1`.
+- Durable lesson: keep the widened white score-route probe, but do not spend code from `v74`; the `l10,4;l9,3` repeat only widened the white seam map, and the next fresh seed still split across unrelated white one-offs plus already-classified black bridge and `ManaTempo` churn.
+
 ## Apr 9, 2026: Retained Churn Probe Confirmed Split, Fresh Seed v73 Killed
 
 - What was tried: ran `smart_automove_pro_triage_retained_churn_probe` to see whether the retained `primary_pro` churn had finally collapsed onto one shared selector/root-choice family before spending another duel seed, then refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v73`.
