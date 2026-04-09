@@ -634,6 +634,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: Normal and Fast both went clean, but direct Pro alone still broke into unrelated one-offs. Direct Pro finished `4` regressions / `4` improvements / `4` flat, with losses on one-off black `ManaTempo` tie `l2,3;l2,2` vs current `l2,3;l1,2`, one-off white `l10,5;l9,4` vs `l9,8;l7,6;l7,7`, one-off white `l4,9;l2,7;l2,8` vs `l4,9;l2,7;l3,6`, and one-off white `l6,3;l7,2` vs `l6,5;l7,4`. Normal finished clean at `0` / `0` / `12`. Fast finished clean at `0` / `4` / `8`. Every exact move pair still stayed at count `1`.
 - Durable lesson: do not spend from a replay just because Normal and Fast both go clean. If the only losing bucket is still direct Pro and it fractures into unrelated count-`1` one-offs, keep only the note and wait for one repeated exact family with a fresh shared lever.
 
+## Apr 9, 2026: Seed v49 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v49` to see whether the next sample would turn the very clean direct-Pro bucket into a real branch hypothesis.
+- Why it stopped: direct Pro nearly cleaned up, but the other buckets exploded into unrelated one-offs. Direct Pro finished `1` regression / `6` improvements / `5` flat, with its only loss on one-off black bridge-like rerank `l1,5;l1,7;l0,7` vs current `l5,1;l6,0`. Normal finished `7` / `0` / `5` and mixed one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, one-off black `l1,5;l1,7;l0,7` vs `l4,2;l4,1`, one-off black `l2,5;l0,6;l1,6` vs `l2,5;l2,3;l1,2`, one-off black spirit sibling `l0,4;l1,3` vs `l0,4;l1,4`, one-off black `ManaTempo` tie `l2,7;l2,8` vs `l2,7;l1,8`, one-off white `l8,7;l7,8` vs `l10,7;l10,8`, and one-off white spirit-own-setup `l9,5;l7,4;l8,3` vs `l9,5;l7,6;l7,7`. Fast finished `1` / `3` / `8` and only added one-off black spirit sibling `l0,4;l1,3` vs `l0,4;l1,5`. Every exact move pair still stayed at count `1`.
+- Durable lesson: do not spend from a replay just because direct Pro nearly goes clean. If Normal and Fast break into unrelated count-`1` seams and the only Pro loss is a one-off on a new baseline, keep only the note and wait for one repeated exact family with a fresh shared lever.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
