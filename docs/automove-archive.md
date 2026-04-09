@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 9, 2026: Fresh Seed v69 Replay Killed After Later-Black Runtime Classification
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v69`, then widened `smart_automove_pro_black_forced_runtime_probe` with the traced Fast black board `l1,6;l2,7` vs current `l2,3;l3,4` because that exact pair finally appeared across buckets.
+- Why it stopped: the replay still did not converge on one code-ready family. Direct Pro finished `2` regressions / `6` improvements / `4` flat, Normal `2` / `2` / `8`, and Fast `3` / `1` / `8`, with every exact move pair count `1`. Direct Pro only mixed early-black `negative_deny` `l0,5;l1,6` vs current `l1,5;l3,6;l2,7` plus the old white spirit cluster `l4,9;l4,7;l5,7` vs `l9,4;l8,3`; Normal only replayed the two already-killed `l4,1;l5,0;mb` bridge variants `l0,5;l1,4` and `l1,5;l1,7;l0,7`; Fast only added one-off later-black `ManaTempo` `l1,6;l2,7` vs `l2,3;l3,4` plus one-off white `l9,4;l8,5` vs `l7,7;l6,8`. The widened black runtime probe showed the Fast `l1,6;l2,7` board is not the retained `primary_black_turn_four_action_mana_ply15` seam: runtime-faithful v30 still selects and heads on forced `l1,6;l2,7`, but `pre_accept` and baseline stay on current `l2,3;l3,4`, so it is another distinct current-baseline branch.
+- Durable lesson: keep the widened black runtime probe, but do not spend code from `v69`; the current `l2,3;l3,4` baseline still branches beyond the retained later-black seam, and one cross-bucket replay is still weaker than one repeated exact retained family.
+
 ## Apr 9, 2026: Fresh Seed v68 Replay Killed At Diagnostics
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v68` after the black risky-window inject cut died, to see whether the clean challenger would finally expose a repeated cross-bucket seam strong enough for another production split.

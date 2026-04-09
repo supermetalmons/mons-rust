@@ -4259,6 +4259,11 @@ fn smart_automove_pro_black_forced_runtime_probe() {
         false,
     )
     .expect("valid traced normal v24 black mana rerank fen");
+    let traced_fast_v69_mana_game = MonsGame::from_fen(
+        "1 0 b 1 0 2 0 0 4 n06a0xn04/n05s0xd0xe0xn03/n03y0xn03xxmn03/n02xxmxxmn07/n05xxmn01xxmn03/xxQn04xxUn04xxQ/E0xn04xxMn01xxMn03/n02xxMn01xxMn01xxMn04/n05D0xS0xn04/n04A0xn01Y0xn04/n11",
+        false,
+    )
+    .expect("valid traced fast v69 black mana rerank fen");
 
     run_probe(
         "primary_black_turn_four_action_mana_ply15",
@@ -4313,6 +4318,12 @@ fn smart_automove_pro_black_forced_runtime_probe() {
         &traced_normal_v24_mana_game,
         SmartAutomovePreference::Pro,
         &["l1,5;l2,5", "l3,2;l4,1"],
+    );
+    run_probe(
+        "traced_fast_duel_v69_mana",
+        &traced_fast_v69_mana_game,
+        SmartAutomovePreference::Pro,
+        &["l1,6;l2,7", "l2,3;l3,4"],
     );
     run_probe(
         "traced_pro_duel_v12",
