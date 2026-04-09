@@ -544,6 +544,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the replay still stayed fragmented across related black baselines and unrelated white churn. Direct Pro finished `2` regressions / `5` improvements / `5` flat, Normal `3` / `0` / `9`, and Fast `2` / `3` / `7`, but every exact move pair still stayed at count `1`. Normal only mixed the two old `l4,1;l5,0;mb` bridge variants `l0,5;l1,4` and `l1,5;l1,7;l0,7`, Fast only remixed `l0,5;l1,4` against current `l1,6;l0,6` plus the old white forced-prepass `l9,4;l8,5` vs `l9,4;l8,3`, and direct Pro added only one-off black spirit rerank `l1,5;l2,7;l3,6` vs `l1,5;l2,7;l1,8` plus white `engine_disabled` tie `l8,4;l8,5` vs `l8,4;l9,4`.
 - Durable lesson: do not spend from a seed just because it surfaces multiple related black bridge baselines at once. If every exact pair still stays at count `1` and the seed also mixes in old white forced-prepass or engine-disabled churn, keep only the note and wait for one repeated exact family with a retained foothold.
 
+## Apr 9, 2026: Seed v33 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v33` to see whether the post-`v32` wall would finally settle onto one retained seam instead of another mixed replay.
+- Why it stopped: the replay stayed count-`1` across every bucket again. Direct Pro finished `3` regressions / `3` improvements / `6` flat and only mixed one old early-black `negative_deny` replay `l0,5;l1,6` vs current `l1,5;l3,6;l2,7` with two unrelated white reranks `l9,4;l8,5` vs `l9,6;l8,7` and `l8,7;l8,8` vs `l8,7;l9,8`. Normal finished `4` / `2` / `6` and only mixed the two old `l4,1;l5,0;mb` bridge variants `l0,5;l1,4` and `l1,5;l1,7;l0,7` with one white sibling tie `l10,4;l9,3` vs `l9,4;l9,3` and one black sibling tie `l2,7;l2,8` vs `l2,7;l1,8`. Fast finished `1` / `2` / `9` and added only one old `l0,5;l1,4` mana-bridge replay.
+- Durable lesson: do not spend from a seed just because it replays several already-known families at once. If direct Pro, Normal, and Fast all stay count-`1` and no exact seam repeats across buckets, keep only the note and wait for one repeated exact family with a retained match.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
