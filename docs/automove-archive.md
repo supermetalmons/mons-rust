@@ -712,6 +712,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: only direct Pro repeated that seam, and the other buckets still fractured. Direct Pro finished `2` regressions / `5` improvements / `5` flat and repeated retained early-black `negative_deny` `l0,5;l1,6` vs current `l1,5;l3,6;l2,7` twice. Normal finished `2` / `2` / `8` and only added one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb` plus one-off white `l9,5;l8,5` vs `l9,5;l7,6;l7,7`. Fast finished `4` / `1` / `7` and fractured across one-off white forced-prepass `l9,4;l8,5` vs `l9,4;l8,3`, one-off white forced-prepass `l8,4;l8,5` vs `l8,4;l9,3`, one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, and one-off black spirit variant `l1,5;l0,7;l1,7` vs `l3,2;l4,1`.
 - Durable lesson: do not spend from a replay just because direct Pro repeats retained early-black `negative_deny` twice again. If Normal and Fast still split across separate white forced-prepass and bridge-like one-offs, keep only the note and wait for one exact family that actually survives the whole sample.
 
+## Apr 9, 2026: Seed v62 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v62` to see whether a quieter direct-Pro bucket would turn the new black `ManaTempo` sibling tie into a real family or expose one repeatable Normal/Fast follow-up.
+- Why it stopped: the seed stayed count-`1` everywhere. Direct Pro finished `1` regression / `2` improvements / `9` flat, with its only loss on one-off black `ManaTempo` sibling `l2,3;l2,2` vs current `l2,3;l1,2`. Normal finished `3` / `0` / `9` and split across one-off white `l8,5;l8,6` vs `l10,6;l9,6`, one-off black action+mana `l1,6;l2,7` vs `l3,2;l4,1`, and one-off white spirit-own-setup `l9,5;l7,4;l7,3` vs `l9,5;l7,6;l7,7`. Fast finished `1` / `3` / `8` and only added one-off bridge-adjacent black spirit variant `l1,5;l1,7;l2,6` vs `l5,0;l4,1`.
+- Durable lesson: do not spend from a replay just because direct Pro nearly goes clean and Fast stays relatively quiet. If every exact family remains count-`1`, keep only the note and wait for one exact seam that actually survives the whole sample.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
