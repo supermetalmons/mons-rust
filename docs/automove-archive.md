@@ -628,6 +628,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: direct Pro did fall to a single loss, but the losing buckets still did not share one fresh exact story. Direct Pro finished `1` regression / `4` improvements / `7` flat, with its only loss on one-off black accepted `ManaTempo` rerank `l0,5;l1,5` vs current `l2,2;l3,3`. Normal finished `3` / `3` / `6` and repeated the old black spirit-bridge seam `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb` twice, but that is still the already-killed bridge-fallback family; its other loss was one-off black `ManaTempo` tie `l2,7;l2,8` vs `l2,7;l1,8`. Fast finished `4` / `2` / `6` and split across one-off black drainer-safety `l1,4;l0,5` vs `l4,1;l5,0;mb`, one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, one-off white `l10,4;l9,3` vs `l9,5;l7,6;l8,7`, and one-off black `ManaTempo` tie `l2,7;l2,8` vs `l7,1;l6,1`.
 - Durable lesson: do not spend from a replay just because direct Pro drops to one regression. If the only repeated loser is still an already-killed bridge family and Fast fragments into unrelated one-offs, keep only the note and wait for one repeated exact family with a fresh shared lever.
 
+## Apr 9, 2026: Seed v48 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v48` to see whether the next sample would convert the cleaner `v47` buckets into a real promotion path.
+- Why it stopped: Normal and Fast both went clean, but direct Pro alone still broke into unrelated one-offs. Direct Pro finished `4` regressions / `4` improvements / `4` flat, with losses on one-off black `ManaTempo` tie `l2,3;l2,2` vs current `l2,3;l1,2`, one-off white `l10,5;l9,4` vs `l9,8;l7,6;l7,7`, one-off white `l4,9;l2,7;l2,8` vs `l4,9;l2,7;l3,6`, and one-off white `l6,3;l7,2` vs `l6,5;l7,4`. Normal finished clean at `0` / `0` / `12`. Fast finished clean at `0` / `4` / `8`. Every exact move pair still stayed at count `1`.
+- Durable lesson: do not spend from a replay just because Normal and Fast both go clean. If the only losing bucket is still direct Pro and it fractures into unrelated count-`1` one-offs, keep only the note and wait for one repeated exact family with a fresh shared lever.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
