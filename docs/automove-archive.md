@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 9, 2026: Retained Churn Probe Confirmed Split, Fresh Seed v73 Killed
+
+- What was tried: ran `smart_automove_pro_triage_retained_churn_probe` to see whether the retained `primary_pro` churn had finally collapsed onto one shared selector/root-choice family before spending another duel seed, then refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v73`.
+- Why it stopped: the retained churn probe still split into separate stories: three black seams were late accepted injected heads over current rank-0 mana roots, `primary_white_safe_progress_rerank_ply27` stayed a separate vulnerable accepted white rerank, and `human_win_pro_c` stayed separate safe-progress drift. The fresh duel replay also failed to line up behind one branch: direct Pro finished `2` regressions / `3` improvements / `7` flat, Normal `2` / `0` / `10`, and Fast `5` / `0` / `7`. The only repeated exact pair was Fast white `l10,4;l9,3` vs current `l9,5;l7,6;l8,7` twice, while every other exact pair stayed at count `1`.
+- Durable lesson: do not spend code from `v73`; even when Fast finally repeats the familiar white `l10,4;l9,3` rerank, that is still weaker than a shared cross-bucket retained family, and the retained churn probe still shows no single selector family behind the live `primary_pro` wall.
+
 ## Apr 9, 2026: Fresh Seed v72 Replay Killed At Diagnostics
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v72` to see whether a cleaner Normal bucket would finally expose one exact family worth real code.
