@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 9, 2026: Fresh Seed v68 Replay Killed At Diagnostics
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v68` after the black risky-window inject cut died, to see whether the clean challenger would finally expose a repeated cross-bucket seam strong enough for another production split.
+- Why it stopped: the replay still did not converge on one code-ready family. Direct Pro finished `1` regression / `3` improvements / `8` flat, Normal `2` / `4` / `6`, and Fast `5` / `2` / `5`, with every exact move pair count `1`. The only cross-bucket neighborhood was the already-classified white forced-prepass shell: Normal surfaced `l9,4;l8,5` vs current `l9,4;l8,3` and Fast surfaced `l8,4;l8,5` vs current `l8,4;l8,3`, but both still live only in `search_only_forced_prepass` with `pre_accept` already on current. The remaining losses split across one-off later-black reranks, one-off black mana-bridge, one-off white safe-progress and `ManaTempo` ties, and one-off black `ManaTempo` tie.
+- Durable lesson: do not spend code from `v68`; reviving the old white forced-prepass shell in two buckets is still weaker than one repeated exact retained family, and the rest of the seed remained fragmented.
+
 ## Apr 9, 2026: Black Turn-Four Bridge Fallback Killed After Full Loop
 
 - What was tried: added a narrow `runtime_pro_turn_engine_v30` profile guard that routed only black `turn=4`, `mons_moves=2`, `action+mana` states back to current Pro when current already selected `l4,1;l5,0;mb`. The branch specifically targeted the retained bridge seams `primary_black_mana_bridge_ply20` and `primary_black_spirit_bridge_ply19`.

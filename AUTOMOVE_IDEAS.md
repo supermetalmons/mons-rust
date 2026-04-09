@@ -8,6 +8,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Latest diagnostic close (`2026-04-09`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v68`
+  - duel summary: direct Pro finished `1` regression / `3` improvements / `8` flat, Normal `2` / `4` / `6`, and Fast `5` / `2` / `5`, with every exact move pair still at count `1`
+  - the sample still did not converge on one live family: direct Pro only showed one-off later-black `l1,5;l2,4` vs current `l1,6;l2,7`; Normal split between one-off white forced-prepass `l9,4;l8,5` vs `l9,4;l8,3` and one-off later-black `ManaTempo` rerank `l1,6;l2,7` vs `l2,3;l3,4`; Fast fractured across one-off black mana-bridge `l0,5;l1,4` vs `l4,1;l5,0;mb`, one-off white forced-prepass `l8,4;l8,5` vs `l8,4;l8,3`, one-off white safe-progress rerank `l8,7;l8,6` vs `l8,7;l7,8`, one-off white `ManaTempo` tie `l9,8;l8,8` vs `l9,6;l8,7`, and one-off black `ManaTempo` tie `l2,7;l2,8` vs `l2,7;l1,8`
+  - direct conclusion: kill `v68` at diagnostics and keep only the note; the only cross-bucket family was the already-classified live-only white forced-prepass shell, while the remaining black and white misses stayed fragmented
 - Latest focused gate (`2026-04-09`, latest):
   - tried a narrow inject-time black action+mana cut in `runtime_pro_turn_engine_v30`: reject absent forced `ManaTempo` same-turn-window roots under `Safe*Progress -> ImmediateScore` when they only replace an equally unsafe non-progress `ManaTempo` top with a weaker setup surface
   - the branch closed the retained `primary_black_turn_four_action_mana_ply15` seam, passed the focused regression test, `guardrails`, `pro-triage(primary_pro)=4/60` with `off_target_changed=0`, and `runtime-preflight`
