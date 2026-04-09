@@ -9,6 +9,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-09`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v70`
+  - duel summary: direct Pro finished `1` regression / `5` improvements / `6` flat, Normal `4` / `3` / `5`, and Fast `2` / `4` / `6`, with every exact move pair still at count `1`
+  - the seed got cleaner in direct Pro, but it still fractured across known one-offs: direct Pro only showed one white `engine_disabled` rerank `l10,6;l9,5` vs current `l10,5;l9,4`; Normal mixed one-off white forced-prepass `l9,6;l8,5` vs `l9,6;l8,7`, one-off white accepted spirit `l8,5;l6,5;l6,4` vs `l7,6;l8,7`, one-off black mana-bridge `l0,5;l1,4` vs `l4,1;l5,0;mb`, and one-off early-black `negative_deny` `l0,5;l1,6` vs `l1,5;l3,6;l2,7`; Fast only added one-off black spirit sibling `l0,4;l1,3` vs `l0,4;l1,4` plus one-off white forced-prepass `l9,6;l8,5` vs `l9,6;l8,7`
+  - direct conclusion: kill `v70` at diagnostics and keep only the note; a cleaner direct-Pro bucket is still weaker than one repeated exact family, and Normal/Fast stayed on already-classified fragmented seams
+- Latest diagnostic close (`2026-04-09`, latest):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v69`, then widened `smart_automove_pro_black_forced_runtime_probe` with the traced Fast black board `l1,6;l2,7` vs current `l2,3;l3,4`
   - duel summary: direct Pro finished `2` regressions / `6` improvements / `4` flat, Normal `2` / `2` / `8`, and Fast `3` / `1` / `8`, with every exact move pair still at count `1`
   - the replay still split across old one-offs: direct Pro only mixed early-black `negative_deny` `l0,5;l1,6` vs current `l1,5;l3,6;l2,7` plus the old white spirit cluster `l4,9;l4,7;l5,7` vs `l9,4;l8,3`; Normal only replayed the two already-killed `l4,1;l5,0;mb` bridge variants `l0,5;l1,4` and `l1,5;l1,7;l0,7`; Fast only added one-off later-black `ManaTempo` `l1,6;l2,7` vs `l2,3;l3,4` plus one-off white `l9,4;l8,5` vs `l7,7;l6,8`

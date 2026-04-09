@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 9, 2026: Fresh Seed v70 Replay Killed At Diagnostics
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v70` after the `v69` black runtime classification, to see whether a cleaner direct-Pro sample would finally line up the other buckets behind one exact family.
+- Why it stopped: the seed still fractured across old one-offs. Direct Pro finished `1` regression / `5` improvements / `6` flat, Normal `4` / `3` / `5`, and Fast `2` / `4` / `6`, with every exact move pair count `1`. Direct Pro only had a white `engine_disabled` rerank `l10,6;l9,5` vs current `l10,5;l9,4`. Normal mixed one-off white forced-prepass `l9,6;l8,5` vs `l9,6;l8,7`, one-off white accepted spirit `l8,5;l6,5;l6,4` vs `l7,6;l8,7`, one-off black mana-bridge `l0,5;l1,4` vs `l4,1;l5,0;mb`, and one-off early-black `negative_deny` `l0,5;l1,6` vs `l1,5;l3,6;l2,7`. Fast only added one-off black spirit sibling `l0,4;l1,3` vs `l0,4;l1,4` and one-off white forced-prepass `l9,6;l8,5` vs `l9,6;l8,7`.
+- Durable lesson: do not spend code from `v70`; a cleaner direct-Pro bucket is still weaker than one repeated exact retained family when Normal and Fast stay spread across already-classified seams.
+
 ## Apr 9, 2026: Fresh Seed v69 Replay Killed After Later-Black Runtime Classification
 
 - What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v69`, then widened `smart_automove_pro_black_forced_runtime_probe` with the traced Fast black board `l1,6;l2,7` vs current `l2,3;l3,4` because that exact pair finally appeared across buckets.
