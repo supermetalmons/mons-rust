@@ -9,6 +9,12 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping Pro stays `runtime_current`.
 - The only live Pro challenger is `runtime_pro_turn_engine_v30`.
 - Latest diagnostic close (`2026-04-09`, latest):
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v75`
+  - duel summary: direct Pro finished `1` regression / `2` improvements / `9` flat, Normal `3` / `0` / `9`, and Fast `6` / `1` / `5`
+  - the only repeated exact pair was the already-classified Fast white rerank `l10,4;l9,3` vs current `l9,5;l7,6;l8,7` at count `2`; every other exact pair stayed at count `1`
+  - the seed still failed to line up behind one live branch story: direct Pro only showed one-off white `ManaTempo` sibling drift `l9,5;l8,4` vs `l7,2;l6,1`; Normal mixed one-off early-black `negative_deny` `l0,5;l1,6` vs `l1,5;l3,6;l2,7`, one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, and one-off white `ManaTempo` tie `l9,2;l9,1` vs `l9,2;l10,1`; Fast added one-off black safe-progress rerank `l0,10;l1,9` vs `l1,5;l2,5`, one-off black spirit rerank `l1,5;l3,3;l2,3` vs `l1,5;l2,7;l1,8`, one-off black `ManaTempo` tie `l2,7;l2,8` vs `l2,7;l1,8`, plus one one-off return of the old black spirit-bridge seam
+  - direct conclusion: kill `v75` at diagnostics and keep only the note; the repeated Fast white pair is already classified by the widened probe, and the rest of the replay stayed fragmented across unrelated white and black one-offs
+- Latest diagnostic close (`2026-04-09`, latest):
   - widened `smart_automove_pro_white_score_route_probe` with the repeated `v73` Fast white board `l10,4;l9,3` vs current `l9,5;l7,6;l8,7`
   - the widened probe showed that board is another distinct vulnerable white runtime surface, not a retained score-route or safe-progress seam: runtime-faithful v30 already has `selected=pre_accept=l10,4;l9,3`, `forced_inputs=None`, `stage=engine_post_search`, `accepted=false`, and a top cluster of vulnerable `ManaTempo` siblings, while current stays on rank-`4` own-setup `SpiritImpact` `l9,5;l7,6;l8,7`; the nearby `l10,4;l9,4` is only another same-cluster `ManaTempo` sibling
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v74`

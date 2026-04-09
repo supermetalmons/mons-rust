@@ -4,6 +4,12 @@ This document keeps short history for retired automove waves.
 
 Everything here is archive-only context. These IDs are not valid experiment targets. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable lessons that still matter. Full branch-by-branch detail lives in git history rather than this file.
 
+## Apr 9, 2026: Fresh Seed v75 Replay Killed At Diagnostics
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v75` after the widened white score-route probe had already classified the recurring Fast white `l10,4;l9,3` rerank as a distinct white runtime surface.
+- Why it stopped: the replay still broke apart. Direct Pro finished `1` regression / `2` improvements / `9` flat, Normal `3` / `0` / `9`, and Fast `6` / `1` / `5`. The only repeated exact pair was again Fast white `l10,4;l9,3` vs current `l9,5;l7,6;l8,7` twice; every other exact pair stayed at count `1`. Outside that repeated already-classified white pair, the seed mixed one-off direct-Pro white `l9,5;l8,4` vs `l7,2;l6,1`, one-off Normal early-black `negative_deny` `l0,5;l1,6` vs `l1,5;l3,6;l2,7`, one-off Normal black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, one-off Normal white `l9,2;l9,1` vs `l9,2;l10,1`, and one-off Fast black reranks `l0,10;l1,9` vs `l1,5;l2,5`, `l1,5;l3,3;l2,3` vs `l1,5;l2,7;l1,8`, and `l2,7;l2,8` vs `l2,7;l1,8`.
+- Durable lesson: do not spend code from `v75`; repeating an already-classified Fast white surface is still weaker than one shared retained family, and the rest of the sample remains unrelated count-`1` churn.
+
 ## Apr 9, 2026: White Fast V73 Rerank Classified, Fresh Seed v74 Killed
 
 - What was tried: widened `smart_automove_pro_white_score_route_probe` with the repeated `v73` Fast white board `l10,4;l9,3` vs current `l9,5;l7,6;l8,7` to determine whether that repeat finally matched a retained white surface, then refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v74`.
