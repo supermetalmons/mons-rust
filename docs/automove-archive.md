@@ -538,6 +538,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: the replay still split across the already-killed `l4,1;l5,0;mb` bridge family and unrelated one-off drift. Direct Pro finished `1` regression / `5` improvements / `6` flat, Normal `2` / `3` / `7`, and Fast `3` / `0` / `9`. Normal did repeat black spirit-bridge `l1,5;l1,7;l0,7` vs current `l4,1;l5,0;mb` twice, but Fast only added one old black mana-bridge `l0,5;l1,4` vs `l4,1;l5,0;mb` plus one-off white `l10,4;l9,3` vs `l9,5;l7,6;l8,7` and one-off black `ManaTempo` rerank `l2,7;l2,8` vs `l7,1;l6,1`, while direct Pro only added one-off black `l0,5;l1,4` vs `l1,5;l2,4`.
 - Durable lesson: do not reopen the `l4,1;l5,0;mb` bridge fallback family just because Normal repeats the spirit-bridge seam again. If the same seed still splits across bridge variants and unrelated one-off drift in the other buckets, keep only the note and wait for a genuinely new branch story.
 
+## Apr 9, 2026: Seed v32 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v32` to see whether the post-`v31` wall would finally converge onto one retained seam after the latest black bridge replay died.
+- Why it stopped: the replay still stayed fragmented across related black baselines and unrelated white churn. Direct Pro finished `2` regressions / `5` improvements / `5` flat, Normal `3` / `0` / `9`, and Fast `2` / `3` / `7`, but every exact move pair still stayed at count `1`. Normal only mixed the two old `l4,1;l5,0;mb` bridge variants `l0,5;l1,4` and `l1,5;l1,7;l0,7`, Fast only remixed `l0,5;l1,4` against current `l1,6;l0,6` plus the old white forced-prepass `l9,4;l8,5` vs `l9,4;l8,3`, and direct Pro added only one-off black spirit rerank `l1,5;l2,7;l3,6` vs `l1,5;l2,7;l1,8` plus white `engine_disabled` tie `l8,4;l8,5` vs `l8,4;l9,4`.
+- Durable lesson: do not spend from a seed just because it surfaces multiple related black bridge baselines at once. If every exact pair still stays at count `1` and the seed also mixes in old white forced-prepass or engine-disabled churn, keep only the note and wait for one repeated exact family with a retained foothold.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
