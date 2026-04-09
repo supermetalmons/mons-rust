@@ -598,6 +598,12 @@ Everything here is archive-only context. These IDs are not valid experiment targ
 - Why it stopped: direct Pro did repeat the old early-black seam, but the rest of the replay still broke the shared story. Direct Pro finished `3` regressions / `3` improvements / `6` flat and repeated `l0,5;l1,6` vs current `l1,5;l3,6;l2,7` twice, while also adding one-off white spirit-own-setup rerank `l9,5;l7,4;l7,3` vs `l9,5;l7,6;l7,7`. Normal finished `3` / `0` / `9` and mixed one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, one-off early-black `l0,5;l1,6` vs `l1,5;l3,6;l2,7`, and one-off white spirit-own-setup rerank `l9,6;l7,4;l8,3` vs `l9,6;l7,6;l7,7`. Fast finished `2` / `4` / `6` and added the old white forced-prepass shell `l8,4;l8,5` vs `l8,4;l8,3` plus one-off black `l0,5;l1,4` vs `l3,2;l4,1`.
 - Durable lesson: do not reopen early-black `negative_deny` just because direct Pro repeats it again. If Normal and Fast still split across the old bridge, white spirit-own-setup, and white forced-prepass stories, keep only the note and wait for one repeated exact family with a retained foothold and a fresh shared lever.
 
+## Apr 9, 2026: Seed v43 Replay Killed Before Code Edits
+
+- What was tried: refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v43` to see whether a quieter replay with clean-or-near-clean buckets would finally expose one bounded seam worth code.
+- Why it stopped: Normal did go clean, but Pro and Fast still did not line up behind one exact family. Direct Pro finished `1` regression / `4` improvements / `7` flat, with its only loss on the old black action+mana seam `l1,6;l2,7` vs current `l3,2;l4,1`. Normal finished clean at `0` / `4` / `8`. Fast finished `3` / `3` / `6` and split across one-off black spirit-bridge `l1,5;l1,7;l0,7` vs `l4,1;l5,0;mb`, one-off white `l10,4;l9,3` vs `l9,5;l7,6;l8,7`, and one-off white `l8,3;l8,2` vs `l8,3;l9,2`.
+- Durable lesson: do not spend from a replay just because Normal goes clean while Pro and Fast stay relatively quiet. If the only remaining seams are still unrelated count-`1` Pro/Fast drifts with no repeated exact family, keep only the note and wait for one shared lever.
+
 ## Retired Families Worth Remembering
 
 - Wrapper-only current-Normal reroutes and search-surface swaps
