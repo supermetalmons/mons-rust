@@ -107,41 +107,11 @@ fn pro_signal_triage_accepts_target_change_with_bounded_off_target_churn() {
         0
     ));
     assert!(!pro_signal_triage_passes(
-        "runtime_eff_exact_lite_v1",
-        "runtime_release_safe_pre_exact",
-        0,
-        0
-    ));
-    assert!(!pro_signal_triage_passes(
         "runtime_pro_turn_engine_v30",
         "runtime_current",
         1,
         2
     ));
-}
-
-#[test]
-fn triage_calibration_probe_detects_reply_risk_profile_delta() {
-    let candidate =
-        reply_risk_calibration_probe("runtime_pre_fast_root_quality_v1_normal_conversion_v3");
-    let baseline = reply_risk_calibration_probe("runtime_release_safe_pre_exact");
-    assert!(candidate > baseline);
-}
-
-#[test]
-fn triage_calibration_probe_detects_opponent_mana_profile_delta() {
-    let candidate =
-        opponent_mana_calibration_probe("runtime_pre_fast_root_quality_v1_normal_conversion_v3");
-    let baseline = opponent_mana_calibration_probe("runtime_release_safe_pre_exact");
-    assert_ne!(candidate, baseline);
-}
-
-#[test]
-fn triage_calibration_probe_detects_supermana_profile_delta() {
-    let candidate = supermana_calibration_probe("runtime_eff_exact_lite_v1");
-    let baseline = supermana_calibration_probe("runtime_release_safe_pre_exact");
-    assert!(candidate);
-    assert!(!baseline);
 }
 
 #[test]
@@ -159,71 +129,28 @@ fn smart_automove_pool_profile_registry_resolves_retained_profiles() {
 fn smart_automove_pool_retained_profile_ids_match_active_registry() {
     assert_eq!(
         retained_profile_ids(),
-        vec![
-            "base",
-            "runtime_current",
-            "runtime_release_safe_pre_exact",
-            "runtime_eff_exact_lite_v1",
-            "swift_2024_eval_reference",
-            "swift_2024_style_reference",
-            "runtime_pre_fast_root_quality_v1_normal_conversion_v3",
-            "runtime_normal_from_fast_reference_v1",
-            "runtime_pro_turn_engine_v30",
-        ]
+        vec!["runtime_current", "runtime_pro_turn_engine_v30"]
     );
 }
 
 #[test]
-fn smart_automove_pool_archived_runtime_pro_turn_engine_v1_does_not_resolve() {
-    assert!(profile_selector_from_name("runtime_pro_turn_engine_v1").is_none());
-}
-
-#[test]
-fn smart_automove_pool_curated_pool_profiles_are_unique_and_resolvable() {
-    let pool = selected_pool_models();
-    assert_eq!(pool.len(), CURATED_POOL_SIZE);
-
-    for model in &pool {
+fn smart_automove_pool_archived_profiles_do_not_resolve() {
+    for profile_id in [
+        "base",
+        "runtime_release_safe_pre_exact",
+        "runtime_eff_exact_lite_v1",
+        "runtime_pre_fast_root_quality_v1_normal_conversion_v3",
+        "swift_2024_eval_reference",
+        "swift_2024_style_reference",
+        "runtime_normal_from_fast_reference_v1",
+        "runtime_pro_turn_engine_v1",
+    ] {
         assert!(
-            retained_profile_ids().contains(&model.id),
-            "curated pool model '{}' should come from retained registry",
-            model.id
+            profile_selector_from_name(profile_id).is_none(),
+            "archived profile '{}' should not resolve",
+            profile_id
         );
     }
-
-    for (index, left) in pool.iter().enumerate() {
-        for right in pool.iter().skip(index + 1) {
-            assert_ne!(left.id, right.id, "curated pool ids must be unique");
-            assert!(
-                !std::ptr::fn_addr_eq(left.select_inputs, right.select_inputs),
-                "curated pool selectors must be unique: {} and {}",
-                left.id,
-                right.id
-            );
-        }
-    }
-}
-
-#[test]
-fn smart_automove_pool_smoke_runs() {
-    let probe_model = AutomoveModel {
-        id: "smoke_probe_candidate",
-        select_inputs: model_first_legal_automove,
-    };
-    let quick_budgets = [SearchBudget {
-        label: "smoke_probe",
-        depth: 1,
-        max_nodes: 1,
-    }];
-    let pool = vec![AutomoveModel {
-        id: "smoke_probe_pool",
-        select_inputs: model_first_legal_automove,
-    }];
-
-    let evaluation =
-        evaluate_candidate_against_pool_with_max_plies(probe_model, &pool, 1, &quick_budgets, 2);
-    assert_eq!(evaluation.opponents.len(), pool.len());
-    assert_eq!(evaluation.games_per_matchup, 1);
 }
 
 #[test]
@@ -252,70 +179,6 @@ fn smart_automove_pool_exact_lite_diagnostics_gate() {
         candidate_profile_name.as_str(),
         CANDIDATE_MODEL.select_inputs,
     );
-}
-
-#[test]
-#[ignore = "retained-profile calibration for triage surfaces"]
-fn smart_automove_pool_surface_calibration() {
-    let surface = triage_surface_from_env();
-    let candidate_profile_name = candidate_profile().as_str().to_string();
-    let baseline_profile_name = gate_baseline_profile_name();
-
-    match surface {
-        TriageSurface::ReplyRisk => {
-            let candidate_probe = reply_risk_calibration_probe(candidate_profile_name.as_str());
-            let baseline_probe = reply_risk_calibration_probe(baseline_profile_name.as_str());
-            println!(
-                "triage-calibrate surface=reply_risk candidate={} probe={} baseline={} probe={} delta={}",
-                candidate_profile_name,
-                candidate_probe,
-                baseline_profile_name,
-                baseline_probe,
-                candidate_probe - baseline_probe
-            );
-            assert!(
-                candidate_probe.abs_diff(baseline_probe) >= 20,
-                "reply_risk calibration found no meaningful profile delta: candidate={} baseline={}",
-                candidate_probe,
-                baseline_probe
-            );
-        }
-        TriageSurface::OpponentMana => {
-            let candidate_pick = opponent_mana_calibration_probe(candidate_profile_name.as_str());
-            let baseline_pick = opponent_mana_calibration_probe(baseline_profile_name.as_str());
-            println!(
-                "triage-calibrate surface=opponent_mana candidate={} pick={} baseline={} pick={}",
-                candidate_profile_name, candidate_pick, baseline_profile_name, baseline_pick
-            );
-            assert_ne!(
-                candidate_pick, baseline_pick,
-                "opponent_mana calibration found no profile delta: candidate_pick={} baseline_pick={}",
-                candidate_pick, baseline_pick
-            );
-        }
-        TriageSurface::Supermana => {
-            let candidate_probe = supermana_calibration_probe(candidate_profile_name.as_str());
-            let baseline_probe = supermana_calibration_probe(baseline_profile_name.as_str());
-            println!(
-                "triage-calibrate surface=supermana candidate={} exact_lite={} baseline={} exact_lite={}",
-                candidate_profile_name,
-                candidate_probe,
-                baseline_profile_name,
-                baseline_probe
-            );
-            assert_ne!(
-                candidate_probe, baseline_probe,
-                "supermana calibration found no profile delta: candidate_exact_lite={} baseline_exact_lite={}",
-                candidate_probe, baseline_probe
-            );
-        }
-        _ => {
-            panic!(
-                "triage-calibrate only supports SMART_TRIAGE_SURFACE=reply_risk|opponent_mana|supermana; got '{}'",
-                surface.as_str()
-            );
-        }
-    }
 }
 
 #[test]
@@ -352,12 +215,6 @@ fn smart_automove_pool_pro_signal_triage() {
     let (target_changed, off_target_changed) = match surface {
         TriageSurface::OpeningReply => (opening_changed, primary_changed),
         TriageSurface::PrimaryPro => (primary_changed, opening_changed),
-        _ => {
-            panic!(
-                "pro-triage only supports SMART_TRIAGE_SURFACE=opening_reply or primary_pro; got '{}'",
-                surface.as_str()
-            );
-        }
     };
 
     println!(

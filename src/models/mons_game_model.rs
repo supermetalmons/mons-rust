@@ -6833,14 +6833,6 @@ impl MonsGameModel {
         Self::smart_search_best_inputs_internal(game, config, true)
     }
 
-    #[cfg(test)]
-    fn smart_search_best_inputs_legacy_no_transposition(
-        game: &MonsGame,
-        config: SmartSearchConfig,
-    ) -> Vec<Input> {
-        Self::smart_search_best_inputs_internal(game, config, false)
-    }
-
     #[cfg(any(target_arch = "wasm32", test))]
     fn turn_planner_search_config(config: SmartSearchConfig) -> TurnPlannerSearchConfig {
         let mut planner = TurnPlannerSearchConfig {

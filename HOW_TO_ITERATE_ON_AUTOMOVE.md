@@ -2,7 +2,7 @@
 
 This is the canonical automove runbook.
 
-Archived profile IDs are invalid experiment targets. New work stays on the retained surface below.
+Archived profile IDs and archived stages are invalid experiment targets. New work stays on the retained surface below.
 
 ## Quick Reference
 
@@ -14,19 +14,7 @@ Archived profile IDs are invalid experiment targets. New work stays on the retai
 
 ## Retained Profile Surface
 
-Shipping runtime and baseline:
-- `base`
 - `runtime_current`
-- `runtime_release_safe_pre_exact`
-
-Calibration anchors and curated references:
-- `runtime_eff_exact_lite_v1`
-- `runtime_pre_fast_root_quality_v1_normal_conversion_v3`
-- `swift_2024_eval_reference`
-- `swift_2024_style_reference`
-- `runtime_normal_from_fast_reference_v1`
-
-Retained Pro frontier:
 - `runtime_pro_turn_engine_v30`
 
 If a profile ID is not in this list, it is archive-only.
@@ -50,7 +38,6 @@ SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage
 
 Operator defaults:
 - Pro baseline: `runtime_current`
-- Non-Pro baseline: `runtime_release_safe_pre_exact`
 - Default Pro triage surface: `SMART_TRIAGE_SURFACE=primary_pro`
 - Opening-only fallback surface: `SMART_TRIAGE_SURFACE=opening_reply`
 
@@ -89,8 +76,6 @@ Operator defaults:
 
 Use diagnostics only after the canonical loop tells you what is missing.
 
-- `triage-calibrate`: recalibrate retained triage surfaces.
-- `pro-opening-speed-probe`: opening-reply latency compare on retained Pro fixtures.
 - `smart_automove_pro_reliability_hotspot_probe`: bounded compare-oriented hotspot check.
 - `smart_automove_pro_reliability_duel_trace_probe`: replay duel seeds and inspect first divergences.
 - `smart_automove_pro_reliability_nonwin_trace_probe`: collapse non-win openings from a duel corpus.
@@ -110,7 +95,9 @@ cargo test --release --lib <test_name> -- --ignored --nocapture
 - Workflow-only logs: `target/experiment-runs/misc/`
 - Runtime-preflight stamps: `target/experiment-stamps/`
 - Logs and stamps are disposable evidence, not durable memory.
-- Standard cleanup command: `./scripts/clean-experiment-artifacts.sh`
+- Standard cleanup step:
+  - `./scripts/clean-experiment-artifacts.sh --dry-run`
+  - `./scripts/clean-experiment-artifacts.sh`
 
 ## Session End
 

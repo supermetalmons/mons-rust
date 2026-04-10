@@ -1,8 +1,5 @@
 use super::*;
-use crate::models::scoring::{
-    evaluate_preferability_with_weights, DEFAULT_SCORING_WEIGHTS,
-    SWIFT_2024_REFERENCE_SCORING_WEIGHTS,
-};
+use crate::models::scoring::{evaluate_preferability_with_weights, DEFAULT_SCORING_WEIGHTS};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::env;
@@ -11,9 +8,7 @@ use std::time::Instant;
 
 type AutomoveSelector = fn(&MonsGame, SmartSearchConfig) -> Vec<Input>;
 
-const CURATED_POOL_SIZE: usize = 5;
 const OPENING_RANDOM_PLIES_MAX: usize = 6;
-const LEGACY_NORMAL_MAX_VISITED_NODES: i32 = 2300;
 pub(super) const SMART_PRO_RELIABILITY_WIN_RATE_MIN: f64 = 0.90;
 pub(super) const SMART_PRO_RELIABILITY_CONFIDENCE_MIN: f64 = 0.99;
 pub(super) const SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX: f64 = 700.0;
@@ -80,7 +75,6 @@ fn pro_budget() -> SearchBudget {
 
 #[derive(Clone, Copy)]
 struct AutomoveModel {
-    id: &'static str,
     select_inputs: AutomoveSelector,
 }
 
@@ -186,23 +180,6 @@ enum MatchResult {
     CandidateWin,
     OpponentWin,
     Draw,
-}
-
-#[derive(Debug)]
-struct OpponentEvaluation {
-    opponent_id: &'static str,
-    stats: MatchupStats,
-}
-
-#[derive(Debug)]
-struct ModeEvaluation {
-    opponents: Vec<OpponentEvaluation>,
-}
-
-#[derive(Debug)]
-struct CandidateEvaluation {
-    games_per_matchup: usize,
-    opponents: Vec<OpponentEvaluation>,
 }
 
 #[derive(Clone, Copy)]

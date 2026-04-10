@@ -23,7 +23,6 @@ pub(in super::super) struct CrossBudgetDuelConfig<'a> {
     pub use_white_opening_book: bool,
 }
 
-
 pub(in super::super) fn select_inputs_with_runtime_fallback(
     selector: AutomoveSelector,
     game: &MonsGame,
@@ -40,163 +39,6 @@ pub(in super::super) fn select_inputs_with_runtime_fallback(
         Input::array_from_fen(output.input_fen().as_str())
     } else {
         Vec::new()
-    }
-}
-
-pub(in super::super) fn evaluate_candidate_against_pool_with_max_plies(
-    candidate: AutomoveModel,
-    pool: &[AutomoveModel],
-    games_per_matchup: usize,
-    budgets: &[SearchBudget],
-    max_plies: usize,
-) -> CandidateEvaluation {
-    assert!(!budgets.is_empty());
-    assert!(!pool.is_empty());
-
-    let mut combined_by_opponent = HashMap::<&'static str, MatchupStats>::new();
-
-    for budget in budgets.iter().copied() {
-        let mode_result = run_mode_evaluation_with_max_plies(
-            candidate,
-            pool,
-            games_per_matchup,
-            budget,
-            max_plies,
-        );
-        for entry in &mode_result.opponents {
-            combined_by_opponent
-                .entry(entry.opponent_id)
-                .or_default()
-                .merge(entry.stats);
-        }
-    }
-
-    let mut opponents = combined_by_opponent
-        .into_iter()
-        .map(|(opponent_id, stats)| OpponentEvaluation { opponent_id, stats })
-        .collect::<Vec<_>>();
-    opponents.sort_by(|a, b| a.opponent_id.cmp(b.opponent_id));
-
-    CandidateEvaluation {
-        games_per_matchup,
-        opponents,
-    }
-}
-
-pub(in super::super) fn run_mode_evaluation_with_max_plies(
-    candidate: AutomoveModel,
-    pool: &[AutomoveModel],
-    games_per_matchup: usize,
-    budget: SearchBudget,
-    max_plies: usize,
-) -> ModeEvaluation {
-    let mut opponents = Vec::with_capacity(pool.len());
-
-    for opponent in pool.iter().copied() {
-        let stats = run_matchup_series_with_max_plies(
-            candidate,
-            opponent,
-            games_per_matchup,
-            budget,
-            seed_for_pairing_and_budget(candidate.id, opponent.id, budget),
-            max_plies,
-        );
-        opponents.push(OpponentEvaluation {
-            opponent_id: opponent.id,
-            stats,
-        });
-    }
-    opponents.sort_by(|a, b| a.opponent_id.cmp(b.opponent_id));
-
-    ModeEvaluation {
-        opponents,
-    }
-}
-
-pub(in super::super) fn run_matchup_series_with_max_plies(
-    candidate: AutomoveModel,
-    opponent: AutomoveModel,
-    games_per_matchup: usize,
-    budget: SearchBudget,
-    seed: u64,
-    max_plies: usize,
-) -> MatchupStats {
-    let opening_fens = generate_opening_fens_cached(seed, games_per_matchup.max(1));
-    let mut stats = MatchupStats::default();
-    for game_index in 0..games_per_matchup.max(1) {
-        let candidate_is_white = game_index % 2 == 0;
-        let result = play_one_game(
-            candidate,
-            opponent,
-            budget,
-            candidate_is_white,
-            opening_fens[game_index].as_str(),
-            max_plies,
-        );
-        stats.record(result);
-    }
-    stats
-}
-
-pub(in super::super) fn play_one_game(
-    candidate: AutomoveModel,
-    opponent: AutomoveModel,
-    budget: SearchBudget,
-    candidate_is_white: bool,
-    opening_fen: &str,
-    max_plies: usize,
-) -> MatchResult {
-    let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
-    clear_exact_state_analysis_cache();
-    clear_turn_opportunity_plan_cache();
-    clear_turn_engine_plan_cache();
-    clear_turn_engine_selector_diagnostics();
-    let use_white_opening_book = env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false);
-
-    for _ in 0..max_plies {
-        if let Some(winner_color) = game.winner_color() {
-            return match_result_from_winner(winner_color, candidate_is_white);
-        }
-
-        let candidate_to_move = if candidate_is_white {
-            game.active_color == Color::White
-        } else {
-            game.active_color == Color::Black
-        };
-        let actor_model = if candidate_to_move {
-            candidate
-        } else {
-            opponent
-        };
-
-        let config = budget.runtime_config_for_game(&game);
-        let inputs = if use_white_opening_book {
-            MonsGameModel::white_first_turn_opening_next_inputs(&game).unwrap_or_else(|| {
-                select_inputs_with_runtime_fallback(actor_model.select_inputs, &game, config)
-            })
-        } else {
-            select_inputs_with_runtime_fallback(actor_model.select_inputs, &game, config)
-        };
-        if inputs.is_empty() {
-            return if candidate_to_move {
-                MatchResult::OpponentWin
-            } else {
-                MatchResult::CandidateWin
-            };
-        }
-
-        if !matches!(game.process_input(inputs, false, false), Output::Events(_)) {
-            return if candidate_to_move {
-                MatchResult::OpponentWin
-            } else {
-                MatchResult::CandidateWin
-            };
-        }
-    }
-
-    match adjudicate_non_terminal_game(&game) {
-        Some(winner_color) => match_result_from_winner(winner_color, candidate_is_white),
-        None => MatchResult::Draw,
     }
 }
 
@@ -446,23 +288,6 @@ pub(in super::super) fn seed_for_pairing(candidate_id: &str, opponent_id: &str) 
     hash
 }
 
-pub(in super::super) fn seed_for_pairing_and_budget(
-    candidate_id: &str,
-    opponent_id: &str,
-    budget: SearchBudget,
-) -> u64 {
-    let mut hash = seed_for_pairing(candidate_id, opponent_id);
-    for byte in budget.key().bytes() {
-        hash ^= byte as u64;
-        hash = hash.wrapping_mul(1099511628211);
-    }
-    hash ^= (budget.depth as u64).wrapping_mul(0x9e3779b97f4a7c15);
-    hash = hash.wrapping_mul(1099511628211);
-    hash ^= (budget.max_nodes as u64).wrapping_mul(0x517cc1b727220a95);
-    hash = hash.wrapping_mul(1099511628211);
-    hash
-}
-
 pub(in super::super) fn seed_for_budget_repeat_and_tag(
     budget: SearchBudget,
     repeat_index: usize,
@@ -532,7 +357,10 @@ pub(in super::super) fn stats_delta_confidence(stats: MatchupStats) -> (f64, f64
     )
 }
 
-pub(in super::super) fn mirrored_candidate_stats(ab: MatchupStats, ba: MatchupStats) -> MatchupStats {
+pub(in super::super) fn mirrored_candidate_stats(
+    ab: MatchupStats,
+    ba: MatchupStats,
+) -> MatchupStats {
     MatchupStats {
         wins: ab.wins + ba.losses,
         losses: ab.losses + ba.wins,
@@ -552,7 +380,6 @@ pub(in super::super) fn mirrored_candidate_timing(
     }
 }
 
-
 pub(in super::super) fn run_cross_budget_duel_with_timing(
     config: CrossBudgetDuelConfig<'_>,
 ) -> TimedMatchupStats {
@@ -570,11 +397,9 @@ pub(in super::super) fn run_cross_budget_duel_with_timing(
     };
 
     let model_a = AutomoveModel {
-        id: "cross_budget_a",
         select_inputs: selector_a,
     };
     let model_b = AutomoveModel {
-        id: "cross_budget_b",
         select_inputs: selector_b,
     };
     let budget_a = SearchBudget::from_preference(config.mode_a);
@@ -615,7 +440,9 @@ pub(in super::super) fn run_cross_budget_duel_with_timing(
             seed,
             config.max_plies,
         );
-        aggregate.matchup.merge(mirrored_candidate_stats(ab.matchup, ba.matchup));
+        aggregate
+            .matchup
+            .merge(mirrored_candidate_stats(ab.matchup, ba.matchup));
         aggregate
             .timing
             .merge(mirrored_candidate_timing(ab.timing, ba.timing));
@@ -1054,7 +881,10 @@ pub(in super::super) fn assert_tactical_guardrails(selector: AutomoveSelector, p
     }
 }
 
-pub(in super::super) fn assert_interview_policy_regressions(selector: AutomoveSelector, profile_name: &str) {
+pub(in super::super) fn assert_interview_policy_regressions(
+    selector: AutomoveSelector,
+    profile_name: &str,
+) {
     let selected_root = |game: &MonsGame,
                          config: SmartSearchConfig,
                          selected: &[Input]|

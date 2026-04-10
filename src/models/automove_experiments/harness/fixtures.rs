@@ -1,14 +1,11 @@
 use super::super::profiles::profile_selector_from_name;
-use super::runner::{select_inputs_with_runtime_fallback, tactical_game_with_items};
 use super::super::*;
+use super::runner::{select_inputs_with_runtime_fallback, tactical_game_with_items};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in super::super) enum TriageSurface {
     OpeningReply,
     PrimaryPro,
-    ReplyRisk,
-    Supermana,
-    OpponentMana,
 }
 
 impl TriageSurface {
@@ -16,9 +13,6 @@ impl TriageSurface {
         match value.trim().to_ascii_lowercase().as_str() {
             "opening_reply" => Some(Self::OpeningReply),
             "primary_pro" => Some(Self::PrimaryPro),
-            "reply_risk" => Some(Self::ReplyRisk),
-            "supermana" => Some(Self::Supermana),
-            "opponent_mana" => Some(Self::OpponentMana),
             _ => None,
         }
     }
@@ -27,9 +21,6 @@ impl TriageSurface {
         match self {
             Self::OpeningReply => "opening_reply",
             Self::PrimaryPro => "primary_pro",
-            Self::ReplyRisk => "reply_risk",
-            Self::Supermana => "supermana",
-            Self::OpponentMana => "opponent_mana",
         }
     }
 }

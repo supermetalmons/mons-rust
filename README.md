@@ -13,15 +13,12 @@ Canonical automove workflow:
 - live board: `AUTOMOVE_IDEAS.md`
 - durable lessons: `docs/automove-knowledge.md`
 - archive: `docs/automove-archive.md`
-- compatibility pointer: `docs/automove-experiments.md`
 
 Active experiment stages:
 
 - `guardrails`
-- `triage-calibrate`
 - `pro-triage`
 - `runtime-preflight`
-- `pro-opening-speed-probe`
 - `pro-reliability`
 - `pro-reliability-confirm`
 
@@ -36,14 +33,7 @@ Canonical commands:
 
 Active retained profile surface:
 
-- `base`
 - `runtime_current`
-- `runtime_release_safe_pre_exact`
-- `runtime_eff_exact_lite_v1`
-- `runtime_pre_fast_root_quality_v1_normal_conversion_v3`
-- `swift_2024_eval_reference`
-- `swift_2024_style_reference`
-- `runtime_normal_from_fast_reference_v1`
 - `runtime_pro_turn_engine_v30`
 
 Notes:

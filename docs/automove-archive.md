@@ -32,3 +32,9 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The winning structural change was the unified `ProV2` root advisor that centralized shortlist shaping, family preservation, omitted-root handling, macro-root injection, and conservative post-search verification.
 - The final promotable cut was narrow: on quiet early-black boards, advisor approval had to stop preferring a weaker plain-spirit sibling over a stronger own-setup `SpiritImpact` root already in the shortlist.
 - Durable outcome: `runtime_pro_turn_engine_v30` became promotable and `runtime_current` now ships that guarded path.
+
+## Pro-Only Surface Cleanup Wave
+
+- After promotion, the active experiment surface was shrunk to two selectable profiles: `runtime_current` and `runtime_pro_turn_engine_v30`.
+- Calibration/reference profiles, curated-pool smoke plumbing, and compatibility-only docs were archived.
+- Durable outcome: future work starts from a smaller Pro-only workflow; archived profiles and stages stay documented here, not in the live runbook.

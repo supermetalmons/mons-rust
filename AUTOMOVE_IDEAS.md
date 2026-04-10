@@ -8,7 +8,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 - Shipping Pro is `runtime_current`.
 - `runtime_current` now ships through the promoted guarded `runtime_pro_turn_engine_v30` path.
-- `runtime_pro_turn_engine_v30` is the only retained Pro frontier. There is no second live challenger today.
+- `runtime_pro_turn_engine_v30` is the only retained Pro frontier.
+- The live experiment surface is now Pro-only: 2 active profiles and 5 canonical stages.
+- There is no second live challenger today.
 
 ## Latest Gate Snapshot
 
@@ -27,7 +29,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 ## Next Frontier
 
-- Future Pro iteration should start only when there is one new shared selector/search hypothesis that can challenge `runtime_current`; cleanup is complete, but there is no live replacement candidate yet.
+- Future Pro iteration should start only when there is one new shared selector/search hypothesis that can challenge `runtime_current`.
+- Cleanup is complete enough to work from the reduced Pro-only surface; there is no live replacement candidate yet.
 
 ## No-Go Notes
 

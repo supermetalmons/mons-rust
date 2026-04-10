@@ -15,6 +15,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - `runtime-preflight` still matters after promotion: exact-lite diagnostics are a hard gate and stage-1 CPU remains advisory-only for Pro.
 - When a live miss appears, separate `pre_accept` search choice from final `engine_post_search` output before changing shared heuristics.
 - Matching a forced head is weaker than matching the full runtime-faithful stage shape.
+- Quiet play is only acceptable after checking immediate opponent-drainer pressure.
+- Safe supermana and safe opponent-mana progress remain high-value tempo goals.
+- Leaving your own drainer vulnerable is only acceptable for an immediate winning or scoring payoff.
+- Spirit deployment should create progress or setup value, not idle on base.
 
 ## Retained Seam And Fixture Map
 
@@ -28,7 +32,6 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 
 ## Retained Diagnostic Toolbox
 
-- `smart_automove_pool_opening_reply_speed_probe`: retained opening latency compare.
 - `smart_automove_pro_reliability_duel_trace_probe`: replay duel seeds and show first divergence.
 - `smart_automove_pro_reliability_nonwin_trace_probe`: collapse exact non-win openings from a duel corpus.
 - `smart_automove_pro_reliability_hotspot_probe`: bounded hotspot compare for real duel trouble spots.

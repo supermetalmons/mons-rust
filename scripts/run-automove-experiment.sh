@@ -3,50 +3,34 @@ set -euo pipefail
 
 usage() {
   local triage_surfaces="opening_reply primary_pro"
-  local calibration_surfaces="reply_risk opponent_mana supermana"
   cat <<'EOF_HELP'
 usage:
   ./scripts/run-automove-experiment.sh <stage> <candidate> [baseline]
-  ./scripts/run-automove-experiment.sh triage-calibrate [surface|all]
 
 stages:
   guardrails              tactical guardrails only; the cheap first gate
   runtime-preflight       stage-1 cpu report (advisory for Pro) + exact-lite diagnostics; writes the duel stamp
-  triage-calibrate        retained-profile calibration for reply_risk/supermana/opponent_mana
   pro-triage              deterministic Pro triage for opening_reply or primary_pro
-  pro-opening-speed-probe diagnostic opening-reply latency compare on fixed Pro fixtures
   pro-reliability         focused Pro-vs-Pro, Pro-vs-Normal, and Pro-vs-Fast reliability gate
   pro-reliability-confirm larger confirmation gate with the same three Pro matchups
 
 defaults:
   baseline = runtime_current for Pro stages
-  baseline = runtime_release_safe_pre_exact for non-Pro stages
 EOF_HELP
   cat <<EOF_HELP
   pro triage surfaces = ${triage_surfaces}
-  triage calibration surfaces = ${calibration_surfaces}
 
 examples:
-  ./scripts/run-automove-experiment.sh triage-calibrate
-  ./scripts/run-automove-experiment.sh triage-calibrate opponent_mana
   ./scripts/run-automove-experiment.sh guardrails runtime_pro_turn_engine_v30
   ./scripts/run-automove-experiment.sh runtime-preflight runtime_pro_turn_engine_v30
   SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage runtime_pro_turn_engine_v30
-  ./scripts/run-automove-experiment.sh pro-opening-speed-probe runtime_pro_turn_engine_v30
   ./scripts/run-automove-experiment.sh pro-reliability runtime_pro_turn_engine_v30
   ./scripts/run-automove-experiment.sh pro-reliability-confirm runtime_pro_turn_engine_v30
 EOF_HELP
 }
 
 retained_profiles=(
-  base
   runtime_current
-  runtime_release_safe_pre_exact
-  runtime_eff_exact_lite_v1
-  runtime_pre_fast_root_quality_v1_normal_conversion_v3
-  swift_2024_eval_reference
-  swift_2024_style_reference
-  runtime_normal_from_fast_reference_v1
   runtime_pro_turn_engine_v30
 )
 
@@ -73,14 +57,7 @@ require_supported_profile() {
 }
 
 default_baseline_for_stage() {
-  case "$1" in
-    pro-triage|pro-opening-speed-probe|pro-reliability|pro-reliability-confirm)
-      echo "runtime_current"
-      ;;
-    *)
-      echo "runtime_release_safe_pre_exact"
-      ;;
-  esac
+  echo "runtime_current"
 }
 
 stage="${1:-}"
@@ -209,58 +186,9 @@ run_pro_reliability_gate() {
     "${extra_env[@]}"
 }
 
-run_pro_opening_speed_probe() {
-  run_cargo_logged \
-    "pro_opening_speed_probe_${candidate}" \
-    "smart_automove_pool_opening_reply_speed_probe" \
-    "SMART_OPENING_SPEED_COMPARE_PROFILE=${candidate}" \
-    "SMART_OPENING_SPEED_BASELINE_PROFILE=${baseline}"
-}
-
-run_triage_calibration() {
-  local surface="${1:-all}"
-  local calibration_candidate
-  case "${surface}" in
-    all)
-      run_triage_calibration "reply_risk"
-      run_triage_calibration "opponent_mana"
-      run_triage_calibration "supermana"
-      return
-      ;;
-    reply_risk|opponent_mana)
-      calibration_candidate="runtime_pre_fast_root_quality_v1_normal_conversion_v3"
-      ;;
-    supermana)
-      calibration_candidate="runtime_eff_exact_lite_v1"
-      ;;
-    *)
-      echo "unknown triage calibration surface: ${surface}" >&2
-      echo "expected one of: reply_risk, opponent_mana, supermana, all" >&2
-      exit 2
-      ;;
-  esac
-
-  run_logged \
-    "triage_calibrate_${surface}_${calibration_candidate}" \
-    env \
-    "SMART_CANDIDATE_PROFILE=${calibration_candidate}" \
-    "SMART_PRO_CANDIDATE_PROFILE=${calibration_candidate}" \
-    "SMART_GATE_BASELINE_PROFILE=runtime_release_safe_pre_exact" \
-    "SMART_TRIAGE_SURFACE=${surface}" \
-    cargo test --release --lib smart_automove_pool_surface_calibration -- --ignored --nocapture
-}
-
 case "${stage}" in
   -h|--help|help)
     usage
-    exit 0
-    ;;
-  triage-calibrate)
-    if [ "$#" -gt 2 ]; then
-      usage >&2
-      exit 2
-    fi
-    run_triage_calibration "${2:-all}"
     exit 0
     ;;
 esac
@@ -290,9 +218,6 @@ case "${stage}" in
       "smart_automove_pool_pro_signal_triage" \
       "SMART_GATE_BASELINE_PROFILE=${baseline}" \
       "SMART_PRO_BASELINE_PROFILE=${baseline}"
-    ;;
-  pro-opening-speed-probe)
-    run_pro_opening_speed_probe
     ;;
   pro-reliability)
     require_fresh_preflight_stamp "${candidate}"

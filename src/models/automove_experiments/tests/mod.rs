@@ -448,12 +448,11 @@ fn pro_v2_legacy_selector_probe(
     game: &MonsGame,
     mode: SmartAutomovePreference,
 ) -> (String, String, Vec<String>, Vec<String>) {
-    let (mut config, scored_roots, _, _) =
-        profile_runtime_scored_roots_with_forced_engine_inputs(
-            "runtime_pro_turn_engine_v30",
-            mode,
-            game,
-        );
+    let (mut config, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+        "runtime_pro_turn_engine_v30",
+        mode,
+        game,
+    );
     let candidate_indices = MonsGameModel::filtered_root_candidate_indices(
         game,
         scored_roots.as_slice(),
@@ -470,13 +469,14 @@ fn pro_v2_legacy_selector_probe(
             game.active_color,
             config,
         );
-    let selected_from_full_pool = MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
-        game,
-        scored_roots.as_slice(),
-        all_indices.as_slice(),
-        game.active_color,
-        config,
-    );
+    let selected_from_full_pool =
+        MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
+            game,
+            scored_roots.as_slice(),
+            all_indices.as_slice(),
+            game.active_color,
+            config,
+        );
     (
         Input::fen_from_array(&selected_from_candidates),
         Input::fen_from_array(&selected_from_full_pool),
@@ -488,7 +488,7 @@ fn pro_v2_legacy_selector_probe(
             .iter()
             .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
             .collect(),
-        )
+    )
 }
 
 fn assert_runtime_pro_turn_engine_v30_prefers_current_root_on_board(
@@ -518,11 +518,8 @@ fn assert_runtime_pro_turn_engine_v30_prefers_current_root_on_board(
         &game,
     );
 
-    let current_selected = profile_decision_move_fen(
-        "runtime_current",
-        SmartAutomovePreference::Pro,
-        &game,
-    );
+    let current_selected =
+        profile_decision_move_fen("runtime_current", SmartAutomovePreference::Pro, &game);
     let current_root = format_root_probe(
         current_scored_roots
             .iter()
@@ -597,7 +594,10 @@ fn profile_duel_turn_inputs(
     } else {
         (opponent_profile, opponent_mode)
     };
-    Ok((candidate_to_move, profile_runtime_inputs(profile_name, mode, game)))
+    Ok((
+        candidate_to_move,
+        profile_runtime_inputs(profile_name, mode, game),
+    ))
 }
 
 fn play_profile_duel_trace(
@@ -849,33 +849,6 @@ fn profile_runtime_scored_roots_with_forced_engine_inputs(
     (config, scored_roots, engine_plan, forced_engine_inputs)
 }
 
-fn opening_reply_speed_probe_avg_ms(
-    profile_name: &str,
-    selector: AutomoveSelector,
-    fixtures: &[TriageFixture],
-) -> f64 {
-    use std::time::Instant;
-
-    with_env_override("SMART_USE_WHITE_OPENING_BOOK", "true", || {
-        let mut total_ms = 0.0;
-        for fixture in fixtures {
-            clear_exact_state_analysis_cache();
-            let base_config =
-                SearchBudget::from_preference(fixture.mode).runtime_config_for_game(&fixture.game);
-            let start = Instant::now();
-            let inputs = select_inputs_with_runtime_fallback(selector, &fixture.game, base_config);
-            total_ms += start.elapsed().as_secs_f64() * 1000.0;
-            assert!(
-                !inputs.is_empty(),
-                "opening reply speed probe profile '{}' produced no legal move for fixture '{}'",
-                profile_name,
-                fixture.id
-            );
-        }
-        total_ms / fixtures.len().max(1) as f64
-    })
-}
-
 #[derive(Debug, Clone, Copy)]
 struct ProReliabilityGateMetrics {
     win_rate: f64,
@@ -925,13 +898,11 @@ fn assert_pro_reliability_duel_passes(label: &str, metrics: ProReliabilityGateMe
 
 fn triage_surface_from_env() -> TriageSurface {
     let value = env::var("SMART_TRIAGE_SURFACE").unwrap_or_else(|_| {
-        panic!(
-            "SMART_TRIAGE_SURFACE is required (expected one of: opening_reply, primary_pro, reply_risk, supermana, opponent_mana)"
-        )
+        panic!("SMART_TRIAGE_SURFACE is required (expected one of: opening_reply, primary_pro)")
     });
     TriageSurface::parse(value.as_str()).unwrap_or_else(|| {
         panic!(
-            "unknown SMART_TRIAGE_SURFACE='{}' (expected one of: opening_reply, primary_pro, reply_risk, supermana, opponent_mana)",
+            "unknown SMART_TRIAGE_SURFACE='{}' (expected one of: opening_reply, primary_pro)",
             value
         )
     })
@@ -954,211 +925,6 @@ fn pro_signal_triage_passes(
 }
 
 const TRIAGE_TOP_ROOT_DIGEST_SIZE: usize = 5;
-
-fn triage_game_with_items(
-    items: Vec<(Location, Item)>,
-    active_color: Color,
-    turn_number: i32,
-) -> MonsGame {
-    let mut game = MonsGame::new(false);
-    game.board = Board::new_with_items(items.into_iter().collect());
-    game.active_color = active_color;
-    game.turn_number = turn_number;
-    game.actions_used_count = 0;
-    game.mana_moves_count = 0;
-    game.mons_moves_count = 0;
-    game.white_score = 0;
-    game.black_score = 0;
-    game.white_potions_count = 0;
-    game.black_potions_count = 0;
-    game
-}
-
-fn triage_root_evaluation(candidate: &ScoredRootMove, score: i32) -> RootEvaluation {
-    RootEvaluation {
-        root_rank: 0,
-        score,
-        efficiency: candidate.efficiency,
-        inputs: candidate.inputs.clone(),
-        game: candidate.game.clone(),
-        wins_immediately: candidate.wins_immediately,
-        attacks_opponent_drainer: candidate.attacks_opponent_drainer,
-        own_drainer_vulnerable: candidate.own_drainer_vulnerable,
-        own_drainer_walk_vulnerable: candidate.own_drainer_walk_vulnerable,
-        spirit_development: candidate.spirit_development,
-        keeps_awake_spirit_on_base: candidate.keeps_awake_spirit_on_base,
-        mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
-        has_roundtrip: candidate.has_roundtrip,
-        scores_supermana_this_turn: candidate.scores_supermana_this_turn,
-        scores_opponent_mana_this_turn: candidate.scores_opponent_mana_this_turn,
-        safe_supermana_pickup_now: candidate.safe_supermana_pickup_now,
-        safe_opponent_mana_pickup_now: candidate.safe_opponent_mana_pickup_now,
-        safe_supermana_progress_steps: candidate.safe_supermana_progress_steps,
-        safe_opponent_mana_progress_steps: candidate.safe_opponent_mana_progress_steps,
-        score_path_best_steps: candidate.score_path_best_steps,
-        same_turn_score_window_value: candidate.same_turn_score_window_value,
-        spirit_setup_gain: candidate.spirit_setup_gain,
-        spirit_same_turn_score_setup_now: candidate.spirit_same_turn_score_setup_now,
-        spirit_own_mana_setup_now: candidate.spirit_own_mana_setup_now,
-        supermana_progress: candidate.supermana_progress,
-        opponent_mana_progress: candidate.opponent_mana_progress,
-        interview_soft_priority: candidate.interview_soft_priority,
-        classes: candidate.classes,
-    }
-}
-
-fn reply_risk_calibration_probe(profile_name: &str) -> i32 {
-    let white_drainer = Mon::new(MonKind::Drainer, Color::White, 0);
-    let black_drainer = Mon::new(MonKind::Drainer, Color::Black, 0);
-    let game = triage_game_with_items(
-        vec![
-            (Location::new(4, 0), Item::Mon { mon: white_drainer }),
-            (Location::new(0, 5), Item::Mon { mon: black_drainer }),
-        ],
-        Color::White,
-        2,
-    );
-    let config = calibration_runtime_config(profile_name, &game, SmartAutomovePreference::Fast);
-    let events = vec![
-        Event::MonMove {
-            item: Item::Mon { mon: white_drainer },
-            from: Location::new(4, 0),
-            to: Location::new(5, 0),
-        },
-        Event::MonMove {
-            item: Item::Mon { mon: white_drainer },
-            from: Location::new(5, 0),
-            to: Location::new(4, 0),
-        },
-    ];
-    MonsGameModel::move_efficiency_delta(
-        &game,
-        &game,
-        Color::White,
-        events.as_slice(),
-        true,
-        true,
-        false,
-        false,
-        false,
-        config.root_backtrack_penalty,
-        config.root_mana_handoff_penalty,
-    )
-}
-
-fn opponent_mana_calibration_probe(profile_name: &str) -> usize {
-    let mut game = triage_game_with_items(
-        vec![
-            (
-                Location::new(4, 0),
-                Item::Mon {
-                    mon: Mon::new(MonKind::Spirit, Color::White, 0),
-                },
-            ),
-            (
-                Location::new(7, 0),
-                Item::Mon {
-                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
-                },
-            ),
-            (
-                Location::new(5, 2),
-                Item::Mana {
-                    mana: Mana::Regular(Color::Black),
-                },
-            ),
-            (
-                Location::new(0, 5),
-                Item::Mon {
-                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
-                },
-            ),
-        ],
-        Color::White,
-        2,
-    );
-    game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
-
-    let config = calibration_runtime_config(profile_name, &game, SmartAutomovePreference::Normal);
-    let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
-        &game,
-        Color::White,
-        config.enable_enhanced_drainer_vulnerability,
-    );
-    let mut progress = MonsGameModel::build_scored_root_move(
-        &game,
-        Color::White,
-        config,
-        own_drainer_vulnerable_before,
-        &[
-            Input::Location(Location::new(4, 0)),
-            Input::Location(Location::new(5, 2)),
-            Input::Location(Location::new(6, 1)),
-        ],
-    )
-    .expect("spirit opponent mana handoff inputs should build a scored root");
-    progress.opponent_mana_progress = true;
-    progress.safe_opponent_mana_progress_steps = 1;
-    progress.mana_handoff_to_opponent = false;
-    progress.has_roundtrip = false;
-
-    let mut risky = progress.clone();
-    risky.inputs = vec![Input::Location(Location::new(0, 0))];
-    risky.opponent_mana_progress = false;
-    risky.safe_opponent_mana_progress_steps = 6;
-    risky.mana_handoff_to_opponent = true;
-    risky.has_roundtrip = true;
-    risky.interview_soft_priority = 0;
-
-    MonsGameModel::pick_root_move_with_reply_risk_guard(
-        &game,
-        &[
-            triage_root_evaluation(&risky, 200),
-            triage_root_evaluation(&progress, 40),
-        ],
-        &[0, 1],
-        Color::White,
-        config,
-    )
-    .expect("reply-risk calibration probe should pick one of the synthetic roots")
-}
-
-fn supermana_calibration_probe(profile_name: &str) -> bool {
-    let game = triage_game_with_items(
-        vec![
-            (
-                Location::new(6, 5),
-                Item::Mon {
-                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
-                },
-            ),
-            (
-                Location::new(5, 5),
-                Item::Mana {
-                    mana: Mana::Supermana,
-                },
-            ),
-            (
-                Location::new(0, 10),
-                Item::Mon {
-                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
-                },
-            ),
-        ],
-        Color::White,
-        2,
-    );
-    let config = calibration_runtime_config(profile_name, &game, SmartAutomovePreference::Normal);
-    let (_, events) = MonsGameModel::apply_inputs_for_search_with_events(
-        &game,
-        &[
-            Input::Location(Location::new(6, 5)),
-            Input::Location(Location::new(5, 5)),
-        ],
-    )
-    .expect("shortening supermana path inputs should be legal");
-    MonsGameModel::should_use_root_exact_summary_for_transition(events.as_slice(), config)
-}
 
 fn maybe_run_runtime_preflight_checks(
     skip_runtime_preflight: bool,
@@ -1270,10 +1036,6 @@ fn pro_triage_fixture_changed(
             }
         }
         TriageSurface::OpeningReply => pro_triage_surface_signal_changed(candidate, baseline),
-        _ => panic!(
-            "unsupported retained pro-triage surface '{}'",
-            surface.as_str()
-        ),
     }
 }
 
