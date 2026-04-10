@@ -1759,7 +1759,7 @@ fn set_pro_v2_root_advisor_decision(decision: Option<ProV2RootAdvisorDecision>) 
     });
 }
 
-#[cfg(not(test))]
+#[cfg(all(not(test), target_arch = "wasm32"))]
 #[inline]
 fn set_pro_v2_root_advisor_decision(_: Option<ProV2RootAdvisorDecision>) {}
 
