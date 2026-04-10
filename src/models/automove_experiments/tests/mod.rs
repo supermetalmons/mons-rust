@@ -1,0 +1,1560 @@
+use super::harness::*;
+use super::profiles::*;
+use super::*;
+use crate::models::automove_exact::{
+    clear_exact_query_diagnostics, clear_exact_state_analysis_cache,
+    exact_query_diagnostics_snapshot, ExactQueryDiagnostics,
+};
+use crate::models::automove_turn_engine::{
+    clear_turn_engine_diagnostics, clear_turn_engine_plan_cache, turn_engine_cached_step,
+    turn_engine_candidate_plan, turn_engine_diagnostics_snapshot, TurnEngineConfig,
+    TurnEngineDiagnostics,
+};
+use crate::models::automove_turn_planner::clear_turn_opportunity_plan_cache;
+use crate::models::mons_game_model::{
+    clear_turn_engine_selector_diagnostics, pro_v2_root_advisor_decision_snapshot,
+    turn_engine_selector_diagnostics_snapshot, TurnEngineSelectorDiagnostics,
+};
+use std::env;
+
+fn stage1_cpu_budgets(profile_name: &str) -> Vec<SearchBudget> {
+    if profile_name.starts_with("runtime_pro_") {
+        return vec![pro_budget()];
+    }
+
+    let mut budgets = client_budgets().to_vec();
+    if env_bool("SMART_STAGE1_INCLUDE_PRO").unwrap_or(false) {
+        budgets.push(pro_budget());
+    }
+    budgets
+}
+
+fn stage1_cpu_ratio_limit(mode: &str) -> f64 {
+    match mode {
+        "fast" => SMART_STAGE1_CPU_RATIO_MAX_FAST,
+        "normal" => SMART_STAGE1_CPU_RATIO_MAX_NORMAL,
+        "pro" => SMART_STAGE1_CPU_RATIO_MAX_PRO,
+        _ => SMART_STAGE1_CPU_RATIO_MAX_PRO,
+    }
+}
+
+fn stage1_seed_tags() -> Vec<String> {
+    let from_env = env::var("SMART_STAGE1_SEED_TAGS")
+        .ok()
+        .map(|value| {
+            value
+                .split(',')
+                .map(|item| item.trim().to_string())
+                .filter(|item| !item.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if !from_env.is_empty() {
+        assert!(
+            from_env.len() >= 3,
+            "stage-1 cpu gate requires at least 3 seeds; got {}",
+            from_env.len()
+        );
+        return from_env;
+    }
+    vec![
+        "stage1_cpu_v1".to_string(),
+        "stage1_cpu_v2".to_string(),
+        "stage1_cpu_v3".to_string(),
+    ]
+}
+
+fn stage1_cpu_measurement_repeats() -> usize {
+    env_usize("SMART_STAGE1_MEASUREMENT_REPEATS")
+        .unwrap_or(3)
+        .max(1)
+}
+
+fn median_f64(values: &mut [f64]) -> f64 {
+    values.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = values.len() / 2;
+    if values.len().is_multiple_of(2) {
+        (values[mid - 1] + values[mid]) / 2.0
+    } else {
+        values[mid]
+    }
+}
+
+fn env_f64(name: &str) -> Option<f64> {
+    env::var(name)
+        .ok()
+        .and_then(|value| value.trim().parse::<f64>().ok())
+}
+
+fn with_env_override<T>(name: &str, value: &str, f: impl FnOnce() -> T) -> T {
+    let previous = env::var(name).ok();
+    env::set_var(name, value);
+    let result = f();
+    if let Some(previous) = previous {
+        env::set_var(name, previous);
+    } else {
+        env::remove_var(name);
+    }
+    result
+}
+
+fn calibration_runtime_config(
+    profile_name: &str,
+    game: &MonsGame,
+    mode: SmartAutomovePreference,
+) -> SmartSearchConfig {
+    let base = SearchBudget::from_preference(mode).runtime_config_for_game(game);
+    profile_runtime_config_for_name(profile_name, game, base).unwrap_or_else(|| {
+        panic!(
+            "profile '{}' does not expose a runtime config",
+            profile_name
+        )
+    })
+}
+
+fn calibration_turn_engine_config(config: SmartSearchConfig) -> TurnEngineConfig {
+    TurnEngineConfig {
+        mode: config.turn_engine_mode,
+        own_seed_cap: config.turn_engine_seed_cap.max(1),
+        own_beam: config.turn_engine_beam_width.max(1),
+        per_node_family_cap: config.turn_engine_per_node_family_cap.max(1),
+        step_cap: config.turn_engine_step_cap.max(1),
+        opponent_seed_cap: config.turn_engine_opponent_seed_cap.max(1),
+        opponent_beam: config.turn_engine_opponent_beam_width.max(1),
+        reply_seed_cap: config.turn_engine_reply_seed_cap.max(1),
+        reply_beam: config.turn_engine_reply_beam_width.max(1),
+        expansion_cap: config.turn_engine_expansion_cap.max(1),
+        enable_spirit_family: config.turn_engine_enable_spirit_family,
+        scoring_weights: config.scoring_weights,
+        allow_exact_static_evaluation: config.enable_static_exact_evaluation,
+        enable_lazy_oracle_score_window_projection: config
+            .enable_turn_engine_lazy_oracle_score_window_projection,
+    }
+}
+
+fn profile_decision_inputs(
+    profile_name: &str,
+    mode: SmartAutomovePreference,
+    game: &MonsGame,
+) -> Vec<Input> {
+    clear_turn_engine_selector_diagnostics();
+    profile_runtime_inputs(profile_name, mode, game)
+}
+
+fn profile_decision_move_fen(
+    profile_name: &str,
+    mode: SmartAutomovePreference,
+    game: &MonsGame,
+) -> String {
+    Input::fen_from_array(&profile_decision_inputs(profile_name, mode, game))
+}
+
+fn profile_runtime_inputs(
+    profile_name: &str,
+    mode: SmartAutomovePreference,
+    game: &MonsGame,
+) -> Vec<Input> {
+    let selector = profile_selector_from_name(profile_name)
+        .unwrap_or_else(|| panic!("profile '{}' not found", profile_name));
+    let config = calibration_runtime_config(profile_name, game, mode);
+    select_inputs_with_runtime_fallback(selector, game, config)
+}
+
+fn primary_pro_fixture_by_id(id: &str) -> TriageFixture {
+    primary_pro_triage_fixtures()
+        .into_iter()
+        .find(|fixture| fixture.id == id)
+        .unwrap_or_else(|| panic!("primary_pro fixture '{}' not found", id))
+}
+
+fn profile_scored_roots(
+    profile_name: &str,
+    mode: SmartAutomovePreference,
+    game: &MonsGame,
+) -> (SmartSearchConfig, Vec<RootEvaluation>) {
+    let config = calibration_runtime_config(profile_name, game, mode);
+    let perspective = game.active_color;
+    let root_moves = MonsGameModel::ranked_root_moves(game, perspective, config);
+    let (root_moves, scout_visited_nodes) =
+        MonsGameModel::focused_root_candidates(game, perspective, root_moves, config, true);
+    let mut visited_nodes = scout_visited_nodes;
+    let mut alpha = i32::MIN;
+    let mut scored_roots = Vec::with_capacity(root_moves.len());
+    let mut transposition_table = U64HashMap::default();
+    let extension_node_budget = if config.enable_selective_extensions
+        && config.selective_extension_node_share_bp > 0
+    {
+        ((config.max_visited_nodes * config.selective_extension_node_share_bp as usize) / 10_000)
+            .max(1)
+    } else {
+        0
+    };
+    let mut extension_nodes_used = 0usize;
+    let mut killer_table: KillerTable = [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
+    let mut history_table: HistoryTable = HistoryTable::default();
+    let mut quiescence_nodes_used = 0usize;
+
+    for candidate in root_moves {
+        if visited_nodes >= config.max_visited_nodes {
+            break;
+        }
+        visited_nodes += 1;
+        let candidate_score = MonsGameModel::evaluate_root_candidate_score(
+            &candidate,
+            perspective,
+            alpha,
+            &mut visited_nodes,
+            config,
+            &mut transposition_table,
+            &mut extension_nodes_used,
+            extension_node_budget,
+            true,
+            &mut killer_table,
+            &mut history_table,
+            &mut quiescence_nodes_used,
+        );
+        if candidate_score > alpha {
+            alpha = candidate_score;
+        }
+        scored_roots.push(RootEvaluation {
+            root_rank: candidate.root_rank,
+            score: candidate_score,
+            efficiency: candidate.efficiency,
+            inputs: candidate.inputs,
+            game: candidate.game,
+            wins_immediately: candidate.wins_immediately,
+            attacks_opponent_drainer: candidate.attacks_opponent_drainer,
+            own_drainer_vulnerable: candidate.own_drainer_vulnerable,
+            own_drainer_walk_vulnerable: candidate.own_drainer_walk_vulnerable,
+            spirit_development: candidate.spirit_development,
+            keeps_awake_spirit_on_base: candidate.keeps_awake_spirit_on_base,
+            mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
+            has_roundtrip: candidate.has_roundtrip,
+            scores_supermana_this_turn: candidate.scores_supermana_this_turn,
+            scores_opponent_mana_this_turn: candidate.scores_opponent_mana_this_turn,
+            safe_supermana_pickup_now: candidate.safe_supermana_pickup_now,
+            safe_opponent_mana_pickup_now: candidate.safe_opponent_mana_pickup_now,
+            safe_supermana_progress_steps: candidate.safe_supermana_progress_steps,
+            safe_opponent_mana_progress_steps: candidate.safe_opponent_mana_progress_steps,
+            score_path_best_steps: candidate.score_path_best_steps,
+            same_turn_score_window_value: candidate.same_turn_score_window_value,
+            spirit_setup_gain: candidate.spirit_setup_gain,
+            spirit_same_turn_score_setup_now: candidate.spirit_same_turn_score_setup_now,
+            spirit_own_mana_setup_now: candidate.spirit_own_mana_setup_now,
+            supermana_progress: candidate.supermana_progress,
+            opponent_mana_progress: candidate.opponent_mana_progress,
+            interview_soft_priority: candidate.interview_soft_priority,
+            classes: candidate.classes,
+        });
+    }
+
+    (config, scored_roots)
+}
+
+fn format_root_probe(root: Option<&RootEvaluation>) -> String {
+    root.map(|root| {
+        format!(
+            "score={} rank={} family={:?} win={} attack={} window={} same_turn_setup={} own_setup={} spirit={} supermana_progress={} super_steps={} opponent_progress={} opp_steps={} score_path_steps={} setup_gain={} pickup_super={} pickup_opp={} vulnerable={} handoff={} roundtrip={}",
+            root.score,
+            root.root_rank,
+            MonsGameModel::turn_engine_root_evaluation_family(root),
+            root.wins_immediately,
+            root.attacks_opponent_drainer,
+            root.same_turn_score_window_value,
+            root.spirit_same_turn_score_setup_now,
+            root.spirit_own_mana_setup_now,
+            root.spirit_development,
+            root.supermana_progress,
+            root.safe_supermana_progress_steps,
+            root.opponent_mana_progress,
+            root.safe_opponent_mana_progress_steps,
+            root.score_path_best_steps,
+            root.spirit_setup_gain,
+            root.safe_supermana_pickup_now,
+            root.safe_opponent_mana_pickup_now,
+            root.own_drainer_vulnerable,
+            root.mana_handoff_to_opponent,
+            root.has_roundtrip,
+        )
+    })
+    .unwrap_or_else(|| "none".to_string())
+}
+
+fn format_root_advisor_entry_probe(
+    entry: &crate::models::mons_game_model::ProV2RootAdvisorEntry,
+) -> String {
+    format!(
+        "{}:{:?}:{:?}:rank{}",
+        Input::fen_from_array(&entry.inputs),
+        entry.family,
+        entry.reason,
+        entry.root_rank,
+    )
+}
+
+fn format_normal_safety_probe(snapshot: Option<NormalRootSafetySnapshot>) -> String {
+    snapshot
+        .map(|snapshot| {
+            format!(
+                "imm_loss={} match_point={} opp_gain={} my_gain={} worst_reply={}",
+                snapshot.allows_immediate_opponent_win,
+                snapshot.opponent_reaches_match_point,
+                snapshot.opponent_max_score_gain,
+                snapshot.my_score_gain,
+                snapshot.worst_reply_score,
+            )
+        })
+        .unwrap_or_else(|| "none".to_string())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RuntimeDecisionProbe {
+    selected_input_fen: String,
+    selected_rank: Option<usize>,
+    pre_accept_input_fen: String,
+    pre_accept_rank: Option<usize>,
+    top_root_fens: Vec<String>,
+    selector_last_stage: &'static str,
+    selector_head_calls: usize,
+    selector_head_hits: usize,
+    head_input_fen: Option<String>,
+    head_rank: Option<usize>,
+    head_accepted: bool,
+    selected_root: String,
+    head_root: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DuelTraceTurn {
+    ply: usize,
+    board_fen: String,
+    move_fen: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DuelTraceGame {
+    result: MatchResult,
+    final_fen: String,
+    candidate_turns: Vec<DuelTraceTurn>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FirstDivergence {
+    ply: usize,
+    board_fen: String,
+    candidate_move_fen: String,
+    baseline_move_fen: String,
+}
+
+fn runtime_decision_probe(
+    profile_name: &str,
+    mode: SmartAutomovePreference,
+    game: &MonsGame,
+) -> RuntimeDecisionProbe {
+    clear_exact_state_analysis_cache();
+    clear_exact_query_diagnostics();
+    clear_turn_opportunity_plan_cache();
+    clear_turn_engine_plan_cache();
+    clear_turn_engine_diagnostics();
+    clear_turn_engine_selector_diagnostics();
+
+    let selected = profile_runtime_inputs(profile_name, mode, game);
+    let selected_input_fen = Input::fen_from_array(&selected);
+    let selector_diag = turn_engine_selector_diagnostics_snapshot();
+
+    clear_exact_state_analysis_cache();
+    clear_exact_query_diagnostics();
+    clear_turn_opportunity_plan_cache();
+    clear_turn_engine_plan_cache();
+    clear_turn_engine_diagnostics();
+    clear_turn_engine_selector_diagnostics();
+
+    let (config, scored_roots, head_plan, _) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(profile_name, mode, game);
+    let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
+        game,
+        scored_roots.as_slice(),
+        game.active_color,
+        config,
+    );
+    let pre_accept_input_fen = Input::fen_from_array(&pre_accept_selected);
+    let selected_rank = scored_roots.iter().position(|root| root.inputs == selected);
+    let pre_accept_rank = scored_roots
+        .iter()
+        .position(|root| root.inputs == pre_accept_selected);
+    let head_rank = head_plan.as_ref().and_then(|plan| {
+        plan.compiled_chunks.first().and_then(|chunk| {
+            scored_roots
+                .iter()
+                .position(|root| root.inputs.as_slice() == chunk.as_slice())
+        })
+    });
+    let head_accepted = head_plan.as_ref().is_some_and(|plan| {
+        MonsGameModel::accept_turn_engine_head_after_search(
+            game,
+            game.active_color,
+            config,
+            scored_roots.as_slice(),
+            pre_accept_selected.as_slice(),
+            plan,
+        )
+    });
+    let selected_root = format_root_probe(scored_roots.iter().find(|root| root.inputs == selected));
+    let head_root = format_root_probe(head_rank.and_then(|index| scored_roots.get(index)));
+
+    RuntimeDecisionProbe {
+        selected_input_fen,
+        selected_rank,
+        pre_accept_input_fen,
+        pre_accept_rank,
+        top_root_fens: scored_roots
+            .iter()
+            .take(TRIAGE_TOP_ROOT_DIGEST_SIZE)
+            .map(|root| Input::fen_from_array(&root.inputs))
+            .collect(),
+        selector_last_stage: selector_diag.last_return_stage,
+        selector_head_calls: selector_diag.head_plan_calls,
+        selector_head_hits: selector_diag.head_plan_hits,
+        head_input_fen: head_plan
+            .as_ref()
+            .and_then(|plan| plan.compiled_chunks.first())
+            .map(|chunk| Input::fen_from_array(chunk)),
+        head_rank,
+        head_accepted,
+        selected_root,
+        head_root,
+    }
+}
+
+fn exact_opportunity_context_probe(game: &MonsGame) -> String {
+    let context = crate::models::automove_exact::exact_opportunity_context(game, game.active_color);
+    format!(
+        "turn={} mons_moves={} can_action={} can_mana={} opp_win={} window={} deny={} attack={} super_steps={:?} opp_steps={:?} drainer_safety={}",
+        game.turn_number,
+        game.mons_moves_count,
+        game.player_can_use_action(),
+        game.player_can_move_mana(),
+        context.opponent_can_win_immediately,
+        context.delta.same_turn_score_window_value,
+        context.delta.opponent_window_deny_gain,
+        context.delta.drainer_attack_available,
+        context.delta.safe_supermana_progress_steps,
+        context.delta.safe_opponent_mana_progress_steps,
+        context.delta.drainer_safety,
+    )
+}
+
+fn pro_v2_legacy_selector_probe(
+    game: &MonsGame,
+    mode: SmartAutomovePreference,
+) -> (String, String, Vec<String>, Vec<String>) {
+    let (mut config, scored_roots, _, _) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(
+            "runtime_pro_turn_engine_v30",
+            mode,
+            game,
+        );
+    let candidate_indices = MonsGameModel::filtered_root_candidate_indices(
+        game,
+        scored_roots.as_slice(),
+        game.active_color,
+        config,
+    );
+    let all_indices = (0..scored_roots.len()).collect::<Vec<_>>();
+    config.turn_engine_mode = TurnEngineMode::ProV1;
+    let selected_from_candidates =
+        MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
+            game,
+            scored_roots.as_slice(),
+            candidate_indices.as_slice(),
+            game.active_color,
+            config,
+        );
+    let selected_from_full_pool = MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
+        game,
+        scored_roots.as_slice(),
+        all_indices.as_slice(),
+        game.active_color,
+        config,
+    );
+    (
+        Input::fen_from_array(&selected_from_candidates),
+        Input::fen_from_array(&selected_from_full_pool),
+        candidate_indices
+            .iter()
+            .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+            .collect(),
+        all_indices
+            .iter()
+            .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+            .collect(),
+        )
+}
+
+fn assert_runtime_pro_turn_engine_v30_prefers_current_root_on_board(
+    label: &str,
+    fen: &str,
+    expected_selected: &str,
+) {
+    let game = MonsGame::from_fen(fen, false).expect("probe fen should be valid");
+
+    clear_turn_engine_selector_diagnostics();
+    let probe = runtime_decision_probe(
+        "runtime_pro_turn_engine_v30",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let advisor = pro_v2_root_advisor_decision_snapshot();
+    let (legacy_selected, legacy_full_pool_selected, legacy_candidates, legacy_full_pool) =
+        pro_v2_legacy_selector_probe(&game, SmartAutomovePreference::Pro);
+    let (_, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+        "runtime_pro_turn_engine_v30",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let (_, current_scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+        "runtime_current",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+
+    let current_selected = profile_decision_move_fen(
+        "runtime_current",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let current_root = format_root_probe(
+        current_scored_roots
+            .iter()
+            .find(|root| Input::fen_from_array(&root.inputs) == current_selected),
+    );
+    let candidate_expected_root = format_root_probe(
+        scored_roots
+            .iter()
+            .find(|root| Input::fen_from_array(&root.inputs) == expected_selected),
+    );
+    let candidate_top_root_details = scored_roots
+        .iter()
+        .take(8)
+        .map(|root| {
+            format!(
+                "{}:{}",
+                Input::fen_from_array(&root.inputs),
+                format_root_probe(Some(root))
+            )
+        })
+        .collect::<Vec<_>>();
+    let current_top_root_details = current_scored_roots
+        .iter()
+        .take(8)
+        .map(|root| {
+            format!(
+                "{}:{}",
+                Input::fen_from_array(&root.inputs),
+                format_root_probe(Some(root))
+            )
+        })
+        .collect::<Vec<_>>();
+
+    println!(
+        "{} current_selected={} current_root=\"{}\" candidate_expected_root=\"{}\" context={} legacy_selected={} legacy_full_pool_selected={} legacy_candidates={:?} legacy_full_pool={:?} candidate_top_root_details={:?} current_top_root_details={:?} probe={:?} advisor={:?}",
+        label,
+        current_selected,
+        current_root,
+        candidate_expected_root,
+        exact_opportunity_context_probe(&game),
+        legacy_selected,
+        legacy_full_pool_selected,
+        legacy_candidates,
+        legacy_full_pool,
+        candidate_top_root_details,
+        current_top_root_details,
+        probe,
+        advisor
+    );
+    assert_eq!(current_selected, expected_selected);
+    assert_eq!(probe.selected_input_fen, expected_selected);
+}
+
+fn profile_duel_turn_inputs(
+    game: &MonsGame,
+    candidate_profile: &str,
+    opponent_profile: &str,
+    opponent_mode: SmartAutomovePreference,
+    candidate_is_white: bool,
+) -> Result<(bool, Vec<Input>), MatchResult> {
+    if let Some(winner_color) = game.winner_color() {
+        return Err(match_result_from_winner(winner_color, candidate_is_white));
+    }
+
+    let candidate_to_move = if candidate_is_white {
+        game.active_color == Color::White
+    } else {
+        game.active_color == Color::Black
+    };
+    let (profile_name, mode) = if candidate_to_move {
+        (candidate_profile, SmartAutomovePreference::Pro)
+    } else {
+        (opponent_profile, opponent_mode)
+    };
+    Ok((candidate_to_move, profile_runtime_inputs(profile_name, mode, game)))
+}
+
+fn play_profile_duel_trace(
+    candidate_profile: &str,
+    opponent_profile: &str,
+    opponent_mode: SmartAutomovePreference,
+    opening_fen: &str,
+    candidate_is_white: bool,
+    max_plies: usize,
+) -> DuelTraceGame {
+    let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
+    clear_exact_state_analysis_cache();
+    clear_exact_query_diagnostics();
+    clear_turn_opportunity_plan_cache();
+    clear_turn_engine_plan_cache();
+    clear_turn_engine_diagnostics();
+    clear_turn_engine_selector_diagnostics();
+
+    let mut candidate_turns = Vec::new();
+    for ply in 0..max_plies {
+        if let Some(winner_color) = game.winner_color() {
+            return DuelTraceGame {
+                result: match_result_from_winner(winner_color, candidate_is_white),
+                final_fen: game.fen(),
+                candidate_turns,
+            };
+        }
+
+        let board_fen = game.fen();
+        let (candidate_to_move, inputs) = match profile_duel_turn_inputs(
+            &game,
+            candidate_profile,
+            opponent_profile,
+            opponent_mode,
+            candidate_is_white,
+        ) {
+            Ok(turn) => turn,
+            Err(result) => {
+                return DuelTraceGame {
+                    result,
+                    final_fen: game.fen(),
+                    candidate_turns,
+                };
+            }
+        };
+        if candidate_to_move {
+            candidate_turns.push(DuelTraceTurn {
+                ply,
+                board_fen,
+                move_fen: Input::fen_from_array(&inputs),
+            });
+        }
+
+        if inputs.is_empty() {
+            return DuelTraceGame {
+                result: if candidate_to_move {
+                    MatchResult::OpponentWin
+                } else {
+                    MatchResult::CandidateWin
+                },
+                final_fen: game.fen(),
+                candidate_turns,
+            };
+        }
+        if !matches!(game.process_input(inputs, false, false), Output::Events(_)) {
+            return DuelTraceGame {
+                result: if candidate_to_move {
+                    MatchResult::OpponentWin
+                } else {
+                    MatchResult::CandidateWin
+                },
+                final_fen: game.fen(),
+                candidate_turns,
+            };
+        }
+    }
+
+    DuelTraceGame {
+        result: match adjudicate_non_terminal_game(&game) {
+            Some(winner_color) => match_result_from_winner(winner_color, candidate_is_white),
+            None => MatchResult::Draw,
+        },
+        final_fen: game.fen(),
+        candidate_turns,
+    }
+}
+
+fn first_duel_trace_divergence(
+    candidate: &DuelTraceGame,
+    baseline: &DuelTraceGame,
+) -> Option<FirstDivergence> {
+    candidate
+        .candidate_turns
+        .iter()
+        .zip(baseline.candidate_turns.iter())
+        .find_map(|(candidate_turn, baseline_turn)| {
+            if candidate_turn.board_fen == baseline_turn.board_fen
+                && candidate_turn.move_fen != baseline_turn.move_fen
+            {
+                Some(FirstDivergence {
+                    ply: candidate_turn.ply,
+                    board_fen: candidate_turn.board_fen.clone(),
+                    candidate_move_fen: candidate_turn.move_fen.clone(),
+                    baseline_move_fen: baseline_turn.move_fen.clone(),
+                })
+            } else {
+                None
+            }
+        })
+}
+
+fn match_result_points(result: MatchResult) -> i32 {
+    match result {
+        MatchResult::CandidateWin => 2,
+        MatchResult::Draw => 1,
+        MatchResult::OpponentWin => 0,
+    }
+}
+
+fn format_match_result(result: MatchResult) -> &'static str {
+    match result {
+        MatchResult::CandidateWin => "win",
+        MatchResult::OpponentWin => "loss",
+        MatchResult::Draw => "draw",
+    }
+}
+
+fn profile_runtime_scored_roots_with_forced_engine_inputs(
+    profile_name: &str,
+    mode: SmartAutomovePreference,
+    game: &MonsGame,
+) -> (
+    SmartSearchConfig,
+    Vec<RootEvaluation>,
+    Option<TurnPlan>,
+    Option<Vec<Input>>,
+) {
+    let config = calibration_runtime_config(profile_name, game, mode);
+    let perspective = game.active_color;
+    let mut root_moves = MonsGameModel::ranked_root_moves(game, perspective, config);
+    let engine_plan = if config.enable_turn_engine {
+        turn_engine_candidate_plan(
+            game,
+            perspective,
+            MonsGameModel::turn_engine_search_config_for_game(game, config),
+        )
+    } else {
+        None
+    };
+    let advisor_decision = MonsGameModel::pro_v2_root_advisor_presearch(
+        game,
+        perspective,
+        config,
+        &mut root_moves,
+        engine_plan.as_ref(),
+    );
+    let advisor_priority_inputs = advisor_decision
+        .as_ref()
+        .map(MonsGameModel::pro_v2_root_advisor_priority_inputs)
+        .unwrap_or_default();
+    let forced_engine_inputs = advisor_decision.as_ref().and_then(|decision| {
+        decision
+            .injected_root
+            .as_ref()
+            .filter(|root| root.admitted)
+            .map(|root| root.inputs.clone())
+    });
+    let (root_moves, scout_visited_nodes) =
+        MonsGameModel::focused_root_candidates_with_priority_inputs(
+            game,
+            perspective,
+            root_moves,
+            config,
+            true,
+            (!advisor_priority_inputs.is_empty()).then_some(advisor_priority_inputs.as_slice()),
+            None,
+        );
+    let mut visited_nodes = scout_visited_nodes;
+    let mut alpha = i32::MIN;
+    let mut scored_roots = Vec::with_capacity(root_moves.len());
+    let mut transposition_table = U64HashMap::default();
+    let extension_node_budget = if config.enable_selective_extensions
+        && config.selective_extension_node_share_bp > 0
+    {
+        ((config.max_visited_nodes * config.selective_extension_node_share_bp as usize) / 10_000)
+            .max(1)
+    } else {
+        0
+    };
+    let mut extension_nodes_used = 0usize;
+    let mut killer_table: KillerTable = [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
+    let mut history_table: HistoryTable = HistoryTable::default();
+    let mut quiescence_nodes_used = 0usize;
+
+    for candidate in root_moves {
+        if visited_nodes >= config.max_visited_nodes {
+            break;
+        }
+        visited_nodes += 1;
+        let candidate_score = MonsGameModel::evaluate_root_candidate_score(
+            &candidate,
+            perspective,
+            alpha,
+            &mut visited_nodes,
+            config,
+            &mut transposition_table,
+            &mut extension_nodes_used,
+            extension_node_budget,
+            true,
+            &mut killer_table,
+            &mut history_table,
+            &mut quiescence_nodes_used,
+        );
+        if candidate_score > alpha {
+            alpha = candidate_score;
+        }
+        scored_roots.push(RootEvaluation {
+            root_rank: candidate.root_rank,
+            score: candidate_score,
+            efficiency: candidate.efficiency,
+            inputs: candidate.inputs,
+            game: candidate.game,
+            wins_immediately: candidate.wins_immediately,
+            attacks_opponent_drainer: candidate.attacks_opponent_drainer,
+            own_drainer_vulnerable: candidate.own_drainer_vulnerable,
+            own_drainer_walk_vulnerable: candidate.own_drainer_walk_vulnerable,
+            spirit_development: candidate.spirit_development,
+            keeps_awake_spirit_on_base: candidate.keeps_awake_spirit_on_base,
+            mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
+            has_roundtrip: candidate.has_roundtrip,
+            scores_supermana_this_turn: candidate.scores_supermana_this_turn,
+            scores_opponent_mana_this_turn: candidate.scores_opponent_mana_this_turn,
+            safe_supermana_pickup_now: candidate.safe_supermana_pickup_now,
+            safe_opponent_mana_pickup_now: candidate.safe_opponent_mana_pickup_now,
+            safe_supermana_progress_steps: candidate.safe_supermana_progress_steps,
+            safe_opponent_mana_progress_steps: candidate.safe_opponent_mana_progress_steps,
+            score_path_best_steps: candidate.score_path_best_steps,
+            same_turn_score_window_value: candidate.same_turn_score_window_value,
+            spirit_setup_gain: candidate.spirit_setup_gain,
+            spirit_same_turn_score_setup_now: candidate.spirit_same_turn_score_setup_now,
+            spirit_own_mana_setup_now: candidate.spirit_own_mana_setup_now,
+            supermana_progress: candidate.supermana_progress,
+            opponent_mana_progress: candidate.opponent_mana_progress,
+            interview_soft_priority: candidate.interview_soft_priority,
+            classes: candidate.classes,
+        });
+    }
+
+    (config, scored_roots, engine_plan, forced_engine_inputs)
+}
+
+fn opening_reply_speed_probe_avg_ms(
+    profile_name: &str,
+    selector: AutomoveSelector,
+    fixtures: &[TriageFixture],
+) -> f64 {
+    use std::time::Instant;
+
+    with_env_override("SMART_USE_WHITE_OPENING_BOOK", "true", || {
+        let mut total_ms = 0.0;
+        for fixture in fixtures {
+            clear_exact_state_analysis_cache();
+            let base_config =
+                SearchBudget::from_preference(fixture.mode).runtime_config_for_game(&fixture.game);
+            let start = Instant::now();
+            let inputs = select_inputs_with_runtime_fallback(selector, &fixture.game, base_config);
+            total_ms += start.elapsed().as_secs_f64() * 1000.0;
+            assert!(
+                !inputs.is_empty(),
+                "opening reply speed probe profile '{}' produced no legal move for fixture '{}'",
+                profile_name,
+                fixture.id
+            );
+        }
+        total_ms / fixtures.len().max(1) as f64
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ProReliabilityGateMetrics {
+    win_rate: f64,
+    confidence: f64,
+    candidate_avg_ms: f64,
+}
+
+fn pro_reliability_duel_passes(metrics: ProReliabilityGateMetrics) -> bool {
+    metrics.win_rate >= SMART_PRO_RELIABILITY_WIN_RATE_MIN
+        && metrics.confidence >= SMART_PRO_RELIABILITY_CONFIDENCE_MIN
+        && metrics.candidate_avg_ms <= SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX
+}
+
+fn pro_reliability_gate_passes(
+    vs_current_pro: ProReliabilityGateMetrics,
+    vs_current_normal: ProReliabilityGateMetrics,
+    vs_current_fast: ProReliabilityGateMetrics,
+) -> bool {
+    pro_reliability_duel_passes(vs_current_pro)
+        && pro_reliability_duel_passes(vs_current_normal)
+        && pro_reliability_duel_passes(vs_current_fast)
+}
+
+fn assert_pro_reliability_duel_passes(label: &str, metrics: ProReliabilityGateMetrics) {
+    assert!(
+        metrics.win_rate >= SMART_PRO_RELIABILITY_WIN_RATE_MIN,
+        "{} failed: win_rate {:.4} < {:.2}",
+        label,
+        metrics.win_rate,
+        SMART_PRO_RELIABILITY_WIN_RATE_MIN
+    );
+    assert!(
+        metrics.confidence >= SMART_PRO_RELIABILITY_CONFIDENCE_MIN,
+        "{} confidence failed: {:.4} < {:.2}",
+        label,
+        metrics.confidence,
+        SMART_PRO_RELIABILITY_CONFIDENCE_MIN
+    );
+    assert!(
+        metrics.candidate_avg_ms <= SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX,
+        "{} move time failed: candidate_avg_ms {:.2}ms > {:.2}ms",
+        label,
+        metrics.candidate_avg_ms,
+        SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX
+    );
+}
+
+fn triage_surface_from_env() -> TriageSurface {
+    let value = env::var("SMART_TRIAGE_SURFACE").unwrap_or_else(|_| {
+        panic!(
+            "SMART_TRIAGE_SURFACE is required (expected one of: opening_reply, primary_pro, reply_risk, supermana, opponent_mana)"
+        )
+    });
+    TriageSurface::parse(value.as_str()).unwrap_or_else(|| {
+        panic!(
+            "unknown SMART_TRIAGE_SURFACE='{}' (expected one of: opening_reply, primary_pro, reply_risk, supermana, opponent_mana)",
+            value
+        )
+    })
+}
+
+fn pro_signal_triage_passes(
+    candidate_profile_name: &str,
+    baseline_profile_name: &str,
+    target_changed: usize,
+    off_target_changed: usize,
+) -> bool {
+    if target_changed > 0 {
+        return off_target_changed <= 1;
+    }
+
+    target_changed == 0
+        && off_target_changed == 0
+        && candidate_profile_name == "runtime_pro_turn_engine_v30"
+        && baseline_profile_name == "runtime_current"
+}
+
+const TRIAGE_TOP_ROOT_DIGEST_SIZE: usize = 5;
+
+fn triage_game_with_items(
+    items: Vec<(Location, Item)>,
+    active_color: Color,
+    turn_number: i32,
+) -> MonsGame {
+    let mut game = MonsGame::new(false);
+    game.board = Board::new_with_items(items.into_iter().collect());
+    game.active_color = active_color;
+    game.turn_number = turn_number;
+    game.actions_used_count = 0;
+    game.mana_moves_count = 0;
+    game.mons_moves_count = 0;
+    game.white_score = 0;
+    game.black_score = 0;
+    game.white_potions_count = 0;
+    game.black_potions_count = 0;
+    game
+}
+
+fn triage_root_evaluation(candidate: &ScoredRootMove, score: i32) -> RootEvaluation {
+    RootEvaluation {
+        root_rank: 0,
+        score,
+        efficiency: candidate.efficiency,
+        inputs: candidate.inputs.clone(),
+        game: candidate.game.clone(),
+        wins_immediately: candidate.wins_immediately,
+        attacks_opponent_drainer: candidate.attacks_opponent_drainer,
+        own_drainer_vulnerable: candidate.own_drainer_vulnerable,
+        own_drainer_walk_vulnerable: candidate.own_drainer_walk_vulnerable,
+        spirit_development: candidate.spirit_development,
+        keeps_awake_spirit_on_base: candidate.keeps_awake_spirit_on_base,
+        mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
+        has_roundtrip: candidate.has_roundtrip,
+        scores_supermana_this_turn: candidate.scores_supermana_this_turn,
+        scores_opponent_mana_this_turn: candidate.scores_opponent_mana_this_turn,
+        safe_supermana_pickup_now: candidate.safe_supermana_pickup_now,
+        safe_opponent_mana_pickup_now: candidate.safe_opponent_mana_pickup_now,
+        safe_supermana_progress_steps: candidate.safe_supermana_progress_steps,
+        safe_opponent_mana_progress_steps: candidate.safe_opponent_mana_progress_steps,
+        score_path_best_steps: candidate.score_path_best_steps,
+        same_turn_score_window_value: candidate.same_turn_score_window_value,
+        spirit_setup_gain: candidate.spirit_setup_gain,
+        spirit_same_turn_score_setup_now: candidate.spirit_same_turn_score_setup_now,
+        spirit_own_mana_setup_now: candidate.spirit_own_mana_setup_now,
+        supermana_progress: candidate.supermana_progress,
+        opponent_mana_progress: candidate.opponent_mana_progress,
+        interview_soft_priority: candidate.interview_soft_priority,
+        classes: candidate.classes,
+    }
+}
+
+fn reply_risk_calibration_probe(profile_name: &str) -> i32 {
+    let white_drainer = Mon::new(MonKind::Drainer, Color::White, 0);
+    let black_drainer = Mon::new(MonKind::Drainer, Color::Black, 0);
+    let game = triage_game_with_items(
+        vec![
+            (Location::new(4, 0), Item::Mon { mon: white_drainer }),
+            (Location::new(0, 5), Item::Mon { mon: black_drainer }),
+        ],
+        Color::White,
+        2,
+    );
+    let config = calibration_runtime_config(profile_name, &game, SmartAutomovePreference::Fast);
+    let events = vec![
+        Event::MonMove {
+            item: Item::Mon { mon: white_drainer },
+            from: Location::new(4, 0),
+            to: Location::new(5, 0),
+        },
+        Event::MonMove {
+            item: Item::Mon { mon: white_drainer },
+            from: Location::new(5, 0),
+            to: Location::new(4, 0),
+        },
+    ];
+    MonsGameModel::move_efficiency_delta(
+        &game,
+        &game,
+        Color::White,
+        events.as_slice(),
+        true,
+        true,
+        false,
+        false,
+        false,
+        config.root_backtrack_penalty,
+        config.root_mana_handoff_penalty,
+    )
+}
+
+fn opponent_mana_calibration_probe(profile_name: &str) -> usize {
+    let mut game = triage_game_with_items(
+        vec![
+            (
+                Location::new(4, 0),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Spirit, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(7, 0),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(5, 2),
+                Item::Mana {
+                    mana: Mana::Regular(Color::Black),
+                },
+            ),
+            (
+                Location::new(0, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    );
+    game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
+
+    let config = calibration_runtime_config(profile_name, &game, SmartAutomovePreference::Normal);
+    let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
+        &game,
+        Color::White,
+        config.enable_enhanced_drainer_vulnerability,
+    );
+    let mut progress = MonsGameModel::build_scored_root_move(
+        &game,
+        Color::White,
+        config,
+        own_drainer_vulnerable_before,
+        &[
+            Input::Location(Location::new(4, 0)),
+            Input::Location(Location::new(5, 2)),
+            Input::Location(Location::new(6, 1)),
+        ],
+    )
+    .expect("spirit opponent mana handoff inputs should build a scored root");
+    progress.opponent_mana_progress = true;
+    progress.safe_opponent_mana_progress_steps = 1;
+    progress.mana_handoff_to_opponent = false;
+    progress.has_roundtrip = false;
+
+    let mut risky = progress.clone();
+    risky.inputs = vec![Input::Location(Location::new(0, 0))];
+    risky.opponent_mana_progress = false;
+    risky.safe_opponent_mana_progress_steps = 6;
+    risky.mana_handoff_to_opponent = true;
+    risky.has_roundtrip = true;
+    risky.interview_soft_priority = 0;
+
+    MonsGameModel::pick_root_move_with_reply_risk_guard(
+        &game,
+        &[
+            triage_root_evaluation(&risky, 200),
+            triage_root_evaluation(&progress, 40),
+        ],
+        &[0, 1],
+        Color::White,
+        config,
+    )
+    .expect("reply-risk calibration probe should pick one of the synthetic roots")
+}
+
+fn supermana_calibration_probe(profile_name: &str) -> bool {
+    let game = triage_game_with_items(
+        vec![
+            (
+                Location::new(6, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(5, 5),
+                Item::Mana {
+                    mana: Mana::Supermana,
+                },
+            ),
+            (
+                Location::new(0, 10),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                },
+            ),
+        ],
+        Color::White,
+        2,
+    );
+    let config = calibration_runtime_config(profile_name, &game, SmartAutomovePreference::Normal);
+    let (_, events) = MonsGameModel::apply_inputs_for_search_with_events(
+        &game,
+        &[
+            Input::Location(Location::new(6, 5)),
+            Input::Location(Location::new(5, 5)),
+        ],
+    )
+    .expect("shortening supermana path inputs should be legal");
+    MonsGameModel::should_use_root_exact_summary_for_transition(events.as_slice(), config)
+}
+
+fn maybe_run_runtime_preflight_checks(
+    skip_runtime_preflight: bool,
+    run_stage1: impl FnOnce(),
+    run_exact: impl FnOnce(),
+) {
+    if skip_runtime_preflight {
+        return;
+    }
+    run_stage1();
+    run_exact();
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProTriageSnapshot {
+    selected_rank: usize,
+    selected_input_fen: String,
+    top_root_fens: Vec<String>,
+}
+
+fn pro_triage_fixture_snapshot(
+    profile_name: &str,
+    selector: AutomoveSelector,
+    fixture: &TriageFixture,
+) -> ProTriageSnapshot {
+    with_env_override(
+        "SMART_USE_WHITE_OPENING_BOOK",
+        if fixture.opening_book_driven {
+            "true"
+        } else {
+            "false"
+        },
+        || {
+            let base_config = fixture
+                .config_tweak
+                .map(|tweak| {
+                    tweak(
+                        SearchBudget::from_preference(fixture.mode)
+                            .runtime_config_for_game(&fixture.game),
+                    )
+                })
+                .unwrap_or_else(|| {
+                    SearchBudget::from_preference(fixture.mode)
+                        .runtime_config_for_game(&fixture.game)
+                });
+            let resolved_config =
+                profile_runtime_config_for_name(profile_name, &fixture.game, base_config)
+                    .unwrap_or(base_config);
+            let inputs = select_inputs_with_runtime_fallback(selector, &fixture.game, base_config);
+            assert!(
+                !inputs.is_empty(),
+                "triage fixture '{}' produced no legal move for mode {}",
+                fixture.id,
+                fixture.mode.as_api_value()
+            );
+            MonsGameModel::apply_inputs_for_search_with_events(&fixture.game, &inputs)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "triage fixture '{}' selected illegal move in mode {}",
+                        fixture.id,
+                        fixture.mode.as_api_value()
+                    )
+                });
+            let input_fen = Input::fen_from_array(&inputs);
+            let ranked_roots = MonsGameModel::ranked_root_moves(
+                &fixture.game,
+                fixture.game.active_color,
+                resolved_config,
+            );
+            let selected_rank = ranked_roots
+                .iter()
+                .position(|root| Input::fen_from_array(&root.inputs) == input_fen)
+                .unwrap_or(ranked_roots.len());
+
+            ProTriageSnapshot {
+                selected_rank,
+                selected_input_fen: input_fen,
+                top_root_fens: ranked_roots
+                    .iter()
+                    .take(TRIAGE_TOP_ROOT_DIGEST_SIZE)
+                    .map(|root| Input::fen_from_array(&root.inputs))
+                    .collect(),
+            }
+        },
+    )
+}
+
+fn pro_triage_surface_signal_changed(
+    candidate: &ProTriageSnapshot,
+    baseline: &ProTriageSnapshot,
+) -> bool {
+    candidate.selected_input_fen != baseline.selected_input_fen
+        || candidate.selected_rank != baseline.selected_rank
+        || candidate.top_root_fens != baseline.top_root_fens
+}
+
+fn pro_triage_fixture_changed(
+    surface: TriageSurface,
+    fixture: &TriageFixture,
+    candidate: &ProTriageSnapshot,
+    baseline: &ProTriageSnapshot,
+) -> bool {
+    match surface {
+        TriageSurface::PrimaryPro => {
+            if let Some(expected) = fixture.expected_selected_input_fen {
+                candidate.selected_input_fen == expected && baseline.selected_input_fen != expected
+            } else {
+                pro_triage_surface_signal_changed(candidate, baseline)
+            }
+        }
+        TriageSurface::OpeningReply => pro_triage_surface_signal_changed(candidate, baseline),
+        _ => panic!(
+            "unsupported retained pro-triage surface '{}'",
+            surface.as_str()
+        ),
+    }
+}
+
+fn compare_pro_triage_fixture_pack(
+    surface: TriageSurface,
+    candidate_profile: &str,
+    candidate_selector: AutomoveSelector,
+    baseline_profile: &str,
+    baseline_selector: AutomoveSelector,
+    fixtures: &[TriageFixture],
+) -> usize {
+    let mut changed = 0;
+    for fixture in fixtures {
+        let candidate_snapshot =
+            pro_triage_fixture_snapshot(candidate_profile, candidate_selector, fixture);
+        let baseline_snapshot =
+            pro_triage_fixture_snapshot(baseline_profile, baseline_selector, fixture);
+        let fixture_changed =
+            pro_triage_fixture_changed(surface, fixture, &candidate_snapshot, &baseline_snapshot);
+        if fixture_changed {
+            changed += 1;
+        }
+        println!(
+            "pro triage surface={} fixture={} mode={} opening_book={} expected={:?} changed={} candidate_profile={} candidate={:?} baseline_profile={} baseline={:?}",
+            surface.as_str(),
+            fixture.id,
+            fixture.mode.as_api_value(),
+            fixture.opening_book_driven,
+            fixture.expected_selected_input_fen,
+            fixture_changed,
+            candidate_profile,
+            candidate_snapshot,
+            baseline_profile,
+            baseline_snapshot
+        );
+    }
+    println!(
+        "pro triage surface={} summary candidate={} baseline={} changed={}/{}",
+        surface.as_str(),
+        candidate_profile,
+        baseline_profile,
+        changed,
+        fixtures.len()
+    );
+    changed
+}
+
+fn exact_lite_cache_totals() -> (usize, usize) {
+    let diagnostics = exact_query_diagnostics_snapshot();
+    let calls = diagnostics.exact_spirit_summary_calls as usize
+        + diagnostics.tactical_spirit_summary_calls as usize
+        + diagnostics.exact_followup_summary_calls as usize
+        + diagnostics.exact_secure_mana_calls as usize
+        + diagnostics.pickup_path_calls as usize;
+    let hits = diagnostics.exact_spirit_summary_cache_hits as usize
+        + diagnostics.tactical_spirit_summary_cache_hits as usize
+        + diagnostics.exact_followup_summary_cache_hits as usize
+        + diagnostics.exact_secure_mana_cache_hits as usize
+        + diagnostics.pickup_path_cache_hits as usize;
+    (calls, hits)
+}
+
+fn assert_exact_lite_diagnostics_gate_if_enabled(
+    candidate_profile_name: &str,
+    candidate_selector: AutomoveSelector,
+) {
+    let budgets = stage1_cpu_budgets(candidate_profile_name);
+    let positions = env_usize("SMART_EXACT_LITE_DIAGNOSTIC_POSITIONS")
+        .unwrap_or(8)
+        .max(1);
+    let openings = generate_opening_fens_cached(
+        seed_for_pairing("exact_lite_diag", candidate_profile_name),
+        positions,
+    );
+    let cache_repeats = env_usize("SMART_EXACT_LITE_CACHE_REPEATS")
+        .unwrap_or(2)
+        .max(2);
+    let min_cache_calls = env_usize("SMART_EXACT_LITE_CACHE_MIN_CALLS")
+        .unwrap_or(12)
+        .max(1);
+    let min_cache_hit_rate = env_f64("SMART_EXACT_LITE_CACHE_HIT_RATE_MIN")
+        .unwrap_or(SMART_EXACT_LITE_CACHE_HIT_RATE_MIN)
+        .clamp(0.0, 1.0);
+
+    let mut any_exact_lite_budget = false;
+    for budget in budgets.iter().copied() {
+        for opening in openings.iter() {
+            let game = MonsGame::from_fen(opening, false).expect("valid opening fen");
+            let config = budget.runtime_config_for_game(&game);
+            let Some(limits) = profile_exact_lite_budgets(candidate_profile_name, &game, config)
+            else {
+                continue;
+            };
+            any_exact_lite_budget = true;
+            clear_exact_state_analysis_cache();
+            clear_exact_query_diagnostics();
+            let _ = select_inputs_with_runtime_fallback(candidate_selector, &game, config);
+            let diagnostics = exact_query_diagnostics_snapshot();
+            let root_calls = diagnostics.exact_turn_summary_builds as usize;
+            let static_calls = (diagnostics.passive_strategic_summary_builds as usize).div_ceil(2);
+
+            assert!(
+                root_calls <= limits.root_call_budget,
+                "exact-lite root budget exceeded for profile={} mode={} opening={} calls={} budget={}",
+                candidate_profile_name,
+                budget.key(),
+                opening,
+                root_calls,
+                limits.root_call_budget
+            );
+            assert!(
+                static_calls <= limits.static_call_budget,
+                "exact-lite static budget exceeded for profile={} mode={} opening={} calls={} budget={}",
+                candidate_profile_name,
+                budget.key(),
+                opening,
+                static_calls,
+                limits.static_call_budget
+            );
+        }
+    }
+
+    if !any_exact_lite_budget {
+        return;
+    }
+
+    for budget in budgets.iter().copied() {
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        let mut budget_uses_exact_lite = false;
+        for _ in 0..cache_repeats {
+            for opening in openings.iter() {
+                let game = MonsGame::from_fen(opening, false).expect("valid opening fen");
+                let config = budget.runtime_config_for_game(&game);
+                if profile_exact_lite_budgets(candidate_profile_name, &game, config).is_none() {
+                    continue;
+                }
+                budget_uses_exact_lite = true;
+                let _ = select_inputs_with_runtime_fallback(candidate_selector, &game, config);
+            }
+        }
+
+        if !budget_uses_exact_lite {
+            continue;
+        }
+        let (cache_calls, cache_hits) = exact_lite_cache_totals();
+        if cache_calls < min_cache_calls {
+            continue;
+        }
+        let cache_hit_rate = cache_hits as f64 / cache_calls as f64;
+        assert!(
+            cache_hit_rate >= min_cache_hit_rate,
+            "exact-lite cache-hit gate failed for profile={} mode={} rate={:.3} < {:.3} (hits={}, calls={})",
+            candidate_profile_name,
+            budget.key(),
+            cache_hit_rate,
+            min_cache_hit_rate,
+            cache_hits,
+            cache_calls
+        );
+    }
+    clear_exact_state_analysis_cache();
+    clear_exact_query_diagnostics();
+}
+
+fn assert_stage1_cpu_non_regression(
+    candidate_profile_name: &str,
+    candidate_selector: AutomoveSelector,
+) {
+    let advisory_only = candidate_profile_name.starts_with("runtime_pro_")
+        && env_bool("SMART_STAGE1_CPU_ADVISORY").unwrap_or(false);
+    let baseline_selector = profile_selector_from_name("runtime_current")
+        .expect("runtime_current selector should exist for stage-1 cpu gate");
+    let budgets = stage1_cpu_budgets(candidate_profile_name);
+    let repeats = stage1_cpu_measurement_repeats();
+    let speed_positions = env_usize("SMART_STAGE1_SPEED_POSITIONS")
+        .unwrap_or(16)
+        .max(12);
+
+    for seed_tag in stage1_seed_tags() {
+        let speed_seed = seed_for_pairing(
+            "stage1_cpu_gate",
+            format!("{}:{}", candidate_profile_name, seed_tag).as_str(),
+        );
+        let speed_openings = generate_opening_fens_cached(speed_seed, speed_positions);
+        let mut ratio_samples = std::collections::HashMap::<&'static str, Vec<f64>>::new();
+
+        for _ in 0..repeats {
+            let baseline_speed = profile_speed_by_mode_ms(
+                baseline_selector,
+                speed_openings.as_slice(),
+                budgets.as_slice(),
+            );
+            let candidate_speed = profile_speed_by_mode_ms(
+                candidate_selector,
+                speed_openings.as_slice(),
+                budgets.as_slice(),
+            );
+            let baseline_map = baseline_speed
+                .iter()
+                .map(|stat| (stat.budget.key(), stat.avg_ms))
+                .collect::<std::collections::HashMap<_, _>>();
+
+            for stat in candidate_speed {
+                let baseline_ms = baseline_map
+                    .get(stat.budget.key())
+                    .copied()
+                    .unwrap_or(1.0)
+                    .max(0.001);
+                let ratio = stat.avg_ms / baseline_ms;
+                ratio_samples
+                    .entry(stat.budget.key())
+                    .or_default()
+                    .push(ratio);
+            }
+        }
+
+        for budget in &budgets {
+            let mode = budget.key();
+            let mut samples = ratio_samples.remove(mode).unwrap_or_default();
+            assert_eq!(
+                samples.len(),
+                repeats,
+                "stage-1 cpu gate expected {} samples for mode {}",
+                repeats,
+                mode
+            );
+            let ratio = median_f64(samples.as_mut_slice());
+            let ratio_limit = stage1_cpu_ratio_limit(mode);
+            println!(
+                "stage-1 cpu seed={} mode={} candidate={} ratio={:.3} limit={:.3} samples={:?}",
+                seed_tag, mode, candidate_profile_name, ratio, ratio_limit, samples
+            );
+            if advisory_only && ratio > ratio_limit {
+                println!(
+                    "stage-1 cpu advisory: seed={} mode={} candidate={} ratio={:.3} > {:.3}; continuing because SMART_STAGE1_CPU_ADVISORY=true for a Pro candidate",
+                    seed_tag,
+                    mode,
+                    candidate_profile_name,
+                    ratio,
+                    ratio_limit
+                );
+            } else {
+                assert!(
+                    ratio <= ratio_limit,
+                    "stage-1 cpu gate failed for seed={} mode={} candidate={} baseline=runtime_current median_ratio={:.3} > {:.3} samples={:?}",
+                    seed_tag,
+                    mode,
+                    candidate_profile_name,
+                    ratio,
+                    ratio_limit,
+                    samples
+                );
+            }
+        }
+    }
+}
+
+fn assert_runtime_preflight_if_required(
+    candidate_profile_name: &str,
+    candidate_selector: AutomoveSelector,
+) {
+    let skip_runtime_preflight = env_bool("SMART_SKIP_RUNTIME_PREFLIGHT").unwrap_or(false);
+    if skip_runtime_preflight {
+        println!(
+            "runtime preflight skipped for duel stage candidate={}",
+            candidate_profile_name
+        );
+    }
+    maybe_run_runtime_preflight_checks(
+        skip_runtime_preflight,
+        || assert_stage1_cpu_non_regression(candidate_profile_name, candidate_selector),
+        || {
+            assert_exact_lite_diagnostics_gate_if_enabled(
+                candidate_profile_name,
+                candidate_selector,
+            )
+        },
+    );
+}
+
+mod diagnostics;
+mod gates;
+mod retained;

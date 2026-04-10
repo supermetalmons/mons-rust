@@ -1,27 +1,20 @@
 # How To Iterate On Automove
 
-This is the canonical runbook for automove work.
+This is the canonical automove runbook.
 
-Archived profile IDs are invalid by design. New iteration work must stay on the retained profile surface below.
+Archived profile IDs are invalid experiment targets. New work stays on the retained surface below.
 
 ## Quick Reference
 
 1. Default to Pro work.
-2. Treat `runtime_current` as the shipping Pro baseline.
-3. Treat `runtime_pro_turn_engine_v30` as the promoted guarded `ProV2` reference that now powers `runtime_current`.
-4. Run the cheap-to-expensive Pro loop in order.
-5. Kill flat lines immediately and compress the lesson before starting another split.
-
-## Focused Pro Goal
-
-- The focused Pro target is now explicit: any new retained Pro candidate must beat `runtime_current` in direct Pro-vs-Pro, Pro-vs-Normal, and Pro-vs-Fast duels with `win_rate >= 0.90`, while staying at `candidate_avg_move_ms <= 700` in all three matchups.
-- Move time means candidate decision-selection time on candidate turns only inside completed Pro-vs-Pro, Pro-vs-Normal, and Pro-vs-Fast duel games against `runtime_current`.
-- Do not count compile time, harness startup, or `game.process_input(...)` in that move-time budget.
-- A stalled or incomplete duel run is not promotable evidence, even if hotspot probes or one-game samples look good.
+2. Treat `runtime_current` as the shipping baseline.
+3. Treat `runtime_pro_turn_engine_v30` as the only retained Pro frontier.
+4. Run the cheap-to-expensive loop in order.
+5. Clean logs and stamps at the end of the session.
 
 ## Retained Profile Surface
 
-Current runtime and baselines:
+Shipping runtime and baseline:
 - `base`
 - `runtime_current`
 - `runtime_release_safe_pre_exact`
@@ -33,23 +26,19 @@ Calibration anchors and curated references:
 - `swift_2024_style_reference`
 - `runtime_normal_from_fast_reference_v1`
 
-Retained Pro references:
-- `runtime_pro_turn_engine_v1`
+Retained Pro frontier:
 - `runtime_pro_turn_engine_v30`
 
-If a profile ID is not in this list, it is archive-only context and must not be used for new work.
+If a profile ID is not in this list, it is archive-only.
 
 ## Current Reality
 
-- Shipping Pro is `runtime_current`. Its Pro path is the promoted guarded `ProV2` turn-engine runtime selected by the live game context.
-- `runtime_pro_turn_engine_v30` is the promoted source/reference profile for that shipping path, not an active challenger.
-- The promoted guarded path deliberately falls back on opening-book positions and several early white turn shapes. That is expected behavior, not a bug.
-- `runtime_pro_turn_engine_v1` stays only as regression history and comparison material.
-- Do not reopen archive profiles, retired planner lines, or old quiescence branches without a brand-new hypothesis strong enough to justify new code.
+- Shipping Pro is `runtime_current`.
+- `runtime_current` delegates to the promoted guarded `runtime_pro_turn_engine_v30` path.
+- The guarded path intentionally keeps opening-book and early-white fallback guards.
+- Promotion proof is still direct evidence against `runtime_current`, not fixture churn or hotspot output.
 
 ## Canonical Pro Loop
-
-Use this exact order for real Pro iteration work.
 
 ```sh
 CANDIDATE=<new_retained_pro_profile>
@@ -60,137 +49,73 @@ SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage
 ```
 
 Operator defaults:
-- Candidate profile: `SMART_PRO_CANDIDATE_PROFILE` or `SMART_CANDIDATE_PROFILE`
 - Pro baseline: `runtime_current`
+- Non-Pro baseline: `runtime_release_safe_pre_exact`
 - Default Pro triage surface: `SMART_TRIAGE_SURFACE=primary_pro`
 - Opening-only fallback surface: `SMART_TRIAGE_SURFACE=opening_reply`
 
-Baseline rules:
-- For Pro work, compare directly against `runtime_current`.
-- The script now defaults Pro stages to `runtime_current`. The non-Pro compatibility default, `runtime_release_safe_pre_exact`, still exists for calibration-only work.
-- Use `opening_reply` only when the change touches opening-book fallback ordering, early-turn fallback guards, or an opening-specific latency regression.
+## Gate Rules
 
-## Step Rules
+### `guardrails`
 
-### 1. `guardrails`
+- Run first.
+- Kill the line on tactical regressions or interview-policy regressions.
 
-What it means:
-- Cheap tactical and interview-policy validation.
-- First kill gate before any surface or duel work.
+### `pro-triage`
 
-Kill the line if:
-- `guardrails` fails.
-- The change only buys speed but loses obvious tactical quality.
+- This is the cheap deterministic Pro surface gate.
+- For a real challenger, pass only when the target surface changes and off-target churn stays at `<= 1`.
+- For post-promotion maintenance on `runtime_pro_turn_engine_v30` vs `runtime_current`, a stable `0/0` result is valid because that retained frontier is intentionally shipping-equivalent.
+- Kill the line if it only moves one stale seam or does not move the target surface at all.
 
-### 2. `pro-triage`
+### `runtime-preflight`
 
-What it means:
-- Fixed-cost deterministic Pro triage against `runtime_current`.
-- The harness always compares both Pro fixture packs: the target surface and the off-target surface.
+- Required before duel stages unless you are doing diagnostics only.
+- Exact-lite diagnostics remain a hard gate.
+- Stage-1 CPU is advisory for Pro and still hard for non-Pro work.
 
-Pass rule:
-- Pass only when the target surface changes and off-target churn stays at `<= 1`.
+### `pro-reliability`
 
-Default interpretation:
-- `primary_pro` is the default live surface. It is the main Pro fixture pack and should carry almost all ongoing work.
-- `opening_reply` is a narrow opening/fallback-order check, not the default Pro surface.
+- This is the real duel gate: Pro vs current Pro, Normal, and Fast.
+- Pass only when all three runs complete with `win_rate >= 0.90`, `confidence >= 0.99`, and `candidate_avg_move_ms <= 700`.
+- Kill the line if the wall stays on old fragmented churn after a focused split.
 
-Kill the line if:
-- The target surface does not move.
-- Off-target churn is larger than `1`.
-- The change needs a broader story than the current hypothesis can justify.
+### `pro-reliability-confirm`
 
-### 3. `runtime-preflight`
+- Run only after `pro-reliability` earns the spend.
+- Promotion proof is still the same three-duel rule on the larger confirm corpus.
 
-What it means:
-- Required stamp before duel stages unless you intentionally skip it for diagnostics.
-- Runs the stage-1 CPU report and exact-lite diagnostics gate.
+## Diagnostic Toolbox
 
-Pro interpretation:
-- For Pro candidates, stage-1 CPU is advisory only.
-- Exact-lite diagnostics are still a hard gate.
-- Fast and normal candidates still use the old hard stage-1 CPU rejection rule.
+Use diagnostics only after the canonical loop tells you what is missing.
 
-Kill the line if:
-- Exact-lite diagnostics regress.
-- The candidate needs more wrapper knobs just to survive preflight.
+- `triage-calibrate`: recalibrate retained triage surfaces.
+- `pro-opening-speed-probe`: opening-reply latency compare on retained Pro fixtures.
+- `smart_automove_pro_reliability_hotspot_probe`: bounded compare-oriented hotspot check.
+- `smart_automove_pro_reliability_duel_trace_probe`: replay duel seeds and inspect first divergences.
+- `smart_automove_pro_reliability_nonwin_trace_probe`: collapse non-win openings from a duel corpus.
+- `smart_automove_pro_triage_retained_churn_probe`: separate retained selector churn stories.
+- `smart_automove_pro_runtime_faithful_retained_churn_probe`: inspect runtime-faithful forced-engine acceptance on retained churn fixtures.
+- `smart_automove_pro_root_advisor_trace_probe`: inspect unified ProV2 root-advisor decisions directly.
 
-### 4. `pro-reliability`
-
-What it means:
-- Focused Pro duel gate.
-- Direct Pro-vs-Pro, Pro-vs-Normal, and Pro-vs-Fast win-rate and move-time evidence against `runtime_current`.
-
-Use it to decide:
-- Whether the candidate earns confirmation spend.
-- Whether the live wall moved to a new code surface.
-- Whether the next split should be a shared exact/search cut or a minimal fixture addition.
-
-Pass rule:
-- Pass only when all three duel runs complete, each clears `win_rate >= 0.90`, each clears `confidence >= 0.99`, and `candidate_avg_move_ms <= 700` in all three matchups.
-- The focused corpus defaults are `3` repeats, `2` games per repeat, mirrored play, `max_plies=96`.
-
-Kill the line if:
-- The first direct duel signal is flat or negative.
-- The run does not complete.
-- The candidate clears win rate but blows the move-time budget.
-- The wall stays where it already was after a focused split.
-
-## Diagnostic Ladder
-
-Use diagnostics only after the canonical loop tells you why they are needed.
-
-1. Prefer a fresh live `pro-reliability` sample when the wall is unclear or has moved.
-2. Use `triage-calibrate` only when the triage surface itself is new or no longer calibrated.
-3. Use `pro-opening-speed-probe` only for opening-specific regressions.
-4. Use the hotspot probe only after a real duel stall, and only to narrow the next code surface.
-
-Manual diagnostics:
+All experiment probes run through the ignored test harness:
 
 ```sh
-cargo test --release --lib smart_automove_pro_reliability_hotspot_probe -- --ignored --nocapture
+cargo test --release --lib <test_name> -- --ignored --nocapture
 ```
 
-Do not do these by default:
-- archive reopenings
-- wrapper-only knob sweeps
-- hotspot-first micro-optimization loops
-- broad split families without a new code hypothesis
-
-## Confirmation Only
-
-This stage is not part of the default Pro loop. Use it only after `pro-reliability` earns more spend.
-
-```sh
-./scripts/run-automove-experiment.sh pro-reliability-confirm runtime_pro_turn_engine_v30 runtime_current
-```
-
-`pro-reliability-confirm` is the final Pro-vs-current confirmation stage before promotion:
-- It uses the same three-duel pass rule as `pro-reliability`.
-- Its confirmation corpus defaults are `4` repeats, `4` games per repeat, mirrored play, `max_plies=96`.
-- Promote only after `pro-reliability-confirm` completes cleanly and still clears current `Pro`, current `Normal`, and current `Fast` at the `>= 0.90` win-rate floor while staying at the `<= 700ms` candidate average move-time budget in all three duels.
-
-## Compatibility Surface
-
-These tools still exist, but they are not the main story and they are not promotion proof for the Pro frontier:
-- `triage-calibrate`
-- `pro-opening-speed-probe`
-- `smart_automove_pro_reliability_hotspot_probe`
-- `docs/automove-experiments.md`
-
-## Artifacts
+## Artifacts And Cleanup
 
 - Candidate logs: `target/experiment-runs/<candidate>/`
 - Workflow-only logs: `target/experiment-runs/misc/`
 - Runtime-preflight stamps: `target/experiment-stamps/`
-- Process samples: `target/experiment-runs/misc/samples/`
-
-Logs and stamps are disposable evidence, not durable memory.
+- Logs and stamps are disposable evidence, not durable memory.
+- Standard cleanup command: `./scripts/clean-experiment-artifacts.sh`
 
 ## Session End
 
-1. Update `AUTOMOVE_IDEAS.md` with the next live split or the kill result.
+1. Update `AUTOMOVE_IDEAS.md` with the current live state or next frontier.
 2. Move durable lessons into `docs/automove-knowledge.md`.
-3. Move retired branch history into `docs/automove-archive.md`.
-4. Clean logs and stamps intentionally.
-5. Start the next session with one live hypothesis and one retained candidate.
+3. Move retired wave summaries into `docs/automove-archive.md`.
+4. Run `./scripts/clean-experiment-artifacts.sh --dry-run`, then the real cleanup when validation is complete.
+5. Leave one clear next hypothesis, or explicitly record that no live challenger exists yet.

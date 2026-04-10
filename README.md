@@ -10,33 +10,54 @@ or
 Canonical automove workflow:
 
 - runbook: `HOW_TO_ITERATE_ON_AUTOMOVE.md`
-- active backlog: `AUTOMOVE_IDEAS.md`
+- live board: `AUTOMOVE_IDEAS.md`
 - durable lessons: `docs/automove-knowledge.md`
 - archive: `docs/automove-archive.md`
 - compatibility pointer: `docs/automove-experiments.md`
 
-Session-start commands:
+Active experiment stages:
 
-- `./scripts/run-automove-experiment.sh guardrails <candidate>`
-- `SMART_TRIAGE_SURFACE=<surface> ./scripts/run-automove-experiment.sh triage <candidate>`
-- `SMART_TRIAGE_SURFACE=<opening_reply|primary_pro> ./scripts/run-automove-experiment.sh pro-triage <candidate>`
-- `./scripts/run-automove-experiment.sh runtime-preflight <candidate>`
-- `SMART_PROMOTION_TARGET_MODE=<fast|normal> ./scripts/run-automove-experiment.sh fast-screen <candidate>`
-- `./scripts/run-automove-experiment.sh pro-fast-screen <candidate>`
+- `guardrails`
+- `triage-calibrate`
+- `pro-triage`
+- `runtime-preflight`
+- `pro-opening-speed-probe`
+- `pro-reliability`
+- `pro-reliability-confirm`
+
+Canonical commands:
+
+- `./scripts/run-automove-experiment.sh guardrails runtime_pro_turn_engine_v30`
+- `SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage runtime_pro_turn_engine_v30`
+- `./scripts/run-automove-experiment.sh runtime-preflight runtime_pro_turn_engine_v30`
+- `./scripts/run-automove-experiment.sh pro-reliability runtime_pro_turn_engine_v30`
+- `./scripts/run-automove-experiment.sh pro-reliability-confirm runtime_pro_turn_engine_v30`
 - `./scripts/clean-experiment-artifacts.sh --dry-run`
+
+Active retained profile surface:
+
+- `base`
+- `runtime_current`
+- `runtime_release_safe_pre_exact`
+- `runtime_eff_exact_lite_v1`
+- `runtime_pre_fast_root_quality_v1_normal_conversion_v3`
+- `swift_2024_eval_reference`
+- `swift_2024_style_reference`
+- `runtime_normal_from_fast_reference_v1`
+- `runtime_pro_turn_engine_v30`
+
+Notes:
+
+- Shipping runtime is `runtime_current`.
+- `runtime_pro_turn_engine_v30` is the only retained Pro frontier for offline experiments.
+- Archive profiles, including `runtime_pro_turn_engine_v1`, are not valid active experiment targets.
+- Post-promotion maintenance runs may show `pro-triage` `0/0` for `runtime_pro_turn_engine_v30` vs `runtime_current`; that is the expected stable-equivalence result, not a failed challenger attempt.
 
 Default artifact layout:
 
 - logs: `target/experiment-runs/<candidate>/`
 - workflow-only logs: `target/experiment-runs/misc/`
 - runtime-preflight stamps: `target/experiment-stamps/`
-
-Compatibility notes:
-
-- `preflight`, `pre-screen`, and `pro-pre-screen` still exist, but they are legacy diagnostics.
-- `audit-screen` and `pro-audit-screen` are spot checks for clean triage rejects, not promotion evidence.
-- Unless a note says otherwise, new candidates should branch from `runtime_current`.
-- Shipping runtime note: the package release ships `runtime_current`; `runtime_pro_turn_engine_v30` is the retained Pro frontier for offline experiments, and `runtime_pro_turn_engine_v1` remains reference-only history.
 
 ## rules-tests runner
 
@@ -85,7 +106,7 @@ Release checklist:
 
 - Review `git status` before publish and confirm only intentional committed changes are present.
 - Confirm `runtime_current` is still the shipping automove path.
-- Confirm retained Pro experiment frontiers (`runtime_pro_turn_engine_v30` and newer candidate-only follow-ups) remain fenced off from production.
+- Confirm `runtime_pro_turn_engine_v30` remains fenced off as an offline experiment frontier.
 - Run `cargo test`.
 - Run `cargo test --release --lib smart_automove_release_opening_black_reply_speed_gate -- --ignored --nocapture`.
 - Run `cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --ignored --nocapture`.
@@ -100,6 +121,6 @@ Production blockers:
 
 Non-blocking retained experiment state:
 
-- retained Pro frontier profiles (`runtime_pro_turn_engine_v30`, candidate-only follow-ups, and `runtime_pro_turn_engine_v1` as reference history) plus ignored probes
+- the retained `runtime_pro_turn_engine_v30` frontier plus ignored probes
 - experiment workflow/logging helpers
 - compressed automove backlog / knowledge / archive docs

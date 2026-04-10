@@ -47,7 +47,6 @@ retained_profiles=(
   swift_2024_eval_reference
   swift_2024_style_reference
   runtime_normal_from_fast_reference_v1
-  runtime_pro_turn_engine_v1
   runtime_pro_turn_engine_v30
 )
 

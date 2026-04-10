@@ -8,7 +8,6 @@ const PROFILE_RUNTIME_PRE_FAST_ROOT_QUALITY_V1_NORMAL_CONVERSION_V3: &str =
     "runtime_pre_fast_root_quality_v1_normal_conversion_v3";
 const PROFILE_SWIFT_2024_EVAL_REFERENCE: &str = "swift_2024_eval_reference";
 const PROFILE_SWIFT_2024_STYLE_REFERENCE: &str = "swift_2024_style_reference";
-const PROFILE_RUNTIME_PRO_TURN_ENGINE_V1: &str = "runtime_pro_turn_engine_v1";
 const PROFILE_RUNTIME_PRO_TURN_ENGINE_V30: &str = "runtime_pro_turn_engine_v30";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -23,7 +22,7 @@ struct AutomoveProfile {
     selector: AutomoveSelector,
 }
 
-const RETAINED_PROFILES: [AutomoveProfile; 10] = [
+const RETAINED_PROFILES: [AutomoveProfile; 9] = [
     AutomoveProfile {
         id: "base",
         selector: model_base_profile,
@@ -55,10 +54,6 @@ const RETAINED_PROFILES: [AutomoveProfile; 10] = [
     AutomoveProfile {
         id: PROFILE_RUNTIME_NORMAL_FROM_FAST_REFERENCE_V1,
         selector: model_runtime_normal_from_fast_reference_v1,
-    },
-    AutomoveProfile {
-        id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V1,
-        selector: model_runtime_pro_turn_engine_v1,
     },
     AutomoveProfile {
         id: PROFILE_RUNTIME_PRO_TURN_ENGINE_V30,
@@ -294,27 +289,6 @@ pub(super) fn model_runtime_normal_from_fast_reference_v1(
     )
 }
 
-fn configure_runtime_pro_turn_engine_v1(config: SmartSearchConfig) -> SmartSearchConfig {
-    let mut runtime = config;
-    if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
-        && runtime.enable_normal_root_safety_deep_floor
-    {
-        runtime.enable_turn_engine = true;
-        runtime.turn_engine_mode = TurnEngineMode::ProV1;
-        runtime.turn_engine_seed_cap = 16;
-        runtime.turn_engine_beam_width = 6;
-        runtime.turn_engine_per_node_family_cap = 4;
-        runtime.turn_engine_step_cap = 7;
-        runtime.turn_engine_opponent_seed_cap = 8;
-        runtime.turn_engine_opponent_beam_width = 3;
-        runtime.turn_engine_reply_seed_cap = 4;
-        runtime.turn_engine_reply_beam_width = 2;
-        runtime.turn_engine_expansion_cap = 192;
-        runtime.turn_engine_enable_spirit_family = true;
-    }
-    runtime
-}
-
 fn configure_runtime_pro_turn_engine_v30(config: SmartSearchConfig) -> SmartSearchConfig {
     let mut runtime = config;
     if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
@@ -340,22 +314,6 @@ fn configure_runtime_pro_turn_engine_v30(config: SmartSearchConfig) -> SmartSear
         runtime.enable_turn_engine_late_safe_mana_root_preference = true;
     }
     runtime
-}
-
-pub(super) fn model_runtime_pro_turn_engine_v1(
-    game: &MonsGame,
-    config: SmartSearchConfig,
-) -> Vec<Input> {
-    if opening_book_enabled() {
-        let opening_runtime = SearchBudget::from_preference(SmartAutomovePreference::Normal)
-            .runtime_config_for_game(game);
-        return runtime_selector_inputs(
-            game,
-            configure_runtime_release_safe_pre_exact(opening_runtime),
-        );
-    }
-
-    runtime_selector_inputs(game, configure_runtime_pro_turn_engine_v1(config))
 }
 
 fn runtime_pro_turn_engine_v30_guarded_inputs(
@@ -627,7 +585,6 @@ pub(super) fn profile_runtime_config_for_name(
         PROFILE_RUNTIME_NORMAL_FROM_FAST_REFERENCE_V1 => {
             configure_runtime_normal_from_fast_reference_v1(game, config)
         }
-        PROFILE_RUNTIME_PRO_TURN_ENGINE_V1 => configure_runtime_pro_turn_engine_v1(config),
         PROFILE_RUNTIME_PRO_TURN_ENGINE_V30 => configure_runtime_pro_turn_engine_v30(config),
         _ => return None,
     };
