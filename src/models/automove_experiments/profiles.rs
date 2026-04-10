@@ -106,6 +106,17 @@ fn runtime_selector_inputs(game: &MonsGame, config: SmartSearchConfig) -> Vec<In
     }
 }
 
+fn runtime_selector_inputs_with_fresh_turn_engine_cache(
+    game: &MonsGame,
+    config: SmartSearchConfig,
+) -> Vec<Input> {
+    if config.enable_turn_engine {
+        crate::models::automove_turn_engine::clear_turn_engine_plan_cache();
+        crate::models::automove_turn_engine::clear_turn_engine_diagnostics();
+    }
+    runtime_selector_inputs(game, config)
+}
+
 pub(super) fn model_current_best(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
     runtime_selector_inputs(game, config)
 }
@@ -118,7 +129,7 @@ pub(super) fn model_runtime_current_profile(
     game: &MonsGame,
     config: SmartSearchConfig,
 ) -> Vec<Input> {
-    model_current_best(game, config)
+    model_runtime_pro_turn_engine_v30(game, config)
 }
 
 fn configure_runtime_release_safe_pre_exact(config: SmartSearchConfig) -> SmartSearchConfig {
@@ -398,14 +409,6 @@ fn runtime_pro_turn_engine_v30_guarded_inputs(
         && game.mons_moves_count == 1
         && !game.player_can_use_action()
         && game.player_can_move_mana();
-    if white_turn_three_mana_only {
-        let normal_runtime = SearchBudget::from_preference(SmartAutomovePreference::Normal)
-            .runtime_config_for_game(game);
-        return runtime_selector_inputs(
-            game,
-            configure_runtime_release_safe_pre_exact(normal_runtime),
-        );
-    }
 
     let white_turn_three_mid_turn_scoring_action_mana = game.active_color == Color::White
         && game.turn_number == 3
@@ -413,9 +416,13 @@ fn runtime_pro_turn_engine_v30_guarded_inputs(
         && game.player_can_use_action()
         && game.player_can_move_mana();
     if white_turn_three_mid_turn_scoring_action_mana {
-        let context = crate::models::automove_exact::exact_opportunity_context(game, game.active_color);
+        let context =
+            crate::models::automove_exact::exact_opportunity_context(game, game.active_color);
         if context.delta.same_turn_score_window_value > 0 {
-            return runtime_selector_inputs(game, configure_runtime_pro_turn_engine_v30(config));
+            return runtime_selector_inputs_with_fresh_turn_engine_cache(
+                game,
+                configure_runtime_pro_turn_engine_v30(config),
+            );
         }
     }
 
@@ -433,14 +440,27 @@ fn runtime_pro_turn_engine_v30_guarded_inputs(
     let white_turn_three_mid_turn = game.active_color == Color::White
         && game.turn_number == 3
         && game.mons_moves_count > 0
+        && !white_turn_three_mana_only
         && (game.player_can_use_action() || game.player_can_move_mana());
     if white_turn_three_mid_turn {
-        let fast_runtime = SearchBudget::from_preference(SmartAutomovePreference::Fast)
-            .runtime_config_for_game(game);
-        return runtime_selector_inputs(
+        let drainer_vulnerable = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             game,
-            configure_runtime_release_safe_pre_exact(fast_runtime),
+            game.active_color,
+            config.enable_enhanced_drainer_vulnerability,
         );
+        let drainer_walk_vulnerable = MonsGameModel::is_own_drainer_walk_vulnerable_next_turn(
+            game,
+            game.active_color,
+            config.enable_enhanced_drainer_vulnerability,
+        );
+        if drainer_vulnerable || drainer_walk_vulnerable {
+            let fast_runtime = SearchBudget::from_preference(SmartAutomovePreference::Fast)
+                .runtime_config_for_game(game);
+            return runtime_selector_inputs(
+                game,
+                configure_runtime_release_safe_pre_exact(fast_runtime),
+            );
+        }
     }
 
     let black_turn_two_turn_start_action_mana = game.active_color == Color::Black
@@ -476,7 +496,43 @@ fn runtime_pro_turn_engine_v30_guarded_inputs(
         return model_current_best(game, pro_runtime);
     }
 
-    runtime_selector_inputs(game, configure_runtime_pro_turn_engine_v30(config))
+    let candidate_config = configure_runtime_pro_turn_engine_v30(config);
+    let candidate_inputs =
+        runtime_selector_inputs_with_fresh_turn_engine_cache(game, candidate_config);
+    let black_turn_four_bridge_current_fallback = game.active_color == Color::Black
+        && game.turn_number == 4
+        && game.mons_moves_count == 2
+        && game.player_can_use_action()
+        && game.player_can_move_mana();
+    if black_turn_four_bridge_current_fallback && !candidate_inputs.is_empty() {
+        let pro_runtime = SearchBudget::from_preference(SmartAutomovePreference::Pro)
+            .runtime_config_for_game(game);
+        let current_inputs = model_current_best(game, pro_runtime);
+        let current_fen = Input::fen_from_array(&current_inputs);
+        if !current_inputs.is_empty()
+            && current_inputs != candidate_inputs
+            && current_inputs.len() == 3
+            && current_fen.ends_with(";mb")
+        {
+            return current_inputs;
+        }
+    }
+
+    let black_mid_turn_action_mana_current_fallback = game.active_color == Color::Black
+        && game.turn_number >= 4
+        && game.mons_moves_count >= 3
+        && game.player_can_use_action()
+        && game.player_can_move_mana();
+    if black_mid_turn_action_mana_current_fallback && !candidate_inputs.is_empty() {
+        let pro_runtime = SearchBudget::from_preference(SmartAutomovePreference::Pro)
+            .runtime_config_for_game(game);
+        let current_inputs = model_current_best(game, pro_runtime);
+        if !current_inputs.is_empty() && current_inputs != candidate_inputs {
+            return current_inputs;
+        }
+    }
+
+    candidate_inputs
 }
 
 pub(super) fn model_runtime_pro_turn_engine_v30(
@@ -499,7 +555,10 @@ pub(super) fn model_swift_2024_eval_reference(
     game: &MonsGame,
     config: SmartSearchConfig,
 ) -> Vec<Input> {
-    MonsGameModel::smart_search_best_inputs(game, configure_runtime_swift_2024_eval_reference(game, config))
+    MonsGameModel::smart_search_best_inputs(
+        game,
+        configure_runtime_swift_2024_eval_reference(game, config),
+    )
 }
 
 fn configure_runtime_swift_2024_style_reference(

@@ -8,13 +8,13 @@ Archived profile IDs are invalid by design. New iteration work must stay on the 
 
 1. Default to Pro work.
 2. Treat `runtime_current` as the shipping Pro baseline.
-3. Treat `runtime_pro_turn_engine_v30` as the only live Pro challenger.
+3. Treat `runtime_pro_turn_engine_v30` as the promoted guarded `ProV2` reference that now powers `runtime_current`.
 4. Run the cheap-to-expensive Pro loop in order.
 5. Kill flat lines immediately and compress the lesson before starting another split.
 
 ## Focused Pro Goal
 
-- The focused Pro target is now explicit: `runtime_pro_turn_engine_v30` must beat `runtime_current` in direct Pro-vs-Pro, Pro-vs-Normal, and Pro-vs-Fast duels with `win_rate >= 0.90`, while staying at `candidate_avg_move_ms <= 700` in all three matchups.
+- The focused Pro target is now explicit: any new retained Pro candidate must beat `runtime_current` in direct Pro-vs-Pro, Pro-vs-Normal, and Pro-vs-Fast duels with `win_rate >= 0.90`, while staying at `candidate_avg_move_ms <= 700` in all three matchups.
 - Move time means candidate decision-selection time on candidate turns only inside completed Pro-vs-Pro, Pro-vs-Normal, and Pro-vs-Fast duel games against `runtime_current`.
 - Do not count compile time, harness startup, or `game.process_input(...)` in that move-time budget.
 - A stalled or incomplete duel run is not promotable evidence, even if hotspot probes or one-game samples look good.
@@ -41,9 +41,9 @@ If a profile ID is not in this list, it is archive-only context and must not be 
 
 ## Current Reality
 
-- Shipping Pro is `runtime_current`. Its Pro path is the planner-plus-quiescence runtime selected by the live game context.
-- The only live Pro challenger is `runtime_pro_turn_engine_v30`. It is a guarded `ProV2` turn-engine path, not a raw always-on engine.
-- `runtime_pro_turn_engine_v30` deliberately falls back on opening-book positions and several early white turn shapes. That is expected behavior, not a bug.
+- Shipping Pro is `runtime_current`. Its Pro path is the promoted guarded `ProV2` turn-engine runtime selected by the live game context.
+- `runtime_pro_turn_engine_v30` is the promoted source/reference profile for that shipping path, not an active challenger.
+- The promoted guarded path deliberately falls back on opening-book positions and several early white turn shapes. That is expected behavior, not a bug.
 - `runtime_pro_turn_engine_v1` stays only as regression history and comparison material.
 - Do not reopen archive profiles, retired planner lines, or old quiescence branches without a brand-new hypothesis strong enough to justify new code.
 
@@ -52,10 +52,11 @@ If a profile ID is not in this list, it is archive-only context and must not be 
 Use this exact order for real Pro iteration work.
 
 ```sh
-./scripts/run-automove-experiment.sh guardrails runtime_pro_turn_engine_v30
-SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage runtime_pro_turn_engine_v30 runtime_current
-./scripts/run-automove-experiment.sh runtime-preflight runtime_pro_turn_engine_v30
-./scripts/run-automove-experiment.sh pro-reliability runtime_pro_turn_engine_v30 runtime_current
+CANDIDATE=<new_retained_pro_profile>
+./scripts/run-automove-experiment.sh guardrails "$CANDIDATE"
+SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage "$CANDIDATE" runtime_current
+./scripts/run-automove-experiment.sh runtime-preflight "$CANDIDATE"
+./scripts/run-automove-experiment.sh pro-reliability "$CANDIDATE" runtime_current
 ```
 
 Operator defaults:

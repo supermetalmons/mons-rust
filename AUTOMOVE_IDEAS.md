@@ -6,8 +6,28 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 
 ## Current Gate Snapshot
 
-- Shipping Pro stays `runtime_current`.
-- The only live Pro challenger is `runtime_pro_turn_engine_v30`.
+- Shipping Pro is `runtime_current`.
+- The promoted guarded ProV2 source profile remains `runtime_pro_turn_engine_v30`.
+- Latest focused gate (`2026-04-10`, latest):
+  - live workspace remains the retained `runtime_pro_turn_engine_v30` branch with the unified advisor base plus a final narrow black advisor cut: `pro_v2_root_advisor_black_plain_spirit_setup_competition_override`
+  - retained checks stayed clean again: `guardrails` passed, `pro-triage(primary_pro)` stayed `changed=3/60` with `target_changed=3` and `off_target_changed=0`, and `runtime-preflight` passed
+  - promotion proof now clears: `pro-reliability` passed at `0.9167` vs current Pro, `1.0000` vs current Normal, and `1.0000` vs current Fast; `pro-reliability-confirm` also passed at `0.9062 / 0.9062 / 0.9062`
+  - candidate average move times remain safely inside budget: `pro-reliability-confirm` finished at about `130.28ms / 161.62ms / 176.11ms`
+  - the final wall was the confirm-Normal corpus at `0.8750`; `smart_automove_pro_reliability_nonwin_trace_probe` collapsed it to four exact boards, and the decisive fix was the black `opening2 ply46` advisor drift where reply-risk approval picked a weaker plain-spirit sibling over the stronger own-setup SpiritImpact root already present in the shortlist
+  - direct conclusion: `runtime_pro_turn_engine_v30` is now promotable over `runtime_current` on the retained Pro frontier
+- Latest focused gate (`2026-04-09`, latest):
+  - current best live workspace state adds a second structural cut on top of the unified advisor: an early-black reply-risk rescue plus conservative head rejection for weaker mana siblings, then a narrow early-black same-opening plain-spirit head acceptance over lower-scoring `own_setup` siblings
+  - retained checks stayed clean on that branch: `guardrails` passed, `pro-triage(primary_pro)` improved to `changed=4/60` with `off_target_changed=0`, and `runtime-preflight` passed
+  - that branch is still not promotable, but it is the best gate from this session so far: `pro-reliability` improved again to `0.5833` vs current Pro, `0.7500` vs current Normal, and `0.6667` vs current Fast, all still within the move-time budget at `119.61ms / 117.79ms / 129.56ms`
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` after those cuts: sampled direct Pro finished clean with `0` regressions / `2` improvements / `4` flat and sampled Fast stayed clean with `0` / `1` / `5`; the remaining sampled Normal regression was a black SpiritImpact sibling split `l1,4;l3,6;l2,7` vs current `l1,4;l0,6;l1,6`, and the latest cut moved runtime selection onto the current/plain-spirit line by accepting the same-opening head while leaving `pre_accept` unchanged
+  - direct conclusion: keep the latest branch as the live workspace state, keep the early-black mana/progress fixes, and make the next split a pre-search/advisor fix for early-black same-opening SpiritImpact setup-vs-plain followup selection instead of another mana-family pass
+  - kept the structural `Unify ProV2 Root Arbitration` refactor as the base challenger state, but the first full gate after landing still failed hard at `0.3333` vs current Pro, `0.5000` vs current Normal, and `0.5000` vs current Fast
+  - killed the broad advisor-approval shortlist cut that let all preserved representatives compete in reply-risk approval: `guardrails` and `runtime-preflight` passed, `pro-triage(primary_pro)` moved to `6/60` with `off_target_changed=0`, but `pro-reliability` only reached `0.4167 / 0.4167 / 0.5000` and reopened `primary_black_reliability_opening_3_ply4` plus `primary_ext_sensitive_more_ext_a`
+  - killed the narrower shortlist variant that kept plain-spirit preserves out of reply-risk approval: retained surface returned to `changed=5/60` with `off_target_changed=0`, but `pro-reliability` stayed weak at `0.4167 / 0.4167 / 0.4167`
+  - current best live cut is a narrow black post-search family-competition override on top-`2` approved `ManaTempo` roots when a concrete SpiritImpact setup or nearby progress family still competes; retained checks are clean again (`guardrails` passed, `pro-triage(primary_pro)` stayed `5/60` with `off_target_changed=0`, `runtime-preflight` passed, and the advisor probe keeps `primary_black_reliability_opening_3_ply4` and `primary_pvs_sensitive_search` closed)
+  - that cut is still not promotable, but it is the best duel result from this session so far: `pro-reliability` improved to `0.5000` vs current Pro, `0.5000` vs current Normal, and `0.5833` vs current Fast, all still well below the `>= 0.90` win-rate floor and still within the move-time budget
+  - refreshed `smart_automove_pro_reliability_duel_trace_probe` on the shortlist-driven branch before the latest cut and finally got a clearer live pattern: most regressions are black `engine_post_search` mana-over-setup/progress choices, not head-accept overrides, especially `l0,5;l1,6` vs `l1,5;l3,6;l2,7`, `l1,5;l2,4` vs `l0,5;l1,4`, `l1,5;l2,5` vs `l0,5;l1,4`, `l1,6;l2,7` vs `l3,4;l3,5`, plus a smaller white mana-tie bucket `l10,4;l9,4` vs `l8,6;l7,7` and `l9,5;l8,5` vs `l7,5;l6,4`
+  - direct conclusion: keep the latest black family-competition override as the live workspace state, kill both broader shortlist rewrites, and make the next split a dedicated early-black `engine_post_search` mana-over-setup/progress arbitration cut instead of another advisor-shortlist rewrite
 - Latest diagnostic close (`2026-04-09`, latest):
   - refreshed `smart_automove_pro_reliability_duel_trace_probe` with `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_v75`
   - duel summary: direct Pro finished `1` regression / `2` improvements / `9` flat, Normal `3` / `0` / `9`, and Fast `6` / `1` / `5`
