@@ -11,17 +11,21 @@ use crate::models::scoring::{
 };
 use crate::*;
 
+#[cfg(any(target_arch = "wasm32", test))]
+#[path = "automove_runtime_variants.rs"]
+pub(crate) mod automove_runtime_variants;
+
 #[wasm_bindgen]
 #[derive(Debug)]
 pub struct MonsGameModel {
     game: MonsGame,
     #[cfg(any(target_arch = "wasm32", test))]
-    pro_runtime_context_hint: std::cell::Cell<ProRuntimeContext>,
+    pro_runtime_context_hint: std::cell::Cell<ShippingProContext>,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ProRuntimeContext {
+enum ShippingProContext {
     Unknown,
     OpeningBookDriven,
     Independent,
@@ -146,9 +150,8 @@ fn turn_engine_root_selection_diagnostics_snapshot() -> TurnEngineRootSelectionD
 fn update_turn_engine_root_selection_diagnostics(
     update: impl FnOnce(&mut TurnEngineRootSelectionDiagnostics),
 ) {
-    TURN_ENGINE_ROOT_SELECTION_DIAGNOSTICS.with(|diagnostics| {
-        update(&mut diagnostics.borrow_mut())
-    });
+    TURN_ENGINE_ROOT_SELECTION_DIAGNOSTICS
+        .with(|diagnostics| update(&mut diagnostics.borrow_mut()));
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -282,8 +285,9 @@ fn record_turn_engine_rerank_override_reject_reason(reason: TurnEngineRerankOver
                 .saturating_add(1);
         }
         TurnEngineRerankOverrideRejectReason::TopWins => {
-            diagnostics.rerank_override_reject_top_wins =
-                diagnostics.rerank_override_reject_top_wins.saturating_add(1);
+            diagnostics.rerank_override_reject_top_wins = diagnostics
+                .rerank_override_reject_top_wins
+                .saturating_add(1);
         }
         TurnEngineRerankOverrideRejectReason::CandidateUnsafe => {
             diagnostics.rerank_override_reject_candidate_unsafe = diagnostics
@@ -337,7 +341,8 @@ fn turn_engine_opponent_can_win_immediately(game: &MonsGame, perspective: Color)
     }
 
     let opponent = perspective.other();
-    let needed = Config::TARGET_SCORE.saturating_sub(MonsGameModel::score_for_color(game, opponent));
+    let needed =
+        Config::TARGET_SCORE.saturating_sub(MonsGameModel::score_for_color(game, opponent));
     if needed <= 0 {
         return true;
     }
@@ -1268,7 +1273,7 @@ impl SmartAutomovePreference {
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Clone, Copy)]
-pub(crate) struct SmartSearchConfig {
+pub(crate) struct AutomoveSearchConfig {
     depth: usize,
     max_visited_nodes: usize,
     root_enum_limit: usize,
@@ -1304,7 +1309,7 @@ pub(crate) struct SmartSearchConfig {
     enable_child_exact_tactics: bool,
     enable_static_exact_evaluation: bool,
     enable_turn_head_rerank: bool,
-    enable_turn_engine: bool,
+    enable_turn_engine_selector: bool,
     enable_turn_engine_eligibility_guard: bool,
     enable_turn_engine_low_budget_guard: bool,
     enable_turn_engine_mid_turn_progress_guard: bool,
@@ -1407,7 +1412,7 @@ pub(crate) struct SmartSearchConfig {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-impl SmartSearchConfig {
+impl AutomoveSearchConfig {
     fn from_preference(preference: SmartAutomovePreference) -> Self {
         let (depth, max_visited_nodes) = preference.depth_and_max_nodes();
         let config = Self::from_budget(depth, max_visited_nodes).for_runtime();
@@ -1657,7 +1662,7 @@ impl SmartSearchConfig {
             enable_child_exact_tactics: true,
             enable_static_exact_evaluation: true,
             enable_turn_head_rerank: false,
-            enable_turn_engine: false,
+            enable_turn_engine_selector: false,
             enable_turn_engine_eligibility_guard: false,
             enable_turn_engine_low_budget_guard: false,
             enable_turn_engine_mid_turn_progress_guard: false,
@@ -2276,7 +2281,7 @@ enum AsyncSmartSearchStart {
 struct AsyncSmartSearchState {
     game: MonsGame,
     perspective: Color,
-    config: SmartSearchConfig,
+    config: AutomoveSearchConfig,
     phase: AsyncSmartSearchPhase,
     root_moves: Vec<ScoredRootMove>,
     pending_output: Option<OutputModel>,
@@ -2298,7 +2303,7 @@ impl MonsGameModel {
         Self {
             game,
             #[cfg(any(target_arch = "wasm32", test))]
-            pro_runtime_context_hint: std::cell::Cell::new(ProRuntimeContext::Unknown),
+            pro_runtime_context_hint: std::cell::Cell::new(ShippingProContext::Unknown),
         }
     }
 
@@ -2688,7 +2693,7 @@ impl MonsGameModel {
 impl MonsGameModel {
     fn mark_opening_book_driven_context(&self) {
         self.pro_runtime_context_hint
-            .set(ProRuntimeContext::OpeningBookDriven);
+            .set(ShippingProContext::OpeningBookDriven);
     }
 
     fn smart_automove_output(&self, preference: SmartAutomovePreference) -> OutputModel {
@@ -2702,7 +2707,7 @@ impl MonsGameModel {
             }
         }
 
-        let config = self.runtime_config_for_preference(preference);
+        let config = self.shipping_search_config_for_preference(preference);
         let inputs = Self::smart_search_best_inputs(&self.game, config);
         if inputs.is_empty() {
             let mut game = self.game.clone_for_simulation();
@@ -2719,7 +2724,7 @@ impl MonsGameModel {
     fn new_async_smart_search_state(
         game: MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> AsyncSmartSearchState {
         AsyncSmartSearchState {
             game,
@@ -2760,7 +2765,7 @@ impl MonsGameModel {
         }
 
         clear_exact_state_analysis_cache();
-        let config = self.runtime_config_for_preference(preference);
+        let config = self.shipping_search_config_for_preference(preference);
         let perspective = self.game.active_color;
         let game = self.game.clone_for_simulation();
         AsyncSmartSearchStart::Pending(Self::new_async_smart_search_state(
@@ -2770,13 +2775,13 @@ impl MonsGameModel {
         ))
     }
 
-    fn runtime_config_for_preference(
+    fn shipping_search_config_for_preference(
         &self,
         preference: SmartAutomovePreference,
-    ) -> SmartSearchConfig {
+    ) -> AutomoveSearchConfig {
         let hinted = self.pro_runtime_context_hint.get();
         let (config, resolved_context) =
-            Self::runtime_config_for_game_with_context(&self.game, preference, hinted);
+            Self::shipping_search_config_for_game_with_context(&self.game, preference, hinted);
         self.pro_runtime_context_hint.set(resolved_context);
         config
     }
@@ -2803,16 +2808,16 @@ impl MonsGameModel {
         );
     }
 
-    fn runtime_config_for_game_with_context(
+    fn shipping_search_config_for_game_with_context(
         game: &MonsGame,
         preference: SmartAutomovePreference,
-        hinted_context: ProRuntimeContext,
-    ) -> (SmartSearchConfig, ProRuntimeContext) {
-        let opening_black_reply = hinted_context == ProRuntimeContext::OpeningBookDriven
+        hinted_context: ShippingProContext,
+    ) -> (AutomoveSearchConfig, ShippingProContext) {
+        let opening_black_reply = hinted_context == ShippingProContext::OpeningBookDriven
             || Self::detect_opening_book_context(game);
         let mut config = Self::with_runtime_scoring_weights(
             game,
-            SmartSearchConfig::from_preference(preference),
+            AutomoveSearchConfig::from_preference(preference),
         );
         let resolved_context = if Self::uses_deep_runtime_context(preference) {
             let resolved = Self::resolve_pro_runtime_context(game, hinted_context);
@@ -2841,10 +2846,10 @@ impl MonsGameModel {
 
     fn apply_deep_runtime_context_profile(
         game: &MonsGame,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         preference: SmartAutomovePreference,
-        context: ProRuntimeContext,
-    ) -> SmartSearchConfig {
+        context: ShippingProContext,
+    ) -> AutomoveSearchConfig {
         match preference {
             SmartAutomovePreference::Pro => {
                 Self::apply_pro_runtime_context_profile(game, config, context)
@@ -2855,15 +2860,15 @@ impl MonsGameModel {
 
     fn resolve_pro_runtime_context(
         game: &MonsGame,
-        hinted_context: ProRuntimeContext,
-    ) -> ProRuntimeContext {
-        if hinted_context == ProRuntimeContext::OpeningBookDriven {
-            return ProRuntimeContext::OpeningBookDriven;
+        hinted_context: ShippingProContext,
+    ) -> ShippingProContext {
+        if hinted_context == ShippingProContext::OpeningBookDriven {
+            return ShippingProContext::OpeningBookDriven;
         }
         if Self::detect_opening_book_context(game) {
-            ProRuntimeContext::OpeningBookDriven
+            ShippingProContext::OpeningBookDriven
         } else {
-            ProRuntimeContext::Independent
+            ShippingProContext::Independent
         }
     }
 
@@ -2901,30 +2906,30 @@ impl MonsGameModel {
         false
     }
 
-    fn apply_fast_opening_reply_profile(config: SmartSearchConfig) -> SmartSearchConfig {
+    fn apply_fast_opening_reply_profile(config: AutomoveSearchConfig) -> AutomoveSearchConfig {
         if config.depth > SMART_AUTOMOVE_FAST_DEPTH as usize {
             return config;
         }
         Self::apply_opening_reply_latency_profile(config, 2, 320, 18, 8, 108, 48)
     }
 
-    fn apply_normal_opening_reply_profile(config: SmartSearchConfig) -> SmartSearchConfig {
+    fn apply_normal_opening_reply_profile(config: AutomoveSearchConfig) -> AutomoveSearchConfig {
         Self::apply_opening_reply_latency_profile(config, 2, 420, 20, 9, 120, 56)
     }
 
-    fn apply_pro_opening_reply_profile(config: SmartSearchConfig) -> SmartSearchConfig {
+    fn apply_pro_opening_reply_profile(config: AutomoveSearchConfig) -> AutomoveSearchConfig {
         Self::apply_opening_reply_latency_profile(config, 3, 1_100, 20, 10, 132, 72)
     }
 
     fn apply_opening_reply_latency_profile(
-        mut config: SmartSearchConfig,
+        mut config: AutomoveSearchConfig,
         depth: usize,
         max_visited_nodes: usize,
         root_branch_limit: usize,
         node_branch_limit: usize,
         root_enum_limit: usize,
         node_enum_limit: usize,
-    ) -> SmartSearchConfig {
+    ) -> AutomoveSearchConfig {
         config.depth = depth;
         config.max_visited_nodes = max_visited_nodes;
         config.root_branch_limit = root_branch_limit;
@@ -2942,7 +2947,9 @@ impl MonsGameModel {
         config
     }
 
-    fn apply_runtime_normal_fast_policy_block(mut config: SmartSearchConfig) -> SmartSearchConfig {
+    fn apply_runtime_normal_fast_policy_block(
+        mut config: AutomoveSearchConfig,
+    ) -> AutomoveSearchConfig {
         config.root_branch_limit = (config.root_branch_limit + 5).clamp(12, 40);
         config.node_branch_limit = config.node_branch_limit.saturating_sub(2).clamp(8, 18);
         config.root_enum_limit =
@@ -2989,8 +2996,8 @@ impl MonsGameModel {
     }
 
     fn apply_runtime_normal_fast_core_budget_spend_profile(
-        mut config: SmartSearchConfig,
-    ) -> SmartSearchConfig {
+        mut config: AutomoveSearchConfig,
+    ) -> AutomoveSearchConfig {
         if config.depth < 3 || config.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize {
             return config;
         }
@@ -3011,12 +3018,12 @@ impl MonsGameModel {
 
     fn apply_pro_runtime_context_profile(
         game: &MonsGame,
-        config: SmartSearchConfig,
-        context: ProRuntimeContext,
-    ) -> SmartSearchConfig {
+        config: AutomoveSearchConfig,
+        context: ShippingProContext,
+    ) -> AutomoveSearchConfig {
         match context {
-            ProRuntimeContext::OpeningBookDriven => Self::apply_pro_confirmation_profile(config),
-            ProRuntimeContext::Unknown | ProRuntimeContext::Independent => {
+            ShippingProContext::OpeningBookDriven => Self::apply_pro_confirmation_profile(config),
+            ShippingProContext::Unknown | ShippingProContext::Independent => {
                 Self::apply_pro_primary_profile(game, config)
             }
         }
@@ -3024,8 +3031,8 @@ impl MonsGameModel {
 
     fn apply_pro_primary_profile(
         game: &MonsGame,
-        mut config: SmartSearchConfig,
-    ) -> SmartSearchConfig {
+        mut config: AutomoveSearchConfig,
+    ) -> AutomoveSearchConfig {
         if config.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
             return config;
         }
@@ -3069,7 +3076,7 @@ impl MonsGameModel {
         config
     }
 
-    fn apply_pro_confirmation_profile(mut config: SmartSearchConfig) -> SmartSearchConfig {
+    fn apply_pro_confirmation_profile(mut config: AutomoveSearchConfig) -> AutomoveSearchConfig {
         if config.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
             return config;
         }
@@ -3104,11 +3111,11 @@ impl MonsGameModel {
     }
 
     #[cfg(test)]
-    fn pro_runtime_context_hint_for_tests(&self) -> ProRuntimeContext {
+    fn pro_runtime_context_hint_for_tests(&self) -> ShippingProContext {
         self.pro_runtime_context_hint.get()
     }
 
-    fn with_pre_exact_runtime_policy(mut config: SmartSearchConfig) -> SmartSearchConfig {
+    fn with_pre_exact_runtime_policy(mut config: AutomoveSearchConfig) -> AutomoveSearchConfig {
         config.enable_root_exact_tactics = false;
         config.enable_child_exact_tactics = false;
         config.enable_static_exact_evaluation = false;
@@ -3122,8 +3129,8 @@ impl MonsGameModel {
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     fn with_runtime_scoring_weights(
         game: &MonsGame,
-        mut config: SmartSearchConfig,
-    ) -> SmartSearchConfig {
+        mut config: AutomoveSearchConfig,
+    ) -> AutomoveSearchConfig {
         config.scoring_weights =
             if config.depth < 3 && config.enable_mana_start_mix_with_potion_actions {
                 &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
@@ -3294,8 +3301,8 @@ impl MonsGameModel {
     #[allow(dead_code)]
     fn with_drainer_shield_scoring_weights(
         game: &MonsGame,
-        mut config: SmartSearchConfig,
-    ) -> SmartSearchConfig {
+        mut config: AutomoveSearchConfig,
+    ) -> AutomoveSearchConfig {
         config.scoring_weights =
             if config.depth < 3 && config.enable_mana_start_mix_with_potion_actions {
                 &RUNTIME_FAST_BOOLEAN_DRAINER_SCORING_WEIGHTS_POTION_PREF
@@ -3557,7 +3564,7 @@ impl MonsGameModel {
     fn build_scored_root_move(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         own_drainer_vulnerable_before: bool,
         inputs: &[Input],
     ) -> Option<ScoredRootMove> {
@@ -3617,7 +3624,7 @@ impl MonsGameModel {
     fn build_scored_root_move_from_transition(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         own_drainer_vulnerable_before: bool,
         inputs: Vec<Input>,
         simulated_game: MonsGame,
@@ -4180,7 +4187,7 @@ impl MonsGameModel {
     }
 
     fn interview_root_soft_priority(
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         supermana_progress: bool,
         opponent_mana_progress: bool,
         safe_supermana_progress_steps: i32,
@@ -4272,7 +4279,7 @@ impl MonsGameModel {
         }
     }
 
-    fn forced_drainer_attack_fallback_candidates_limit(config: SmartSearchConfig) -> usize {
+    fn forced_drainer_attack_fallback_candidates_limit(config: AutomoveSearchConfig) -> usize {
         if config.depth >= 3 {
             SMART_FORCED_DRAINER_ATTACK_FALLBACK_NORMAL_CANDIDATES
         } else {
@@ -4280,7 +4287,7 @@ impl MonsGameModel {
         }
     }
 
-    fn forced_drainer_attack_fallback_node_budget(config: SmartSearchConfig) -> usize {
+    fn forced_drainer_attack_fallback_node_budget(config: AutomoveSearchConfig) -> usize {
         if config.depth >= 3 {
             SMART_FORCED_DRAINER_ATTACK_FALLBACK_NODE_BUDGET_NORMAL
         } else {
@@ -4288,7 +4295,7 @@ impl MonsGameModel {
         }
     }
 
-    fn forced_drainer_attack_fallback_enum_limit(config: SmartSearchConfig) -> usize {
+    fn forced_drainer_attack_fallback_enum_limit(config: AutomoveSearchConfig) -> usize {
         if config.depth >= 3 {
             SMART_FORCED_DRAINER_ATTACK_FALLBACK_ENUM_LIMIT_NORMAL
         } else {
@@ -4296,7 +4303,7 @@ impl MonsGameModel {
         }
     }
 
-    fn spirit_setup_fallback_candidates_limit(config: SmartSearchConfig) -> usize {
+    fn spirit_setup_fallback_candidates_limit(config: AutomoveSearchConfig) -> usize {
         if config.depth >= 3 {
             8
         } else {
@@ -4304,7 +4311,7 @@ impl MonsGameModel {
         }
     }
 
-    fn spirit_setup_fallback_enum_limit(config: SmartSearchConfig) -> usize {
+    fn spirit_setup_fallback_enum_limit(config: AutomoveSearchConfig) -> usize {
         if config.depth >= 3 {
             256
         } else {
@@ -4312,7 +4319,7 @@ impl MonsGameModel {
         }
     }
 
-    fn safe_drainer_pickup_fallback_candidates_limit(config: SmartSearchConfig) -> usize {
+    fn safe_drainer_pickup_fallback_candidates_limit(config: AutomoveSearchConfig) -> usize {
         if config.depth >= 3 {
             8
         } else {
@@ -4320,7 +4327,7 @@ impl MonsGameModel {
         }
     }
 
-    fn spirit_score_fallback_candidates_limit(config: SmartSearchConfig) -> usize {
+    fn spirit_score_fallback_candidates_limit(config: AutomoveSearchConfig) -> usize {
         if config.depth >= 3 {
             8
         } else {
@@ -4328,7 +4335,7 @@ impl MonsGameModel {
         }
     }
 
-    fn same_turn_score_window_fallback_candidates_limit(config: SmartSearchConfig) -> usize {
+    fn same_turn_score_window_fallback_candidates_limit(config: AutomoveSearchConfig) -> usize {
         if config.depth >= 3 {
             8
         } else {
@@ -4336,7 +4343,7 @@ impl MonsGameModel {
         }
     }
 
-    fn drainer_safety_fallback_candidates_limit(config: SmartSearchConfig) -> usize {
+    fn drainer_safety_fallback_candidates_limit(config: AutomoveSearchConfig) -> usize {
         if config.depth >= 3 {
             8
         } else {
@@ -4344,7 +4351,7 @@ impl MonsGameModel {
         }
     }
 
-    fn drainer_safety_fallback_enum_limit(config: SmartSearchConfig) -> usize {
+    fn drainer_safety_fallback_enum_limit(config: AutomoveSearchConfig) -> usize {
         if config.depth >= 3 {
             192
         } else {
@@ -4352,7 +4359,7 @@ impl MonsGameModel {
         }
     }
 
-    fn child_exact_progress_fallback_candidates_limit(config: SmartSearchConfig) -> usize {
+    fn child_exact_progress_fallback_candidates_limit(config: AutomoveSearchConfig) -> usize {
         if config.depth >= 3 {
             6
         } else {
@@ -4360,7 +4367,7 @@ impl MonsGameModel {
         }
     }
 
-    fn child_exact_progress_fallback_enum_limit(config: SmartSearchConfig) -> usize {
+    fn child_exact_progress_fallback_enum_limit(config: AutomoveSearchConfig) -> usize {
         if config.depth >= 3 {
             192
         } else {
@@ -4368,7 +4375,7 @@ impl MonsGameModel {
         }
     }
 
-    fn generic_root_fallback_enum_limit(config: SmartSearchConfig) -> usize {
+    fn generic_root_fallback_enum_limit(config: AutomoveSearchConfig) -> usize {
         if config.depth >= 3 {
             24
         } else {
@@ -4376,7 +4383,7 @@ impl MonsGameModel {
         }
     }
 
-    fn automove_start_input_options(config: SmartSearchConfig) -> SuggestedStartInputOptions {
+    fn automove_start_input_options(config: AutomoveSearchConfig) -> SuggestedStartInputOptions {
         SuggestedStartInputOptions {
             include_mana_starts_with_potion_action: config
                 .enable_mana_start_mix_with_potion_actions,
@@ -4636,7 +4643,7 @@ impl MonsGameModel {
     fn collect_targeted_spirit_setup_inputs(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         max_candidates: usize,
     ) -> Vec<LegalInputTransition> {
         let spirit_locations = Self::find_awake_spirit_locations(game, perspective);
@@ -4852,7 +4859,7 @@ impl MonsGameModel {
     fn collect_targeted_same_turn_score_window_inputs(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         max_candidates: usize,
         exact_turn_memo: &mut Option<TargetedExactTurnSummaryMemo>,
     ) -> Vec<LegalInputTransition> {
@@ -4953,7 +4960,7 @@ impl MonsGameModel {
     fn collect_targeted_drainer_safety_inputs(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         max_candidates: usize,
         require_walk_safe: bool,
     ) -> Vec<LegalInputTransition> {
@@ -5061,7 +5068,7 @@ impl MonsGameModel {
     fn collect_targeted_exact_progress_inputs(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         max_candidates: usize,
         wanted_mana: Mana,
     ) -> Vec<LegalInputTransition> {
@@ -5264,7 +5271,7 @@ impl MonsGameModel {
     fn collect_targeted_drainer_attack_inputs(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         max_candidates: usize,
     ) -> Vec<LegalInputTransition> {
         let attacker_locations = Self::find_potential_drainer_attacker_locations(game, perspective);
@@ -5324,7 +5331,7 @@ impl MonsGameModel {
     fn collect_per_mon_drainer_attack_inputs(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         max_candidates: usize,
     ) -> Vec<LegalInputTransition> {
         let attacker_locations = Self::find_potential_drainer_attacker_locations(game, perspective);
@@ -5390,7 +5397,7 @@ impl MonsGameModel {
     fn collect_forced_drainer_attack_inputs(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         max_candidates: usize,
     ) -> Vec<LegalInputTransition> {
         let mut memo_true = U64HashSet::default();
@@ -5456,7 +5463,7 @@ impl MonsGameModel {
     fn ranked_root_moves(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Vec<ScoredRootMove> {
         let mut candidates = Vec::new();
         let own_drainer_vulnerable_before = if config.enable_move_class_coverage {
@@ -6612,7 +6619,7 @@ impl MonsGameModel {
         game: &MonsGame,
         perspective: Color,
         root_moves: &[ScoredRootMove],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<Vec<Input>> {
         if !config.enable_forced_tactical_prepass || root_moves.is_empty() {
             return None;
@@ -6768,7 +6775,7 @@ impl MonsGameModel {
         game: &MonsGame,
         root_moves: &[ScoredRootMove],
         plan: &TurnPlan,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<Vec<Input>> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || !config.enable_turn_engine_low_budget_guard
@@ -6846,7 +6853,7 @@ impl MonsGameModel {
     fn should_skip_pro_v2_head_plan_for_root_context(
         game: &MonsGame,
         root_moves: &[ScoredRootMove],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || !config.enable_turn_engine_low_budget_guard
@@ -7126,29 +7133,13 @@ impl MonsGameModel {
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
-    fn smart_search_best_inputs(game: &MonsGame, config: SmartSearchConfig) -> Vec<Input> {
+    fn smart_search_best_inputs(game: &MonsGame, config: AutomoveSearchConfig) -> Vec<Input> {
         Self::smart_search_best_inputs_internal(game, config, true)
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
-    fn turn_engine_search_config(config: SmartSearchConfig) -> TurnEngineConfig {
-        TurnEngineConfig {
-            mode: config.turn_engine_mode,
-            own_seed_cap: config.turn_engine_seed_cap.max(1),
-            own_beam: config.turn_engine_beam_width.max(1),
-            per_node_family_cap: config.turn_engine_per_node_family_cap.max(1),
-            step_cap: config.turn_engine_step_cap.max(1),
-            opponent_seed_cap: config.turn_engine_opponent_seed_cap.max(1),
-            opponent_beam: config.turn_engine_opponent_beam_width.max(1),
-            reply_seed_cap: config.turn_engine_reply_seed_cap.max(1),
-            reply_beam: config.turn_engine_reply_beam_width.max(1),
-            expansion_cap: config.turn_engine_expansion_cap.max(1),
-            enable_spirit_family: config.turn_engine_enable_spirit_family,
-            scoring_weights: config.scoring_weights,
-            allow_exact_static_evaluation: config.enable_static_exact_evaluation,
-            enable_lazy_oracle_score_window_projection: config
-                .enable_turn_engine_lazy_oracle_score_window_projection,
-        }
+    fn turn_engine_config_from_search_config(config: AutomoveSearchConfig) -> TurnEngineConfig {
+        automove_runtime_variants::turn_engine_config_from_search_config(config)
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
@@ -7157,11 +7148,11 @@ impl MonsGameModel {
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
-    fn turn_engine_search_config_for_game(
+    fn turn_engine_config_for_game(
         game: &MonsGame,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> TurnEngineConfig {
-        let mut engine = Self::turn_engine_search_config(config);
+        let mut engine = Self::turn_engine_config_from_search_config(config);
         let clamp_early_white_turn_start =
             Self::turn_engine_mode_uses_macro_plans(config.turn_engine_mode)
                 && config.enable_turn_engine_low_budget_guard
@@ -7181,8 +7172,8 @@ impl MonsGameModel {
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
-    fn turn_engine_rerank_config(config: SmartSearchConfig) -> TurnEngineConfig {
-        let mut engine = Self::turn_engine_search_config(config);
+    fn turn_engine_rerank_config(config: AutomoveSearchConfig) -> TurnEngineConfig {
+        let mut engine = Self::turn_engine_config_from_search_config(config);
         let pro_v2 = Self::turn_engine_mode_uses_macro_plans(config.turn_engine_mode);
         engine.own_seed_cap = engine.own_seed_cap.min(if pro_v2 { 12 } else { 8 }).max(1);
         engine.own_beam = engine.own_beam.min(if pro_v2 { 5 } else { 4 }).max(1);
@@ -7208,9 +7199,9 @@ impl MonsGameModel {
     #[cfg(any(target_arch = "wasm32", test))]
     fn turn_engine_projection_config_for_game(
         game: &MonsGame,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> TurnEngineConfig {
-        let mut engine = Self::turn_engine_search_config_for_game(game, config);
+        let mut engine = Self::turn_engine_config_for_game(game, config);
         let pro_v2 = Self::turn_engine_mode_uses_macro_plans(config.turn_engine_mode);
         engine.own_seed_cap = engine.own_seed_cap.min(if pro_v2 { 8 } else { 6 }).max(1);
         engine.own_beam = engine.own_beam.min(if pro_v2 { 3 } else { 2 }).max(1);
@@ -7236,7 +7227,7 @@ impl MonsGameModel {
     #[cfg(any(target_arch = "wasm32", test))]
     fn turn_engine_injected_root_config_for_game(
         game: &MonsGame,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> TurnEngineConfig {
         let mut engine = Self::turn_engine_projection_config_for_game(game, config);
         let pro_v2 = Self::turn_engine_mode_uses_macro_plans(config.turn_engine_mode);
@@ -7326,7 +7317,7 @@ impl MonsGameModel {
     fn seed_turn_engine_followup_cache_if_safe(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         mode: TurnEngineMode,
         plan: &crate::models::automove_turn_engine::TurnPlan,
         _engine_config: TurnEngineConfig,
@@ -7346,8 +7337,7 @@ impl MonsGameModel {
         if after_first.active_color != perspective {
             return;
         }
-        let after_first_engine_config =
-            Self::turn_engine_search_config_for_game(&after_first, config);
+        let after_first_engine_config = Self::turn_engine_config_for_game(&after_first, config);
         let root_moves = Self::ranked_root_moves(&after_first, perspective, config);
         if !Self::should_resume_turn_engine_cached_step(
             root_moves.as_slice(),
@@ -7491,10 +7481,10 @@ impl MonsGameModel {
         root: &MonsGame,
         candidate: &ScoredRootMove,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         family: TurnPlanFamily,
     ) -> TurnEngineUtility {
-        let engine_config = Self::turn_engine_search_config(config);
+        let engine_config = Self::turn_engine_config_from_search_config(config);
         let mut plan = TurnPlan {
             actions: Vec::new(),
             compiled_chunks: vec![candidate.inputs.clone()],
@@ -7527,10 +7517,10 @@ impl MonsGameModel {
         root: &MonsGame,
         selected: &RootEvaluation,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         family: TurnPlanFamily,
     ) -> TurnEngineUtility {
-        let engine_config = Self::turn_engine_search_config(config);
+        let engine_config = Self::turn_engine_config_from_search_config(config);
         Self::turn_engine_root_plan_utility_with_engine_config(
             root,
             selected,
@@ -7584,7 +7574,7 @@ impl MonsGameModel {
         root: &MonsGame,
         selected: &RootEvaluation,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         family: TurnPlanFamily,
     ) -> TurnEngineUtility {
         let cache_key = TurnEngineSelectedOverrideCacheKey {
@@ -7667,7 +7657,7 @@ impl MonsGameModel {
     fn inject_turn_engine_root_candidate(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         root_moves: &mut Vec<ScoredRootMove>,
         plan: &TurnPlan,
     ) -> Option<Vec<Input>> {
@@ -8016,7 +8006,7 @@ impl MonsGameModel {
 
     fn pro_v2_black_turn_six_plain_spirit_head_injection_override(
         game: &MonsGame,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         root_moves: &[ScoredRootMove],
         candidate: &ScoredRootMove,
         plan: &TurnPlan,
@@ -8064,7 +8054,7 @@ impl MonsGameModel {
         game: &MonsGame,
         plain: &ScoredRootMove,
         setup: &ScoredRootMove,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             && game.active_color == Color::Black
@@ -8110,7 +8100,7 @@ impl MonsGameModel {
     fn accept_turn_engine_head_after_search(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         scored_roots: &[RootEvaluation],
         selected_inputs: &[Input],
         plan: &TurnPlan,
@@ -9649,7 +9639,7 @@ impl MonsGameModel {
     fn pro_v2_root_advisor_conflicts_with_choice(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         root_moves: &[ScoredRootMove],
         engine_head_plan: Option<&TurnPlan>,
         inputs: &[Input],
@@ -9782,7 +9772,7 @@ impl MonsGameModel {
     fn turn_engine_root_injection_limit_for_game(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         root_moves: &[ScoredRootMove],
     ) -> usize {
         if !config.enable_turn_engine_root_injection
@@ -9864,7 +9854,7 @@ impl MonsGameModel {
     fn inject_turn_engine_root_candidates(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         root_moves: &mut Vec<ScoredRootMove>,
     ) {
         let injection_limit = Self::turn_engine_root_injection_limit_for_game(
@@ -9975,7 +9965,8 @@ impl MonsGameModel {
                     continue;
                 }
             }
-            let emergency_resolves_immediate_loss = config.turn_engine_root_injection_emergency_only
+            let emergency_resolves_immediate_loss = config
+                .turn_engine_root_injection_emergency_only
                 && top_opponent_can_win_immediately_after
                 && !opponent_can_win_immediately_after;
             let acceptance = Self::classify_turn_engine_root_injection_candidate(
@@ -10053,7 +10044,7 @@ impl MonsGameModel {
     #[cfg(any(target_arch = "wasm32", test))]
     fn smart_search_best_inputs_internal(
         game: &MonsGame,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         use_transposition_table: bool,
     ) -> Vec<Input> {
         clear_exact_state_analysis_cache();
@@ -10061,28 +10052,28 @@ impl MonsGameModel {
         set_pro_v2_root_advisor_decision(None);
         let mut config = config;
         let perspective = game.active_color;
-        let live_turn_engine_config = Self::turn_engine_search_config_for_game(game, config);
+        let live_turn_engine_config = Self::turn_engine_config_for_game(game, config);
         let mut prechecked_cached_inputs = None;
         if Self::pro_v2_low_budget_guard_live(config) {
             prechecked_cached_inputs = turn_engine_cached_step(game, live_turn_engine_config);
             if prechecked_cached_inputs.is_none() && Self::should_skip_pro_v2_low_budget_state(game)
             {
-                config.enable_turn_engine = false;
+                config.enable_turn_engine_selector = false;
             }
         }
         if Self::pro_v2_mid_turn_progress_guard_live(config)
             && Self::should_disable_pro_v2_mid_turn_progress_engine(game)
         {
             prechecked_cached_inputs = None;
-            config.enable_turn_engine = false;
+            config.enable_turn_engine_selector = false;
         }
         if Self::pro_v2_mid_turn_tactical_guard_live(config)
             && Self::should_disable_pro_v2_mid_turn_tactical_engine(game)
         {
             prechecked_cached_inputs = None;
-            config.enable_turn_engine = false;
+            config.enable_turn_engine_selector = false;
         }
-        if config.enable_turn_engine
+        if config.enable_turn_engine_selector
             && config.enable_turn_engine_eligibility_guard
             && matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
         {
@@ -10092,7 +10083,7 @@ impl MonsGameModel {
             if prechecked_cached_inputs.is_none()
                 && !crate::models::automove_turn_engine::pro_v2_turn_engine_eligible(game)
             {
-                config.enable_turn_engine = false;
+                config.enable_turn_engine_selector = false;
             }
         }
         if Self::pro_v2_low_budget_guard_live(config)
@@ -10104,13 +10095,13 @@ impl MonsGameModel {
         config = Self::apply_pro_v2_low_budget_search_clamp(game, config);
         #[cfg(test)]
         update_turn_engine_selector_diagnostics(|diagnostics| {
-            diagnostics.last_return_stage = if config.enable_turn_engine {
+            diagnostics.last_return_stage = if config.enable_turn_engine_selector {
                 "engine_enabled"
             } else {
                 "engine_disabled"
             };
         });
-        if !config.enable_turn_engine
+        if !config.enable_turn_engine_selector
             && matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             && Self::pro_v2_is_white_turn_one_mana_only_followup(game)
         {
@@ -10126,7 +10117,7 @@ impl MonsGameModel {
                 use_transposition_table,
             );
         }
-        if config.enable_turn_engine {
+        if config.enable_turn_engine_selector {
             let mut root_moves = Self::ranked_root_moves(game, perspective, config);
             if root_moves.is_empty() {
                 return Vec::new();
@@ -10141,7 +10132,7 @@ impl MonsGameModel {
                         engine_mode,
                     )
                 });
-            let engine_config = Self::turn_engine_search_config_for_game(game, config);
+            let engine_config = Self::turn_engine_config_for_game(game, config);
             let skip_head_plan = Self::should_skip_pro_v2_head_plan_for_root_context(
                 game,
                 root_moves.as_slice(),
@@ -10255,13 +10246,13 @@ impl MonsGameModel {
                                     );
                                 let advisor_conflict = override_candidate
                                     && Self::pro_v2_root_advisor_conflicts_with_choice(
-                                    game,
-                                    perspective,
-                                    config,
-                                    root_moves.as_slice(),
-                                    engine_head_plan.as_ref(),
-                                    inputs.as_slice(),
-                                );
+                                        game,
+                                        perspective,
+                                        config,
+                                        root_moves.as_slice(),
+                                        engine_head_plan.as_ref(),
+                                        inputs.as_slice(),
+                                    );
                                 if !override_candidate || advisor_conflict {
                                     record_turn_engine_rerank_override_attempt(
                                         TurnEngineRerankOverrideAttemptOutcome::RejectedAcceptance,
@@ -10564,12 +10555,7 @@ impl MonsGameModel {
             return Vec::new();
         }
         if config.enable_turn_engine_root_injection {
-            Self::inject_turn_engine_root_candidates(
-                game,
-                perspective,
-                config,
-                &mut root_moves,
-            );
+            Self::inject_turn_engine_root_candidates(game, perspective, config, &mut root_moves);
         }
         if root_moves.len() > 1
             && config.enable_turn_head_rerank
@@ -10804,7 +10790,7 @@ impl MonsGameModel {
         perspective: Color,
         alpha: i32,
         visited_nodes: &mut usize,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         transposition_table: &mut U64HashMap<TranspositionEntry>,
         extension_nodes_used: &mut usize,
         extension_node_budget: usize,
@@ -10875,7 +10861,7 @@ impl MonsGameModel {
         game: &MonsGame,
         perspective: Color,
         root_moves: Vec<ScoredRootMove>,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         use_transposition_table: bool,
     ) -> (Vec<ScoredRootMove>, usize) {
         Self::focused_root_candidates_with_priority_inputs(
@@ -10894,7 +10880,7 @@ impl MonsGameModel {
         game: &MonsGame,
         perspective: Color,
         root_moves: Vec<ScoredRootMove>,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         use_transposition_table: bool,
         forced_inputs: Option<&[Input]>,
     ) -> (Vec<ScoredRootMove>, usize) {
@@ -10913,7 +10899,7 @@ impl MonsGameModel {
         _game: &MonsGame,
         perspective: Color,
         root_moves: Vec<ScoredRootMove>,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         use_transposition_table: bool,
         priority_inputs: Option<&[Vec<Input>]>,
         forced_inputs: Option<&[Input]>,
@@ -10933,7 +10919,7 @@ impl MonsGameModel {
         _game: &MonsGame,
         perspective: Color,
         root_moves: Vec<ScoredRootMove>,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         use_transposition_table: bool,
         priority_inputs: Option<&[Vec<Input>]>,
         forced_inputs: Option<&[Input]>,
@@ -11055,7 +11041,7 @@ impl MonsGameModel {
             selected_mask[*index] = true;
         }
         if matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
-            && config.enable_turn_engine
+            && config.enable_turn_engine_selector
             && focus_k <= 3
         {
             let top_focus_has_plain_spirit =
@@ -11122,7 +11108,7 @@ impl MonsGameModel {
                 selected_mask[index] = true;
             }
             if matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
-                && config.enable_turn_engine
+                && config.enable_turn_engine_selector
                 && candidate.own_drainer_vulnerable
                 && !candidate.own_drainer_walk_vulnerable
                 && !candidate.mana_handoff_to_opponent
@@ -11131,7 +11117,7 @@ impl MonsGameModel {
                 && turn_engine_candidate_plan(
                     &candidate.game,
                     perspective,
-                    Self::turn_engine_search_config(config),
+                    Self::turn_engine_config_from_search_config(config),
                 )
                 .is_some_and(|plan| plan.head_family == TurnPlanFamily::DrainerSafetyRecovery)
             {
@@ -11239,7 +11225,7 @@ impl MonsGameModel {
         alpha: i32,
         beta: i32,
         visited_nodes: &mut usize,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         transposition_table: &mut U64HashMap<TranspositionEntry>,
         extensions_remaining: usize,
         extension_nodes_used: &mut usize,
@@ -11765,7 +11751,7 @@ impl MonsGameModel {
         game: &MonsGame,
         perspective: Color,
         actor_color: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> ChildOrderingScratch {
         let before_state_hash = Self::search_state_hash(game);
         let before_efficiency_snapshot = config.enable_root_efficiency.then(|| {
@@ -11802,7 +11788,7 @@ impl MonsGameModel {
         events: &[Event],
         preferred_child_hash: Option<u64>,
         killer_hashes: [u64; 2],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         history_table: &HistoryTable,
         scratch: &ChildOrderingScratch,
     ) -> ChildEvalBundle {
@@ -11972,7 +11958,7 @@ impl MonsGameModel {
         events: &[Event],
         preferred_child_hash: Option<u64>,
         killer_hashes: [u64; 2],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         history_table: &HistoryTable,
     ) -> i32 {
         let mut heuristic = Self::score_state(
@@ -12031,7 +12017,7 @@ impl MonsGameModel {
         child_hash: u64,
         preferred_child_hash: Option<u64>,
         killer_hashes: [u64; 2],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         scratch: &ChildOrderingScratch,
         retain_supermana_progress: bool,
         retain_opponent_mana_progress: bool,
@@ -12082,7 +12068,10 @@ impl MonsGameModel {
         (force_full, eventful_reserve)
     }
 
-    fn child_ordering_shortlist_limit(config: SmartSearchConfig, total_children: usize) -> usize {
+    fn child_ordering_shortlist_limit(
+        config: AutomoveSearchConfig,
+        total_children: usize,
+    ) -> usize {
         if total_children == 0 {
             return 0;
         }
@@ -12094,7 +12083,7 @@ impl MonsGameModel {
     fn selected_two_stage_child_ordering_indices(
         cheap_entries: &[CheapChildOrderingEntry],
         maximizing: bool,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Vec<usize> {
         if cheap_entries.is_empty() {
             return Vec::new();
@@ -12145,7 +12134,7 @@ impl MonsGameModel {
         maximizing: bool,
         preferred_child_hash: Option<u64>,
         killer_hashes: [u64; 2],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         history_table: &HistoryTable,
     ) -> Vec<RankedChildState> {
         #[cfg(test)]
@@ -12814,7 +12803,7 @@ impl MonsGameModel {
 
     fn enumerate_quiescence_tactical_games(
         game: &MonsGame,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Vec<MonsGame> {
         let enum_limit = config
             .quiescence_tactical_enum_limit
@@ -12901,7 +12890,7 @@ impl MonsGameModel {
 
     fn root_transition_requires_active_turn_exact(
         events: &[Event],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         let fast_mode = config.depth <= 2;
         events.iter().any(|event| match event {
@@ -12955,19 +12944,19 @@ impl MonsGameModel {
         })
     }
 
-    fn allow_exact_lite_root_analysis(config: SmartSearchConfig) -> bool {
+    fn allow_exact_lite_root_analysis(config: AutomoveSearchConfig) -> bool {
         config.exact_lite_root_call_budget > 0
             && (config.enable_exact_lite_progress_checks
                 || config.enable_exact_lite_spirit_window_checks)
     }
 
-    fn allow_exact_lite_static_analysis(config: SmartSearchConfig) -> bool {
+    fn allow_exact_lite_static_analysis(config: AutomoveSearchConfig) -> bool {
         config.exact_lite_static_call_budget > 0 && config.enable_exact_lite_spirit_window_checks
     }
 
     fn should_use_root_exact_summary_for_transition(
         events: &[Event],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         if config.enable_root_exact_tactics
             && Self::root_transition_requires_active_turn_exact(events, config)
@@ -12984,13 +12973,13 @@ impl MonsGameModel {
     }
 
     fn with_exact_lite_budgeted_transition_config(
-        mut config: SmartSearchConfig,
+        mut config: AutomoveSearchConfig,
         perspective: Color,
         transition_game: &MonsGame,
         transition_events: &[Event],
         remaining_root_calls: &mut usize,
         remaining_static_calls: &mut usize,
-    ) -> SmartSearchConfig {
+    ) -> AutomoveSearchConfig {
         if !config.enable_root_exact_tactics
             && Self::should_use_root_exact_summary_for_transition(transition_events, config)
         {
@@ -14348,7 +14337,7 @@ impl MonsGameModel {
         game_before: &MonsGame,
         root: &RootEvaluation,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         root.wins_immediately
             || root.attacks_opponent_drainer
@@ -14364,7 +14353,7 @@ impl MonsGameModel {
     fn root_allows_immediate_opponent_win_quick(
         state_after_move: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         let reply_limit = config.root_anti_help_reply_limit.max(1);
         let snapshot =
@@ -14376,7 +14365,7 @@ impl MonsGameModel {
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Vec<usize> {
         if scored_roots.is_empty() {
             return Vec::new();
@@ -14813,7 +14802,7 @@ impl MonsGameModel {
             let margin = config.root_drainer_safety_score_margin.max(0);
             let mut recovery_utility_cache =
                 std::collections::HashMap::<usize, Option<TurnEngineUtility>>::new();
-            let recovery_setup_indices = if config.enable_turn_engine
+            let recovery_setup_indices = if config.enable_turn_engine_selector
                 && matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             {
                 candidate_indices
@@ -15257,7 +15246,7 @@ impl MonsGameModel {
         game: &MonsGame,
         plain: &RootEvaluation,
         setup: &RootEvaluation,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             && game.active_color == Color::Black
@@ -15310,7 +15299,7 @@ impl MonsGameModel {
         game: &MonsGame,
         spirit: &RootEvaluation,
         mana: &RootEvaluation,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             && game.active_color == Color::Black
@@ -15336,7 +15325,7 @@ impl MonsGameModel {
         game: &MonsGame,
         spirit: &RootEvaluation,
         mana: &RootEvaluation,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             && game.active_color == Color::White
@@ -15367,7 +15356,7 @@ impl MonsGameModel {
         shortlist: &[usize],
         plain_index: usize,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         followup_scores: &mut std::collections::HashMap<usize, i32>,
     ) -> bool {
         let plain = &scored_roots[plain_index];
@@ -15416,7 +15405,7 @@ impl MonsGameModel {
         root: &RootEvaluation,
         reason: ProV2RootAdvisorReasonCode,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         followup_scores: &mut std::collections::HashMap<usize, i32>,
     ) -> bool {
         match reason {
@@ -15444,7 +15433,7 @@ impl MonsGameModel {
         selection_indices: &[usize],
         approved_index: usize,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::Black
@@ -15771,7 +15760,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         selection_indices: &[usize],
         approved_index: usize,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::Black
@@ -15845,7 +15834,7 @@ impl MonsGameModel {
         selection_indices: &[usize],
         approved_index: usize,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::Black
@@ -16062,7 +16051,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         selection_indices: &[usize],
         approved_index: usize,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::Black
@@ -16155,7 +16144,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         selection_indices: &[usize],
         approved_index: usize,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::Black
@@ -16238,7 +16227,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         selection_indices: &[usize],
         approved_index: usize,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::Black
@@ -16322,7 +16311,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         selection_indices: &[usize],
         approved_index: usize,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::Black
@@ -16401,7 +16390,7 @@ impl MonsGameModel {
         selection_indices: &[usize],
         approved_index: usize,
         legacy_index: usize,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::Black
@@ -16479,7 +16468,7 @@ impl MonsGameModel {
         selection_indices: &[usize],
         approved_index: usize,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::White
@@ -16628,7 +16617,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         selection_indices: &[usize],
         approved_index: usize,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::White
@@ -16708,7 +16697,7 @@ impl MonsGameModel {
         selection_indices: &[usize],
         approved_index: usize,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::White
@@ -16868,7 +16857,7 @@ impl MonsGameModel {
         selection_indices: &[usize],
         approved_index: usize,
         _perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::White
@@ -16955,7 +16944,7 @@ impl MonsGameModel {
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
         shortlist: &[usize],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::Black
@@ -17031,7 +17020,7 @@ impl MonsGameModel {
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
         shortlist: &[usize],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::Black
@@ -17098,7 +17087,7 @@ impl MonsGameModel {
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
         shortlist: &[usize],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::Black
@@ -17187,7 +17176,7 @@ impl MonsGameModel {
         selection_indices: &[usize],
         approved_index: usize,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::White
@@ -17281,7 +17270,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         selection_indices: &[usize],
         approved_index: usize,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::Black
@@ -17341,7 +17330,7 @@ impl MonsGameModel {
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
         approved_index: usize,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::Black
@@ -17401,7 +17390,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         selection_indices: &[usize],
         approved_index: usize,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::Black
@@ -17474,7 +17463,7 @@ impl MonsGameModel {
         selection_indices: &[usize],
         approved_index: usize,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::White
@@ -17686,7 +17675,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         selection_indices: &[usize],
         approved_index: usize,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::White
@@ -17771,7 +17760,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         selection_indices: &[usize],
         approved_index: usize,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::White
@@ -17854,7 +17843,7 @@ impl MonsGameModel {
         selection_indices: &[usize],
         approved_index: usize,
         _perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::White
@@ -17932,7 +17921,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         selection_indices: &[usize],
         approved_index: usize,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::White
@@ -18011,7 +18000,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         selection_indices: &[usize],
         approved_index: usize,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::White
@@ -18102,7 +18091,7 @@ impl MonsGameModel {
         selection_indices: &[usize],
         approved_index: usize,
         _perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::White
@@ -18172,7 +18161,7 @@ impl MonsGameModel {
         game: &MonsGame,
         candidate: &RootEvaluation,
         incumbent: &RootEvaluation,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             && game.active_color == Color::White
@@ -18217,7 +18206,7 @@ impl MonsGameModel {
         _selection_indices: &[usize],
         approved_index: usize,
         _perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::White
@@ -18285,7 +18274,7 @@ impl MonsGameModel {
     fn is_pro_v2_white_mana_sibling_pair(
         candidate: &RootEvaluation,
         incumbent: &RootEvaluation,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             && Self::turn_engine_root_evaluation_family(candidate) == TurnPlanFamily::ManaTempo
@@ -18303,7 +18292,7 @@ impl MonsGameModel {
     fn is_pro_v2_white_opening_quiet_spirit_sibling_pair(
         candidate: &RootEvaluation,
         incumbent: &RootEvaluation,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         Self::is_same_opening_safe_setup_pair(candidate, incumbent, config)
             && Self::turn_engine_root_evaluation_family(candidate) == TurnPlanFamily::SpiritImpact
@@ -18326,7 +18315,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         _selection_indices: &[usize],
         approved_index: usize,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::White
@@ -18378,7 +18367,7 @@ impl MonsGameModel {
         game: &MonsGame,
         candidate: &RootEvaluation,
         incumbent: &RootEvaluation,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             && Self::pro_v2_is_late_black_action_mana_turn_start(game)
@@ -18416,7 +18405,7 @@ impl MonsGameModel {
         selection_indices: &[usize],
         approved_index: usize,
         _perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || !Self::pro_v2_is_late_black_action_mana_turn_start(game)
@@ -18492,7 +18481,7 @@ impl MonsGameModel {
         game: &MonsGame,
         root_moves: &[ScoredRootMove],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         predicate: F,
     ) -> Option<usize>
     where
@@ -18534,7 +18523,7 @@ impl MonsGameModel {
 
     fn pro_v2_root_advisor_same_opening_setup_representative(
         root_moves: &[ScoredRootMove],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         let anchor = root_moves.first()?;
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
@@ -18575,7 +18564,7 @@ impl MonsGameModel {
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         utility_cache: &mut std::collections::HashMap<usize, TurnEngineUtility>,
         index: usize,
     ) -> TurnEngineUtility {
@@ -18591,7 +18580,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         ordered_shortlist: &[usize],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         utility_cache: &mut std::collections::HashMap<usize, TurnEngineUtility>,
         predicate: F,
     ) -> Option<usize>
@@ -18641,7 +18630,7 @@ impl MonsGameModel {
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
         ordered_shortlist: &[usize],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if ordered_shortlist.is_empty() {
             return None;
@@ -18676,7 +18665,7 @@ impl MonsGameModel {
     fn pro_v2_root_advisor_evaluate_injected_root(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         root_moves: &mut Vec<ScoredRootMove>,
         plan: &TurnPlan,
     ) -> Option<ProV2InjectedRootAdvisorDecision> {
@@ -18798,7 +18787,7 @@ impl MonsGameModel {
     fn pro_v2_root_advisor_presearch(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         root_moves: &mut Vec<ScoredRootMove>,
         engine_head_plan: Option<&TurnPlan>,
     ) -> Option<ProV2RootAdvisorDecision> {
@@ -18930,7 +18919,7 @@ impl MonsGameModel {
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Vec<Input> {
         let mut candidate_indices =
             Self::filtered_root_candidate_indices(game, scored_roots, perspective, config);
@@ -19501,7 +19490,7 @@ impl MonsGameModel {
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Vec<Input> {
         if scored_roots.is_empty() {
             return Vec::new();
@@ -19531,7 +19520,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         candidate_indices: &[usize],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Vec<Input> {
         if scored_roots.is_empty() {
             return Vec::new();
@@ -19951,7 +19940,7 @@ impl MonsGameModel {
         candidate: &RootEvaluation,
         incumbent: &RootEvaluation,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || incumbent.spirit_development
@@ -20056,27 +20045,28 @@ impl MonsGameModel {
         root.game.active_color == perspective && root.game.winner_color().is_none()
     }
 
-    fn pro_v2_turn_engine_live(config: SmartSearchConfig) -> bool {
-        config.enable_turn_engine && matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
+    fn pro_v2_turn_engine_live(config: AutomoveSearchConfig) -> bool {
+        config.enable_turn_engine_selector
+            && matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
     }
 
-    fn pro_v2_low_budget_guard_live(config: SmartSearchConfig) -> bool {
+    fn pro_v2_low_budget_guard_live(config: AutomoveSearchConfig) -> bool {
         Self::pro_v2_turn_engine_live(config) && config.enable_turn_engine_low_budget_guard
     }
 
-    fn pro_v2_mid_turn_progress_guard_live(config: SmartSearchConfig) -> bool {
+    fn pro_v2_mid_turn_progress_guard_live(config: AutomoveSearchConfig) -> bool {
         Self::pro_v2_turn_engine_live(config) && config.enable_turn_engine_mid_turn_progress_guard
     }
 
-    fn pro_v2_mid_turn_tactical_guard_live(config: SmartSearchConfig) -> bool {
+    fn pro_v2_mid_turn_tactical_guard_live(config: AutomoveSearchConfig) -> bool {
         Self::pro_v2_turn_engine_live(config) && config.enable_turn_engine_mid_turn_tactical_guard
     }
 
-    fn pro_v2_secondary_analysis_live(config: SmartSearchConfig) -> bool {
+    fn pro_v2_secondary_analysis_live(config: AutomoveSearchConfig) -> bool {
         Self::pro_v2_turn_engine_live(config) && config.enable_turn_engine_secondary_analysis
     }
 
-    fn pro_v2_selected_followup_projection_live(config: SmartSearchConfig) -> bool {
+    fn pro_v2_selected_followup_projection_live(config: AutomoveSearchConfig) -> bool {
         Self::pro_v2_secondary_analysis_live(config)
             && config.enable_turn_engine_selected_followup_projection
     }
@@ -20164,8 +20154,8 @@ impl MonsGameModel {
 
     fn apply_pro_v2_low_budget_search_clamp(
         game: &MonsGame,
-        mut config: SmartSearchConfig,
-    ) -> SmartSearchConfig {
+        mut config: AutomoveSearchConfig,
+    ) -> AutomoveSearchConfig {
         if !Self::pro_v2_low_budget_guard_live(config) {
             return config;
         }
@@ -20203,7 +20193,7 @@ impl MonsGameModel {
             && context.delta.drainer_safety >= 2
     }
 
-    fn pro_v2_use_fresh_live_head_plan(game: &MonsGame, config: SmartSearchConfig) -> bool {
+    fn pro_v2_use_fresh_live_head_plan(game: &MonsGame, config: AutomoveSearchConfig) -> bool {
         Self::pro_v2_turn_engine_live(config)
             && game.active_color == Color::White
             && game.turn_number >= 3
@@ -20249,9 +20239,11 @@ impl MonsGameModel {
         game: &MonsGame,
         root: &RootEvaluation,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<TurnEngineUtility> {
-        if !config.enable_turn_engine || !matches!(config.turn_engine_mode, TurnEngineMode::ProV2) {
+        if !config.enable_turn_engine_selector
+            || !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
+        {
             return None;
         }
         if !root.own_drainer_vulnerable
@@ -20404,9 +20396,11 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         candidate_indices: &[usize],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
-        if !config.enable_turn_engine || !matches!(config.turn_engine_mode, TurnEngineMode::ProV2) {
+        if !config.enable_turn_engine_selector
+            || !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
+        {
             return false;
         }
 
@@ -20512,9 +20506,11 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         candidate_indices: &[usize],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
-        if !config.enable_turn_engine || !matches!(config.turn_engine_mode, TurnEngineMode::ProV2) {
+        if !config.enable_turn_engine_selector
+            || !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
+        {
             return false;
         }
 
@@ -20606,7 +20602,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         candidate_indices: &[usize],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         if !Self::pro_v2_secondary_analysis_live(config) || candidate_indices.len() < 2 {
             return false;
@@ -20692,7 +20688,7 @@ impl MonsGameModel {
         pre_safety_candidate_indices: &[usize],
         kept_indices: &[usize],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !Self::pro_v2_secondary_analysis_live(config)
             || kept_indices.is_empty()
@@ -20782,7 +20778,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         candidate_indices: &[usize],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !Self::pro_v2_secondary_analysis_live(config)
             || candidate_indices.len() < 2
@@ -20898,7 +20894,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         candidate_indices: &[usize],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !Self::pro_v2_turn_engine_live(config) {
             return None;
@@ -21007,9 +21003,11 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         candidate_indices: &[usize],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
-        if !config.enable_turn_engine || !matches!(config.turn_engine_mode, TurnEngineMode::ProV2) {
+        if !config.enable_turn_engine_selector
+            || !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
+        {
             return false;
         }
 
@@ -21080,7 +21078,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         candidate_indices: &[usize],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> std::collections::HashMap<usize, TurnEngineRootProjection> {
         if !Self::pro_v2_secondary_analysis_live(config) {
             return std::collections::HashMap::new();
@@ -21134,7 +21132,7 @@ impl MonsGameModel {
         }
 
         let rerank_engine_config = Self::turn_engine_rerank_config(config);
-        let full_engine_config = Self::turn_engine_search_config(config);
+        let full_engine_config = Self::turn_engine_config_from_search_config(config);
         let mut projections = std::collections::HashMap::new();
         #[cfg(test)]
         update_turn_engine_selector_diagnostics(|diagnostics| {
@@ -21174,7 +21172,7 @@ impl MonsGameModel {
         shortlist: &[usize],
         candidate_indices: Option<&[usize]>,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if shortlist.is_empty() {
             return None;
@@ -21438,7 +21436,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         candidate_indices: &[usize],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         let shortlist =
             Self::reply_risk_guard_shortlist_indices(scored_roots, candidate_indices, config);
@@ -21455,7 +21453,7 @@ impl MonsGameModel {
     fn reply_risk_guard_shortlist_indices(
         scored_roots: &[RootEvaluation],
         candidate_indices: &[usize],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Vec<usize> {
         if candidate_indices.is_empty() {
             return Vec::new();
@@ -21565,7 +21563,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         shortlist: &[usize],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> std::collections::HashMap<usize, TurnEngineRootProjection> {
         let allow_safe_plain_spirit_projection = Self::pro_v2_secondary_analysis_live(config)
             && Self::reply_risk_shortlist_has_safe_plain_spirit_competition(
@@ -21625,7 +21623,7 @@ impl MonsGameModel {
                 })
         };
         let rerank_engine_config = Self::turn_engine_rerank_config(config);
-        let full_engine_config = Self::turn_engine_search_config(config);
+        let full_engine_config = Self::turn_engine_config_from_search_config(config);
         let mut projections = std::collections::HashMap::new();
         #[cfg(test)]
         update_turn_engine_selector_diagnostics(|diagnostics| {
@@ -21685,7 +21683,7 @@ impl MonsGameModel {
         shortlist_snapshots: &[(usize, RootReplyRiskSnapshot)],
         turn_engine_projections: &std::collections::HashMap<usize, TurnEngineRootProjection>,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         spirit_followup_scores: &mut std::collections::HashMap<usize, i32>,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2) || shortlist.len() < 2 {
@@ -21809,7 +21807,7 @@ impl MonsGameModel {
         incumbent_index: usize,
         incumbent_projection: &TurnEngineRootProjection,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         spirit_followup_scores: &mut std::collections::HashMap<usize, i32>,
     ) -> Option<std::cmp::Ordering> {
         if !Self::pro_v2_secondary_analysis_live(config) {
@@ -21961,7 +21959,7 @@ impl MonsGameModel {
     fn root_reply_risk_snapshot(
         state_after_move: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         reply_limit: usize,
     ) -> RootReplyRiskSnapshot {
         if let Some(winner) = state_after_move.winner_color() {
@@ -22055,9 +22053,9 @@ impl MonsGameModel {
         root: &RootEvaluation,
         projection: &TurnEngineRootProjection,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
-        if !config.enable_turn_engine
+        if !config.enable_turn_engine_selector
             || !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || root.game.active_color != perspective
             || root.game.winner_color().is_some()
@@ -22088,7 +22086,7 @@ impl MonsGameModel {
         root: &RootEvaluation,
         projection: Option<&TurnEngineRootProjection>,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         reply_limit: usize,
     ) -> RootReplyRiskSnapshot {
         if let Some(projection) = projection.filter(|projection| {
@@ -22110,7 +22108,7 @@ impl MonsGameModel {
         candidate_snapshot: RootReplyRiskSnapshot,
         incumbent: &RootEvaluation,
         incumbent_snapshot: RootReplyRiskSnapshot,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             && Self::is_plain_spirit_development_root(candidate)
@@ -22148,7 +22146,7 @@ impl MonsGameModel {
     fn reply_risk_shortlist_has_safe_plain_spirit_competition(
         scored_roots: &[RootEvaluation],
         shortlist: &[usize],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2) || shortlist.len() < 2 {
             return false;
@@ -22179,7 +22177,7 @@ impl MonsGameModel {
     fn reply_risk_shortlist_has_safe_progress_competition(
         scored_roots: &[RootEvaluation],
         shortlist: &[usize],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2) || shortlist.len() < 2 {
             return false;
@@ -22207,7 +22205,7 @@ impl MonsGameModel {
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
         shortlist: &[usize],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         if shortlist.len() < 2 {
             return false;
@@ -22233,7 +22231,7 @@ impl MonsGameModel {
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
         shortlist: &[usize],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || shortlist.len() < 2
@@ -22306,7 +22304,7 @@ impl MonsGameModel {
     fn reply_risk_shortlist_has_close_positive_score_competition(
         scored_roots: &[RootEvaluation],
         shortlist: &[usize],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2) || shortlist.len() < 2 {
             return false;
@@ -22363,7 +22361,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         candidate_indices: &[usize],
         shortlist: &[usize],
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2) {
             return None;
@@ -22400,7 +22398,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         shortlist: &[usize],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<usize> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::White
@@ -22546,7 +22544,7 @@ impl MonsGameModel {
         candidate_snapshot: RootReplyRiskSnapshot,
         incumbent: &RootEvaluation,
         incumbent_snapshot: RootReplyRiskSnapshot,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<std::cmp::Ordering> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2) {
             return None;
@@ -22592,7 +22590,7 @@ impl MonsGameModel {
         incumbent_index: usize,
         incumbent_snapshot: RootReplyRiskSnapshot,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         spirit_followup_scores: &mut std::collections::HashMap<usize, i32>,
     ) -> Option<std::cmp::Ordering> {
         let candidate = &scored_roots[candidate_index];
@@ -22698,7 +22696,7 @@ impl MonsGameModel {
         incumbent_index: usize,
         incumbent_snapshot: RootReplyRiskSnapshot,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         cached_scores: &mut std::collections::HashMap<usize, i32>,
     ) -> Option<std::cmp::Ordering> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
@@ -22791,7 +22789,7 @@ impl MonsGameModel {
         candidate_snapshot: RootReplyRiskSnapshot,
         incumbent: &RootEvaluation,
         incumbent_snapshot: RootReplyRiskSnapshot,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<std::cmp::Ordering> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::Black
@@ -22936,7 +22934,7 @@ impl MonsGameModel {
         incumbent_snapshot: RootReplyRiskSnapshot,
         candidate_projection: Option<&TurnEngineRootProjection>,
         incumbent_projection: Option<&TurnEngineRootProjection>,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<std::cmp::Ordering> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || !Self::is_same_non_tactical_progress_lane_root_pair(candidate, incumbent)
@@ -23005,7 +23003,7 @@ impl MonsGameModel {
     fn is_same_opening_safe_setup_pair(
         candidate: &RootEvaluation,
         incumbent: &RootEvaluation,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             && candidate.inputs.first() == incumbent.inputs.first()
@@ -23037,7 +23035,7 @@ impl MonsGameModel {
         game: &MonsGame,
         candidate: &RootEvaluation,
         incumbent: &RootEvaluation,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             && config.enable_turn_engine_late_black_setup_progress_rescue
@@ -23075,7 +23073,7 @@ impl MonsGameModel {
         candidate_snapshot: RootReplyRiskSnapshot,
         incumbent: &RootEvaluation,
         incumbent_snapshot: RootReplyRiskSnapshot,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || !candidate.spirit_own_mana_setup_now
@@ -23105,7 +23103,7 @@ impl MonsGameModel {
         candidate_snapshot: RootReplyRiskSnapshot,
         incumbent: &RootEvaluation,
         incumbent_snapshot: RootReplyRiskSnapshot,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         if !Self::is_same_opening_safe_setup_progress_pair(game, candidate, incumbent, config)
             || candidate_snapshot.allows_immediate_opponent_win
@@ -23134,7 +23132,7 @@ impl MonsGameModel {
         incumbent_index: usize,
         incumbent_snapshot: RootReplyRiskSnapshot,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         cached_scores: &mut std::collections::HashMap<usize, i32>,
     ) -> Option<std::cmp::Ordering> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
@@ -23262,7 +23260,7 @@ impl MonsGameModel {
         incumbent_index: usize,
         incumbent_snapshot: RootReplyRiskSnapshot,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         cached_scores: &mut std::collections::HashMap<usize, i32>,
     ) -> Option<std::cmp::Ordering> {
         if !Self::pro_v2_secondary_analysis_live(config) {
@@ -23383,7 +23381,7 @@ impl MonsGameModel {
         game: &MonsGame,
         candidate: &RootEvaluation,
         incumbent: &RootEvaluation,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> bool {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || game.active_color != Color::White
@@ -23449,7 +23447,7 @@ impl MonsGameModel {
         candidate_snapshot: RootReplyRiskSnapshot,
         incumbent: &RootEvaluation,
         incumbent_snapshot: RootReplyRiskSnapshot,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<std::cmp::Ordering> {
         if !Self::is_pro_v2_white_spirit_followup_setup_pair(game, candidate, incumbent, config) {
             return None;
@@ -23560,7 +23558,7 @@ impl MonsGameModel {
         candidate_snapshot: RootReplyRiskSnapshot,
         incumbent: &RootEvaluation,
         incumbent_snapshot: RootReplyRiskSnapshot,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<std::cmp::Ordering> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2) {
             return None;
@@ -23640,7 +23638,7 @@ impl MonsGameModel {
         incumbent: &RootEvaluation,
         incumbent_snapshot: RootReplyRiskSnapshot,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<std::cmp::Ordering> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || !config.enable_normal_root_safety_rerank
@@ -23749,7 +23747,7 @@ impl MonsGameModel {
         candidate_projection: &TurnEngineRootProjection,
         incumbent_snapshot: RootReplyRiskSnapshot,
         incumbent_projection: &TurnEngineRootProjection,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<std::cmp::Ordering> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2) {
             return None;
@@ -23841,7 +23839,7 @@ impl MonsGameModel {
         incumbent_projection: Option<&TurnEngineRootProjection>,
         scored_roots: &[RootEvaluation],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         spirit_followup_scores: &mut std::collections::HashMap<usize, i32>,
     ) -> bool {
         let candidate = &scored_roots[candidate_index];
@@ -24304,7 +24302,7 @@ impl MonsGameModel {
         candidate_snapshot: RootReplyRiskSnapshot,
         incumbent: &RootEvaluation,
         incumbent_snapshot: RootReplyRiskSnapshot,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Option<std::cmp::Ordering> {
         if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             || !config.enable_turn_engine_late_safe_mana_root_preference
@@ -24366,7 +24364,7 @@ impl MonsGameModel {
         scored_roots: &[RootEvaluation],
         candidate_indices: &[usize],
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> Vec<Input> {
         if scored_roots.is_empty() {
             return Vec::new();
@@ -24470,7 +24468,7 @@ impl MonsGameModel {
         state_after_move: &MonsGame,
         perspective: Color,
         my_score_before: i32,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         reply_limit: usize,
         start_options: SuggestedStartInputOptions,
     ) -> NormalRootSafetySnapshot {
@@ -24600,7 +24598,7 @@ impl MonsGameModel {
         shortlist_indices: &[usize],
         selected_index: usize,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> usize {
         if shortlist_indices.len() < 2 {
             return selected_index;
@@ -24658,7 +24656,7 @@ impl MonsGameModel {
     fn normal_root_safety_deep_floor_score(
         state_after_move: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         reply_limit: usize,
     ) -> i32 {
         if let Some(winner) = state_after_move.winner_color() {
@@ -24732,8 +24730,10 @@ impl MonsGameModel {
         }
     }
 
-    fn pro_v2_spirit_followup_probe_config(mut config: SmartSearchConfig) -> SmartSearchConfig {
-        config.enable_turn_engine = false;
+    fn pro_v2_spirit_followup_probe_config(
+        mut config: AutomoveSearchConfig,
+    ) -> AutomoveSearchConfig {
+        config.enable_turn_engine_selector = false;
         config.turn_engine_mode = TurnEngineMode::ProV1;
         config.enable_turn_head_rerank = false;
         config.enable_turn_engine_root_injection = false;
@@ -24753,7 +24753,7 @@ impl MonsGameModel {
     fn pro_v2_spirit_followup_floor_score(
         state_after_move: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> i32 {
         let cache_key = TurnEngineSelectorFollowupFloorCacheKey {
             state_hash: Self::search_state_hash(state_after_move),
@@ -24829,7 +24829,7 @@ impl MonsGameModel {
         candidate_index: usize,
         incumbent_index: usize,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         cached_scores: &mut std::collections::HashMap<usize, i32>,
     ) -> Option<std::cmp::Ordering> {
         if !Self::pro_v2_secondary_analysis_live(config)
@@ -24883,7 +24883,7 @@ impl MonsGameModel {
     fn evaluate_search_preferability(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
     ) -> i32 {
         Self::cached_search_preferability_score(
             game,
@@ -25109,10 +25109,10 @@ mod evaluation_cache_tests {
             ],
             Color::White,
         );
-        let (config, _) = MonsGameModel::runtime_config_for_game_with_context(
+        let (config, _) = MonsGameModel::shipping_search_config_for_game_with_context(
             &game,
             SmartAutomovePreference::Pro,
-            ProRuntimeContext::Independent,
+            ShippingProContext::Independent,
         );
 
         let first = MonsGameModel::evaluate_search_preferability(&game, Color::White, config);
@@ -25162,10 +25162,10 @@ mod evaluation_cache_tests {
             ],
             Color::White,
         );
-        let (mut config, _) = MonsGameModel::runtime_config_for_game_with_context(
+        let (mut config, _) = MonsGameModel::shipping_search_config_for_game_with_context(
             &game,
             SmartAutomovePreference::Pro,
-            ProRuntimeContext::Independent,
+            ShippingProContext::Independent,
         );
         config.enable_local_scoring_eval_ctx = false;
         let without_context =
@@ -25312,7 +25312,7 @@ mod evaluation_cache_tests {
             ],
             Color::White,
         );
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
         config.enable_child_eval_bundle = true;
         config.enable_local_scoring_eval_ctx = true;
         let transition = MonsGameModel::enumerate_legal_transitions(
@@ -25405,7 +25405,7 @@ mod evaluation_cache_tests {
             ],
             Color::White,
         );
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
         config.enable_child_eval_bundle = true;
         config.enable_local_scoring_eval_ctx = true;
         config.enable_scoring_attack_reach_summary = true;
@@ -25764,8 +25764,8 @@ mod evaluation_cache_tests {
         assert_eq!(diagnostics.attack_reach_calls, 0);
     }
 
-    fn child_ordering_shortlist_config() -> SmartSearchConfig {
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+    fn child_ordering_shortlist_config() -> AutomoveSearchConfig {
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
         config.enable_child_eval_bundle = true;
         config.enable_local_scoring_eval_ctx = true;
         config.enable_two_stage_child_ordering = true;
@@ -25779,7 +25779,7 @@ mod evaluation_cache_tests {
     fn cheap_child_entries_for_test(
         game: &MonsGame,
         perspective: Color,
-        config: SmartSearchConfig,
+        config: AutomoveSearchConfig,
         preferred_child_hash: Option<u64>,
         killer_hashes: [u64; 2],
         retain_supermana_progress: bool,
@@ -26136,11 +26136,8 @@ mod evaluation_cache_tests {
         assert_eq!(selected, vec![0, 2]);
     }
 
-    fn targeted_search_config(
-        game: &MonsGame,
-        enable_narrowing: bool,
-    ) -> SmartSearchConfig {
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+    fn targeted_search_config(game: &MonsGame, enable_narrowing: bool) -> AutomoveSearchConfig {
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
         config = MonsGameModel::with_runtime_scoring_weights(game, config);
         config.enable_turn_head_rerank = false;
         config.root_enum_limit = config.root_enum_limit.min(72);
@@ -26839,7 +26836,7 @@ mod opening_book_tests {
         assert_eq!(SmartAutomovePreference::from_api_value("EXPERT"), None);
 
         let game = MonsGame::new(false);
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
         config.depth = 1;
         config.max_visited_nodes = 16;
         config.root_branch_limit = 1;
@@ -26861,7 +26858,7 @@ mod opening_book_tests {
     #[ignore = "full pro opening search can take over a minute in debug"]
     fn pro_mode_full_runtime_search_produces_legal_inputs() {
         let game = MonsGame::new(false);
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
         let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
         assert!(
             !inputs.is_empty(),
@@ -26878,12 +26875,12 @@ mod opening_book_tests {
         let model = MonsGameModel::new();
         assert_eq!(
             model.pro_runtime_context_hint_for_tests(),
-            ProRuntimeContext::Unknown
+            ShippingProContext::Unknown
         );
         model.mark_opening_book_driven_context();
         assert_eq!(
             model.pro_runtime_context_hint_for_tests(),
-            ProRuntimeContext::OpeningBookDriven
+            ShippingProContext::OpeningBookDriven
         );
     }
 
@@ -26898,7 +26895,7 @@ mod opening_book_tests {
             advance_smart_opening_book_until_black_turn(&mut model, preference);
             assert_eq!(
                 model.pro_runtime_context_hint_for_tests(),
-                ProRuntimeContext::OpeningBookDriven
+                ShippingProContext::OpeningBookDriven
             );
         }
     }
@@ -26913,7 +26910,7 @@ mod opening_book_tests {
         ] {
             let model = MonsGameModel::with_game(game.clone_for_simulation());
             model.mark_opening_book_driven_context();
-            let mut config = model.runtime_config_for_preference(preference);
+            let mut config = model.shipping_search_config_for_preference(preference);
             config.depth = 1;
             config.max_visited_nodes = 8;
             config.root_branch_limit = 1;
@@ -26949,7 +26946,7 @@ mod opening_book_tests {
             let model = MonsGameModel::with_game(game.clone_for_simulation());
             let search_inputs = MonsGameModel::smart_search_best_inputs(
                 &model.game,
-                model.runtime_config_for_preference(preference),
+                model.shipping_search_config_for_preference(preference),
             );
             assert!(
                 !search_inputs.is_empty(),
@@ -26992,9 +26989,9 @@ mod opening_book_tests {
 
         let game = immediate_score_runtime_fixture();
         let model = MonsGameModel::with_game(game.clone_for_simulation());
-        let config = model.runtime_config_for_preference(SmartAutomovePreference::Pro);
+        let config = model.shipping_search_config_for_preference(SmartAutomovePreference::Pro);
         assert!(
-            !config.enable_turn_engine,
+            !config.enable_turn_engine_selector,
             "base runtime pro config should still have the full turn engine disabled"
         );
         assert!(
@@ -27215,7 +27212,7 @@ mod opening_book_tests {
         let base_model = MonsGameModel::with_game(game);
         base_model
             .pro_runtime_context_hint
-            .set(ProRuntimeContext::Independent);
+            .set(ShippingProContext::Independent);
 
         for preference in [
             SmartAutomovePreference::Fast,
@@ -27422,15 +27419,15 @@ mod opening_book_tests {
         let mut opening_game = MonsGame::new(false);
         advance_opening_book_until_black_turn(&mut opening_game);
         assert_eq!(
-            MonsGameModel::resolve_pro_runtime_context(&opening_game, ProRuntimeContext::Unknown),
-            ProRuntimeContext::OpeningBookDriven
+            MonsGameModel::resolve_pro_runtime_context(&opening_game, ShippingProContext::Unknown),
+            ShippingProContext::OpeningBookDriven
         );
         assert_eq!(
             MonsGameModel::resolve_pro_runtime_context(
                 &opening_game,
-                ProRuntimeContext::OpeningBookDriven
+                ShippingProContext::OpeningBookDriven
             ),
-            ProRuntimeContext::OpeningBookDriven
+            ShippingProContext::OpeningBookDriven
         );
 
         let mut independent_game = MonsGame::new(false);
@@ -27442,9 +27439,9 @@ mod opening_book_tests {
         assert_eq!(
             MonsGameModel::resolve_pro_runtime_context(
                 &independent_game,
-                ProRuntimeContext::Unknown
+                ShippingProContext::Unknown
             ),
-            ProRuntimeContext::Independent
+            ShippingProContext::Independent
         );
     }
 
@@ -27453,15 +27450,15 @@ mod opening_book_tests {
         let base_game = MonsGame::new(false);
         let independent_model = MonsGameModel::with_game(base_game);
         let independent_config =
-            independent_model.runtime_config_for_preference(SmartAutomovePreference::Pro);
+            independent_model.shipping_search_config_for_preference(SmartAutomovePreference::Pro);
         assert_eq!(
             independent_config.max_visited_nodes,
             (SMART_AUTOMOVE_PRO_MAX_VISITED_NODES as usize).saturating_mul(9) / 8
         );
         assert!(independent_config.enable_turn_head_rerank);
         assert!(
-            !independent_config.enable_turn_engine,
-            "shipping Pro runtime_current config must keep turn-engine disabled"
+            !independent_config.enable_turn_engine_selector,
+            "shipping Pro search config must keep the turn-engine selector disabled"
         );
         assert_eq!(independent_config.root_reply_risk_score_margin, 165);
         assert_eq!(independent_config.root_reply_risk_shortlist_max, 9);
@@ -27483,21 +27480,15 @@ mod opening_book_tests {
         assert!(independent_config.enable_quiescence_tactical_children_only);
         assert_eq!(independent_config.quiescence_tactical_enum_limit, 12);
         assert!(!independent_config.enable_turn_engine_root_injection);
-        assert_eq!(
-            independent_config.turn_engine_root_injection_limit,
-            0
-        );
-        assert_eq!(
-            independent_config.turn_engine_root_max_heuristic_gap,
-            0
-        );
+        assert_eq!(independent_config.turn_engine_root_injection_limit, 0);
+        assert_eq!(independent_config.turn_engine_root_max_heuristic_gap, 0);
         assert!(!independent_config.turn_engine_root_injection_emergency_only);
 
         let mut opening_game = MonsGame::new(false);
         advance_opening_book_until_black_turn(&mut opening_game);
         let opening_model = MonsGameModel::with_game(opening_game);
         let opening_config =
-            opening_model.runtime_config_for_preference(SmartAutomovePreference::Pro);
+            opening_model.shipping_search_config_for_preference(SmartAutomovePreference::Pro);
         assert_eq!(opening_config.depth, 3);
         assert_eq!(opening_config.max_visited_nodes, 1_100);
         assert_eq!(opening_config.root_branch_limit, 20);
@@ -27507,7 +27498,7 @@ mod opening_book_tests {
         assert!(!opening_config.enable_root_efficiency);
         assert!(!opening_config.enable_child_move_class_coverage);
         assert!(
-            !opening_config.enable_turn_engine,
+            !opening_config.enable_turn_engine_selector,
             "opening-book-driven shipping Pro runtime must keep turn-engine disabled"
         );
         assert!(!opening_config.enable_two_pass_root_allocation);
@@ -27551,7 +27542,7 @@ mod opening_book_tests {
             Color::White,
             2,
         );
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
         config = MonsGameModel::with_runtime_scoring_weights(&game, config);
         let root_moves = MonsGameModel::ranked_root_moves(&game, Color::White, config);
         let top = root_moves
@@ -27606,7 +27597,7 @@ mod opening_book_tests {
             Color::White,
             2,
         );
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
         config = MonsGameModel::with_runtime_scoring_weights(&game, config);
         let top = MonsGameModel::ranked_root_moves(&game, Color::White, config)
             .first()
@@ -27655,7 +27646,7 @@ mod opening_book_tests {
             Color::White,
             2,
         );
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
         config = MonsGameModel::with_runtime_scoring_weights(&game, config);
         let mut top = MonsGameModel::ranked_root_moves(&game, Color::White, config)
             .first()
@@ -27719,7 +27710,7 @@ mod opening_book_tests {
             Color::White,
             2,
         );
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
         config = MonsGameModel::with_runtime_scoring_weights(&calm_game, config);
         config.enable_turn_engine_root_injection = true;
         config.turn_engine_root_injection_limit = 2;
@@ -27782,7 +27773,7 @@ mod opening_book_tests {
             Color::White,
             2,
         );
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
         config = MonsGameModel::with_runtime_scoring_weights(&game, config);
         config.enable_turn_head_rerank = false;
         config.enable_turn_engine_root_injection = true;
@@ -27862,7 +27853,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.enable_static_exact_evaluation = false;
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             &game,
@@ -27911,8 +27902,8 @@ mod opening_book_tests {
         );
         progress.supermana_progress = true;
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
-        config.enable_turn_engine = true;
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.enable_turn_engine_selector = true;
         config.turn_engine_mode = TurnEngineMode::ProV2;
 
         assert_eq!(
@@ -27937,14 +27928,14 @@ mod opening_book_tests {
 
     #[test]
     fn pro_v2_completed_progress_plan_does_not_override_safe_pickup_root() {
-        fn pro_v2_candidate_config(game: &MonsGame) -> SmartSearchConfig {
+        fn pro_v2_candidate_config(game: &MonsGame) -> AutomoveSearchConfig {
             let mut config = MonsGameModel::with_game(game.clone())
-                .runtime_config_for_preference(SmartAutomovePreference::Pro);
+                .shipping_search_config_for_preference(SmartAutomovePreference::Pro);
             if config.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
                 && config.enable_normal_root_safety_deep_floor
             {
                 config.enable_turn_head_rerank = false;
-                config.enable_turn_engine = true;
+                config.enable_turn_engine_selector = true;
                 config.turn_engine_mode = TurnEngineMode::ProV2;
                 config.turn_engine_seed_cap = 14;
                 config.turn_engine_beam_width = 5;
@@ -28027,7 +28018,7 @@ mod opening_book_tests {
             let plan = turn_engine_candidate_plan(
                 &game,
                 perspective,
-                MonsGameModel::turn_engine_search_config(config),
+                MonsGameModel::turn_engine_config_from_search_config(config),
             )
             .expect("fixture should materialize a turn-engine plan");
             assert_eq!(plan.head_family, expected_head_family);
@@ -28128,14 +28119,14 @@ mod opening_book_tests {
 
     #[test]
     fn pro_v2_non_concrete_progress_head_does_not_override_unsafe_non_progress_root() {
-        fn pro_v2_candidate_config(game: &MonsGame) -> SmartSearchConfig {
+        fn pro_v2_candidate_config(game: &MonsGame) -> AutomoveSearchConfig {
             let mut config = MonsGameModel::with_game(game.clone())
-                .runtime_config_for_preference(SmartAutomovePreference::Pro);
+                .shipping_search_config_for_preference(SmartAutomovePreference::Pro);
             if config.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
                 && config.enable_normal_root_safety_deep_floor
             {
                 config.enable_turn_head_rerank = false;
-                config.enable_turn_engine = true;
+                config.enable_turn_engine_selector = true;
                 config.turn_engine_mode = TurnEngineMode::ProV2;
                 config.turn_engine_seed_cap = 14;
                 config.turn_engine_beam_width = 5;
@@ -28216,7 +28207,7 @@ mod opening_book_tests {
         let plan = turn_engine_candidate_plan(
             &game,
             perspective,
-            MonsGameModel::turn_engine_search_config(config),
+            MonsGameModel::turn_engine_config_from_search_config(config),
         )
         .expect("fixture should produce a progress head");
         assert_eq!(plan.head_family, TurnPlanFamily::SafeSupermanaProgress);
@@ -28257,7 +28248,8 @@ mod opening_book_tests {
 
         for preference in preferences {
             let independent_model = MonsGameModel::with_game(MonsGame::new(false));
-            let independent_config = independent_model.runtime_config_for_preference(preference);
+            let independent_config =
+                independent_model.shipping_search_config_for_preference(preference);
             assert!(
                 !independent_config.enable_root_exact_tactics,
                 "{} should disable root exact tactics in runtime defaults",
@@ -28324,7 +28316,7 @@ mod opening_book_tests {
             let mut opening_game = MonsGame::new(false);
             advance_opening_book_until_black_turn(&mut opening_game);
             let opening_model = MonsGameModel::with_game(opening_game);
-            let opening_config = opening_model.runtime_config_for_preference(preference);
+            let opening_config = opening_model.shipping_search_config_for_preference(preference);
             assert!(
                 !opening_config.enable_root_exact_tactics,
                 "{} should keep root exact tactics disabled in opening profiles",
@@ -28382,7 +28374,7 @@ mod opening_book_tests {
 
         let inputs = MonsGameModel::smart_search_best_inputs(
             &game,
-            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+            AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast),
         );
         let (_, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
             .expect("expected selected inputs to be legal");
@@ -28425,7 +28417,7 @@ mod opening_book_tests {
             2,
         );
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.root_enum_limit = 0;
         let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
         let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
@@ -28557,7 +28549,7 @@ mod opening_book_tests {
             2,
         );
 
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let roots = MonsGameModel::ranked_root_moves(&game, Color::White, config);
         assert!(
             roots.iter().any(|root| !root.own_drainer_vulnerable),
@@ -28606,7 +28598,7 @@ mod opening_book_tests {
             2,
         );
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let roots = MonsGameModel::ranked_root_moves(&game, Color::White, config);
         assert!(
             roots.iter().any(|root| !root.own_drainer_vulnerable),
@@ -28661,7 +28653,7 @@ mod opening_book_tests {
 
         let inputs = MonsGameModel::smart_search_best_inputs(
             &game,
-            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+            AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast),
         );
         let (after, _) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
             .expect("selected spirit development inputs should be legal");
@@ -28706,7 +28698,7 @@ mod opening_book_tests {
 
         let inputs = MonsGameModel::smart_search_best_inputs(
             &game,
-            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+            AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast),
         );
         let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
             .expect("selected spirit-score inputs should be legal");
@@ -28759,7 +28751,7 @@ mod opening_book_tests {
 
         let inputs = MonsGameModel::smart_search_best_inputs(
             &game,
-            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+            AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast),
         );
         let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
             .expect("selected spirit-score inputs should be legal");
@@ -28814,7 +28806,7 @@ mod opening_book_tests {
                 .spirit_assisted_score
         );
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.root_enum_limit = 0;
         let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
         let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
@@ -28865,7 +28857,7 @@ mod opening_book_tests {
 
         let inputs = MonsGameModel::smart_search_best_inputs(
             &game,
-            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+            AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast),
         );
         let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
             .expect("selected supermana inputs should be legal");
@@ -28921,7 +28913,7 @@ mod opening_book_tests {
 
         let inputs = MonsGameModel::smart_search_best_inputs(
             &game,
-            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+            AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast),
         );
         let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
             .expect("selected opponent-mana inputs should be legal");
@@ -28972,7 +28964,7 @@ mod opening_book_tests {
             2,
         );
 
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let candidate = MonsGameModel::build_scored_root_move(
             &game,
             Color::White,
@@ -29032,7 +29024,7 @@ mod opening_book_tests {
             2,
         );
 
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let candidate = MonsGameModel::build_scored_root_move(
             &game,
             Color::White,
@@ -29162,11 +29154,11 @@ mod opening_book_tests {
         )
         .expect("valid pvs-sensitive fixture fen");
         let perspective = game.active_color;
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
         if config.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
             && config.enable_normal_root_safety_deep_floor
         {
-            config.enable_turn_engine = true;
+            config.enable_turn_engine_selector = true;
             config.turn_engine_seed_cap = 16;
             config.turn_engine_beam_width = 6;
             config.turn_engine_per_node_family_cap = 4;
@@ -29180,7 +29172,7 @@ mod opening_book_tests {
         }
 
         let root_moves = MonsGameModel::ranked_root_moves(&game, perspective, config);
-        let engine_config = MonsGameModel::turn_engine_search_config(config);
+        let engine_config = MonsGameModel::turn_engine_config_from_search_config(config);
         let plan = turn_engine_candidate_plan(&game, perspective, engine_config)
             .expect("pvs-sensitive fixture should materialize an engine plan");
         let (root_moves, scout_visited_nodes) =
@@ -29286,12 +29278,12 @@ mod opening_book_tests {
         )
         .expect("valid black gate loss b ply3 fixture fen");
         let perspective = game.active_color;
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
         config = MonsGameModel::with_pre_exact_runtime_policy(config);
         if config.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
             && config.enable_normal_root_safety_deep_floor
         {
-            config.enable_turn_engine = true;
+            config.enable_turn_engine_selector = true;
             config.enable_turn_head_rerank = false;
             config.turn_engine_mode = TurnEngineMode::ProV2;
             config.turn_engine_seed_cap = 14;
@@ -29438,12 +29430,12 @@ mod opening_book_tests {
         )
         .expect("valid black loss opening a ply6 fixture fen");
         let perspective = game.active_color;
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
         config = MonsGameModel::with_pre_exact_runtime_policy(config);
         if config.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
             && config.enable_normal_root_safety_deep_floor
         {
-            config.enable_turn_engine = true;
+            config.enable_turn_engine_selector = true;
             config.enable_turn_head_rerank = false;
             config.turn_engine_mode = TurnEngineMode::ProV2;
             config.turn_engine_seed_cap = 14;
@@ -29468,7 +29460,7 @@ mod opening_book_tests {
         let engine_plan = turn_engine_candidate_plan(
             &game,
             perspective,
-            MonsGameModel::turn_engine_search_config(config),
+            MonsGameModel::turn_engine_config_from_search_config(config),
         )
         .expect("fixture should materialize a turn-engine head plan");
         let forced_engine_inputs = engine_plan.compiled_chunks.first().cloned();
@@ -29686,11 +29678,11 @@ mod opening_book_tests {
         )
         .expect("valid black loss opening a black-turn fixture fen");
         let perspective = game.active_color;
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
         if config.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
             && config.enable_normal_root_safety_deep_floor
         {
-            config.enable_turn_engine = true;
+            config.enable_turn_engine_selector = true;
             config.enable_turn_head_rerank = false;
             config.turn_engine_mode = TurnEngineMode::ProV2;
             config.turn_engine_seed_cap = 14;
@@ -29922,11 +29914,11 @@ mod opening_book_tests {
         )
         .expect("valid black loss opening b black-turn fixture fen");
         let perspective = game.active_color;
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
         if config.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
             && config.enable_normal_root_safety_deep_floor
         {
-            config.enable_turn_engine = true;
+            config.enable_turn_engine_selector = true;
             config.turn_engine_mode = TurnEngineMode::ProV2;
             config.turn_engine_seed_cap = 14;
             config.turn_engine_beam_width = 5;
@@ -30013,7 +30005,7 @@ mod opening_book_tests {
             Input::fen_from_array(&selected),
             Input::fen_from_array(&runtime_selected),
             filtered.len(),
-            config.enable_turn_engine,
+            config.enable_turn_engine_selector,
             config.turn_engine_mode,
         );
         for target in interesting {
@@ -30109,11 +30101,11 @@ mod opening_book_tests {
         )
         .expect("valid black reliability opening-3 ply-3 fixture fen");
         let perspective = game.active_color;
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
         if config.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
             && config.enable_normal_root_safety_deep_floor
         {
-            config.enable_turn_engine = true;
+            config.enable_turn_engine_selector = true;
             config.turn_engine_mode = TurnEngineMode::ProV2;
             config.turn_engine_seed_cap = 14;
             config.turn_engine_beam_width = 5;
@@ -30208,7 +30200,7 @@ mod opening_book_tests {
             Input::fen_from_array(&selected),
             Input::fen_from_array(&runtime_selected),
             filtered.len(),
-            config.enable_turn_engine,
+            config.enable_turn_engine_selector,
             config.turn_engine_mode,
         );
         for target in interesting {
@@ -30676,7 +30668,7 @@ mod opening_book_tests {
             2,
         );
 
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             &game,
             Color::White,
@@ -30851,7 +30843,7 @@ mod opening_book_tests {
             2,
         );
 
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             &game,
             Color::White,
@@ -30926,7 +30918,7 @@ mod opening_book_tests {
             2,
         );
 
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             &game,
             Color::White,
@@ -30999,7 +30991,7 @@ mod opening_book_tests {
             2,
         );
 
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             &game,
             Color::White,
@@ -31161,7 +31153,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.node_enum_limit = 256;
         config.node_branch_limit = 64;
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
@@ -31254,7 +31246,7 @@ mod opening_book_tests {
                 .safe_supermana_progress,
             "board should start with exact safe supermana progress"
         );
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let limited_transitions = MonsGameModel::enumerate_legal_transitions(
             &game,
             1,
@@ -31334,7 +31326,7 @@ mod opening_book_tests {
             2,
         );
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.node_enum_limit = 1;
         config.node_branch_limit = 8;
         config.enable_child_exact_tactics = true;
@@ -31401,7 +31393,7 @@ mod opening_book_tests {
                 .safe_opponent_mana_progress,
             "board should start with exact safe opponent-mana progress"
         );
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let limited_transitions = MonsGameModel::enumerate_legal_transitions(
             &game,
             1,
@@ -31486,7 +31478,7 @@ mod opening_book_tests {
             1,
         );
 
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             &game,
             Color::White,
@@ -31578,7 +31570,7 @@ mod opening_book_tests {
             1,
         );
 
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             &game,
             Color::White,
@@ -31682,7 +31674,7 @@ mod opening_book_tests {
         let roots = MonsGameModel::ranked_root_moves(
             &game,
             Color::White,
-            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+            AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast),
         );
 
         assert!(
@@ -31731,7 +31723,7 @@ mod opening_book_tests {
             2,
         );
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.root_enum_limit = 1;
         let roots = MonsGameModel::ranked_root_moves(&game, Color::White, config);
 
@@ -31781,7 +31773,7 @@ mod opening_book_tests {
             2,
         );
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.root_enum_limit = 1;
         let roots = MonsGameModel::ranked_root_moves(&game, Color::White, config);
 
@@ -31831,7 +31823,7 @@ mod opening_book_tests {
         let roots = MonsGameModel::ranked_root_moves(
             &game,
             Color::White,
-            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+            AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast),
         );
 
         assert!(
@@ -31891,7 +31883,7 @@ mod opening_book_tests {
         let roots = MonsGameModel::ranked_root_moves(
             &game,
             Color::White,
-            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+            AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast),
         );
 
         assert!(
@@ -31952,7 +31944,7 @@ mod opening_book_tests {
         );
         let inputs = MonsGameModel::smart_search_best_inputs(
             &game,
-            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+            AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast),
         );
         let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
             .expect("selected spirit-setup inputs should be legal");
@@ -32005,7 +31997,7 @@ mod opening_book_tests {
             crate::models::automove_exact::exact_turn_summary(&game, Color::White)
                 .spirit_assisted_score
         );
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.root_enum_limit = 0;
         let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
         let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
@@ -32068,7 +32060,7 @@ mod opening_book_tests {
 
         let inputs = MonsGameModel::smart_search_best_inputs(
             &game,
-            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+            AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast),
         );
         let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
             .expect("selected supermana-threat inputs should be legal");
@@ -32135,7 +32127,7 @@ mod opening_book_tests {
             "scenario should start with an exact same-turn supermana threat"
         );
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.root_enum_limit = 0;
         let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
         let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
@@ -32206,7 +32198,7 @@ mod opening_book_tests {
             "direct safe supermana pickup should be unavailable before the spirit move"
         );
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.root_enum_limit = 0;
         let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
         let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
@@ -32391,7 +32383,7 @@ mod opening_book_tests {
 
         let inputs = MonsGameModel::smart_search_best_inputs(
             &game,
-            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+            AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast),
         );
         let (_, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
             .expect("selected spirit-setup inputs should be legal");
@@ -32453,7 +32445,7 @@ mod opening_book_tests {
             2,
         );
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.root_enum_limit = 0;
         let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
         let (_, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
@@ -32519,7 +32511,7 @@ mod opening_book_tests {
             Color::White,
             2,
         );
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             &game,
             Color::White,
@@ -32605,7 +32597,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             &game,
             Color::White,
@@ -32682,7 +32674,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             &game,
             Color::White,
@@ -32751,7 +32743,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             &game,
             Color::White,
@@ -32828,7 +32820,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             &game,
             Color::White,
@@ -32900,7 +32892,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.root_reply_risk_score_margin = 0;
         config.root_reply_risk_shortlist_max = 1;
         config.root_reply_risk_reply_limit = 1;
@@ -32974,8 +32966,8 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
-        config.enable_turn_engine = true;
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        config.enable_turn_engine_selector = true;
         config.enable_interview_deterministic_tiebreak = true;
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             &game,
@@ -33073,7 +33065,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.enable_normal_root_safety_deep_floor = false;
         config.node_enum_limit = 1;
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
@@ -33144,7 +33136,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.depth = 2;
         config.root_focus_k = 2;
         config.enable_two_pass_root_allocation = true;
@@ -33239,7 +33231,7 @@ mod opening_book_tests {
             2,
         );
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.depth = 2;
         config.root_focus_k = 1;
         config.enable_two_pass_root_allocation = true;
@@ -33323,7 +33315,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.depth = 2;
         config.root_focus_k = 2;
         config.enable_two_pass_root_allocation = true;
@@ -33417,7 +33409,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             &game,
             Color::White,
@@ -33560,8 +33552,8 @@ mod opening_book_tests {
             },
         };
         let scored_roots = [spirit_root, progress_root];
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
-        config.enable_turn_engine = true;
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.enable_turn_engine_selector = true;
         config.turn_engine_mode = TurnEngineMode::ProV2;
 
         assert_eq!(
@@ -33636,8 +33628,8 @@ mod opening_book_tests {
             },
         };
         let scored_roots = [spirit_root, progress_root];
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
-        config.enable_turn_engine = true;
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.enable_turn_engine_selector = true;
         config.turn_engine_mode = TurnEngineMode::ProV2;
 
         assert!(
@@ -33822,8 +33814,8 @@ mod opening_book_tests {
             false,
         );
         let scored_roots = [challenger, spirit];
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
-        config.enable_turn_engine = true;
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.enable_turn_engine_selector = true;
         config.turn_engine_mode = TurnEngineMode::ProV2;
         let mut cached_scores = std::collections::HashMap::new();
         cached_scores.insert(0usize, 968);
@@ -33910,8 +33902,8 @@ mod opening_book_tests {
                 package_meta: TurnPackageMeta::default(),
             },
         };
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
-        config.enable_turn_engine = true;
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.enable_turn_engine_selector = true;
         config.turn_engine_mode = TurnEngineMode::ProV2;
 
         assert!(
@@ -33997,8 +33989,8 @@ mod opening_book_tests {
                 package_meta: TurnPackageMeta::default(),
             },
         };
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
-        config.enable_turn_engine = true;
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.enable_turn_engine_selector = true;
         config.turn_engine_mode = TurnEngineMode::ProV2;
 
         assert_eq!(
@@ -34051,7 +34043,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             &game,
             Color::White,
@@ -34120,7 +34112,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             &game,
             Color::White,
@@ -34197,7 +34189,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
             &game,
             Color::White,
@@ -34269,7 +34261,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.root_reply_risk_score_margin = 0;
         config.root_reply_risk_shortlist_max = 1;
         config.root_reply_risk_reply_limit = 1;
@@ -34343,7 +34335,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.enable_normal_root_safety_deep_floor = false;
         config.node_enum_limit = 1;
         let own_drainer_vulnerable_before = MonsGameModel::is_own_drainer_vulnerable_next_turn(
@@ -34414,7 +34406,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.depth = 2;
         config.root_focus_k = 2;
         config.enable_two_pass_root_allocation = true;
@@ -34517,7 +34509,7 @@ mod opening_book_tests {
         );
         game.mons_moves_count = Config::MONS_MOVES_PER_TURN - 1;
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.depth = 2;
         config.root_focus_k = 2;
         config.enable_two_pass_root_allocation = true;
@@ -34608,7 +34600,7 @@ mod opening_book_tests {
 
         let inputs = MonsGameModel::smart_search_best_inputs(
             &game,
-            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+            AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast),
         );
         let (_, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
             .expect("selected spirit-opponent-setup inputs should be legal");
@@ -34670,7 +34662,7 @@ mod opening_book_tests {
             2,
         );
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.root_enum_limit = 0;
         let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
         let (_, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
@@ -34746,7 +34738,7 @@ mod opening_book_tests {
 
         let inputs = MonsGameModel::smart_search_best_inputs(
             &game,
-            SmartSearchConfig::from_preference(SmartAutomovePreference::Fast),
+            AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast),
         );
         let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
             .expect("selected spirit-setup inputs should be legal");
@@ -34800,7 +34792,7 @@ mod opening_book_tests {
             "scenario should start with an exact same-turn opponent-mana threat"
         );
 
-        let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Fast);
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Fast);
         config.root_enum_limit = 0;
         let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
         let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)

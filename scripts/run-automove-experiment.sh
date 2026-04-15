@@ -5,7 +5,7 @@ usage() {
   local triage_surfaces="opening_reply primary_pro"
   cat <<'EOF_HELP'
 usage:
-  ./scripts/run-automove-experiment.sh <stage> <candidate> [baseline]
+  ./scripts/run-automove-experiment.sh <stage> <frontier> [shipping]
 
 single-stage runner:
   use this script for one stage at a time or for diagnostics only
@@ -18,23 +18,23 @@ stages:
   pro-reliability-confirm larger confirmation gate with the same three Pro matchups
 
 defaults:
-  baseline = runtime_current for Pro stages
+  shipping = shipping_pro_search for Pro stages
 EOF_HELP
   cat <<EOF_HELP
   pro triage surfaces = ${triage_surfaces}
 
 examples:
-  ./scripts/run-automove-experiment.sh guardrails runtime_pro_turn_engine_v30
-  ./scripts/run-automove-experiment.sh runtime-preflight runtime_pro_turn_engine_v30
-  SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage runtime_pro_turn_engine_v30
-  ./scripts/run-automove-experiment.sh pro-reliability runtime_pro_turn_engine_v30
-  ./scripts/run-automove-experiment.sh pro-reliability-confirm runtime_pro_turn_engine_v30
+  ./scripts/run-automove-experiment.sh guardrails frontier_pro_v2_guarded
+  ./scripts/run-automove-experiment.sh runtime-preflight frontier_pro_v2_guarded
+  SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage frontier_pro_v2_guarded
+  ./scripts/run-automove-experiment.sh pro-reliability frontier_pro_v2_guarded
+  ./scripts/run-automove-experiment.sh pro-reliability-confirm frontier_pro_v2_guarded
 EOF_HELP
 }
 
 retained_profiles=(
-  runtime_current
-  runtime_pro_turn_engine_v30
+  shipping_pro_search
+  frontier_pro_v2_guarded
 )
 
 profile_is_supported() {
@@ -59,8 +59,8 @@ require_supported_profile() {
   exit 2
 }
 
-default_baseline_for_stage() {
-  echo "runtime_current"
+default_shipping_profile_for_stage() {
+  echo "shipping_pro_search"
 }
 
 stage="${1:-}"
@@ -72,11 +72,11 @@ fi
 run_logged() {
   local run_name="$1"
   shift
-  local candidate_meta="${candidate-}"
-  local baseline_meta="${baseline-}"
-  SMART_EXPERIMENT_CANDIDATE="${candidate_meta}" \
-    SMART_EXPERIMENT_STAGE="${stage}" \
-    SMART_EXPERIMENT_BASELINE="${baseline_meta}" \
+  local frontier_meta="${frontier-}"
+  local shipping_meta="${shipping-}"
+  SMART_EXPERIMENT_FRONTIER="${frontier_meta}" \
+  SMART_EXPERIMENT_STAGE="${stage}" \
+    SMART_EXPERIMENT_SHIPPING="${shipping_meta}" \
     ./scripts/run-experiment-logged.sh "${run_name}" -- "$@"
 }
 
@@ -89,9 +89,9 @@ experiment_stamp_dir() {
 }
 
 preflight_stamp_path() {
-  local safe_candidate
-  safe_candidate="$(sanitize "$1")"
-  echo "$(experiment_stamp_dir)/runtime_preflight_${safe_candidate}.stamp"
+  local safe_frontier
+  safe_frontier="$(sanitize "$1")"
+  echo "$(experiment_stamp_dir)/runtime_preflight_${safe_frontier}.stamp"
 }
 
 clear_preflight_stamp() {
@@ -101,37 +101,38 @@ clear_preflight_stamp() {
 }
 
 write_preflight_stamp() {
-  local candidate_name="$1"
+  local frontier_id="$1"
   local stamp_path
-  stamp_path="$(preflight_stamp_path "${candidate_name}")"
+  stamp_path="$(preflight_stamp_path "${frontier_id}")"
   mkdir -p "$(dirname "${stamp_path}")"
   {
-    echo "candidate=${candidate_name}"
-    echo "baseline=${baseline}"
+    echo "frontier=${frontier_id}"
+    echo "shipping=${shipping}"
     echo "written_epoch=$(date +%s)"
   } > "${stamp_path}"
   echo "runtime preflight stamp: ${stamp_path}"
 }
 
 require_fresh_preflight_stamp() {
-  local candidate_name="$1"
+  local frontier_id="$1"
   local stamp_path
-  stamp_path="$(preflight_stamp_path "${candidate_name}")"
+  stamp_path="$(preflight_stamp_path "${frontier_id}")"
   local dependency_paths=(
     "src/models/mons_game.rs"
     "src/models/scoring.rs"
     "src/models/automove_exact.rs"
     "src/models/automove_turn_engine.rs"
+    "src/models/automove_runtime_variants.rs"
     "src/models/mons_game_model.rs"
     "src/models/automove_experiments/profiles.rs"
   )
   if [ ! -f "${stamp_path}" ]; then
-    echo "missing runtime-preflight stamp for '${candidate_name}': run './scripts/run-automove-experiment.sh runtime-preflight ${candidate_name}' first" >&2
+    echo "missing runtime-preflight stamp for '${frontier_id}': run './scripts/run-automove-experiment.sh runtime-preflight ${frontier_id}' first" >&2
     exit 2
   fi
   for dependency_path in "${dependency_paths[@]}"; do
     if [ "${dependency_path}" -nt "${stamp_path}" ]; then
-      echo "stale runtime-preflight stamp for '${candidate_name}': rerun './scripts/run-automove-experiment.sh runtime-preflight ${candidate_name}' because the runtime or experiment profiles changed" >&2
+      echo "stale runtime-preflight stamp for '${frontier_id}': rerun './scripts/run-automove-experiment.sh runtime-preflight ${frontier_id}' because the runtime or experiment profiles changed" >&2
       exit 2
     fi
   done
@@ -142,27 +143,27 @@ run_cargo_logged() {
   local test_name="$2"
   shift 2
   run_logged "${run_name}" env \
-    "SMART_CANDIDATE_PROFILE=${candidate}" \
-    "SMART_PRO_CANDIDATE_PROFILE=${candidate}" \
+    "SMART_SELECTED_PROFILE=${frontier}" \
+    "SMART_FRONTIER_PROFILE=${frontier}" \
     "$@" \
     cargo test --release --lib "${test_name}" -- --ignored --nocapture
 }
 
 run_runtime_preflight() {
-  clear_preflight_stamp "${candidate}"
+  clear_preflight_stamp "${frontier}"
   local stage1_extra_env=()
-  if [[ "${candidate}" == runtime_pro_* ]]; then
+  if [[ "${frontier}" == frontier_pro_* ]]; then
     stage1_extra_env+=("SMART_STAGE1_INCLUDE_PRO=true")
     stage1_extra_env+=("SMART_STAGE1_CPU_ADVISORY=true")
   fi
   run_cargo_logged \
-    "stage1_cpu_${candidate}" \
+    "stage1_cpu_${frontier}" \
     "smart_automove_pool_stage1_cpu_non_regression_gate" \
     "${stage1_extra_env[@]}"
   run_cargo_logged \
-    "exact_lite_diag_${candidate}" \
+    "exact_lite_diag_${frontier}" \
     "smart_automove_pool_exact_lite_diagnostics_gate"
-  write_preflight_stamp "${candidate}"
+  write_preflight_stamp "${frontier}"
 }
 
 run_pro_reliability_gate() {
@@ -172,10 +173,9 @@ run_pro_reliability_gate() {
   run_cargo_logged \
     "${run_name}" \
     "smart_automove_pool_pro_reliability_gate" \
-    "SMART_GATE_BASELINE_PROFILE=${baseline}" \
-    "SMART_PRO_BASELINE_PROFILE=${baseline}" \
-    "SMART_PRO_RELIABILITY_CANDIDATE_PROFILE=${candidate}" \
-    "SMART_PRO_RELIABILITY_BASELINE_PROFILE=${baseline}" \
+    "SMART_SHIPPING_PROFILE=${shipping}" \
+    "SMART_PRO_RELIABILITY_FRONTIER_PROFILE=${frontier}" \
+    "SMART_PRO_RELIABILITY_SHIPPING_PROFILE=${shipping}" \
     "${extra_env[@]}"
 }
 
@@ -191,15 +191,15 @@ if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
   exit 2
 fi
 
-candidate="$2"
-baseline="${3:-$(default_baseline_for_stage "${stage}")}"
+frontier="$2"
+shipping="${3:-$(default_shipping_profile_for_stage "${stage}")}"
 
-require_supported_profile "candidate" "${candidate}"
-require_supported_profile "baseline" "${baseline}"
+require_supported_profile "frontier" "${frontier}"
+require_supported_profile "shipping" "${shipping}"
 
 case "${stage}" in
   guardrails)
-    run_cargo_logged "tactical_${candidate}" "smart_automove_tactical_candidate_profile"
+    run_cargo_logged "tactical_${frontier}" "smart_automove_tactical_selected_profile"
     ;;
   runtime-preflight)
     run_runtime_preflight
@@ -207,24 +207,23 @@ case "${stage}" in
   pro-triage)
     triage_surface="${SMART_TRIAGE_SURFACE:-unset}"
     run_cargo_logged \
-      "pro_triage_${triage_surface}_${candidate}" \
+      "pro_triage_${triage_surface}_${frontier}" \
       "smart_automove_pool_pro_signal_triage" \
-      "SMART_GATE_BASELINE_PROFILE=${baseline}" \
-      "SMART_PRO_BASELINE_PROFILE=${baseline}"
+      "SMART_SHIPPING_PROFILE=${shipping}"
     ;;
   pro-reliability)
-    require_fresh_preflight_stamp "${candidate}"
+    require_fresh_preflight_stamp "${frontier}"
     run_pro_reliability_gate \
-      "pro_reliability_${candidate}" \
+      "pro_reliability_${frontier}" \
       "SMART_PRO_RELIABILITY_REPEATS=3" \
       "SMART_PRO_RELIABILITY_GAMES=2" \
       "SMART_PRO_RELIABILITY_MAX_PLIES=96" \
       "SMART_SKIP_RUNTIME_PREFLIGHT=true"
     ;;
   pro-reliability-confirm)
-    require_fresh_preflight_stamp "${candidate}"
+    require_fresh_preflight_stamp "${frontier}"
     run_pro_reliability_gate \
-      "pro_reliability_confirm_${candidate}" \
+      "pro_reliability_confirm_${frontier}" \
       "SMART_PRO_RELIABILITY_REPEATS=4" \
       "SMART_PRO_RELIABILITY_GAMES=4" \
       "SMART_PRO_RELIABILITY_MAX_PLIES=96" \

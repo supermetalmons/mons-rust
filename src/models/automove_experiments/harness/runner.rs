@@ -26,7 +26,7 @@ pub(in super::super) struct CrossBudgetDuelConfig<'a> {
 pub(in super::super) fn select_inputs_with_runtime_fallback(
     selector: AutomoveSelector,
     game: &MonsGame,
-    config: SmartSearchConfig,
+    config: AutomoveSearchConfig,
 ) -> Vec<Input> {
     let inputs = selector(game, config);
     if !inputs.is_empty() {
@@ -112,17 +112,17 @@ pub(in super::super) fn play_one_game_budget_duel_with_timing(
         };
         let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
         if a_to_move {
-            timing.record_candidate_turn(elapsed_ms);
+            timing.record_profile_a_turn(elapsed_ms);
         } else {
-            timing.record_baseline_turn(elapsed_ms);
+            timing.record_profile_b_turn(elapsed_ms);
         }
 
         if inputs.is_empty() {
             return (
                 if a_to_move {
-                    MatchResult::OpponentWin
+                    MatchResult::ProfileBWin
                 } else {
-                    MatchResult::CandidateWin
+                    MatchResult::ProfileAWin
                 },
                 timing,
             );
@@ -131,9 +131,9 @@ pub(in super::super) fn play_one_game_budget_duel_with_timing(
         if !matches!(game.process_input(inputs, false, false), Output::Events(_)) {
             return (
                 if a_to_move {
-                    MatchResult::OpponentWin
+                    MatchResult::ProfileBWin
                 } else {
-                    MatchResult::CandidateWin
+                    MatchResult::ProfileAWin
                 },
                 timing,
             );
@@ -151,14 +151,14 @@ pub(in super::super) fn play_one_game_budget_duel_with_timing(
 
 pub(in super::super) fn match_result_from_winner(
     winner_color: Color,
-    candidate_is_white: bool,
+    profile_a_is_white: bool,
 ) -> MatchResult {
-    if (candidate_is_white && winner_color == Color::White)
-        || (!candidate_is_white && winner_color == Color::Black)
+    if (profile_a_is_white && winner_color == Color::White)
+        || (!profile_a_is_white && winner_color == Color::Black)
     {
-        MatchResult::CandidateWin
+        MatchResult::ProfileAWin
     } else {
-        MatchResult::OpponentWin
+        MatchResult::ProfileBWin
     }
 }
 
@@ -356,7 +356,7 @@ pub(in super::super) fn stats_delta_confidence(stats: MatchupStats) -> (f64, f64
     )
 }
 
-pub(in super::super) fn mirrored_candidate_stats(
+pub(in super::super) fn mirrored_profile_a_stats(
     ab: MatchupStats,
     ba: MatchupStats,
 ) -> MatchupStats {
@@ -367,15 +367,15 @@ pub(in super::super) fn mirrored_candidate_stats(
     }
 }
 
-pub(in super::super) fn mirrored_candidate_timing(
+pub(in super::super) fn mirrored_profile_a_timing(
     ab: DuelTimingStats,
     ba: DuelTimingStats,
 ) -> DuelTimingStats {
     DuelTimingStats {
-        candidate_total_ms: ab.candidate_total_ms + ba.baseline_total_ms,
-        baseline_total_ms: ab.baseline_total_ms + ba.candidate_total_ms,
-        candidate_turns: ab.candidate_turns + ba.baseline_turns,
-        baseline_turns: ab.baseline_turns + ba.candidate_turns,
+        profile_a_total_ms: ab.profile_a_total_ms + ba.profile_b_total_ms,
+        profile_b_total_ms: ab.profile_b_total_ms + ba.profile_a_total_ms,
+        profile_a_turns: ab.profile_a_turns + ba.profile_b_turns,
+        profile_b_turns: ab.profile_b_turns + ba.profile_a_turns,
     }
 }
 
@@ -441,14 +441,14 @@ pub(in super::super) fn run_cross_budget_duel_with_timing(
         );
         aggregate
             .matchup
-            .merge(mirrored_candidate_stats(ab.matchup, ba.matchup));
+            .merge(mirrored_profile_a_stats(ab.matchup, ba.matchup));
         aggregate
             .timing
-            .merge(mirrored_candidate_timing(ab.timing, ba.timing));
+            .merge(mirrored_profile_a_timing(ab.timing, ba.timing));
         if progress {
             let (delta, confidence) = stats_delta_confidence(aggregate.matchup);
             println!(
-                "cross-budget progress: {}({}) vs {}({}) seed={} repeat={}/{} games={} delta={:.4} confidence={:.3} candidate_avg_ms={:.2} baseline_avg_ms={:.2}",
+                "cross-budget progress: {}({}) vs {}({}) seed={} repeat={}/{} games={} delta={:.4} confidence={:.3} profile_a_avg_ms={:.2} profile_b_avg_ms={:.2}",
                 config.profile_a,
                 config.mode_a.as_api_value(),
                 config.profile_b,
@@ -459,8 +459,8 @@ pub(in super::super) fn run_cross_budget_duel_with_timing(
                 aggregate.matchup.total_games(),
                 delta,
                 confidence,
-                aggregate.timing.candidate_avg_ms(),
-                aggregate.timing.baseline_avg_ms(),
+                aggregate.timing.profile_a_avg_ms(),
+                aggregate.timing.profile_b_avg_ms(),
             );
         }
     }
@@ -774,7 +774,7 @@ pub(in super::super) fn assert_tactical_guardrails(selector: AutomoveSelector, p
     );
 
     let selected_move_classes = |game: &MonsGame,
-                                 config: SmartSearchConfig,
+                                 config: AutomoveSearchConfig,
                                  selected: &[Input]|
      -> Option<MoveClassFlags> {
         let selected_fen = Input::fen_from_array(selected);
@@ -885,7 +885,7 @@ pub(in super::super) fn assert_interview_policy_regressions(
     profile_name: &str,
 ) {
     let selected_root = |game: &MonsGame,
-                         config: SmartSearchConfig,
+                         config: AutomoveSearchConfig,
                          selected: &[Input]|
      -> Option<ScoredRootMove> {
         let selected_fen = Input::fen_from_array(selected);

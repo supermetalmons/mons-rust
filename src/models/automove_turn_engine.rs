@@ -1,10 +1,10 @@
 #![cfg(any(target_arch = "wasm32", test))]
 
+#[cfg(test)]
+use crate::models::scoring::DEFAULT_SCORING_WEIGHTS;
 use crate::models::scoring::{
     evaluate_preferability_with_weights_and_exact_policy, ScoringWeights,
 };
-#[cfg(test)]
-use crate::models::scoring::DEFAULT_SCORING_WEIGHTS;
 use crate::*;
 use std::cell::RefCell;
 use std::cmp::Ordering;
@@ -1331,9 +1331,9 @@ fn allowed_head_selection_meta(
         first_step_opponent_immediate_loss: after
             .as_ref()
             .is_some_and(|game| opponent_can_win_immediately(game, perspective)),
-        first_step_drainer_safety: after
-            .as_ref()
-            .map_or(i32::MIN / 4, |game| own_drainer_safety_score(&game.board, perspective)),
+        first_step_drainer_safety: after.as_ref().map_or(i32::MIN / 4, |game| {
+            own_drainer_safety_score(&game.board, perspective)
+        }),
     }
 }
 
@@ -6384,7 +6384,7 @@ mod tests {
     }
 
     #[test]
-    fn turn_engine_pro_v2_builds_multi_chunk_black_opening_macro_plan() {
+    fn frontier_pro_v2_guarded_builds_multi_chunk_black_opening_macro_plan() {
         let game = MonsGame::from_fen(
             "1 0 b 1 0 0 0 0 4 n07e0xn03/n03y0xn01s0xa0xn04/n05d0mn01xxmn03/n02xxmn08/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n11/n05S0xn01xxMn03/n05A0xn02Y0xn02/D0xn01E0xn08",
             false,
@@ -6408,7 +6408,7 @@ mod tests {
     }
 
     #[test]
-    fn turn_engine_cache_replays_remaining_chunks() {
+    fn frontier_pro_v2_guarded_plan_cache_replays_remaining_chunks() {
         clear_turn_engine_plan_cache();
         let game = game_with_items(
             vec![

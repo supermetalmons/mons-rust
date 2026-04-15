@@ -16,19 +16,25 @@ Docs:
 
 Quickstart:
 
-- canonical Pro loop: `./scripts/run-automove-canonical-loop.sh runtime_pro_turn_engine_v30`
-- larger confirmation pass: `./scripts/run-automove-canonical-loop.sh --confirm runtime_pro_turn_engine_v30`
-- single-stage or diagnostic run: `./scripts/run-automove-experiment.sh <stage> runtime_pro_turn_engine_v30`
+- canonical Pro loop: `./scripts/run-automove-canonical-loop.sh frontier_pro_v2_guarded`
+- larger confirmation pass: `./scripts/run-automove-canonical-loop.sh --confirm frontier_pro_v2_guarded`
+- single-stage or diagnostic run: `./scripts/run-automove-experiment.sh <stage> frontier_pro_v2_guarded`
 - cleanup preview: `./scripts/clean-experiment-artifacts.sh --dry-run`
 
 Retained profile surface:
 
-- `runtime_current`
-- `runtime_pro_turn_engine_v30`
+- `shipping_pro_search`
+- `frontier_pro_v2_guarded`
+
+Glossary:
+
+- `shipping`: the deployed Pro path, currently `shipping_pro_search`
+- `frontier`: the retained guarded ProV2 experiment path, currently `frontier_pro_v2_guarded`
+- `probe`: forced turn-engine diagnostics that inspect search/acceptance behavior without changing shipping
 
 Artifact layout:
 
-- candidate logs: `target/experiment-runs/<candidate>/`
+- selected-profile logs: `target/experiment-runs/<profile>/`
 - workflow-only logs: `target/experiment-runs/misc/`
 - runtime-preflight stamps: `target/experiment-stamps/`
 
@@ -78,8 +84,8 @@ Pack a directory back into chunks:
 Release checklist:
 
 - Review `git status` before publish and confirm only intentional committed changes are present.
-- Confirm `runtime_current` is still the shipping automove path.
-- Confirm `runtime_pro_turn_engine_v30` remains fenced off as an offline experiment frontier.
+- Confirm `shipping_pro_search` is still the shipping search-only automove path.
+- Confirm `frontier_pro_v2_guarded` remains fenced off as an offline frontier.
 - Run `cargo test`.
 - Run `cargo test --release --lib smart_automove_release_opening_black_reply_speed_gate -- --ignored --nocapture`.
 - Run `cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --ignored --nocapture`.
@@ -90,10 +96,10 @@ Production blockers:
 
 - build/test failures
 - release speed gate failures
-- any regression that enables turn-engine in shipping `runtime_current`
+- any regression that enables the turn-engine selector in shipping `shipping_pro_search`
 
 Non-blocking retained experiment state:
 
-- the retained `runtime_pro_turn_engine_v30` frontier plus ignored probes
+- the retained `frontier_pro_v2_guarded` frontier plus ignored probes
 - experiment workflow/logging helpers
 - compressed automove backlog / knowledge / archive docs

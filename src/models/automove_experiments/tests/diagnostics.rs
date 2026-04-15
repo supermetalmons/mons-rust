@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-#[ignore = "diagnostic: replay exact pro-reliability duel seeds against runtime_current and log first regression divergence"]
+#[ignore = "diagnostic: replay exact pro-reliability duel seeds against shipping_pro_search and log first regression divergence"]
 fn smart_automove_pro_reliability_duel_trace_probe() {
     use std::collections::BTreeMap;
 
@@ -12,10 +12,8 @@ fn smart_automove_pro_reliability_duel_trace_probe() {
         seed_tag: String,
     }
 
-    let candidate_profile = env_profile_name("SMART_PRO_RELIABILITY_CANDIDATE_PROFILE")
-        .unwrap_or_else(|| "runtime_pro_turn_engine_v30".to_string());
-    let baseline_profile = env_profile_name("SMART_PRO_RELIABILITY_BASELINE_PROFILE")
-        .unwrap_or_else(|| "runtime_current".to_string());
+    let frontier_profile = reliability_frontier_profile_id();
+    let shipping_profile = reliability_shipping_profile_id();
     let repeats = env_usize("SMART_PRO_RELIABILITY_REPEATS")
         .unwrap_or(3)
         .max(1);
@@ -26,21 +24,21 @@ fn smart_automove_pro_reliability_duel_trace_probe() {
     let trace_limit = env_usize("SMART_PRO_RELIABILITY_TRACE_LIMIT")
         .unwrap_or(12)
         .max(1);
-    let seed_tag = env_profile_name("SMART_PRO_RELIABILITY_SEED_TAG")
+    let seed_tag = env_string_value("SMART_PRO_RELIABILITY_SEED_TAG")
         .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
     let duel_specs = vec![
         DuelSpec {
-            label: "vs_current_pro",
+            label: "vs_shipping_pro",
             opponent_mode: SmartAutomovePreference::Pro,
             seed_tag: seed_tag.clone(),
         },
         DuelSpec {
-            label: "vs_current_normal",
+            label: "vs_shipping_normal",
             opponent_mode: SmartAutomovePreference::Normal,
             seed_tag: format!("{}_vs_normal", seed_tag),
         },
         DuelSpec {
-            label: "vs_current_fast",
+            label: "vs_shipping_fast",
             opponent_mode: SmartAutomovePreference::Fast,
             seed_tag: format!("{}_vs_fast", seed_tag),
         },
@@ -48,9 +46,9 @@ fn smart_automove_pro_reliability_duel_trace_probe() {
 
     with_env_override("SMART_USE_WHITE_OPENING_BOOK", "false", || {
         println!(
-            "pro reliability duel trace probe: candidate={} baseline={} repeats={} games_per_repeat={} max_plies={} trace_limit={}",
-            candidate_profile,
-            baseline_profile,
+            "pro reliability duel trace probe: frontier={} shipping={} repeats={} games_per_repeat={} max_plies={} trace_limit={}",
+            frontier_profile,
+            shipping_profile,
             repeats,
             games,
             max_plies,
@@ -74,35 +72,35 @@ fn smart_automove_pro_reliability_duel_trace_probe() {
                 );
                 let opening_fens = generate_opening_fens_cached(seed, games);
                 for (game_index, opening_fen) in opening_fens.iter().enumerate() {
-                    for candidate_is_white in [true, false] {
+                    for frontier_is_white in [true, false] {
                         total_games += 1;
-                        let candidate_trace = play_profile_duel_trace(
-                            candidate_profile.as_str(),
-                            baseline_profile.as_str(),
+                        let frontier_trace = play_profile_duel_trace(
+                            frontier_profile.as_str(),
+                            shipping_profile.as_str(),
                             duel.opponent_mode,
                             opening_fen.as_str(),
-                            candidate_is_white,
+                            frontier_is_white,
                             max_plies,
                         );
-                        let baseline_trace = play_profile_duel_trace(
-                            baseline_profile.as_str(),
-                            baseline_profile.as_str(),
+                        let shipping_trace = play_profile_duel_trace(
+                            shipping_profile.as_str(),
+                            shipping_profile.as_str(),
                             duel.opponent_mode,
                             opening_fen.as_str(),
-                            candidate_is_white,
+                            frontier_is_white,
                             max_plies,
                         );
-                        let delta = match_result_points(candidate_trace.result)
-                            - match_result_points(baseline_trace.result);
+                        let delta = match_result_points(frontier_trace.result)
+                            - match_result_points(shipping_trace.result);
                         if delta < 0 {
                             regressions += 1;
                             let first_divergence =
-                                first_duel_trace_divergence(&candidate_trace, &baseline_trace);
+                                first_duel_trace_divergence(&frontier_trace, &shipping_trace);
                             if let Some(divergence) = first_divergence.as_ref() {
                                 *move_pair_counts
                                     .entry((
-                                        divergence.candidate_move_fen.clone(),
-                                        divergence.baseline_move_fen.clone(),
+                                        divergence.profile_a_move_fen.clone(),
+                                        divergence.profile_b_move_fen.clone(),
                                     ))
                                     .or_default() += 1;
                             }
@@ -113,58 +111,58 @@ fn smart_automove_pro_reliability_duel_trace_probe() {
                                         false,
                                     )
                                     .expect("trace board fen should be valid");
-                                    let candidate_probe = runtime_decision_probe(
-                                        candidate_profile.as_str(),
+                                    let frontier_probe = runtime_decision_probe(
+                                        frontier_profile.as_str(),
                                         SmartAutomovePreference::Pro,
                                         &board,
                                     );
-                                    let baseline_probe = runtime_decision_probe(
-                                        baseline_profile.as_str(),
+                                    let shipping_probe = runtime_decision_probe(
+                                        shipping_profile.as_str(),
                                         SmartAutomovePreference::Pro,
                                         &board,
                                     );
                                     format!(
-                                        "first_diff_ply={} board={} candidate_move={} baseline_move={} candidate(selected={} rank={:?} pre_accept={} pre_rank={:?} stage={} head={:?} head_rank={:?} accepted={} top={:?} selected_root=\"{}\" head_root=\"{}\") baseline(selected={} rank={:?} pre_accept={} pre_rank={:?} stage={} head={:?} head_rank={:?} accepted={} top={:?} selected_root=\"{}\" head_root=\"{}\")",
+                                        "first_diff_ply={} board={} frontier_move={} shipping_move={} frontier(selected={} rank={:?} pre_accept={} pre_rank={:?} stage={} head={:?} head_rank={:?} accepted={} top={:?} selected_root=\"{}\" head_root=\"{}\") shipping(selected={} rank={:?} pre_accept={} pre_rank={:?} stage={} head={:?} head_rank={:?} accepted={} top={:?} selected_root=\"{}\" head_root=\"{}\")",
                                         divergence.ply,
                                         divergence.board_fen,
-                                        divergence.candidate_move_fen,
-                                        divergence.baseline_move_fen,
-                                        candidate_probe.selected_input_fen,
-                                        candidate_probe.selected_rank,
-                                        candidate_probe.pre_accept_input_fen,
-                                        candidate_probe.pre_accept_rank,
-                                        candidate_probe.selector_last_stage,
-                                        candidate_probe.head_input_fen,
-                                        candidate_probe.head_rank,
-                                        candidate_probe.head_accepted,
-                                        candidate_probe.top_root_fens,
-                                        candidate_probe.selected_root,
-                                        candidate_probe.head_root,
-                                        baseline_probe.selected_input_fen,
-                                        baseline_probe.selected_rank,
-                                        baseline_probe.pre_accept_input_fen,
-                                        baseline_probe.pre_accept_rank,
-                                        baseline_probe.selector_last_stage,
-                                        baseline_probe.head_input_fen,
-                                        baseline_probe.head_rank,
-                                        baseline_probe.head_accepted,
-                                        baseline_probe.top_root_fens,
-                                        baseline_probe.selected_root,
-                                        baseline_probe.head_root,
+                                        divergence.profile_a_move_fen,
+                                        divergence.profile_b_move_fen,
+                                        frontier_probe.selected_input_fen,
+                                        frontier_probe.selected_rank,
+                                        frontier_probe.pre_accept_input_fen,
+                                        frontier_probe.pre_accept_rank,
+                                        frontier_probe.selector_last_stage,
+                                        frontier_probe.head_input_fen,
+                                        frontier_probe.head_rank,
+                                        frontier_probe.head_accepted,
+                                        frontier_probe.top_root_fens,
+                                        frontier_probe.selected_root,
+                                        frontier_probe.head_root,
+                                        shipping_probe.selected_input_fen,
+                                        shipping_probe.selected_rank,
+                                        shipping_probe.pre_accept_input_fen,
+                                        shipping_probe.pre_accept_rank,
+                                        shipping_probe.selector_last_stage,
+                                        shipping_probe.head_input_fen,
+                                        shipping_probe.head_rank,
+                                        shipping_probe.head_accepted,
+                                        shipping_probe.top_root_fens,
+                                        shipping_probe.selected_root,
+                                        shipping_probe.head_root,
                                     )
                                 });
 
                                 println!(
-                                    "PRO_RELIABILITY_TRACE duel={} repeat={} opening_index={} candidate_is_white={} opening={} candidate_result={} baseline_result={} candidate_final={} baseline_final={} {}",
+                                    "PRO_RELIABILITY_TRACE duel={} repeat={} opening_index={} frontier_is_white={} opening={} frontier_result={} shipping_result={} frontier_final={} shipping_final={} {}",
                                     duel.label,
                                     repeat_index,
                                     game_index,
-                                    candidate_is_white,
+                                    frontier_is_white,
                                     opening_fen,
-                                    format_match_result(candidate_trace.result),
-                                    format_match_result(baseline_trace.result),
-                                    candidate_trace.final_fen,
-                                    baseline_trace.final_fen,
+                                    format_match_result(frontier_trace.result),
+                                    format_match_result(shipping_trace.result),
+                                    frontier_trace.final_fen,
+                                    shipping_trace.final_fen,
                                     detail.unwrap_or_else(|| "first_diff=none".to_string()),
                                 );
                                 printed += 1;
@@ -190,12 +188,10 @@ fn smart_automove_pro_reliability_duel_trace_probe() {
 }
 
 #[test]
-#[ignore = "diagnostic: replay exact pro-reliability duel seeds and log candidate non-win openings"]
+#[ignore = "diagnostic: replay exact pro-reliability duel seeds and log frontier non-win openings"]
 fn smart_automove_pro_reliability_nonwin_trace_probe() {
-    let candidate_profile = env_profile_name("SMART_PRO_RELIABILITY_CANDIDATE_PROFILE")
-        .unwrap_or_else(|| "runtime_pro_turn_engine_v30".to_string());
-    let baseline_profile = env_profile_name("SMART_PRO_RELIABILITY_BASELINE_PROFILE")
-        .unwrap_or_else(|| "runtime_current".to_string());
+    let frontier_profile = reliability_frontier_profile_id();
+    let shipping_profile = reliability_shipping_profile_id();
     let repeats = env_usize("SMART_PRO_RELIABILITY_REPEATS")
         .unwrap_or(3)
         .max(1);
@@ -206,22 +202,22 @@ fn smart_automove_pro_reliability_nonwin_trace_probe() {
     let trace_limit = env_usize("SMART_PRO_RELIABILITY_TRACE_LIMIT")
         .unwrap_or(12)
         .max(1);
-    let seed_tag = env_profile_name("SMART_PRO_RELIABILITY_SEED_TAG")
+    let seed_tag = env_string_value("SMART_PRO_RELIABILITY_SEED_TAG")
         .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
     let duel_filter = env::var("SMART_PRO_RELIABILITY_DUEL_FILTER").ok();
     let duel_specs = vec![
         (
-            "vs_current_pro",
+            "vs_shipping_pro",
             SmartAutomovePreference::Pro,
             seed_tag.clone(),
         ),
         (
-            "vs_current_normal",
+            "vs_shipping_normal",
             SmartAutomovePreference::Normal,
             format!("{}_vs_normal", seed_tag),
         ),
         (
-            "vs_current_fast",
+            "vs_shipping_fast",
             SmartAutomovePreference::Fast,
             format!("{}_vs_fast", seed_tag),
         ),
@@ -229,9 +225,9 @@ fn smart_automove_pro_reliability_nonwin_trace_probe() {
 
     with_env_override("SMART_USE_WHITE_OPENING_BOOK", "false", || {
         println!(
-            "pro reliability non-win trace probe: candidate={} baseline={} repeats={} games_per_repeat={} max_plies={} trace_limit={} duel_filter={:?}",
-            candidate_profile,
-            baseline_profile,
+            "pro reliability non-win trace probe: frontier={} shipping={} repeats={} games_per_repeat={} max_plies={} trace_limit={} duel_filter={:?}",
+            frontier_profile,
+            shipping_profile,
             repeats,
             games,
             max_plies,
@@ -260,29 +256,29 @@ fn smart_automove_pro_reliability_nonwin_trace_probe() {
                 );
                 let opening_fens = generate_opening_fens_cached(seed, games);
                 for (game_index, opening_fen) in opening_fens.iter().enumerate() {
-                    for candidate_is_white in [true, false] {
-                        let candidate_trace = play_profile_duel_trace(
-                            candidate_profile.as_str(),
-                            baseline_profile.as_str(),
+                    for frontier_is_white in [true, false] {
+                        let frontier_trace = play_profile_duel_trace(
+                            frontier_profile.as_str(),
+                            shipping_profile.as_str(),
                             opponent_mode,
                             opening_fen.as_str(),
-                            candidate_is_white,
+                            frontier_is_white,
                             max_plies,
                         );
-                        if !matches!(candidate_trace.result, MatchResult::CandidateWin) {
+                        if !matches!(frontier_trace.result, MatchResult::ProfileAWin) {
                             nonwins += 1;
                             if printed < trace_limit {
-                                let baseline_trace = play_profile_duel_trace(
-                                    baseline_profile.as_str(),
-                                    baseline_profile.as_str(),
+                                let shipping_trace = play_profile_duel_trace(
+                                    shipping_profile.as_str(),
+                                    shipping_profile.as_str(),
                                     opponent_mode,
                                     opening_fen.as_str(),
-                                    candidate_is_white,
+                                    frontier_is_white,
                                     max_plies,
                                 );
                                 let detail = first_duel_trace_divergence(
-                                    &candidate_trace,
-                                    &baseline_trace,
+                                    &frontier_trace,
+                                    &shipping_trace,
                                 )
                                 .map(|divergence| {
                                     let board = MonsGame::from_fen(
@@ -290,49 +286,49 @@ fn smart_automove_pro_reliability_nonwin_trace_probe() {
                                         false,
                                     )
                                     .expect("trace board fen should be valid");
-                                    let candidate_probe = runtime_decision_probe(
-                                        candidate_profile.as_str(),
+                                    let frontier_probe = runtime_decision_probe(
+                                        frontier_profile.as_str(),
                                         SmartAutomovePreference::Pro,
                                         &board,
                                     );
-                                    let baseline_probe = runtime_decision_probe(
-                                        baseline_profile.as_str(),
+                                    let shipping_probe = runtime_decision_probe(
+                                        shipping_profile.as_str(),
                                         SmartAutomovePreference::Pro,
                                         &board,
                                     );
                                     format!(
-                                        "first_diff_ply={} board={} candidate_move={} baseline_move={} candidate(selected={} pre_accept={} stage={} head={:?} accepted={} top={:?}) baseline(selected={} pre_accept={} stage={} head={:?} accepted={} top={:?})",
+                                        "first_diff_ply={} board={} frontier_move={} shipping_move={} frontier(selected={} pre_accept={} stage={} head={:?} accepted={} top={:?}) shipping(selected={} pre_accept={} stage={} head={:?} accepted={} top={:?})",
                                         divergence.ply,
                                         divergence.board_fen,
-                                        divergence.candidate_move_fen,
-                                        divergence.baseline_move_fen,
-                                        candidate_probe.selected_input_fen,
-                                        candidate_probe.pre_accept_input_fen,
-                                        candidate_probe.selector_last_stage,
-                                        candidate_probe.head_input_fen,
-                                        candidate_probe.head_accepted,
-                                        candidate_probe.top_root_fens,
-                                        baseline_probe.selected_input_fen,
-                                        baseline_probe.pre_accept_input_fen,
-                                        baseline_probe.selector_last_stage,
-                                        baseline_probe.head_input_fen,
-                                        baseline_probe.head_accepted,
-                                        baseline_probe.top_root_fens,
+                                        divergence.profile_a_move_fen,
+                                        divergence.profile_b_move_fen,
+                                        frontier_probe.selected_input_fen,
+                                        frontier_probe.pre_accept_input_fen,
+                                        frontier_probe.selector_last_stage,
+                                        frontier_probe.head_input_fen,
+                                        frontier_probe.head_accepted,
+                                        frontier_probe.top_root_fens,
+                                        shipping_probe.selected_input_fen,
+                                        shipping_probe.pre_accept_input_fen,
+                                        shipping_probe.selector_last_stage,
+                                        shipping_probe.head_input_fen,
+                                        shipping_probe.head_accepted,
+                                        shipping_probe.top_root_fens,
                                     )
                                 })
                                 .unwrap_or_else(|| "first_diff=none".to_string());
 
                                 println!(
-                                    "PRO_RELIABILITY_NONWIN duel={} repeat={} opening_index={} candidate_is_white={} opening={} candidate_result={} baseline_result={} candidate_final={} baseline_final={} {}",
+                                    "PRO_RELIABILITY_NONWIN duel={} repeat={} opening_index={} frontier_is_white={} opening={} frontier_result={} shipping_result={} frontier_final={} shipping_final={} {}",
                                     duel_label,
                                     repeat_index,
                                     game_index,
-                                    candidate_is_white,
+                                    frontier_is_white,
                                     opening_fen,
-                                    format_match_result(candidate_trace.result),
-                                    format_match_result(baseline_trace.result),
-                                    candidate_trace.final_fen,
-                                    baseline_trace.final_fen,
+                                    format_match_result(frontier_trace.result),
+                                    format_match_result(shipping_trace.result),
+                                    frontier_trace.final_fen,
+                                    shipping_trace.final_fen,
                                     detail,
                                 );
                                 printed += 1;
@@ -362,7 +358,7 @@ fn smart_automove_pro_reliability_hotspot_probe() {
         game: MonsGame,
         mode: SmartAutomovePreference,
         opening_book_driven: bool,
-        config_tweak: Option<fn(SmartSearchConfig) -> SmartSearchConfig>,
+        config_tweak: Option<fn(AutomoveSearchConfig) -> AutomoveSearchConfig>,
     }
 
     fn probe_case_from_fixture(label: &'static str, fixture: TriageFixture) -> ProbeCase {
@@ -545,24 +541,22 @@ fn smart_automove_pro_reliability_hotspot_probe() {
     }
 
     fn format_metric_delta(
-        candidate: &BTreeMap<&'static str, u64>,
-        baseline: &BTreeMap<&'static str, u64>,
+        frontier: &BTreeMap<&'static str, u64>,
+        shipping: &BTreeMap<&'static str, u64>,
     ) -> String {
-        candidate
+        frontier
             .iter()
-            .map(|(label, candidate_value)| {
-                let baseline_value = baseline.get(label).copied().unwrap_or_default();
-                let delta = *candidate_value as i64 - baseline_value as i64;
-                format!("{label}={candidate_value}/{baseline_value}({delta:+})")
+            .map(|(label, frontier_value)| {
+                let shipping_value = shipping.get(label).copied().unwrap_or_default();
+                let delta = *frontier_value as i64 - shipping_value as i64;
+                format!("{label}={frontier_value}/{shipping_value}({delta:+})")
             })
             .collect::<Vec<_>>()
             .join(" ")
     }
 
-    let candidate_profile = env_profile_name("SMART_PROBE_CANDIDATE_PROFILE")
-        .unwrap_or_else(|| "runtime_pro_turn_engine_v30".to_string());
-    let baseline_profile = env_profile_name("SMART_PROBE_BASELINE_PROFILE")
-        .unwrap_or_else(|| "runtime_current".to_string());
+    let frontier_profile = probe_frontier_profile_id();
+    let shipping_profile = probe_shipping_profile_id();
 
     let cases = vec![
         probe_case_from_fixture(
@@ -628,9 +622,9 @@ fn smart_automove_pro_reliability_hotspot_probe() {
     ];
 
     println!(
-        "pro reliability hotspot probe: candidate={} baseline={} positions={}",
-        candidate_profile,
-        baseline_profile,
+        "pro reliability hotspot probe: frontier={} shipping={} positions={}",
+        frontier_profile,
+        shipping_profile,
         cases.len()
     );
     for case in cases {
@@ -642,30 +636,27 @@ fn smart_automove_pro_reliability_hotspot_probe() {
                 "false"
             },
             || {
-                let candidate = run_probe_for_profile(candidate_profile.as_str(), &case);
-                let baseline = run_probe_for_profile(baseline_profile.as_str(), &case);
+                let frontier = run_probe_for_profile(frontier_profile.as_str(), &case);
+                let shipping = run_probe_for_profile(shipping_profile.as_str(), &case);
 
                 println!(
-                    "HOTSPOT label={} changed={} candidate_move={} baseline_move={} ms={:.2}/{:.2} selector(last_stage={}/{}) exact={} engine={} fen={}",
+                    "HOTSPOT label={} changed={} frontier_move={} shipping_move={} ms={:.2}/{:.2} selector(last_stage={}/{}) exact={} engine={} fen={}",
                     case.label,
-                    candidate.move_fen != baseline.move_fen,
-                    candidate.move_fen,
-                    baseline.move_fen,
-                    candidate.elapsed_ms,
-                    baseline.elapsed_ms,
-                    candidate.selector_diag.last_return_stage,
-                    baseline.selector_diag.last_return_stage,
-                    format_metric_delta(&exact_metrics(&candidate), &exact_metrics(&baseline)),
-                    format_metric_delta(&engine_metrics(&candidate), &engine_metrics(&baseline)),
+                    frontier.move_fen != shipping.move_fen,
+                    frontier.move_fen,
+                    shipping.move_fen,
+                    frontier.elapsed_ms,
+                    shipping.elapsed_ms,
+                    frontier.selector_diag.last_return_stage,
+                    shipping.selector_diag.last_return_stage,
+                    format_metric_delta(&exact_metrics(&frontier), &exact_metrics(&shipping)),
+                    format_metric_delta(&engine_metrics(&frontier), &engine_metrics(&shipping)),
                     case.game.fen(),
                 );
                 println!(
                     "HOTSPOT_SELECTOR label={} {}",
                     case.label,
-                    format_metric_delta(
-                        &selector_metrics(&candidate),
-                        &selector_metrics(&baseline)
-                    ),
+                    format_metric_delta(&selector_metrics(&frontier), &selector_metrics(&shipping)),
                 );
             },
         );
@@ -905,11 +896,8 @@ fn smart_automove_pro_root_advisor_trace_probe() {
                 "false"
             },
             || {
-                let configured_runtime = calibration_runtime_config(
-                    "runtime_pro_turn_engine_v30",
-                    &case.game,
-                    case.mode,
-                );
+                let configured_runtime =
+                    calibration_runtime_config("frontier_pro_v2_guarded", &case.game, case.mode);
                 let selected =
                     MonsGameModel::smart_search_best_inputs(&case.game, configured_runtime);
                 let decision = pro_v2_root_advisor_decision_snapshot()
@@ -972,10 +960,10 @@ fn smart_automove_pro_root_advisor_trace_probe() {
 }
 
 #[test]
-#[ignore = "diagnostic: inspect retained pro-triage churn fixtures for runtime_pro_turn_engine_v30"]
+#[ignore = "diagnostic: inspect retained pro-triage churn fixtures for frontier_pro_v2_guarded"]
 fn smart_automove_pro_triage_retained_churn_probe() {
-    let candidate_profile = "runtime_pro_turn_engine_v30";
-    let baseline_profile = "runtime_current";
+    let frontier_profile = "frontier_pro_v2_guarded";
+    let shipping_profile = "shipping_pro_search";
     let fixture_ids = [
         "primary_spirit_setup",
         "primary_pvs_sensitive_search",
@@ -993,15 +981,15 @@ fn smart_automove_pro_triage_retained_churn_probe() {
     ];
 
     println!(
-        "retained churn probe: candidate={} baseline={} fixtures={}",
-        candidate_profile,
-        baseline_profile,
+        "retained churn probe: frontier={} shipping={} fixtures={}",
+        frontier_profile,
+        shipping_profile,
         fixture_ids.len()
     );
     for fixture_id in fixture_ids {
         let fixture = primary_pro_fixture_by_id(fixture_id);
         with_env_override("SMART_USE_WHITE_OPENING_BOOK", "false", || {
-            for profile_name in [candidate_profile, baseline_profile] {
+            for profile_name in [frontier_profile, shipping_profile] {
                 clear_exact_state_analysis_cache();
                 clear_exact_query_diagnostics();
                 clear_turn_engine_plan_cache();
@@ -1027,11 +1015,11 @@ fn smart_automove_pro_triage_retained_churn_probe() {
                     .iter()
                     .position(|root| root.inputs == pre_accept_selected)
                     .unwrap_or(scored_roots.len());
-                let head_plan = if config.enable_turn_engine {
+                let head_plan = if config.enable_turn_engine_selector {
                     turn_engine_candidate_plan(
                         &fixture.game,
                         fixture.game.active_color,
-                        MonsGameModel::turn_engine_search_config_for_game(&fixture.game, config),
+                        MonsGameModel::turn_engine_config_for_game(&fixture.game, config),
                     )
                 } else {
                     None
@@ -1129,8 +1117,8 @@ fn smart_automove_pro_triage_retained_churn_probe() {
 }
 
 #[test]
-#[ignore = "diagnostic: inspect runtime-faithful forced-engine acceptance on retained churn fixtures"]
-fn smart_automove_pro_runtime_faithful_retained_churn_probe() {
+#[ignore = "diagnostic: inspect forced-turn-engine probe acceptance on retained churn fixtures"]
+fn smart_automove_pro_forced_turn_engine_retained_churn_probe() {
     let fixture_ids = [
         "primary_spirit_setup",
         "primary_pvs_sensitive_search",
@@ -1157,7 +1145,7 @@ fn smart_automove_pro_runtime_faithful_retained_churn_probe() {
 
         let (config, scored_roots, head_plan, forced_engine_inputs) =
             profile_runtime_scored_roots_with_forced_engine_inputs(
-                "runtime_pro_turn_engine_v30",
+                "frontier_pro_v2_guarded",
                 fixture.mode,
                 &fixture.game,
             );
@@ -1218,7 +1206,7 @@ fn smart_automove_pro_runtime_faithful_retained_churn_probe() {
         });
 
         println!(
-            "RUNTIME_FAITHFUL fixture={} forced_inputs={:?} pre_accept_rank={:?} pre_accept={} head_rank={:?} head={:?} accepted={} selected_root=\"{}\" head_root=\"{}\" normal_safety(selected=\"{}\" head=\"{}\")",
+            "FORCED_TURN_ENGINE_PROBE fixture={} forced_inputs={:?} pre_accept_rank={:?} pre_accept={} head_rank={:?} head={:?} accepted={} selected_root=\"{}\" head_root=\"{}\" normal_safety(selected=\"{}\" head=\"{}\")",
             fixture.id,
             forced_engine_inputs
                 .as_ref()

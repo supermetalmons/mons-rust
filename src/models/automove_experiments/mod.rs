@@ -6,7 +6,7 @@ use std::env;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
-type AutomoveSelector = fn(&MonsGame, SmartSearchConfig) -> Vec<Input>;
+type AutomoveSelector = fn(&MonsGame, AutomoveSearchConfig) -> Vec<Input>;
 
 const OPENING_RANDOM_PLIES_MAX: usize = 6;
 pub(super) const SMART_PRO_RELIABILITY_WIN_RATE_MIN: f64 = 0.90;
@@ -43,20 +43,25 @@ impl SearchBudget {
         self.label
     }
 
-    fn runtime_config_for_game(self, game: &MonsGame) -> SmartSearchConfig {
+    fn runtime_config_for_game(self, game: &MonsGame) -> AutomoveSearchConfig {
         if let Some(preference) = SmartAutomovePreference::from_api_value(self.label) {
             let hinted_context = if matches!(preference, SmartAutomovePreference::Pro)
                 && env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false)
             {
-                ProRuntimeContext::OpeningBookDriven
+                ShippingProContext::OpeningBookDriven
             } else {
-                ProRuntimeContext::Unknown
+                ShippingProContext::Unknown
             };
-            MonsGameModel::runtime_config_for_game_with_context(game, preference, hinted_context).0
+            MonsGameModel::shipping_search_config_for_game_with_context(
+                game,
+                preference,
+                hinted_context,
+            )
+            .0
         } else {
             MonsGameModel::with_runtime_scoring_weights(
                 game,
-                SmartSearchConfig::from_budget(self.depth, self.max_nodes).for_runtime(),
+                AutomoveSearchConfig::from_budget(self.depth, self.max_nodes).for_runtime(),
             )
         }
     }
@@ -88,8 +93,8 @@ struct MatchupStats {
 impl MatchupStats {
     fn record(&mut self, result: MatchResult) {
         match result {
-            MatchResult::CandidateWin => self.wins += 1,
-            MatchResult::OpponentWin => self.losses += 1,
+            MatchResult::ProfileAWin => self.wins += 1,
+            MatchResult::ProfileBWin => self.losses += 1,
             MatchResult::Draw => self.draws += 1,
         }
     }
@@ -129,36 +134,36 @@ impl MatchupStats {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 struct DuelTimingStats {
-    candidate_total_ms: f64,
-    baseline_total_ms: f64,
-    candidate_turns: usize,
-    baseline_turns: usize,
+    profile_a_total_ms: f64,
+    profile_b_total_ms: f64,
+    profile_a_turns: usize,
+    profile_b_turns: usize,
 }
 
 impl DuelTimingStats {
-    fn record_candidate_turn(&mut self, elapsed_ms: f64) {
-        self.candidate_total_ms += elapsed_ms;
-        self.candidate_turns += 1;
+    fn record_profile_a_turn(&mut self, elapsed_ms: f64) {
+        self.profile_a_total_ms += elapsed_ms;
+        self.profile_a_turns += 1;
     }
 
-    fn record_baseline_turn(&mut self, elapsed_ms: f64) {
-        self.baseline_total_ms += elapsed_ms;
-        self.baseline_turns += 1;
+    fn record_profile_b_turn(&mut self, elapsed_ms: f64) {
+        self.profile_b_total_ms += elapsed_ms;
+        self.profile_b_turns += 1;
     }
 
     fn merge(&mut self, other: DuelTimingStats) {
-        self.candidate_total_ms += other.candidate_total_ms;
-        self.baseline_total_ms += other.baseline_total_ms;
-        self.candidate_turns += other.candidate_turns;
-        self.baseline_turns += other.baseline_turns;
+        self.profile_a_total_ms += other.profile_a_total_ms;
+        self.profile_b_total_ms += other.profile_b_total_ms;
+        self.profile_a_turns += other.profile_a_turns;
+        self.profile_b_turns += other.profile_b_turns;
     }
 
-    fn candidate_avg_ms(&self) -> f64 {
-        self.candidate_total_ms / self.candidate_turns.max(1) as f64
+    fn profile_a_avg_ms(&self) -> f64 {
+        self.profile_a_total_ms / self.profile_a_turns.max(1) as f64
     }
 
-    fn baseline_avg_ms(&self) -> f64 {
-        self.baseline_total_ms / self.baseline_turns.max(1) as f64
+    fn profile_b_avg_ms(&self) -> f64 {
+        self.profile_b_total_ms / self.profile_b_turns.max(1) as f64
     }
 }
 
@@ -177,8 +182,8 @@ impl TimedMatchupStats {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MatchResult {
-    CandidateWin,
-    OpponentWin,
+    ProfileAWin,
+    ProfileBWin,
     Draw,
 }
 

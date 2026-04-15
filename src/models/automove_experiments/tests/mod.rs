@@ -10,6 +10,10 @@ use crate::models::automove_turn_engine::{
     turn_engine_candidate_plan, turn_engine_diagnostics_snapshot, TurnEngineConfig,
     TurnEngineDiagnostics,
 };
+use crate::models::mons_game_model::automove_runtime_variants::{
+    apply_frontier_pro_v2_guarded_config,
+    turn_engine_config_from_search_config as shared_turn_engine_config_from_search_config,
+};
 use crate::models::mons_game_model::{
     clear_turn_engine_selector_diagnostics, pro_v2_root_advisor_decision_snapshot,
     turn_engine_selector_diagnostics_snapshot, TurnEngineSelectorDiagnostics,
@@ -17,7 +21,7 @@ use crate::models::mons_game_model::{
 use std::env;
 
 fn stage1_cpu_budgets(profile_name: &str) -> Vec<SearchBudget> {
-    if profile_name.starts_with("runtime_pro_") {
+    if profile_name.starts_with("frontier_pro_") {
         return vec![pro_budget()];
     }
 
@@ -26,6 +30,29 @@ fn stage1_cpu_budgets(profile_name: &str) -> Vec<SearchBudget> {
         budgets.push(pro_budget());
     }
     budgets
+}
+
+fn assert_turn_engine_configs_match(left: TurnEngineConfig, right: TurnEngineConfig) {
+    assert_eq!(left.mode, right.mode);
+    assert_eq!(left.own_seed_cap, right.own_seed_cap);
+    assert_eq!(left.own_beam, right.own_beam);
+    assert_eq!(left.per_node_family_cap, right.per_node_family_cap);
+    assert_eq!(left.step_cap, right.step_cap);
+    assert_eq!(left.opponent_seed_cap, right.opponent_seed_cap);
+    assert_eq!(left.opponent_beam, right.opponent_beam);
+    assert_eq!(left.reply_seed_cap, right.reply_seed_cap);
+    assert_eq!(left.reply_beam, right.reply_beam);
+    assert_eq!(left.expansion_cap, right.expansion_cap);
+    assert_eq!(left.enable_spirit_family, right.enable_spirit_family);
+    assert!(std::ptr::eq(left.scoring_weights, right.scoring_weights));
+    assert_eq!(
+        left.allow_exact_static_evaluation,
+        right.allow_exact_static_evaluation
+    );
+    assert_eq!(
+        left.enable_lazy_oracle_score_window_projection,
+        right.enable_lazy_oracle_score_window_projection
+    );
 }
 
 fn stage1_cpu_ratio_limit(mode: &str) -> f64 {
@@ -101,7 +128,7 @@ fn calibration_runtime_config(
     profile_name: &str,
     game: &MonsGame,
     mode: SmartAutomovePreference,
-) -> SmartSearchConfig {
+) -> AutomoveSearchConfig {
     let base = SearchBudget::from_preference(mode).runtime_config_for_game(game);
     profile_runtime_config_for_name(profile_name, game, base).unwrap_or_else(|| {
         panic!(
@@ -111,24 +138,50 @@ fn calibration_runtime_config(
     })
 }
 
-fn calibration_turn_engine_config(config: SmartSearchConfig) -> TurnEngineConfig {
-    TurnEngineConfig {
-        mode: config.turn_engine_mode,
-        own_seed_cap: config.turn_engine_seed_cap.max(1),
-        own_beam: config.turn_engine_beam_width.max(1),
-        per_node_family_cap: config.turn_engine_per_node_family_cap.max(1),
-        step_cap: config.turn_engine_step_cap.max(1),
-        opponent_seed_cap: config.turn_engine_opponent_seed_cap.max(1),
-        opponent_beam: config.turn_engine_opponent_beam_width.max(1),
-        reply_seed_cap: config.turn_engine_reply_seed_cap.max(1),
-        reply_beam: config.turn_engine_reply_beam_width.max(1),
-        expansion_cap: config.turn_engine_expansion_cap.max(1),
-        enable_spirit_family: config.turn_engine_enable_spirit_family,
-        scoring_weights: config.scoring_weights,
-        allow_exact_static_evaluation: config.enable_static_exact_evaluation,
-        enable_lazy_oracle_score_window_projection: config
-            .enable_turn_engine_lazy_oracle_score_window_projection,
-    }
+fn calibration_turn_engine_config(config: AutomoveSearchConfig) -> TurnEngineConfig {
+    shared_turn_engine_config_from_search_config(config)
+}
+
+#[test]
+fn frontier_pro_v2_guarded_config_applies_expected_tuning() {
+    let game = MonsGame::new(false);
+    let base = MonsGameModel::with_game(game.clone())
+        .shipping_search_config_for_preference(SmartAutomovePreference::Pro);
+    let frontier = apply_frontier_pro_v2_guarded_config(base);
+
+    assert!(!frontier.enable_turn_head_rerank);
+    assert!(frontier.enable_turn_engine_selector);
+    assert_eq!(frontier.turn_engine_mode, TurnEngineMode::ProV2);
+    assert_eq!(frontier.turn_engine_seed_cap, 14);
+    assert_eq!(frontier.turn_engine_beam_width, 5);
+    assert_eq!(frontier.turn_engine_per_node_family_cap, 4);
+    assert_eq!(frontier.turn_engine_step_cap, 6);
+    assert_eq!(frontier.turn_engine_opponent_seed_cap, 6);
+    assert_eq!(frontier.turn_engine_opponent_beam_width, 2);
+    assert_eq!(frontier.turn_engine_reply_seed_cap, 3);
+    assert_eq!(frontier.turn_engine_reply_beam_width, 1);
+    assert_eq!(frontier.turn_engine_expansion_cap, 176);
+    assert!(frontier.turn_engine_enable_spirit_family);
+    assert_eq!(frontier.root_reply_risk_reply_limit, 24);
+    assert_eq!(frontier.root_reply_risk_node_share_bp, 2_000);
+    assert!(frontier.enable_turn_engine_low_budget_guard);
+    assert!(frontier.enable_turn_engine_mid_turn_tactical_guard);
+    assert!(frontier.enable_turn_engine_late_safe_mana_root_preference);
+}
+
+#[test]
+fn shared_turn_engine_projection_matches_model_and_harness_helpers() {
+    let game = MonsGame::new(false);
+    let config = apply_frontier_pro_v2_guarded_config(
+        MonsGameModel::with_game(game)
+            .shipping_search_config_for_preference(SmartAutomovePreference::Pro),
+    );
+    let shared = shared_turn_engine_config_from_search_config(config);
+    let model = MonsGameModel::turn_engine_config_from_search_config(config);
+    let harness = calibration_turn_engine_config(config);
+
+    assert_turn_engine_configs_match(shared, model);
+    assert_turn_engine_configs_match(shared, harness);
 }
 
 fn profile_decision_inputs(
@@ -170,7 +223,7 @@ fn profile_scored_roots(
     profile_name: &str,
     mode: SmartAutomovePreference,
     game: &MonsGame,
-) -> (SmartSearchConfig, Vec<RootEvaluation>) {
+) -> (AutomoveSearchConfig, Vec<RootEvaluation>) {
     let config = calibration_runtime_config(profile_name, game, mode);
     let perspective = game.active_color;
     let root_moves = MonsGameModel::ranked_root_moves(game, perspective, config);
@@ -334,15 +387,15 @@ struct DuelTraceTurn {
 struct DuelTraceGame {
     result: MatchResult,
     final_fen: String,
-    candidate_turns: Vec<DuelTraceTurn>,
+    profile_a_turns: Vec<DuelTraceTurn>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FirstDivergence {
     ply: usize,
     board_fen: String,
-    candidate_move_fen: String,
-    baseline_move_fen: String,
+    profile_a_move_fen: String,
+    profile_b_move_fen: String,
 }
 
 fn runtime_decision_probe(
@@ -446,7 +499,7 @@ fn pro_v2_legacy_selector_probe(
     mode: SmartAutomovePreference,
 ) -> (String, String, Vec<String>, Vec<String>) {
     let (mut config, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
-        "runtime_pro_turn_engine_v30",
+        "frontier_pro_v2_guarded",
         mode,
         game,
     );
@@ -488,7 +541,7 @@ fn pro_v2_legacy_selector_probe(
     )
 }
 
-fn assert_runtime_pro_turn_engine_v30_prefers_current_root_on_board(
+fn assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
     label: &str,
     fen: &str,
     expected_selected: &str,
@@ -497,7 +550,7 @@ fn assert_runtime_pro_turn_engine_v30_prefers_current_root_on_board(
 
     clear_turn_engine_selector_diagnostics();
     let probe = runtime_decision_probe(
-        "runtime_pro_turn_engine_v30",
+        "frontier_pro_v2_guarded",
         SmartAutomovePreference::Pro,
         &game,
     );
@@ -505,29 +558,29 @@ fn assert_runtime_pro_turn_engine_v30_prefers_current_root_on_board(
     let (legacy_selected, legacy_full_pool_selected, legacy_candidates, legacy_full_pool) =
         pro_v2_legacy_selector_probe(&game, SmartAutomovePreference::Pro);
     let (_, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
-        "runtime_pro_turn_engine_v30",
+        "frontier_pro_v2_guarded",
         SmartAutomovePreference::Pro,
         &game,
     );
-    let (_, current_scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
-        "runtime_current",
+    let (_, shipping_scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+        "shipping_pro_search",
         SmartAutomovePreference::Pro,
         &game,
     );
 
-    let current_selected =
-        profile_decision_move_fen("runtime_current", SmartAutomovePreference::Pro, &game);
-    let current_root = format_root_probe(
-        current_scored_roots
+    let shipping_selected =
+        profile_decision_move_fen("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+    let shipping_root = format_root_probe(
+        shipping_scored_roots
             .iter()
-            .find(|root| Input::fen_from_array(&root.inputs) == current_selected),
+            .find(|root| Input::fen_from_array(&root.inputs) == shipping_selected),
     );
-    let candidate_expected_root = format_root_probe(
+    let frontier_expected_root = format_root_probe(
         scored_roots
             .iter()
             .find(|root| Input::fen_from_array(&root.inputs) == expected_selected),
     );
-    let candidate_top_root_details = scored_roots
+    let frontier_top_root_details = scored_roots
         .iter()
         .take(8)
         .map(|root| {
@@ -538,7 +591,7 @@ fn assert_runtime_pro_turn_engine_v30_prefers_current_root_on_board(
             )
         })
         .collect::<Vec<_>>();
-    let current_top_root_details = current_scored_roots
+    let shipping_top_root_details = shipping_scored_roots
         .iter()
         .take(8)
         .map(|root| {
@@ -551,58 +604,58 @@ fn assert_runtime_pro_turn_engine_v30_prefers_current_root_on_board(
         .collect::<Vec<_>>();
 
     println!(
-        "{} current_selected={} current_root=\"{}\" candidate_expected_root=\"{}\" context={} legacy_selected={} legacy_full_pool_selected={} legacy_candidates={:?} legacy_full_pool={:?} candidate_top_root_details={:?} current_top_root_details={:?} probe={:?} advisor={:?}",
+        "{} shipping_selected={} shipping_root=\"{}\" frontier_expected_root=\"{}\" context={} legacy_selected={} legacy_full_pool_selected={} legacy_candidates={:?} legacy_full_pool={:?} frontier_top_root_details={:?} shipping_top_root_details={:?} probe={:?} advisor={:?}",
         label,
-        current_selected,
-        current_root,
-        candidate_expected_root,
+        shipping_selected,
+        shipping_root,
+        frontier_expected_root,
         exact_opportunity_context_probe(&game),
         legacy_selected,
         legacy_full_pool_selected,
         legacy_candidates,
         legacy_full_pool,
-        candidate_top_root_details,
-        current_top_root_details,
+        frontier_top_root_details,
+        shipping_top_root_details,
         probe,
         advisor
     );
-    assert_eq!(current_selected, expected_selected);
+    assert_eq!(shipping_selected, expected_selected);
     assert_eq!(probe.selected_input_fen, expected_selected);
 }
 
 fn profile_duel_turn_inputs(
     game: &MonsGame,
-    candidate_profile: &str,
-    opponent_profile: &str,
-    opponent_mode: SmartAutomovePreference,
-    candidate_is_white: bool,
+    profile_a: &str,
+    profile_b: &str,
+    profile_b_mode: SmartAutomovePreference,
+    profile_a_is_white: bool,
 ) -> Result<(bool, Vec<Input>), MatchResult> {
     if let Some(winner_color) = game.winner_color() {
-        return Err(match_result_from_winner(winner_color, candidate_is_white));
+        return Err(match_result_from_winner(winner_color, profile_a_is_white));
     }
 
-    let candidate_to_move = if candidate_is_white {
+    let profile_a_to_move = if profile_a_is_white {
         game.active_color == Color::White
     } else {
         game.active_color == Color::Black
     };
-    let (profile_name, mode) = if candidate_to_move {
-        (candidate_profile, SmartAutomovePreference::Pro)
+    let (profile_name, mode) = if profile_a_to_move {
+        (profile_a, SmartAutomovePreference::Pro)
     } else {
-        (opponent_profile, opponent_mode)
+        (profile_b, profile_b_mode)
     };
     Ok((
-        candidate_to_move,
+        profile_a_to_move,
         profile_runtime_inputs(profile_name, mode, game),
     ))
 }
 
 fn play_profile_duel_trace(
-    candidate_profile: &str,
-    opponent_profile: &str,
-    opponent_mode: SmartAutomovePreference,
+    profile_a: &str,
+    profile_b: &str,
+    profile_b_mode: SmartAutomovePreference,
     opening_fen: &str,
-    candidate_is_white: bool,
+    profile_a_is_white: bool,
     max_plies: usize,
 ) -> DuelTraceGame {
     let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
@@ -612,35 +665,35 @@ fn play_profile_duel_trace(
     clear_turn_engine_diagnostics();
     clear_turn_engine_selector_diagnostics();
 
-    let mut candidate_turns = Vec::new();
+    let mut profile_a_turns = Vec::new();
     for ply in 0..max_plies {
         if let Some(winner_color) = game.winner_color() {
             return DuelTraceGame {
-                result: match_result_from_winner(winner_color, candidate_is_white),
+                result: match_result_from_winner(winner_color, profile_a_is_white),
                 final_fen: game.fen(),
-                candidate_turns,
+                profile_a_turns,
             };
         }
 
         let board_fen = game.fen();
-        let (candidate_to_move, inputs) = match profile_duel_turn_inputs(
+        let (profile_a_to_move, inputs) = match profile_duel_turn_inputs(
             &game,
-            candidate_profile,
-            opponent_profile,
-            opponent_mode,
-            candidate_is_white,
+            profile_a,
+            profile_b,
+            profile_b_mode,
+            profile_a_is_white,
         ) {
             Ok(turn) => turn,
             Err(result) => {
                 return DuelTraceGame {
                     result,
                     final_fen: game.fen(),
-                    candidate_turns,
+                    profile_a_turns,
                 };
             }
         };
-        if candidate_to_move {
-            candidate_turns.push(DuelTraceTurn {
+        if profile_a_to_move {
+            profile_a_turns.push(DuelTraceTurn {
                 ply,
                 board_fen,
                 move_fen: Input::fen_from_array(&inputs),
@@ -649,55 +702,55 @@ fn play_profile_duel_trace(
 
         if inputs.is_empty() {
             return DuelTraceGame {
-                result: if candidate_to_move {
-                    MatchResult::OpponentWin
+                result: if profile_a_to_move {
+                    MatchResult::ProfileBWin
                 } else {
-                    MatchResult::CandidateWin
+                    MatchResult::ProfileAWin
                 },
                 final_fen: game.fen(),
-                candidate_turns,
+                profile_a_turns,
             };
         }
         if !matches!(game.process_input(inputs, false, false), Output::Events(_)) {
             return DuelTraceGame {
-                result: if candidate_to_move {
-                    MatchResult::OpponentWin
+                result: if profile_a_to_move {
+                    MatchResult::ProfileBWin
                 } else {
-                    MatchResult::CandidateWin
+                    MatchResult::ProfileAWin
                 },
                 final_fen: game.fen(),
-                candidate_turns,
+                profile_a_turns,
             };
         }
     }
 
     DuelTraceGame {
         result: match adjudicate_non_terminal_game(&game) {
-            Some(winner_color) => match_result_from_winner(winner_color, candidate_is_white),
+            Some(winner_color) => match_result_from_winner(winner_color, profile_a_is_white),
             None => MatchResult::Draw,
         },
         final_fen: game.fen(),
-        candidate_turns,
+        profile_a_turns,
     }
 }
 
 fn first_duel_trace_divergence(
-    candidate: &DuelTraceGame,
-    baseline: &DuelTraceGame,
+    profile_a: &DuelTraceGame,
+    profile_b: &DuelTraceGame,
 ) -> Option<FirstDivergence> {
-    candidate
-        .candidate_turns
+    profile_a
+        .profile_a_turns
         .iter()
-        .zip(baseline.candidate_turns.iter())
-        .find_map(|(candidate_turn, baseline_turn)| {
-            if candidate_turn.board_fen == baseline_turn.board_fen
-                && candidate_turn.move_fen != baseline_turn.move_fen
+        .zip(profile_b.profile_a_turns.iter())
+        .find_map(|(profile_a_turn, profile_b_turn)| {
+            if profile_a_turn.board_fen == profile_b_turn.board_fen
+                && profile_a_turn.move_fen != profile_b_turn.move_fen
             {
                 Some(FirstDivergence {
-                    ply: candidate_turn.ply,
-                    board_fen: candidate_turn.board_fen.clone(),
-                    candidate_move_fen: candidate_turn.move_fen.clone(),
-                    baseline_move_fen: baseline_turn.move_fen.clone(),
+                    ply: profile_a_turn.ply,
+                    board_fen: profile_a_turn.board_fen.clone(),
+                    profile_a_move_fen: profile_a_turn.move_fen.clone(),
+                    profile_b_move_fen: profile_b_turn.move_fen.clone(),
                 })
             } else {
                 None
@@ -707,16 +760,16 @@ fn first_duel_trace_divergence(
 
 fn match_result_points(result: MatchResult) -> i32 {
     match result {
-        MatchResult::CandidateWin => 2,
+        MatchResult::ProfileAWin => 2,
         MatchResult::Draw => 1,
-        MatchResult::OpponentWin => 0,
+        MatchResult::ProfileBWin => 0,
     }
 }
 
 fn format_match_result(result: MatchResult) -> &'static str {
     match result {
-        MatchResult::CandidateWin => "win",
-        MatchResult::OpponentWin => "loss",
+        MatchResult::ProfileAWin => "win",
+        MatchResult::ProfileBWin => "loss",
         MatchResult::Draw => "draw",
     }
 }
@@ -726,7 +779,7 @@ fn profile_runtime_scored_roots_with_forced_engine_inputs(
     mode: SmartAutomovePreference,
     game: &MonsGame,
 ) -> (
-    SmartSearchConfig,
+    AutomoveSearchConfig,
     Vec<RootEvaluation>,
     Option<TurnPlan>,
     Option<Vec<Input>>,
@@ -734,11 +787,11 @@ fn profile_runtime_scored_roots_with_forced_engine_inputs(
     let config = calibration_runtime_config(profile_name, game, mode);
     let perspective = game.active_color;
     let mut root_moves = MonsGameModel::ranked_root_moves(game, perspective, config);
-    let engine_plan = if config.enable_turn_engine {
+    let engine_plan = if config.enable_turn_engine_selector {
         turn_engine_candidate_plan(
             game,
             perspective,
-            MonsGameModel::turn_engine_search_config_for_game(game, config),
+            MonsGameModel::turn_engine_config_for_game(game, config),
         )
     } else {
         None
@@ -849,23 +902,23 @@ fn profile_runtime_scored_roots_with_forced_engine_inputs(
 struct ProReliabilityGateMetrics {
     win_rate: f64,
     confidence: f64,
-    candidate_avg_ms: f64,
+    frontier_avg_ms: f64,
 }
 
 fn pro_reliability_duel_passes(metrics: ProReliabilityGateMetrics) -> bool {
     metrics.win_rate >= SMART_PRO_RELIABILITY_WIN_RATE_MIN
         && metrics.confidence >= SMART_PRO_RELIABILITY_CONFIDENCE_MIN
-        && metrics.candidate_avg_ms <= SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX
+        && metrics.frontier_avg_ms <= SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX
 }
 
 fn pro_reliability_gate_passes(
-    vs_current_pro: ProReliabilityGateMetrics,
-    vs_current_normal: ProReliabilityGateMetrics,
-    vs_current_fast: ProReliabilityGateMetrics,
+    vs_shipping_pro: ProReliabilityGateMetrics,
+    vs_shipping_normal: ProReliabilityGateMetrics,
+    vs_shipping_fast: ProReliabilityGateMetrics,
 ) -> bool {
-    pro_reliability_duel_passes(vs_current_pro)
-        && pro_reliability_duel_passes(vs_current_normal)
-        && pro_reliability_duel_passes(vs_current_fast)
+    pro_reliability_duel_passes(vs_shipping_pro)
+        && pro_reliability_duel_passes(vs_shipping_normal)
+        && pro_reliability_duel_passes(vs_shipping_fast)
 }
 
 fn assert_pro_reliability_duel_passes(label: &str, metrics: ProReliabilityGateMetrics) {
@@ -884,10 +937,10 @@ fn assert_pro_reliability_duel_passes(label: &str, metrics: ProReliabilityGateMe
         SMART_PRO_RELIABILITY_CONFIDENCE_MIN
     );
     assert!(
-        metrics.candidate_avg_ms <= SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX,
-        "{} move time failed: candidate_avg_ms {:.2}ms > {:.2}ms",
+        metrics.frontier_avg_ms <= SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX,
+        "{} move time failed: frontier_avg_ms {:.2}ms > {:.2}ms",
         label,
-        metrics.candidate_avg_ms,
+        metrics.frontier_avg_ms,
         SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX
     );
 }
@@ -905,8 +958,8 @@ fn triage_surface_from_env() -> TriageSurface {
 }
 
 fn pro_signal_triage_passes(
-    candidate_profile_name: &str,
-    baseline_profile_name: &str,
+    frontier_profile_name: &str,
+    shipping_profile_name: &str,
     target_changed: usize,
     off_target_changed: usize,
 ) -> bool {
@@ -916,8 +969,8 @@ fn pro_signal_triage_passes(
 
     target_changed == 0
         && off_target_changed == 0
-        && candidate_profile_name == "runtime_pro_turn_engine_v30"
-        && baseline_profile_name == "runtime_current"
+        && frontier_profile_name == "frontier_pro_v2_guarded"
+        && shipping_profile_name == "shipping_pro_search"
 }
 
 const TRIAGE_TOP_ROOT_DIGEST_SIZE: usize = 5;
@@ -1037,42 +1090,42 @@ fn pro_triage_fixture_changed(
 
 fn compare_pro_triage_fixture_pack(
     surface: TriageSurface,
-    candidate_profile: &str,
-    candidate_selector: AutomoveSelector,
-    baseline_profile: &str,
-    baseline_selector: AutomoveSelector,
+    frontier_profile: &str,
+    frontier_selector: AutomoveSelector,
+    shipping_profile: &str,
+    shipping_selector: AutomoveSelector,
     fixtures: &[TriageFixture],
 ) -> usize {
     let mut changed = 0;
     for fixture in fixtures {
-        let candidate_snapshot =
-            pro_triage_fixture_snapshot(candidate_profile, candidate_selector, fixture);
-        let baseline_snapshot =
-            pro_triage_fixture_snapshot(baseline_profile, baseline_selector, fixture);
+        let frontier_snapshot =
+            pro_triage_fixture_snapshot(frontier_profile, frontier_selector, fixture);
+        let shipping_snapshot =
+            pro_triage_fixture_snapshot(shipping_profile, shipping_selector, fixture);
         let fixture_changed =
-            pro_triage_fixture_changed(surface, fixture, &candidate_snapshot, &baseline_snapshot);
+            pro_triage_fixture_changed(surface, fixture, &frontier_snapshot, &shipping_snapshot);
         if fixture_changed {
             changed += 1;
         }
         println!(
-            "pro triage surface={} fixture={} mode={} opening_book={} expected={:?} changed={} candidate_profile={} candidate={:?} baseline_profile={} baseline={:?}",
+            "pro triage surface={} fixture={} mode={} opening_book={} expected={:?} changed={} frontier_profile={} frontier={:?} shipping_profile={} shipping={:?}",
             surface.as_str(),
             fixture.id,
             fixture.mode.as_api_value(),
             fixture.opening_book_driven,
             fixture.expected_selected_input_fen,
             fixture_changed,
-            candidate_profile,
-            candidate_snapshot,
-            baseline_profile,
-            baseline_snapshot
+            frontier_profile,
+            frontier_snapshot,
+            shipping_profile,
+            shipping_snapshot
         );
     }
     println!(
-        "pro triage surface={} summary candidate={} baseline={} changed={}/{}",
+        "pro triage surface={} summary frontier={} shipping={} changed={}/{}",
         surface.as_str(),
-        candidate_profile,
-        baseline_profile,
+        frontier_profile,
+        shipping_profile,
         changed,
         fixtures.len()
     );
@@ -1095,15 +1148,15 @@ fn exact_lite_cache_totals() -> (usize, usize) {
 }
 
 fn assert_exact_lite_diagnostics_gate_if_enabled(
-    candidate_profile_name: &str,
-    candidate_selector: AutomoveSelector,
+    frontier_profile_name: &str,
+    frontier_selector: AutomoveSelector,
 ) {
-    let budgets = stage1_cpu_budgets(candidate_profile_name);
+    let budgets = stage1_cpu_budgets(frontier_profile_name);
     let positions = env_usize("SMART_EXACT_LITE_DIAGNOSTIC_POSITIONS")
         .unwrap_or(8)
         .max(1);
     let openings = generate_opening_fens_cached(
-        seed_for_pairing("exact_lite_diag", candidate_profile_name),
+        seed_for_pairing("exact_lite_diag", frontier_profile_name),
         positions,
     );
     let cache_repeats = env_usize("SMART_EXACT_LITE_CACHE_REPEATS")
@@ -1121,14 +1174,14 @@ fn assert_exact_lite_diagnostics_gate_if_enabled(
         for opening in openings.iter() {
             let game = MonsGame::from_fen(opening, false).expect("valid opening fen");
             let config = budget.runtime_config_for_game(&game);
-            let Some(limits) = profile_exact_lite_budgets(candidate_profile_name, &game, config)
+            let Some(limits) = profile_exact_lite_budgets(frontier_profile_name, &game, config)
             else {
                 continue;
             };
             any_exact_lite_budget = true;
             clear_exact_state_analysis_cache();
             clear_exact_query_diagnostics();
-            let _ = select_inputs_with_runtime_fallback(candidate_selector, &game, config);
+            let _ = select_inputs_with_runtime_fallback(frontier_selector, &game, config);
             let diagnostics = exact_query_diagnostics_snapshot();
             let root_calls = diagnostics.exact_turn_summary_builds as usize;
             let static_calls = (diagnostics.passive_strategic_summary_builds as usize).div_ceil(2);
@@ -1136,7 +1189,7 @@ fn assert_exact_lite_diagnostics_gate_if_enabled(
             assert!(
                 root_calls <= limits.root_call_budget,
                 "exact-lite root budget exceeded for profile={} mode={} opening={} calls={} budget={}",
-                candidate_profile_name,
+                frontier_profile_name,
                 budget.key(),
                 opening,
                 root_calls,
@@ -1145,7 +1198,7 @@ fn assert_exact_lite_diagnostics_gate_if_enabled(
             assert!(
                 static_calls <= limits.static_call_budget,
                 "exact-lite static budget exceeded for profile={} mode={} opening={} calls={} budget={}",
-                candidate_profile_name,
+                frontier_profile_name,
                 budget.key(),
                 opening,
                 static_calls,
@@ -1166,11 +1219,11 @@ fn assert_exact_lite_diagnostics_gate_if_enabled(
             for opening in openings.iter() {
                 let game = MonsGame::from_fen(opening, false).expect("valid opening fen");
                 let config = budget.runtime_config_for_game(&game);
-                if profile_exact_lite_budgets(candidate_profile_name, &game, config).is_none() {
+                if profile_exact_lite_budgets(frontier_profile_name, &game, config).is_none() {
                     continue;
                 }
                 budget_uses_exact_lite = true;
-                let _ = select_inputs_with_runtime_fallback(candidate_selector, &game, config);
+                let _ = select_inputs_with_runtime_fallback(frontier_selector, &game, config);
             }
         }
 
@@ -1185,7 +1238,7 @@ fn assert_exact_lite_diagnostics_gate_if_enabled(
         assert!(
             cache_hit_rate >= min_cache_hit_rate,
             "exact-lite cache-hit gate failed for profile={} mode={} rate={:.3} < {:.3} (hits={}, calls={})",
-            candidate_profile_name,
+            frontier_profile_name,
             budget.key(),
             cache_hit_rate,
             min_cache_hit_rate,
@@ -1198,14 +1251,14 @@ fn assert_exact_lite_diagnostics_gate_if_enabled(
 }
 
 fn assert_stage1_cpu_non_regression(
-    candidate_profile_name: &str,
-    candidate_selector: AutomoveSelector,
+    frontier_profile_name: &str,
+    frontier_selector: AutomoveSelector,
 ) {
-    let advisory_only = candidate_profile_name.starts_with("runtime_pro_")
+    let advisory_only = frontier_profile_name.starts_with("frontier_pro_")
         && env_bool("SMART_STAGE1_CPU_ADVISORY").unwrap_or(false);
-    let baseline_selector = profile_selector_from_name("runtime_current")
-        .expect("runtime_current selector should exist for stage-1 cpu gate");
-    let budgets = stage1_cpu_budgets(candidate_profile_name);
+    let shipping_selector = profile_selector_from_name("shipping_pro_search")
+        .expect("shipping_pro_search selector should exist for stage-1 cpu gate");
+    let budgets = stage1_cpu_budgets(frontier_profile_name);
     let repeats = stage1_cpu_measurement_repeats();
     let speed_positions = env_usize("SMART_STAGE1_SPEED_POSITIONS")
         .unwrap_or(16)
@@ -1214,34 +1267,34 @@ fn assert_stage1_cpu_non_regression(
     for seed_tag in stage1_seed_tags() {
         let speed_seed = seed_for_pairing(
             "stage1_cpu_gate",
-            format!("{}:{}", candidate_profile_name, seed_tag).as_str(),
+            format!("{}:{}", frontier_profile_name, seed_tag).as_str(),
         );
         let speed_openings = generate_opening_fens_cached(speed_seed, speed_positions);
         let mut ratio_samples = std::collections::HashMap::<&'static str, Vec<f64>>::new();
 
         for _ in 0..repeats {
-            let baseline_speed = profile_speed_by_mode_ms(
-                baseline_selector,
+            let shipping_speed = profile_speed_by_mode_ms(
+                shipping_selector,
                 speed_openings.as_slice(),
                 budgets.as_slice(),
             );
-            let candidate_speed = profile_speed_by_mode_ms(
-                candidate_selector,
+            let frontier_speed = profile_speed_by_mode_ms(
+                frontier_selector,
                 speed_openings.as_slice(),
                 budgets.as_slice(),
             );
-            let baseline_map = baseline_speed
+            let shipping_map = shipping_speed
                 .iter()
                 .map(|stat| (stat.budget.key(), stat.avg_ms))
                 .collect::<std::collections::HashMap<_, _>>();
 
-            for stat in candidate_speed {
-                let baseline_ms = baseline_map
+            for stat in frontier_speed {
+                let shipping_ms = shipping_map
                     .get(stat.budget.key())
                     .copied()
                     .unwrap_or(1.0)
                     .max(0.001);
-                let ratio = stat.avg_ms / baseline_ms;
+                let ratio = stat.avg_ms / shipping_ms;
                 ratio_samples
                     .entry(stat.budget.key())
                     .or_default()
@@ -1262,25 +1315,25 @@ fn assert_stage1_cpu_non_regression(
             let ratio = median_f64(samples.as_mut_slice());
             let ratio_limit = stage1_cpu_ratio_limit(mode);
             println!(
-                "stage-1 cpu seed={} mode={} candidate={} ratio={:.3} limit={:.3} samples={:?}",
-                seed_tag, mode, candidate_profile_name, ratio, ratio_limit, samples
+                "stage-1 cpu seed={} mode={} frontier={} shipping=shipping_pro_search ratio={:.3} limit={:.3} samples={:?}",
+                seed_tag, mode, frontier_profile_name, ratio, ratio_limit, samples
             );
             if advisory_only && ratio > ratio_limit {
                 println!(
-                    "stage-1 cpu advisory: seed={} mode={} candidate={} ratio={:.3} > {:.3}; continuing because SMART_STAGE1_CPU_ADVISORY=true for a Pro candidate",
+                    "stage-1 cpu advisory: seed={} mode={} frontier={} ratio={:.3} > {:.3}; continuing because SMART_STAGE1_CPU_ADVISORY=true for a frontier Pro profile",
                     seed_tag,
                     mode,
-                    candidate_profile_name,
+                    frontier_profile_name,
                     ratio,
                     ratio_limit
                 );
             } else {
                 assert!(
                     ratio <= ratio_limit,
-                    "stage-1 cpu gate failed for seed={} mode={} candidate={} baseline=runtime_current median_ratio={:.3} > {:.3} samples={:?}",
+                    "stage-1 cpu gate failed for seed={} mode={} frontier={} shipping=shipping_pro_search median_ratio={:.3} > {:.3} samples={:?}",
                     seed_tag,
                     mode,
-                    candidate_profile_name,
+                    frontier_profile_name,
                     ratio,
                     ratio_limit,
                     samples
@@ -1291,25 +1344,20 @@ fn assert_stage1_cpu_non_regression(
 }
 
 fn assert_runtime_preflight_if_required(
-    candidate_profile_name: &str,
-    candidate_selector: AutomoveSelector,
+    frontier_profile_name: &str,
+    frontier_selector: AutomoveSelector,
 ) {
     let skip_runtime_preflight = env_bool("SMART_SKIP_RUNTIME_PREFLIGHT").unwrap_or(false);
     if skip_runtime_preflight {
         println!(
-            "runtime preflight skipped for duel stage candidate={}",
-            candidate_profile_name
+            "runtime preflight skipped for duel stage frontier={}",
+            frontier_profile_name
         );
     }
     maybe_run_runtime_preflight_checks(
         skip_runtime_preflight,
-        || assert_stage1_cpu_non_regression(candidate_profile_name, candidate_selector),
-        || {
-            assert_exact_lite_diagnostics_gate_if_enabled(
-                candidate_profile_name,
-                candidate_selector,
-            )
-        },
+        || assert_stage1_cpu_non_regression(frontier_profile_name, frontier_selector),
+        || assert_exact_lite_diagnostics_gate_if_enabled(frontier_profile_name, frontier_selector),
     );
 }
 

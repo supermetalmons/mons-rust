@@ -4,10 +4,10 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 usage:
-  ./scripts/run-automove-canonical-loop.sh [--confirm] <candidate> [baseline]
+  ./scripts/run-automove-canonical-loop.sh [--confirm] <frontier> [shipping]
 
-default baseline:
-  runtime_current
+default shipping profile:
+  shipping_pro_search
 
 canonical order:
   1. guardrails
@@ -32,21 +32,21 @@ experiment_stamp_dir() {
 
 print_artifact_summary() {
   local status="$1"
-  local safe_candidate
-  safe_candidate="$(sanitize "${candidate}")"
-  local candidate_log_dir
-  candidate_log_dir="$(experiment_log_root)/${safe_candidate}"
+  local safe_frontier
+  safe_frontier="$(sanitize "${frontier}")"
+  local frontier_log_dir
+  frontier_log_dir="$(experiment_log_root)/${safe_frontier}"
   local stamp_path
-  stamp_path="$(experiment_stamp_dir)/runtime_preflight_${safe_candidate}.stamp"
+  stamp_path="$(experiment_stamp_dir)/runtime_preflight_${safe_frontier}.stamp"
 
   if [ "${status}" -eq 0 ]; then
-    echo "canonical loop complete for ${candidate}"
+    echo "canonical loop complete for ${frontier}"
   else
     echo "canonical loop stopped at stage: ${last_stage}" >&2
   fi
 
   echo "artifacts:"
-  echo "  candidate logs: ${candidate_log_dir}"
+  echo "  frontier logs: ${frontier_log_dir}"
   echo "  runtime-preflight stamp: ${stamp_path}"
 }
 
@@ -56,10 +56,10 @@ run_stage() {
   case "${stage_name}" in
     pro-triage)
       SMART_TRIAGE_SURFACE=primary_pro \
-        ./scripts/run-automove-experiment.sh "${stage_name}" "${candidate}" "${baseline}"
+        ./scripts/run-automove-experiment.sh "${stage_name}" "${frontier}" "${shipping}"
       ;;
     *)
-      ./scripts/run-automove-experiment.sh "${stage_name}" "${candidate}" "${baseline}"
+      ./scripts/run-automove-experiment.sh "${stage_name}" "${frontier}" "${shipping}"
       ;;
   esac
 }
@@ -87,8 +87,8 @@ if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
   exit 2
 fi
 
-candidate="$1"
-baseline="${2:-runtime_current}"
+frontier="$1"
+shipping="${2:-shipping_pro_search}"
 last_stage="startup"
 
 trap 'status=$?; print_artifact_summary "${status}"' EXIT

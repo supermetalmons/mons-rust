@@ -19,7 +19,7 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 
 - Several opening-book, early-white, and forced-prepass wrapper cuts were tried after promotion work stalled.
 - Some narrow guards survived as part of the shipping guarded path.
-- The broader lesson from this wave is negative: wrapper-only repairs were rarely promotable on their own and often failed to move the direct `vs current Normal` wall.
+- The broader lesson from this wave is negative: wrapper-only repairs were rarely promotable on their own and often failed to move the direct `vs shipping Normal` wall.
 
 ## Retained Seam-Mapping Wave
 
@@ -31,11 +31,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 
 - The winning structural change was the unified `ProV2` root advisor that centralized shortlist shaping, family preservation, omitted-root handling, macro-root injection, and conservative post-search verification.
 - The final promotable cut was narrow: on quiet early-black boards, advisor approval had to stop preferring a weaker plain-spirit sibling over a stronger own-setup `SpiritImpact` root already in the shortlist.
-- Durable outcome: `runtime_pro_turn_engine_v30` became promotable and `runtime_current` now ships that guarded path.
+- Durable outcome: `frontier_pro_v2_guarded` survived as the retained guarded frontier, but shipping stayed on the separate search-only path.
 
 ## Pro-Only Surface Cleanup Wave
 
-- After promotion, the active experiment surface was shrunk to two selectable profiles: `runtime_current` and `runtime_pro_turn_engine_v30`.
+- After promotion, the active experiment surface was shrunk to two selectable profiles: `shipping_pro_search` and `frontier_pro_v2_guarded`.
 - Calibration/reference profiles, curated-pool smoke plumbing, and compatibility-only docs were archived.
 - Legacy flat experiment logs and the old `target/experiment-runs/runtime_preflight_*.stamp` compatibility path were removed.
 - Durable outcome: future work starts from a smaller Pro-only workflow; archived profiles and stages stay documented here, not in the live runbook.

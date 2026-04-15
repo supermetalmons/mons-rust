@@ -24,24 +24,24 @@ sanitize() {
   printf '%s' "$1" | tr '[:space:]/:' '_' | tr -cd '[:alnum:]_.-'
 }
 
-candidate="${SMART_EXPERIMENT_CANDIDATE:-}"
+frontier="${SMART_EXPERIMENT_FRONTIER:-}"
 stage="${SMART_EXPERIMENT_STAGE:-}"
-baseline="${SMART_EXPERIMENT_BASELINE:-}"
+shipping="${SMART_EXPERIMENT_SHIPPING:-}"
 target_mode="${SMART_EXPERIMENT_TARGET_MODE:-}"
 
 timestamp="$(date +%Y%m%d-%H%M%S)"
 safe_name="$(sanitize "$run_name")"
 if [ -n "${SMART_EXPERIMENT_LOG_DIR:-}" ]; then
   log_dir="${SMART_EXPERIMENT_LOG_DIR}"
-  candidate_scope="$(basename "${log_dir}")"
+  profile_scope="$(basename "${log_dir}")"
 else
   log_root="${SMART_EXPERIMENT_LOG_ROOT:-target/experiment-runs}"
-  if [ -n "${candidate}" ]; then
-    candidate_scope="$(sanitize "${candidate}")"
+  if [ -n "${frontier}" ]; then
+    profile_scope="$(sanitize "${frontier}")"
   else
-    candidate_scope="misc"
+    profile_scope="misc"
   fi
-  log_dir="${log_root}/${candidate_scope}"
+  log_dir="${log_root}/${profile_scope}"
 fi
 mkdir -p "$log_dir"
 
@@ -57,10 +57,10 @@ echo >>"$cmd_path"
 start_epoch="$(date +%s)"
 echo "start_epoch=${start_epoch}" >"$meta_path"
 echo "run_name=${run_name}" >>"$meta_path"
-echo "candidate=${candidate}" >>"$meta_path"
-echo "candidate_scope=${candidate_scope}" >>"$meta_path"
+echo "frontier=${frontier}" >>"$meta_path"
+echo "profile_scope=${profile_scope}" >>"$meta_path"
 echo "stage=${stage}" >>"$meta_path"
-echo "baseline=${baseline}" >>"$meta_path"
+echo "shipping=${shipping}" >>"$meta_path"
 echo "target_mode=${target_mode}" >>"$meta_path"
 echo "log_path=${log_path}" >>"$meta_path"
 echo "cmd_path=${cmd_path}" >>"$meta_path"
@@ -81,10 +81,10 @@ end_epoch="$(date +%s)"
 
 echo "experiment run complete"
 echo "  run_name: ${run_name}"
-echo "  candidate: ${candidate:-<none>}"
-echo "  scope: ${candidate_scope}"
+echo "  frontier: ${frontier:-<none>}"
+echo "  scope: ${profile_scope}"
 echo "  stage: ${stage:-<none>}"
-echo "  baseline: ${baseline:-<none>}"
+echo "  shipping: ${shipping:-<none>}"
 echo "  target_mode: ${target_mode:-<none>}"
 echo "  command: $(cat "$cmd_path")"
 echo "  log: ${log_path}"

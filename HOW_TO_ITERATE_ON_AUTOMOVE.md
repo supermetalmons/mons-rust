@@ -7,24 +7,31 @@ Archived profile IDs and archived stages are invalid experiment targets. New wor
 ## Quick Reference
 
 1. Default to Pro work.
-2. Treat `runtime_current` as the shipping baseline.
-3. Treat `runtime_pro_turn_engine_v30` as the only retained Pro frontier.
+2. Treat `shipping_pro_search` as the shipping baseline.
+3. Treat `frontier_pro_v2_guarded` as the only retained Pro frontier.
 4. Use `./scripts/run-automove-canonical-loop.sh` for the default Pro loop.
 5. Clean logs and stamps at the end of the session.
 
 ## Retained Profile Surface
 
-- `runtime_current`
-- `runtime_pro_turn_engine_v30`
+- `shipping_pro_search`
+- `frontier_pro_v2_guarded`
 
 If a profile ID is not in this list, it is archive-only.
 
+## Glossary
+
+- `shipping`: the deployed Pro path, currently `shipping_pro_search`
+- `frontier`: the retained guarded ProV2 experiment path, currently `frontier_pro_v2_guarded`
+- `probe`: forced turn-engine diagnostics that inspect acceptance behavior without changing shipping
+
 ## Current Reality
 
-- Shipping Pro is `runtime_current`.
-- `runtime_current` delegates to the promoted guarded `runtime_pro_turn_engine_v30` path.
-- The guarded path intentionally keeps opening-book and early-white fallback guards.
-- Promotion proof is still direct evidence against `runtime_current`, not fixture churn or hotspot output.
+- Shipping Pro is `shipping_pro_search`.
+- `shipping_pro_search` is still search-only today and keeps the turn-engine selector disabled.
+- `frontier_pro_v2_guarded` is an offline guarded ProV2 frontier, not the shipping path.
+- Probe paths only inspect forced turn-engine behavior; they are diagnostics, not shipping behavior.
+- Promotion proof is still direct evidence against `shipping_pro_search`, not fixture churn or hotspot output.
 
 ## Canonical Pro Loop
 
@@ -34,7 +41,7 @@ CANDIDATE=<new_retained_pro_profile>
 ```
 
 Operator defaults:
-- Pro baseline: `runtime_current`
+- Shipping profile: `shipping_pro_search`
 - Default Pro triage surface inside the canonical loop: `SMART_TRIAGE_SURFACE=primary_pro`
 - Add `--confirm` when the smaller reliability gate already earned the spend:
   - `./scripts/run-automove-canonical-loop.sh --confirm "$CANDIDATE"`
@@ -46,9 +53,9 @@ Use `./scripts/run-automove-experiment.sh` only when you need one stage at a tim
 Examples:
 
 ```sh
-./scripts/run-automove-experiment.sh guardrails runtime_pro_turn_engine_v30
-SMART_TRIAGE_SURFACE=opening_reply ./scripts/run-automove-experiment.sh pro-triage runtime_pro_turn_engine_v30
-./scripts/run-automove-experiment.sh runtime-preflight runtime_pro_turn_engine_v30
+./scripts/run-automove-experiment.sh guardrails frontier_pro_v2_guarded
+SMART_TRIAGE_SURFACE=opening_reply ./scripts/run-automove-experiment.sh pro-triage frontier_pro_v2_guarded
+./scripts/run-automove-experiment.sh runtime-preflight frontier_pro_v2_guarded
 ```
 
 ## Gate Rules
@@ -62,7 +69,7 @@ SMART_TRIAGE_SURFACE=opening_reply ./scripts/run-automove-experiment.sh pro-tria
 
 - This is the cheap deterministic Pro surface gate.
 - For a real challenger, pass only when the target surface changes and off-target churn stays at `<= 1`.
-- For post-promotion maintenance on `runtime_pro_turn_engine_v30` vs `runtime_current`, a stable `0/0` result is valid because that retained frontier is intentionally shipping-equivalent.
+- For post-promotion maintenance on `frontier_pro_v2_guarded` vs `shipping_pro_search`, a stable `0/0` result is valid because that retained frontier is intentionally shipping-equivalent.
 - Kill the line if it only moves one stale seam or does not move the target surface at all.
 
 ### `runtime-preflight`
@@ -73,8 +80,8 @@ SMART_TRIAGE_SURFACE=opening_reply ./scripts/run-automove-experiment.sh pro-tria
 
 ### `pro-reliability`
 
-- This is the real duel gate: Pro vs current Pro, Normal, and Fast.
-- Pass only when all three runs complete with `win_rate >= 0.90`, `confidence >= 0.99`, and `candidate_avg_move_ms <= 700`.
+- This is the real duel gate: frontier Pro vs shipping Pro, Normal, and Fast.
+- Pass only when all three runs complete with `win_rate >= 0.90`, `confidence >= 0.99`, and frontier average move time `<= 700ms`.
 - Kill the line if the wall stays on old fragmented churn after a focused split.
 
 ### `pro-reliability-confirm`
@@ -90,7 +97,7 @@ Use diagnostics only after the canonical loop tells you what is missing.
 - `smart_automove_pro_reliability_duel_trace_probe`: replay duel seeds and inspect first divergences.
 - `smart_automove_pro_reliability_nonwin_trace_probe`: collapse non-win openings from a duel corpus.
 - `smart_automove_pro_triage_retained_churn_probe`: separate retained selector churn stories.
-- `smart_automove_pro_runtime_faithful_retained_churn_probe`: inspect runtime-faithful forced-engine acceptance on retained churn fixtures.
+- `smart_automove_pro_forced_turn_engine_retained_churn_probe`: inspect forced-turn-engine probe acceptance on retained churn fixtures.
 - `smart_automove_pro_root_advisor_trace_probe`: inspect unified ProV2 root-advisor decisions directly.
 
 All experiment probes run through the ignored test harness:
@@ -101,7 +108,7 @@ cargo test --release --lib <test_name> -- --ignored --nocapture
 
 ## Artifacts And Cleanup
 
-- Candidate logs: `target/experiment-runs/<candidate>/`
+- Selected-profile logs: `target/experiment-runs/<profile>/`
 - Workflow-only logs: `target/experiment-runs/misc/`
 - Runtime-preflight stamps: `target/experiment-stamps/`
 - Logs and stamps are disposable evidence, not durable memory.

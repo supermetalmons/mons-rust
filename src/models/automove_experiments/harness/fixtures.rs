@@ -31,7 +31,7 @@ pub(in super::super) struct TriageFixture {
     pub game: MonsGame,
     pub mode: SmartAutomovePreference,
     pub opening_book_driven: bool,
-    pub config_tweak: Option<fn(SmartSearchConfig) -> SmartSearchConfig>,
+    pub config_tweak: Option<fn(AutomoveSearchConfig) -> AutomoveSearchConfig>,
     pub expected_selected_input_fen: Option<&'static str>,
 }
 fn supermana_progress_triage_game() -> MonsGame {
@@ -282,8 +282,8 @@ fn derived_triage_game_after_white_opening_turn(start_fen: &str, label: &str) ->
     {
         let opening_inputs = MonsGameModel::white_first_turn_opening_next_inputs(&game)
             .or_else(|| {
-                let selector = profile_selector_from_name("runtime_current")
-                    .unwrap_or_else(|| panic!("{}: runtime_current selector available", label));
+                let selector = profile_selector_from_name("shipping_pro_search")
+                    .unwrap_or_else(|| panic!("{}: shipping_pro_search selector available", label));
                 let config = SearchBudget::from_preference(SmartAutomovePreference::Pro)
                     .runtime_config_for_game(&game);
                 Some(select_inputs_with_runtime_fallback(selector, &game, config))
@@ -340,8 +340,8 @@ fn black_reliability_opening_0_ba_black_turn_triage_game() -> MonsGame {
 }
 
 fn derived_live_triage_game_after_white_baseline_turn(start_fen: &str, label: &str) -> MonsGame {
-    let selector = profile_selector_from_name("runtime_current")
-        .unwrap_or_else(|| panic!("{}: runtime_current selector available", label));
+    let selector = profile_selector_from_name("shipping_pro_search")
+        .unwrap_or_else(|| panic!("{}: shipping_pro_search selector available", label));
     let mut game = MonsGame::from_fen(start_fen, false)
         .unwrap_or_else(|| panic!("{}: valid start fen", label));
     let start_turn = game.turn_number;
