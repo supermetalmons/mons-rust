@@ -1409,9 +1409,7 @@ pub(crate) fn exact_opportunity_context_with_search_hash(
                 .max(turn.spirit_assisted_denial_value),
             opponent_window_deny_gain,
             drainer_attack_available: can_attack_opponent_drainer_exact_with_hash(
-                game,
-                color,
-                board_hash,
+                game, color, board_hash,
             ),
             drainer_safety,
             safe_supermana_progress_steps: turn.safe_supermana_progress_steps,
@@ -2750,9 +2748,7 @@ fn build_exact_turn_summary(game: &MonsGame) -> ExactTurnSummary {
 
     ExactTurnSummary {
         can_attack_opponent_drainer: can_attack_opponent_drainer_exact_with_hash(
-            game,
-            color,
-            board_hash,
+            game, color, board_hash,
         ),
         safe_supermana_progress: safe_supermana_progress_steps.is_some(),
         safe_supermana_progress_steps,
@@ -3515,7 +3511,9 @@ fn exact_pickup_path_beats(
 
 #[inline]
 fn exact_pickup_path_metric(path: ExactDrainerPickupPath) -> i32 {
-    path.path_steps.saturating_mul(3).saturating_sub(path.mana_value)
+    path.path_steps
+        .saturating_mul(3)
+        .saturating_sub(path.mana_value)
 }
 
 #[inline]
@@ -3535,7 +3533,8 @@ fn exact_pickup_path_future_can_beat_best(
     let future_metric =
         exact_pickup_path_metric_from_total_moves(total_moves_lower_bound, max_mana_value);
     let best_metric = exact_pickup_path_metric(best);
-    future_metric < best_metric || (future_metric == best_metric && best.mana_value < max_mana_value)
+    future_metric < best_metric
+        || (future_metric == best_metric && best.mana_value < max_mana_value)
 }
 
 fn exact_update_drainer_pickup_window_candidate(
@@ -4080,10 +4079,13 @@ fn exact_distance_to_wanted_mana_steps_lower_bound(
     wanted: Mana,
     start: Location,
 ) -> Option<i32> {
-    board.occupied().filter_map(|(location, item)| match item {
-        Item::Mana { mana } if *mana == wanted => Some(start.distance(&location)),
-        _ => None,
-    }).min()
+    board
+        .occupied()
+        .filter_map(|(location, item)| match item {
+            Item::Mana { mana } if *mana == wanted => Some(start.distance(&location)),
+            _ => None,
+        })
+        .min()
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -8154,11 +8156,7 @@ mod tests {
 
         assert_eq!(
             drainer_immediate_threats_uncached(&board, Color::White, Location::new(6, 5)),
-            drainer_immediate_threats_uncached_baseline(
-                &board,
-                Color::White,
-                Location::new(6, 5),
-            )
+            drainer_immediate_threats_uncached_baseline(&board, Color::White, Location::new(6, 5),)
         );
     }
 
@@ -8375,7 +8373,11 @@ mod tests {
 
             assert_eq!(
                 exact_own_drainer_safety_score_with_hash(&board, board_hash, Color::White) > 0,
-                is_drainer_exactly_safe_next_turn_on_board(&board, Color::White, Location::new(6, 5)),
+                is_drainer_exactly_safe_next_turn_on_board(
+                    &board,
+                    Color::White,
+                    Location::new(6, 5)
+                ),
             );
         }
     }

@@ -3938,11 +3938,10 @@ mod tests {
                     }
                     let color_slot = color_slot(mon.color);
                     if let Item::MonWithMana { mana, .. } = item {
-                        summary.live_mana_carriers[color_slot]
-                            .push(ScoringManaCarrierEntry {
-                                location,
-                                mana: *mana,
-                            });
+                        summary.live_mana_carriers[color_slot].push(ScoringManaCarrierEntry {
+                            location,
+                            mana: *mana,
+                        });
                     }
                     summary.live_mon_locations[color_slot].push(location);
                     if mon.kind == MonKind::Drainer {
