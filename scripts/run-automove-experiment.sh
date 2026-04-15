@@ -127,7 +127,6 @@ require_fresh_preflight_stamp() {
     "src/models/mons_game.rs"
     "src/models/scoring.rs"
     "src/models/automove_exact.rs"
-    "src/models/automove_turn_planner.rs"
     "src/models/automove_turn_engine.rs"
     "src/models/mons_game_model.rs"
     "src/models/automove_experiments/profiles.rs"

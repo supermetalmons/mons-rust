@@ -38,12 +38,12 @@ fn runtime_pro_turn_engine_v30_profile_prefers_current_white_three_move_opening_
 }
 
 #[test]
-fn runtime_pro_turn_engine_v30_profile_keeps_current_planner_on_engine_disabled_opening() {
+fn runtime_pro_turn_engine_v30_profile_keeps_current_search_path_on_engine_disabled_opening() {
     let game = MonsGame::from_fen(
         "0 0 w 0 0 2 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n04E0xn01D0xn04/n04A0xn01S0xY0xn03",
         false,
     )
-    .expect("engine-disabled opening planner fen should be valid");
+    .expect("engine-disabled opening search-path fen should be valid");
     clear_exact_state_analysis_cache();
     clear_turn_engine_plan_cache();
     assert_eq!(

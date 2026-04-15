@@ -88,7 +88,7 @@ fn configure_runtime_pro_turn_engine_v30(config: SmartSearchConfig) -> SmartSear
     if runtime.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
         && runtime.enable_normal_root_safety_deep_floor
     {
-        runtime.enable_turn_opportunity_planner = false;
+        runtime.enable_turn_head_rerank = false;
         runtime.enable_turn_engine = true;
         runtime.turn_engine_mode = TurnEngineMode::ProV2;
         runtime.turn_engine_seed_cap = 14;

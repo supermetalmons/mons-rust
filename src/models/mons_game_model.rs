@@ -29,7 +29,7 @@ enum ProRuntimeContext {
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TurnPlannerInjectedRootAcceptance {
+enum TurnEngineRootInjectionAcceptance {
     Accepted,
     RejectedTopWins,
     RejectedCandidateUnsafe,
@@ -39,7 +39,7 @@ enum TurnPlannerInjectedRootAcceptance {
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TurnPlannerEmergencyInjectedRootAcceptance {
+enum TurnEngineEmergencyRootInjectionAcceptance {
     Accepted,
     RejectedTopWins,
     RejectedIntroducedImmediateLoss,
@@ -50,14 +50,14 @@ enum TurnPlannerEmergencyInjectedRootAcceptance {
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TurnPlannerChoiceAcceptance {
+enum TurnEngineRerankOverrideAcceptance {
     Accepted,
-    Rejected(TurnPlannerChoiceRejectReason),
+    Rejected(TurnEngineRerankOverrideRejectReason),
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TurnPlannerInjectedRootAttemptOutcome {
+enum TurnEngineRootInjectionAttemptOutcome {
     Accepted,
     RejectedBuild,
     RejectedEmergencyGuard,
@@ -73,7 +73,7 @@ enum TurnPlannerInjectedRootAttemptOutcome {
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TurnPlannerChoiceAttemptOutcome {
+enum TurnEngineRerankOverrideAttemptOutcome {
     NoPlan,
     Accepted,
     RejectedAcceptance,
@@ -81,7 +81,7 @@ enum TurnPlannerChoiceAttemptOutcome {
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TurnPlannerChoiceRejectReason {
+enum TurnEngineRerankOverrideRejectReason {
     NotInRoot,
     MissingTop,
     TopNotTacticalOrUnsafe,
@@ -94,7 +94,7 @@ enum TurnPlannerChoiceRejectReason {
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Debug, Clone, Copy, Default)]
-struct TurnPlannerDiagnostics {
+struct TurnEngineRootSelectionDiagnostics {
     injected_root_attempts: usize,
     injected_root_accepts: usize,
     injected_root_candidates_seen: usize,
@@ -109,63 +109,67 @@ struct TurnPlannerDiagnostics {
     injected_root_reject_candidate_unsafe: usize,
     injected_root_reject_no_tactical_signal: usize,
     injected_root_reject_heuristic_gap: usize,
-    planner_choice_no_plan: usize,
-    planner_choice_attempts: usize,
-    planner_choice_accepts: usize,
-    planner_choice_rejects: usize,
-    planner_choice_reject_not_in_root: usize,
-    planner_choice_reject_missing_top: usize,
-    planner_choice_reject_top_not_tactical_or_unsafe: usize,
-    planner_choice_reject_top_wins: usize,
-    planner_choice_reject_candidate_unsafe: usize,
-    planner_choice_reject_progress_gate: usize,
-    planner_choice_reject_tactical_gate: usize,
-    planner_choice_reject_safety_progress_gate: usize,
+    rerank_override_no_plan: usize,
+    rerank_override_attempts: usize,
+    rerank_override_accepts: usize,
+    rerank_override_rejects: usize,
+    rerank_override_reject_not_in_root: usize,
+    rerank_override_reject_missing_top: usize,
+    rerank_override_reject_top_not_tactical_or_unsafe: usize,
+    rerank_override_reject_top_wins: usize,
+    rerank_override_reject_candidate_unsafe: usize,
+    rerank_override_reject_progress_gate: usize,
+    rerank_override_reject_tactical_gate: usize,
+    rerank_override_reject_safety_progress_gate: usize,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
 thread_local! {
-    static TURN_PLANNER_DIAGNOSTICS: std::cell::RefCell<TurnPlannerDiagnostics> =
-        std::cell::RefCell::new(TurnPlannerDiagnostics::default());
+    static TURN_ENGINE_ROOT_SELECTION_DIAGNOSTICS: std::cell::RefCell<TurnEngineRootSelectionDiagnostics> =
+        std::cell::RefCell::new(TurnEngineRootSelectionDiagnostics::default());
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-fn clear_turn_planner_diagnostics() {
-    TURN_PLANNER_DIAGNOSTICS.with(|diagnostics| {
-        *diagnostics.borrow_mut() = TurnPlannerDiagnostics::default();
+fn clear_turn_engine_root_selection_diagnostics() {
+    TURN_ENGINE_ROOT_SELECTION_DIAGNOSTICS.with(|diagnostics| {
+        *diagnostics.borrow_mut() = TurnEngineRootSelectionDiagnostics::default();
     });
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-fn turn_planner_diagnostics_snapshot() -> TurnPlannerDiagnostics {
-    TURN_PLANNER_DIAGNOSTICS.with(|diagnostics| *diagnostics.borrow())
+fn turn_engine_root_selection_diagnostics_snapshot() -> TurnEngineRootSelectionDiagnostics {
+    TURN_ENGINE_ROOT_SELECTION_DIAGNOSTICS.with(|diagnostics| *diagnostics.borrow())
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
 #[inline]
-fn update_turn_planner_diagnostics(update: impl FnOnce(&mut TurnPlannerDiagnostics)) {
-    TURN_PLANNER_DIAGNOSTICS.with(|diagnostics| update(&mut diagnostics.borrow_mut()));
+fn update_turn_engine_root_selection_diagnostics(
+    update: impl FnOnce(&mut TurnEngineRootSelectionDiagnostics),
+) {
+    TURN_ENGINE_ROOT_SELECTION_DIAGNOSTICS.with(|diagnostics| {
+        update(&mut diagnostics.borrow_mut())
+    });
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-fn record_turn_planner_injected_root_attempt(outcome: TurnPlannerInjectedRootAttemptOutcome) {
-    update_turn_planner_diagnostics(|diagnostics| {
+fn record_turn_engine_root_injection_attempt(outcome: TurnEngineRootInjectionAttemptOutcome) {
+    update_turn_engine_root_selection_diagnostics(|diagnostics| {
         diagnostics.injected_root_attempts = diagnostics.injected_root_attempts.saturating_add(1);
         match outcome {
-            TurnPlannerInjectedRootAttemptOutcome::Accepted => {
+            TurnEngineRootInjectionAttemptOutcome::Accepted => {
                 diagnostics.injected_root_accepts =
                     diagnostics.injected_root_accepts.saturating_add(1);
             }
-            TurnPlannerInjectedRootAttemptOutcome::RejectedBuild => {
+            TurnEngineRootInjectionAttemptOutcome::RejectedBuild => {
                 diagnostics.injected_root_reject_build =
                     diagnostics.injected_root_reject_build.saturating_add(1);
             }
-            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyGuard => {
+            TurnEngineRootInjectionAttemptOutcome::RejectedEmergencyGuard => {
                 diagnostics.injected_root_reject_emergency_guard = diagnostics
                     .injected_root_reject_emergency_guard
                     .saturating_add(1);
             }
-            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyIntroducedImmediateLoss => {
+            TurnEngineRootInjectionAttemptOutcome::RejectedEmergencyIntroducedImmediateLoss => {
                 diagnostics.injected_root_reject_emergency_guard = diagnostics
                     .injected_root_reject_emergency_guard
                     .saturating_add(1);
@@ -173,7 +177,7 @@ fn record_turn_planner_injected_root_attempt(outcome: TurnPlannerInjectedRootAtt
                     .injected_root_reject_emergency_introduced_loss
                     .saturating_add(1);
             }
-            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyNoCrisisSignal => {
+            TurnEngineRootInjectionAttemptOutcome::RejectedEmergencyNoCrisisSignal => {
                 diagnostics.injected_root_reject_emergency_guard = diagnostics
                     .injected_root_reject_emergency_guard
                     .saturating_add(1);
@@ -181,7 +185,7 @@ fn record_turn_planner_injected_root_attempt(outcome: TurnPlannerInjectedRootAtt
                     .injected_root_reject_emergency_no_crisis_signal
                     .saturating_add(1);
             }
-            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyManaHandoff => {
+            TurnEngineRootInjectionAttemptOutcome::RejectedEmergencyManaHandoff => {
                 diagnostics.injected_root_reject_emergency_guard = diagnostics
                     .injected_root_reject_emergency_guard
                     .saturating_add(1);
@@ -189,7 +193,7 @@ fn record_turn_planner_injected_root_attempt(outcome: TurnPlannerInjectedRootAtt
                     .injected_root_reject_emergency_mana_handoff
                     .saturating_add(1);
             }
-            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyDrainerUnsafe => {
+            TurnEngineRootInjectionAttemptOutcome::RejectedEmergencyDrainerUnsafe => {
                 diagnostics.injected_root_reject_emergency_guard = diagnostics
                     .injected_root_reject_emergency_guard
                     .saturating_add(1);
@@ -197,21 +201,21 @@ fn record_turn_planner_injected_root_attempt(outcome: TurnPlannerInjectedRootAtt
                     .injected_root_reject_emergency_drainer_unsafe
                     .saturating_add(1);
             }
-            TurnPlannerInjectedRootAttemptOutcome::RejectedTopWins => {
+            TurnEngineRootInjectionAttemptOutcome::RejectedTopWins => {
                 diagnostics.injected_root_reject_top_wins =
                     diagnostics.injected_root_reject_top_wins.saturating_add(1);
             }
-            TurnPlannerInjectedRootAttemptOutcome::RejectedCandidateUnsafe => {
+            TurnEngineRootInjectionAttemptOutcome::RejectedCandidateUnsafe => {
                 diagnostics.injected_root_reject_candidate_unsafe = diagnostics
                     .injected_root_reject_candidate_unsafe
                     .saturating_add(1);
             }
-            TurnPlannerInjectedRootAttemptOutcome::RejectedNoTacticalSignal => {
+            TurnEngineRootInjectionAttemptOutcome::RejectedNoTacticalSignal => {
                 diagnostics.injected_root_reject_no_tactical_signal = diagnostics
                     .injected_root_reject_no_tactical_signal
                     .saturating_add(1);
             }
-            TurnPlannerInjectedRootAttemptOutcome::RejectedHeuristicGap => {
+            TurnEngineRootInjectionAttemptOutcome::RejectedHeuristicGap => {
                 diagnostics.injected_root_reject_heuristic_gap = diagnostics
                     .injected_root_reject_heuristic_gap
                     .saturating_add(1);
@@ -221,8 +225,8 @@ fn record_turn_planner_injected_root_attempt(outcome: TurnPlannerInjectedRootAtt
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-fn record_turn_planner_injected_root_candidates(count: usize) {
-    update_turn_planner_diagnostics(|diagnostics| {
+fn record_turn_engine_root_injection_candidates(count: usize) {
+    update_turn_engine_root_selection_diagnostics(|diagnostics| {
         diagnostics.injected_root_candidates_seen = diagnostics
             .injected_root_candidates_seen
             .saturating_add(count);
@@ -230,82 +234,82 @@ fn record_turn_planner_injected_root_candidates(count: usize) {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-fn record_turn_planner_injected_root_duplicate() {
-    update_turn_planner_diagnostics(|diagnostics| {
+fn record_turn_engine_root_injection_duplicate() {
+    update_turn_engine_root_selection_diagnostics(|diagnostics| {
         diagnostics.injected_root_duplicates =
             diagnostics.injected_root_duplicates.saturating_add(1);
     });
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-fn record_turn_planner_choice_attempt(outcome: TurnPlannerChoiceAttemptOutcome) {
-    update_turn_planner_diagnostics(|diagnostics| match outcome {
-        TurnPlannerChoiceAttemptOutcome::NoPlan => {
-            diagnostics.planner_choice_no_plan =
-                diagnostics.planner_choice_no_plan.saturating_add(1);
+fn record_turn_engine_rerank_override_attempt(outcome: TurnEngineRerankOverrideAttemptOutcome) {
+    update_turn_engine_root_selection_diagnostics(|diagnostics| match outcome {
+        TurnEngineRerankOverrideAttemptOutcome::NoPlan => {
+            diagnostics.rerank_override_no_plan =
+                diagnostics.rerank_override_no_plan.saturating_add(1);
         }
-        TurnPlannerChoiceAttemptOutcome::Accepted => {
-            diagnostics.planner_choice_attempts =
-                diagnostics.planner_choice_attempts.saturating_add(1);
-            diagnostics.planner_choice_accepts =
-                diagnostics.planner_choice_accepts.saturating_add(1);
+        TurnEngineRerankOverrideAttemptOutcome::Accepted => {
+            diagnostics.rerank_override_attempts =
+                diagnostics.rerank_override_attempts.saturating_add(1);
+            diagnostics.rerank_override_accepts =
+                diagnostics.rerank_override_accepts.saturating_add(1);
         }
-        TurnPlannerChoiceAttemptOutcome::RejectedAcceptance => {
-            diagnostics.planner_choice_attempts =
-                diagnostics.planner_choice_attempts.saturating_add(1);
-            diagnostics.planner_choice_rejects =
-                diagnostics.planner_choice_rejects.saturating_add(1);
-        }
-    });
-}
-
-#[cfg(any(target_arch = "wasm32", test))]
-fn record_turn_planner_choice_reject_reason(reason: TurnPlannerChoiceRejectReason) {
-    update_turn_planner_diagnostics(|diagnostics| match reason {
-        TurnPlannerChoiceRejectReason::NotInRoot => {
-            diagnostics.planner_choice_reject_not_in_root = diagnostics
-                .planner_choice_reject_not_in_root
-                .saturating_add(1);
-        }
-        TurnPlannerChoiceRejectReason::MissingTop => {
-            diagnostics.planner_choice_reject_missing_top = diagnostics
-                .planner_choice_reject_missing_top
-                .saturating_add(1);
-        }
-        TurnPlannerChoiceRejectReason::TopNotTacticalOrUnsafe => {
-            diagnostics.planner_choice_reject_top_not_tactical_or_unsafe = diagnostics
-                .planner_choice_reject_top_not_tactical_or_unsafe
-                .saturating_add(1);
-        }
-        TurnPlannerChoiceRejectReason::TopWins => {
-            diagnostics.planner_choice_reject_top_wins =
-                diagnostics.planner_choice_reject_top_wins.saturating_add(1);
-        }
-        TurnPlannerChoiceRejectReason::CandidateUnsafe => {
-            diagnostics.planner_choice_reject_candidate_unsafe = diagnostics
-                .planner_choice_reject_candidate_unsafe
-                .saturating_add(1);
-        }
-        TurnPlannerChoiceRejectReason::ProgressGate => {
-            diagnostics.planner_choice_reject_progress_gate = diagnostics
-                .planner_choice_reject_progress_gate
-                .saturating_add(1);
-        }
-        TurnPlannerChoiceRejectReason::TacticalGate => {
-            diagnostics.planner_choice_reject_tactical_gate = diagnostics
-                .planner_choice_reject_tactical_gate
-                .saturating_add(1);
-        }
-        TurnPlannerChoiceRejectReason::SafetyProgressGate => {
-            diagnostics.planner_choice_reject_safety_progress_gate = diagnostics
-                .planner_choice_reject_safety_progress_gate
-                .saturating_add(1);
+        TurnEngineRerankOverrideAttemptOutcome::RejectedAcceptance => {
+            diagnostics.rerank_override_attempts =
+                diagnostics.rerank_override_attempts.saturating_add(1);
+            diagnostics.rerank_override_rejects =
+                diagnostics.rerank_override_rejects.saturating_add(1);
         }
     });
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-fn planner_tactical_emergency_state(game: &MonsGame, perspective: Color) -> bool {
+fn record_turn_engine_rerank_override_reject_reason(reason: TurnEngineRerankOverrideRejectReason) {
+    update_turn_engine_root_selection_diagnostics(|diagnostics| match reason {
+        TurnEngineRerankOverrideRejectReason::NotInRoot => {
+            diagnostics.rerank_override_reject_not_in_root = diagnostics
+                .rerank_override_reject_not_in_root
+                .saturating_add(1);
+        }
+        TurnEngineRerankOverrideRejectReason::MissingTop => {
+            diagnostics.rerank_override_reject_missing_top = diagnostics
+                .rerank_override_reject_missing_top
+                .saturating_add(1);
+        }
+        TurnEngineRerankOverrideRejectReason::TopNotTacticalOrUnsafe => {
+            diagnostics.rerank_override_reject_top_not_tactical_or_unsafe = diagnostics
+                .rerank_override_reject_top_not_tactical_or_unsafe
+                .saturating_add(1);
+        }
+        TurnEngineRerankOverrideRejectReason::TopWins => {
+            diagnostics.rerank_override_reject_top_wins =
+                diagnostics.rerank_override_reject_top_wins.saturating_add(1);
+        }
+        TurnEngineRerankOverrideRejectReason::CandidateUnsafe => {
+            diagnostics.rerank_override_reject_candidate_unsafe = diagnostics
+                .rerank_override_reject_candidate_unsafe
+                .saturating_add(1);
+        }
+        TurnEngineRerankOverrideRejectReason::ProgressGate => {
+            diagnostics.rerank_override_reject_progress_gate = diagnostics
+                .rerank_override_reject_progress_gate
+                .saturating_add(1);
+        }
+        TurnEngineRerankOverrideRejectReason::TacticalGate => {
+            diagnostics.rerank_override_reject_tactical_gate = diagnostics
+                .rerank_override_reject_tactical_gate
+                .saturating_add(1);
+        }
+        TurnEngineRerankOverrideRejectReason::SafetyProgressGate => {
+            diagnostics.rerank_override_reject_safety_progress_gate = diagnostics
+                .rerank_override_reject_safety_progress_gate
+                .saturating_add(1);
+        }
+    });
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn turn_engine_root_injection_emergency_state(game: &MonsGame, perspective: Color) -> bool {
     if turn_engine_opponent_can_win_immediately(game, perspective) {
         return true;
     }
@@ -1299,7 +1303,7 @@ pub(crate) struct SmartSearchConfig {
     enable_root_exact_tactics: bool,
     enable_child_exact_tactics: bool,
     enable_static_exact_evaluation: bool,
-    enable_turn_opportunity_planner: bool,
+    enable_turn_head_rerank: bool,
     enable_turn_engine: bool,
     enable_turn_engine_eligibility_guard: bool,
     enable_turn_engine_low_budget_guard: bool,
@@ -1321,12 +1325,12 @@ pub(crate) struct SmartSearchConfig {
     turn_engine_reply_beam_width: usize,
     turn_engine_expansion_cap: usize,
     turn_engine_enable_spirit_family: bool,
-    enable_turn_planner_intent_root_injection: bool,
-    turn_planner_intent_root_injection_limit: usize,
-    turn_planner_intent_root_max_heuristic_gap: i32,
-    turn_planner_intent_root_emergency_only: bool,
-    enable_turn_planner_targeted_exact_turn_summary_memo: bool,
-    enable_turn_planner_targeted_score_window_narrowing: bool,
+    enable_turn_engine_root_injection: bool,
+    turn_engine_root_injection_limit: usize,
+    turn_engine_root_max_heuristic_gap: i32,
+    turn_engine_root_injection_emergency_only: bool,
+    enable_targeted_exact_turn_summary_memo: bool,
+    enable_targeted_score_window_narrowing: bool,
     enable_exact_lite_progress_checks: bool,
     enable_exact_lite_spirit_window_checks: bool,
     exact_lite_root_call_budget: usize,
@@ -1652,7 +1656,7 @@ impl SmartSearchConfig {
             enable_root_exact_tactics: true,
             enable_child_exact_tactics: true,
             enable_static_exact_evaluation: true,
-            enable_turn_opportunity_planner: false,
+            enable_turn_head_rerank: false,
             enable_turn_engine: false,
             enable_turn_engine_eligibility_guard: false,
             enable_turn_engine_low_budget_guard: false,
@@ -1674,12 +1678,12 @@ impl SmartSearchConfig {
             turn_engine_reply_beam_width: 0,
             turn_engine_expansion_cap: 0,
             turn_engine_enable_spirit_family: false,
-            enable_turn_planner_intent_root_injection: false,
-            turn_planner_intent_root_injection_limit: 0,
-            turn_planner_intent_root_max_heuristic_gap: 0,
-            turn_planner_intent_root_emergency_only: false,
-            enable_turn_planner_targeted_exact_turn_summary_memo: false,
-            enable_turn_planner_targeted_score_window_narrowing: false,
+            enable_turn_engine_root_injection: false,
+            turn_engine_root_injection_limit: 0,
+            turn_engine_root_max_heuristic_gap: 0,
+            turn_engine_root_injection_emergency_only: false,
+            enable_targeted_exact_turn_summary_memo: false,
+            enable_targeted_score_window_narrowing: false,
             enable_exact_lite_progress_checks: false,
             enable_exact_lite_spirit_window_checks: false,
             exact_lite_root_call_budget: 0,
@@ -3053,7 +3057,7 @@ impl MonsGameModel {
         config.max_visited_nodes = config.max_visited_nodes.saturating_mul(9) / 8;
         config.root_branch_limit = config.root_branch_limit.saturating_add(1).min(16);
         config.node_branch_limit = config.node_branch_limit.saturating_add(1).min(12);
-        config.enable_turn_opportunity_planner = true;
+        config.enable_turn_head_rerank = true;
         config.scoring_weights =
             Self::runtime_phase_adaptive_attacker_proximity_scoring_weights(game, config.depth);
         config.interview_soft_opponent_mana_progress_bonus = 320;
@@ -3092,10 +3096,10 @@ impl MonsGameModel {
         config.enable_selective_extensions = true;
         config.max_extensions_per_path = 1;
         config.selective_extension_node_share_bp = 1_200;
-        config.enable_turn_planner_intent_root_injection = false;
-        config.turn_planner_intent_root_injection_limit = 0;
-        config.turn_planner_intent_root_max_heuristic_gap = 0;
-        config.turn_planner_intent_root_emergency_only = false;
+        config.enable_turn_engine_root_injection = false;
+        config.turn_engine_root_injection_limit = 0;
+        config.turn_engine_root_max_heuristic_gap = 0;
+        config.turn_engine_root_injection_emergency_only = false;
         config
     }
 
@@ -3849,8 +3853,8 @@ impl MonsGameModel {
             })
             .saturating_sub(potion_spend_penalty)
             .saturating_sub(drainer_exposure_penalty);
-        let intent_profile_bonus = if config.enable_turn_planner_intent_root_injection
-            && config.turn_planner_intent_root_injection_limit > 0
+        let intent_profile_bonus = if config.enable_turn_engine_root_injection
+            && config.turn_engine_root_injection_limit > 0
         {
             let mut bonus: i32 = 0;
             if classes.drainer_safety_recover {
@@ -4857,7 +4861,7 @@ impl MonsGameModel {
         }
 
         let mut actor_locations = Self::find_awake_drainer_locations(game, perspective);
-        if !config.enable_turn_planner_targeted_score_window_narrowing {
+        if !config.enable_targeted_score_window_narrowing {
             actor_locations.extend(Self::find_awake_spirit_locations(game, perspective));
         }
         if actor_locations.is_empty() {
@@ -4886,7 +4890,7 @@ impl MonsGameModel {
                 if transition.game.active_color != perspective {
                     continue;
                 }
-                if config.enable_turn_planner_targeted_score_window_narrowing
+                if config.enable_targeted_score_window_narrowing
                     && !Self::targeted_same_turn_score_window_transition_plausible(
                         game,
                         &transition,
@@ -5654,7 +5658,7 @@ impl MonsGameModel {
         {
             let fallback_limit = Self::same_turn_score_window_fallback_candidates_limit(config);
             let mut exact_turn_memo = config
-                .enable_turn_planner_targeted_exact_turn_summary_memo
+                .enable_targeted_exact_turn_summary_memo
                 .then(TargetedExactTurnSummaryMemo::default);
             let mut fallback_inputs = Self::collect_targeted_spirit_score_inputs(
                 game,
@@ -5699,7 +5703,7 @@ impl MonsGameModel {
         {
             let fallback_limit = Self::spirit_score_fallback_candidates_limit(config);
             let mut exact_turn_memo = config
-                .enable_turn_planner_targeted_exact_turn_summary_memo
+                .enable_targeted_exact_turn_summary_memo
                 .then(TargetedExactTurnSummaryMemo::default);
             let fallback_inputs = Self::collect_targeted_spirit_score_inputs(
                 game,
@@ -9485,21 +9489,21 @@ impl MonsGameModel {
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
-    fn classify_turn_planner_choice(
+    fn classify_turn_engine_rerank_override(
         root_moves: &[ScoredRootMove],
-        planner_inputs: &[Input],
-    ) -> TurnPlannerChoiceAcceptance {
+        override_inputs: &[Input],
+    ) -> TurnEngineRerankOverrideAcceptance {
         let Some(index) = root_moves
             .iter()
-            .position(|candidate| candidate.inputs.as_slice() == planner_inputs)
+            .position(|candidate| candidate.inputs.as_slice() == override_inputs)
         else {
-            return TurnPlannerChoiceAcceptance::Rejected(
-                TurnPlannerChoiceRejectReason::NotInRoot,
+            return TurnEngineRerankOverrideAcceptance::Rejected(
+                TurnEngineRerankOverrideRejectReason::NotInRoot,
             );
         };
         let Some(top) = root_moves.first() else {
-            return TurnPlannerChoiceAcceptance::Rejected(
-                TurnPlannerChoiceRejectReason::MissingTop,
+            return TurnEngineRerankOverrideAcceptance::Rejected(
+                TurnEngineRerankOverrideRejectReason::MissingTop,
             );
         };
         let top_unsafe = top.mana_handoff_to_opponent
@@ -9521,20 +9525,20 @@ impl MonsGameModel {
                 || top.spirit_development
                 || top.classes.drainer_safety_recover;
             return if top_is_tactical && !top_unsafe {
-                TurnPlannerChoiceAcceptance::Accepted
+                TurnEngineRerankOverrideAcceptance::Accepted
             } else {
-                TurnPlannerChoiceAcceptance::Rejected(
-                    TurnPlannerChoiceRejectReason::TopNotTacticalOrUnsafe,
+                TurnEngineRerankOverrideAcceptance::Rejected(
+                    TurnEngineRerankOverrideRejectReason::TopNotTacticalOrUnsafe,
                 )
             };
         }
         let candidate = &root_moves[index];
         if candidate.wins_immediately {
-            return TurnPlannerChoiceAcceptance::Accepted;
+            return TurnEngineRerankOverrideAcceptance::Accepted;
         }
         if top.wins_immediately {
-            return TurnPlannerChoiceAcceptance::Rejected(
-                TurnPlannerChoiceRejectReason::TopWins,
+            return TurnEngineRerankOverrideAcceptance::Rejected(
+                TurnEngineRerankOverrideRejectReason::TopWins,
             );
         }
 
@@ -9551,8 +9555,8 @@ impl MonsGameModel {
                 && !candidate.attacks_opponent_drainer
                 && !Self::turn_engine_root_move_has_concrete_score_surface(candidate));
         if candidate_unsafe {
-            return TurnPlannerChoiceAcceptance::Rejected(
-                TurnPlannerChoiceRejectReason::CandidateUnsafe,
+            return TurnEngineRerankOverrideAcceptance::Rejected(
+                TurnEngineRerankOverrideRejectReason::CandidateUnsafe,
             );
         }
 
@@ -9592,22 +9596,22 @@ impl MonsGameModel {
 
         if progress_only {
             if !(candidate_safer || top_unsafe) {
-                return TurnPlannerChoiceAcceptance::Rejected(
-                    TurnPlannerChoiceRejectReason::ProgressGate,
+                return TurnEngineRerankOverrideAcceptance::Rejected(
+                    TurnEngineRerankOverrideRejectReason::ProgressGate,
                 );
             }
             if index <= 4 && heuristic_gap <= 180 {
-                return TurnPlannerChoiceAcceptance::Accepted;
+                return TurnEngineRerankOverrideAcceptance::Accepted;
             }
-            return TurnPlannerChoiceAcceptance::Rejected(
-                TurnPlannerChoiceRejectReason::ProgressGate,
+            return TurnEngineRerankOverrideAcceptance::Rejected(
+                TurnEngineRerankOverrideRejectReason::ProgressGate,
             );
         }
 
         if tactical_or_progress {
             if candidate.own_drainer_vulnerable && !candidate.classes.drainer_safety_recover {
-                return TurnPlannerChoiceAcceptance::Rejected(
-                    TurnPlannerChoiceRejectReason::CandidateUnsafe,
+                return TurnEngineRerankOverrideAcceptance::Rejected(
+                    TurnEngineRerankOverrideRejectReason::CandidateUnsafe,
                 );
             }
             let tactical_signal = material_advantage
@@ -9618,22 +9622,22 @@ impl MonsGameModel {
                 || (candidate.spirit_same_turn_score_setup_now
                     && candidate.same_turn_score_window_value > top.same_turn_score_window_value);
             if tactical_signal && index <= 6 && heuristic_gap <= 520 {
-                return TurnPlannerChoiceAcceptance::Accepted;
+                return TurnEngineRerankOverrideAcceptance::Accepted;
             }
             if material_advantage && index <= 8 && heuristic_gap <= 640 {
-                return TurnPlannerChoiceAcceptance::Accepted;
+                return TurnEngineRerankOverrideAcceptance::Accepted;
             }
-            return TurnPlannerChoiceAcceptance::Rejected(
-                TurnPlannerChoiceRejectReason::TacticalGate,
+            return TurnEngineRerankOverrideAcceptance::Rejected(
+                TurnEngineRerankOverrideRejectReason::TacticalGate,
             );
         }
 
         if (candidate_safer && candidate_progress_better) && index <= 5 && heuristic_gap <= 220 {
-            return TurnPlannerChoiceAcceptance::Accepted;
+            return TurnEngineRerankOverrideAcceptance::Accepted;
         }
 
-        TurnPlannerChoiceAcceptance::Rejected(
-            TurnPlannerChoiceRejectReason::SafetyProgressGate,
+        TurnEngineRerankOverrideAcceptance::Rejected(
+            TurnEngineRerankOverrideRejectReason::SafetyProgressGate,
         )
     }
 
@@ -9661,7 +9665,7 @@ impl MonsGameModel {
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
-    fn turn_engine_allowed_head_shortcut_candidate(
+    fn turn_engine_allowed_rerank_override_candidate(
         root_moves: &[ScoredRootMove],
         inputs: &[Input],
     ) -> bool {
@@ -9684,17 +9688,17 @@ impl MonsGameModel {
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
-    fn classify_turn_planner_injected_root_candidate(
+    fn classify_turn_engine_root_injection_candidate(
         top: &ScoredRootMove,
         candidate: &ScoredRootMove,
         max_heuristic_gap: i32,
         emergency_resolves_immediate_loss: bool,
-    ) -> TurnPlannerInjectedRootAcceptance {
+    ) -> TurnEngineRootInjectionAcceptance {
         if candidate.wins_immediately {
-            return TurnPlannerInjectedRootAcceptance::Accepted;
+            return TurnEngineRootInjectionAcceptance::Accepted;
         }
         if top.wins_immediately {
-            return TurnPlannerInjectedRootAcceptance::RejectedTopWins;
+            return TurnEngineRootInjectionAcceptance::RejectedTopWins;
         }
 
         let candidate_unsafe = candidate.mana_handoff_to_opponent
@@ -9703,7 +9707,7 @@ impl MonsGameModel {
                 && !candidate.attacks_opponent_drainer
                 && !Self::turn_engine_root_move_has_concrete_score_surface(candidate));
         if candidate_unsafe {
-            return TurnPlannerInjectedRootAcceptance::RejectedCandidateUnsafe;
+            return TurnEngineRootInjectionAcceptance::RejectedCandidateUnsafe;
         }
 
         let top_unsafe = top.mana_handoff_to_opponent
@@ -9728,7 +9732,7 @@ impl MonsGameModel {
         let tactical_signal =
             decisive_tactical || deny_window_signal || safety_upgrade || progress_signal;
         if !tactical_signal {
-            return TurnPlannerInjectedRootAcceptance::RejectedNoTacticalSignal;
+            return TurnEngineRootInjectionAcceptance::RejectedNoTacticalSignal;
         }
 
         let effective_heuristic_gap = if emergency_resolves_immediate_loss {
@@ -9738,77 +9742,77 @@ impl MonsGameModel {
         };
         let heuristic_gap = top.heuristic.saturating_sub(candidate.heuristic);
         if heuristic_gap <= effective_heuristic_gap.max(0) {
-            return TurnPlannerInjectedRootAcceptance::Accepted;
+            return TurnEngineRootInjectionAcceptance::Accepted;
         }
 
         if decisive_tactical
             && (safety_upgrade || top_unsafe)
             && heuristic_gap <= effective_heuristic_gap.saturating_add(220)
         {
-            return TurnPlannerInjectedRootAcceptance::Accepted;
+            return TurnEngineRootInjectionAcceptance::Accepted;
         }
 
-        TurnPlannerInjectedRootAcceptance::RejectedHeuristicGap
+        TurnEngineRootInjectionAcceptance::RejectedHeuristicGap
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
-    fn accept_turn_planner_injected_root_candidate(
+    fn accept_turn_engine_root_injection_candidate(
         top: &ScoredRootMove,
         candidate: &ScoredRootMove,
         max_heuristic_gap: i32,
         emergency_resolves_immediate_loss: bool,
     ) -> bool {
         matches!(
-            Self::classify_turn_planner_injected_root_candidate(
+            Self::classify_turn_engine_root_injection_candidate(
                 top,
                 candidate,
                 max_heuristic_gap,
                 emergency_resolves_immediate_loss,
             ),
-            TurnPlannerInjectedRootAcceptance::Accepted
+            TurnEngineRootInjectionAcceptance::Accepted
         )
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
-    fn turn_planner_intent_root_injection_limit(
+    fn turn_engine_root_injection_limit_for_game(
         game: &MonsGame,
         perspective: Color,
         config: SmartSearchConfig,
         root_moves: &[ScoredRootMove],
     ) -> usize {
-        if !config.enable_turn_planner_intent_root_injection
-            || config.turn_planner_intent_root_injection_limit == 0
+        if !config.enable_turn_engine_root_injection
+            || config.turn_engine_root_injection_limit == 0
             || root_moves.is_empty()
             || game.active_color != perspective
         {
             return 0;
         }
 
-        if config.turn_planner_intent_root_emergency_only
-            && !planner_tactical_emergency_state(game, perspective)
+        if config.turn_engine_root_injection_emergency_only
+            && !turn_engine_root_injection_emergency_state(game, perspective)
         {
             return 0;
         }
 
-        config.turn_planner_intent_root_injection_limit
+        config.turn_engine_root_injection_limit
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
-    fn classify_turn_planner_emergency_injected_root_candidate(
+    fn classify_turn_engine_emergency_root_injection_candidate(
         top: &ScoredRootMove,
         candidate: &ScoredRootMove,
         top_opponent_can_win_immediately_after: bool,
         opponent_can_win_immediately_after: bool,
-    ) -> TurnPlannerEmergencyInjectedRootAcceptance {
+    ) -> TurnEngineEmergencyRootInjectionAcceptance {
         if candidate.wins_immediately {
-            return TurnPlannerEmergencyInjectedRootAcceptance::Accepted;
+            return TurnEngineEmergencyRootInjectionAcceptance::Accepted;
         }
         if top.wins_immediately {
-            return TurnPlannerEmergencyInjectedRootAcceptance::RejectedTopWins;
+            return TurnEngineEmergencyRootInjectionAcceptance::RejectedTopWins;
         }
         if opponent_can_win_immediately_after && !top_opponent_can_win_immediately_after {
             // Emergency injections should never introduce a new immediate-loss state.
-            return TurnPlannerEmergencyInjectedRootAcceptance::RejectedIntroducedImmediateLoss;
+            return TurnEngineEmergencyRootInjectionAcceptance::RejectedIntroducedImmediateLoss;
         }
 
         let crisis_resolving = candidate.attacks_opponent_drainer
@@ -9816,49 +9820,49 @@ impl MonsGameModel {
             || candidate.scores_supermana_this_turn
             || candidate.scores_opponent_mana_this_turn;
         if !crisis_resolving {
-            return TurnPlannerEmergencyInjectedRootAcceptance::RejectedNoCrisisSignal;
+            return TurnEngineEmergencyRootInjectionAcceptance::RejectedNoCrisisSignal;
         }
 
         if candidate.mana_handoff_to_opponent {
-            return TurnPlannerEmergencyInjectedRootAcceptance::RejectedManaHandoff;
+            return TurnEngineEmergencyRootInjectionAcceptance::RejectedManaHandoff;
         }
 
         if candidate.own_drainer_vulnerable
             && !candidate.classes.drainer_safety_recover
             && !candidate.attacks_opponent_drainer
         {
-            return TurnPlannerEmergencyInjectedRootAcceptance::RejectedDrainerUnsafe;
+            return TurnEngineEmergencyRootInjectionAcceptance::RejectedDrainerUnsafe;
         }
 
-        TurnPlannerEmergencyInjectedRootAcceptance::Accepted
+        TurnEngineEmergencyRootInjectionAcceptance::Accepted
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
-    fn accept_turn_planner_emergency_injected_root_candidate(
+    fn accept_turn_engine_emergency_root_injection_candidate(
         top: &ScoredRootMove,
         candidate: &ScoredRootMove,
         top_opponent_can_win_immediately_after: bool,
         opponent_can_win_immediately_after: bool,
     ) -> bool {
         matches!(
-            Self::classify_turn_planner_emergency_injected_root_candidate(
+            Self::classify_turn_engine_emergency_root_injection_candidate(
                 top,
                 candidate,
                 top_opponent_can_win_immediately_after,
                 opponent_can_win_immediately_after,
             ),
-            TurnPlannerEmergencyInjectedRootAcceptance::Accepted
+            TurnEngineEmergencyRootInjectionAcceptance::Accepted
         )
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
-    fn inject_turn_planner_intent_root_candidates(
+    fn inject_turn_engine_root_candidates(
         game: &MonsGame,
         perspective: Color,
         config: SmartSearchConfig,
         root_moves: &mut Vec<ScoredRootMove>,
     ) {
-        let injection_limit = Self::turn_planner_intent_root_injection_limit(
+        let injection_limit = Self::turn_engine_root_injection_limit_for_game(
             game,
             perspective,
             config,
@@ -9874,7 +9878,7 @@ impl MonsGameModel {
         if engine_candidate_plans.is_empty() {
             return;
         }
-        record_turn_planner_injected_root_candidates(engine_candidate_plans.len());
+        record_turn_engine_root_injection_candidates(engine_candidate_plans.len());
 
         let own_drainer_vulnerable_before = if config.enable_move_class_coverage {
             Self::is_own_drainer_vulnerable_next_turn(
@@ -9905,7 +9909,7 @@ impl MonsGameModel {
                 continue;
             };
             if !seen_inputs.insert(inputs.clone()) {
-                record_turn_planner_injected_root_duplicate();
+                record_turn_engine_root_injection_duplicate();
                 continue;
             }
             let Some(candidate) = Self::build_scored_root_move(
@@ -9915,8 +9919,8 @@ impl MonsGameModel {
                 own_drainer_vulnerable_before,
                 inputs.as_slice(),
             ) else {
-                record_turn_planner_injected_root_attempt(
-                    TurnPlannerInjectedRootAttemptOutcome::RejectedBuild,
+                record_turn_engine_root_injection_attempt(
+                    TurnEngineRootInjectionAttemptOutcome::RejectedBuild,
                 );
                 continue;
             };
@@ -9930,9 +9934,9 @@ impl MonsGameModel {
                             .same_turn_score_window_value
                             >= needed)
             };
-            if config.turn_planner_intent_root_emergency_only {
+            if config.turn_engine_root_injection_emergency_only {
                 let emergency_acceptance =
-                    Self::classify_turn_planner_emergency_injected_root_candidate(
+                    Self::classify_turn_engine_emergency_root_injection_candidate(
                         &top,
                         &candidate,
                         top_opponent_can_win_immediately_after,
@@ -9940,60 +9944,60 @@ impl MonsGameModel {
                     );
                 if !matches!(
                     emergency_acceptance,
-                    TurnPlannerEmergencyInjectedRootAcceptance::Accepted
+                    TurnEngineEmergencyRootInjectionAcceptance::Accepted
                 ) {
                     let emergency_outcome = match emergency_acceptance {
-                        TurnPlannerEmergencyInjectedRootAcceptance::Accepted => {
-                            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyGuard
+                        TurnEngineEmergencyRootInjectionAcceptance::Accepted => {
+                            TurnEngineRootInjectionAttemptOutcome::RejectedEmergencyGuard
                         }
-                        TurnPlannerEmergencyInjectedRootAcceptance::RejectedTopWins => {
-                            TurnPlannerInjectedRootAttemptOutcome::RejectedTopWins
+                        TurnEngineEmergencyRootInjectionAcceptance::RejectedTopWins => {
+                            TurnEngineRootInjectionAttemptOutcome::RejectedTopWins
                         }
-                        TurnPlannerEmergencyInjectedRootAcceptance::RejectedIntroducedImmediateLoss => {
-                            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyIntroducedImmediateLoss
+                        TurnEngineEmergencyRootInjectionAcceptance::RejectedIntroducedImmediateLoss => {
+                            TurnEngineRootInjectionAttemptOutcome::RejectedEmergencyIntroducedImmediateLoss
                         }
-                        TurnPlannerEmergencyInjectedRootAcceptance::RejectedNoCrisisSignal => {
-                            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyNoCrisisSignal
+                        TurnEngineEmergencyRootInjectionAcceptance::RejectedNoCrisisSignal => {
+                            TurnEngineRootInjectionAttemptOutcome::RejectedEmergencyNoCrisisSignal
                         }
-                        TurnPlannerEmergencyInjectedRootAcceptance::RejectedManaHandoff => {
-                            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyManaHandoff
+                        TurnEngineEmergencyRootInjectionAcceptance::RejectedManaHandoff => {
+                            TurnEngineRootInjectionAttemptOutcome::RejectedEmergencyManaHandoff
                         }
-                        TurnPlannerEmergencyInjectedRootAcceptance::RejectedDrainerUnsafe => {
-                            TurnPlannerInjectedRootAttemptOutcome::RejectedEmergencyDrainerUnsafe
+                        TurnEngineEmergencyRootInjectionAcceptance::RejectedDrainerUnsafe => {
+                            TurnEngineRootInjectionAttemptOutcome::RejectedEmergencyDrainerUnsafe
                         }
                     };
-                    record_turn_planner_injected_root_attempt(emergency_outcome);
+                    record_turn_engine_root_injection_attempt(emergency_outcome);
                     continue;
                 }
             }
-            let emergency_resolves_immediate_loss = config.turn_planner_intent_root_emergency_only
+            let emergency_resolves_immediate_loss = config.turn_engine_root_injection_emergency_only
                 && top_opponent_can_win_immediately_after
                 && !opponent_can_win_immediately_after;
-            let acceptance = Self::classify_turn_planner_injected_root_candidate(
+            let acceptance = Self::classify_turn_engine_root_injection_candidate(
                 &top,
                 &candidate,
-                config.turn_planner_intent_root_max_heuristic_gap,
+                config.turn_engine_root_max_heuristic_gap,
                 emergency_resolves_immediate_loss,
             );
             let attempt_outcome = match acceptance {
-                TurnPlannerInjectedRootAcceptance::Accepted => {
-                    TurnPlannerInjectedRootAttemptOutcome::Accepted
+                TurnEngineRootInjectionAcceptance::Accepted => {
+                    TurnEngineRootInjectionAttemptOutcome::Accepted
                 }
-                TurnPlannerInjectedRootAcceptance::RejectedTopWins => {
-                    TurnPlannerInjectedRootAttemptOutcome::RejectedTopWins
+                TurnEngineRootInjectionAcceptance::RejectedTopWins => {
+                    TurnEngineRootInjectionAttemptOutcome::RejectedTopWins
                 }
-                TurnPlannerInjectedRootAcceptance::RejectedCandidateUnsafe => {
-                    TurnPlannerInjectedRootAttemptOutcome::RejectedCandidateUnsafe
+                TurnEngineRootInjectionAcceptance::RejectedCandidateUnsafe => {
+                    TurnEngineRootInjectionAttemptOutcome::RejectedCandidateUnsafe
                 }
-                TurnPlannerInjectedRootAcceptance::RejectedNoTacticalSignal => {
-                    TurnPlannerInjectedRootAttemptOutcome::RejectedNoTacticalSignal
+                TurnEngineRootInjectionAcceptance::RejectedNoTacticalSignal => {
+                    TurnEngineRootInjectionAttemptOutcome::RejectedNoTacticalSignal
                 }
-                TurnPlannerInjectedRootAcceptance::RejectedHeuristicGap => {
-                    TurnPlannerInjectedRootAttemptOutcome::RejectedHeuristicGap
+                TurnEngineRootInjectionAcceptance::RejectedHeuristicGap => {
+                    TurnEngineRootInjectionAttemptOutcome::RejectedHeuristicGap
                 }
             };
-            record_turn_planner_injected_root_attempt(attempt_outcome);
-            if !matches!(acceptance, TurnPlannerInjectedRootAcceptance::Accepted) {
+            record_turn_engine_root_injection_attempt(attempt_outcome);
+            if !matches!(acceptance, TurnEngineRootInjectionAcceptance::Accepted) {
                 continue;
             }
             root_moves.push(candidate);
@@ -10006,7 +10010,7 @@ impl MonsGameModel {
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
-    fn should_invoke_turn_planner(root_moves: &[ScoredRootMove]) -> bool {
+    fn should_invoke_turn_head_rerank(root_moves: &[ScoredRootMove]) -> bool {
         let Some(top) = root_moves.first() else {
             return false;
         };
@@ -10198,8 +10202,8 @@ impl MonsGameModel {
                     }
                 }
             }
-            if config.enable_turn_planner_intent_root_injection {
-                Self::inject_turn_planner_intent_root_candidates(
+            if config.enable_turn_engine_root_injection {
+                Self::inject_turn_engine_root_candidates(
                     game,
                     perspective,
                     config,
@@ -10207,8 +10211,8 @@ impl MonsGameModel {
                 );
             }
             if root_moves.len() > 1
-                && config.enable_turn_opportunity_planner
-                && Self::should_invoke_turn_planner(root_moves.as_slice())
+                && config.enable_turn_head_rerank
+                && Self::should_invoke_turn_head_rerank(root_moves.as_slice())
             {
                 let allowed_root_steps = root_moves
                     .iter()
@@ -10234,17 +10238,17 @@ impl MonsGameModel {
                 }
                 if let Some(plan) = allowed_engine_plan {
                     if let Some(inputs) = plan.compiled_chunks.first().cloned() {
-                        match Self::classify_turn_planner_choice(
+                        match Self::classify_turn_engine_rerank_override(
                             root_moves.as_slice(),
                             inputs.as_slice(),
                         ) {
-                            TurnPlannerChoiceAcceptance::Accepted => {
-                                let shortcut_candidate =
-                                    Self::turn_engine_allowed_head_shortcut_candidate(
+                            TurnEngineRerankOverrideAcceptance::Accepted => {
+                                let override_candidate =
+                                    Self::turn_engine_allowed_rerank_override_candidate(
                                         root_moves.as_slice(),
                                         inputs.as_slice(),
                                     );
-                                let advisor_conflict = shortcut_candidate
+                                let advisor_conflict = override_candidate
                                     && Self::pro_v2_root_advisor_conflicts_with_choice(
                                     game,
                                     perspective,
@@ -10253,16 +10257,16 @@ impl MonsGameModel {
                                     engine_head_plan.as_ref(),
                                     inputs.as_slice(),
                                 );
-                                if !shortcut_candidate || advisor_conflict {
-                                    record_turn_planner_choice_attempt(
-                                        TurnPlannerChoiceAttemptOutcome::RejectedAcceptance,
+                                if !override_candidate || advisor_conflict {
+                                    record_turn_engine_rerank_override_attempt(
+                                        TurnEngineRerankOverrideAttemptOutcome::RejectedAcceptance,
                                     );
-                                    record_turn_planner_choice_reject_reason(
-                                        TurnPlannerChoiceRejectReason::TacticalGate,
+                                    record_turn_engine_rerank_override_reject_reason(
+                                        TurnEngineRerankOverrideRejectReason::TacticalGate,
                                     );
                                 } else {
-                                    record_turn_planner_choice_attempt(
-                                        TurnPlannerChoiceAttemptOutcome::Accepted,
+                                    record_turn_engine_rerank_override_attempt(
+                                        TurnEngineRerankOverrideAttemptOutcome::Accepted,
                                     );
                                     #[cfg(test)]
                                     update_turn_engine_selector_diagnostics(|diagnostics| {
@@ -10286,16 +10290,18 @@ impl MonsGameModel {
                                     return inputs;
                                 }
                             }
-                            TurnPlannerChoiceAcceptance::Rejected(reason) => {
-                                record_turn_planner_choice_attempt(
-                                    TurnPlannerChoiceAttemptOutcome::RejectedAcceptance,
+                            TurnEngineRerankOverrideAcceptance::Rejected(reason) => {
+                                record_turn_engine_rerank_override_attempt(
+                                    TurnEngineRerankOverrideAttemptOutcome::RejectedAcceptance,
                                 );
-                                record_turn_planner_choice_reject_reason(reason);
+                                record_turn_engine_rerank_override_reject_reason(reason);
                             }
                         }
                     }
                 } else {
-                    record_turn_planner_choice_attempt(TurnPlannerChoiceAttemptOutcome::NoPlan);
+                    record_turn_engine_rerank_override_attempt(
+                        TurnEngineRerankOverrideAttemptOutcome::NoPlan,
+                    );
                 }
             }
             if let Some(forced_inputs) = Self::forced_tactical_prepass_choice(
@@ -10552,8 +10558,8 @@ impl MonsGameModel {
         if root_moves.is_empty() {
             return Vec::new();
         }
-        if config.enable_turn_planner_intent_root_injection {
-            Self::inject_turn_planner_intent_root_candidates(
+        if config.enable_turn_engine_root_injection {
+            Self::inject_turn_engine_root_candidates(
                 game,
                 perspective,
                 config,
@@ -10561,8 +10567,8 @@ impl MonsGameModel {
             );
         }
         if root_moves.len() > 1
-            && config.enable_turn_opportunity_planner
-            && Self::should_invoke_turn_planner(root_moves.as_slice())
+            && config.enable_turn_head_rerank
+            && Self::should_invoke_turn_head_rerank(root_moves.as_slice())
         {
             let allowed_root_steps = root_moves
                 .iter()
@@ -10576,13 +10582,17 @@ impl MonsGameModel {
                 rerank_engine_config,
                 allowed_root_steps.as_slice(),
             ) {
-                match Self::classify_turn_planner_choice(root_moves.as_slice(), inputs.as_slice()) {
-                    TurnPlannerChoiceAcceptance::Accepted => {
-                        let shortcut_candidate = Self::turn_engine_allowed_head_shortcut_candidate(
-                            root_moves.as_slice(),
-                            inputs.as_slice(),
-                        );
-                        let advisor_conflict = shortcut_candidate
+                match Self::classify_turn_engine_rerank_override(
+                    root_moves.as_slice(),
+                    inputs.as_slice(),
+                ) {
+                    TurnEngineRerankOverrideAcceptance::Accepted => {
+                        let override_candidate =
+                            Self::turn_engine_allowed_rerank_override_candidate(
+                                root_moves.as_slice(),
+                                inputs.as_slice(),
+                            );
+                        let advisor_conflict = override_candidate
                             && Self::pro_v2_root_advisor_conflicts_with_choice(
                                 game,
                                 perspective,
@@ -10591,16 +10601,16 @@ impl MonsGameModel {
                                 None,
                                 inputs.as_slice(),
                             );
-                        if !shortcut_candidate || advisor_conflict {
-                            record_turn_planner_choice_attempt(
-                                TurnPlannerChoiceAttemptOutcome::RejectedAcceptance,
+                        if !override_candidate || advisor_conflict {
+                            record_turn_engine_rerank_override_attempt(
+                                TurnEngineRerankOverrideAttemptOutcome::RejectedAcceptance,
                             );
-                            record_turn_planner_choice_reject_reason(
-                                TurnPlannerChoiceRejectReason::TacticalGate,
+                            record_turn_engine_rerank_override_reject_reason(
+                                TurnEngineRerankOverrideRejectReason::TacticalGate,
                             );
                         } else {
-                            record_turn_planner_choice_attempt(
-                                TurnPlannerChoiceAttemptOutcome::Accepted,
+                            record_turn_engine_rerank_override_attempt(
+                                TurnEngineRerankOverrideAttemptOutcome::Accepted,
                             );
                             #[cfg(test)]
                             update_turn_engine_selector_diagnostics(|diagnostics| {
@@ -10609,15 +10619,17 @@ impl MonsGameModel {
                             return inputs;
                         }
                     }
-                    TurnPlannerChoiceAcceptance::Rejected(reason) => {
-                        record_turn_planner_choice_attempt(
-                            TurnPlannerChoiceAttemptOutcome::RejectedAcceptance,
+                    TurnEngineRerankOverrideAcceptance::Rejected(reason) => {
+                        record_turn_engine_rerank_override_attempt(
+                            TurnEngineRerankOverrideAttemptOutcome::RejectedAcceptance,
                         );
-                        record_turn_planner_choice_reject_reason(reason);
+                        record_turn_engine_rerank_override_reject_reason(reason);
                     }
                 }
             } else {
-                record_turn_planner_choice_attempt(TurnPlannerChoiceAttemptOutcome::NoPlan);
+                record_turn_engine_rerank_override_attempt(
+                    TurnEngineRerankOverrideAttemptOutcome::NoPlan,
+                );
             }
         }
         if let Some(forced_inputs) =
@@ -24700,8 +24712,8 @@ impl MonsGameModel {
     fn pro_v2_spirit_followup_probe_config(mut config: SmartSearchConfig) -> SmartSearchConfig {
         config.enable_turn_engine = false;
         config.turn_engine_mode = TurnEngineMode::ProV1;
-        config.enable_turn_opportunity_planner = false;
-        config.enable_turn_planner_intent_root_injection = false;
+        config.enable_turn_head_rerank = false;
+        config.enable_turn_engine_root_injection = false;
         config.enable_root_reply_risk_guard = false;
         config.enable_root_spirit_development_pref = false;
         config.enable_normal_root_safety_deep_floor = false;
@@ -26099,19 +26111,19 @@ mod evaluation_cache_tests {
         assert_eq!(selected, vec![0, 2]);
     }
 
-    fn planner_targeting_search_config(
+    fn targeted_search_config(
         game: &MonsGame,
         enable_narrowing: bool,
     ) -> SmartSearchConfig {
         let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
         config = MonsGameModel::with_runtime_scoring_weights(game, config);
-        config.enable_turn_opportunity_planner = false;
+        config.enable_turn_head_rerank = false;
         config.root_enum_limit = config.root_enum_limit.min(72);
         config.node_enum_limit = config.node_enum_limit.min(54);
         config.root_branch_limit = config.root_branch_limit.clamp(6, 12);
         config.node_branch_limit = config.node_branch_limit.clamp(4, 10);
-        config.enable_turn_planner_targeted_exact_turn_summary_memo = enable_narrowing;
-        config.enable_turn_planner_targeted_score_window_narrowing = enable_narrowing;
+        config.enable_targeted_exact_turn_summary_memo = enable_narrowing;
+        config.enable_targeted_score_window_narrowing = enable_narrowing;
         config
     }
 
@@ -26192,8 +26204,8 @@ mod evaluation_cache_tests {
             ],
             Color::White,
         );
-        let legacy_config = planner_targeting_search_config(&game, false);
-        let narrowed_config = planner_targeting_search_config(&game, true);
+        let legacy_config = targeted_search_config(&game, false);
+        let narrowed_config = targeted_search_config(&game, true);
         let per_surface = 8;
 
         let mut legacy_memo = None;
@@ -26949,7 +26961,7 @@ mod opening_book_tests {
     }
 
     #[test]
-    fn pro_runtime_uses_engine_allowed_head_before_planner_on_immediate_score_fixture() {
+    fn pro_runtime_uses_engine_allowed_rerank_override_on_immediate_score_fixture() {
         clear_turn_engine_selector_diagnostics();
         crate::models::automove_turn_engine::clear_turn_engine_plan_cache();
 
@@ -26961,8 +26973,8 @@ mod opening_book_tests {
             "base runtime pro config should still have the full turn engine disabled"
         );
         assert!(
-            config.enable_turn_opportunity_planner,
-            "fixture should exercise the planner replacement seam"
+            config.enable_turn_head_rerank,
+            "fixture should exercise the head-rerank replacement seam"
         );
 
         let inputs = MonsGameModel::smart_search_best_inputs(&game, config);
@@ -27421,7 +27433,7 @@ mod opening_book_tests {
             independent_config.max_visited_nodes,
             (SMART_AUTOMOVE_PRO_MAX_VISITED_NODES as usize).saturating_mul(9) / 8
         );
-        assert!(independent_config.enable_turn_opportunity_planner);
+        assert!(independent_config.enable_turn_head_rerank);
         assert!(
             !independent_config.enable_turn_engine,
             "shipping Pro runtime_current config must keep turn-engine disabled"
@@ -27445,16 +27457,16 @@ mod opening_book_tests {
         assert_eq!(independent_config.quiescence_node_budget, 120);
         assert!(independent_config.enable_quiescence_tactical_children_only);
         assert_eq!(independent_config.quiescence_tactical_enum_limit, 12);
-        assert!(!independent_config.enable_turn_planner_intent_root_injection);
+        assert!(!independent_config.enable_turn_engine_root_injection);
         assert_eq!(
-            independent_config.turn_planner_intent_root_injection_limit,
+            independent_config.turn_engine_root_injection_limit,
             0
         );
         assert_eq!(
-            independent_config.turn_planner_intent_root_max_heuristic_gap,
+            independent_config.turn_engine_root_max_heuristic_gap,
             0
         );
-        assert!(!independent_config.turn_planner_intent_root_emergency_only);
+        assert!(!independent_config.turn_engine_root_injection_emergency_only);
 
         let mut opening_game = MonsGame::new(false);
         advance_opening_book_until_black_turn(&mut opening_game);
@@ -27478,8 +27490,8 @@ mod opening_book_tests {
         assert!(!opening_config.enable_selective_extensions);
         assert_eq!(opening_config.root_reply_risk_score_margin, 155);
         assert_eq!(opening_config.root_reply_risk_shortlist_max, 7);
-        assert!(!opening_config.enable_turn_planner_intent_root_injection);
-        assert!(!opening_config.turn_planner_intent_root_emergency_only);
+        assert!(!opening_config.enable_turn_engine_root_injection);
+        assert!(!opening_config.turn_engine_root_injection_emergency_only);
         assert_eq!(opening_config.root_reply_risk_reply_limit, 8);
         assert_eq!(opening_config.root_reply_risk_node_share_bp, 560);
         assert!(!opening_config.enable_normal_root_safety_deep_floor);
@@ -27489,7 +27501,7 @@ mod opening_book_tests {
     }
 
     #[test]
-    fn turn_planner_intent_root_injection_guard_rejects_unsafe_non_tactical_candidate() {
+    fn turn_engine_root_injection_guard_rejects_unsafe_non_tactical_candidate() {
         let game = game_with_items(
             vec![
                 (
@@ -27538,13 +27550,13 @@ mod opening_book_tests {
         candidate.mana_handoff_to_opponent = true;
         candidate.heuristic = top.heuristic.saturating_sub(20);
 
-        assert!(!MonsGameModel::accept_turn_planner_injected_root_candidate(
+        assert!(!MonsGameModel::accept_turn_engine_root_injection_candidate(
             &top, &candidate, 640, false
         ));
     }
 
     #[test]
-    fn turn_planner_intent_injection_widens_gap_when_emergency_resolves_immediate_loss() {
+    fn turn_engine_root_injection_widens_gap_when_emergency_resolves_immediate_loss() {
         let game = game_with_items(
             vec![
                 (
@@ -27584,16 +27596,16 @@ mod opening_book_tests {
         candidate.own_drainer_vulnerable = false;
         candidate.heuristic = top.heuristic.saturating_sub(300);
 
-        assert!(!MonsGameModel::accept_turn_planner_injected_root_candidate(
+        assert!(!MonsGameModel::accept_turn_engine_root_injection_candidate(
             &top, &candidate, 200, false
         ));
-        assert!(MonsGameModel::accept_turn_planner_injected_root_candidate(
+        assert!(MonsGameModel::accept_turn_engine_root_injection_candidate(
             &top, &candidate, 200, true
         ));
     }
 
     #[test]
-    fn turn_planner_intent_emergency_injection_rejects_introduced_immediate_loss() {
+    fn turn_engine_emergency_root_injection_rejects_introduced_immediate_loss() {
         let game = game_with_items(
             vec![
                 (
@@ -27634,24 +27646,24 @@ mod opening_book_tests {
         candidate.own_drainer_vulnerable = false;
 
         assert!(
-            !MonsGameModel::accept_turn_planner_emergency_injected_root_candidate(
+            !MonsGameModel::accept_turn_engine_emergency_root_injection_candidate(
                 &top, &candidate, false, true
             )
         );
         assert!(
-            MonsGameModel::accept_turn_planner_emergency_injected_root_candidate(
+            MonsGameModel::accept_turn_engine_emergency_root_injection_candidate(
                 &top, &candidate, true, true
             )
         );
         assert!(
-            MonsGameModel::accept_turn_planner_emergency_injected_root_candidate(
+            MonsGameModel::accept_turn_engine_emergency_root_injection_candidate(
                 &top, &candidate, false, false
             )
         );
     }
 
     #[test]
-    fn turn_planner_intent_root_injection_limit_respects_emergency_gate() {
+    fn turn_engine_root_injection_limit_respects_emergency_gate() {
         let calm_game = game_with_items(
             vec![
                 (
@@ -27684,14 +27696,14 @@ mod opening_book_tests {
         );
         let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
         config = MonsGameModel::with_runtime_scoring_weights(&calm_game, config);
-        config.enable_turn_planner_intent_root_injection = true;
-        config.turn_planner_intent_root_injection_limit = 2;
-        config.turn_planner_intent_root_max_heuristic_gap = 260;
-        config.turn_planner_intent_root_emergency_only = true;
+        config.enable_turn_engine_root_injection = true;
+        config.turn_engine_root_injection_limit = 2;
+        config.turn_engine_root_max_heuristic_gap = 260;
+        config.turn_engine_root_injection_emergency_only = true;
 
         let calm_roots = MonsGameModel::ranked_root_moves(&calm_game, Color::White, config);
         assert_eq!(
-            MonsGameModel::turn_planner_intent_root_injection_limit(
+            MonsGameModel::turn_engine_root_injection_limit_for_game(
                 &calm_game,
                 Color::White,
                 config,
@@ -27700,21 +27712,21 @@ mod opening_book_tests {
             0
         );
 
-        config.turn_planner_intent_root_emergency_only = false;
+        config.turn_engine_root_injection_emergency_only = false;
         assert_eq!(
-            MonsGameModel::turn_planner_intent_root_injection_limit(
+            MonsGameModel::turn_engine_root_injection_limit_for_game(
                 &calm_game,
                 Color::White,
                 config,
                 calm_roots.as_slice(),
             ),
-            config.turn_planner_intent_root_injection_limit
+            config.turn_engine_root_injection_limit
         );
     }
 
     #[test]
-    fn turn_planner_intent_root_injection_remains_deterministic() {
-        clear_turn_planner_diagnostics();
+    fn turn_engine_root_injection_remains_deterministic() {
+        clear_turn_engine_root_selection_diagnostics();
         let game = game_with_items(
             vec![
                 (
@@ -27747,13 +27759,13 @@ mod opening_book_tests {
         );
         let mut config = SmartSearchConfig::from_preference(SmartAutomovePreference::Pro);
         config = MonsGameModel::with_runtime_scoring_weights(&game, config);
-        config.enable_turn_opportunity_planner = false;
-        config.enable_turn_planner_intent_root_injection = true;
-        config.turn_planner_intent_root_injection_limit = 4;
-        config.turn_planner_intent_root_max_heuristic_gap = 640;
+        config.enable_turn_head_rerank = false;
+        config.enable_turn_engine_root_injection = true;
+        config.turn_engine_root_injection_limit = 4;
+        config.turn_engine_root_max_heuristic_gap = 640;
 
         let mut roots_a = MonsGameModel::ranked_root_moves(&game, Color::White, config);
-        MonsGameModel::inject_turn_planner_intent_root_candidates(
+        MonsGameModel::inject_turn_engine_root_candidates(
             &game,
             Color::White,
             config,
@@ -27765,7 +27777,7 @@ mod opening_book_tests {
             .collect::<Vec<_>>();
 
         let mut roots_b = MonsGameModel::ranked_root_moves(&game, Color::White, config);
-        MonsGameModel::inject_turn_planner_intent_root_candidates(
+        MonsGameModel::inject_turn_engine_root_candidates(
             &game,
             Color::White,
             config,
@@ -27777,7 +27789,7 @@ mod opening_book_tests {
             .collect::<Vec<_>>();
 
         assert_eq!(outputs_a, outputs_b);
-        let diagnostics = turn_planner_diagnostics_snapshot();
+        let diagnostics = turn_engine_root_selection_diagnostics_snapshot();
         assert!(diagnostics.injected_root_attempts >= diagnostics.injected_root_accepts);
         let total_rejects = diagnostics.injected_root_reject_build
             + diagnostics.injected_root_reject_emergency_guard
@@ -27906,7 +27918,7 @@ mod opening_book_tests {
             if config.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
                 && config.enable_normal_root_safety_deep_floor
             {
-                config.enable_turn_opportunity_planner = false;
+                config.enable_turn_head_rerank = false;
                 config.enable_turn_engine = true;
                 config.turn_engine_mode = TurnEngineMode::ProV2;
                 config.turn_engine_seed_cap = 14;
@@ -28097,7 +28109,7 @@ mod opening_book_tests {
             if config.depth >= SMART_AUTOMOVE_PRO_DEPTH as usize
                 && config.enable_normal_root_safety_deep_floor
             {
-                config.enable_turn_opportunity_planner = false;
+                config.enable_turn_head_rerank = false;
                 config.enable_turn_engine = true;
                 config.turn_engine_mode = TurnEngineMode::ProV2;
                 config.turn_engine_seed_cap = 14;
@@ -29255,7 +29267,7 @@ mod opening_book_tests {
             && config.enable_normal_root_safety_deep_floor
         {
             config.enable_turn_engine = true;
-            config.enable_turn_opportunity_planner = false;
+            config.enable_turn_head_rerank = false;
             config.turn_engine_mode = TurnEngineMode::ProV2;
             config.turn_engine_seed_cap = 14;
             config.turn_engine_beam_width = 5;
@@ -29407,7 +29419,7 @@ mod opening_book_tests {
             && config.enable_normal_root_safety_deep_floor
         {
             config.enable_turn_engine = true;
-            config.enable_turn_opportunity_planner = false;
+            config.enable_turn_head_rerank = false;
             config.turn_engine_mode = TurnEngineMode::ProV2;
             config.turn_engine_seed_cap = 14;
             config.turn_engine_beam_width = 5;
@@ -29566,13 +29578,13 @@ mod opening_book_tests {
             .position(|root| Input::fen_from_array(&root.inputs) == target);
 
         println!(
-            "selected={} runtime_selected={} forced_prepass={:?} planner_inject={} filtered_len={}",
+            "selected={} runtime_selected={} forced_prepass={:?} root_inject={} filtered_len={}",
             selected_fen,
             runtime_selected_fen,
             forced_prepass
                 .as_ref()
                 .map(|inputs| Input::fen_from_array(inputs)),
-            config.enable_turn_planner_intent_root_injection,
+            config.enable_turn_engine_root_injection,
             filtered.len()
         );
         println!(
@@ -29654,7 +29666,7 @@ mod opening_book_tests {
             && config.enable_normal_root_safety_deep_floor
         {
             config.enable_turn_engine = true;
-            config.enable_turn_opportunity_planner = false;
+            config.enable_turn_head_rerank = false;
             config.turn_engine_mode = TurnEngineMode::ProV2;
             config.turn_engine_seed_cap = 14;
             config.turn_engine_beam_width = 5;
@@ -29903,7 +29915,7 @@ mod opening_book_tests {
             config.turn_engine_enable_spirit_family = true;
         } else {
             config.turn_engine_mode = TurnEngineMode::ProV2;
-            config.enable_turn_opportunity_planner = false;
+            config.enable_turn_head_rerank = false;
         }
 
         let root_moves = MonsGameModel::ranked_root_moves(&game, perspective, config);
@@ -30092,7 +30104,7 @@ mod opening_book_tests {
             config.root_reply_risk_node_share_bp = 2_000;
         } else {
             config.turn_engine_mode = TurnEngineMode::ProV2;
-            config.enable_turn_opportunity_planner = false;
+            config.enable_turn_head_rerank = false;
         }
 
         let root_moves = MonsGameModel::ranked_root_moves(&game, perspective, config);
