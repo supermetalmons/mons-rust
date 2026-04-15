@@ -647,6 +647,60 @@ pub(crate) fn turn_engine_next_inputs(
     best_plan.compiled_chunks.first().cloned()
 }
 
+pub(crate) fn turn_engine_next_inputs_from_allowed_heads(
+    game: &MonsGame,
+    perspective: Color,
+    mode: TurnEngineMode,
+    config: TurnEngineConfig,
+    allowed_first_steps: &[Vec<Input>],
+) -> Option<Vec<Input>> {
+    if game.active_color != perspective || allowed_first_steps.is_empty() {
+        return None;
+    }
+
+    let allowed_set = allowed_first_steps
+        .iter()
+        .cloned()
+        .collect::<HashSet<Vec<Input>>>();
+    if let Some(cached) = turn_engine_cached_step(game, config) {
+        if allowed_set.contains(&cached) {
+            return Some(cached);
+        }
+    }
+
+    let best_plan = turn_engine_candidate_plan_from_allowed_heads(
+        game,
+        perspective,
+        config,
+        allowed_first_steps,
+    )?;
+    register_plan_continuations(game, perspective, mode, &best_plan, config);
+    best_plan.compiled_chunks.first().cloned()
+}
+
+pub(crate) fn turn_engine_head_candidate_plans(
+    game: &MonsGame,
+    perspective: Color,
+    config: TurnEngineConfig,
+    limit: usize,
+) -> Vec<TurnPlan> {
+    if game.active_color != perspective || limit == 0 {
+        return Vec::new();
+    }
+
+    let mut seen_heads = HashSet::<Vec<Input>>::new();
+    ranked_head_candidate_plans(game, perspective, config)
+        .into_iter()
+        .filter(|plan| {
+            plan.compiled_chunks
+                .first()
+                .map(|head| seen_heads.insert(head.clone()))
+                .unwrap_or(false)
+        })
+        .take(limit)
+        .collect()
+}
+
 #[cfg(test)]
 pub(crate) fn turn_engine_best_plan_for_test(
     game: &MonsGame,
@@ -680,43 +734,7 @@ pub(crate) fn turn_engine_ranked_plan_digests_for_test(
     config: TurnEngineConfig,
     limit: usize,
 ) -> Vec<TurnEnginePlanDigest> {
-    if game.active_color != perspective {
-        return Vec::new();
-    }
-
-    let mut plans = match config.mode {
-        TurnEngineMode::ProV2 => match generate_macro_plans(
-            game,
-            perspective,
-            config,
-            config.own_seed_cap.max(1),
-            config.own_beam.max(1),
-            bundle_plan_cap_for_config(config),
-            config.expansion_cap.max(1),
-        ) {
-            Ok(plans) => plans,
-            Err(_) => Vec::new(),
-        },
-        TurnEngineMode::ProV1 => match generate_turn_plans(
-            game,
-            perspective,
-            config,
-            config.own_seed_cap.max(1),
-            config.own_beam.max(1),
-            config.step_cap.max(1),
-            config.expansion_cap.max(1),
-        ) {
-            Ok(plans) => plans,
-            Err(_) => Vec::new(),
-        },
-    };
-
-    for plan in plans.iter_mut() {
-        plan.utility = evaluate_plan_with_replies(game, plan, perspective, config);
-    }
-    plans.sort_by(|a, b| compare_plans(b, a));
-
-    plans
+    ranked_candidate_plans(game, perspective, config)
         .into_iter()
         .take(limit.max(1))
         .filter_map(|plan| {
@@ -819,6 +837,40 @@ pub(crate) fn turn_engine_candidate_plan_live(
     }
 }
 
+pub(crate) fn turn_engine_candidate_plan_from_allowed_heads(
+    game: &MonsGame,
+    perspective: Color,
+    config: TurnEngineConfig,
+    allowed_first_steps: &[Vec<Input>],
+) -> Option<TurnPlan> {
+    if game.active_color != perspective || allowed_first_steps.is_empty() {
+        return None;
+    }
+
+    let cache_key = TurnEnginePlanCacheKey {
+        state_hash: MonsGameModel::search_state_hash(game),
+        mode: config.mode,
+        config_fingerprint: turn_engine_config_fingerprint(config),
+    };
+    if let Some(plan) = cached_best_plan_if_legal(game, cache_key) {
+        if plan_has_allowed_head(&plan, allowed_first_steps) {
+            return Some(plan);
+        }
+    }
+
+    match build_best_plan_from_allowed_heads(game, perspective, config, allowed_first_steps) {
+        Ok(Some(plan)) => Some(plan),
+        Ok(None) | Err(PlanBuildStatus::NoPlan) => {
+            update_turn_engine_diagnostics(|diagnostics| diagnostics.fallback_no_plan += 1);
+            None
+        }
+        Err(PlanBuildStatus::BudgetExceeded) => {
+            update_turn_engine_diagnostics(|diagnostics| diagnostics.fallback_budget_exceeded += 1);
+            None
+        }
+    }
+}
+
 fn cached_best_plan_if_legal(game: &MonsGame, key: TurnEnginePlanCacheKey) -> Option<TurnPlan> {
     TURN_ENGINE_BEST_PLAN_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
@@ -907,6 +959,123 @@ fn build_best_plan(
     }
 }
 
+fn ranked_candidate_plans(
+    game: &MonsGame,
+    perspective: Color,
+    config: TurnEngineConfig,
+) -> Vec<TurnPlan> {
+    if game.active_color != perspective {
+        return Vec::new();
+    }
+
+    let mut plans = match generate_plans_for_mode(
+        game,
+        perspective,
+        config,
+        config.own_seed_cap.max(1),
+        config.own_beam.max(1),
+        config.step_cap.max(1),
+        config.expansion_cap.max(1),
+    ) {
+        Ok(plans) => {
+            if matches!(config.mode, TurnEngineMode::ProV2) {
+                shortlist_macro_plans_for_reply(plans, config)
+            } else {
+                plans
+            }
+        }
+        Err(_) => Vec::new(),
+    };
+
+    if plans.is_empty() {
+        if let Some(plan) = fallback_single_action_plan(game, perspective, config) {
+            plans.push(plan);
+        }
+    }
+
+    for plan in plans.iter_mut() {
+        plan.utility = evaluate_plan_with_replies(game, plan, perspective, config);
+    }
+    plans.sort_by(|a, b| compare_plans(b, a));
+    plans
+}
+
+fn ranked_head_candidate_plans(
+    game: &MonsGame,
+    perspective: Color,
+    config: TurnEngineConfig,
+) -> Vec<TurnPlan> {
+    if game.active_color != perspective {
+        return Vec::new();
+    }
+
+    let mut plans = match generate_plans_for_mode(
+        game,
+        perspective,
+        config,
+        config.own_seed_cap.max(1),
+        config.own_beam.max(1),
+        config.step_cap.max(1),
+        config.expansion_cap.max(1),
+    ) {
+        Ok(plans) => plans,
+        Err(_) => Vec::new(),
+    };
+
+    if plans.is_empty() {
+        if let Some(plan) = fallback_single_action_plan(game, perspective, config) {
+            plans.push(plan);
+        }
+    }
+
+    for plan in plans.iter_mut() {
+        plan.utility = evaluate_plan_with_replies(game, plan, perspective, config);
+    }
+    plans.sort_by(|a, b| compare_plans(b, a));
+    plans
+}
+
+fn build_best_plan_from_allowed_heads(
+    game: &MonsGame,
+    perspective: Color,
+    config: TurnEngineConfig,
+    allowed_first_steps: &[Vec<Input>],
+) -> Result<Option<TurnPlan>, PlanBuildStatus> {
+    let plans = match generate_plans_for_mode(
+        game,
+        perspective,
+        config,
+        config.own_seed_cap.max(1),
+        config.own_beam.max(1),
+        config.step_cap.max(1),
+        config.expansion_cap.max(1),
+    ) {
+        Ok(plans) if !plans.is_empty() => plans,
+        Ok(_) | Err(PlanBuildStatus::NoPlan) => {
+            return Ok(fallback_single_action_plan_from_allowed_heads(
+                game,
+                perspective,
+                config,
+                allowed_first_steps,
+            ));
+        }
+        Err(PlanBuildStatus::BudgetExceeded) => return Err(PlanBuildStatus::BudgetExceeded),
+    };
+
+    let best_plan =
+        best_plan_from_allowed_heads(game, perspective, config, plans, allowed_first_steps);
+    if best_plan.is_some() {
+        return Ok(best_plan);
+    }
+
+    Ok(fallback_single_action_plan_from_allowed_heads(
+        game,
+        perspective,
+        config,
+        allowed_first_steps,
+    ))
+}
+
 fn build_best_plan_v1(
     game: &MonsGame,
     perspective: Color,
@@ -944,6 +1113,43 @@ fn build_best_plan_v1(
         record_accepted_plan_family(best_plan.head_family);
     }
     Ok(best_plan)
+}
+
+fn best_plan_from_allowed_heads(
+    root: &MonsGame,
+    perspective: Color,
+    config: TurnEngineConfig,
+    plans: Vec<TurnPlan>,
+    allowed_first_steps: &[Vec<Input>],
+) -> Option<TurnPlan> {
+    let allowed_rank = allowed_first_steps
+        .iter()
+        .enumerate()
+        .map(|(rank, inputs)| (inputs.clone(), rank))
+        .collect::<HashMap<Vec<Input>, usize>>();
+    let allowed_len = allowed_first_steps.len();
+    let mut best_plan: Option<(TurnPlan, AllowedHeadSelectionMeta)> = None;
+
+    for mut plan in plans {
+        let Some(rank) = plan_allowed_head_rank(&plan, &allowed_rank) else {
+            continue;
+        };
+        plan.utility = evaluate_plan_with_replies(root, &plan, perspective, config);
+        let meta = allowed_head_selection_meta(root, &plan, perspective, rank, allowed_len);
+        let replace = best_plan.as_ref().map_or(true, |(current, current_meta)| {
+            compare_allowed_head_plans(&plan, meta, current, *current_meta) == Ordering::Greater
+        });
+        if replace {
+            best_plan = Some((plan, meta));
+        }
+    }
+
+    let best_plan = best_plan.map(|(plan, _)| plan);
+    if let Some(best_plan) = best_plan.as_ref() {
+        update_turn_engine_diagnostics(|diagnostics| diagnostics.accepted_plans += 1);
+        record_accepted_plan_family(best_plan.head_family);
+    }
+    best_plan
 }
 
 fn fallback_single_action_plan(
@@ -996,6 +1202,163 @@ fn fallback_single_action_plan(
         }
     }
     best_plan
+}
+
+fn fallback_single_action_plan_from_allowed_heads(
+    game: &MonsGame,
+    perspective: Color,
+    config: TurnEngineConfig,
+    allowed_first_steps: &[Vec<Input>],
+) -> Option<TurnPlan> {
+    let mut seeds = generate_action_seeds(
+        game,
+        perspective,
+        config,
+        config
+            .own_seed_cap
+            .max(1)
+            .saturating_mul(2)
+            .min(TURN_ENGINE_COMPILE_LIMIT_MAX),
+    );
+    if seeds.is_empty() {
+        seeds = fallback_walk_seeds(game, perspective);
+    }
+    if seeds.is_empty() {
+        return None;
+    }
+
+    let allowed_rank = allowed_first_steps
+        .iter()
+        .enumerate()
+        .map(|(rank, inputs)| (inputs.clone(), rank))
+        .collect::<HashMap<Vec<Input>, usize>>();
+    let mut compile_pool = TransitionCompilePool::new(game, seeds.as_slice(), config);
+    let allowed_len = allowed_first_steps.len();
+    let mut best_plan: Option<(TurnPlan, AllowedHeadSelectionMeta)> = None;
+    for seed in seeds {
+        let Some((after, chunk)) =
+            compile_action_from_pool(game, perspective, seed.action, &mut compile_pool)
+        else {
+            continue;
+        };
+        let Some(rank) = allowed_rank.get(&chunk).copied() else {
+            continue;
+        };
+        let mut plan = TurnPlan {
+            actions: vec![seed.action],
+            compiled_chunks: vec![chunk],
+            end_game: after.clone_for_simulation(),
+            end_snapshot: TurnSnapshot::from_game(&after),
+            utility: evaluate_state_utility(&after, game, perspective, config),
+            head_utility: evaluate_state_utility(&after, game, perspective, config),
+            head_family: seed.family,
+            goal_family: seed.family,
+            package_meta: TurnPackageMeta::default(),
+        };
+        plan.utility = evaluate_plan_with_replies(game, &plan, perspective, config);
+        let meta = AllowedHeadSelectionMeta {
+            rank,
+            allowed_len,
+            first_step_opponent_immediate_loss: opponent_can_win_immediately(&after, perspective),
+            first_step_drainer_safety: own_drainer_safety_score(&after.board, perspective),
+        };
+        let replace = best_plan.as_ref().map_or(true, |(current, current_meta)| {
+            compare_allowed_head_plans(&plan, meta, current, *current_meta) == Ordering::Greater
+        });
+        if replace {
+            best_plan = Some((plan, meta));
+        }
+    }
+
+    let best_plan = best_plan.map(|(plan, _)| plan);
+    if let Some(best_plan) = best_plan.as_ref() {
+        update_turn_engine_diagnostics(|diagnostics| diagnostics.accepted_plans += 1);
+        record_accepted_plan_family(best_plan.head_family);
+    }
+    best_plan
+}
+
+fn plan_allowed_head_rank(
+    plan: &TurnPlan,
+    allowed_rank: &HashMap<Vec<Input>, usize>,
+) -> Option<usize> {
+    let first_chunk = plan.compiled_chunks.first()?;
+    allowed_rank.get(first_chunk).copied()
+}
+
+fn plan_has_allowed_head(plan: &TurnPlan, allowed_first_steps: &[Vec<Input>]) -> bool {
+    let Some(first_chunk) = plan.compiled_chunks.first() else {
+        return false;
+    };
+    allowed_first_steps
+        .iter()
+        .any(|inputs| inputs == first_chunk)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AllowedHeadSelectionMeta {
+    rank: usize,
+    allowed_len: usize,
+    first_step_opponent_immediate_loss: bool,
+    first_step_drainer_safety: i32,
+}
+
+fn allowed_head_selection_meta(
+    root: &MonsGame,
+    plan: &TurnPlan,
+    perspective: Color,
+    rank: usize,
+    allowed_len: usize,
+) -> AllowedHeadSelectionMeta {
+    let after = plan
+        .compiled_chunks
+        .first()
+        .and_then(|chunk| MonsGameModel::apply_inputs_for_search(root, chunk.as_slice()));
+
+    AllowedHeadSelectionMeta {
+        rank,
+        allowed_len,
+        first_step_opponent_immediate_loss: after
+            .as_ref()
+            .is_some_and(|game| opponent_can_win_immediately(game, perspective)),
+        first_step_drainer_safety: after
+            .as_ref()
+            .map_or(i32::MIN / 4, |game| own_drainer_safety_score(&game.board, perspective)),
+    }
+}
+
+fn compare_allowed_head_plans(
+    left: &TurnPlan,
+    left_meta: AllowedHeadSelectionMeta,
+    right: &TurnPlan,
+    right_meta: AllowedHeadSelectionMeta,
+) -> Ordering {
+    compare_utility_primary_axes(left.utility, right.utility)
+        .then_with(|| {
+            (
+                i32::from(!left_meta.first_step_opponent_immediate_loss),
+                left_meta.first_step_drainer_safety,
+            )
+                .cmp(&(
+                    i32::from(!right_meta.first_step_opponent_immediate_loss),
+                    right_meta.first_step_drainer_safety,
+                ))
+        })
+        .then_with(|| {
+            allowed_head_rank_adjusted_eval(left.utility, left_meta)
+                .cmp(&allowed_head_rank_adjusted_eval(right.utility, right_meta))
+        })
+        .then_with(|| compare_plans(left, right))
+        .then_with(|| right_meta.rank.cmp(&left_meta.rank))
+}
+
+fn allowed_head_rank_adjusted_eval(
+    utility: TurnEngineUtility,
+    meta: AllowedHeadSelectionMeta,
+) -> i32 {
+    utility.eval_score.saturating_add(
+        (meta.allowed_len.saturating_sub(meta.rank).min(96) as i32).saturating_mul(12),
+    )
 }
 
 fn compare_plans(left: &TurnPlan, right: &TurnPlan) -> Ordering {
@@ -6070,6 +6433,211 @@ mod tests {
         )
         .expect("second chunk");
         assert_eq!(second, plan.compiled_chunks[1]);
+    }
+
+    #[test]
+    fn turn_engine_allowed_heads_selects_matching_subset_head() {
+        clear_turn_engine_plan_cache();
+        let game = primary_pvs_sensitive_search_fixture();
+        let config = engine_config();
+        let mut plans = generate_plans_for_mode(
+            &game,
+            Color::Black,
+            config,
+            config.own_seed_cap,
+            config.own_beam,
+            config.step_cap,
+            config.expansion_cap,
+        )
+        .expect("pvs fixture should produce plans");
+        for plan in plans.iter_mut() {
+            plan.utility = evaluate_plan_with_replies(&game, plan, Color::Black, config);
+        }
+        plans.sort_by(|a, b| compare_plans(b, a));
+
+        let mut unique_heads = Vec::<Vec<Input>>::new();
+        for plan in plans.iter() {
+            let Some(head) = plan.compiled_chunks.first() else {
+                continue;
+            };
+            if !unique_heads.iter().any(|existing| existing == head) {
+                unique_heads.push(head.clone());
+            }
+            if unique_heads.len() >= 2 {
+                break;
+            }
+        }
+        assert!(
+            unique_heads.len() >= 2,
+            "expected at least two distinct first chunks on the pvs fixture"
+        );
+
+        let allowed = vec![unique_heads[1].clone()];
+        let plan = turn_engine_candidate_plan_from_allowed_heads(
+            &game,
+            Color::Black,
+            config,
+            allowed.as_slice(),
+        )
+        .expect("allowed-head constrained plan");
+        assert_eq!(plan.compiled_chunks.first(), Some(&allowed[0]));
+        assert_plan_roundtrip(&game, &plan);
+    }
+
+    #[test]
+    fn allowed_head_compare_prefers_safe_first_step_over_better_rank() {
+        let game = safe_supermana_fixture();
+        let make_plan = |eval_score: i32, inputs: Vec<Input>| TurnPlan {
+            actions: vec![],
+            compiled_chunks: vec![inputs],
+            end_game: game.clone_for_simulation(),
+            end_snapshot: TurnSnapshot::from_game(&game),
+            utility: TurnEngineUtility::from_components_for_test(0, 0, 0, 0, 0, 0, eval_score),
+            head_utility: TurnEngineUtility::from_components_for_test(0, 0, 0, 0, 0, 0, eval_score),
+            head_family: TurnPlanFamily::ManaTempo,
+            goal_family: TurnPlanFamily::ManaTempo,
+            package_meta: TurnPackageMeta::default(),
+        };
+
+        let safer = make_plan(
+            100,
+            vec![
+                Input::Location(Location::new(6, 5)),
+                Input::Location(Location::new(5, 5)),
+            ],
+        );
+        let riskier = make_plan(
+            100,
+            vec![
+                Input::Location(Location::new(6, 5)),
+                Input::Location(Location::new(6, 4)),
+            ],
+        );
+
+        let safer_meta = AllowedHeadSelectionMeta {
+            rank: 2,
+            allowed_len: 4,
+            first_step_opponent_immediate_loss: false,
+            first_step_drainer_safety: 1,
+        };
+        let riskier_meta = AllowedHeadSelectionMeta {
+            rank: 0,
+            allowed_len: 4,
+            first_step_opponent_immediate_loss: true,
+            first_step_drainer_safety: -2,
+        };
+
+        assert_eq!(
+            compare_allowed_head_plans(&safer, safer_meta, &riskier, riskier_meta),
+            Ordering::Greater
+        );
+    }
+
+    #[test]
+    fn allowed_head_compare_prefers_earlier_rank_when_other_axes_tie() {
+        let game = safe_supermana_fixture();
+        let make_plan = |inputs: Vec<Input>| TurnPlan {
+            actions: vec![],
+            compiled_chunks: vec![inputs],
+            end_game: game.clone_for_simulation(),
+            end_snapshot: TurnSnapshot::from_game(&game),
+            utility: TurnEngineUtility::from_components_for_test(0, 0, 0, 0, 0, 0, 100),
+            head_utility: TurnEngineUtility::from_components_for_test(0, 0, 0, 0, 0, 0, 100),
+            head_family: TurnPlanFamily::ManaTempo,
+            goal_family: TurnPlanFamily::ManaTempo,
+            package_meta: TurnPackageMeta::default(),
+        };
+
+        let earlier = make_plan(vec![
+            Input::Location(Location::new(6, 5)),
+            Input::Location(Location::new(6, 4)),
+        ]);
+        let later = make_plan(vec![
+            Input::Location(Location::new(6, 5)),
+            Input::Location(Location::new(5, 5)),
+        ]);
+
+        let earlier_meta = AllowedHeadSelectionMeta {
+            rank: 0,
+            allowed_len: 4,
+            first_step_opponent_immediate_loss: false,
+            first_step_drainer_safety: 0,
+        };
+        let later_meta = AllowedHeadSelectionMeta {
+            rank: 2,
+            allowed_len: 4,
+            first_step_opponent_immediate_loss: false,
+            first_step_drainer_safety: 0,
+        };
+
+        assert_eq!(
+            compare_allowed_head_plans(&earlier, earlier_meta, &later, later_meta),
+            Ordering::Greater
+        );
+    }
+
+    #[test]
+    fn turn_engine_allowed_heads_replay_cached_continuation() {
+        clear_turn_engine_plan_cache();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(8, 2),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(0, 10),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::Black, 0),
+                    },
+                ),
+            ],
+            Color::White,
+            2,
+        );
+        let plan = turn_engine_best_plan_for_test(&game, Color::White, engine_config())
+            .expect("cacheable plan");
+        assert!(plan.compiled_chunks.len() >= 2, "need multi-step plan");
+
+        let first = turn_engine_next_inputs_from_allowed_heads(
+            &game,
+            Color::White,
+            TurnEngineMode::ProV1,
+            engine_config(),
+            &[plan.compiled_chunks[0].clone()],
+        )
+        .expect("first chunk");
+        assert_eq!(first, plan.compiled_chunks[0]);
+        let after_first = MonsGameModel::apply_inputs_for_search(&game, first.as_slice())
+            .expect("first chunk legal");
+        let second = turn_engine_next_inputs_from_allowed_heads(
+            &after_first,
+            Color::White,
+            TurnEngineMode::ProV1,
+            engine_config(),
+            &[plan.compiled_chunks[1].clone()],
+        )
+        .expect("second chunk");
+        assert_eq!(second, plan.compiled_chunks[1]);
+    }
+
+    #[test]
+    fn turn_engine_head_candidate_plans_dedup_and_respect_limit() {
+        let game = primary_pvs_sensitive_search_fixture();
+        let plans = turn_engine_head_candidate_plans(&game, Color::Black, engine_config(), 2);
+        assert_eq!(plans.len(), 2);
+        let first = plans[0]
+            .compiled_chunks
+            .first()
+            .expect("first plan should have a head");
+        let second = plans[1]
+            .compiled_chunks
+            .first()
+            .expect("second plan should have a head");
+        assert_ne!(first, second);
     }
 
     #[test]

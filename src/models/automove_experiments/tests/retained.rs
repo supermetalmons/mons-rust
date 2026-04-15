@@ -158,10 +158,10 @@ fn runtime_pro_turn_engine_v30_profile_prefers_v30_white_opening_spirit_sibling_
     clear_turn_engine_plan_cache();
     assert_eq!(
         profile_decision_move_fen(
-        "runtime_pro_turn_engine_v30",
-        SmartAutomovePreference::Pro,
-        &game,
-    ),
+            "runtime_pro_turn_engine_v30",
+            SmartAutomovePreference::Pro,
+            &game,
+        ),
         "l10,6;l9,6"
     );
 }
@@ -571,8 +571,8 @@ fn runtime_pro_turn_engine_v30_rejects_white_fast_deferred_recovery_progress_hea
 }
 
 #[test]
-fn runtime_pro_turn_engine_v30_rejects_v30_white_vulnerable_progress_head_flat_nonwin_normal_root(
-) {
+fn runtime_pro_turn_engine_v30_rejects_v30_white_vulnerable_progress_head_flat_nonwin_normal_root()
+{
     let game = MonsGame::from_fen(
         "1 0 w 1 0 1 0 0 5 n11/n05a0xn02e0xn02/n03y0xd0ms0xn05/n03xxmxxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n11/n03xxMn01A0xn05/n01D0xn04Y0xS0xn03/n03E0xn07",
         false,
@@ -626,7 +626,11 @@ fn runtime_pro_turn_engine_v30_rejects_v30_white_vulnerable_progress_head_flat_n
     assert!(head_root.supermana_progress);
     assert!(!accepted);
     assert_eq!(
-        profile_decision_move_fen("runtime_pro_turn_engine_v30", SmartAutomovePreference::Pro, &game),
+        profile_decision_move_fen(
+            "runtime_pro_turn_engine_v30",
+            SmartAutomovePreference::Pro,
+            &game
+        ),
         "l9,7;l8,7",
     );
 }
@@ -638,11 +642,12 @@ fn runtime_pro_turn_engine_v30_accepts_v30_white_head_flat_nonwin_normal_root() 
         false,
     )
     .expect("white flat nonwin normal accepted-head fen should be valid");
-    let (config, scored_roots, head_plan, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
-        "runtime_pro_turn_engine_v30",
-        SmartAutomovePreference::Pro,
-        &game,
-    );
+    let (config, scored_roots, head_plan, _) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(
+            "runtime_pro_turn_engine_v30",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
     let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
         &game,
         scored_roots.as_slice(),
@@ -674,7 +679,10 @@ fn runtime_pro_turn_engine_v30_accepts_v30_white_head_flat_nonwin_normal_root() 
                 .find(|root| root.inputs.as_slice() == head_inputs.as_slice())
         ),
     );
-    assert_eq!(Input::fen_from_array(&pre_accept_selected), "l7,7;l5,5;l5,6");
+    assert_eq!(
+        Input::fen_from_array(&pre_accept_selected),
+        "l7,7;l5,5;l5,6"
+    );
     assert_eq!(Input::fen_from_array(head_inputs), "l7,7;l5,5;l6,4");
     assert!(accepted);
     assert_eq!(
@@ -696,11 +704,12 @@ fn runtime_pro_turn_engine_v30_profile_prefers_current_black_flat_nonwin_normal_
     .expect("black flat nonwin normal fen should be valid");
     clear_exact_state_analysis_cache();
     clear_turn_engine_plan_cache();
-    let (config, scored_roots, head_plan, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
-        "runtime_pro_turn_engine_v30",
-        SmartAutomovePreference::Pro,
-        &game,
-    );
+    let (config, scored_roots, head_plan, _) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(
+            "runtime_pro_turn_engine_v30",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
     let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
         &game,
         scored_roots.as_slice(),
@@ -758,10 +767,7 @@ fn runtime_pro_turn_engine_v30_profile_prefers_current_black_flat_nonwin_normal_
         runtime_selected,
         pro_v2_root_advisor_decision_snapshot(),
     );
-    assert_eq!(
-        runtime_selected,
-        "l2,5;l1,7;l2,7"
-    );
+    assert_eq!(runtime_selected, "l2,5;l1,7;l2,7");
 }
 
 #[test]
@@ -773,11 +779,12 @@ fn runtime_pro_turn_engine_v30_profile_prefers_current_black_flat_nonwin_fast_ro
     .expect("black flat nonwin fast fen should be valid");
     clear_exact_state_analysis_cache();
     clear_turn_engine_plan_cache();
-    let (config, scored_roots, head_plan, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
-        "runtime_pro_turn_engine_v30",
-        SmartAutomovePreference::Pro,
-        &game,
-    );
+    let (config, scored_roots, head_plan, _) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(
+            "runtime_pro_turn_engine_v30",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
     let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
         &game,
         scored_roots.as_slice(),
@@ -836,10 +843,7 @@ fn runtime_pro_turn_engine_v30_profile_prefers_current_black_flat_nonwin_fast_ro
         runtime_selected,
         pro_v2_root_advisor_decision_snapshot(),
     );
-    assert_eq!(
-        runtime_selected,
-        "l1,5;l3,3;l2,2"
-    );
+    assert_eq!(runtime_selected, "l1,5;l3,3;l2,2");
 }
 
 #[test]
@@ -856,11 +860,8 @@ fn runtime_pro_turn_engine_v30_profile_prefers_current_black_late_head_duel_norm
     let (legacy_selected, legacy_full_pool_selected, legacy_candidates, legacy_full_pool) =
         pro_v2_legacy_selector_probe(&game, SmartAutomovePreference::Pro);
 
-    let current_selected = profile_decision_move_fen(
-        "runtime_current",
-        SmartAutomovePreference::Pro,
-        &game,
-    );
+    let current_selected =
+        profile_decision_move_fen("runtime_current", SmartAutomovePreference::Pro, &game);
     println!(
         "BLACK_LATE_HEAD_DUEL_NORMAL current_selected={} context={} legacy_selected={} legacy_full_pool_selected={} legacy_candidates={:?} legacy_full_pool={:?} probe={:?} advisor={:?}",
         current_selected,
@@ -896,11 +897,8 @@ fn runtime_pro_turn_engine_v30_profile_prefers_current_black_recovery_duel_fast_
     let (legacy_selected, legacy_full_pool_selected, legacy_candidates, legacy_full_pool) =
         pro_v2_legacy_selector_probe(&game, SmartAutomovePreference::Pro);
 
-    let current_selected = profile_decision_move_fen(
-        "runtime_current",
-        SmartAutomovePreference::Pro,
-        &game,
-    );
+    let current_selected =
+        profile_decision_move_fen("runtime_current", SmartAutomovePreference::Pro, &game);
     println!(
         "BLACK_RECOVERY_DUEL_FAST current_selected={} context={} legacy_selected={} legacy_full_pool_selected={} legacy_candidates={:?} legacy_full_pool={:?} probe={:?} advisor={:?}",
         current_selected,
@@ -937,11 +935,8 @@ fn runtime_pro_turn_engine_v30_profile_prefers_current_black_spirit_bridge_duel_
     let (legacy_selected, legacy_full_pool_selected, legacy_candidates, legacy_full_pool) =
         pro_v2_legacy_selector_probe(&game, SmartAutomovePreference::Pro);
 
-    let current_selected = profile_decision_move_fen(
-        "runtime_current",
-        SmartAutomovePreference::Pro,
-        &game,
-    );
+    let current_selected =
+        profile_decision_move_fen("runtime_current", SmartAutomovePreference::Pro, &game);
     println!(
         "BLACK_SPIRIT_BRIDGE_DUEL_FAST current_selected={} context={} legacy_selected={} legacy_full_pool_selected={} legacy_candidates={:?} legacy_full_pool={:?} probe={:?} advisor={:?}",
         current_selected,
@@ -983,11 +978,8 @@ fn runtime_pro_turn_engine_v30_profile_prefers_current_white_late_mana_sibling_d
         &game,
     );
 
-    let current_selected = profile_decision_move_fen(
-        "runtime_current",
-        SmartAutomovePreference::Pro,
-        &game,
-    );
+    let current_selected =
+        profile_decision_move_fen("runtime_current", SmartAutomovePreference::Pro, &game);
     let current_root = format_root_probe(
         scored_roots
             .iter()
@@ -1043,11 +1035,8 @@ fn runtime_pro_turn_engine_v30_profile_prefers_current_black_post_search_duel_no
         &game,
     );
 
-    let current_selected = profile_decision_move_fen(
-        "runtime_current",
-        SmartAutomovePreference::Pro,
-        &game,
-    );
+    let current_selected =
+        profile_decision_move_fen("runtime_current", SmartAutomovePreference::Pro, &game);
     let current_root = format_root_probe(
         scored_roots
             .iter()
@@ -1098,11 +1087,8 @@ fn runtime_pro_turn_engine_v30_profile_prefers_current_black_bridge_nonwin_duel_
     let (legacy_selected, legacy_full_pool_selected, legacy_candidates, legacy_full_pool) =
         pro_v2_legacy_selector_probe(&game, SmartAutomovePreference::Pro);
 
-    let current_selected = profile_decision_move_fen(
-        "runtime_current",
-        SmartAutomovePreference::Pro,
-        &game,
-    );
+    let current_selected =
+        profile_decision_move_fen("runtime_current", SmartAutomovePreference::Pro, &game);
     println!(
         "BLACK_BRIDGE_NONWIN_DUEL_FAST current_selected={} context={} legacy_selected={} legacy_full_pool_selected={} legacy_candidates={:?} legacy_full_pool={:?} probe={:?} advisor={:?}",
         current_selected,
@@ -1149,11 +1135,8 @@ fn runtime_pro_turn_engine_v30_rejects_black_post_search_spirit_reentry_duel_pro
         SmartAutomovePreference::Pro,
         &game,
     );
-    let current_selected = profile_decision_move_fen(
-        "runtime_current",
-        SmartAutomovePreference::Pro,
-        &game,
-    );
+    let current_selected =
+        profile_decision_move_fen("runtime_current", SmartAutomovePreference::Pro, &game);
 
     println!(
         "BLACK_POST_SEARCH_DUEL_PRO current_selected={} probe={:?} advisor={:?}",
@@ -1178,6 +1161,15 @@ fn runtime_pro_turn_engine_v30_profile_prefers_current_black_head_nonwin_duel_pr
 }
 
 #[test]
+fn runtime_pro_turn_engine_v30_profile_prefers_head_black_fast_regression_reply_root() {
+    assert_runtime_pro_turn_engine_v30_prefers_current_root_on_board(
+        "BLACK_FAST_REGRESSION_REPLY",
+        "0 0 b 0 0 0 0 0 2 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n04E0xD0xS0xn04/n04A0xn04Y0xn01",
+        "l0,4;l1,5",
+    );
+}
+
+#[test]
 fn runtime_pro_turn_engine_v30_rejects_black_followup_spirit_head_duel_pro_root() {
     let game = MonsGame::from_fen(
         "0 0 b 0 0 2 0 0 2 n03y0xn01d0xa0xn04/n04s0xn01e0xn04/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n04A0xD0xn05/n03E0xn02S0xn02Y0xn01",
@@ -1191,11 +1183,8 @@ fn runtime_pro_turn_engine_v30_rejects_black_followup_spirit_head_duel_pro_root(
         SmartAutomovePreference::Pro,
         &game,
     );
-    let current_selected = profile_decision_move_fen(
-        "runtime_current",
-        SmartAutomovePreference::Pro,
-        &game,
-    );
+    let current_selected =
+        profile_decision_move_fen("runtime_current", SmartAutomovePreference::Pro, &game);
 
     println!(
         "BLACK_FOLLOWUP_SPIRIT_DUEL_PRO current_selected={} probe={:?} advisor={:?}",
@@ -1369,11 +1358,8 @@ fn runtime_pro_turn_engine_v30_prefers_windowed_mana_on_black_late_fast_trace_ro
         &game,
     );
     let advisor = pro_v2_root_advisor_decision_snapshot();
-    let current_selected = profile_decision_move_fen(
-        "runtime_current",
-        SmartAutomovePreference::Pro,
-        &game,
-    );
+    let current_selected =
+        profile_decision_move_fen("runtime_current", SmartAutomovePreference::Pro, &game);
 
     println!(
         "BLACK_LATE_FAST_MANA_LANE_TRACE current_selected={} context={} probe={:?} advisor={:?}",
@@ -1404,11 +1390,8 @@ fn runtime_pro_turn_engine_v30_keeps_recovery_on_black_late_fast_trace_root() {
         &game,
     );
     let advisor = pro_v2_root_advisor_decision_snapshot();
-    let current_selected = profile_decision_move_fen(
-        "runtime_current",
-        SmartAutomovePreference::Pro,
-        &game,
-    );
+    let current_selected =
+        profile_decision_move_fen("runtime_current", SmartAutomovePreference::Pro, &game);
 
     println!(
         "BLACK_LATE_FAST_RECOVERY_TRACE current_selected={} context={} probe={:?} advisor={:?}",

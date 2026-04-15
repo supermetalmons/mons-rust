@@ -80,7 +80,6 @@ pub(in super::super) fn play_one_game_budget_duel_with_timing(
 ) -> (MatchResult, DuelTimingStats) {
     let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
     clear_exact_state_analysis_cache();
-    clear_turn_opportunity_plan_cache();
     clear_turn_engine_plan_cache();
     clear_turn_engine_selector_diagnostics();
     let use_white_opening_book = env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false);

@@ -10,7 +10,6 @@ use crate::models::automove_turn_engine::{
     turn_engine_candidate_plan, turn_engine_diagnostics_snapshot, TurnEngineConfig,
     TurnEngineDiagnostics,
 };
-use crate::models::automove_turn_planner::clear_turn_opportunity_plan_cache;
 use crate::models::mons_game_model::{
     clear_turn_engine_selector_diagnostics, pro_v2_root_advisor_decision_snapshot,
     turn_engine_selector_diagnostics_snapshot, TurnEngineSelectorDiagnostics,
@@ -353,7 +352,6 @@ fn runtime_decision_probe(
 ) -> RuntimeDecisionProbe {
     clear_exact_state_analysis_cache();
     clear_exact_query_diagnostics();
-    clear_turn_opportunity_plan_cache();
     clear_turn_engine_plan_cache();
     clear_turn_engine_diagnostics();
     clear_turn_engine_selector_diagnostics();
@@ -364,7 +362,6 @@ fn runtime_decision_probe(
 
     clear_exact_state_analysis_cache();
     clear_exact_query_diagnostics();
-    clear_turn_opportunity_plan_cache();
     clear_turn_engine_plan_cache();
     clear_turn_engine_diagnostics();
     clear_turn_engine_selector_diagnostics();
@@ -611,7 +608,6 @@ fn play_profile_duel_trace(
     let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
     clear_exact_state_analysis_cache();
     clear_exact_query_diagnostics();
-    clear_turn_opportunity_plan_cache();
     clear_turn_engine_plan_cache();
     clear_turn_engine_diagnostics();
     clear_turn_engine_selector_diagnostics();
