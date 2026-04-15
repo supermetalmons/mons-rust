@@ -37,4 +37,5 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 
 - After promotion, the active experiment surface was shrunk to two selectable profiles: `runtime_current` and `runtime_pro_turn_engine_v30`.
 - Calibration/reference profiles, curated-pool smoke plumbing, and compatibility-only docs were archived.
+- Legacy flat experiment logs and the old `target/experiment-runs/runtime_preflight_*.stamp` compatibility path were removed.
 - Durable outcome: future work starts from a smaller Pro-only workflow; archived profiles and stages stay documented here, not in the live runbook.

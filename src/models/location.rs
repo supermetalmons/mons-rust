@@ -21,7 +21,6 @@ static SPIRIT_REACHABILITY_CACHE: LazyLock<Vec<Vec<Location>>> = LazyLock::new(b
 #[wasm_bindgen]
 impl Location {
     #[wasm_bindgen(constructor)]
-    #[inline]
     pub fn new(i: i32, j: i32) -> Self {
         Self { i, j }
     }

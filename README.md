@@ -7,45 +7,28 @@ or
 
 ## automove
 
-Canonical automove workflow:
+Docs:
 
 - runbook: `HOW_TO_ITERATE_ON_AUTOMOVE.md`
 - live board: `AUTOMOVE_IDEAS.md`
 - durable lessons: `docs/automove-knowledge.md`
 - archive: `docs/automove-archive.md`
 
-Active experiment stages:
+Quickstart:
 
-- `guardrails`
-- `pro-triage`
-- `runtime-preflight`
-- `pro-reliability`
-- `pro-reliability-confirm`
+- canonical Pro loop: `./scripts/run-automove-canonical-loop.sh runtime_pro_turn_engine_v30`
+- larger confirmation pass: `./scripts/run-automove-canonical-loop.sh --confirm runtime_pro_turn_engine_v30`
+- single-stage or diagnostic run: `./scripts/run-automove-experiment.sh <stage> runtime_pro_turn_engine_v30`
+- cleanup preview: `./scripts/clean-experiment-artifacts.sh --dry-run`
 
-Canonical commands:
-
-- `./scripts/run-automove-experiment.sh guardrails runtime_pro_turn_engine_v30`
-- `SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage runtime_pro_turn_engine_v30`
-- `./scripts/run-automove-experiment.sh runtime-preflight runtime_pro_turn_engine_v30`
-- `./scripts/run-automove-experiment.sh pro-reliability runtime_pro_turn_engine_v30`
-- `./scripts/run-automove-experiment.sh pro-reliability-confirm runtime_pro_turn_engine_v30`
-- `./scripts/clean-experiment-artifacts.sh --dry-run`
-
-Active retained profile surface:
+Retained profile surface:
 
 - `runtime_current`
 - `runtime_pro_turn_engine_v30`
 
-Notes:
+Artifact layout:
 
-- Shipping runtime is `runtime_current`.
-- `runtime_pro_turn_engine_v30` is the only retained Pro frontier for offline experiments.
-- Archive profiles, including `runtime_pro_turn_engine_v1`, are not valid active experiment targets.
-- Post-promotion maintenance runs may show `pro-triage` `0/0` for `runtime_pro_turn_engine_v30` vs `runtime_current`; that is the expected stable-equivalence result, not a failed challenger attempt.
-
-Default artifact layout:
-
-- logs: `target/experiment-runs/<candidate>/`
+- candidate logs: `target/experiment-runs/<candidate>/`
 - workflow-only logs: `target/experiment-runs/misc/`
 - runtime-preflight stamps: `target/experiment-stamps/`
 

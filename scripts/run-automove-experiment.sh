@@ -7,6 +7,9 @@ usage() {
 usage:
   ./scripts/run-automove-experiment.sh <stage> <candidate> [baseline]
 
+single-stage runner:
+  use this script for one stage at a time or for diagnostics only
+
 stages:
   guardrails              tactical guardrails only; the cheap first gate
   runtime-preflight       stage-1 cpu report (advisory for Pro) + exact-lite diagnostics; writes the duel stamp
@@ -91,19 +94,10 @@ preflight_stamp_path() {
   echo "$(experiment_stamp_dir)/runtime_preflight_${safe_candidate}.stamp"
 }
 
-legacy_preflight_stamp_path() {
-  local safe_candidate
-  safe_candidate="$(sanitize "$1")"
-  echo "target/experiment-runs/runtime_preflight_${safe_candidate}.stamp"
-}
-
 clear_preflight_stamp() {
   local stamp_path
   stamp_path="$(preflight_stamp_path "$1")"
-  local legacy_stamp_path
-  legacy_stamp_path="$(legacy_preflight_stamp_path "$1")"
   rm -f "${stamp_path}"
-  rm -f "${legacy_stamp_path}"
 }
 
 write_preflight_stamp() {

@@ -1,6 +1,6 @@
 # Automove Knowledge
 
-This file keeps only durable automove lessons.
+This file keeps only durable automove lessons and kill rules.
 
 Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md` for the current live state.
 

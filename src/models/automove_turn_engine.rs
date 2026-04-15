@@ -1,8 +1,10 @@
 #![cfg(any(target_arch = "wasm32", test))]
 
 use crate::models::scoring::{
-    evaluate_preferability_with_weights_and_exact_policy, ScoringWeights, DEFAULT_SCORING_WEIGHTS,
+    evaluate_preferability_with_weights_and_exact_policy, ScoringWeights,
 };
+#[cfg(test)]
+use crate::models::scoring::DEFAULT_SCORING_WEIGHTS;
 use crate::*;
 use std::cell::RefCell;
 use std::cmp::Ordering;
@@ -252,6 +254,7 @@ pub(crate) struct TurnPlan {
     pub actions: Vec<TurnAction>,
     pub compiled_chunks: Vec<Vec<Input>>,
     pub end_game: MonsGame,
+    #[cfg(test)]
     pub end_snapshot: TurnSnapshot,
     pub utility: TurnEngineUtility,
     pub head_utility: TurnEngineUtility,
@@ -540,6 +543,7 @@ thread_local! {
         RefCell::new(TurnEngineDiagnostics::default());
 }
 
+#[cfg(test)]
 pub(crate) fn clear_turn_engine_plan_cache() {
     TURN_ENGINE_CONTINUATION_CACHE.with(|cache| cache.borrow_mut().clear());
     TURN_ENGINE_ELIGIBILITY_CACHE.with(|cache| cache.borrow_mut().clear());
@@ -549,12 +553,14 @@ pub(crate) fn clear_turn_engine_plan_cache() {
     TURN_ENGINE_NO_PLAN_CACHE.with(|cache| cache.borrow_mut().clear());
 }
 
+#[cfg(test)]
 pub(crate) fn clear_turn_engine_diagnostics() {
     TURN_ENGINE_DIAGNOSTICS.with(|diagnostics| {
         *diagnostics.borrow_mut() = TurnEngineDiagnostics::default();
     });
 }
 
+#[cfg(test)]
 pub(crate) fn turn_engine_diagnostics_snapshot() -> TurnEngineDiagnostics {
     TURN_ENGINE_DIAGNOSTICS.with(|diagnostics| *diagnostics.borrow())
 }
@@ -628,6 +634,7 @@ impl TurnSnapshot {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn turn_engine_next_inputs(
     game: &MonsGame,
     perspective: Color,
@@ -959,6 +966,7 @@ fn build_best_plan(
     }
 }
 
+#[cfg(test)]
 fn ranked_candidate_plans(
     game: &MonsGame,
     perspective: Color,
@@ -1186,6 +1194,7 @@ fn fallback_single_action_plan(
             actions: vec![seed.action],
             compiled_chunks: vec![chunk],
             end_game: after.clone_for_simulation(),
+            #[cfg(test)]
             end_snapshot: TurnSnapshot::from_game(&after),
             utility: evaluate_state_utility(&after, game, perspective, config),
             head_utility: evaluate_state_utility(&after, game, perspective, config),
@@ -1248,6 +1257,7 @@ fn fallback_single_action_plan_from_allowed_heads(
             actions: vec![seed.action],
             compiled_chunks: vec![chunk],
             end_game: after.clone_for_simulation(),
+            #[cfg(test)]
             end_snapshot: TurnSnapshot::from_game(&after),
             utility: evaluate_state_utility(&after, game, perspective, config),
             head_utility: evaluate_state_utility(&after, game, perspective, config),
@@ -1549,6 +1559,7 @@ fn opportunity_plan_into_turn_plan(plan: OpportunityPlan) -> TurnPlan {
             .collect(),
         compiled_chunks: plan.compiled_chunks,
         end_game: plan.end_game,
+        #[cfg(test)]
         end_snapshot: plan.end_snapshot,
         utility: plan.utility,
         head_utility: plan.head_utility,
@@ -1856,6 +1867,7 @@ fn macro_plan_into_turn_plan(
         actions: node.actions,
         compiled_chunks: node.compiled_chunks,
         end_game: node.game.clone_for_simulation(),
+        #[cfg(test)]
         end_snapshot: TurnSnapshot::from_game(&node.game),
         utility: evaluate_state_utility(&node.game, root, perspective, config),
         head_utility: node.head_utility,
@@ -2685,6 +2697,7 @@ fn generate_turn_plans(
             actions: node.actions,
             compiled_chunks: node.compiled_chunks,
             end_game: node.game.clone_for_simulation(),
+            #[cfg(test)]
             end_snapshot: TurnSnapshot::from_game(&node.game),
             utility: evaluate_state_utility(&node.game, game, perspective, config),
             head_utility: node.head_utility,
@@ -6491,6 +6504,7 @@ mod tests {
             actions: vec![],
             compiled_chunks: vec![inputs],
             end_game: game.clone_for_simulation(),
+            #[cfg(test)]
             end_snapshot: TurnSnapshot::from_game(&game),
             utility: TurnEngineUtility::from_components_for_test(0, 0, 0, 0, 0, 0, eval_score),
             head_utility: TurnEngineUtility::from_components_for_test(0, 0, 0, 0, 0, 0, eval_score),
@@ -6540,6 +6554,7 @@ mod tests {
             actions: vec![],
             compiled_chunks: vec![inputs],
             end_game: game.clone_for_simulation(),
+            #[cfg(test)]
             end_snapshot: TurnSnapshot::from_game(&game),
             utility: TurnEngineUtility::from_components_for_test(0, 0, 0, 0, 0, 0, 100),
             head_utility: TurnEngineUtility::from_components_for_test(0, 0, 0, 0, 0, 0, 100),

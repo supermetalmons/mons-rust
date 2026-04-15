@@ -129,14 +129,14 @@ thread_local! {
         std::cell::RefCell::new(TurnEngineRootSelectionDiagnostics::default());
 }
 
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(test)]
 fn clear_turn_engine_root_selection_diagnostics() {
     TURN_ENGINE_ROOT_SELECTION_DIAGNOSTICS.with(|diagnostics| {
         *diagnostics.borrow_mut() = TurnEngineRootSelectionDiagnostics::default();
     });
 }
 
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(test)]
 fn turn_engine_root_selection_diagnostics_snapshot() -> TurnEngineRootSelectionDiagnostics {
     TURN_ENGINE_ROOT_SELECTION_DIAGNOSTICS.with(|diagnostics| *diagnostics.borrow())
 }
@@ -1872,6 +1872,7 @@ struct TurnEngineRootProjection {
     plan: TurnPlan,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct TurnEngineSelectorDiagnostics {
     pub head_plan_calls: usize,
@@ -2058,10 +2059,6 @@ fn set_pro_v2_root_advisor_decision(decision: Option<ProV2RootAdvisorDecision>) 
 #[inline]
 fn set_pro_v2_root_advisor_decision(_: Option<ProV2RootAdvisorDecision>) {}
 
-#[cfg(not(test))]
-#[inline]
-fn update_turn_engine_selector_diagnostics(_: impl FnOnce(&mut TurnEngineSelectorDiagnostics)) {}
-
 #[cfg(any(target_arch = "wasm32", test))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct MoveEfficiencySnapshot {
@@ -2227,8 +2224,10 @@ struct RankedChildState {
 struct ChildEvalBundle {
     child_hash: u64,
     heuristic: i32,
+    #[cfg(test)]
     after_efficiency_snapshot: Option<MoveEfficiencySnapshot>,
     ordering_efficiency: i32,
+    #[cfg(test)]
     own_drainer_vulnerable_after: bool,
     tactical_extension_trigger: bool,
     quiet_reduction_candidate: bool,
@@ -2626,6 +2625,7 @@ impl MonsGameModel {
 }
 
 impl MonsGameModel {
+    #[cfg(any(target_arch = "wasm32", test))]
     fn is_white_opening_book_first_move_inputs(inputs: &[Input]) -> bool {
         PARSED_WHITE_OPENING_BOOK.iter().any(|sequence| {
             sequence
@@ -4926,6 +4926,7 @@ impl MonsGameModel {
             .collect()
     }
 
+    #[cfg(test)]
     fn compare_same_turn_score_window_transitions(
         a: &LegalInputTransition,
         b: &LegalInputTransition,
@@ -6252,6 +6253,7 @@ impl MonsGameModel {
             || turn_summary.safe_opponent_mana_progress
     }
 
+    #[cfg(test)]
     fn has_exact_frontier_tactical_potential(game: &MonsGame) -> bool {
         Self::has_frontier_tactical_potential(game, true, true)
     }
@@ -7497,6 +7499,7 @@ impl MonsGameModel {
             actions: Vec::new(),
             compiled_chunks: vec![candidate.inputs.clone()],
             end_game: candidate.game.clone_for_simulation(),
+            #[cfg(test)]
             end_snapshot: TurnSnapshot::from_game(&candidate.game),
             utility: turn_engine_evaluate_state_utility(
                 &candidate.game,
@@ -7549,6 +7552,7 @@ impl MonsGameModel {
             actions: Vec::new(),
             compiled_chunks: vec![selected.inputs.clone()],
             end_game: selected.game.clone_for_simulation(),
+            #[cfg(test)]
             end_snapshot: TurnSnapshot::from_game(&selected.game),
             utility: turn_engine_evaluate_state_utility(
                 &selected.game,
@@ -9756,6 +9760,7 @@ impl MonsGameModel {
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
+    #[cfg(test)]
     fn accept_turn_engine_root_injection_candidate(
         top: &ScoredRootMove,
         candidate: &ScoredRootMove,
@@ -9837,7 +9842,7 @@ impl MonsGameModel {
         TurnEngineEmergencyRootInjectionAcceptance::Accepted
     }
 
-    #[cfg(any(target_arch = "wasm32", test))]
+    #[cfg(test)]
     fn accept_turn_engine_emergency_root_injection_candidate(
         top: &ScoredRootMove,
         candidate: &ScoredRootMove,
@@ -10865,6 +10870,7 @@ impl MonsGameModel {
         score
     }
 
+    #[cfg(test)]
     fn focused_root_candidates(
         game: &MonsGame,
         perspective: Color,
@@ -10883,6 +10889,7 @@ impl MonsGameModel {
         )
     }
 
+    #[cfg(test)]
     fn focused_root_candidates_with_forced_inputs(
         game: &MonsGame,
         perspective: Color,
@@ -11946,8 +11953,10 @@ impl MonsGameModel {
         ChildEvalBundle {
             child_hash,
             heuristic,
+            #[cfg(test)]
             after_efficiency_snapshot,
             ordering_efficiency,
+            #[cfg(test)]
             own_drainer_vulnerable_after,
             tactical_extension_trigger,
             quiet_reduction_candidate,
@@ -12139,6 +12148,7 @@ impl MonsGameModel {
         config: SmartSearchConfig,
         history_table: &HistoryTable,
     ) -> Vec<RankedChildState> {
+        #[cfg(test)]
         update_turn_engine_selector_diagnostics(|diagnostics| {
             diagnostics.ranked_child_states_calls += 1;
         });
@@ -12207,6 +12217,7 @@ impl MonsGameModel {
                 }
             }
         }
+        #[cfg(test)]
         update_turn_engine_selector_diagnostics(|diagnostics| {
             diagnostics.ranked_child_states_children_enumerated += child_transitions.len();
         });
@@ -12259,12 +12270,12 @@ impl MonsGameModel {
                 .collect::<Vec<_>>();
             let shortlisted_indices =
                 Self::selected_two_stage_child_ordering_indices(&cheap_entries, maximizing, config);
-            let shortlisted_count = shortlisted_indices.len();
             let shortlisted_set = shortlisted_indices
                 .into_iter()
                 .collect::<std::collections::HashSet<_>>();
+            #[cfg(test)]
             update_turn_engine_selector_diagnostics(|diagnostics| {
-                diagnostics.child_ordering_shortlist_children += shortlisted_count;
+                diagnostics.child_ordering_shortlist_children += shortlisted_set.len();
             });
 
             for (index, entry) in cheap_entries.into_iter().enumerate() {
@@ -12285,6 +12296,7 @@ impl MonsGameModel {
                     history_table,
                     &scratch,
                 );
+                #[cfg(test)]
                 update_turn_engine_selector_diagnostics(|diagnostics| {
                     diagnostics.ranked_child_states_children_fully_scored += 1;
                     diagnostics.child_ordering_full_pass_children += 1;
@@ -12433,14 +12445,17 @@ impl MonsGameModel {
                     ChildEvalBundle {
                         child_hash,
                         heuristic,
+                        #[cfg(test)]
                         after_efficiency_snapshot: None,
                         ordering_efficiency,
+                        #[cfg(test)]
                         own_drainer_vulnerable_after,
                         tactical_extension_trigger,
                         quiet_reduction_candidate,
                         classes,
                     }
                 };
+                #[cfg(test)]
                 update_turn_engine_selector_diagnostics(|diagnostics| {
                     diagnostics.ranked_child_states_children_fully_scored += 1;
                     diagnostics.child_ordering_full_pass_children += 1;
@@ -13040,6 +13055,7 @@ impl MonsGameModel {
         }
     }
 
+    #[cfg(test)]
     fn move_efficiency_delta(
         game: &MonsGame,
         simulated_game: &MonsGame,
@@ -13118,6 +13134,7 @@ impl MonsGameModel {
         )
     }
 
+    #[cfg(test)]
     fn move_efficiency_delta_from_before_snapshot(
         game: &MonsGame,
         simulated_game: &MonsGame,
@@ -13328,6 +13345,7 @@ impl MonsGameModel {
         penalty
     }
 
+    #[cfg(test)]
     fn move_efficiency_snapshot(
         game: &MonsGame,
         perspective: Color,
@@ -13343,6 +13361,7 @@ impl MonsGameModel {
         )
     }
 
+    #[cfg(test)]
     fn move_efficiency_snapshot_with_hash(
         game: &MonsGame,
         perspective: Color,
@@ -13377,6 +13396,7 @@ impl MonsGameModel {
         if let Some(cached) =
             MOVE_EFFICIENCY_SNAPSHOT_CACHE.with(|cache| cache.borrow().get(&cache_key).copied())
         {
+            #[cfg(test)]
             update_turn_engine_selector_diagnostics(|diagnostics| {
                 diagnostics.move_efficiency_snapshot_cache_hits += 1;
             });
@@ -13405,6 +13425,7 @@ impl MonsGameModel {
         snapshot
     }
 
+    #[cfg(test)]
     fn move_efficiency_snapshot_uncached_with_hash(
         game: &MonsGame,
         perspective: Color,
@@ -13461,6 +13482,7 @@ impl MonsGameModel {
         state_hash: u64,
         enable_tactical_score_window_narrowing: bool,
     ) -> MoveEfficiencySnapshot {
+        #[cfg(test)]
         update_turn_engine_selector_diagnostics(|diagnostics| {
             diagnostics.move_efficiency_snapshot_builds += 1;
         });
@@ -13797,6 +13819,7 @@ impl MonsGameModel {
         if let Some(terminal_score) = Self::terminal_score(game, perspective, depth, search_depth) {
             terminal_score
         } else if let Some(context) = scoring_context {
+            #[cfg(test)]
             update_turn_engine_selector_diagnostics(|diagnostics| {
                 diagnostics.search_preferability_builds += 1;
             });
@@ -24917,12 +24940,14 @@ impl MonsGameModel {
         if let Some(cached) =
             SEARCH_PREFERABILITY_CACHE.with(|cache| cache.borrow().get(&cache_key).copied())
         {
+            #[cfg(test)]
             update_turn_engine_selector_diagnostics(|diagnostics| {
                 diagnostics.search_preferability_cache_hits += 1;
             });
             return cached;
         }
 
+        #[cfg(test)]
         update_turn_engine_selector_diagnostics(|diagnostics| {
             diagnostics.search_preferability_builds += 1;
         });

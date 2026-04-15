@@ -9,7 +9,7 @@ Archived profile IDs and archived stages are invalid experiment targets. New wor
 1. Default to Pro work.
 2. Treat `runtime_current` as the shipping baseline.
 3. Treat `runtime_pro_turn_engine_v30` as the only retained Pro frontier.
-4. Run the cheap-to-expensive loop in order.
+4. Use `./scripts/run-automove-canonical-loop.sh` for the default Pro loop.
 5. Clean logs and stamps at the end of the session.
 
 ## Retained Profile Surface
@@ -30,16 +30,26 @@ If a profile ID is not in this list, it is archive-only.
 
 ```sh
 CANDIDATE=<new_retained_pro_profile>
-./scripts/run-automove-experiment.sh guardrails "$CANDIDATE"
-SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage "$CANDIDATE" runtime_current
-./scripts/run-automove-experiment.sh runtime-preflight "$CANDIDATE"
-./scripts/run-automove-experiment.sh pro-reliability "$CANDIDATE" runtime_current
+./scripts/run-automove-canonical-loop.sh "$CANDIDATE"
 ```
 
 Operator defaults:
 - Pro baseline: `runtime_current`
-- Default Pro triage surface: `SMART_TRIAGE_SURFACE=primary_pro`
-- Opening-only fallback surface: `SMART_TRIAGE_SURFACE=opening_reply`
+- Default Pro triage surface inside the canonical loop: `SMART_TRIAGE_SURFACE=primary_pro`
+- Add `--confirm` when the smaller reliability gate already earned the spend:
+  - `./scripts/run-automove-canonical-loop.sh --confirm "$CANDIDATE"`
+
+## Single-Stage And Diagnostic Runs
+
+Use `./scripts/run-automove-experiment.sh` only when you need one stage at a time or a diagnostic rerun.
+
+Examples:
+
+```sh
+./scripts/run-automove-experiment.sh guardrails runtime_pro_turn_engine_v30
+SMART_TRIAGE_SURFACE=opening_reply ./scripts/run-automove-experiment.sh pro-triage runtime_pro_turn_engine_v30
+./scripts/run-automove-experiment.sh runtime-preflight runtime_pro_turn_engine_v30
+```
 
 ## Gate Rules
 
@@ -95,6 +105,7 @@ cargo test --release --lib <test_name> -- --ignored --nocapture
 - Workflow-only logs: `target/experiment-runs/misc/`
 - Runtime-preflight stamps: `target/experiment-stamps/`
 - Logs and stamps are disposable evidence, not durable memory.
+- The old flat log layout and legacy `target/experiment-runs/runtime_preflight_*.stamp` path are retired.
 - Standard cleanup step:
   - `./scripts/clean-experiment-artifacts.sh --dry-run`
   - `./scripts/clean-experiment-artifacts.sh`

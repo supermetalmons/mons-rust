@@ -32,29 +32,6 @@ remove_path() {
   fi
 }
 
-remove_legacy_candidate_logs() {
-  local safe_candidate="$1"
-  local path
-  shopt -s nullglob
-  for path in \
-    target/experiment-runs/*"${safe_candidate}"*.cmd \
-    target/experiment-runs/*"${safe_candidate}"*.exit \
-    target/experiment-runs/*"${safe_candidate}"*.log \
-    target/experiment-runs/*"${safe_candidate}"*.meta; do
-    remove_path "${path}"
-  done
-  shopt -u nullglob
-}
-
-remove_all_legacy_stamps() {
-  local path
-  shopt -s nullglob
-  for path in target/experiment-runs/runtime_preflight_*.stamp; do
-    remove_path "${path}"
-  done
-  shopt -u nullglob
-}
-
 dry_run=false
 clean_logs=true
 clean_stamps=true
@@ -104,11 +81,9 @@ if [ -n "${candidate}" ]; then
   safe_candidate="$(sanitize "${candidate}")"
   if [ "${clean_logs}" = true ]; then
     remove_path "target/experiment-runs/${safe_candidate}"
-    remove_legacy_candidate_logs "${safe_candidate}"
   fi
   if [ "${clean_stamps}" = true ]; then
     remove_path "target/experiment-stamps/runtime_preflight_${safe_candidate}.stamp"
-    remove_path "target/experiment-runs/runtime_preflight_${safe_candidate}.stamp"
   fi
 else
   if [ "${clean_logs}" = true ] && [ "${clean_stamps}" = true ]; then
@@ -121,7 +96,6 @@ else
   fi
   if [ "${clean_stamps}" = true ]; then
     remove_path "target/experiment-stamps"
-    remove_all_legacy_stamps
   fi
 fi
 
