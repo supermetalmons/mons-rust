@@ -1366,7 +1366,7 @@ fn frontier_pro_v2_guarded_prefers_windowed_mana_on_black_late_fast_trace_root()
         probe,
         advisor,
     );
-    assert_eq!(shipping_selected, "l1,8;l1,9");
+    assert_eq!(shipping_selected, "l1,8;l0,8");
     assert_eq!(probe.selected_input_fen, "l1,8;l1,9");
     assert_eq!(probe.pre_accept_input_fen, "l1,8;l1,9");
     assert_eq!(probe.head_input_fen.as_deref(), Some("l1,8;l1,9"));

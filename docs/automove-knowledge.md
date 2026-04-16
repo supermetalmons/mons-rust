@@ -6,12 +6,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 
 ## Stable Runtime Truths
 
-- Shipping Pro is `shipping_pro_search`.
-- `frontier_pro_v2_guarded` is the only retained Pro frontier.
-- `shipping_pro_search` is still the deployed search-only path.
-- `frontier_pro_v2_guarded` keeps the guarded opening-book and early-white fallback behavior, but it remains offline.
+- Shipping Pro now routes through `frontier_pro_v2_guarded`.
+- `shipping_pro_search` is the retained search-only baseline profile.
+- `frontier_pro_v2_guarded` is the retained Pro frontier and the deployed Pro path.
 - Probe paths are diagnostics only; they do not describe shipping behavior.
-- Promotion proof is direct frontier-vs-shipping evidence: shipping Pro, Normal, and Fast all must clear `win_rate >= 0.90`, `confidence >= 0.99`, and frontier average move time `<= 700ms`.
+- Promotion happened off direct frontier-vs-baseline duel evidence, not fixture churn or hotspot output.
 - The promotion bottleneck was root composition quality, not speed.
 - `runtime-preflight` still matters after promotion: exact-lite diagnostics are a hard gate and stage-1 CPU remains advisory-only for Pro.
 - When a live miss appears, separate `pre_accept` search choice from final `engine_post_search` output before changing shared heuristics.
@@ -44,7 +43,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 
 - Kill any line that fails `guardrails`, reopens closed retained seams, or pushes off-target churn above `1`.
 - Kill any line that only fixes one traced seam and leaves the cheap surface on stale churn.
-- Kill any line that clears retained fixtures but does not move direct duel evidence against `shipping_pro_search`.
+- Kill any line that clears retained fixtures but does not move direct duel evidence on the candidate-vs-baseline matchup.
 - Do not reopen archive profiles or retired branch families without a brand-new shared hypothesis.
 - Do not treat hotspot output or one replay seed as production proof without a retained foothold.
 - Wrapper-only reroutes and local fallback widening saturate quickly; shared selector/search changes are the real frontier.

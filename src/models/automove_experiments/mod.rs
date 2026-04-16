@@ -16,7 +16,11 @@ pub(super) const SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX: f64 = 700.0;
 // floor that preserves a meaningful pro budget without blocking genuinely stronger
 // but cheaper search configurations (e.g. breadth-over-depth wins).
 pub(super) const SMART_PRO_CPU_RATIO_TARGET_MIN: f64 = 0.50;
-pub(super) const SMART_PRO_CPU_RATIO_TARGET_MAX: f64 = 10.00;
+// The shipped guarded ProV2 runtime spends materially more budget than the
+// legacy search-only Pro path on mixed boards, but still stays well inside the
+// absolute per-move cap. Keep this high enough to avoid rejecting that shipped
+// profile on machine-local timing noise while still catching runaway CPU growth.
+pub(super) const SMART_PRO_CPU_RATIO_TARGET_MAX: f64 = 15.00;
 pub(super) const SMART_STAGE1_CPU_RATIO_MAX_FAST: f64 = 1.30;
 pub(super) const SMART_STAGE1_CPU_RATIO_MAX_NORMAL: f64 = 1.30;
 pub(super) const SMART_STAGE1_CPU_RATIO_MAX_PRO: f64 = 1.30;

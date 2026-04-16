@@ -2696,6 +2696,33 @@ impl MonsGameModel {
             .set(ShippingProContext::OpeningBookDriven);
     }
 
+    fn public_runtime_inputs(
+        &self,
+        preference: SmartAutomovePreference,
+        config: AutomoveSearchConfig,
+    ) -> Vec<Input> {
+        match preference {
+            SmartAutomovePreference::Pro => {
+                automove_runtime_variants::select_frontier_pro_v2_guarded_inputs(&self.game, config)
+            }
+            SmartAutomovePreference::Fast | SmartAutomovePreference::Normal => {
+                automove_runtime_variants::select_shipping_search_inputs(&self.game, config)
+            }
+        }
+    }
+
+    fn output_model_from_runtime_inputs(&self, inputs: Vec<Input>) -> OutputModel {
+        if inputs.is_empty() {
+            let mut game = self.game.clone_for_simulation();
+            return Self::automove_game(&mut game);
+        }
+
+        let mut game = self.game.clone_for_simulation();
+        let input_fen = Input::fen_from_array(&inputs);
+        let output = game.process_input(inputs, false, false);
+        OutputModel::new(output, input_fen.as_str())
+    }
+
     fn smart_automove_output(&self, preference: SmartAutomovePreference) -> OutputModel {
         if let Some(opening_inputs) = Self::white_first_turn_opening_next_inputs(&self.game) {
             let mut game = self.game.clone_for_simulation();
@@ -2708,16 +2735,8 @@ impl MonsGameModel {
         }
 
         let config = self.shipping_search_config_for_preference(preference);
-        let inputs = Self::smart_search_best_inputs(&self.game, config);
-        if inputs.is_empty() {
-            let mut game = self.game.clone_for_simulation();
-            return Self::automove_game(&mut game);
-        }
-
-        let mut game = self.game.clone_for_simulation();
-        let input_fen = Input::fen_from_array(&inputs);
-        let output = game.process_input(inputs, false, false);
-        OutputModel::new(output, input_fen.as_str())
+        let inputs = self.public_runtime_inputs(preference, config);
+        self.output_model_from_runtime_inputs(inputs)
     }
 
     #[cfg(test)]
@@ -2766,6 +2785,10 @@ impl MonsGameModel {
 
         clear_exact_state_analysis_cache();
         let config = self.shipping_search_config_for_preference(preference);
+        if matches!(preference, SmartAutomovePreference::Pro) {
+            let inputs = self.public_runtime_inputs(preference, config);
+            return AsyncSmartSearchStart::Immediate(self.output_model_from_runtime_inputs(inputs));
+        }
         let perspective = self.game.active_color;
         let game = self.game.clone_for_simulation();
         AsyncSmartSearchStart::Pending(Self::new_async_smart_search_state(
@@ -27234,6 +27257,21 @@ mod opening_book_tests {
                 preference.as_api_value()
             );
         }
+    }
+
+    #[test]
+    fn smart_automove_pro_matches_frontier_guarded_selector() {
+        let game = immediate_score_runtime_fixture();
+        let model = MonsGameModel::with_game(game.clone_for_simulation());
+        let config = model.shipping_search_config_for_preference(SmartAutomovePreference::Pro);
+        let expected_inputs =
+            automove_runtime_variants::select_frontier_pro_v2_guarded_inputs(&game, config);
+        let expected_input_fen = Input::fen_from_array(&expected_inputs);
+
+        let output = model.smart_automove_output(SmartAutomovePreference::Pro);
+
+        assert_eq!(output.kind, OutputModelKind::Events);
+        assert_eq!(output.input_fen(), expected_input_fen.as_str());
     }
 
     #[test]

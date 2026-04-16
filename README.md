@@ -14,6 +14,8 @@ Docs:
 - durable lessons: `docs/automove-knowledge.md`
 - archive: `docs/automove-archive.md`
 
+Public Pro runtime currently routes through `frontier_pro_v2_guarded`; `shipping_pro_search` remains the retained search-only baseline profile.
+
 Quickstart:
 
 - canonical Pro loop: `./scripts/run-automove-canonical-loop.sh frontier_pro_v2_guarded`
@@ -28,8 +30,9 @@ Retained profile surface:
 
 Glossary:
 
-- `shipping`: the deployed Pro path, currently `shipping_pro_search`
-- `frontier`: the retained guarded ProV2 experiment path, currently `frontier_pro_v2_guarded`
+- `shipping`: the deployed Pro path, currently `frontier_pro_v2_guarded`
+- `baseline`: the retained search-only comparison profile, currently `shipping_pro_search`
+- `frontier`: the guarded ProV2 selector/runtime line, currently `frontier_pro_v2_guarded`
 - `probe`: forced turn-engine diagnostics that inspect search/acceptance behavior without changing shipping
 
 Artifact layout:
@@ -84,8 +87,8 @@ Pack a directory back into chunks:
 Release checklist:
 
 - Review `git status` before publish and confirm only intentional committed changes are present.
-- Confirm `shipping_pro_search` is still the shipping search-only automove path.
-- Confirm `frontier_pro_v2_guarded` remains fenced off as an offline frontier.
+- Confirm public Pro still routes through `frontier_pro_v2_guarded`.
+- Confirm `shipping_pro_search` remains available as the retained search-only baseline profile.
 - Run `cargo test`.
 - Run `cargo test --release --lib smart_automove_release_opening_black_reply_speed_gate -- --ignored --nocapture`.
 - Run `cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --ignored --nocapture`.
@@ -96,10 +99,10 @@ Production blockers:
 
 - build/test failures
 - release speed gate failures
-- any regression that enables the turn-engine selector in shipping `shipping_pro_search`
+- any regression in the deployed `frontier_pro_v2_guarded` Pro path
 
 Non-blocking retained experiment state:
 
-- the retained `frontier_pro_v2_guarded` frontier plus ignored probes
+- the retained `shipping_pro_search` baseline, the retained `frontier_pro_v2_guarded` frontier, and ignored probes
 - experiment workflow/logging helpers
 - compressed automove backlog / knowledge / archive docs

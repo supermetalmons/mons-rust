@@ -7,8 +7,8 @@ Archived profile IDs and archived stages are invalid experiment targets. New wor
 ## Quick Reference
 
 1. Default to Pro work.
-2. Treat `shipping_pro_search` as the shipping baseline.
-3. Treat `frontier_pro_v2_guarded` as the only retained Pro frontier.
+2. Treat `frontier_pro_v2_guarded` as the current shipping Pro path.
+3. Treat `shipping_pro_search` as the retained search-only baseline profile.
 4. Use `./scripts/run-automove-canonical-loop.sh` for the default Pro loop.
 5. Clean logs and stamps at the end of the session.
 
@@ -21,17 +21,18 @@ If a profile ID is not in this list, it is archive-only.
 
 ## Glossary
 
-- `shipping`: the deployed Pro path, currently `shipping_pro_search`
-- `frontier`: the retained guarded ProV2 experiment path, currently `frontier_pro_v2_guarded`
+- `shipping`: the deployed Pro path, currently `frontier_pro_v2_guarded`
+- `baseline`: the retained search-only comparison profile, currently `shipping_pro_search`
+- `frontier`: the guarded ProV2 selector/runtime line, currently `frontier_pro_v2_guarded`
 - `probe`: forced turn-engine diagnostics that inspect acceptance behavior without changing shipping
 
 ## Current Reality
 
-- Shipping Pro is `shipping_pro_search`.
-- `shipping_pro_search` is still search-only today and keeps the turn-engine selector disabled.
-- `frontier_pro_v2_guarded` is an offline guarded ProV2 frontier, not the shipping path.
+- Shipping Pro now routes through `frontier_pro_v2_guarded`.
+- `shipping_pro_search` remains the retained search-only baseline and still keeps the turn-engine selector disabled.
+- `frontier_pro_v2_guarded` is both the shipped Pro path and the retained guarded ProV2 frontier.
 - Probe paths only inspect forced turn-engine behavior; they are diagnostics, not shipping behavior.
-- Promotion proof is still direct evidence against `shipping_pro_search`, not fixture churn or hotspot output.
+- Direct duel evidence still matters more than fixture churn or hotspot output.
 
 ## Canonical Pro Loop
 
@@ -41,7 +42,7 @@ CANDIDATE=<new_retained_pro_profile>
 ```
 
 Operator defaults:
-- Shipping profile: `shipping_pro_search`
+- Baseline profile: `shipping_pro_search`
 - Default Pro triage surface inside the canonical loop: `SMART_TRIAGE_SURFACE=primary_pro`
 - Add `--confirm` when the smaller reliability gate already earned the spend:
   - `./scripts/run-automove-canonical-loop.sh --confirm "$CANDIDATE"`
@@ -69,7 +70,7 @@ SMART_TRIAGE_SURFACE=opening_reply ./scripts/run-automove-experiment.sh pro-tria
 
 - This is the cheap deterministic Pro surface gate.
 - For a real challenger, pass only when the target surface changes and off-target churn stays at `<= 1`.
-- For post-promotion maintenance on `frontier_pro_v2_guarded` vs `shipping_pro_search`, a stable `0/0` result is valid because that retained frontier is intentionally shipping-equivalent.
+- After shipping `frontier_pro_v2_guarded`, a stable `0/0` result is acceptable only when you intentionally expect no retained-surface behavior change.
 - Kill the line if it only moves one stale seam or does not move the target surface at all.
 
 ### `runtime-preflight`
@@ -80,7 +81,7 @@ SMART_TRIAGE_SURFACE=opening_reply ./scripts/run-automove-experiment.sh pro-tria
 
 ### `pro-reliability`
 
-- This is the real duel gate: frontier Pro vs shipping Pro, Normal, and Fast.
+- This retained duel gate compares the selected frontier against `shipping_pro_search` in Pro, Normal, and Fast modes.
 - Pass only when all three runs complete with `win_rate >= 0.90`, `confidence >= 0.99`, and frontier average move time `<= 700ms`.
 - Kill the line if the wall stays on old fragmented churn after a focused split.
 
