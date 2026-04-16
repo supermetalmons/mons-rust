@@ -543,7 +543,7 @@ thread_local! {
         RefCell::new(TurnEngineDiagnostics::default());
 }
 
-#[cfg(test)]
+#[cfg(any(target_arch = "wasm32", test))]
 pub(crate) fn clear_turn_engine_plan_cache() {
     TURN_ENGINE_CONTINUATION_CACHE.with(|cache| cache.borrow_mut().clear());
     TURN_ENGINE_ELIGIBILITY_CACHE.with(|cache| cache.borrow_mut().clear());
@@ -553,7 +553,7 @@ pub(crate) fn clear_turn_engine_plan_cache() {
     TURN_ENGINE_NO_PLAN_CACHE.with(|cache| cache.borrow_mut().clear());
 }
 
-#[cfg(test)]
+#[cfg(any(target_arch = "wasm32", test))]
 pub(crate) fn clear_turn_engine_diagnostics() {
     TURN_ENGINE_DIAGNOSTICS.with(|diagnostics| {
         *diagnostics.borrow_mut() = TurnEngineDiagnostics::default();

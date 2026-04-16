@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # Run tests first
 echo "Running tests..."
@@ -29,9 +30,11 @@ sed -i '' "s/^version = \".*\"/version = \"${NEW_VERSION}\"/" Cargo.toml
 echo "Version bumped: ${CURRENT_VERSION} -> ${NEW_VERSION}"
 
 # Build for web
+echo "Building web Wasm package..."
 wasm-pack build --target web --out-dir pkg/web --out-name mons-web
 
 # Build for nodejs 
+echo "Building node Wasm package..."
 wasm-pack build --target nodejs --out-dir pkg/node --out-name mons-rust
 
 # Publish web package
