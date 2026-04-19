@@ -189,7 +189,7 @@ pub(in super::super) fn generate_opening_fens(seed: u64, count: usize) -> Vec<St
     let mut fens = Vec::with_capacity(count);
 
     while fens.len() < count {
-        let mut game = MonsGame::new(false);
+        let mut game = MonsGame::new(false, GameVariant::Classic);
         let opening_plies = rng.gen_range(0..=OPENING_RANDOM_PLIES_MAX);
         let mut valid = true;
 
@@ -505,9 +505,8 @@ pub(in super::super) fn tactical_game_with_items(
     active_color: Color,
     turn_number: i32,
 ) -> MonsGame {
-    let mut game = MonsGame::new(false);
-    let board_items = items.into_iter().collect::<HashMap<_, _>>();
-    game.board = Board::new_with_items(board_items);
+    let mut game = MonsGame::new(false, GameVariant::Classic);
+    game.replace_board_items(items);
     game.active_color = active_color;
     game.turn_number = turn_number;
     game.actions_used_count = 0;

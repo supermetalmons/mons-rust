@@ -119,7 +119,7 @@ fn run() -> Result<(), String> {
     let mut new_cases_written = 0usize;
 
     loop {
-        let mut game = MonsGame::new(false);
+        let mut game = MonsGame::new(false, GameVariant::Classic);
         let mut pending_inputs: Vec<Input> = vec![];
         let mut transitions = 0usize;
         let mut saved_first_options_for_turn = false;

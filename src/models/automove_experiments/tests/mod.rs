@@ -144,7 +144,7 @@ fn calibration_turn_engine_config(config: AutomoveSearchConfig) -> TurnEngineCon
 
 #[test]
 fn frontier_pro_v2_guarded_config_applies_expected_tuning() {
-    let game = MonsGame::new(false);
+    let game = MonsGame::new(false, GameVariant::Classic);
     let base = MonsGameModel::with_game(game.clone())
         .shipping_search_config_for_preference(SmartAutomovePreference::Pro);
     let frontier = apply_frontier_pro_v2_guarded_config(base);
@@ -171,7 +171,7 @@ fn frontier_pro_v2_guarded_config_applies_expected_tuning() {
 
 #[test]
 fn shared_turn_engine_projection_matches_model_and_harness_helpers() {
-    let game = MonsGame::new(false);
+    let game = MonsGame::new(false, GameVariant::Classic);
     let config = apply_frontier_pro_v2_guarded_config(
         MonsGameModel::with_game(game)
             .shipping_search_config_for_preference(SmartAutomovePreference::Pro),

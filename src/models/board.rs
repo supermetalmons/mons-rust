@@ -4,6 +4,7 @@ use crate::*;
 #[derive(Clone)]
 pub struct Board {
     pub items: [Option<Item>; BOARD_CELLS],
+    variant: GameVariant,
 }
 
 impl std::fmt::Debug for Board {
@@ -14,13 +15,16 @@ impl std::fmt::Debug for Board {
             .enumerate()
             .filter_map(|(idx, opt)| opt.as_ref().map(|item| (Location::from_index(idx), item)))
             .collect();
-        f.debug_struct("Board").field("items", &occupied).finish()
+        f.debug_struct("Board")
+            .field("variant", &self.variant)
+            .field("items", &occupied)
+            .finish()
     }
 }
 
 impl PartialEq for Board {
     fn eq(&self, other: &Self) -> bool {
-        self.items == other.items
+        self.items == other.items && self.variant == other.variant
     }
 }
 
@@ -28,17 +32,45 @@ impl Eq for Board {}
 
 impl Board {
     pub fn new() -> Self {
-        Self {
-            items: Config::initial_items_array(),
-        }
+        Self::new_with_variant(GameVariant::DEFAULT)
     }
 
-    pub fn new_with_items(items: std::collections::HashMap<Location, Item>) -> Self {
+    pub fn new_with_variant(variant: GameVariant) -> Self {
+        Self::from_items_array(Config::initial_items_array_for_variant(variant), variant)
+    }
+
+    fn items_array_from_iter<I>(items: I) -> [Option<Item>; BOARD_CELLS]
+    where
+        I: IntoIterator<Item = (Location, Item)>,
+    {
         let mut arr = [None; BOARD_CELLS];
         for (location, item) in items {
             arr[location.index()] = Some(item);
         }
-        Self { items: arr }
+        arr
+    }
+
+    /// Creates a board in the default variant.
+    /// Use `new_with_items_and_variant` when the board is not Classic.
+    pub fn new_with_items<I>(items: I) -> Self
+    where
+        I: IntoIterator<Item = (Location, Item)>,
+    {
+        Self::new_with_items_and_variant(items, GameVariant::DEFAULT)
+    }
+
+    pub fn new_with_items_and_variant<I>(items: I, variant: GameVariant) -> Self
+    where
+        I: IntoIterator<Item = (Location, Item)>,
+    {
+        Self::from_items_array(Self::items_array_from_iter(items), variant)
+    }
+
+    pub(crate) fn from_items_array(
+        items: [Option<Item>; BOARD_CELLS],
+        variant: GameVariant,
+    ) -> Self {
+        Self { items, variant }
     }
 
     #[inline]
@@ -64,7 +96,12 @@ impl Board {
         if !location.is_valid() {
             return Square::Regular;
         }
-        Config::square_at(location)
+        Config::square_at_for_variant(location, self.variant)
+    }
+
+    #[inline]
+    pub fn variant(&self) -> GameVariant {
+        self.variant
     }
 
     pub fn all_mons_bases(&self) -> Vec<Location> {

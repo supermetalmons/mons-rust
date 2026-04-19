@@ -127,7 +127,7 @@ pub(super) fn frontier_profile_id() -> String {
         "SMART_PRO_CANDIDATE_PROFILE",
         "SMART_CANDIDATE_PROFILE",
     ])
-        .unwrap_or_else(|| DEFAULT_FRONTIER_PROFILE_ID.to_string())
+    .unwrap_or_else(|| DEFAULT_FRONTIER_PROFILE_ID.to_string())
 }
 
 pub(super) fn shipping_profile_id() -> String {
@@ -136,7 +136,7 @@ pub(super) fn shipping_profile_id() -> String {
         "SMART_PRO_BASELINE_PROFILE",
         "SMART_GATE_BASELINE_PROFILE",
     ])
-        .unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_ID.to_string())
+    .unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_ID.to_string())
 }
 
 pub(super) fn reliability_frontier_profile_id() -> String {

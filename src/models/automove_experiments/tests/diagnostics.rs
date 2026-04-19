@@ -349,7 +349,7 @@ fn smart_automove_pro_reliability_nonwin_trace_probe() {
 #[test]
 #[ignore = "diagnostic: bounded selector/exact hotspot probe for pro reliability corpus"]
 fn smart_automove_pro_reliability_hotspot_probe() {
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::BTreeMap;
     use std::time::Instant;
 
     #[derive(Clone)]
@@ -372,8 +372,8 @@ fn smart_automove_pro_reliability_hotspot_probe() {
     }
 
     fn game_with_items(items: Vec<(Location, Item)>, active_color: Color) -> MonsGame {
-        let mut game = MonsGame::new(false);
-        game.board = Board::new_with_items(items.into_iter().collect::<HashMap<_, _>>());
+        let mut game = MonsGame::new(false, GameVariant::Classic);
+        game.replace_board_items(items);
         game.active_color = active_color;
         game.turn_number = 2;
         game.actions_used_count = 0;

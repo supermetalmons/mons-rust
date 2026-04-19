@@ -106,9 +106,9 @@ impl Clone for MonsGame {
 }
 
 impl MonsGame {
-    pub fn new(with_verbose_tracking: bool) -> Self {
+    pub fn new(with_verbose_tracking: bool, variant: GameVariant) -> Self {
         Self {
-            board: Board::new(),
+            board: Board::new_with_variant(variant),
             white_score: 0,
             black_score: 0,
             active_color: Color::White,
@@ -176,6 +176,22 @@ impl MonsGame {
         simulation
     }
 
+    #[inline]
+    pub fn variant(&self) -> GameVariant {
+        self.board.variant()
+    }
+
+    pub fn replace_board_items<I>(&mut self, items: I)
+    where
+        I: IntoIterator<Item = (Location, Item)>,
+    {
+        self.board = Board::new_with_items_and_variant(items, self.variant());
+        self.takeback_fens.clear();
+        self.verbose_tracking_entities.clear();
+        self.is_moves_verified = false;
+        self.invalidate_process_input_cache();
+    }
+
     pub(crate) fn set_takeback_history_tracking(&mut self, enabled: bool) {
         self.track_takeback_history = enabled;
         if !enabled {
@@ -205,7 +221,7 @@ impl MonsGame {
     }
 
     fn update_with(&mut self, other_game: &MonsGame) {
-        self.board.items = other_game.board.items;
+        self.board = other_game.board.clone();
         self.white_score = other_game.white_score;
         self.black_score = other_game.black_score;
         self.active_color = other_game.active_color;
@@ -1959,7 +1975,9 @@ impl MonsGame {
     }
 
     pub fn is_later_than(&self, game: &MonsGame) -> bool {
-        if self.turn_number > game.turn_number {
+        if self.variant() != game.variant() {
+            false
+        } else if self.turn_number > game.turn_number {
             true
         } else if self.turn_number == game.turn_number {
             self.player_potions_count() < game.player_potions_count()
@@ -2120,7 +2138,7 @@ mod tests {
         );
 
         MonsGame {
-            board: Board::new_with_items(items),
+            board: Board::new_with_items_and_variant(items, GameVariant::Classic),
             white_score: 0,
             black_score: 0,
             active_color: Color::White,
@@ -2191,8 +2209,11 @@ mod tests {
 
     #[test]
     fn regular_player_api_matches_default_start_options_across_states() {
-        let mut states = vec![MonsGame::new(false), potion_action_only_turn_game()];
-        let mut progressed = MonsGame::new(false);
+        let mut states = vec![
+            MonsGame::new(false, GameVariant::Classic),
+            potion_action_only_turn_game(),
+        ];
+        let mut progressed = MonsGame::new(false, GameVariant::Classic);
 
         for _ in 0..6 {
             states.push(progressed.clone_for_simulation());
@@ -2249,7 +2270,7 @@ mod tests {
 
     #[test]
     fn process_input_cache_matches_cold_recomputation() {
-        let game = MonsGame::new(false);
+        let game = MonsGame::new(false, GameVariant::Classic);
         let chain = first_chain_from_state(&game).expect("expected at least one legal input chain");
 
         let mut queries = vec![Vec::<Input>::new()];
@@ -2272,7 +2293,7 @@ mod tests {
 
     #[test]
     fn simulation_games_do_not_accumulate_takeback_history() {
-        let base = MonsGame::new(false);
+        let base = MonsGame::new(false, GameVariant::Classic);
         let mut simulation = base.clone_for_simulation();
         let chain =
             first_chain_from_state(&simulation).expect("expected legal chain for simulation game");
@@ -2281,5 +2302,65 @@ mod tests {
             Output::Events(_)
         ));
         assert!(simulation.takeback_fens.is_empty());
+    }
+
+    #[test]
+    fn replace_board_items_preserves_variant_and_clears_cached_start_suggestions() {
+        let mut game = MonsGame::new(false, GameVariant::SwappedManaRows);
+        let _ = game.process_input(vec![], true, false);
+        assert!(!game.process_input_cache.start_suggestions.is_empty());
+
+        game.replace_board_items(vec![(
+            Location::new(5, 5),
+            Item::Mon {
+                mon: Mon::new(MonKind::Spirit, Color::White, 0),
+            },
+        )]);
+
+        assert_eq!(game.variant(), GameVariant::SwappedManaRows);
+        assert_eq!(
+            game.board.square(Location::new(3, 3)),
+            Square::ManaBase {
+                color: Color::Black,
+            }
+        );
+        assert_eq!(game.board.square(Location::new(3, 4)), Square::Regular);
+        assert!(game.process_input_cache.start_suggestions.is_empty());
+    }
+
+    #[test]
+    fn replace_board_items_clears_tracking_and_marks_moves_unverified() {
+        let mut game = MonsGame::new(true, GameVariant::Classic);
+        game.takeback_fens = vec!["before".to_string()];
+        game.verbose_tracking_entities.push(VerboseTrackingEntity {
+            fen: "before".to_string(),
+            color: Color::White,
+            events: vec![Event::Takeback],
+        });
+        game.is_moves_verified = true;
+
+        game.replace_board_items(vec![(
+            Location::new(5, 5),
+            Item::Mon {
+                mon: Mon::new(MonKind::Spirit, Color::White, 0),
+            },
+        )]);
+
+        assert!(game.takeback_fens.is_empty());
+        assert!(game.verbose_tracking_entities.is_empty());
+        assert!(!game.is_moves_verified);
+    }
+
+    #[test]
+    fn is_later_than_rejects_cross_variant_games() {
+        let mut classic = MonsGame::new(false, GameVariant::Classic);
+        classic.turn_number = 3;
+        classic.actions_used_count = 1;
+
+        let mut swapped = MonsGame::new(false, GameVariant::SwappedManaRows);
+        swapped.turn_number = 1;
+
+        assert!(!classic.is_later_than(&swapped));
+        assert!(!swapped.is_later_than(&classic));
     }
 }

@@ -5714,8 +5714,8 @@ mod tests {
         active_color: Color,
         turn_number: i32,
     ) -> MonsGame {
-        let mut game = MonsGame::new(false);
-        game.board = Board::new_with_items(items.into_iter().collect());
+        let mut game = MonsGame::new(false, GameVariant::Classic);
+        game.replace_board_items(items);
         game.active_color = active_color;
         game.actions_used_count = 0;
         game.mana_moves_count = 0;
@@ -6693,25 +6693,24 @@ mod tests {
 
         clear_turn_engine_diagnostics();
         let mut diverged = after_first.clone_for_simulation();
-        diverged.board = Board::new_with_items(
-            diverged
-                .board
-                .occupied()
-                .filter_map(|(location, item)| {
-                    if location == Location::new(4, 4) {
-                        None
-                    } else {
-                        Some((location, *item))
-                    }
-                })
-                .chain(std::iter::once((
-                    Location::new(4, 5),
-                    Item::Mon {
-                        mon: Mon::new(MonKind::Mystic, Color::Black, 0),
-                    },
-                )))
-                .collect(),
-        );
+        let diverged_items = diverged
+            .board
+            .occupied()
+            .filter_map(|(location, item)| {
+                if location == Location::new(4, 4) {
+                    None
+                } else {
+                    Some((location, *item))
+                }
+            })
+            .chain(std::iter::once((
+                Location::new(4, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Mystic, Color::Black, 0),
+                },
+            )))
+            .collect::<Vec<_>>();
+        diverged.replace_board_items(diverged_items);
 
         let _ = turn_engine_next_inputs(
             &diverged,

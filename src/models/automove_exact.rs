@@ -2133,7 +2133,7 @@ fn exact_attack_payload_after_move(
 }
 
 pub(crate) fn exact_board_hash(board: &Board) -> u64 {
-    let mut state = 0x6a09e667f3bcc909u64;
+    let mut state = 0x6a09e667f3bcc909u64 ^ exact_board_variant_hash(board.variant());
     for (index, item) in board.items.iter().enumerate() {
         let Some(item) = item else { continue };
         state ^= exact_board_entry_hash(index, *item);
@@ -2148,6 +2148,11 @@ fn exact_board_entry_hash(index: usize, item: Item) -> u64 {
         .wrapping_mul(0x9e3779b185ebca87))
         ^ exact_hash_item(item).wrapping_mul(0x94d049bb133111eb);
     exact_mix_u64(entry)
+}
+
+#[inline]
+fn exact_board_variant_hash(variant: GameVariant) -> u64 {
+    exact_mix_u64((variant.id() as i64 as u64).wrapping_add(0x243f6a8885a308d3))
 }
 
 fn exact_search_state_hash(game: &MonsGame) -> u64 {
@@ -2171,6 +2176,7 @@ fn exact_search_state_hash(game: &MonsGame) -> u64 {
     state ^= exact_search_mix_u64(game.white_potions_count as i64 as u64 ^ 0x7d);
     state ^= exact_search_mix_u64(game.black_potions_count as i64 as u64 ^ 0x8f);
     state ^= exact_search_mix_u64(game.turn_number as i64 as u64 ^ 0xa1);
+    state ^= exact_search_mix_u64(game.variant().id() as i64 as u64 ^ 0xb3);
     exact_search_mix_u64(state)
 }
 
@@ -2282,7 +2288,7 @@ fn exact_secure_board_hash(board: &Board) -> u64 {
 
 #[cfg(any(target_arch = "wasm32", test))]
 fn exact_secure_board_state(board: &Board) -> (u64, u8, u8) {
-    let mut state = 0xa0761d6478bd642fu64;
+    let mut state = 0xa0761d6478bd642fu64 ^ exact_secure_board_variant_hash(board.variant());
     let mut white_regular = 0u8;
     let mut black_regular = 0u8;
     for (index, item) in board.items.iter().enumerate() {
@@ -2299,6 +2305,12 @@ fn exact_secure_board_state(board: &Board) -> (u64, u8, u8) {
         }
     }
     (state, white_regular, black_regular)
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+#[inline]
+fn exact_secure_board_variant_hash(variant: GameVariant) -> u64 {
+    exact_search_mix_u64((variant.id() as i64 as u64).wrapping_add(0x13198a2e03707344))
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -3138,7 +3150,7 @@ fn actor_payload_after_move_compute(
             }
             Some(Item::Consumable { .. }) => None,
             None => {
-                let square = Config::square_at(destination);
+                let square = board.square(destination);
                 if square_allows_empty_mon(square, mon_kind, color) {
                     Some(ExactActorPayload::None)
                 } else {
@@ -3156,7 +3168,7 @@ fn actor_payload_after_move_compute(
             }) => Some(payload),
             Some(Item::Consumable { .. }) => None,
             None => {
-                let square = Config::square_at(destination);
+                let square = board.square(destination);
                 if square_allows_mana_carrier(square, payload.mana().unwrap()) {
                     Some(payload)
                 } else {
@@ -3174,7 +3186,7 @@ fn actor_payload_after_move_compute(
             }) => Some(ExactActorPayload::Bomb),
             Some(Item::Consumable { .. }) => None,
             None => {
-                let square = Config::square_at(destination);
+                let square = board.square(destination);
                 if matches!(
                     square,
                     Square::Regular
@@ -3660,6 +3672,7 @@ fn exact_pickup_path_future_can_beat_best(
 
 #[cfg(any(target_arch = "wasm32", test))]
 fn exact_update_drainer_pickup_window_candidate(
+    board: &Board,
     best: &mut ExactDrainerPickupWindow,
     color: Color,
     min_any_score: u8,
@@ -3673,7 +3686,7 @@ fn exact_update_drainer_pickup_window_candidate(
     let ExactActorPayload::Mana(mana) = payload else {
         return false;
     };
-    if !matches!(Config::square_at(location), Square::ManaPool { .. }) {
+    if !matches!(board.square(location), Square::ManaPool { .. }) {
         return false;
     }
 
@@ -3725,6 +3738,7 @@ fn exact_drainer_pickup_window_small_budget_with_hash(
     for steps in 0..=max_steps {
         for &(location, payload) in &frontier {
             if exact_update_drainer_pickup_window_candidate(
+                board,
                 &mut best,
                 color,
                 min_any_score,
@@ -3803,6 +3817,7 @@ fn exact_drainer_pickup_window_uncached_with_hash(
             continue;
         }
         if exact_update_drainer_pickup_window_candidate(
+            board,
             &mut best,
             color,
             min_any_score,
@@ -6239,7 +6254,7 @@ fn exact_budget_one_drainer_tactical_counts(
         ) else {
             continue;
         };
-        if !matches!(Config::square_at(next), Square::ManaPool { .. }) {
+        if !matches!(board.square(next), Square::ManaPool { .. }) {
             continue;
         }
 
@@ -6762,8 +6777,27 @@ mod tests {
     use super::*;
 
     fn game_with_items(items: Vec<(Location, Item)>, active_color: Color) -> MonsGame {
-        let mut game = MonsGame::new(false);
-        game.board = Board::new_with_items(items.into_iter().collect());
+        let mut game = MonsGame::new(false, GameVariant::Classic);
+        game.replace_board_items(items);
+        game.active_color = active_color;
+        game.actions_used_count = 0;
+        game.mana_moves_count = 0;
+        game.mons_moves_count = 0;
+        game.turn_number = 2;
+        game.white_score = 0;
+        game.black_score = 0;
+        game.white_potions_count = 0;
+        game.black_potions_count = 0;
+        game
+    }
+
+    fn game_with_items_and_variant(
+        items: Vec<(Location, Item)>,
+        active_color: Color,
+        variant: GameVariant,
+    ) -> MonsGame {
+        let mut game = MonsGame::new(false, variant);
+        game.replace_board_items(items);
         game.active_color = active_color;
         game.actions_used_count = 0;
         game.mana_moves_count = 0;
@@ -9883,6 +9917,63 @@ mod tests {
     }
 
     #[test]
+    fn exact_board_hashes_distinguish_same_items_across_variants() {
+        let items = vec![
+            (
+                Location::new(5, 5),
+                Item::Mon {
+                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                },
+            ),
+            (
+                Location::new(5, 6),
+                Item::Mana {
+                    mana: Mana::Supermana,
+                },
+            ),
+        ]
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>();
+        let classic = Board::new_with_items_and_variant(items.clone(), GameVariant::Classic);
+        let swapped = Board::new_with_items_and_variant(items, GameVariant::SwappedManaRows);
+
+        assert_ne!(exact_board_hash(&classic), exact_board_hash(&swapped));
+        assert_ne!(
+            exact_secure_board_hash(&classic),
+            exact_secure_board_hash(&swapped)
+        );
+    }
+
+    #[test]
+    fn exact_secure_drainer_walk_matches_process_input_for_swapped_variant() {
+        let game = game_with_items_and_variant(
+            vec![
+                (
+                    Location::new(7, 1),
+                    Item::MonWithMana {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                        mana: Mana::Regular(Color::White),
+                    },
+                ),
+                (
+                    Location::new(8, 1),
+                    Item::Mana {
+                        mana: Mana::Supermana,
+                    },
+                ),
+            ],
+            Color::White,
+            GameVariant::SwappedManaRows,
+        );
+
+        assert_secure_drainer_walk_matches_process_input(
+            &game,
+            Location::new(7, 1),
+            Location::new(8, 1),
+        );
+    }
+
+    #[test]
     fn exact_zero_move_tactical_counts_after_touched_items_matches_full_window() {
         let board = game_with_items(
             vec![
@@ -11098,7 +11189,7 @@ mod tests {
         clear_exact_state_analysis_cache();
         clear_exact_query_diagnostics();
 
-        let mut game = MonsGame::new(false);
+        let mut game = MonsGame::new(false, GameVariant::Classic);
         for step in [
             "l10,3;l9,2",
             "l9,2;l8,1",
@@ -11131,7 +11222,7 @@ mod tests {
         clear_exact_state_analysis_cache();
         clear_exact_query_diagnostics();
 
-        let mut game = MonsGame::new(false);
+        let mut game = MonsGame::new(false, GameVariant::Classic);
         for step in [
             "l10,3;l9,2",
             "l9,2;l8,1",

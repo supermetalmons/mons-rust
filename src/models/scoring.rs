@@ -2691,7 +2691,7 @@ fn spirit_action_utility(
             .then_some(())
         })
         .map(|_| {
-            let mut game = MonsGame::new(false);
+            let mut game = MonsGame::new(false, board.variant());
             game.board = board.clone();
             game.active_color = spirit_color;
             game.turn_number = 2;
@@ -3227,8 +3227,8 @@ mod tests {
     use super::*;
 
     fn game_with_items(items: Vec<(Location, Item)>, active_color: Color) -> MonsGame {
-        let mut game = MonsGame::new(false);
-        game.board = Board::new_with_items(items.into_iter().collect());
+        let mut game = MonsGame::new(false, GameVariant::Classic);
+        game.replace_board_items(items);
         game.active_color = active_color;
         game.actions_used_count = 0;
         game.mana_moves_count = 0;
@@ -3356,8 +3356,8 @@ mod tests {
             .occupied()
             .map(|(location, item)| (mirror_location(location), mirror_item(item)))
             .collect::<std::collections::HashMap<_, _>>();
-        let mut mirrored = MonsGame::new(false);
-        mirrored.board = Board::new_with_items(mirrored_items);
+        let mut mirrored = MonsGame::new(false, game.variant());
+        mirrored.replace_board_items(mirrored_items);
         mirrored.active_color = swapped_color(game.active_color);
         mirrored.actions_used_count = game.actions_used_count;
         mirrored.mana_moves_count = game.mana_moves_count;
@@ -4116,16 +4116,15 @@ mod tests {
 
     #[test]
     fn immediate_score_window_detects_carrier_scoring_this_turn() {
-        let board = Board::new_with_items(
+        let board = Board::new_with_items_and_variant(
             vec![(
                 Location::new(9, 0),
                 Item::MonWithMana {
                     mon: Mon::new(MonKind::Drainer, Color::White, 0),
                     mana: Mana::Regular(Color::Black),
                 },
-            )]
-            .into_iter()
-            .collect(),
+            )],
+            GameVariant::Classic,
         );
         let window = immediate_score_window_summary(&board, Color::White, 3, true, true, true);
         assert_eq!(
@@ -4136,15 +4135,14 @@ mod tests {
 
     #[test]
     fn regular_mana_move_window_requires_allow_mana_move() {
-        let board = Board::new_with_items(
+        let board = Board::new_with_items_and_variant(
             vec![(
                 Location::new(9, 0),
                 Item::Mana {
                     mana: Mana::Regular(Color::White),
                 },
-            )]
-            .into_iter()
-            .collect(),
+            )],
+            GameVariant::Classic,
         );
         let disallowed = immediate_score_window_summary(&board, Color::White, 3, true, true, false);
         let allowed = immediate_score_window_summary(&board, Color::White, 3, true, true, true);

@@ -703,7 +703,7 @@ fn apply_triage_opening_sequence(game: &mut MonsGame, sequence: &[&str; 5]) {
 }
 
 fn opening_black_reply_triage_fixture(id: &'static str, sequence: &[&str; 5]) -> TriageFixture {
-    let mut game = MonsGame::new(false);
+    let mut game = MonsGame::new(false, GameVariant::Classic);
     apply_triage_opening_sequence(&mut game, sequence);
     TriageFixture {
         id,

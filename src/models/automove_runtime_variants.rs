@@ -21,12 +21,14 @@ fn shipping_search_config_for_game(
     game: &MonsGame,
     preference: SmartAutomovePreference,
 ) -> AutomoveSearchConfig {
-    let hinted_context =
-        if matches!(preference, SmartAutomovePreference::Pro) && opening_book_enabled() {
-            ShippingProContext::OpeningBookDriven
-        } else {
-            ShippingProContext::Unknown
-        };
+    let hinted_context = if game.variant().supports_opening_book()
+        && matches!(preference, SmartAutomovePreference::Pro)
+        && opening_book_enabled()
+    {
+        ShippingProContext::OpeningBookDriven
+    } else {
+        ShippingProContext::Unknown
+    };
     MonsGameModel::shipping_search_config_for_game_with_context(game, preference, hinted_context).0
 }
 
@@ -103,7 +105,7 @@ pub(crate) fn apply_frontier_pro_v2_guarded_config(
 }
 
 fn select_opening_book_fallback_inputs(game: &MonsGame) -> Option<Vec<Input>> {
-    if !opening_book_enabled() {
+    if !game.variant().supports_opening_book() || !opening_book_enabled() {
         return None;
     }
 

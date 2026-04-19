@@ -179,9 +179,13 @@ fn selected_profile_env_aliases_accept_legacy_candidate_names_and_ids() {
 fn frontier_and_shipping_profile_helpers_accept_legacy_candidate_and_baseline_envs() {
     with_env_override("SMART_FRONTIER_PROFILE", "", || {
         with_env_override("SMART_SHIPPING_PROFILE", "", || {
-            with_env_override("SMART_PRO_CANDIDATE_PROFILE", "runtime_pro_turn_engine_v30", || {
-                assert_eq!(frontier_profile_id(), "frontier_pro_v2_guarded");
-            });
+            with_env_override(
+                "SMART_PRO_CANDIDATE_PROFILE",
+                "runtime_pro_turn_engine_v30",
+                || {
+                    assert_eq!(frontier_profile_id(), "frontier_pro_v2_guarded");
+                },
+            );
             with_env_override("SMART_PRO_BASELINE_PROFILE", "runtime_current", || {
                 assert_eq!(shipping_profile_id(), "shipping_pro_search");
             });
@@ -198,12 +202,20 @@ fn reliability_and_probe_profile_helpers_accept_legacy_ids() {
             assert_eq!(reliability_frontier_profile_id(), "frontier_pro_v2_guarded");
         },
     );
-    with_env_override("SMART_PRO_RELIABILITY_SHIPPING_PROFILE", "runtime_current", || {
-        assert_eq!(reliability_shipping_profile_id(), "shipping_pro_search");
-    });
-    with_env_override("SMART_PROBE_FRONTIER_PROFILE", "runtime_pro_turn_engine_v30", || {
-        assert_eq!(probe_frontier_profile_id(), "frontier_pro_v2_guarded");
-    });
+    with_env_override(
+        "SMART_PRO_RELIABILITY_SHIPPING_PROFILE",
+        "runtime_current",
+        || {
+            assert_eq!(reliability_shipping_profile_id(), "shipping_pro_search");
+        },
+    );
+    with_env_override(
+        "SMART_PROBE_FRONTIER_PROFILE",
+        "runtime_pro_turn_engine_v30",
+        || {
+            assert_eq!(probe_frontier_profile_id(), "frontier_pro_v2_guarded");
+        },
+    );
     with_env_override("SMART_PROBE_SHIPPING_PROFILE", "runtime_current", || {
         assert_eq!(probe_shipping_profile_id(), "shipping_pro_search");
     });

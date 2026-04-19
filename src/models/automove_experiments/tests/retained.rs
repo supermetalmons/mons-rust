@@ -268,8 +268,8 @@ fn frontier_pro_v2_guarded_profile_rejects_v30_white_recovery_head_full_reliabil
 fn frontier_pro_v2_guarded_profile_does_not_seed_cached_plain_spirit_continuation_when_head_is_rejected(
 ) {
     fn game_with_items(items: Vec<(Location, Item)>, active_color: Color) -> MonsGame {
-        let mut game = MonsGame::new(false);
-        game.board = Board::new_with_items(items.into_iter().collect());
+        let mut game = MonsGame::new(false, GameVariant::Classic);
+        game.replace_board_items(items);
         game.active_color = active_color;
         game.actions_used_count = 0;
         game.mana_moves_count = 0;
