@@ -1,4 +1,4 @@
-use mons_rust::{FenRepresentable, Input, MonsGame, Output};
+use mons_rust::{FenRepresentable, GameVariant, Input, MonsGame, Output};
 use rand::Rng;
 use std::collections::HashSet;
 use std::fmt::Write as FmtWrite;
