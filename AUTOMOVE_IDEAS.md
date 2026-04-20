@@ -21,17 +21,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping decision:
   - public Pro switched to `frontier_pro_v2_guarded`
 - Failed challenger:
-  - `frontier_pro_v3_white_guarded` fixed the live `opening_reply_white` quiet-head seam and the `white_split_trace` safe-mana sibling seam, but it never moved `vs_shipping_normal_white_head_acceptance`: the board stayed on `search_only_engine_allowed_head` instead of shipping's `search_only_forced_prepass`, so the candidate was discarded before gates.
+  - `frontier_pro_v3_live_seam_override` exact-matched the live seam boards, moved retained `primary_pro` by `2 / 62` with `off_target_changed=0`, and cleared `runtime-preflight`, but direct `pro-reliability` vs shipped `frontier_pro_v2_guarded` still failed at `0.5000 / 0.7500 / 0.8333`, so the candidate code was discarded.
 - Retained confirmation that still matters:
   - `2026-04-10` `pro-reliability-confirm`: `0.9062 / 0.9062 / 0.9062` with confidence `1.0000 / 1.0000 / 1.0000`
 
 ## Next Hypothesis
 
-- The remaining cheap spend is the white turn-3 vulnerable-window handoff: prove a candidate can turn `search_only_engine_allowed_head` into the shipping-style forced-prepass recovery on `vs_shipping_normal_white_head_acceptance`.
-- Do not reopen quiet late-head or safe-sibling code by themselves. They were real local fixes, but they were not enough to make a promotable challenger.
+- There is no remaining cheap live-seam spend. The white turn-3 vulnerable-window recovery was real, but even combining it with exact live seam alignment was still far short of direct frontier-vs-shipping reliability.
+- The next credible Pro challenger has to improve broader duel strength, not just patch retained live seams or probe boards.
 
 ## No-Go Notes
 
 - Do not reopen archive profiles as active candidates.
 - Do not spend from wrapper-only reroutes, hotspot-only output, or one traced seam without retained surface evidence.
+- Do not reopen exact live-seam shipping-alignment overrides. They can clear triage and preflight without being remotely promotable in direct duels.
 - Do not treat the relaxed `700ms` cap as permission to keep quality-flat changes.
