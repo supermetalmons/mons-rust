@@ -657,6 +657,22 @@ fn human_win_pro_c_triage_game() -> MonsGame {
     .expect("human_win_pro_c: valid fen")
 }
 
+fn live_nonwin_opening_reply_white_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "1 0 w 1 0 1 0 0 5 n01d0xn09/n01xxmn04a0xe0xn03/n03y0xn01s0xn01xxmn03/n11/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn05/n04xxMn02xxMn03/n05S0xn05/n04E0xA0xn01Y0xn03/n10D0x",
+        false,
+    )
+    .expect("live_nonwin_opening_reply_white: valid fen")
+}
+
+fn live_nonwin_black_vulnerable_spirit_reentry_triage_game() -> MonsGame {
+    MonsGame::from_fen(
+        "1 0 b 0 0 2 0 0 6 n05d1xn05/n05s0xa0xe0xn03/n07xxmn03/n03xxmn03xxmn03/n03xxmn01xxmn03Y0xn01/n05xxUn05/y0xn04xxMn05/n03xxMn03xxMn03/n07xxMn03/n02E0xn02S0xn05/n04A1xD1xn05",
+        false,
+    )
+    .expect("live_nonwin_black_vulnerable_spirit_reentry: valid fen")
+}
+
 fn spirit_setup_triage_game() -> MonsGame {
     tactical_game_with_items(
         vec![
@@ -887,6 +903,22 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l9,4;l8,3"),
+        },
+        TriageFixture {
+            id: "primary_live_nonwin_opening_reply_white",
+            game: live_nonwin_opening_reply_white_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: None,
+        },
+        TriageFixture {
+            id: "primary_live_nonwin_black_vulnerable_spirit_reentry",
+            game: live_nonwin_black_vulnerable_spirit_reentry_triage_game(),
+            mode: SmartAutomovePreference::Pro,
+            opening_book_driven: false,
+            config_tweak: None,
+            expected_selected_input_fen: None,
         },
         TriageFixture {
             id: "primary_black_loss_opening_a",

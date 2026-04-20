@@ -19,6 +19,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - Safe supermana and safe opponent-mana progress remain high-value tempo goals.
 - Leaving your own drainer vulnerable is only acceptable for an immediate winning or scoring payoff.
 - Spirit deployment should create progress or setup value, not idle on base.
+- Promoting duel-derived live misses into retained triage is useful, but fixture churn alone is not promotion evidence.
 
 ## Retained Seam And Fixture Map
 
@@ -28,6 +29,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - `primary_black_mana_bridge_ply20`: retained black injected mana-bridge seam on shipping baseline `l4,1;l5,0;mb`.
 - `primary_black_spirit_bridge_ply19`: retained black injected spirit-bridge seam on the same shipping baseline.
 - `primary_black_negative_deny_ply4`: retained early-black negative-deny selector seam.
+- `primary_live_nonwin_opening_reply_white`: retained live duel seam where quiet mana-head acceptance beat a stronger reply-risk-aware mana continuation.
+- `primary_live_nonwin_black_vulnerable_spirit_reentry`: retained live duel seam where vulnerable plain-spirit reentry competed against a quieter mana continuation.
 - Closed surfaces that should stay closed: `primary_spirit_setup`, `primary_pvs_sensitive_search`, and `primary_black_reliability_opening_3_ply4`.
 
 ## Retained Diagnostic Toolbox
@@ -44,6 +47,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - Kill any line that fails `guardrails`, reopens closed retained seams, or pushes off-target churn above `1`.
 - Kill any line that only fixes one traced seam and leaves the cheap surface on stale churn.
 - Kill any line that clears retained fixtures but does not move direct duel evidence on the candidate-vs-baseline matchup.
+- Kill any line that only starts winning after the fixture surface is expanded but then loses the direct frontier-vs-shipping duel.
 - Do not reopen archive profiles or retired branch families without a brand-new shared hypothesis.
 - Do not treat hotspot output or one replay seed as production proof without a retained foothold.
 - Wrapper-only reroutes and local fallback widening saturate quickly; shared selector/search changes are the real frontier.

@@ -347,6 +347,106 @@ fn smart_automove_pro_reliability_nonwin_trace_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: inspect ranked roots on the live pro-reliability non-win boards"]
+fn smart_automove_pro_reliability_live_nonwin_root_probe() {
+    #[derive(Clone, Copy)]
+    struct ProbeCase {
+        label: &'static str,
+        board_fen: &'static str,
+        shipping_mode: SmartAutomovePreference,
+    }
+
+    fn top_root_details(
+        profile: &str,
+        mode: SmartAutomovePreference,
+        game: &MonsGame,
+    ) -> Vec<String> {
+        let (_, scored_roots, _, _) =
+            profile_runtime_scored_roots_with_forced_engine_inputs(profile, mode, game);
+        scored_roots
+            .iter()
+            .take(8)
+            .map(|root| {
+                format!(
+                    "{}:{}",
+                    Input::fen_from_array(&root.inputs),
+                    format_root_probe(Some(root))
+                )
+            })
+            .collect()
+    }
+
+    let cases = [
+        ProbeCase {
+            label: "vs_shipping_pro_opening_reply_white",
+            board_fen: "1 0 w 1 0 1 0 0 5 n01d0xn09/n01xxmn04a0xe0xn03/n03y0xn01s0xn01xxmn03/n11/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn05/n04xxMn02xxMn03/n05S0xn05/n04E0xA0xn01Y0xn03/n10D0x",
+            shipping_mode: SmartAutomovePreference::Pro,
+        },
+        ProbeCase {
+            label: "vs_shipping_pro_black_recovery_branch",
+            board_fen: "1 0 b 0 0 2 0 0 6 n05d1xn05/n05s0xa0xe0xn03/n07xxmn03/n03xxmn03xxmn03/n03xxmn01xxmn03Y0xn01/n05xxUn05/y0xn04xxMn05/n03xxMn03xxMn03/n07xxMn03/n02E0xn02S0xn05/n04A1xD1xn05",
+            shipping_mode: SmartAutomovePreference::Pro,
+        },
+        ProbeCase {
+            label: "vs_shipping_pro_white_plain_spirit_split",
+            board_fen: "0 0 w 1 0 4 0 0 3 n03y0xn03e0xn03/n05a0xn05/n02xxmn01s0xn01d0xn04/n06xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n03xxMxxMn01xxMn04/E0xn04S0xn05/n05D0xn05/n04A0xn01Y0xn02",
+            shipping_mode: SmartAutomovePreference::Pro,
+        },
+        ProbeCase {
+            label: "vs_shipping_normal_black_bridge_nonwin",
+            board_fen: "0 0 w 0 0 2 0 0 3 n11/n03y0xn01s0xa0xe0xn03/n05d0xn05/n03xxmxxmn01xxmn04/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n01E0xn01xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n04D0xS0xn01Y0xn03/n04A0xn06",
+            shipping_mode: SmartAutomovePreference::Normal,
+        },
+        ProbeCase {
+            label: "vs_shipping_normal_white_head_acceptance",
+            board_fen: "0 0 w 1 0 1 0 0 3 n06a0xn04/n03y0xn01d0xxxmn01e0xn02/n04s0xn06/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn02Y0xn04/n04D0xS0xn05/n03E0xA0xn06",
+            shipping_mode: SmartAutomovePreference::Normal,
+        },
+    ];
+
+    for case in cases {
+        let game = MonsGame::from_fen(case.board_fen, false)
+            .unwrap_or_else(|| panic!("{}: valid live non-win board fen", case.label));
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        clear_turn_engine_plan_cache();
+        clear_turn_engine_diagnostics();
+        clear_turn_engine_selector_diagnostics();
+        let frontier_probe = runtime_decision_probe(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let frontier_advisor = pro_v2_root_advisor_decision_snapshot();
+        let frontier_roots = top_root_details(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        clear_turn_engine_plan_cache();
+        clear_turn_engine_diagnostics();
+        clear_turn_engine_selector_diagnostics();
+        let shipping_probe =
+            runtime_decision_probe("shipping_pro_search", case.shipping_mode, &game);
+        let shipping_roots = top_root_details("shipping_pro_search", case.shipping_mode, &game);
+
+        println!(
+            "LIVE_NONWIN_ROOT label={} shipping_mode={:?} frontier_probe={:?} frontier_advisor={:?} frontier_roots={:?} shipping_probe={:?} shipping_roots={:?}",
+            case.label,
+            case.shipping_mode,
+            frontier_probe,
+            frontier_advisor,
+            frontier_roots,
+            shipping_probe,
+            shipping_roots,
+        );
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: bounded selector/exact hotspot probe for pro reliability corpus"]
 fn smart_automove_pro_reliability_hotspot_probe() {
     use std::collections::BTreeMap;
