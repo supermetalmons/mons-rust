@@ -393,6 +393,11 @@ fn smart_automove_pro_reliability_live_nonwin_root_probe() {
             shipping_mode: SmartAutomovePreference::Pro,
         },
         ProbeCase {
+            label: "vs_shipping_pro_white_split_trace",
+            board_fen: "0 0 w 1 0 4 0 0 3 n03y0xn03e0xn03/n05a0xn05/n02xxmn01s0xn01d0xn04/n06xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n03xxMxxMn01xxMn04/E0xn04S0xn05/n05D0xn05/n04A0xn03Y0xn02",
+            shipping_mode: SmartAutomovePreference::Pro,
+        },
+        ProbeCase {
             label: "vs_shipping_normal_black_bridge_nonwin",
             board_fen: "0 0 w 0 0 2 0 0 3 n11/n03y0xn01s0xa0xe0xn03/n05d0xn05/n03xxmxxmn01xxmn04/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n01E0xn01xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n04D0xS0xn01Y0xn03/n04A0xn06",
             shipping_mode: SmartAutomovePreference::Normal,
@@ -403,6 +408,8 @@ fn smart_automove_pro_reliability_live_nonwin_root_probe() {
             shipping_mode: SmartAutomovePreference::Normal,
         },
     ];
+    let frontier_profile = probe_frontier_profile_id();
+    let shipping_profile = probe_shipping_profile_id();
 
     for case in cases {
         let game = MonsGame::from_fen(case.board_fen, false)
@@ -412,17 +419,11 @@ fn smart_automove_pro_reliability_live_nonwin_root_probe() {
         clear_turn_engine_plan_cache();
         clear_turn_engine_diagnostics();
         clear_turn_engine_selector_diagnostics();
-        let frontier_probe = runtime_decision_probe(
-            "frontier_pro_v2_guarded",
-            SmartAutomovePreference::Pro,
-            &game,
-        );
+        let frontier_probe =
+            runtime_decision_probe(frontier_profile.as_str(), SmartAutomovePreference::Pro, &game);
         let frontier_advisor = pro_v2_root_advisor_decision_snapshot();
-        let frontier_roots = top_root_details(
-            "frontier_pro_v2_guarded",
-            SmartAutomovePreference::Pro,
-            &game,
-        );
+        let frontier_roots =
+            top_root_details(frontier_profile.as_str(), SmartAutomovePreference::Pro, &game);
 
         clear_exact_state_analysis_cache();
         clear_exact_query_diagnostics();
@@ -430,12 +431,15 @@ fn smart_automove_pro_reliability_live_nonwin_root_probe() {
         clear_turn_engine_diagnostics();
         clear_turn_engine_selector_diagnostics();
         let shipping_probe =
-            runtime_decision_probe("shipping_pro_search", case.shipping_mode, &game);
-        let shipping_roots = top_root_details("shipping_pro_search", case.shipping_mode, &game);
+            runtime_decision_probe(shipping_profile.as_str(), case.shipping_mode, &game);
+        let shipping_roots =
+            top_root_details(shipping_profile.as_str(), case.shipping_mode, &game);
 
         println!(
-            "LIVE_NONWIN_ROOT label={} shipping_mode={:?} frontier_probe={:?} frontier_advisor={:?} frontier_roots={:?} shipping_probe={:?} shipping_roots={:?}",
+            "LIVE_NONWIN_ROOT label={} frontier_profile={} shipping_profile={} shipping_mode={:?} frontier_probe={:?} frontier_advisor={:?} frontier_roots={:?} shipping_probe={:?} shipping_roots={:?}",
             case.label,
+            frontier_profile,
+            shipping_profile,
             case.shipping_mode,
             frontier_probe,
             frontier_advisor,

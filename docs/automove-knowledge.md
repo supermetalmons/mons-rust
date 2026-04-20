@@ -20,6 +20,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - Leaving your own drainer vulnerable is only acceptable for an immediate winning or scoring payoff.
 - Spirit deployment should create progress or setup value, not idle on base.
 - Promoting duel-derived live misses into retained triage is useful, but fixture churn alone is not promotion evidence.
+- On white turn-3 split boards, a safe mana sibling correction only sticks if it runs after white mana competition selection.
+- Quiet late-white head-accept guards can fix a real live reply-risk seam, but that repair alone does not move the `vs shipping Normal` wall.
+- If `search_only_engine_allowed_head` keeps surviving on a white vulnerable-window board where the final surfaced roots also include `DrainerSafetyRecovery`, do not trust a seemingly-matching rerank block until probe output proves the stage actually changed.
 
 ## Retained Seam And Fixture Map
 

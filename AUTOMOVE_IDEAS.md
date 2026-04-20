@@ -21,13 +21,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping decision:
   - public Pro switched to `frontier_pro_v2_guarded`
 - Failed challenger:
-  - `frontier_pro_v3_quiet_guarded` passed `pro-triage` only after retaining 2 live duel seams, then failed direct `pro-reliability` vs shipped `frontier_pro_v2_guarded` at `0.3333 / 0.8333 / 0.8333` with confidence `0.0000 / 0.9807 / 0.9807`
+  - `frontier_pro_v3_white_guarded` fixed the live `opening_reply_white` quiet-head seam and the `white_split_trace` safe-mana sibling seam, but it never moved `vs_shipping_normal_white_head_acceptance`: the board stayed on `search_only_engine_allowed_head` instead of shipping's `search_only_forced_prepass`, so the candidate was discarded before gates.
 - Retained confirmation that still matters:
   - `2026-04-10` `pro-reliability-confirm`: `0.9062 / 0.9062 / 0.9062` with confidence `1.0000 / 1.0000 / 1.0000`
 
 ## Next Hypothesis
 
-- None yet. The next live challenger should beat shipped `frontier_pro_v2_guarded` directly; fixing promoted duel seams or passing `pro-triage` alone is not enough.
+- The remaining cheap spend is the white turn-3 vulnerable-window handoff: prove a candidate can turn `search_only_engine_allowed_head` into the shipping-style forced-prepass recovery on `vs_shipping_normal_white_head_acceptance`.
+- Do not reopen quiet late-head or safe-sibling code by themselves. They were real local fixes, but they were not enough to make a promotable challenger.
 
 ## No-Go Notes
 
