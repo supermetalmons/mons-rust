@@ -479,26 +479,40 @@ mod tests {
     }
 
     #[test]
-    fn swapped_mana_rows_variant_game_fen_round_trips() {
-        let game = MonsGame::new(false, GameVariant::SwappedManaRows);
-        let fen = game.fen();
-        assert!(fen.ends_with(" 1"));
-        let roundtrip = MonsGame::from_fen(fen.as_str(), false)
-            .expect("swapped-mana-rows game FEN should round-trip");
-        assert_eq!(roundtrip.variant(), GameVariant::SwappedManaRows);
-        assert_eq!(roundtrip.fen(), fen);
-        assert_eq!(
-            roundtrip.board.square(Location::new(3, 3)),
-            Square::ManaBase {
-                color: Color::Black,
-            }
-        );
-        assert_eq!(
-            roundtrip.board.item(Location::new(3, 3)).copied(),
-            Some(Item::Mana {
-                mana: Mana::Regular(Color::Black),
-            })
-        );
+    fn non_classic_variant_game_fens_round_trip() {
+        let cases = [
+            (GameVariant::SwappedManaRows, 1, Location::new(3, 3)),
+            (GameVariant::OffsetArcManaRows, 2, Location::new(4, 2)),
+            (GameVariant::CenterSpokeManaRows, 3, Location::new(3, 5)),
+            (GameVariant::AlternatingManaRows, 4, Location::new(4, 1)),
+            (GameVariant::InnerWedgeManaRows, 5, Location::new(4, 5)),
+            (GameVariant::OuterWedgeManaRows, 6, Location::new(3, 5)),
+        ];
+
+        for (variant, id, mana_location) in cases {
+            let game = MonsGame::new(false, variant);
+            let fen = game.fen();
+            assert!(
+                fen.ends_with(format!(" {id}").as_str()),
+                "{variant:?} FEN should include its explicit variant id"
+            );
+            let roundtrip = MonsGame::from_fen(fen.as_str(), false)
+                .expect("non-classic game FEN should round-trip");
+            assert_eq!(roundtrip.variant(), variant);
+            assert_eq!(roundtrip.fen(), fen);
+            assert_eq!(
+                roundtrip.board.square(mana_location),
+                Square::ManaBase {
+                    color: Color::Black,
+                }
+            );
+            assert_eq!(
+                roundtrip.board.item(mana_location).copied(),
+                Some(Item::Mana {
+                    mana: Mana::Regular(Color::Black),
+                })
+            );
+        }
     }
 
     #[test]

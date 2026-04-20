@@ -9,6 +9,11 @@ pub enum GameVariant {
     #[default]
     Classic = 0,
     SwappedManaRows = 1,
+    OffsetArcManaRows = 2,
+    CenterSpokeManaRows = 3,
+    AlternatingManaRows = 4,
+    InnerWedgeManaRows = 5,
+    OuterWedgeManaRows = 6,
 }
 
 impl GameVariant {
@@ -18,6 +23,11 @@ impl GameVariant {
         match self {
             Self::Classic => 0,
             Self::SwappedManaRows => 1,
+            Self::OffsetArcManaRows => 2,
+            Self::CenterSpokeManaRows => 3,
+            Self::AlternatingManaRows => 4,
+            Self::InnerWedgeManaRows => 5,
+            Self::OuterWedgeManaRows => 6,
         }
     }
 
@@ -25,6 +35,11 @@ impl GameVariant {
         match id {
             0 => Some(Self::Classic),
             1 => Some(Self::SwappedManaRows),
+            2 => Some(Self::OffsetArcManaRows),
+            3 => Some(Self::CenterSpokeManaRows),
+            4 => Some(Self::AlternatingManaRows),
+            5 => Some(Self::InnerWedgeManaRows),
+            6 => Some(Self::OuterWedgeManaRows),
             _ => None,
         }
     }
@@ -60,6 +75,62 @@ static SWAPPED_MANA_ROWS_SQUARES_ARRAY: LazyLock<[Square; BOARD_CELLS]> = LazyLo
 });
 static SWAPPED_MANA_ROWS_INITIAL_ITEMS_ARRAY: LazyLock<[Option<Item>; BOARD_CELLS]> =
     LazyLock::new(|| Config::build_initial_items_array(GameVariant::SwappedManaRows));
+static OFFSET_ARC_MANA_ROWS_SQUARES_MAP: LazyLock<HashMap<Location, Square>> =
+    LazyLock::new(|| Config::build_squares(GameVariant::OffsetArcManaRows));
+static OFFSET_ARC_MANA_ROWS_SQUARES_ARRAY: LazyLock<[Square; BOARD_CELLS]> = LazyLock::new(|| {
+    let mut arr = [Square::Regular; BOARD_CELLS];
+    for (&loc, &sq) in OFFSET_ARC_MANA_ROWS_SQUARES_MAP.iter() {
+        arr[loc.index()] = sq;
+    }
+    arr
+});
+static OFFSET_ARC_MANA_ROWS_INITIAL_ITEMS_ARRAY: LazyLock<[Option<Item>; BOARD_CELLS]> =
+    LazyLock::new(|| Config::build_initial_items_array(GameVariant::OffsetArcManaRows));
+static CENTER_SPOKE_MANA_ROWS_SQUARES_MAP: LazyLock<HashMap<Location, Square>> =
+    LazyLock::new(|| Config::build_squares(GameVariant::CenterSpokeManaRows));
+static CENTER_SPOKE_MANA_ROWS_SQUARES_ARRAY: LazyLock<[Square; BOARD_CELLS]> =
+    LazyLock::new(|| {
+        let mut arr = [Square::Regular; BOARD_CELLS];
+        for (&loc, &sq) in CENTER_SPOKE_MANA_ROWS_SQUARES_MAP.iter() {
+            arr[loc.index()] = sq;
+        }
+        arr
+    });
+static CENTER_SPOKE_MANA_ROWS_INITIAL_ITEMS_ARRAY: LazyLock<[Option<Item>; BOARD_CELLS]> =
+    LazyLock::new(|| Config::build_initial_items_array(GameVariant::CenterSpokeManaRows));
+static ALTERNATING_MANA_ROWS_SQUARES_MAP: LazyLock<HashMap<Location, Square>> =
+    LazyLock::new(|| Config::build_squares(GameVariant::AlternatingManaRows));
+static ALTERNATING_MANA_ROWS_SQUARES_ARRAY: LazyLock<[Square; BOARD_CELLS]> = LazyLock::new(|| {
+    let mut arr = [Square::Regular; BOARD_CELLS];
+    for (&loc, &sq) in ALTERNATING_MANA_ROWS_SQUARES_MAP.iter() {
+        arr[loc.index()] = sq;
+    }
+    arr
+});
+static ALTERNATING_MANA_ROWS_INITIAL_ITEMS_ARRAY: LazyLock<[Option<Item>; BOARD_CELLS]> =
+    LazyLock::new(|| Config::build_initial_items_array(GameVariant::AlternatingManaRows));
+static INNER_WEDGE_MANA_ROWS_SQUARES_MAP: LazyLock<HashMap<Location, Square>> =
+    LazyLock::new(|| Config::build_squares(GameVariant::InnerWedgeManaRows));
+static INNER_WEDGE_MANA_ROWS_SQUARES_ARRAY: LazyLock<[Square; BOARD_CELLS]> = LazyLock::new(|| {
+    let mut arr = [Square::Regular; BOARD_CELLS];
+    for (&loc, &sq) in INNER_WEDGE_MANA_ROWS_SQUARES_MAP.iter() {
+        arr[loc.index()] = sq;
+    }
+    arr
+});
+static INNER_WEDGE_MANA_ROWS_INITIAL_ITEMS_ARRAY: LazyLock<[Option<Item>; BOARD_CELLS]> =
+    LazyLock::new(|| Config::build_initial_items_array(GameVariant::InnerWedgeManaRows));
+static OUTER_WEDGE_MANA_ROWS_SQUARES_MAP: LazyLock<HashMap<Location, Square>> =
+    LazyLock::new(|| Config::build_squares(GameVariant::OuterWedgeManaRows));
+static OUTER_WEDGE_MANA_ROWS_SQUARES_ARRAY: LazyLock<[Square; BOARD_CELLS]> = LazyLock::new(|| {
+    let mut arr = [Square::Regular; BOARD_CELLS];
+    for (&loc, &sq) in OUTER_WEDGE_MANA_ROWS_SQUARES_MAP.iter() {
+        arr[loc.index()] = sq;
+    }
+    arr
+});
+static OUTER_WEDGE_MANA_ROWS_INITIAL_ITEMS_ARRAY: LazyLock<[Option<Item>; BOARD_CELLS]> =
+    LazyLock::new(|| Config::build_initial_items_array(GameVariant::OuterWedgeManaRows));
 static MONS_BASES_SET: LazyLock<HashSet<Location>> =
     LazyLock::new(|| Config::MONS_BASE_LOCATIONS.iter().copied().collect());
 static IS_MON_BASE: LazyLock<[bool; BOARD_CELLS]> = LazyLock::new(|| {
@@ -110,6 +181,86 @@ impl Config {
         Location { i: 7, j: 7 },
         Location { i: 6, j: 4 },
         Location { i: 6, j: 6 },
+    ];
+
+    const OFFSET_ARC_BLACK_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 3, j: 4 },
+        Location { i: 3, j: 6 },
+        Location { i: 4, j: 2 },
+        Location { i: 4, j: 5 },
+        Location { i: 4, j: 8 },
+    ];
+
+    const OFFSET_ARC_WHITE_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 6, j: 2 },
+        Location { i: 6, j: 5 },
+        Location { i: 6, j: 8 },
+        Location { i: 7, j: 4 },
+        Location { i: 7, j: 6 },
+    ];
+
+    const CENTER_SPOKE_BLACK_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 3, j: 5 },
+        Location { i: 4, j: 2 },
+        Location { i: 4, j: 4 },
+        Location { i: 4, j: 6 },
+        Location { i: 4, j: 8 },
+    ];
+
+    const CENTER_SPOKE_WHITE_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 6, j: 2 },
+        Location { i: 6, j: 4 },
+        Location { i: 6, j: 6 },
+        Location { i: 6, j: 8 },
+        Location { i: 7, j: 5 },
+    ];
+
+    const ALTERNATING_BLACK_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 4, j: 1 },
+        Location { i: 4, j: 3 },
+        Location { i: 4, j: 5 },
+        Location { i: 4, j: 7 },
+        Location { i: 4, j: 9 },
+    ];
+
+    const ALTERNATING_WHITE_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 6, j: 1 },
+        Location { i: 6, j: 3 },
+        Location { i: 6, j: 5 },
+        Location { i: 6, j: 7 },
+        Location { i: 6, j: 9 },
+    ];
+
+    const INNER_WEDGE_BLACK_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 3, j: 4 },
+        Location { i: 3, j: 6 },
+        Location { i: 4, j: 4 },
+        Location { i: 4, j: 5 },
+        Location { i: 4, j: 6 },
+    ];
+
+    const INNER_WEDGE_WHITE_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 6, j: 4 },
+        Location { i: 6, j: 5 },
+        Location { i: 6, j: 6 },
+        Location { i: 7, j: 4 },
+        Location { i: 7, j: 6 },
+    ];
+
+    const OUTER_WEDGE_BLACK_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 3, j: 4 },
+        Location { i: 3, j: 5 },
+        Location { i: 3, j: 6 },
+        Location { i: 4, j: 3 },
+        Location { i: 4, j: 7 },
+    ];
+
+    const OUTER_WEDGE_WHITE_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 6, j: 3 },
+        Location { i: 6, j: 7 },
+        Location { i: 7, j: 4 },
+        Location { i: 7, j: 5 },
+        Location { i: 7, j: 6 },
     ];
 
     fn build_squares(variant: GameVariant) -> HashMap<Location, Square> {
@@ -246,6 +397,36 @@ impl Config {
             (GameVariant::SwappedManaRows, Color::White) => {
                 &Self::SWAPPED_WHITE_MANA_BASE_LOCATIONS
             }
+            (GameVariant::OffsetArcManaRows, Color::Black) => {
+                &Self::OFFSET_ARC_BLACK_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::OffsetArcManaRows, Color::White) => {
+                &Self::OFFSET_ARC_WHITE_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::CenterSpokeManaRows, Color::Black) => {
+                &Self::CENTER_SPOKE_BLACK_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::CenterSpokeManaRows, Color::White) => {
+                &Self::CENTER_SPOKE_WHITE_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::AlternatingManaRows, Color::Black) => {
+                &Self::ALTERNATING_BLACK_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::AlternatingManaRows, Color::White) => {
+                &Self::ALTERNATING_WHITE_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::InnerWedgeManaRows, Color::Black) => {
+                &Self::INNER_WEDGE_BLACK_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::InnerWedgeManaRows, Color::White) => {
+                &Self::INNER_WEDGE_WHITE_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::OuterWedgeManaRows, Color::Black) => {
+                &Self::OUTER_WEDGE_BLACK_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::OuterWedgeManaRows, Color::White) => {
+                &Self::OUTER_WEDGE_WHITE_MANA_BASE_LOCATIONS
+            }
         }
     }
 
@@ -279,6 +460,11 @@ impl Config {
         match variant {
             GameVariant::Classic => &CLASSIC_SQUARES_MAP,
             GameVariant::SwappedManaRows => &SWAPPED_MANA_ROWS_SQUARES_MAP,
+            GameVariant::OffsetArcManaRows => &OFFSET_ARC_MANA_ROWS_SQUARES_MAP,
+            GameVariant::CenterSpokeManaRows => &CENTER_SPOKE_MANA_ROWS_SQUARES_MAP,
+            GameVariant::AlternatingManaRows => &ALTERNATING_MANA_ROWS_SQUARES_MAP,
+            GameVariant::InnerWedgeManaRows => &INNER_WEDGE_MANA_ROWS_SQUARES_MAP,
+            GameVariant::OuterWedgeManaRows => &OUTER_WEDGE_MANA_ROWS_SQUARES_MAP,
         }
     }
 
@@ -299,6 +485,19 @@ impl Config {
         match variant {
             GameVariant::Classic => CLASSIC_SQUARES_ARRAY[location.index()],
             GameVariant::SwappedManaRows => SWAPPED_MANA_ROWS_SQUARES_ARRAY[location.index()],
+            GameVariant::OffsetArcManaRows => OFFSET_ARC_MANA_ROWS_SQUARES_ARRAY[location.index()],
+            GameVariant::CenterSpokeManaRows => {
+                CENTER_SPOKE_MANA_ROWS_SQUARES_ARRAY[location.index()]
+            }
+            GameVariant::AlternatingManaRows => {
+                ALTERNATING_MANA_ROWS_SQUARES_ARRAY[location.index()]
+            }
+            GameVariant::InnerWedgeManaRows => {
+                INNER_WEDGE_MANA_ROWS_SQUARES_ARRAY[location.index()]
+            }
+            GameVariant::OuterWedgeManaRows => {
+                OUTER_WEDGE_MANA_ROWS_SQUARES_ARRAY[location.index()]
+            }
         }
     }
 
@@ -311,6 +510,11 @@ impl Config {
         match variant {
             GameVariant::Classic => &CLASSIC_SQUARES_ARRAY,
             GameVariant::SwappedManaRows => &SWAPPED_MANA_ROWS_SQUARES_ARRAY,
+            GameVariant::OffsetArcManaRows => &OFFSET_ARC_MANA_ROWS_SQUARES_ARRAY,
+            GameVariant::CenterSpokeManaRows => &CENTER_SPOKE_MANA_ROWS_SQUARES_ARRAY,
+            GameVariant::AlternatingManaRows => &ALTERNATING_MANA_ROWS_SQUARES_ARRAY,
+            GameVariant::InnerWedgeManaRows => &INNER_WEDGE_MANA_ROWS_SQUARES_ARRAY,
+            GameVariant::OuterWedgeManaRows => &OUTER_WEDGE_MANA_ROWS_SQUARES_ARRAY,
         }
     }
 
@@ -335,6 +539,11 @@ impl Config {
         match variant {
             GameVariant::Classic => *CLASSIC_INITIAL_ITEMS_ARRAY,
             GameVariant::SwappedManaRows => *SWAPPED_MANA_ROWS_INITIAL_ITEMS_ARRAY,
+            GameVariant::OffsetArcManaRows => *OFFSET_ARC_MANA_ROWS_INITIAL_ITEMS_ARRAY,
+            GameVariant::CenterSpokeManaRows => *CENTER_SPOKE_MANA_ROWS_INITIAL_ITEMS_ARRAY,
+            GameVariant::AlternatingManaRows => *ALTERNATING_MANA_ROWS_INITIAL_ITEMS_ARRAY,
+            GameVariant::InnerWedgeManaRows => *INNER_WEDGE_MANA_ROWS_INITIAL_ITEMS_ARRAY,
+            GameVariant::OuterWedgeManaRows => *OUTER_WEDGE_MANA_ROWS_INITIAL_ITEMS_ARRAY,
         }
     }
 
@@ -387,6 +596,7 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     fn assert_regular_mana(board: &Board, location: Location, color: Color) {
         assert_eq!(board.square(location), Square::ManaBase { color });
@@ -395,6 +605,65 @@ mod tests {
             Some(Item::Mana {
                 mana: Mana::Regular(color),
             })
+        );
+    }
+
+    fn mana_base_locations_for_board(board: &Board, color: Color) -> HashSet<Location> {
+        let mut locations = HashSet::new();
+        for i in 0..Config::BOARD_SIZE {
+            for j in 0..Config::BOARD_SIZE {
+                let location = Location::new(i, j);
+                if board.square(location) == (Square::ManaBase { color }) {
+                    locations.insert(location);
+                }
+            }
+        }
+        locations
+    }
+
+    fn regular_mana_item_locations_for_board(board: &Board, color: Color) -> HashSet<Location> {
+        board.occupied()
+            .filter_map(|(location, item)| match item {
+                Item::Mana {
+                    mana: Mana::Regular(mana_color),
+                } if *mana_color == color => Some(location),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn hash_set_from_locations(locations: &[Location; 5]) -> HashSet<Location> {
+        locations.iter().copied().collect()
+    }
+
+    fn assert_variant_mana_layout(
+        variant: GameVariant,
+        black_locations: &[Location; 5],
+        white_locations: &[Location; 5],
+    ) {
+        let board = Board::new_with_variant(variant);
+        let expected_black = hash_set_from_locations(black_locations);
+        let expected_white = hash_set_from_locations(white_locations);
+
+        assert_eq!(
+            mana_base_locations_for_board(&board, Color::Black),
+            expected_black,
+            "{variant:?} should have the expected black mana-base squares"
+        );
+        assert_eq!(
+            mana_base_locations_for_board(&board, Color::White),
+            expected_white,
+            "{variant:?} should have the expected white mana-base squares"
+        );
+        assert_eq!(
+            regular_mana_item_locations_for_board(&board, Color::Black),
+            expected_black,
+            "{variant:?} should have initial black mana on every black mana base"
+        );
+        assert_eq!(
+            regular_mana_item_locations_for_board(&board, Color::White),
+            expected_white,
+            "{variant:?} should have initial white mana on every white mana base"
         );
     }
 
@@ -460,5 +729,34 @@ mod tests {
             assert_eq!(classic.item(location), None);
             assert_regular_mana(&swapped, location, Color::White);
         }
+    }
+
+    #[test]
+    fn new_variants_use_expected_mana_base_layouts_and_initial_mana() {
+        assert_variant_mana_layout(
+            GameVariant::OffsetArcManaRows,
+            &Config::OFFSET_ARC_BLACK_MANA_BASE_LOCATIONS,
+            &Config::OFFSET_ARC_WHITE_MANA_BASE_LOCATIONS,
+        );
+        assert_variant_mana_layout(
+            GameVariant::CenterSpokeManaRows,
+            &Config::CENTER_SPOKE_BLACK_MANA_BASE_LOCATIONS,
+            &Config::CENTER_SPOKE_WHITE_MANA_BASE_LOCATIONS,
+        );
+        assert_variant_mana_layout(
+            GameVariant::AlternatingManaRows,
+            &Config::ALTERNATING_BLACK_MANA_BASE_LOCATIONS,
+            &Config::ALTERNATING_WHITE_MANA_BASE_LOCATIONS,
+        );
+        assert_variant_mana_layout(
+            GameVariant::InnerWedgeManaRows,
+            &Config::INNER_WEDGE_BLACK_MANA_BASE_LOCATIONS,
+            &Config::INNER_WEDGE_WHITE_MANA_BASE_LOCATIONS,
+        );
+        assert_variant_mana_layout(
+            GameVariant::OuterWedgeManaRows,
+            &Config::OUTER_WEDGE_BLACK_MANA_BASE_LOCATIONS,
+            &Config::OUTER_WEDGE_WHITE_MANA_BASE_LOCATIONS,
+        );
     }
 }

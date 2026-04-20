@@ -26858,17 +26858,41 @@ mod opening_book_tests {
     }
 
     #[test]
-    fn white_opening_book_is_disabled_for_swapped_mana_rows_variant() {
-        let game = MonsGame::new(false, GameVariant::SwappedManaRows);
-        assert!(MonsGameModel::white_first_turn_opening_next_inputs(&game).is_none());
+    fn white_opening_book_is_disabled_for_non_classic_variants() {
+        for variant in [
+            GameVariant::SwappedManaRows,
+            GameVariant::OffsetArcManaRows,
+            GameVariant::CenterSpokeManaRows,
+            GameVariant::AlternatingManaRows,
+            GameVariant::InnerWedgeManaRows,
+            GameVariant::OuterWedgeManaRows,
+        ] {
+            let game = MonsGame::new(false, variant);
+            assert!(
+                MonsGameModel::white_first_turn_opening_next_inputs(&game).is_none(),
+                "{variant:?} should not use the classic opening book"
+            );
+        }
     }
 
     #[test]
-    fn opening_book_context_detection_is_disabled_for_swapped_mana_rows_variant() {
-        let mut game = MonsGame::new(false, GameVariant::SwappedManaRows);
-        game.active_color = Color::Black;
-        game.turn_number = 2;
-        assert!(!MonsGameModel::detect_opening_book_context(&game));
+    fn opening_book_context_detection_is_disabled_for_non_classic_variants() {
+        for variant in [
+            GameVariant::SwappedManaRows,
+            GameVariant::OffsetArcManaRows,
+            GameVariant::CenterSpokeManaRows,
+            GameVariant::AlternatingManaRows,
+            GameVariant::InnerWedgeManaRows,
+            GameVariant::OuterWedgeManaRows,
+        ] {
+            let mut game = MonsGame::new(false, variant);
+            game.active_color = Color::Black;
+            game.turn_number = 2;
+            assert!(
+                !MonsGameModel::detect_opening_book_context(&game),
+                "{variant:?} should not detect classic opening-book context"
+            );
+        }
     }
 
     #[test]
