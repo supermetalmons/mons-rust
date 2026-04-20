@@ -24,6 +24,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - Quiet late-white head-accept guards can fix a real live reply-risk seam, but that repair alone does not move the `vs shipping Normal` wall.
 - If `search_only_engine_allowed_head` keeps surviving on a white vulnerable-window board where the final surfaced roots also include `DrainerSafetyRecovery`, do not trust a seemingly-matching rerank block until probe output proves the stage actually changed.
 - Exact live-seam shipping-alignment can clear `pro-triage` and `runtime-preflight` while still failing direct `pro-reliability` badly (`0.5000 / 0.7500 / 0.8333` vs shipped `frontier_pro_v2_guarded`); seam coverage is not duel strength.
+- Candidate-only quiet lower-scored root-score guards can fix `vs_shipping_pro_opening_reply_white` and move retained `primary_pro` broadly, but they still fail direct `pro-reliability` vs shipped `frontier_pro_v2_guarded` (`0.5833 / 0.7500 / 0.9167`); suppressing quiet mana heads alone is not a promotable frontier.
 
 ## Retained Seam And Fixture Map
 
@@ -36,7 +37,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - `primary_live_nonwin_opening_reply_white`: retained live duel seam where quiet mana-head acceptance beat a stronger reply-risk-aware mana continuation.
 - `primary_live_nonwin_black_vulnerable_spirit_reentry`: retained live duel seam where vulnerable plain-spirit reentry competed against a quieter mana continuation.
 - Closed surfaces that should stay closed: `primary_spirit_setup`, `primary_pvs_sensitive_search`, and `primary_black_reliability_opening_3_ply4`.
-- Live probe seams that should stay diagnostic-only: `vs_shipping_normal_white_head_acceptance`, `vs_shipping_pro_white_split_trace`, and `vs_shipping_normal_black_bridge_nonwin`.
+- Live probe seams that should stay diagnostic-only: `vs_shipping_pro_black_recovery_branch`, `vs_shipping_normal_white_head_acceptance`, `vs_shipping_pro_white_split_trace`, and `vs_shipping_normal_black_bridge_nonwin`.
 
 ## Retained Diagnostic Toolbox
 
@@ -53,6 +54,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - Kill any line that only fixes one traced seam and leaves the cheap surface on stale churn.
 - Kill any line that clears retained fixtures but does not move direct duel evidence on the candidate-vs-baseline matchup.
 - Kill any line that only starts winning after the fixture surface is expanded but then loses the direct frontier-vs-shipping duel.
+- Kill any line whose main gain is suppressing lower-scored quiet heads without broader duel lift.
 - Do not reopen archive profiles or retired branch families without a brand-new shared hypothesis.
 - Do not treat hotspot output or one replay seed as production proof without a retained foothold.
 - Wrapper-only reroutes and local fallback widening saturate quickly; shared selector/search changes are the real frontier.
