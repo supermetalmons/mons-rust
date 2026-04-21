@@ -25,6 +25,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - If `search_only_engine_allowed_head` keeps surviving on a white vulnerable-window board where the final surfaced roots also include `DrainerSafetyRecovery`, do not trust a seemingly-matching rerank block until probe output proves the stage actually changed.
 - Exact live-seam shipping-alignment can clear `pro-triage` and `runtime-preflight` while still failing direct `pro-reliability` badly (`0.5000 / 0.7500 / 0.8333` vs shipped `frontier_pro_v2_guarded`); seam coverage is not duel strength.
 - Candidate-only quiet lower-scored root-score guards can fix `vs_shipping_pro_opening_reply_white` and move retained `primary_pro` broadly, but they still fail direct `pro-reliability` vs shipped `frontier_pro_v2_guarded` (`0.5833 / 0.7500 / 0.9167`); suppressing quiet mana heads alone is not a promotable frontier.
+- If dormant shared toggles or a candidate-only unsafe plain-spirit floor guard leave the live non-win root probe completely unchanged, kill the line before canonical gates; the real spend still sits higher in the approval or wrapper path.
 
 ## Retained Seam And Fixture Map
 
@@ -55,6 +56,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - Kill any line that clears retained fixtures but does not move direct duel evidence on the candidate-vs-baseline matchup.
 - Kill any line that only starts winning after the fixture surface is expanded but then loses the direct frontier-vs-shipping duel.
 - Kill any line whose main gain is suppressing lower-scored quiet heads without broader duel lift.
+- Kill any line that does not move at least one retained live root-probe wall when the hypothesis was explicitly built to do that.
 - Do not reopen archive profiles or retired branch families without a brand-new shared hypothesis.
 - Do not treat hotspot output or one replay seed as production proof without a retained foothold.
 - Wrapper-only reroutes and local fallback widening saturate quickly; shared selector/search changes are the real frontier.
