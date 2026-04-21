@@ -667,6 +667,11 @@ mod tests {
             (GameVariant::AlternatingManaRows, 4, Location::new(4, 1)),
             (GameVariant::InnerWedgeManaRows, 5, Location::new(4, 5)),
             (GameVariant::OuterWedgeManaRows, 6, Location::new(3, 5)),
+            (GameVariant::BentCenterManaRows, 7, Location::new(3, 5)),
+            (GameVariant::OuterEdgeManaRows, 8, Location::new(4, 0)),
+            (GameVariant::SplitFlankManaRows, 9, Location::new(4, 2)),
+            (GameVariant::ForwardBridgeManaRows, 10, Location::new(5, 4)),
+            (GameVariant::CornerChainManaRows, 11, Location::new(3, 5)),
         ];
 
         for (variant, id, mana_location) in cases {

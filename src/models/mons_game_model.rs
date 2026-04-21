@@ -26968,6 +26968,11 @@ mod opening_book_tests {
             GameVariant::AlternatingManaRows,
             GameVariant::InnerWedgeManaRows,
             GameVariant::OuterWedgeManaRows,
+            GameVariant::BentCenterManaRows,
+            GameVariant::OuterEdgeManaRows,
+            GameVariant::SplitFlankManaRows,
+            GameVariant::ForwardBridgeManaRows,
+            GameVariant::CornerChainManaRows,
         ] {
             let game = MonsGame::new(false, variant);
             assert!(
@@ -26986,6 +26991,11 @@ mod opening_book_tests {
             GameVariant::AlternatingManaRows,
             GameVariant::InnerWedgeManaRows,
             GameVariant::OuterWedgeManaRows,
+            GameVariant::BentCenterManaRows,
+            GameVariant::OuterEdgeManaRows,
+            GameVariant::SplitFlankManaRows,
+            GameVariant::ForwardBridgeManaRows,
+            GameVariant::CornerChainManaRows,
         ] {
             let mut game = MonsGame::new(false, variant);
             game.active_color = Color::Black;

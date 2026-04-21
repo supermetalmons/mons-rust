@@ -14,6 +14,11 @@ pub enum GameVariant {
     AlternatingManaRows = 4,
     InnerWedgeManaRows = 5,
     OuterWedgeManaRows = 6,
+    BentCenterManaRows = 7,
+    OuterEdgeManaRows = 8,
+    SplitFlankManaRows = 9,
+    ForwardBridgeManaRows = 10,
+    CornerChainManaRows = 11,
 }
 
 impl GameVariant {
@@ -28,6 +33,11 @@ impl GameVariant {
             Self::AlternatingManaRows => 4,
             Self::InnerWedgeManaRows => 5,
             Self::OuterWedgeManaRows => 6,
+            Self::BentCenterManaRows => 7,
+            Self::OuterEdgeManaRows => 8,
+            Self::SplitFlankManaRows => 9,
+            Self::ForwardBridgeManaRows => 10,
+            Self::CornerChainManaRows => 11,
         }
     }
 
@@ -40,6 +50,11 @@ impl GameVariant {
             4 => Some(Self::AlternatingManaRows),
             5 => Some(Self::InnerWedgeManaRows),
             6 => Some(Self::OuterWedgeManaRows),
+            7 => Some(Self::BentCenterManaRows),
+            8 => Some(Self::OuterEdgeManaRows),
+            9 => Some(Self::SplitFlankManaRows),
+            10 => Some(Self::ForwardBridgeManaRows),
+            11 => Some(Self::CornerChainManaRows),
             _ => None,
         }
     }
@@ -131,6 +146,63 @@ static OUTER_WEDGE_MANA_ROWS_SQUARES_ARRAY: LazyLock<[Square; BOARD_CELLS]> = La
 });
 static OUTER_WEDGE_MANA_ROWS_INITIAL_ITEMS_ARRAY: LazyLock<[Option<Item>; BOARD_CELLS]> =
     LazyLock::new(|| Config::build_initial_items_array(GameVariant::OuterWedgeManaRows));
+static BENT_CENTER_MANA_ROWS_SQUARES_MAP: LazyLock<HashMap<Location, Square>> =
+    LazyLock::new(|| Config::build_squares(GameVariant::BentCenterManaRows));
+static BENT_CENTER_MANA_ROWS_SQUARES_ARRAY: LazyLock<[Square; BOARD_CELLS]> = LazyLock::new(|| {
+    let mut arr = [Square::Regular; BOARD_CELLS];
+    for (&loc, &sq) in BENT_CENTER_MANA_ROWS_SQUARES_MAP.iter() {
+        arr[loc.index()] = sq;
+    }
+    arr
+});
+static BENT_CENTER_MANA_ROWS_INITIAL_ITEMS_ARRAY: LazyLock<[Option<Item>; BOARD_CELLS]> =
+    LazyLock::new(|| Config::build_initial_items_array(GameVariant::BentCenterManaRows));
+static OUTER_EDGE_MANA_ROWS_SQUARES_MAP: LazyLock<HashMap<Location, Square>> =
+    LazyLock::new(|| Config::build_squares(GameVariant::OuterEdgeManaRows));
+static OUTER_EDGE_MANA_ROWS_SQUARES_ARRAY: LazyLock<[Square; BOARD_CELLS]> = LazyLock::new(|| {
+    let mut arr = [Square::Regular; BOARD_CELLS];
+    for (&loc, &sq) in OUTER_EDGE_MANA_ROWS_SQUARES_MAP.iter() {
+        arr[loc.index()] = sq;
+    }
+    arr
+});
+static OUTER_EDGE_MANA_ROWS_INITIAL_ITEMS_ARRAY: LazyLock<[Option<Item>; BOARD_CELLS]> =
+    LazyLock::new(|| Config::build_initial_items_array(GameVariant::OuterEdgeManaRows));
+static SPLIT_FLANK_MANA_ROWS_SQUARES_MAP: LazyLock<HashMap<Location, Square>> =
+    LazyLock::new(|| Config::build_squares(GameVariant::SplitFlankManaRows));
+static SPLIT_FLANK_MANA_ROWS_SQUARES_ARRAY: LazyLock<[Square; BOARD_CELLS]> = LazyLock::new(|| {
+    let mut arr = [Square::Regular; BOARD_CELLS];
+    for (&loc, &sq) in SPLIT_FLANK_MANA_ROWS_SQUARES_MAP.iter() {
+        arr[loc.index()] = sq;
+    }
+    arr
+});
+static SPLIT_FLANK_MANA_ROWS_INITIAL_ITEMS_ARRAY: LazyLock<[Option<Item>; BOARD_CELLS]> =
+    LazyLock::new(|| Config::build_initial_items_array(GameVariant::SplitFlankManaRows));
+static FORWARD_BRIDGE_MANA_ROWS_SQUARES_MAP: LazyLock<HashMap<Location, Square>> =
+    LazyLock::new(|| Config::build_squares(GameVariant::ForwardBridgeManaRows));
+static FORWARD_BRIDGE_MANA_ROWS_SQUARES_ARRAY: LazyLock<[Square; BOARD_CELLS]> =
+    LazyLock::new(|| {
+        let mut arr = [Square::Regular; BOARD_CELLS];
+        for (&loc, &sq) in FORWARD_BRIDGE_MANA_ROWS_SQUARES_MAP.iter() {
+            arr[loc.index()] = sq;
+        }
+        arr
+    });
+static FORWARD_BRIDGE_MANA_ROWS_INITIAL_ITEMS_ARRAY: LazyLock<[Option<Item>; BOARD_CELLS]> =
+    LazyLock::new(|| Config::build_initial_items_array(GameVariant::ForwardBridgeManaRows));
+static CORNER_CHAIN_MANA_ROWS_SQUARES_MAP: LazyLock<HashMap<Location, Square>> =
+    LazyLock::new(|| Config::build_squares(GameVariant::CornerChainManaRows));
+static CORNER_CHAIN_MANA_ROWS_SQUARES_ARRAY: LazyLock<[Square; BOARD_CELLS]> =
+    LazyLock::new(|| {
+        let mut arr = [Square::Regular; BOARD_CELLS];
+        for (&loc, &sq) in CORNER_CHAIN_MANA_ROWS_SQUARES_MAP.iter() {
+            arr[loc.index()] = sq;
+        }
+        arr
+    });
+static CORNER_CHAIN_MANA_ROWS_INITIAL_ITEMS_ARRAY: LazyLock<[Option<Item>; BOARD_CELLS]> =
+    LazyLock::new(|| Config::build_initial_items_array(GameVariant::CornerChainManaRows));
 static MONS_BASES_SET: LazyLock<HashSet<Location>> =
     LazyLock::new(|| Config::MONS_BASE_LOCATIONS.iter().copied().collect());
 static IS_MON_BASE: LazyLock<[bool; BOARD_CELLS]> = LazyLock::new(|| {
@@ -261,6 +333,86 @@ impl Config {
         Location { i: 7, j: 4 },
         Location { i: 7, j: 5 },
         Location { i: 7, j: 6 },
+    ];
+
+    const BENT_CENTER_BLACK_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 3, j: 5 },
+        Location { i: 4, j: 4 },
+        Location { i: 4, j: 5 },
+        Location { i: 4, j: 6 },
+        Location { i: 5, j: 3 },
+    ];
+
+    const BENT_CENTER_WHITE_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 5, j: 7 },
+        Location { i: 6, j: 4 },
+        Location { i: 6, j: 5 },
+        Location { i: 6, j: 6 },
+        Location { i: 7, j: 5 },
+    ];
+
+    const OUTER_EDGE_BLACK_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 4, j: 0 },
+        Location { i: 4, j: 1 },
+        Location { i: 4, j: 9 },
+        Location { i: 4, j: 10 },
+        Location { i: 5, j: 1 },
+    ];
+
+    const OUTER_EDGE_WHITE_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 5, j: 9 },
+        Location { i: 6, j: 0 },
+        Location { i: 6, j: 1 },
+        Location { i: 6, j: 9 },
+        Location { i: 6, j: 10 },
+    ];
+
+    const SPLIT_FLANK_BLACK_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 3, j: 4 },
+        Location { i: 3, j: 6 },
+        Location { i: 4, j: 2 },
+        Location { i: 4, j: 3 },
+        Location { i: 5, j: 2 },
+    ];
+
+    const SPLIT_FLANK_WHITE_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 5, j: 8 },
+        Location { i: 6, j: 7 },
+        Location { i: 6, j: 8 },
+        Location { i: 7, j: 4 },
+        Location { i: 7, j: 6 },
+    ];
+
+    const FORWARD_BRIDGE_BLACK_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 3, j: 4 },
+        Location { i: 3, j: 6 },
+        Location { i: 4, j: 3 },
+        Location { i: 4, j: 5 },
+        Location { i: 5, j: 4 },
+    ];
+
+    const FORWARD_BRIDGE_WHITE_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 5, j: 6 },
+        Location { i: 6, j: 5 },
+        Location { i: 6, j: 7 },
+        Location { i: 7, j: 4 },
+        Location { i: 7, j: 6 },
+    ];
+
+    const CORNER_CHAIN_BLACK_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 3, j: 5 },
+        Location { i: 3, j: 6 },
+        Location { i: 4, j: 6 },
+        Location { i: 4, j: 7 },
+        Location { i: 5, j: 7 },
+    ];
+
+    const CORNER_CHAIN_WHITE_MANA_BASE_LOCATIONS: [Location; 5] = [
+        Location { i: 5, j: 3 },
+        Location { i: 6, j: 3 },
+        Location { i: 6, j: 4 },
+        Location { i: 7, j: 4 },
+        Location { i: 7, j: 5 },
     ];
 
     fn build_squares(variant: GameVariant) -> HashMap<Location, Square> {
@@ -427,6 +579,36 @@ impl Config {
             (GameVariant::OuterWedgeManaRows, Color::White) => {
                 &Self::OUTER_WEDGE_WHITE_MANA_BASE_LOCATIONS
             }
+            (GameVariant::BentCenterManaRows, Color::Black) => {
+                &Self::BENT_CENTER_BLACK_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::BentCenterManaRows, Color::White) => {
+                &Self::BENT_CENTER_WHITE_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::OuterEdgeManaRows, Color::Black) => {
+                &Self::OUTER_EDGE_BLACK_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::OuterEdgeManaRows, Color::White) => {
+                &Self::OUTER_EDGE_WHITE_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::SplitFlankManaRows, Color::Black) => {
+                &Self::SPLIT_FLANK_BLACK_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::SplitFlankManaRows, Color::White) => {
+                &Self::SPLIT_FLANK_WHITE_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::ForwardBridgeManaRows, Color::Black) => {
+                &Self::FORWARD_BRIDGE_BLACK_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::ForwardBridgeManaRows, Color::White) => {
+                &Self::FORWARD_BRIDGE_WHITE_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::CornerChainManaRows, Color::Black) => {
+                &Self::CORNER_CHAIN_BLACK_MANA_BASE_LOCATIONS
+            }
+            (GameVariant::CornerChainManaRows, Color::White) => {
+                &Self::CORNER_CHAIN_WHITE_MANA_BASE_LOCATIONS
+            }
         }
     }
 
@@ -465,6 +647,11 @@ impl Config {
             GameVariant::AlternatingManaRows => &ALTERNATING_MANA_ROWS_SQUARES_MAP,
             GameVariant::InnerWedgeManaRows => &INNER_WEDGE_MANA_ROWS_SQUARES_MAP,
             GameVariant::OuterWedgeManaRows => &OUTER_WEDGE_MANA_ROWS_SQUARES_MAP,
+            GameVariant::BentCenterManaRows => &BENT_CENTER_MANA_ROWS_SQUARES_MAP,
+            GameVariant::OuterEdgeManaRows => &OUTER_EDGE_MANA_ROWS_SQUARES_MAP,
+            GameVariant::SplitFlankManaRows => &SPLIT_FLANK_MANA_ROWS_SQUARES_MAP,
+            GameVariant::ForwardBridgeManaRows => &FORWARD_BRIDGE_MANA_ROWS_SQUARES_MAP,
+            GameVariant::CornerChainManaRows => &CORNER_CHAIN_MANA_ROWS_SQUARES_MAP,
         }
     }
 
@@ -498,6 +685,19 @@ impl Config {
             GameVariant::OuterWedgeManaRows => {
                 OUTER_WEDGE_MANA_ROWS_SQUARES_ARRAY[location.index()]
             }
+            GameVariant::BentCenterManaRows => {
+                BENT_CENTER_MANA_ROWS_SQUARES_ARRAY[location.index()]
+            }
+            GameVariant::OuterEdgeManaRows => OUTER_EDGE_MANA_ROWS_SQUARES_ARRAY[location.index()],
+            GameVariant::SplitFlankManaRows => {
+                SPLIT_FLANK_MANA_ROWS_SQUARES_ARRAY[location.index()]
+            }
+            GameVariant::ForwardBridgeManaRows => {
+                FORWARD_BRIDGE_MANA_ROWS_SQUARES_ARRAY[location.index()]
+            }
+            GameVariant::CornerChainManaRows => {
+                CORNER_CHAIN_MANA_ROWS_SQUARES_ARRAY[location.index()]
+            }
         }
     }
 
@@ -515,6 +715,11 @@ impl Config {
             GameVariant::AlternatingManaRows => &ALTERNATING_MANA_ROWS_SQUARES_ARRAY,
             GameVariant::InnerWedgeManaRows => &INNER_WEDGE_MANA_ROWS_SQUARES_ARRAY,
             GameVariant::OuterWedgeManaRows => &OUTER_WEDGE_MANA_ROWS_SQUARES_ARRAY,
+            GameVariant::BentCenterManaRows => &BENT_CENTER_MANA_ROWS_SQUARES_ARRAY,
+            GameVariant::OuterEdgeManaRows => &OUTER_EDGE_MANA_ROWS_SQUARES_ARRAY,
+            GameVariant::SplitFlankManaRows => &SPLIT_FLANK_MANA_ROWS_SQUARES_ARRAY,
+            GameVariant::ForwardBridgeManaRows => &FORWARD_BRIDGE_MANA_ROWS_SQUARES_ARRAY,
+            GameVariant::CornerChainManaRows => &CORNER_CHAIN_MANA_ROWS_SQUARES_ARRAY,
         }
     }
 
@@ -544,6 +749,11 @@ impl Config {
             GameVariant::AlternatingManaRows => *ALTERNATING_MANA_ROWS_INITIAL_ITEMS_ARRAY,
             GameVariant::InnerWedgeManaRows => *INNER_WEDGE_MANA_ROWS_INITIAL_ITEMS_ARRAY,
             GameVariant::OuterWedgeManaRows => *OUTER_WEDGE_MANA_ROWS_INITIAL_ITEMS_ARRAY,
+            GameVariant::BentCenterManaRows => *BENT_CENTER_MANA_ROWS_INITIAL_ITEMS_ARRAY,
+            GameVariant::OuterEdgeManaRows => *OUTER_EDGE_MANA_ROWS_INITIAL_ITEMS_ARRAY,
+            GameVariant::SplitFlankManaRows => *SPLIT_FLANK_MANA_ROWS_INITIAL_ITEMS_ARRAY,
+            GameVariant::ForwardBridgeManaRows => *FORWARD_BRIDGE_MANA_ROWS_INITIAL_ITEMS_ARRAY,
+            GameVariant::CornerChainManaRows => *CORNER_CHAIN_MANA_ROWS_INITIAL_ITEMS_ARRAY,
         }
     }
 
@@ -758,6 +968,31 @@ mod tests {
             GameVariant::OuterWedgeManaRows,
             &Config::OUTER_WEDGE_BLACK_MANA_BASE_LOCATIONS,
             &Config::OUTER_WEDGE_WHITE_MANA_BASE_LOCATIONS,
+        );
+        assert_variant_mana_layout(
+            GameVariant::BentCenterManaRows,
+            &Config::BENT_CENTER_BLACK_MANA_BASE_LOCATIONS,
+            &Config::BENT_CENTER_WHITE_MANA_BASE_LOCATIONS,
+        );
+        assert_variant_mana_layout(
+            GameVariant::OuterEdgeManaRows,
+            &Config::OUTER_EDGE_BLACK_MANA_BASE_LOCATIONS,
+            &Config::OUTER_EDGE_WHITE_MANA_BASE_LOCATIONS,
+        );
+        assert_variant_mana_layout(
+            GameVariant::SplitFlankManaRows,
+            &Config::SPLIT_FLANK_BLACK_MANA_BASE_LOCATIONS,
+            &Config::SPLIT_FLANK_WHITE_MANA_BASE_LOCATIONS,
+        );
+        assert_variant_mana_layout(
+            GameVariant::ForwardBridgeManaRows,
+            &Config::FORWARD_BRIDGE_BLACK_MANA_BASE_LOCATIONS,
+            &Config::FORWARD_BRIDGE_WHITE_MANA_BASE_LOCATIONS,
+        );
+        assert_variant_mana_layout(
+            GameVariant::CornerChainManaRows,
+            &Config::CORNER_CHAIN_BLACK_MANA_BASE_LOCATIONS,
+            &Config::CORNER_CHAIN_WHITE_MANA_BASE_LOCATIONS,
         );
     }
 }
