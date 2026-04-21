@@ -87,6 +87,21 @@ fn runtime_preflight_checks_are_skipped_when_requested() {
 }
 
 #[test]
+fn stage1_cpu_is_advisory_by_default_for_frontier_pro_profiles() {
+    with_env_override("SMART_STAGE1_CPU_ADVISORY", "", || {
+        assert!(stage1_cpu_is_advisory("frontier_pro_v2_guarded"));
+        assert!(!stage1_cpu_is_advisory("shipping_pro_search"));
+    });
+}
+
+#[test]
+fn stage1_cpu_advisory_can_be_forced_off_for_frontier_pro_profiles() {
+    with_env_override("SMART_STAGE1_CPU_ADVISORY", "false", || {
+        assert!(!stage1_cpu_is_advisory("frontier_pro_v2_guarded"));
+    });
+}
+
+#[test]
 fn pro_signal_triage_accepts_target_change_with_bounded_off_target_churn() {
     assert!(pro_signal_triage_passes(
         "frontier_pro_v2_guarded",

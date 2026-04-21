@@ -1339,12 +1339,16 @@ fn assert_exact_lite_diagnostics_gate_if_enabled(
     clear_exact_query_diagnostics();
 }
 
+fn stage1_cpu_is_advisory(frontier_profile_name: &str) -> bool {
+    frontier_profile_name.starts_with("frontier_pro_")
+        && env_bool("SMART_STAGE1_CPU_ADVISORY").unwrap_or(true)
+}
+
 fn assert_stage1_cpu_non_regression(
     frontier_profile_name: &str,
     frontier_selector: AutomoveSelector,
 ) {
-    let advisory_only = frontier_profile_name.starts_with("frontier_pro_")
-        && env_bool("SMART_STAGE1_CPU_ADVISORY").unwrap_or(false);
+    let advisory_only = stage1_cpu_is_advisory(frontier_profile_name);
     let shipping_selector = profile_selector_from_name("shipping_pro_search")
         .expect("shipping_pro_search selector should exist for stage-1 cpu gate");
     let budgets = stage1_cpu_budgets(frontier_profile_name);
@@ -1409,7 +1413,7 @@ fn assert_stage1_cpu_non_regression(
             );
             if advisory_only && ratio > ratio_limit {
                 println!(
-                    "stage-1 cpu advisory: seed={} mode={} frontier={} ratio={:.3} > {:.3}; continuing because SMART_STAGE1_CPU_ADVISORY=true for a frontier Pro profile",
+                    "stage-1 cpu advisory: seed={} mode={} frontier={} ratio={:.3} > {:.3}; continuing because stage-1 CPU is advisory for frontier Pro profiles",
                     seed_tag,
                     mode,
                     frontier_profile_name,
