@@ -20,19 +20,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Date: `2026-04-21`
 - Shipping decision:
   - public Pro switched to `frontier_pro_v2_guarded`
-- Failed challenger:
-  - `frontier_pro_v3_white_head_search_only_guarded` tried a late-white low-budget selector exception, a late quiet-mana head reject, and a search-only white vulnerable-window top-head conflict. The probe-only result was fully inert: `vs_shipping_pro_opening_reply_white` still stayed `engine_disabled`, `vs_shipping_pro_white_split_trace` still kept `l8,0;l7,1`, and `vs_shipping_normal_white_head_acceptance` still stayed on `search_only_engine_allowed_head`, so the candidate code was discarded before canonical gates.
+- Failed iteration:
+  - `frontier_pro_v3_selector_predisabled_probe` did not cut a new challenger. The retained live non-win probe now prints the actual frontier wrapper branch and selector disable reason, and that result killed the next guessed white spend before candidate code: `vs_shipping_pro_opening_reply_white`, `vs_shipping_pro_black_recovery_branch`, `vs_shipping_pro_white_plain_spirit_split`, `vs_shipping_pro_white_split_trace`, and `vs_shipping_normal_white_head_acceptance` all still ran through `frontier_execute` with `selector_disable_reason=pre_disabled`, so the runtime-effective path is still not the calibrated `selector=true` frontier shape.
 - Retained confirmation that still matters:
   - `2026-04-10` `pro-reliability-confirm`: `0.9062 / 0.9062 / 0.9062` with confidence `1.0000 / 1.0000 / 1.0000`
 
 ## Next Hypothesis
 
-- Generic white quiet-mana score guards are not enough by themselves here: even after threading the candidate through the white scoring-window fallback, the live white probe boards stayed behavior-identical.
-- The remaining white wall still includes `vs_shipping_pro_opening_reply_white`, `vs_shipping_pro_white_split_trace`, and the `vs_shipping_normal_white_head_acceptance` handoff where shipping still reaches `search_only_forced_prepass`.
-- `vs_shipping_pro_white_split_trace` is no longer the ambiguous wall: a stricter same-lane white mana-sibling clamp can move it. The remaining spend sits in the late opening-reply acceptance path and the search-only vulnerable-window handoff.
-- A late-white low-budget selector exception plus a late quiet-mana head reject can still leave `vs_shipping_pro_opening_reply_white` on `engine_disabled`; that wall is not solved by the guessed low-budget board-shape alone.
-- A search-only white vulnerable-window top-head conflict can still leave `vs_shipping_normal_white_head_acceptance` on `search_only_engine_allowed_head` even with an in-scope `DrainerSafetyRecovery` alternative; the missing spend is deeper than a simple top-root conflict check.
-- The next credible Pro challenger has to prove the actual runtime-effective guard path for `vs_shipping_pro_opening_reply_white` and the real search-only rerank acceptance path for `vs_shipping_normal_white_head_acceptance` before changing shared heuristics again.
+- The blocker is now sharper than “which white guard should change”: on multiple live walls the frontier wrapper really does stay on `frontier_execute`, but the runtime still enters `smart_search_best_inputs_internal` with the selector already `pre_disabled`.
+- That `pre_disabled` result is incompatible with the calibrated probe config, which still reports `profile_turn_engine_selector=true` on the same boards. The next live spend is explaining that mismatch before touching root heuristics again.
+- `vs_shipping_normal_white_head_acceptance` is still the cleanest search-only handoff wall, but the same new diagnostic means its missing spend is not just a rerank acceptance rule. The runtime path is already different from the forced probe assumptions earlier in the stack.
+- `vs_shipping_pro_white_split_trace` is still only a partial seam. Even though a stricter white mana-sibling clamp can move it, there is still no credible challenger until the shared `pre_disabled` frontier-execute mismatch is understood.
+- The next credible Pro challenger has to prove why these live boards reach `frontier_execute` with `selector_disable_reason=pre_disabled`, then show which shared path change fixes `opening_reply_white` and `normal_white_head_acceptance` without reopening the retained Pro surface.
 
 ## No-Go Notes
 

@@ -11,7 +11,8 @@ use crate::models::automove_turn_engine::{
     TurnEngineDiagnostics,
 };
 use crate::models::mons_game_model::automove_runtime_variants::{
-    apply_frontier_pro_v2_guarded_config,
+    apply_frontier_pro_v2_guarded_config, clear_frontier_runtime_variant_branch,
+    frontier_runtime_variant_branch_snapshot,
     turn_engine_config_from_search_config as shared_turn_engine_config_from_search_config,
 };
 use crate::models::mons_game_model::{
@@ -365,13 +366,26 @@ struct RuntimeDecisionProbe {
     selected_rank: Option<usize>,
     pre_accept_input_fen: String,
     pre_accept_rank: Option<usize>,
+    legacy_selected_input_fen: String,
+    legacy_full_pool_selected_input_fen: String,
     top_root_fens: Vec<String>,
     selector_last_stage: &'static str,
     selector_head_calls: usize,
     selector_head_hits: usize,
+    selector_disable_reason: &'static str,
+    runtime_variant_branch: &'static str,
+    profile_turn_engine_selector: bool,
+    profile_turn_head_rerank: bool,
+    low_budget_guard_live: bool,
+    skip_low_budget_state: bool,
+    mid_turn_progress_guard_live: bool,
+    disable_mid_turn_progress_engine: bool,
+    mid_turn_tactical_guard_live: bool,
+    disable_mid_turn_tactical_engine: bool,
     head_input_fen: Option<String>,
     head_rank: Option<usize>,
     head_accepted: bool,
+    exact_context: String,
     selected_root: String,
     head_root: String,
 }
@@ -408,10 +422,12 @@ fn runtime_decision_probe(
     clear_turn_engine_plan_cache();
     clear_turn_engine_diagnostics();
     clear_turn_engine_selector_diagnostics();
+    clear_frontier_runtime_variant_branch();
 
     let selected = profile_runtime_inputs(profile_name, mode, game);
     let selected_input_fen = Input::fen_from_array(&selected);
     let selector_diag = turn_engine_selector_diagnostics_snapshot();
+    let runtime_variant_branch = frontier_runtime_variant_branch_snapshot();
 
     clear_exact_state_analysis_cache();
     clear_exact_query_diagnostics();
@@ -421,6 +437,8 @@ fn runtime_decision_probe(
 
     let (config, scored_roots, head_plan, _) =
         profile_runtime_scored_roots_with_forced_engine_inputs(profile_name, mode, game);
+    let (legacy_selected_input_fen, legacy_full_pool_selected_input_fen, _, _) =
+        pro_v2_legacy_selector_probe(game, mode);
     let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
         game,
         scored_roots.as_slice(),
@@ -457,6 +475,8 @@ fn runtime_decision_probe(
         selected_rank,
         pre_accept_input_fen,
         pre_accept_rank,
+        legacy_selected_input_fen,
+        legacy_full_pool_selected_input_fen,
         top_root_fens: scored_roots
             .iter()
             .take(TRIAGE_TOP_ROOT_DIGEST_SIZE)
@@ -465,12 +485,25 @@ fn runtime_decision_probe(
         selector_last_stage: selector_diag.last_return_stage,
         selector_head_calls: selector_diag.head_plan_calls,
         selector_head_hits: selector_diag.head_plan_hits,
+        selector_disable_reason: selector_diag.selector_disable_reason,
+        runtime_variant_branch,
+        profile_turn_engine_selector: config.enable_turn_engine_selector,
+        profile_turn_head_rerank: config.enable_turn_head_rerank,
+        low_budget_guard_live: MonsGameModel::pro_v2_low_budget_guard_live(config),
+        skip_low_budget_state: MonsGameModel::should_skip_pro_v2_low_budget_state(game),
+        mid_turn_progress_guard_live: MonsGameModel::pro_v2_mid_turn_progress_guard_live(config),
+        disable_mid_turn_progress_engine:
+            MonsGameModel::should_disable_pro_v2_mid_turn_progress_engine(game),
+        mid_turn_tactical_guard_live: MonsGameModel::pro_v2_mid_turn_tactical_guard_live(config),
+        disable_mid_turn_tactical_engine:
+            MonsGameModel::should_disable_pro_v2_mid_turn_tactical_engine(game),
         head_input_fen: head_plan
             .as_ref()
             .and_then(|plan| plan.compiled_chunks.first())
             .map(|chunk| Input::fen_from_array(chunk)),
         head_rank,
         head_accepted,
+        exact_context: exact_opportunity_context_probe(game),
         selected_root,
         head_root,
     }

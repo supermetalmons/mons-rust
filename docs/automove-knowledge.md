@@ -31,6 +31,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - A stricter white mana-sibling same-lane gap can align `vs_shipping_pro_white_split_trace` to shipping without touching `vs_shipping_pro_opening_reply_white` or `vs_shipping_normal_white_head_acceptance`; those remaining walls are not controlled by the same white sibling reentry seam.
 - A late-white low-budget selector exception plus a late quiet-mana head reject can still leave `vs_shipping_pro_opening_reply_white` on `engine_disabled`; that wall is not fixed by the guessed low-budget board shape alone.
 - A simple search-only white vulnerable-window top-head conflict can still leave `vs_shipping_normal_white_head_acceptance` on `search_only_engine_allowed_head` even with an in-scope `DrainerSafetyRecovery` alternative; the rerank acceptance gap is deeper than a top-root conflict check.
+- If a live probe board reports `runtime_variant_branch=frontier_execute` together with `selector_disable_reason=pre_disabled`, do not trust the calibrated frontier config alone. The real runtime is entering search with the selector already off before any live ProV2 guard can fire.
+- When that `frontier_execute + pre_disabled` mismatch appears on the same board where the forced probe still reports `profile_turn_engine_selector=true`, the missing spend sits above the root heuristic layer. Explain the runtime-config mismatch before changing white reply-risk or rerank rules again.
 
 ## Retained Seam And Fixture Map
 

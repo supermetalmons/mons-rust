@@ -5,6 +5,27 @@ use super::*;
 pub(crate) const SHIPPING_PRO_SEARCH_PROFILE_ID: &str = "shipping_pro_search";
 pub(crate) const FRONTIER_PRO_V2_GUARDED_PROFILE_ID: &str = "frontier_pro_v2_guarded";
 
+#[cfg(test)]
+thread_local! {
+    static FRONTIER_RUNTIME_VARIANT_BRANCH: std::cell::RefCell<&'static str> =
+        const { std::cell::RefCell::new("unset") };
+}
+
+#[cfg(test)]
+pub(crate) fn clear_frontier_runtime_variant_branch() {
+    FRONTIER_RUNTIME_VARIANT_BRANCH.with(|branch| *branch.borrow_mut() = "unset");
+}
+
+#[cfg(test)]
+pub(crate) fn frontier_runtime_variant_branch_snapshot() -> &'static str {
+    FRONTIER_RUNTIME_VARIANT_BRANCH.with(|branch| *branch.borrow())
+}
+
+#[cfg(test)]
+fn set_frontier_runtime_variant_branch(branch: &'static str) {
+    FRONTIER_RUNTIME_VARIANT_BRANCH.with(|last_branch| *last_branch.borrow_mut() = branch);
+}
+
 fn opening_book_enabled() -> bool {
     std::env::var("SMART_USE_WHITE_OPENING_BOOK")
         .ok()
@@ -285,20 +306,30 @@ pub(crate) fn select_frontier_pro_v2_guarded_inputs(
     config: AutomoveSearchConfig,
 ) -> Vec<Input> {
     if let Some(inputs) = select_opening_book_fallback_inputs(game) {
+        #[cfg(test)]
+        set_frontier_runtime_variant_branch("opening_book_fallback");
         return inputs;
     }
     if let Some(inputs) = select_early_white_fallback_inputs(game, config) {
+        #[cfg(test)]
+        set_frontier_runtime_variant_branch("early_white_fallback");
         return inputs;
     }
     if let Some(inputs) = select_score_window_tactical_fallback_inputs(game, config) {
+        #[cfg(test)]
+        set_frontier_runtime_variant_branch("score_window_tactical_fallback");
         return inputs;
     }
 
     let frontier_inputs = execute_frontier_candidate_inputs(game, config);
     if let Some(inputs) = select_late_black_search_fallback_inputs(game, frontier_inputs.as_slice())
     {
+        #[cfg(test)]
+        set_frontier_runtime_variant_branch("late_black_shipping_fallback");
         return inputs;
     }
+    #[cfg(test)]
+    set_frontier_runtime_variant_branch("frontier_execute");
     frontier_inputs
 }
 

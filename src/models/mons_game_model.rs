@@ -1903,6 +1903,7 @@ pub(crate) struct TurnEngineSelectorDiagnostics {
     pub move_efficiency_snapshot_cache_hits: usize,
     pub search_preferability_builds: usize,
     pub search_preferability_cache_hits: usize,
+    pub selector_disable_reason: &'static str,
     pub last_return_stage: &'static str,
 }
 
@@ -10083,12 +10084,24 @@ impl MonsGameModel {
         let mut config = config;
         let perspective = game.active_color;
         let live_turn_engine_config = Self::turn_engine_config_for_game(game, config);
+        #[cfg(test)]
+        update_turn_engine_selector_diagnostics(|diagnostics| {
+            diagnostics.selector_disable_reason = if config.enable_turn_engine_selector {
+                "not_disabled"
+            } else {
+                "pre_disabled"
+            };
+        });
         let mut prechecked_cached_inputs = None;
         if Self::pro_v2_low_budget_guard_live(config) {
             prechecked_cached_inputs = turn_engine_cached_step(game, live_turn_engine_config);
             if prechecked_cached_inputs.is_none() && Self::should_skip_pro_v2_low_budget_state(game)
             {
                 config.enable_turn_engine_selector = false;
+                #[cfg(test)]
+                update_turn_engine_selector_diagnostics(|diagnostics| {
+                    diagnostics.selector_disable_reason = "low_budget_guard";
+                });
             }
         }
         if Self::pro_v2_mid_turn_progress_guard_live(config)
@@ -10096,12 +10109,20 @@ impl MonsGameModel {
         {
             prechecked_cached_inputs = None;
             config.enable_turn_engine_selector = false;
+            #[cfg(test)]
+            update_turn_engine_selector_diagnostics(|diagnostics| {
+                diagnostics.selector_disable_reason = "mid_turn_progress_guard";
+            });
         }
         if Self::pro_v2_mid_turn_tactical_guard_live(config)
             && Self::should_disable_pro_v2_mid_turn_tactical_engine(game)
         {
             prechecked_cached_inputs = None;
             config.enable_turn_engine_selector = false;
+            #[cfg(test)]
+            update_turn_engine_selector_diagnostics(|diagnostics| {
+                diagnostics.selector_disable_reason = "mid_turn_tactical_guard";
+            });
         }
         if config.enable_turn_engine_selector
             && config.enable_turn_engine_eligibility_guard
@@ -10114,6 +10135,10 @@ impl MonsGameModel {
                 && !crate::models::automove_turn_engine::pro_v2_turn_engine_eligible(game)
             {
                 config.enable_turn_engine_selector = false;
+                #[cfg(test)]
+                update_turn_engine_selector_diagnostics(|diagnostics| {
+                    diagnostics.selector_disable_reason = "eligibility_guard";
+                });
             }
         }
         if Self::pro_v2_low_budget_guard_live(config)

@@ -105,3 +105,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The probe-only result was fully negative. `vs_shipping_pro_opening_reply_white` still stayed `engine_disabled`, `vs_shipping_pro_white_split_trace` still kept `l8,0;l7,1`, and `vs_shipping_normal_white_head_acceptance` still stayed on `search_only_engine_allowed_head`.
 - Because the candidate never changed the intended white walls, it never earned `guardrails`, `pro-triage`, or `runtime-preflight`.
 - Durable outcome: the remaining white spend is deeper than the guessed low-budget selector gate or a simple search-only top-head conflict. Kill the line and keep the codebase clean.
+
+## Selector-PreDisabled Probe Wave
+
+- `frontier_pro_v3_selector_predisabled_probe` did not cut a new challenger. The spend for this wave was diagnostic-only: the retained live non-win probe now records the actual frontier wrapper branch and the selector disable reason.
+- The new result was consistent across the active walls. `vs_shipping_pro_opening_reply_white`, `vs_shipping_pro_black_recovery_branch`, `vs_shipping_pro_white_plain_spirit_split`, `vs_shipping_pro_white_split_trace`, and `vs_shipping_normal_white_head_acceptance` all still ran through `frontier_execute` but entered search with `selector_disable_reason=pre_disabled`.
+- That runtime result disagreed with the calibrated forced probe on the same boards, which still reported `profile_turn_engine_selector=true`.
+- Because the live runtime path is still not explained by the calibrated frontier config, no heuristic candidate was credible enough to earn `guardrails`, `pro-triage`, or `runtime-preflight`.
+- Durable outcome: the next frontier has to explain the `frontier_execute + pre_disabled` mismatch before spending on white reply-risk guards, mana-sibling reentry, or search-only rerank acceptance again.
