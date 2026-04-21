@@ -36,6 +36,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - On the corrected probe, `opening_reply_white` is a post-search head-over-advisor seam, while `normal_white_head_acceptance` is an early-white vulnerable-window recovery miss where a safe `DrainerSafetyRecovery` alternative already exists in the scored roots.
 - Even when a candidate fixes both of those white walls, passes `guardrails`, moves retained `primary_pro` by `5 / 62` with `off_target_changed=0`, and clears exact-lite, it can still fail retained `pro-reliability` vs `shipping_pro_search` at `0.6667 / 0.6667 / 0.6667`; local white seam coverage plus clean triage is still not duel proof.
 - Widening reply-risk shortlist and node-share coverage, enabling lazy score-window projection, and allowing small root injection can surface the black late mana fallback directly inside the shortlist while still leaving `approved_root` on the preserved spirit reentry and `injected_root` at `None`; if the live walls stay unchanged, the spend still sits in approval or head logic rather than shortlist width.
+- Letting white turn-3 mana competition consider a higher-rank sibling with a real score edge can move `vs_shipping_pro_white_split_trace` onto shipping `l10,8;l9,7`, but that repair still does not transfer to `opening_reply_white` or `normal_white_head_acceptance`.
+- On `vs_shipping_normal_black_bridge_nonwin`, a candidate-only white followup-mana escape can beat the spirit-own-mana setup and land on shipping `l6,1;l5,0;mb`, but that same approval-escape package still leaves the black recovery and late white head seams unchanged.
+- If `opening_reply_white` still accepts the same late white head after a generic lower-score sibling reject, the missing spend is not a simple candidate-vs-selected shape check; it still needs more direct post-search head-over-advisor evidence.
+- If `black_recovery_branch` still preserves the spirit reentry after the shipping mana root is both the full-pool legacy choice and already present in the reply-risk shortlist, the missing spend is not legacy reachability alone. Approval is still anchored on the preserved spirit path.
+- If `normal_white_head_acceptance` still stays on the vulnerable window root even after turn-3 recovery logic searches beyond the shortlist, the blocker is not shortlist coverage alone. The reply-risk approval path still dominates that board.
 
 ## Retained Seam And Fixture Map
 
@@ -71,6 +76,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - Kill any line that only changes root-advisor reason labels while the selected live probe root stays the same.
 - Kill any line whose main gain is only exposing extra shortlist entries or enabling small root injection while the approved live probe root still does not move.
 - Kill any line that only repairs the white split-trace sibling reentry if the opening-reply and search-only vulnerable-window walls still stay unchanged.
+- Kill any line that fixes `white_split_trace` and `normal_black_bridge_nonwin` but still leaves `opening_reply_white`, `black_recovery_branch`, and `normal_white_head_acceptance` unchanged. That approval-escape package is still not the real frontier.
 - Kill any line that repairs both corrected white live walls but still stalls at `0.6667` retained reliability across Pro, Normal, and Fast. That line is still overfitting live seams instead of improving the real frontier.
 - Do not reopen archive profiles or retired branch families without a brand-new shared hypothesis.
 - Do not treat hotspot output or one replay seed as production proof without a retained foothold.
