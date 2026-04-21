@@ -21,15 +21,15 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping decision:
   - public Pro switched to `frontier_pro_v2_guarded`
 - Failed challenger:
-  - `frontier_pro_v3_forced_prepass_priority` prioritized `forced_tactical_prepass` ahead of search-only head acceptance and was threaded through the white scoring-window fallback, but the live non-win root probe still remained unchanged on `vs_shipping_pro_opening_reply_white`, `vs_shipping_pro_black_recovery_branch`, `vs_shipping_pro_white_split_trace`, `vs_shipping_normal_black_bridge_nonwin`, and `vs_shipping_normal_white_head_acceptance`, so the candidate code was discarded before canonical gates.
+  - `frontier_pro_v3_white_reply_head_guarded` tried a candidate-only white vulnerable-window head reject plus quiet-mana reply-score guard, and the candidate config was threaded through the white scoring-window fallback, but the live non-win root probe still stayed unchanged on `vs_shipping_pro_opening_reply_white`, `vs_shipping_pro_white_split_trace`, and `vs_shipping_normal_white_head_acceptance`; `white_split_trace` only changed the approval reason label to `ApprovedFamilyCompetition`, so the candidate code was discarded before canonical gates.
 - Retained confirmation that still matters:
   - `2026-04-10` `pro-reliability-confirm`: `0.9062 / 0.9062 / 0.9062` with confidence `1.0000 / 1.0000 / 1.0000`
 
 ## Next Hypothesis
 
-- Search-only prepass ordering under Pro config is not enough by itself here: even after threading it through the white scoring-window fallback, the live non-win root probe stayed identical.
-- The remaining live wall still includes `vs_shipping_pro_black_recovery_branch`, `vs_shipping_pro_white_split_trace`, `vs_shipping_normal_black_bridge_nonwin`, and the `vs_shipping_normal_white_head_acceptance` handoff where shipping still reaches `search_only_forced_prepass`.
-- The next credible Pro challenger has to change either the approved root or the underlying root ranking/search context on at least one retained live wall before spending `guardrails`, `pro-triage`, or `runtime-preflight`.
+- Generic white quiet-mana score guards are not enough by themselves here: even after threading the candidate through the white scoring-window fallback, the live white probe boards stayed behavior-identical.
+- The remaining white wall still includes `vs_shipping_pro_opening_reply_white`, `vs_shipping_pro_white_split_trace`, and the `vs_shipping_normal_white_head_acceptance` handoff where shipping still reaches `search_only_forced_prepass`.
+- The next credible Pro challenger has to target the actual white family-competition override or the pre-search root-move features that keep the vulnerable window head admissible; a reason-label change without a root change is not enough to spend canonical gates.
 
 ## No-Go Notes
 
@@ -38,5 +38,6 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Do not reopen exact live-seam shipping-alignment overrides. They can clear triage and preflight without being remotely promotable in direct duels.
 - Do not reopen quiet-score-only root guards as a standalone challenger. They can move retained `primary_pro` by `5 / 62` and still fail direct duels.
 - Do not reopen search-only forced-prepass-priority as a standalone challenger. It can stay completely inert even when threaded through the scoring-window fallback.
+- Do not reopen candidate-only white vulnerable-window head rejects or quiet-mana reply-score guards as a standalone challenger. They can reach the targeted white boards and still leave the selected roots unchanged.
 - Do not spend canonical gates on a candidate that leaves the live non-win root probe unchanged.
 - Do not treat the relaxed `700ms` cap as permission to keep quality-flat changes.
