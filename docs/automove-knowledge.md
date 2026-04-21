@@ -28,6 +28,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - If dormant shared toggles or a candidate-only unsafe plain-spirit floor guard leave the live non-win root probe completely unchanged, kill the line before canonical gates; the real spend still sits higher in the approval or wrapper path.
 - Search-only `forced_tactical_prepass` priority under Pro config can stay completely inert even when threaded through the white scoring-window fallback; if `vs_shipping_normal_white_head_acceptance` still stays on `search_only_engine_allowed_head`, the missing spend is deeper than prepass ordering.
 - Candidate-only white vulnerable-window head rejects and quiet-mana reply-score guards can still stay inert even when threaded through the white scoring-window fallback; if `white_split_trace` only flips the approval reason label without changing the selected root, the live spend sits inside a deeper white family-competition or root-move signal.
+- A stricter white mana-sibling same-lane gap can align `vs_shipping_pro_white_split_trace` to shipping without touching `vs_shipping_pro_opening_reply_white` or `vs_shipping_normal_white_head_acceptance`; those remaining walls are not controlled by the same white sibling reentry seam.
 
 ## Retained Seam And Fixture Map
 
@@ -61,6 +62,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - Kill any line that does not move at least one retained live root-probe wall when the hypothesis was explicitly built to do that.
 - Kill any line that is supposed to fix a search-only handoff but leaves the exact handoff stage unchanged in the probe output.
 - Kill any line that only changes root-advisor reason labels while the selected live probe root stays the same.
+- Kill any line that only repairs the white split-trace sibling reentry if the opening-reply and search-only vulnerable-window walls still stay unchanged.
 - Do not reopen archive profiles or retired branch families without a brand-new shared hypothesis.
 - Do not treat hotspot output or one replay seed as production proof without a retained foothold.
 - Wrapper-only reroutes and local fallback widening saturate quickly; shared selector/search changes are the real frontier.
