@@ -21,15 +21,15 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping decision:
   - public Pro switched to `frontier_pro_v2_guarded`
 - Failed challenger:
-  - `frontier_pro_v3_progress_rescue_guarded` turned on the dormant mid-turn white progress guard, late-black setup-progress rescue, and then a candidate-only unsafe plain-spirit floor guard, but the live non-win root probe remained unchanged on `vs_shipping_pro_opening_reply_white`, `vs_shipping_pro_black_recovery_branch`, `vs_shipping_pro_white_split_trace`, `vs_shipping_normal_black_bridge_nonwin`, and `vs_shipping_normal_white_head_acceptance`, so the candidate code was discarded before canonical gates.
+  - `frontier_pro_v3_forced_prepass_priority` prioritized `forced_tactical_prepass` ahead of search-only head acceptance and was threaded through the white scoring-window fallback, but the live non-win root probe still remained unchanged on `vs_shipping_pro_opening_reply_white`, `vs_shipping_pro_black_recovery_branch`, `vs_shipping_pro_white_split_trace`, `vs_shipping_normal_black_bridge_nonwin`, and `vs_shipping_normal_white_head_acceptance`, so the candidate code was discarded before canonical gates.
 - Retained confirmation that still matters:
   - `2026-04-10` `pro-reliability-confirm`: `0.9062 / 0.9062 / 0.9062` with confidence `1.0000 / 1.0000 / 1.0000`
 
 ## Next Hypothesis
 
-- Dormant shared toggles are not enough by themselves here: if the live non-win root probe stays identical, the line is not ready for canonical gates.
+- Search-only prepass ordering under Pro config is not enough by itself here: even after threading it through the white scoring-window fallback, the live non-win root probe stayed identical.
 - The remaining live wall still includes `vs_shipping_pro_black_recovery_branch`, `vs_shipping_pro_white_split_trace`, `vs_shipping_normal_black_bridge_nonwin`, and the `vs_shipping_normal_white_head_acceptance` handoff where shipping still reaches `search_only_forced_prepass`.
-- The next credible Pro challenger has to change the approved root or wrapper handoff on at least one retained live wall before spending `guardrails`, `pro-triage`, or `runtime-preflight`.
+- The next credible Pro challenger has to change either the approved root or the underlying root ranking/search context on at least one retained live wall before spending `guardrails`, `pro-triage`, or `runtime-preflight`.
 
 ## No-Go Notes
 
@@ -37,5 +37,6 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Do not spend from wrapper-only reroutes, hotspot-only output, or one traced seam without retained surface evidence.
 - Do not reopen exact live-seam shipping-alignment overrides. They can clear triage and preflight without being remotely promotable in direct duels.
 - Do not reopen quiet-score-only root guards as a standalone challenger. They can move retained `primary_pro` by `5 / 62` and still fail direct duels.
+- Do not reopen search-only forced-prepass-priority as a standalone challenger. It can stay completely inert even when threaded through the scoring-window fallback.
 - Do not spend canonical gates on a candidate that leaves the live non-win root probe unchanged.
 - Do not treat the relaxed `700ms` cap as permission to keep quality-flat changes.
