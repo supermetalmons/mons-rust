@@ -29,6 +29,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - Search-only `forced_tactical_prepass` priority under Pro config can stay completely inert even when threaded through the white scoring-window fallback; if `vs_shipping_normal_white_head_acceptance` still stays on `search_only_engine_allowed_head`, the missing spend is deeper than prepass ordering.
 - Candidate-only white vulnerable-window head rejects and quiet-mana reply-score guards can still stay inert even when threaded through the white scoring-window fallback; if `white_split_trace` only flips the approval reason label without changing the selected root, the live spend sits inside a deeper white family-competition or root-move signal.
 - A stricter white mana-sibling same-lane gap can align `vs_shipping_pro_white_split_trace` to shipping without touching `vs_shipping_pro_opening_reply_white` or `vs_shipping_normal_white_head_acceptance`; those remaining walls are not controlled by the same white sibling reentry seam.
+- A late-white low-budget selector exception plus a late quiet-mana head reject can still leave `vs_shipping_pro_opening_reply_white` on `engine_disabled`; that wall is not fixed by the guessed low-budget board shape alone.
+- A simple search-only white vulnerable-window top-head conflict can still leave `vs_shipping_normal_white_head_acceptance` on `search_only_engine_allowed_head` even with an in-scope `DrainerSafetyRecovery` alternative; the rerank acceptance gap is deeper than a top-root conflict check.
 
 ## Retained Seam And Fixture Map
 
