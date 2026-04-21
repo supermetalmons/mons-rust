@@ -46,6 +46,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - If `black_recovery_branch` still preserves the spirit reentry after the shipping mana root is both the full-pool legacy choice and already present in the reply-risk shortlist, the missing spend is not legacy reachability alone. Approval is still anchored on the preserved spirit path.
 - Removing challenger-safety from a black vulnerable-spirit escape can overcorrect `black_recovery_branch` onto legacy mana `l6,0;l6,1` while shipping still stays on spirit `l1,5;l3,3;l2,3`; that seam is not solved by simply allowing weaker mana challengers through.
 - If `normal_white_head_acceptance` still stays on the vulnerable window root even after turn-3 recovery logic searches beyond the shortlist, the blocker is not shortlist coverage alone. The reply-risk approval path still dominates that board.
+- On `normal_white_head_acceptance`, candidate-only white vulnerable-window recovery can move `pre_accept_input_fen` and advisor approval to safe `DrainerSafetyRecovery l9,4;l8,5` while the final selected root still snaps back to vulnerable `l9,4;l8,3`; that seam is not fixed until post-search head acceptance itself moves.
 
 ## Retained Seam And Fixture Map
 
@@ -83,6 +84,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - Kill any line that only repairs the white split-trace sibling reentry if the opening-reply and search-only vulnerable-window walls still stay unchanged.
 - Kill any line that fixes `white_split_trace` and `normal_black_bridge_nonwin` but still leaves `opening_reply_white`, `black_recovery_branch`, and `normal_white_head_acceptance` unchanged. That approval-escape package is still not the real frontier.
 - Kill any line that repairs both corrected white live walls but still stalls at `0.6667` retained reliability across Pro, Normal, and Fast. That line is still overfitting live seams instead of improving the real frontier.
+- Kill any line that only changes advisor or `pre_accept_input_fen` metadata while direct `pro-triage` vs active `frontier_pro_v2_guarded` still returns `target_changed=0 off_target_changed=0`; that challenger is behaviorally inert even if the probe looks safer before final head acceptance.
 - Kill any line that leaves both white live walls unchanged and flips `black_recovery_branch` onto legacy mana `l6,0;l6,1`; that is overcorrection, not progress toward the shipped frontier.
 - Do not reopen archive profiles or retired branch families without a brand-new shared hypothesis.
 - Do not treat hotspot output or one replay seed as production proof without a retained foothold.
