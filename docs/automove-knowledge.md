@@ -39,7 +39,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - Letting white turn-3 mana competition consider a higher-rank sibling with a real score edge can move `vs_shipping_pro_white_split_trace` onto shipping `l10,8;l9,7`, but that repair still does not transfer to `opening_reply_white` or `normal_white_head_acceptance`.
 - On `vs_shipping_normal_black_bridge_nonwin`, a candidate-only white followup-mana escape can beat the spirit-own-mana setup and land on shipping `l6,1;l5,0;mb`, but that same approval-escape package still leaves the black recovery and late white head seams unchanged.
 - If `opening_reply_white` still accepts the same late white head after a generic lower-score sibling reject, the missing spend is not a simple candidate-vs-selected shape check; it still needs more direct post-search head-over-advisor evidence.
+- Broadening that late-white reject to also cover safe-recovery preaccept roots still may not move `opening_reply_white` or `normal_white_head_acceptance`; a generic vulnerable-vs-safe post-search shape check is still not enough evidence for those white walls.
 - If `black_recovery_branch` still preserves the spirit reentry after the shipping mana root is both the full-pool legacy choice and already present in the reply-risk shortlist, the missing spend is not legacy reachability alone. Approval is still anchored on the preserved spirit path.
+- Removing challenger-safety from a black vulnerable-spirit escape can overcorrect `black_recovery_branch` onto legacy mana `l6,0;l6,1` while shipping still stays on spirit `l1,5;l3,3;l2,3`; that seam is not solved by simply allowing weaker mana challengers through.
 - If `normal_white_head_acceptance` still stays on the vulnerable window root even after turn-3 recovery logic searches beyond the shortlist, the blocker is not shortlist coverage alone. The reply-risk approval path still dominates that board.
 
 ## Retained Seam And Fixture Map
@@ -78,6 +80,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - Kill any line that only repairs the white split-trace sibling reentry if the opening-reply and search-only vulnerable-window walls still stay unchanged.
 - Kill any line that fixes `white_split_trace` and `normal_black_bridge_nonwin` but still leaves `opening_reply_white`, `black_recovery_branch`, and `normal_white_head_acceptance` unchanged. That approval-escape package is still not the real frontier.
 - Kill any line that repairs both corrected white live walls but still stalls at `0.6667` retained reliability across Pro, Normal, and Fast. That line is still overfitting live seams instead of improving the real frontier.
+- Kill any line that leaves both white live walls unchanged and flips `black_recovery_branch` onto legacy mana `l6,0;l6,1`; that is overcorrection, not progress toward the shipped frontier.
 - Do not reopen archive profiles or retired branch families without a brand-new shared hypothesis.
 - Do not treat hotspot output or one replay seed as production proof without a retained foothold.
 - Wrapper-only reroutes and local fallback widening saturate quickly; shared selector/search changes are the real frontier.
