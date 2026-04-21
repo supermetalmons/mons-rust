@@ -360,6 +360,18 @@ fn format_normal_safety_probe(snapshot: Option<NormalRootSafetySnapshot>) -> Str
         .unwrap_or_else(|| "none".to_string())
 }
 
+fn format_turn_engine_utility_probe(utility: TurnEngineUtility) -> String {
+    format!("{:?}", utility)
+}
+
+fn format_ordering_probe(ordering: std::cmp::Ordering) -> &'static str {
+    match ordering {
+        std::cmp::Ordering::Less => "less",
+        std::cmp::Ordering::Equal => "equal",
+        std::cmp::Ordering::Greater => "greater",
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RuntimeDecisionProbe {
     selected_input_fen: String,
@@ -388,6 +400,13 @@ struct RuntimeDecisionProbe {
     goal_family: Option<TurnPlanFamily>,
     head_input_fen: Option<String>,
     head_rank: Option<usize>,
+    pre_accept_family: TurnPlanFamily,
+    pre_accept_score: i32,
+    head_score: Option<i32>,
+    pre_accept_utility: String,
+    head_plan_utility: Option<String>,
+    head_plan_head_utility: Option<String>,
+    head_plan_primary_axes_vs_pre_accept: Option<&'static str>,
     head_accepted: bool,
     exact_context: String,
     selected_root: String,
@@ -449,17 +468,35 @@ fn runtime_decision_probe(
         game.active_color,
         config,
     );
+    let pre_accept_index = scored_roots
+        .iter()
+        .position(|root| root.inputs == pre_accept_selected)
+        .expect("pre-accept selected root should be present in scored roots");
+    let pre_accept_root = &scored_roots[pre_accept_index];
     let pre_accept_input_fen = Input::fen_from_array(&pre_accept_selected);
     let selected_rank = scored_roots.iter().position(|root| root.inputs == selected);
-    let pre_accept_rank = scored_roots
-        .iter()
-        .position(|root| root.inputs == pre_accept_selected);
+    let pre_accept_rank = Some(pre_accept_index);
     let head_rank = head_plan.as_ref().and_then(|plan| {
         plan.compiled_chunks.first().and_then(|chunk| {
             scored_roots
                 .iter()
                 .position(|root| root.inputs.as_slice() == chunk.as_slice())
         })
+    });
+    let pre_accept_family = MonsGameModel::turn_engine_root_evaluation_family(pre_accept_root);
+    let pre_accept_utility = MonsGameModel::turn_engine_selected_override_utility(
+        game,
+        pre_accept_root,
+        game.active_color,
+        config,
+        pre_accept_family,
+    );
+    let head_score = head_rank.and_then(|index| scored_roots.get(index)).map(|root| root.score);
+    let head_plan_primary_axes_vs_pre_accept = head_plan.as_ref().map(|plan| {
+        format_ordering_probe(crate::models::automove_turn_engine::compare_utility_primary_axes(
+            plan.utility,
+            pre_accept_utility,
+        ))
     });
     let head_accepted = head_plan.as_ref().is_some_and(|plan| {
         MonsGameModel::accept_turn_engine_head_after_search(
@@ -510,6 +547,17 @@ fn runtime_decision_probe(
             .and_then(|plan| plan.compiled_chunks.first())
             .map(|chunk| Input::fen_from_array(chunk)),
         head_rank,
+        pre_accept_family,
+        pre_accept_score: pre_accept_root.score,
+        head_score,
+        pre_accept_utility: format_turn_engine_utility_probe(pre_accept_utility),
+        head_plan_utility: head_plan
+            .as_ref()
+            .map(|plan| format_turn_engine_utility_probe(plan.utility)),
+        head_plan_head_utility: head_plan
+            .as_ref()
+            .map(|plan| format_turn_engine_utility_probe(plan.head_utility)),
+        head_plan_primary_axes_vs_pre_accept,
         head_accepted,
         exact_context: exact_opportunity_context_probe(game),
         selected_root,
