@@ -384,6 +384,8 @@ struct RuntimeDecisionProbe {
     disable_mid_turn_progress_engine: bool,
     mid_turn_tactical_guard_live: bool,
     disable_mid_turn_tactical_engine: bool,
+    head_family: Option<TurnPlanFamily>,
+    goal_family: Option<TurnPlanFamily>,
     head_input_fen: Option<String>,
     head_rank: Option<usize>,
     head_accepted: bool,
@@ -501,6 +503,8 @@ fn runtime_decision_probe(
         mid_turn_tactical_guard_live: MonsGameModel::pro_v2_mid_turn_tactical_guard_live(config),
         disable_mid_turn_tactical_engine:
             MonsGameModel::should_disable_pro_v2_mid_turn_tactical_engine(game),
+        head_family: head_plan.as_ref().map(|plan| plan.head_family),
+        goal_family: head_plan.as_ref().map(|plan| plan.goal_family),
         head_input_fen: head_plan
             .as_ref()
             .and_then(|plan| plan.compiled_chunks.first())
