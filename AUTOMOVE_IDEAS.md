@@ -21,17 +21,16 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Shipping decision:
   - public Pro switched to `frontier_pro_v2_guarded`
 - Failed iteration:
-  - `frontier_pro_v3_selector_predisabled_probe` did not cut a new challenger. The retained live non-win probe now prints the actual frontier wrapper branch and selector disable reason, and that result killed the next guessed white spend before candidate code: `vs_shipping_pro_opening_reply_white`, `vs_shipping_pro_black_recovery_branch`, `vs_shipping_pro_white_plain_spirit_split`, `vs_shipping_pro_white_split_trace`, and `vs_shipping_normal_white_head_acceptance` all still ran through `frontier_execute` with `selector_disable_reason=pre_disabled`, so the runtime-effective path is still not the calibrated `selector=true` frontier shape.
+  - `frontier_pro_v3_advisor_window_guarded` fixed both corrected white live walls, passed `guardrails`, moved retained `primary_pro` by `5 / 62` with `off_target_changed=0`, and passed exact-lite, but retained `pro-reliability` vs `shipping_pro_search` still failed at `0.6667 / 0.6667 / 0.6667` with confidence `0.8062 / 0.8062 / 0.8062`.
 - Retained confirmation that still matters:
   - `2026-04-10` `pro-reliability-confirm`: `0.9062 / 0.9062 / 0.9062` with confidence `1.0000 / 1.0000 / 1.0000`
 
 ## Next Hypothesis
 
-- The blocker is now sharper than “which white guard should change”: on multiple live walls the frontier wrapper really does stay on `frontier_execute`, but the runtime still enters `smart_search_best_inputs_internal` with the selector already `pre_disabled`.
-- That `pre_disabled` result is incompatible with the calibrated probe config, which still reports `profile_turn_engine_selector=true` on the same boards. The next live spend is explaining that mismatch before touching root heuristics again.
-- `vs_shipping_normal_white_head_acceptance` is still the cleanest search-only handoff wall, but the same new diagnostic means its missing spend is not just a rerank acceptance rule. The runtime path is already different from the forced probe assumptions earlier in the stack.
-- `vs_shipping_pro_white_split_trace` is still only a partial seam. Even though a stricter white mana-sibling clamp can move it, there is still no credible challenger until the shared `pre_disabled` frontier-execute mismatch is understood.
-- The next credible Pro challenger has to prove why these live boards reach `frontier_execute` with `selector_disable_reason=pre_disabled`, then show which shared path change fixes `opening_reply_white` and `normal_white_head_acceptance` without reopening the retained Pro surface.
+- The corrected live probe is now trustworthy: `opening_reply_white` is a post-search head-over-advisor seam, while `normal_white_head_acceptance` is an early-white vulnerable-window recovery miss where the safer `DrainerSafetyRecovery` root already exists in the scored set.
+- Fixing those two white walls together was still not enough. The failed challenger proved that white live-seam repairs plus clean retained triage do not automatically transfer into retained duel strength.
+- There is no second live challenger today.
+- The next credible Pro challenger has to explain the remaining duel losses that survive after those white repairs, especially the black retained churn still exposed by `primary_live_nonwin_black_vulnerable_spirit_reentry` and the extension-sensitive `primary_pro` seams.
 
 ## No-Go Notes
 
@@ -44,4 +43,5 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` as the runbook. Keep this file short. Move d
 - Do not reopen late-white low-budget selector exceptions or simple search-only white top-head conflict checks as standalone challengers. They can stay fully inert on the exact white walls they target.
 - Do not spend canonical gates on a candidate that only fixes `vs_shipping_pro_white_split_trace` while leaving `vs_shipping_pro_opening_reply_white` and `vs_shipping_normal_white_head_acceptance` unchanged.
 - Do not spend canonical gates on a candidate that leaves the live non-win root probe unchanged.
+- Do not treat “fixed both white live walls” plus retained `primary_pro` movement `5 / 62` with `off_target_changed=0` as promotion evidence. That exact shape still failed retained `pro-reliability` at `0.6667` across Pro, Normal, and Fast.
 - Do not treat the relaxed `700ms` cap as permission to keep quality-flat changes.

@@ -1905,6 +1905,8 @@ pub(crate) struct TurnEngineSelectorDiagnostics {
     pub search_preferability_cache_hits: usize,
     pub selector_disable_reason: &'static str,
     pub last_return_stage: &'static str,
+    pub top_level_selector_disable_reason: &'static str,
+    pub top_level_last_return_stage: &'static str,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -1958,6 +1960,8 @@ thread_local! {
     static TURN_ENGINE_LAST_PRO_V2_ROOT_ADVISOR_DECISION: std::cell::RefCell<
         Option<ProV2RootAdvisorDecision>
     > = const { std::cell::RefCell::new(None) };
+    static TURN_ENGINE_SELECTOR_RUNTIME_DEPTH: std::cell::Cell<usize> =
+        const { std::cell::Cell::new(0) };
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -2052,6 +2056,49 @@ fn update_turn_engine_selector_diagnostics(
     update: impl FnOnce(&mut TurnEngineSelectorDiagnostics),
 ) {
     TURN_ENGINE_SELECTOR_DIAGNOSTICS.with(|diagnostics| update(&mut diagnostics.borrow_mut()));
+}
+
+#[cfg(test)]
+struct TurnEngineSelectorRuntimeDepthGuard;
+
+#[cfg(test)]
+impl TurnEngineSelectorRuntimeDepthGuard {
+    fn enter() -> Self {
+        TURN_ENGINE_SELECTOR_RUNTIME_DEPTH.with(|depth| depth.set(depth.get().saturating_add(1)));
+        Self
+    }
+}
+
+#[cfg(test)]
+impl Drop for TurnEngineSelectorRuntimeDepthGuard {
+    fn drop(&mut self) {
+        TURN_ENGINE_SELECTOR_RUNTIME_DEPTH.with(|depth| {
+            depth.set(depth.get().saturating_sub(1));
+        });
+    }
+}
+
+#[cfg(test)]
+fn turn_engine_selector_runtime_depth() -> usize {
+    TURN_ENGINE_SELECTOR_RUNTIME_DEPTH.with(|depth| depth.get())
+}
+
+#[cfg(test)]
+fn update_top_level_turn_engine_selector_disable_reason(reason: &'static str) {
+    if turn_engine_selector_runtime_depth() == 1 {
+        update_turn_engine_selector_diagnostics(|diagnostics| {
+            diagnostics.top_level_selector_disable_reason = reason;
+        });
+    }
+}
+
+#[cfg(test)]
+fn update_top_level_turn_engine_selector_last_return_stage(stage: &'static str) {
+    if turn_engine_selector_runtime_depth() == 1 {
+        update_turn_engine_selector_diagnostics(|diagnostics| {
+            diagnostics.top_level_last_return_stage = stage;
+        });
+    }
 }
 
 #[cfg(test)]
@@ -10078,6 +10125,8 @@ impl MonsGameModel {
         config: AutomoveSearchConfig,
         use_transposition_table: bool,
     ) -> Vec<Input> {
+        #[cfg(test)]
+        let _turn_engine_selector_runtime_depth = TurnEngineSelectorRuntimeDepthGuard::enter();
         clear_exact_state_analysis_cache();
         clear_turn_engine_selector_followup_floor_cache();
         set_pro_v2_root_advisor_decision(None);
@@ -10092,6 +10141,12 @@ impl MonsGameModel {
                 "pre_disabled"
             };
         });
+        #[cfg(test)]
+        update_top_level_turn_engine_selector_disable_reason(if config.enable_turn_engine_selector {
+            "not_disabled"
+        } else {
+            "pre_disabled"
+        });
         let mut prechecked_cached_inputs = None;
         if Self::pro_v2_low_budget_guard_live(config) {
             prechecked_cached_inputs = turn_engine_cached_step(game, live_turn_engine_config);
@@ -10102,6 +10157,8 @@ impl MonsGameModel {
                 update_turn_engine_selector_diagnostics(|diagnostics| {
                     diagnostics.selector_disable_reason = "low_budget_guard";
                 });
+                #[cfg(test)]
+                update_top_level_turn_engine_selector_disable_reason("low_budget_guard");
             }
         }
         if Self::pro_v2_mid_turn_progress_guard_live(config)
@@ -10113,6 +10170,8 @@ impl MonsGameModel {
             update_turn_engine_selector_diagnostics(|diagnostics| {
                 diagnostics.selector_disable_reason = "mid_turn_progress_guard";
             });
+            #[cfg(test)]
+            update_top_level_turn_engine_selector_disable_reason("mid_turn_progress_guard");
         }
         if Self::pro_v2_mid_turn_tactical_guard_live(config)
             && Self::should_disable_pro_v2_mid_turn_tactical_engine(game)
@@ -10123,6 +10182,8 @@ impl MonsGameModel {
             update_turn_engine_selector_diagnostics(|diagnostics| {
                 diagnostics.selector_disable_reason = "mid_turn_tactical_guard";
             });
+            #[cfg(test)]
+            update_top_level_turn_engine_selector_disable_reason("mid_turn_tactical_guard");
         }
         if config.enable_turn_engine_selector
             && config.enable_turn_engine_eligibility_guard
@@ -10139,6 +10200,8 @@ impl MonsGameModel {
                 update_turn_engine_selector_diagnostics(|diagnostics| {
                     diagnostics.selector_disable_reason = "eligibility_guard";
                 });
+                #[cfg(test)]
+                update_top_level_turn_engine_selector_disable_reason("eligibility_guard");
             }
         }
         if Self::pro_v2_low_budget_guard_live(config)
@@ -10156,6 +10219,13 @@ impl MonsGameModel {
                 "engine_disabled"
             };
         });
+        #[cfg(test)]
+        update_top_level_turn_engine_selector_last_return_stage(if config.enable_turn_engine_selector
+        {
+            "engine_enabled"
+        } else {
+            "engine_disabled"
+        });
         if !config.enable_turn_engine_selector
             && matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             && Self::pro_v2_is_white_turn_one_mana_only_followup(game)
@@ -10166,6 +10236,10 @@ impl MonsGameModel {
             update_turn_engine_selector_diagnostics(|diagnostics| {
                 diagnostics.last_return_stage = "engine_disabled_prov1_fallback";
             });
+            #[cfg(test)]
+            update_top_level_turn_engine_selector_last_return_stage(
+                "engine_disabled_prov1_fallback",
+            );
             return Self::smart_search_best_inputs_internal(
                 game,
                 legacy_fallback,
@@ -10323,6 +10397,10 @@ impl MonsGameModel {
                                     update_turn_engine_selector_diagnostics(|diagnostics| {
                                         diagnostics.last_return_stage = "engine_allowed_head";
                                     });
+                                    #[cfg(test)]
+                                    update_top_level_turn_engine_selector_last_return_stage(
+                                        "engine_allowed_head",
+                                    );
                                     turn_engine_commit_plan(
                                         game,
                                         perspective,
@@ -10365,6 +10443,10 @@ impl MonsGameModel {
                 update_turn_engine_selector_diagnostics(|diagnostics| {
                     diagnostics.last_return_stage = "engine_forced_prepass";
                 });
+                #[cfg(test)]
+                update_top_level_turn_engine_selector_last_return_stage(
+                    "engine_forced_prepass",
+                );
                 if let Some(plan) = engine_head_plan.as_ref() {
                     if plan.compiled_chunks.first() == Some(&forced_inputs) {
                         turn_engine_commit_plan(
@@ -10397,6 +10479,10 @@ impl MonsGameModel {
                     update_turn_engine_selector_diagnostics(|diagnostics| {
                         diagnostics.last_return_stage = "engine_low_budget_prepass";
                     });
+                    #[cfg(test)]
+                    update_top_level_turn_engine_selector_last_return_stage(
+                        "engine_low_budget_prepass",
+                    );
                     turn_engine_commit_plan(game, perspective, engine_mode, plan, engine_config);
                     Self::seed_turn_engine_followup_cache_if_safe(
                         game,
@@ -10584,6 +10670,8 @@ impl MonsGameModel {
                 update_turn_engine_selector_diagnostics(|diagnostics| {
                     diagnostics.last_return_stage = "engine_cached_selected";
                 });
+                #[cfg(test)]
+                update_top_level_turn_engine_selector_last_return_stage("engine_cached_selected");
                 return selected_inputs;
             }
             if let Some(plan) = engine_head_plan.as_ref() {
@@ -10603,6 +10691,8 @@ impl MonsGameModel {
             update_turn_engine_selector_diagnostics(|diagnostics| {
                 diagnostics.last_return_stage = "engine_post_search";
             });
+            #[cfg(test)]
+            update_top_level_turn_engine_selector_last_return_stage("engine_post_search");
             return selected_inputs;
         }
         let mut root_moves = Self::ranked_root_moves(game, perspective, config);
@@ -10662,6 +10752,10 @@ impl MonsGameModel {
                             update_turn_engine_selector_diagnostics(|diagnostics| {
                                 diagnostics.last_return_stage = "search_only_engine_allowed_head";
                             });
+                            #[cfg(test)]
+                            update_top_level_turn_engine_selector_last_return_stage(
+                                "search_only_engine_allowed_head",
+                            );
                             return inputs;
                         }
                     }
@@ -10685,6 +10779,10 @@ impl MonsGameModel {
             update_turn_engine_selector_diagnostics(|diagnostics| {
                 diagnostics.last_return_stage = "search_only_forced_prepass";
             });
+            #[cfg(test)]
+            update_top_level_turn_engine_selector_last_return_stage(
+                "search_only_forced_prepass",
+            );
             return forced_inputs;
         }
 

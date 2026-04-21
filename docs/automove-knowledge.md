@@ -31,8 +31,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - A stricter white mana-sibling same-lane gap can align `vs_shipping_pro_white_split_trace` to shipping without touching `vs_shipping_pro_opening_reply_white` or `vs_shipping_normal_white_head_acceptance`; those remaining walls are not controlled by the same white sibling reentry seam.
 - A late-white low-budget selector exception plus a late quiet-mana head reject can still leave `vs_shipping_pro_opening_reply_white` on `engine_disabled`; that wall is not fixed by the guessed low-budget board shape alone.
 - A simple search-only white vulnerable-window top-head conflict can still leave `vs_shipping_normal_white_head_acceptance` on `search_only_engine_allowed_head` even with an in-scope `DrainerSafetyRecovery` alternative; the rerank acceptance gap is deeper than a top-root conflict check.
-- If a live probe board reports `runtime_variant_branch=frontier_execute` together with `selector_disable_reason=pre_disabled`, do not trust the calibrated frontier config alone. The real runtime is entering search with the selector already off before any live ProV2 guard can fire.
-- When that `frontier_execute + pre_disabled` mismatch appears on the same board where the forced probe still reports `profile_turn_engine_selector=true`, the missing spend sits above the root heuristic layer. Explain the runtime-config mismatch before changing white reply-risk or rerank rules again.
+- If a live probe board reports `runtime_variant_branch=frontier_execute` together with `selector_disable_reason=pre_disabled`, first prove the probe is not being contaminated by a second shipping-search fallback call. An unconditional extra search can overwrite the top-level selector diagnostics on unrelated boards.
+- After fixing that contamination, `vs_shipping_pro_opening_reply_white` and `vs_shipping_normal_white_head_acceptance` both really stayed on `frontier_execute + engine_post_search + selector not_disabled`; those white walls were not wrapper mismatches.
+- On the corrected probe, `opening_reply_white` is a post-search head-over-advisor seam, while `normal_white_head_acceptance` is an early-white vulnerable-window recovery miss where a safe `DrainerSafetyRecovery` alternative already exists in the scored roots.
+- Even when a candidate fixes both of those white walls, passes `guardrails`, moves retained `primary_pro` by `5 / 62` with `off_target_changed=0`, and clears exact-lite, it can still fail retained `pro-reliability` vs `shipping_pro_search` at `0.6667 / 0.6667 / 0.6667`; local white seam coverage plus clean triage is still not duel proof.
 
 ## Retained Seam And Fixture Map
 
@@ -67,6 +69,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `AUTOMOVE_IDEAS.md
 - Kill any line that is supposed to fix a search-only handoff but leaves the exact handoff stage unchanged in the probe output.
 - Kill any line that only changes root-advisor reason labels while the selected live probe root stays the same.
 - Kill any line that only repairs the white split-trace sibling reentry if the opening-reply and search-only vulnerable-window walls still stay unchanged.
+- Kill any line that repairs both corrected white live walls but still stalls at `0.6667` retained reliability across Pro, Normal, and Fast. That line is still overfitting live seams instead of improving the real frontier.
 - Do not reopen archive profiles or retired branch families without a brand-new shared hypothesis.
 - Do not treat hotspot output or one replay seed as production proof without a retained foothold.
 - Wrapper-only reroutes and local fallback widening saturate quickly; shared selector/search changes are the real frontier.

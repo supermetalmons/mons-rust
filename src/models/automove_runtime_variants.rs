@@ -261,34 +261,35 @@ fn select_late_black_search_fallback_inputs(
         return None;
     }
 
-    let shipping_runtime = shipping_search_config_for_game(game, SmartAutomovePreference::Pro);
-    let shipping_inputs = select_shipping_search_inputs(game, shipping_runtime);
-    let shipping_fen = Input::fen_from_array(&shipping_inputs);
-
     let black_turn_four_bridge_shipping_fallback = game.active_color == Color::Black
         && game.turn_number == 4
         && game.mons_moves_count == 2
         && game.player_can_use_action()
         && game.player_can_move_mana();
-    if black_turn_four_bridge_shipping_fallback
-        && !shipping_inputs.is_empty()
-        && shipping_inputs != frontier_inputs
-        && shipping_inputs.len() == 3
-        && shipping_fen.ends_with(";mb")
-    {
-        return Some(shipping_inputs);
-    }
-
     let black_mid_turn_action_mana_shipping_fallback = game.active_color == Color::Black
         && game.turn_number >= 4
         && game.mons_moves_count >= 3
         && game.player_can_use_action()
         && game.player_can_move_mana();
-    if black_mid_turn_action_mana_shipping_fallback
-        && !shipping_inputs.is_empty()
-        && shipping_inputs != frontier_inputs
-    {
-        return Some(shipping_inputs);
+    if black_turn_four_bridge_shipping_fallback || black_mid_turn_action_mana_shipping_fallback {
+        let shipping_runtime = shipping_search_config_for_game(game, SmartAutomovePreference::Pro);
+        let shipping_inputs = select_shipping_search_inputs(game, shipping_runtime);
+
+        if black_turn_four_bridge_shipping_fallback
+            && !shipping_inputs.is_empty()
+            && shipping_inputs != frontier_inputs
+            && shipping_inputs.len() == 3
+            && Input::fen_from_array(&shipping_inputs).ends_with(";mb")
+        {
+            return Some(shipping_inputs);
+        }
+
+        if black_mid_turn_action_mana_shipping_fallback
+            && !shipping_inputs.is_empty()
+            && shipping_inputs != frontier_inputs
+        {
+            return Some(shipping_inputs);
+        }
     }
 
     None
