@@ -41,12 +41,14 @@ struct ThirdStageCacheKey {
     target_location: Location,
 }
 
+type ProcessInputStageResult = Option<(Vec<Event>, Vec<NextInput>)>;
+
 #[derive(Debug, Clone, Default)]
 struct ProcessInputCache {
     start_suggestions: HashMap<SuggestedStartInputOptions, Output>,
     second_input_options: HashMap<SecondInputOptionsCacheKey, Vec<NextInput>>,
-    second_stage: HashMap<SecondStageCacheKey, Option<(Vec<Event>, Vec<NextInput>)>>,
-    third_stage: HashMap<ThirdStageCacheKey, Option<(Vec<Event>, Vec<NextInput>)>>,
+    second_stage: HashMap<SecondStageCacheKey, ProcessInputStageResult>,
+    third_stage: HashMap<ThirdStageCacheKey, ProcessInputStageResult>,
 }
 
 #[derive(Debug)]
@@ -127,6 +129,7 @@ impl MonsGame {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_simulation_state(
         board: Board,
         white_score: i32,
@@ -332,29 +335,27 @@ impl MonsGame {
             return output;
         }
 
-        if input.len() == 1 {
-            if input[0] == Input::Takeback {
-                if self.can_takeback(self.active_color) {
-                    self.takeback_fens.pop();
-                    self.verbose_tracking_entities.pop();
-                    let fen = self.takeback_fens.last().cloned();
-                    if let Some(fen) = fen {
-                        let fen_game = MonsGame::from_fen(fen.as_str(), false);
-                        if let Some(fen_game) = fen_game {
-                            self.update_with(&fen_game);
-                        }
-                    } else {
-                        return Output::InvalidInput;
+        if input.len() == 1 && input[0] == Input::Takeback {
+            if self.can_takeback(self.active_color) {
+                self.takeback_fens.pop();
+                self.verbose_tracking_entities.pop();
+                let fen = self.takeback_fens.last().cloned();
+                if let Some(fen) = fen {
+                    let fen_game = MonsGame::from_fen(fen.as_str(), false);
+                    if let Some(fen_game) = fen_game {
+                        self.update_with(&fen_game);
                     }
-                    self.invalidate_process_input_cache();
-                    return Output::Events(vec![Event::Takeback]);
                 } else {
                     return Output::InvalidInput;
                 }
+                self.invalidate_process_input_cache();
+                return Output::Events(vec![Event::Takeback]);
+            } else {
+                return Output::InvalidInput;
             }
         }
 
-        let start_location = match input.get(0) {
+        let start_location = match input.first() {
             Some(Input::Location(location)) => *location,
             _ => return Output::InvalidInput,
         };
@@ -370,14 +371,12 @@ impl MonsGame {
             specific_second_input,
         );
 
-        let second_input = if specific_second_input.is_none() {
-            if second_input_options.is_empty() {
-                return Output::InvalidInput;
-            } else {
-                return Output::NextInputOptions(second_input_options);
-            }
+        let second_input = if let Some(second_input) = specific_second_input {
+            second_input
+        } else if second_input_options.is_empty() {
+            return Output::InvalidInput;
         } else {
-            specific_second_input.unwrap()
+            return Output::NextInputOptions(second_input_options);
         };
 
         let target_location = match second_input {
@@ -386,7 +385,7 @@ impl MonsGame {
         };
         let second_input_kind = match second_input_options
             .iter()
-            .find(|option| &option.input == &second_input)
+            .find(|option| option.input == second_input)
         {
             Some(option) => option.kind,
             None => return Output::InvalidInput,
@@ -422,7 +421,7 @@ impl MonsGame {
 
         let third_input = match third_input_options
             .iter()
-            .find(|option| &option.input == &specific_third_input)
+            .find(|option| option.input == specific_third_input)
         {
             Some(option) => option,
             None => return Output::InvalidInput,
@@ -464,7 +463,7 @@ impl MonsGame {
                 };
                 let forth_input = match forth_input_options
                     .iter()
-                    .find(|option| &option.input == &specific_forth_input)
+                    .find(|option| option.input == specific_forth_input)
                 {
                     Some(option) => option,
                     None => return Output::InvalidInput,
@@ -833,7 +832,7 @@ impl MonsGame {
                         only_one,
                         specific_location,
                         |location| {
-                            self.board.item(location).map_or(false, |item| match item {
+                            self.board.item(location).is_some_and(|item| match item {
                                 Item::Mon { mon: target_mon }
                                 | Item::MonWithMana {
                                     mon: target_mon, ..
@@ -915,9 +914,7 @@ impl MonsGame {
 
         match kind {
             NextInputKind::MonMove => {
-                if start_item.mon().is_none() {
-                    return None;
-                }
+                start_item.mon()?;
                 events.push(Event::MonMove {
                     item: start_item,
                     from: start_location,
@@ -970,16 +967,13 @@ impl MonsGame {
                     }
                 }
 
-                match target_square {
-                    Square::ManaPool { .. } => {
-                        if let Some(mana_in_hand) = start_item.mana() {
-                            events.push(Event::ManaScored {
-                                mana: *mana_in_hand,
-                                at: target_location,
-                            });
-                        }
+                if let Square::ManaPool { .. } = target_square {
+                    if let Some(mana_in_hand) = start_item.mana() {
+                        events.push(Event::ManaScored {
+                            mana: *mana_in_hand,
+                            at: target_location,
+                        });
                     }
-                    _ => (),
                 }
             }
             NextInputKind::ManaMove => {
@@ -1196,9 +1190,7 @@ impl MonsGame {
             }
 
             NextInputKind::SpiritTargetCapture => {
-                if target_item.is_none() {
-                    return None;
-                }
+                target_item?;
                 let target_mon = target_item.as_ref().and_then(|item| item.mon());
                 let target_mana = target_item.as_ref().and_then(|item| item.mana());
                 third_input_options.extend(self.next_inputs_from_slice(
@@ -1564,22 +1556,22 @@ impl MonsGame {
                             to: destination_location,
                         });
 
-                        if let Some(item) = self.board.item(destination_location) {
-                            if let Item::Consumable { consumable } = item {
-                                match consumable {
-                                    Consumable::Potion | Consumable::Bomb => return None,
-                                    Consumable::BombOrPotion => {
-                                        forth_input_options.push(NextInput::new(
-                                            Input::Modifier(Modifier::SelectBomb),
-                                            NextInputKind::SelectConsumable,
-                                            Some(start_item),
-                                        ));
-                                        forth_input_options.push(NextInput::new(
-                                            Input::Modifier(Modifier::SelectPotion),
-                                            NextInputKind::SelectConsumable,
-                                            Some(start_item),
-                                        ));
-                                    }
+                        if let Some(Item::Consumable { consumable }) =
+                            self.board.item(destination_location).copied()
+                        {
+                            match consumable {
+                                Consumable::Potion | Consumable::Bomb => return None,
+                                Consumable::BombOrPotion => {
+                                    forth_input_options.push(NextInput::new(
+                                        Input::Modifier(Modifier::SelectBomb),
+                                        NextInputKind::SelectConsumable,
+                                        Some(start_item),
+                                    ));
+                                    forth_input_options.push(NextInput::new(
+                                        Input::Modifier(Modifier::SelectPotion),
+                                        NextInputKind::SelectConsumable,
+                                        Some(start_item),
+                                    ));
                                 }
                             }
                         }
@@ -1840,8 +1832,7 @@ impl MonsGame {
             self.takeback_fens.push(self.fen());
         }
 
-        let updated_events: Vec<Event> =
-            events.into_iter().chain(extra_events.into_iter()).collect();
+        let updated_events: Vec<Event> = events.into_iter().chain(extra_events).collect();
         if self.with_verbose_tracking {
             let fen_now = self.fen();
             self.verbose_tracking_entities.push(VerboseTrackingEntity {
@@ -1851,7 +1842,7 @@ impl MonsGame {
             });
         }
 
-        return updated_events;
+        updated_events
     }
 
     fn reset_turn_state(&mut self) {
@@ -1866,7 +1857,7 @@ impl MonsGame {
         angel_location: Option<Location>,
         location: Location,
     ) -> bool {
-        angel_location.map_or(false, |angel| angel.distance(&location) == 1)
+        angel_location.is_some_and(|angel| angel.distance(&location) == 1)
     }
 
     pub fn next_inputs<F>(
@@ -1895,31 +1886,27 @@ impl MonsGame {
         F: Fn(Location) -> bool,
     {
         if let Some(specific_location) = specific {
-            if locations
-                .iter()
-                .any(|location| *location == specific_location)
-                && filter(specific_location)
-            {
-                return vec![NextInput {
+            if locations.contains(&specific_location) && filter(specific_location) {
+                vec![NextInput {
                     input: Input::Location(specific_location),
                     kind,
                     actor_mon_item: None,
-                }];
+                }]
             } else {
-                return vec![];
+                vec![]
             }
         } else if only_one {
             if let Some(one) = locations.iter().copied().find(|&loc| filter(loc)) {
-                return vec![NextInput {
+                vec![NextInput {
                     input: Input::Location(one),
                     kind,
                     actor_mon_item: None,
-                }];
+                }]
             } else {
-                return vec![];
+                vec![]
             }
         } else {
-            return locations
+            locations
                 .iter()
                 .copied()
                 .filter_map(|loc| {
@@ -1933,7 +1920,7 @@ impl MonsGame {
                         None
                     }
                 })
-                .collect();
+                .collect()
         }
     }
 

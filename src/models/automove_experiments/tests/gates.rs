@@ -121,6 +121,12 @@ fn pro_signal_triage_accepts_target_change_with_bounded_off_target_churn() {
         0,
         0
     ));
+    assert!(pro_signal_triage_passes(
+        "frontier_pro_v2_guarded",
+        "shipping_pro_search",
+        0,
+        5
+    ));
     assert!(!pro_signal_triage_passes(
         "frontier_pro_v2_guarded",
         "shipping_pro_search",
@@ -169,88 +175,73 @@ fn smart_automove_pool_archived_profiles_do_not_resolve() {
 }
 
 #[test]
-fn selected_profile_env_aliases_accept_legacy_candidate_names_and_ids() {
+fn selected_profile_helpers_use_canonical_env_names() {
     with_env_override("SMART_SELECTED_PROFILE", "", || {
-        with_env_override("SMART_FRONTIER_PROFILE", "", || {
-            with_env_override("SMART_CANDIDATE_PROFILE", "", || {
-                with_env_override(
-                    "SMART_PRO_CANDIDATE_PROFILE",
-                    "runtime_pro_turn_engine_v30",
-                    || {
-                        assert_eq!(selected_profile_id_from_env(), "frontier_pro_v2_guarded");
-                    },
-                );
-            });
-            with_env_override("SMART_PRO_CANDIDATE_PROFILE", "", || {
-                with_env_override("SMART_CANDIDATE_PROFILE", "runtime_current", || {
-                    assert_eq!(selected_profile_id_from_env(), "shipping_pro_search");
-                });
-            });
+        with_env_override("SMART_FRONTIER_PROFILE", "frontier_pro_v2_guarded", || {
+            assert_eq!(selected_profile_id_from_env(), "frontier_pro_v2_guarded");
+            assert_eq!(frontier_profile_id(), "frontier_pro_v2_guarded");
         });
     });
 }
 
 #[test]
-fn frontier_and_shipping_profile_helpers_accept_legacy_candidate_and_baseline_envs() {
-    with_env_override("SMART_FRONTIER_PROFILE", "", || {
-        with_env_override("SMART_SHIPPING_PROFILE", "", || {
-            with_env_override(
-                "SMART_PRO_CANDIDATE_PROFILE",
-                "runtime_pro_turn_engine_v30",
-                || {
-                    assert_eq!(frontier_profile_id(), "frontier_pro_v2_guarded");
-                },
-            );
-            with_env_override("SMART_PRO_BASELINE_PROFILE", "runtime_current", || {
-                assert_eq!(shipping_profile_id(), "shipping_pro_search");
-            });
-        });
+fn shipping_profile_helper_uses_canonical_env_name() {
+    with_env_override("SMART_SHIPPING_PROFILE", "shipping_pro_search", || {
+        assert_eq!(shipping_profile_id(), "shipping_pro_search");
     });
 }
 
 #[test]
-fn reliability_and_probe_profile_helpers_accept_legacy_ids() {
+fn reliability_and_probe_profile_helpers_use_canonical_env_names() {
     with_env_override(
         "SMART_PRO_RELIABILITY_FRONTIER_PROFILE",
-        "runtime_pro_turn_engine_v30",
+        "frontier_pro_v2_guarded",
         || {
             assert_eq!(reliability_frontier_profile_id(), "frontier_pro_v2_guarded");
         },
     );
     with_env_override(
         "SMART_PRO_RELIABILITY_SHIPPING_PROFILE",
-        "runtime_current",
+        "shipping_pro_search",
         || {
             assert_eq!(reliability_shipping_profile_id(), "shipping_pro_search");
         },
     );
     with_env_override(
         "SMART_PROBE_FRONTIER_PROFILE",
-        "runtime_pro_turn_engine_v30",
+        "frontier_pro_v2_guarded",
         || {
             assert_eq!(probe_frontier_profile_id(), "frontier_pro_v2_guarded");
         },
     );
-    with_env_override("SMART_PROBE_SHIPPING_PROFILE", "runtime_current", || {
-        assert_eq!(probe_shipping_profile_id(), "shipping_pro_search");
-    });
+    with_env_override(
+        "SMART_PROBE_SHIPPING_PROFILE",
+        "shipping_pro_search",
+        || {
+            assert_eq!(probe_shipping_profile_id(), "shipping_pro_search");
+        },
+    );
 }
 
 #[test]
-fn raw_env_string_preserves_legacy_profile_ids_for_seed_tags() {
-    with_env_override("SMART_PRO_RELIABILITY_SEED_TAG", "runtime_current", || {
-        assert_eq!(
-            env_string_value("SMART_PRO_RELIABILITY_SEED_TAG"),
-            Some("runtime_current".to_string())
-        );
-    });
+fn raw_env_string_value_does_not_canonicalize_seed_tags() {
     with_env_override(
         "SMART_PRO_RELIABILITY_SEED_TAG",
-        "runtime_pro_turn_engine_v30",
+        "retained_duel_seed_v1",
         || {
             assert_eq!(
                 env_string_value("SMART_PRO_RELIABILITY_SEED_TAG"),
-                Some("runtime_pro_turn_engine_v30".to_string())
+                Some("retained_duel_seed_v1".to_string())
+            );
+        },
+    );
+    with_env_override(
+        "SMART_PRO_RELIABILITY_SEED_TAG",
+        "Retained_Duel_Seed_V2",
+        || {
+            assert_eq!(
+                env_string_value("SMART_PRO_RELIABILITY_SEED_TAG"),
+                Some("retained_duel_seed_v2".to_string())
             );
         },
     );

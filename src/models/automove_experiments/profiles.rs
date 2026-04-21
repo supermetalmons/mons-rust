@@ -7,8 +7,6 @@ use crate::models::mons_game_model::automove_runtime_variants::{
 
 const DEFAULT_SHIPPING_PROFILE_ID: &str = SHIPPING_PRO_SEARCH_PROFILE_ID;
 const DEFAULT_FRONTIER_PROFILE_ID: &str = FRONTIER_PRO_V2_GUARDED_PROFILE_ID;
-const LEGACY_SHIPPING_PROFILE_ID: &str = "runtime_current";
-const LEGACY_FRONTIER_PROFILE_ID: &str = "runtime_pro_turn_engine_v30";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct ExactLiteBudgets {
@@ -83,14 +81,6 @@ pub(super) fn profile_selector_from_name(profile_name: &str) -> Option<AutomoveS
         .map(|profile| profile.selector)
 }
 
-fn canonical_profile_id(profile_name: &str) -> String {
-    match profile_name {
-        LEGACY_SHIPPING_PROFILE_ID => SHIPPING_PRO_SEARCH_PROFILE_ID.to_string(),
-        LEGACY_FRONTIER_PROFILE_ID => FRONTIER_PRO_V2_GUARDED_PROFILE_ID.to_string(),
-        _ => profile_name.to_string(),
-    }
-}
-
 fn env_profile_name_from_aliases(names: &[&str]) -> Option<String> {
     names.iter().find_map(|name| env_profile_name(name))
 }
@@ -103,13 +93,8 @@ pub(super) fn env_string_value(name: &str) -> Option<String> {
 }
 
 pub(super) fn selected_profile_id_from_env() -> String {
-    env_profile_name_from_aliases(&[
-        "SMART_SELECTED_PROFILE",
-        "SMART_FRONTIER_PROFILE",
-        "SMART_PRO_CANDIDATE_PROFILE",
-        "SMART_CANDIDATE_PROFILE",
-    ])
-    .unwrap_or_else(|| SHIPPING_PRO_SEARCH_PROFILE_ID.to_string())
+    env_profile_name_from_aliases(&["SMART_SELECTED_PROFILE", "SMART_FRONTIER_PROFILE"])
+        .unwrap_or_else(|| SHIPPING_PRO_SEARCH_PROFILE_ID.to_string())
 }
 
 pub(super) fn selected_profile_id() -> &'static String {
@@ -118,33 +103,23 @@ pub(super) fn selected_profile_id() -> &'static String {
 }
 
 pub(super) fn env_profile_name(name: &str) -> Option<String> {
-    env_string_value(name).map(|value| canonical_profile_id(value.as_str()))
+    env_string_value(name)
 }
 
 pub(super) fn frontier_profile_id() -> String {
-    env_profile_name_from_aliases(&[
-        "SMART_FRONTIER_PROFILE",
-        "SMART_PRO_CANDIDATE_PROFILE",
-        "SMART_CANDIDATE_PROFILE",
-    ])
-    .unwrap_or_else(|| DEFAULT_FRONTIER_PROFILE_ID.to_string())
+    env_profile_name("SMART_FRONTIER_PROFILE")
+        .unwrap_or_else(|| DEFAULT_FRONTIER_PROFILE_ID.to_string())
 }
 
 pub(super) fn shipping_profile_id() -> String {
-    env_profile_name_from_aliases(&[
-        "SMART_SHIPPING_PROFILE",
-        "SMART_PRO_BASELINE_PROFILE",
-        "SMART_GATE_BASELINE_PROFILE",
-    ])
-    .unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_ID.to_string())
+    env_profile_name("SMART_SHIPPING_PROFILE")
+        .unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_ID.to_string())
 }
 
 pub(super) fn reliability_frontier_profile_id() -> String {
     env_profile_name_from_aliases(&[
         "SMART_PRO_RELIABILITY_FRONTIER_PROFILE",
         "SMART_FRONTIER_PROFILE",
-        "SMART_PRO_CANDIDATE_PROFILE",
-        "SMART_CANDIDATE_PROFILE",
     ])
     .unwrap_or_else(|| DEFAULT_FRONTIER_PROFILE_ID.to_string())
 }
@@ -153,28 +128,16 @@ pub(super) fn reliability_shipping_profile_id() -> String {
     env_profile_name_from_aliases(&[
         "SMART_PRO_RELIABILITY_SHIPPING_PROFILE",
         "SMART_SHIPPING_PROFILE",
-        "SMART_PRO_BASELINE_PROFILE",
-        "SMART_GATE_BASELINE_PROFILE",
     ])
     .unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_ID.to_string())
 }
 
 pub(super) fn probe_frontier_profile_id() -> String {
-    env_profile_name_from_aliases(&[
-        "SMART_PROBE_FRONTIER_PROFILE",
-        "SMART_FRONTIER_PROFILE",
-        "SMART_PRO_CANDIDATE_PROFILE",
-        "SMART_CANDIDATE_PROFILE",
-    ])
-    .unwrap_or_else(|| DEFAULT_FRONTIER_PROFILE_ID.to_string())
+    env_profile_name_from_aliases(&["SMART_PROBE_FRONTIER_PROFILE", "SMART_FRONTIER_PROFILE"])
+        .unwrap_or_else(|| DEFAULT_FRONTIER_PROFILE_ID.to_string())
 }
 
 pub(super) fn probe_shipping_profile_id() -> String {
-    env_profile_name_from_aliases(&[
-        "SMART_PROBE_SHIPPING_PROFILE",
-        "SMART_SHIPPING_PROFILE",
-        "SMART_PRO_BASELINE_PROFILE",
-        "SMART_GATE_BASELINE_PROFILE",
-    ])
-    .unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_ID.to_string())
+    env_profile_name_from_aliases(&["SMART_PROBE_SHIPPING_PROFILE", "SMART_SHIPPING_PROFILE"])
+        .unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_ID.to_string())
 }

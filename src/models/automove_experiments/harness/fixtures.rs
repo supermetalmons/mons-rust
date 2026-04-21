@@ -127,14 +127,6 @@ fn drainer_safety_triage_game() -> MonsGame {
     )
 }
 
-fn pvs_sensitive_search_triage_game() -> MonsGame {
-    MonsGame::from_fen(
-        "0 0 b 1 0 0 0 0 4 n05d0xa0xn04/n02xxmn01s0xn03e0xn02/n02y0xn08/n06xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMxxMxxMn01xxMn03/n11/n01E0xn03D0xxxMS0xn03/n04A0xn01Y0xn04/n11",
-        false,
-    )
-    .expect("pvs_sensitive_search_triage_game: valid fen")
-}
-
 fn extension_sensitive_no_ext_a_triage_game() -> MonsGame {
     MonsGame::from_fen(
         "0 0 b 1 0 4 0 0 6 n03y0xn07/n07e0xn03/n06d0xa0xn03/n03xxmn03xxmn03/n02s0xxxmxxmn02xxmn03/xxQn04xxUn01xxMn02xxQ/n05xxMn05/n02xxMn03xxMn03Y0x/n03xxMn03D0xn03/n05A0xn05/n03E0xn02S0xn04",
@@ -417,14 +409,6 @@ fn black_harvest_loss_b_ply3_triage_game() -> MonsGame {
     .expect("black_harvest_loss_b_ply3: valid fen")
 }
 
-fn black_reliability_opening_3_ply4_triage_game() -> MonsGame {
-    MonsGame::from_fen(
-        "0 0 b 0 0 1 0 0 2 n03y0xn01d0xa0xe0xn03/n03s0xn07/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n03E0xA0xD0xS0xn01Y0xn02/n11",
-        false,
-    )
-    .expect("black_reliability_opening_3_ply4: valid fen")
-}
-
 fn black_negative_deny_ply4_triage_game() -> MonsGame {
     MonsGame::from_fen(
         "0 0 b 0 0 1 0 0 2 n03y0xn01d0xa0xe0xn03/n05s0xn05/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n05D0xn05/n03E0xA0xS0xn05/n07Y0xn03",
@@ -673,39 +657,6 @@ fn live_nonwin_black_vulnerable_spirit_reentry_triage_game() -> MonsGame {
     .expect("live_nonwin_black_vulnerable_spirit_reentry: valid fen")
 }
 
-fn spirit_setup_triage_game() -> MonsGame {
-    tactical_game_with_items(
-        vec![
-            (
-                Location::new(9, 7),
-                Item::Mon {
-                    mon: Mon::new(MonKind::Spirit, Color::White, 0),
-                },
-            ),
-            (
-                Location::new(9, 5),
-                Item::Mon {
-                    mon: Mon::new(MonKind::Drainer, Color::White, 0),
-                },
-            ),
-            (
-                Location::new(7, 8),
-                Item::Mana {
-                    mana: Mana::Regular(Color::Black),
-                },
-            ),
-            (
-                Location::new(0, 5),
-                Item::Mon {
-                    mon: Mon::new(MonKind::Drainer, Color::Black, 0),
-                },
-            ),
-        ],
-        Color::White,
-        2,
-    )
-}
-
 fn apply_triage_opening_sequence(game: &mut MonsGame, sequence: &[&str; 5]) {
     for step in sequence {
         let inputs = Input::array_from_fen(step);
@@ -785,28 +736,12 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             expected_selected_input_fen: None,
         },
         TriageFixture {
-            id: "primary_spirit_setup",
-            game: spirit_setup_triage_game(),
-            mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
-            config_tweak: None,
-            expected_selected_input_fen: None,
-        },
-        TriageFixture {
             id: "primary_drainer_safety",
             game: drainer_safety_triage_game(),
             mode: SmartAutomovePreference::Pro,
             opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
-        },
-        TriageFixture {
-            id: "primary_pvs_sensitive_search",
-            game: pvs_sensitive_search_triage_game(),
-            mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
-            config_tweak: None,
-            expected_selected_input_fen: Some("l0,5;l1,5"),
         },
         TriageFixture {
             id: "primary_ext_sensitive_no_ext_a",
@@ -1023,14 +958,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,4;l1,5"),
-        },
-        TriageFixture {
-            id: "primary_black_reliability_opening_3_ply4",
-            game: black_reliability_opening_3_ply4_triage_game(),
-            mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
-            config_tweak: None,
-            expected_selected_input_fen: None,
         },
         TriageFixture {
             id: "primary_black_negative_deny_ply4",

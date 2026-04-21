@@ -11,8 +11,8 @@ pub fn winner(
     let moves_w: Vec<&str> = flat_moves_string_w.split("-").collect();
     let moves_b: Vec<&str> = flat_moves_string_b.split("-").collect();
 
-    let game_w = MonsGame::from_fen(&fen_w, false);
-    let game_b = MonsGame::from_fen(&fen_b, false);
+    let game_w = MonsGame::from_fen(fen_w, false);
+    let game_b = MonsGame::from_fen(fen_b, false);
 
     if game_w.is_none() || game_b.is_none() {
         if game_w.is_none() && game_b.is_none() {
@@ -79,7 +79,7 @@ pub fn winner(
     }
 
     // TODO: "x" stands for corrupted game data. see if there was cheating.
-    return "x".to_string();
+    "x".to_string()
 }
 
 #[cfg(test)]

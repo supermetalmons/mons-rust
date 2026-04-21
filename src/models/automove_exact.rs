@@ -1543,7 +1543,7 @@ pub(crate) fn exact_own_drainer_safety_score_with_hash(
     let result = if let Some(drainer_location) = find_awake_drainer(board, color) {
         let angel_nearby = board
             .find_awake_angel(color)
-            .map_or(false, |angel| angel.distance(&drainer_location) == 1);
+            .is_some_and(|angel| angel.distance(&drainer_location) == 1);
         let (action_threats, bomb_threats) =
             drainer_immediate_threats_with_hash(board, color, drainer_location, board_hash);
         let immediate = if angel_nearby {
@@ -1658,6 +1658,7 @@ fn exact_attack_target_plausible_on_board(
 }
 
 #[inline]
+#[allow(clippy::too_many_arguments)]
 fn exact_attack_target_plausible_for_attacker(
     board: &Board,
     target: Location,
@@ -2035,6 +2036,7 @@ fn can_attack_target_on_board_uncached(
 }
 
 #[inline]
+#[allow(clippy::too_many_arguments)]
 fn exact_attack_remaining_steps_lower_bound(
     board: &Board,
     target: Location,
@@ -2687,9 +2689,7 @@ pub(crate) fn is_drainer_exactly_safe_next_turn_on_board_with_hash(
 fn exact_is_location_guarded_by_angel(board: &Board, color: Color, location: Location) -> bool {
     board
         .find_awake_angel(color)
-        .map_or(false, |angel_location| {
-            angel_location.distance(&location) == 1
-        })
+        .is_some_and(|angel_location| angel_location.distance(&location) == 1)
 }
 
 #[cfg(test)]
@@ -2983,6 +2983,7 @@ struct ExactStateResult {
     steps: i32,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn exact_shortest_payload_state<F>(
     board: &Board,
     start: Location,
@@ -3006,7 +3007,7 @@ where
         if goal(location, payload) {
             return Some(ExactStateResult { steps });
         }
-        if max_steps.map_or(false, |limit| steps >= limit) {
+        if max_steps.is_some_and(|limit| steps >= limit) {
             continue;
         }
         for &next in location.nearby_locations_ref() {
@@ -3028,6 +3029,7 @@ where
     None
 }
 
+#[allow(clippy::too_many_arguments)]
 fn exact_shortest_payload_state_bounded_with_lower_bound<F, L>(
     board: &Board,
     start: Location,
@@ -3276,6 +3278,7 @@ fn exact_drainer_pickup_steps_lower_bound(
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+#[allow(clippy::too_many_arguments)]
 fn exact_drainer_pickup_remaining_steps_lower_bound(
     board: &Board,
     color: Color,
@@ -3671,6 +3674,7 @@ fn exact_pickup_path_future_can_beat_best(
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+#[allow(clippy::too_many_arguments)]
 fn exact_update_drainer_pickup_window_candidate(
     board: &Board,
     best: &mut ExactDrainerPickupWindow,
@@ -3717,6 +3721,7 @@ fn exact_update_drainer_pickup_window_candidate(
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+#[allow(clippy::too_many_arguments)]
 fn exact_drainer_pickup_window_small_budget_with_hash(
     board: &Board,
     color: Color,
@@ -3732,8 +3737,7 @@ fn exact_drainer_pickup_window_small_budget_with_hash(
 
     let mut best = ExactDrainerPickupWindow::default();
     let mut actor_move_memo = ExactDrainerMoveMemo::new();
-    let mut frontier = Vec::with_capacity(1);
-    frontier.push((start, ExactActorPayload::None));
+    let mut frontier = vec![(start, ExactActorPayload::None)];
 
     for steps in 0..=max_steps {
         for &(location, payload) in &frontier {
@@ -3768,9 +3772,8 @@ fn exact_drainer_pickup_window_small_budget_with_hash(
                 need_denial,
                 opponent_mana,
             )
-            .map_or(true, |lower_bound| {
-                steps.saturating_add(lower_bound) > max_steps
-            }) {
+            .is_none_or(|lower_bound| steps.saturating_add(lower_bound) > max_steps)
+            {
                 continue;
             }
             for &next in location.nearby_locations_ref() {
@@ -3788,6 +3791,7 @@ fn exact_drainer_pickup_window_small_budget_with_hash(
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+#[allow(clippy::too_many_arguments)]
 fn exact_drainer_pickup_window_uncached_with_hash(
     board: &Board,
     color: Color,
@@ -3813,7 +3817,7 @@ fn exact_drainer_pickup_window_uncached_with_hash(
     let mut best = ExactDrainerPickupWindow::default();
 
     while let Some((location, payload, steps)) = queue.pop_front() {
-        if max_steps.map_or(false, |limit| steps > limit) {
+        if max_steps.is_some_and(|limit| steps > limit) {
             continue;
         }
         if exact_update_drainer_pickup_window_candidate(
@@ -3841,9 +3845,7 @@ fn exact_drainer_pickup_window_uncached_with_hash(
                 need_denial,
                 opponent_mana,
             )
-            .map_or(true, |lower_bound| {
-                steps.saturating_add(lower_bound) > limit
-            })
+            .is_none_or(|lower_bound| steps.saturating_add(lower_bound) > limit)
         }) {
             continue;
         }
@@ -3863,6 +3865,7 @@ fn exact_drainer_pickup_window_uncached_with_hash(
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
+#[allow(clippy::too_many_arguments)]
 fn exact_drainer_pickup_window_with_hash_min_any_score(
     board: &Board,
     color: Color,
@@ -4004,6 +4007,7 @@ fn exact_drainer_pickup_window_with_hash_min_any_score(
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_arguments)]
 fn exact_drainer_pickup_window_with_hash(
     board: &Board,
     color: Color,
@@ -4083,7 +4087,7 @@ fn exact_best_drainer_pickup_path_filtered_with_hash(
     let max_mana_value = exact_pickup_filter_max_mana_value(mana_filter, color);
 
     while let Some((location, payload, steps)) = queue.pop_front() {
-        if max_steps.map_or(false, |limit| steps > limit) {
+        if max_steps.is_some_and(|limit| steps > limit) {
             continue;
         }
         if let Some(best_path) = best {
@@ -4271,7 +4275,7 @@ pub(crate) fn exact_secure_specific_mana_steps_on_board(
     );
     if !holding_wanted
         && exact_distance_to_wanted_mana_steps_lower_bound(board, wanted, drainer_location)
-            .map_or(true, |lower_bound| lower_bound > remaining_moves)
+            .is_none_or(|lower_bound| lower_bound > remaining_moves)
     {
         return None;
     }
@@ -4406,10 +4410,10 @@ fn exact_secure_specific_mana_steps_in_game_uncached_at_mut(
         game.board.item(drainer_location),
         Some(Item::MonWithMana { mana, .. }) if *mana == wanted
     );
-    if holding_wanted {
-        if is_drainer_exactly_safe_next_turn_on_board(&game.board, color, drainer_location) {
-            return Some(0);
-        }
+    if holding_wanted
+        && is_drainer_exactly_safe_next_turn_on_board(&game.board, color, drainer_location)
+    {
+        return Some(0);
     }
 
     if game.active_color != color || !game.player_can_move_mon() {
@@ -4418,7 +4422,7 @@ fn exact_secure_specific_mana_steps_in_game_uncached_at_mut(
     let remaining_moves = (Config::MONS_MOVES_PER_TURN - game.mons_moves_count).max(0);
     if !holding_wanted
         && exact_distance_to_wanted_mana_steps_lower_bound(&game.board, wanted, drainer_location)
-            .map_or(true, |lower_bound| lower_bound > remaining_moves)
+            .is_none_or(|lower_bound| lower_bound > remaining_moves)
     {
         return None;
     }
@@ -4433,7 +4437,7 @@ fn exact_secure_specific_mana_steps_in_game_uncached_at_mut(
             let remaining_after_step = remaining_moves.saturating_sub(1);
             if !next_picks_wanted
                 && exact_distance_to_wanted_mana_steps_lower_bound(&game.board, wanted, next)
-                    .map_or(true, |lower_bound| lower_bound > remaining_after_step)
+                    .is_none_or(|lower_bound| lower_bound > remaining_after_step)
             {
                 continue;
             }
@@ -4823,9 +4827,11 @@ fn exact_apply_secure_drainer_walk_in_place(
     };
     let should_end_turn = game.white_score < Config::TARGET_SCORE
         && game.black_score < Config::TARGET_SCORE
-        && (first_turn && !player_can_move_mon
-            || !first_turn && !player_can_move_mana
-            || !first_turn && !player_can_move_mon && active_regular_mana_count == 0);
+        && if first_turn {
+            !player_can_move_mon
+        } else {
+            !player_can_move_mana || (!player_can_move_mon && active_regular_mana_count == 0)
+        };
     if should_end_turn {
         let next_active_color = game.active_color.other();
         game.active_color = next_active_color;
@@ -6347,8 +6353,7 @@ fn exact_mark_locations_within_mon_budget(
     start: Location,
     move_budget: i32,
 ) {
-    let mut frontier = Vec::with_capacity(1);
-    frontier.push(start);
+    let mut frontier = vec![start];
     mask.insert(start);
 
     for _ in 0..move_budget {
@@ -6591,13 +6596,15 @@ fn exact_best_immediate_tactical_window_on_board_with_hash_uncached(
                 if !relevant_for_score && !relevant_for_denial {
                     continue;
                 }
-                if let Some(_) = exact_carrier_steps_to_any_pool_with_hash_bounded(
+                if exact_carrier_steps_to_any_pool_with_hash_bounded(
                     board,
                     location,
                     *mana,
                     move_budget,
                     board_hash,
-                ) {
+                )
+                .is_some()
+                {
                     if relevant_for_score {
                         best.best_score = best.best_score.max(mana_value);
                     }
@@ -6671,13 +6678,15 @@ fn exact_best_immediate_score_on_board_with_hash(
     for (location, item) in board.occupied() {
         match item {
             Item::MonWithMana { mon, mana } if mon.color == color && !mon.is_fainted() => {
-                if let Some(_) = exact_carrier_steps_to_any_pool_with_hash_bounded(
+                if exact_carrier_steps_to_any_pool_with_hash_bounded(
                     board,
                     location,
                     *mana,
                     move_budget,
                     board_hash,
-                ) {
+                )
+                .is_some()
+                {
                     best = best.max(mana.score(color));
                 }
             }
@@ -6738,13 +6747,15 @@ fn exact_best_immediate_opponent_mana_score_on_board_with_hash(
             Item::MonWithMana { mon, mana }
                 if mon.color == color && !mon.is_fainted() && *mana == opponent_mana =>
             {
-                if let Some(_) = exact_carrier_steps_to_any_pool_with_hash_bounded(
+                if exact_carrier_steps_to_any_pool_with_hash_bounded(
                     board,
                     location,
                     *mana,
                     move_budget,
                     board_hash,
-                ) {
+                )
+                .is_some()
+                {
                     best = best.max(mana.score(color));
                 }
             }
@@ -6940,17 +6951,14 @@ mod tests {
                 continue;
             }
             let on_own_base = matches!(board.square(threat_location), Square::MonBase { .. });
-            if !on_own_base {
-                if mon.kind == MonKind::Mystic
+            if !on_own_base
+                && ((mon.kind == MonKind::Mystic
                     && (threat_location.i - location.i).abs() == 2
-                    && (threat_location.j - location.j).abs() == 2
-                {
-                    action_threats += 1;
-                } else if mon.kind == MonKind::Demon
-                    && demon_has_line_attack(board, threat_location, location)
-                {
-                    action_threats += 1;
-                }
+                    && (threat_location.j - location.j).abs() == 2)
+                    || (mon.kind == MonKind::Demon
+                        && demon_has_line_attack(board, threat_location, location)))
+            {
+                action_threats += 1;
             }
             if matches!(
                 item,

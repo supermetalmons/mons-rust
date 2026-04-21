@@ -30,6 +30,12 @@ impl PartialEq for Board {
 
 impl Eq for Board {}
 
+impl Default for Board {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Board {
     pub fn new() -> Self {
         Self::new_with_variant(GameVariant::DEFAULT)

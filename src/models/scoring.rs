@@ -1920,44 +1920,38 @@ pub(crate) fn evaluate_preferability_with_context(
                     score += my_mon_multiplier * weights.mana_carrier_guarded;
                 }
 
-                if !use_legacy_formula && mon.kind == MonKind::Drainer {
-                    if carries_high_value_mana {
-                        let virtual_score_bp = match mana {
-                            Mana::Supermana => weights
-                                .supermana_race_control
-                                .saturating_mul(PROTECTED_HIGH_VALUE_CARRIER_SUPERMANA_SCALE_BP),
-                            Mana::Regular(owner) if *owner != mon.color => {
-                                weights.opponent_mana_denial.saturating_mul(
-                                    PROTECTED_HIGH_VALUE_CARRIER_OPPONENT_MANA_SCALE_BP,
-                                )
-                            }
-                            Mana::Regular(_) => 0,
-                        }
-                        .clamp(0, PROTECTED_HIGH_VALUE_CARRIER_VIRTUAL_SCORE_BP_MAX);
-                        let carrier_opponent_score = if mon.color == Color::White {
-                            game.black_score
-                        } else {
-                            game.white_score
-                        };
-                        let opponent_score_limit = (Config::TARGET_SCORE
-                            - PROTECTED_HIGH_VALUE_CARRIER_OPPONENT_SCORE_MARGIN)
-                            .max(0);
-                        let protected = if use_legacy_formula {
-                            safety.angel_nearby
-                                || safety.risk_danger
-                                    >= PROTECTED_HIGH_VALUE_CARRIER_SAFE_DANGER_MIN
-                        } else {
-                            safety.exact_safe()
-                        };
-                        if virtual_score_bp > 0
-                            && protected
-                            && carrier_opponent_score <= opponent_score_limit
-                        {
-                            let virtual_two_point_score = weights.confirmed_score.saturating_mul(2);
-                            let virtual_bonus =
-                                scale_by_bp(virtual_two_point_score, virtual_score_bp);
-                            score += my_mon_multiplier * virtual_bonus;
-                        }
+                if !use_legacy_formula && mon.kind == MonKind::Drainer && carries_high_value_mana {
+                    let virtual_score_bp = match mana {
+                        Mana::Supermana => weights
+                            .supermana_race_control
+                            .saturating_mul(PROTECTED_HIGH_VALUE_CARRIER_SUPERMANA_SCALE_BP),
+                        Mana::Regular(owner) if *owner != mon.color => weights
+                            .opponent_mana_denial
+                            .saturating_mul(PROTECTED_HIGH_VALUE_CARRIER_OPPONENT_MANA_SCALE_BP),
+                        Mana::Regular(_) => 0,
+                    }
+                    .clamp(0, PROTECTED_HIGH_VALUE_CARRIER_VIRTUAL_SCORE_BP_MAX);
+                    let carrier_opponent_score = if mon.color == Color::White {
+                        game.black_score
+                    } else {
+                        game.white_score
+                    };
+                    let opponent_score_limit = (Config::TARGET_SCORE
+                        - PROTECTED_HIGH_VALUE_CARRIER_OPPONENT_SCORE_MARGIN)
+                        .max(0);
+                    let protected = if use_legacy_formula {
+                        safety.angel_nearby
+                            || safety.risk_danger >= PROTECTED_HIGH_VALUE_CARRIER_SAFE_DANGER_MIN
+                    } else {
+                        safety.exact_safe()
+                    };
+                    if virtual_score_bp > 0
+                        && protected
+                        && carrier_opponent_score <= opponent_score_limit
+                    {
+                        let virtual_two_point_score = weights.confirmed_score.saturating_mul(2);
+                        let virtual_bonus = scale_by_bp(virtual_two_point_score, virtual_score_bp);
+                        score += my_mon_multiplier * virtual_bonus;
                     }
                 }
 
@@ -2547,7 +2541,7 @@ fn immediate_score_window_summary_from_summary(
         for location in &board_summary.live_drainer_locations[color_slot(color)] {
             let mut best_pickup_score = 0;
             for candidate in &mana_snapshot.candidates {
-                let pickup_steps = location.distance(&candidate.location) as i32;
+                let pickup_steps = location.distance(&candidate.location);
                 if pickup_steps + candidate.score_steps <= remaining_mon_moves {
                     best_pickup_score = best_pickup_score.max(candidate.mana.score(color));
                 }
@@ -2909,7 +2903,7 @@ fn immediate_score_window_summary_with_snapshot(
             }
             let mut best_pickup_score = 0;
             for candidate in &mana_snapshot.candidates {
-                let pickup_steps = location.distance(&candidate.location) as i32;
+                let pickup_steps = location.distance(&candidate.location);
                 if pickup_steps + candidate.score_steps <= remaining_mon_moves {
                     best_pickup_score = best_pickup_score.max(candidate.mana.score(color));
                 }
@@ -3005,11 +2999,11 @@ fn drainer_distances_with_context(
     context: Option<&ScoringEvalContext>,
 ) -> (i32, i32, bool) {
     if let Some(summary) = context.and_then(|context| context.board_summary_if_enabled(board)) {
-        let mut min_mana = Config::BOARD_SIZE as i32;
-        let mut min_danger = Config::BOARD_SIZE as i32;
+        let mut min_mana = Config::BOARD_SIZE;
+        let mut min_danger = Config::BOARD_SIZE;
 
         for entry in &summary.mana_entries {
-            let delta = entry.location.distance(&location) as i32;
+            let delta = entry.location.distance(&location);
             if delta < min_mana {
                 min_mana = delta;
             }
@@ -3020,7 +3014,7 @@ fn drainer_distances_with_context(
                 if !danger.legacy_plain_threat {
                     continue;
                 }
-                let delta = danger.location.distance(&location) as i32;
+                let delta = danger.location.distance(&location);
                 if delta < min_danger {
                     min_danger = delta;
                 }
@@ -3029,10 +3023,10 @@ fn drainer_distances_with_context(
 
             let mut delta = i32::MAX;
             if danger.exact_action_threat {
-                delta = danger.location.distance(&location) as i32;
+                delta = danger.location.distance(&location);
             }
             if danger.exact_bomb_threat {
-                let bomb_delta = (danger.location.distance(&location) as i32 - 2).max(1);
+                let bomb_delta = (danger.location.distance(&location) - 2).max(1);
                 delta = delta.min(bomb_delta);
             }
             if delta < min_danger {
@@ -3042,7 +3036,7 @@ fn drainer_distances_with_context(
 
         if use_legacy_formula {
             for consumable in &summary.loose_consumable_locations {
-                let delta = consumable.distance(&location) as i32;
+                let delta = consumable.distance(&location);
                 if delta < min_danger {
                     min_danger = delta;
                 }
@@ -3059,14 +3053,14 @@ fn drainer_distances_with_context(
         return (min_danger.max(1), min_mana.max(1), angel_nearby);
     }
 
-    let mut min_mana = Config::BOARD_SIZE as i32;
-    let mut min_danger = Config::BOARD_SIZE as i32;
+    let mut min_mana = Config::BOARD_SIZE;
+    let mut min_danger = Config::BOARD_SIZE;
     let mut angel_nearby = false;
 
     for (item_location, item) in board.occupied() {
         match item {
             Item::Mana { .. } => {
-                let delta = item_location.distance(&location) as i32;
+                let delta = item_location.distance(&location);
                 if delta < min_mana {
                     min_mana = delta;
                 }
@@ -3084,11 +3078,11 @@ fn drainer_distances_with_context(
                             || mon.kind == MonKind::Demon
                             || matches!(item, Item::MonWithConsumable { .. })
                         {
-                            delta = Some(item_location.distance(&location) as i32);
+                            delta = Some(item_location.distance(&location));
                         }
                     } else {
                         if mon.kind == MonKind::Mystic || mon.kind == MonKind::Demon {
-                            delta = Some(item_location.distance(&location) as i32);
+                            delta = Some(item_location.distance(&location));
                         }
                         if matches!(
                             item,
@@ -3097,7 +3091,7 @@ fn drainer_distances_with_context(
                                 ..
                             }
                         ) {
-                            let bomb_delta = (item_location.distance(&location) as i32 - 2).max(1);
+                            let bomb_delta = (item_location.distance(&location) - 2).max(1);
                             delta = Some(delta.map_or(bomb_delta, |base| base.min(bomb_delta)));
                         }
                     }
@@ -3116,7 +3110,7 @@ fn drainer_distances_with_context(
             }
             Item::Consumable { .. } => {
                 if use_legacy_formula {
-                    let delta = item_location.distance(&location) as i32;
+                    let delta = item_location.distance(&location);
                     if delta < min_danger {
                         min_danger = delta;
                     }
@@ -3201,7 +3195,7 @@ fn best_drainer_pickup_path_with_snapshot(
 ) -> Option<(i32, i32)> {
     let mut best: Option<(i32, i32)> = None;
     for candidate in &mana_snapshot.candidates {
-        let pickup_steps = from.distance(&candidate.location) as i32;
+        let pickup_steps = from.distance(&candidate.location);
         let score_steps = candidate.score_steps;
         let total_steps = pickup_steps + score_steps;
         let mana_value = candidate.mana.score(color);
@@ -3220,6 +3214,234 @@ fn best_drainer_pickup_path_with_snapshot(
         }
     }
     best
+}
+
+#[allow(dead_code)]
+fn drainer_immediate_threats(
+    board: &Board,
+    color: Color,
+    location: Location,
+    _use_legacy_formula: bool,
+) -> (i32, i32) {
+    drainer_immediate_threats_with_context(board, color, location, false, None)
+}
+
+fn drainer_immediate_threats_with_context(
+    board: &Board,
+    color: Color,
+    location: Location,
+    _use_legacy_formula: bool,
+    context: Option<&ScoringEvalContext>,
+) -> (i32, i32) {
+    if let Some(context) = context {
+        context.drainer_immediate_threats(board, color, location)
+    } else {
+        crate::models::automove_exact::drainer_immediate_threats(board, color, location)
+    }
+}
+
+#[allow(dead_code)]
+fn is_drainer_under_walk_threat(
+    board: &Board,
+    color: Color,
+    location: Location,
+    angel_nearby: bool,
+) -> bool {
+    is_drainer_under_walk_threat_with_context(board, color, location, angel_nearby, None)
+}
+
+fn is_drainer_under_walk_threat_with_context(
+    board: &Board,
+    color: Color,
+    location: Location,
+    angel_nearby: bool,
+    context: Option<&ScoringEvalContext>,
+) -> bool {
+    let board_hash = context.map_or_else(
+        || crate::models::automove_exact::exact_board_hash(board),
+        ScoringEvalContext::board_hash,
+    );
+    crate::models::automove_exact::is_drainer_under_walk_threat_with_hash(
+        board,
+        board_hash,
+        color,
+        location,
+        angel_nearby,
+    )
+}
+
+#[allow(dead_code)]
+fn is_drainer_under_danger_threat(
+    board: &Board,
+    color: Color,
+    location: Location,
+    angel_nearby: bool,
+    use_legacy_formula: bool,
+) -> bool {
+    is_drainer_under_danger_threat_with_context(
+        board,
+        color,
+        location,
+        angel_nearby,
+        use_legacy_formula,
+        None,
+    )
+}
+
+fn is_drainer_under_danger_threat_with_context(
+    board: &Board,
+    color: Color,
+    location: Location,
+    angel_nearby: bool,
+    use_legacy_formula: bool,
+    context: Option<&ScoringEvalContext>,
+) -> bool {
+    if use_legacy_formula {
+        return is_drainer_under_immediate_threat(board, color, location, angel_nearby);
+    }
+
+    let board_hash = context.map_or_else(
+        || crate::models::automove_exact::exact_board_hash(board),
+        ScoringEvalContext::board_hash,
+    );
+    if let Some(context) = context {
+        context.can_attack_target_on_board(
+            board,
+            color.other(),
+            color,
+            location,
+            Config::MONS_MOVES_PER_TURN,
+            true,
+        )
+    } else {
+        crate::models::automove_exact::can_attack_target_on_board_with_hash(
+            board,
+            board_hash,
+            color.other(),
+            color,
+            location,
+            Config::MONS_MOVES_PER_TURN,
+            true,
+        )
+    }
+}
+
+fn is_drainer_under_immediate_threat(
+    board: &Board,
+    color: Color,
+    location: Location,
+    angel_nearby: bool,
+) -> bool {
+    crate::models::automove_exact::is_drainer_under_immediate_threat(
+        board,
+        color,
+        location,
+        angel_nearby,
+    )
+}
+
+#[allow(dead_code)]
+fn nearest_enemy_mon_distance(board: &Board, color: Color, location: Location) -> i32 {
+    nearest_enemy_mon_distance_with_context(board, color, location, None)
+}
+
+fn nearest_enemy_mon_distance_with_context(
+    board: &Board,
+    color: Color,
+    location: Location,
+    context: Option<&ScoringEvalContext>,
+) -> i32 {
+    if let Some(summary) = context.and_then(|context| context.board_summary_if_enabled(board)) {
+        let best = summary.live_mon_locations[color_slot(color.other())]
+            .iter()
+            .map(|occupied| occupied.distance(&location))
+            .min()
+            .unwrap_or(Config::BOARD_SIZE);
+        return best.max(1);
+    }
+
+    let mut best = Config::BOARD_SIZE;
+    for (item_location, item) in board.occupied() {
+        if let Some(mon) = item.mon() {
+            if mon.color != color && !mon.is_fainted() {
+                let delta = item_location.distance(&location);
+                if delta < best {
+                    best = delta;
+                }
+            }
+        }
+    }
+    best.max(1)
+}
+
+#[allow(dead_code)]
+fn nearest_friendly_drainer_distance(board: &Board, color: Color, location: Location) -> i32 {
+    nearest_friendly_drainer_distance_with_context(board, color, location, None)
+}
+
+fn nearest_friendly_drainer_distance_with_context(
+    board: &Board,
+    color: Color,
+    location: Location,
+    context: Option<&ScoringEvalContext>,
+) -> i32 {
+    if let Some(summary) = context.and_then(|context| context.board_summary_if_enabled(board)) {
+        let best = summary.live_drainer_locations[color_slot(color)]
+            .iter()
+            .map(|occupied| occupied.distance(&location))
+            .min()
+            .unwrap_or(Config::BOARD_SIZE);
+        return best.max(1);
+    }
+
+    let mut best = Config::BOARD_SIZE;
+    for (item_location, item) in board.occupied() {
+        if let Some(mon) = item.mon() {
+            if mon.color == color && mon.kind == MonKind::Drainer && !mon.is_fainted() {
+                let delta = item_location.distance(&location);
+                if delta < best {
+                    best = delta;
+                }
+            }
+        }
+    }
+    best.max(1)
+}
+
+fn distance_to_location(location: Location, destination: Location) -> i32 {
+    location.distance(&destination) + 1
+}
+
+fn distance(location: Location, destination: Destination) -> i32 {
+    let distance = match destination {
+        Destination::Center => {
+            // Once within 1 step from center, extra centralization is not rewarded further.
+            (Config::BOARD_CENTER_INDEX - location.i).abs().max(1)
+        }
+        Destination::AnyClosestPool => {
+            let max_index = Config::MAX_LOCATION_INDEX;
+            let i = location.i;
+            let j = location.j;
+            i32::max(
+                i32::min(i, (max_index - i).abs()),
+                i32::min(j, (max_index - j).abs()),
+            )
+        }
+        Destination::ClosestPool(color) => {
+            let pool_row = if color == Color::White {
+                Config::MAX_LOCATION_INDEX
+            } else {
+                0
+            };
+            let i = location.i;
+            let j = location.j;
+            i32::max(
+                (pool_row - i).abs(),
+                i32::min(j, (Config::MAX_LOCATION_INDEX - j).abs()),
+            )
+        }
+    };
+    distance + 1
 }
 
 #[cfg(test)]
@@ -5036,234 +5258,4 @@ mod tests {
         );
         assert_eq!(original.total, mirrored_eval.total);
     }
-}
-
-#[allow(dead_code)]
-fn drainer_immediate_threats(
-    board: &Board,
-    color: Color,
-    location: Location,
-    _use_legacy_formula: bool,
-) -> (i32, i32) {
-    drainer_immediate_threats_with_context(board, color, location, false, None)
-}
-
-fn drainer_immediate_threats_with_context(
-    board: &Board,
-    color: Color,
-    location: Location,
-    _use_legacy_formula: bool,
-    context: Option<&ScoringEvalContext>,
-) -> (i32, i32) {
-    if let Some(context) = context {
-        context.drainer_immediate_threats(board, color, location)
-    } else {
-        crate::models::automove_exact::drainer_immediate_threats(board, color, location)
-    }
-}
-
-#[allow(dead_code)]
-fn is_drainer_under_walk_threat(
-    board: &Board,
-    color: Color,
-    location: Location,
-    angel_nearby: bool,
-) -> bool {
-    is_drainer_under_walk_threat_with_context(board, color, location, angel_nearby, None)
-}
-
-fn is_drainer_under_walk_threat_with_context(
-    board: &Board,
-    color: Color,
-    location: Location,
-    angel_nearby: bool,
-    context: Option<&ScoringEvalContext>,
-) -> bool {
-    let board_hash = context.map_or_else(
-        || crate::models::automove_exact::exact_board_hash(board),
-        ScoringEvalContext::board_hash,
-    );
-    crate::models::automove_exact::is_drainer_under_walk_threat_with_hash(
-        board,
-        board_hash,
-        color,
-        location,
-        angel_nearby,
-    )
-}
-
-#[allow(dead_code)]
-fn is_drainer_under_danger_threat(
-    board: &Board,
-    color: Color,
-    location: Location,
-    angel_nearby: bool,
-    use_legacy_formula: bool,
-) -> bool {
-    is_drainer_under_danger_threat_with_context(
-        board,
-        color,
-        location,
-        angel_nearby,
-        use_legacy_formula,
-        None,
-    )
-}
-
-fn is_drainer_under_danger_threat_with_context(
-    board: &Board,
-    color: Color,
-    location: Location,
-    angel_nearby: bool,
-    use_legacy_formula: bool,
-    context: Option<&ScoringEvalContext>,
-) -> bool {
-    if use_legacy_formula {
-        return is_drainer_under_immediate_threat(board, color, location, angel_nearby);
-    }
-
-    let board_hash = context.map_or_else(
-        || crate::models::automove_exact::exact_board_hash(board),
-        ScoringEvalContext::board_hash,
-    );
-    if let Some(context) = context {
-        context.can_attack_target_on_board(
-            board,
-            color.other(),
-            color,
-            location,
-            Config::MONS_MOVES_PER_TURN,
-            true,
-        )
-    } else {
-        crate::models::automove_exact::can_attack_target_on_board_with_hash(
-            board,
-            board_hash,
-            color.other(),
-            color,
-            location,
-            Config::MONS_MOVES_PER_TURN,
-            true,
-        )
-    }
-}
-
-fn is_drainer_under_immediate_threat(
-    board: &Board,
-    color: Color,
-    location: Location,
-    angel_nearby: bool,
-) -> bool {
-    crate::models::automove_exact::is_drainer_under_immediate_threat(
-        board,
-        color,
-        location,
-        angel_nearby,
-    )
-}
-
-#[allow(dead_code)]
-fn nearest_enemy_mon_distance(board: &Board, color: Color, location: Location) -> i32 {
-    nearest_enemy_mon_distance_with_context(board, color, location, None)
-}
-
-fn nearest_enemy_mon_distance_with_context(
-    board: &Board,
-    color: Color,
-    location: Location,
-    context: Option<&ScoringEvalContext>,
-) -> i32 {
-    if let Some(summary) = context.and_then(|context| context.board_summary_if_enabled(board)) {
-        let best = summary.live_mon_locations[color_slot(color.other())]
-            .iter()
-            .map(|occupied| occupied.distance(&location) as i32)
-            .min()
-            .unwrap_or(Config::BOARD_SIZE as i32);
-        return best.max(1);
-    }
-
-    let mut best = Config::BOARD_SIZE as i32;
-    for (item_location, item) in board.occupied() {
-        if let Some(mon) = item.mon() {
-            if mon.color != color && !mon.is_fainted() {
-                let delta = item_location.distance(&location) as i32;
-                if delta < best {
-                    best = delta;
-                }
-            }
-        }
-    }
-    best.max(1)
-}
-
-#[allow(dead_code)]
-fn nearest_friendly_drainer_distance(board: &Board, color: Color, location: Location) -> i32 {
-    nearest_friendly_drainer_distance_with_context(board, color, location, None)
-}
-
-fn nearest_friendly_drainer_distance_with_context(
-    board: &Board,
-    color: Color,
-    location: Location,
-    context: Option<&ScoringEvalContext>,
-) -> i32 {
-    if let Some(summary) = context.and_then(|context| context.board_summary_if_enabled(board)) {
-        let best = summary.live_drainer_locations[color_slot(color)]
-            .iter()
-            .map(|occupied| occupied.distance(&location) as i32)
-            .min()
-            .unwrap_or(Config::BOARD_SIZE as i32);
-        return best.max(1);
-    }
-
-    let mut best = Config::BOARD_SIZE as i32;
-    for (item_location, item) in board.occupied() {
-        if let Some(mon) = item.mon() {
-            if mon.color == color && mon.kind == MonKind::Drainer && !mon.is_fainted() {
-                let delta = item_location.distance(&location) as i32;
-                if delta < best {
-                    best = delta;
-                }
-            }
-        }
-    }
-    best.max(1)
-}
-
-fn distance_to_location(location: Location, destination: Location) -> i32 {
-    location.distance(&destination) as i32 + 1
-}
-
-fn distance(location: Location, destination: Destination) -> i32 {
-    let distance = match destination {
-        Destination::Center => {
-            // Once within 1 step from center, extra centralization is not rewarded further.
-            (Config::BOARD_CENTER_INDEX as i32 - location.i as i32)
-                .abs()
-                .max(1)
-        }
-        Destination::AnyClosestPool => {
-            let max_index = Config::MAX_LOCATION_INDEX as i32;
-            let i = location.i as i32;
-            let j = location.j as i32;
-            i32::max(
-                i32::min(i, (max_index - i).abs()),
-                i32::min(j, (max_index - j).abs()),
-            )
-        }
-        Destination::ClosestPool(color) => {
-            let pool_row = if color == Color::White {
-                Config::MAX_LOCATION_INDEX as i32
-            } else {
-                0
-            };
-            let i = location.i as i32;
-            let j = location.j as i32;
-            i32::max(
-                (pool_row - i).abs(),
-                i32::min(j, (Config::MAX_LOCATION_INDEX as i32 - j).abs()),
-            )
-        }
-    };
-    distance + 1
 }

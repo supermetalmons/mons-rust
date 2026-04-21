@@ -414,11 +414,17 @@ fn smart_automove_pro_reliability_live_nonwin_root_probe() {
         clear_turn_engine_plan_cache();
         clear_turn_engine_diagnostics();
         clear_turn_engine_selector_diagnostics();
-        let frontier_probe =
-            runtime_decision_probe(frontier_profile.as_str(), SmartAutomovePreference::Pro, &game);
+        let frontier_probe = runtime_decision_probe(
+            frontier_profile.as_str(),
+            SmartAutomovePreference::Pro,
+            &game,
+        );
         let frontier_advisor = pro_v2_root_advisor_decision_snapshot();
-        let frontier_roots =
-            top_root_details(frontier_profile.as_str(), SmartAutomovePreference::Pro, &game);
+        let frontier_roots = top_root_details(
+            frontier_profile.as_str(),
+            SmartAutomovePreference::Pro,
+            &game,
+        );
 
         clear_exact_state_analysis_cache();
         clear_exact_query_diagnostics();
@@ -427,8 +433,7 @@ fn smart_automove_pro_reliability_live_nonwin_root_probe() {
         clear_turn_engine_selector_diagnostics();
         let shipping_probe =
             runtime_decision_probe(shipping_profile.as_str(), case.shipping_mode, &game);
-        let shipping_roots =
-            top_root_details(shipping_profile.as_str(), case.shipping_mode, &game);
+        let shipping_roots = top_root_details(shipping_profile.as_str(), case.shipping_mode, &game);
 
         println!(
             "LIVE_NONWIN_ROOT label={} frontier_profile={} shipping_profile={} shipping_mode={:?} frontier_probe={:?} frontier_advisor={:?} frontier_roots={:?} shipping_probe={:?} shipping_roots={:?}",
@@ -659,10 +664,6 @@ fn smart_automove_pro_reliability_hotspot_probe() {
 
     let cases = vec![
         probe_case_from_fixture(
-            "primary_spirit_setup",
-            primary_pro_fixture_by_id("primary_spirit_setup"),
-        ),
-        probe_case_from_fixture(
             "primary_black_loss_opening_a_ply19",
             primary_pro_fixture_by_id("primary_black_loss_opening_a_ply19"),
         ),
@@ -792,9 +793,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
         case_from_fixture("primary_black_mana_bridge_ply20"),
         case_from_fixture("primary_black_spirit_bridge_ply19"),
         case_from_fixture("primary_black_negative_deny_ply4"),
-        case_from_fixture("primary_spirit_setup"),
-        case_from_fixture("primary_pvs_sensitive_search"),
-        case_from_fixture("primary_black_reliability_opening_3_ply4"),
         AdvisorTraceCase {
             label: "duel_trace_pro_white_opening_tail",
             game: MonsGame::from_fen(
@@ -1064,9 +1062,6 @@ fn smart_automove_pro_triage_retained_churn_probe() {
     let frontier_profile = "frontier_pro_v2_guarded";
     let shipping_profile = "shipping_pro_search";
     let fixture_ids = [
-        "primary_spirit_setup",
-        "primary_pvs_sensitive_search",
-        "primary_black_reliability_opening_3_ply4",
         "primary_black_negative_deny_ply4",
         "primary_black_late_accepted_head_ply4",
         "primary_black_turn_four_action_mana_ply15",
@@ -1219,9 +1214,6 @@ fn smart_automove_pro_triage_retained_churn_probe() {
 #[ignore = "diagnostic: inspect forced-turn-engine probe acceptance on retained churn fixtures"]
 fn smart_automove_pro_forced_turn_engine_retained_churn_probe() {
     let fixture_ids = [
-        "primary_spirit_setup",
-        "primary_pvs_sensitive_search",
-        "primary_black_reliability_opening_3_ply4",
         "primary_black_negative_deny_ply4",
         "primary_black_late_accepted_head_ply4",
         "primary_black_turn_four_action_mana_ply15",

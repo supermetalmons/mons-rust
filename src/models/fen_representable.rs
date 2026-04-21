@@ -443,85 +443,6 @@ impl NextInput {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const LEGACY_CLASSIC_INITIAL_FEN: &str =
-        "0 0 w 0 0 0 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n03E0xA0xD0xS0xY0xn03";
-
-    #[test]
-    fn legacy_game_fen_without_variant_defaults_to_classic() {
-        let game = MonsGame::from_fen(LEGACY_CLASSIC_INITIAL_FEN, false)
-            .expect("legacy classic FEN should stay supported");
-        assert_eq!(game.variant(), GameVariant::Classic);
-        assert_eq!(game.fen(), LEGACY_CLASSIC_INITIAL_FEN);
-    }
-
-    #[test]
-    fn classic_game_fen_round_trips_without_variant_field() {
-        let game = MonsGame::new(false, GameVariant::Classic);
-        let fen = game.fen();
-        assert_eq!(fen, LEGACY_CLASSIC_INITIAL_FEN);
-        let roundtrip =
-            MonsGame::from_fen(fen.as_str(), false).expect("classic game FEN should round-trip");
-        assert_eq!(roundtrip.variant(), GameVariant::Classic);
-        assert_eq!(roundtrip.fen(), fen);
-    }
-
-    #[test]
-    fn classic_game_fen_accepts_explicit_variant_field_and_normalizes() {
-        let fen = format!("{LEGACY_CLASSIC_INITIAL_FEN} 0");
-        let roundtrip = MonsGame::from_fen(fen.as_str(), false)
-            .expect("classic game FEN with explicit variant should round-trip");
-        assert_eq!(roundtrip.variant(), GameVariant::Classic);
-        assert_eq!(roundtrip.fen(), LEGACY_CLASSIC_INITIAL_FEN);
-    }
-
-    #[test]
-    fn non_classic_variant_game_fens_round_trip() {
-        let cases = [
-            (GameVariant::SwappedManaRows, 1, Location::new(3, 3)),
-            (GameVariant::OffsetArcManaRows, 2, Location::new(4, 2)),
-            (GameVariant::CenterSpokeManaRows, 3, Location::new(3, 5)),
-            (GameVariant::AlternatingManaRows, 4, Location::new(4, 1)),
-            (GameVariant::InnerWedgeManaRows, 5, Location::new(4, 5)),
-            (GameVariant::OuterWedgeManaRows, 6, Location::new(3, 5)),
-        ];
-
-        for (variant, id, mana_location) in cases {
-            let game = MonsGame::new(false, variant);
-            let fen = game.fen();
-            assert!(
-                fen.ends_with(format!(" {id}").as_str()),
-                "{variant:?} FEN should include its explicit variant id"
-            );
-            let roundtrip = MonsGame::from_fen(fen.as_str(), false)
-                .expect("non-classic game FEN should round-trip");
-            assert_eq!(roundtrip.variant(), variant);
-            assert_eq!(roundtrip.fen(), fen);
-            assert_eq!(
-                roundtrip.board.square(mana_location),
-                Square::ManaBase {
-                    color: Color::Black,
-                }
-            );
-            assert_eq!(
-                roundtrip.board.item(mana_location).copied(),
-                Some(Item::Mana {
-                    mana: Mana::Regular(Color::Black),
-                })
-            );
-        }
-    }
-
-    #[test]
-    fn game_fen_rejects_unknown_variant_ids() {
-        let fen = format!("{LEGACY_CLASSIC_INITIAL_FEN} 99");
-        assert!(MonsGame::from_fen(fen.as_str(), false).is_none());
-    }
-}
-
 impl FenRepresentable for NextInputKind {
     fn fen(&self) -> String {
         match self {
@@ -627,7 +548,7 @@ impl Input {
         if fen.is_empty() {
             vec![]
         } else {
-            fen.split(';').filter_map(|f| Input::from_fen(f)).collect()
+            fen.split(';').filter_map(Input::from_fen).collect()
         }
     }
 }
@@ -667,9 +588,9 @@ impl Output {
             "l" => {
                 let locations = data
                     .split('/')
-                    .filter_map(|f| Location::from_fen(f))
+                    .filter_map(Location::from_fen)
                     .collect::<Vec<_>>();
-                if locations.len() > 0 {
+                if !locations.is_empty() {
                     Some(Output::LocationsToStartFrom(locations))
                 } else {
                     None
@@ -678,9 +599,9 @@ impl Output {
             "n" => {
                 let next_inputs = data
                     .split('/')
-                    .filter_map(|f| NextInput::from_fen(f))
+                    .filter_map(NextInput::from_fen)
                     .collect::<Vec<_>>();
-                if next_inputs.len() > 0 {
+                if !next_inputs.is_empty() {
                     Some(Output::NextInputOptions(next_inputs))
                 } else {
                     None
@@ -689,9 +610,9 @@ impl Output {
             "e" => {
                 let events = data
                     .split('/')
-                    .filter_map(|f| Event::from_fen(f))
+                    .filter_map(Event::from_fen)
                     .collect::<Vec<_>>();
-                if events.len() > 0 {
+                if !events.is_empty() {
                     Some(Output::Events(events))
                 } else {
                     None
@@ -699,5 +620,84 @@ impl Output {
             }
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const LEGACY_CLASSIC_INITIAL_FEN: &str =
+        "0 0 w 0 0 0 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n03E0xA0xD0xS0xY0xn03";
+
+    #[test]
+    fn legacy_game_fen_without_variant_defaults_to_classic() {
+        let game = MonsGame::from_fen(LEGACY_CLASSIC_INITIAL_FEN, false)
+            .expect("legacy classic FEN should stay supported");
+        assert_eq!(game.variant(), GameVariant::Classic);
+        assert_eq!(game.fen(), LEGACY_CLASSIC_INITIAL_FEN);
+    }
+
+    #[test]
+    fn classic_game_fen_round_trips_without_variant_field() {
+        let game = MonsGame::new(false, GameVariant::Classic);
+        let fen = game.fen();
+        assert_eq!(fen, LEGACY_CLASSIC_INITIAL_FEN);
+        let roundtrip =
+            MonsGame::from_fen(fen.as_str(), false).expect("classic game FEN should round-trip");
+        assert_eq!(roundtrip.variant(), GameVariant::Classic);
+        assert_eq!(roundtrip.fen(), fen);
+    }
+
+    #[test]
+    fn classic_game_fen_accepts_explicit_variant_field_and_normalizes() {
+        let fen = format!("{LEGACY_CLASSIC_INITIAL_FEN} 0");
+        let roundtrip = MonsGame::from_fen(fen.as_str(), false)
+            .expect("classic game FEN with explicit variant should round-trip");
+        assert_eq!(roundtrip.variant(), GameVariant::Classic);
+        assert_eq!(roundtrip.fen(), LEGACY_CLASSIC_INITIAL_FEN);
+    }
+
+    #[test]
+    fn non_classic_variant_game_fens_round_trip() {
+        let cases = [
+            (GameVariant::SwappedManaRows, 1, Location::new(3, 3)),
+            (GameVariant::OffsetArcManaRows, 2, Location::new(4, 2)),
+            (GameVariant::CenterSpokeManaRows, 3, Location::new(3, 5)),
+            (GameVariant::AlternatingManaRows, 4, Location::new(4, 1)),
+            (GameVariant::InnerWedgeManaRows, 5, Location::new(4, 5)),
+            (GameVariant::OuterWedgeManaRows, 6, Location::new(3, 5)),
+        ];
+
+        for (variant, id, mana_location) in cases {
+            let game = MonsGame::new(false, variant);
+            let fen = game.fen();
+            assert!(
+                fen.ends_with(format!(" {id}").as_str()),
+                "{variant:?} FEN should include its explicit variant id"
+            );
+            let roundtrip = MonsGame::from_fen(fen.as_str(), false)
+                .expect("non-classic game FEN should round-trip");
+            assert_eq!(roundtrip.variant(), variant);
+            assert_eq!(roundtrip.fen(), fen);
+            assert_eq!(
+                roundtrip.board.square(mana_location),
+                Square::ManaBase {
+                    color: Color::Black,
+                }
+            );
+            assert_eq!(
+                roundtrip.board.item(mana_location).copied(),
+                Some(Item::Mana {
+                    mana: Mana::Regular(Color::Black),
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn game_fen_rejects_unknown_variant_ids() {
+        let fen = format!("{LEGACY_CLASSIC_INITIAL_FEN} 99");
+        assert!(MonsGame::from_fen(fen.as_str(), false).is_none());
     }
 }

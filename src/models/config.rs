@@ -622,7 +622,8 @@ mod tests {
     }
 
     fn regular_mana_item_locations_for_board(board: &Board, color: Color) -> HashSet<Location> {
-        board.occupied()
+        board
+            .occupied()
             .filter_map(|(location, item)| match item {
                 Item::Mana {
                     mana: Mana::Regular(mana_color),

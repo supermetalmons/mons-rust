@@ -2311,6 +2311,12 @@ pub(crate) struct LegalInputTransition {
     pub events: Vec<Event>,
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
+type RootMoveRepresentativeSpec = (ProV2RootAdvisorReasonCode, fn(&ScoredRootMove) -> bool);
+
+#[cfg(any(target_arch = "wasm32", test))]
+type RootEvaluationRepresentativeSpec = (ProV2RootAdvisorReasonCode, fn(&RootEvaluation) -> bool);
+
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AsyncSmartSearchPhase {
@@ -2320,9 +2326,10 @@ enum AsyncSmartSearchPhase {
 }
 
 #[cfg(test)]
+#[allow(clippy::large_enum_variant)]
 enum AsyncSmartSearchStart {
     Immediate(OutputModel),
-    Pending(AsyncSmartSearchState),
+    Pending(Box<AsyncSmartSearchState>),
 }
 
 #[cfg(test)]
@@ -2367,11 +2374,7 @@ impl MonsGameModel {
     }
 
     pub fn from_fen(fen: &str) -> Option<MonsGameModel> {
-        if let Some(game) = MonsGame::from_fen(fen, true) {
-            Some(Self::with_game(game))
-        } else {
-            return None;
-        }
+        MonsGame::from_fen(fen, true).map(Self::with_game)
     }
 
     #[wasm_bindgen(js_name = fromFenForSimulation)]
@@ -2408,7 +2411,7 @@ impl MonsGameModel {
     }
 
     pub fn fen(&self) -> String {
-        return self.game.fen();
+        self.game.fen()
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -2428,7 +2431,7 @@ impl MonsGameModel {
     }
 
     pub fn automove(&mut self) -> OutputModel {
-        return Self::automove_game(&mut self.game);
+        Self::automove_game(&mut self.game)
     }
 
     fn automove_game(game: &mut MonsGame) -> OutputModel {
@@ -2497,11 +2500,11 @@ impl MonsGameModel {
         }
         let input_fen = Input::fen_from_array(&inputs);
         let output = self.game.process_input(inputs, false, false);
-        return OutputModel::new(output, input_fen.as_str());
+        OutputModel::new(output, input_fen.as_str())
     }
 
     pub fn can_takeback(&self, color: Color) -> bool {
-        return self.game.can_takeback(color);
+        self.game.can_takeback(color)
     }
 
     #[wasm_bindgen(js_name = setVerboseTracking)]
@@ -2518,13 +2521,13 @@ impl MonsGameModel {
         let inputs: Vec<Input> = vec![Input::Takeback];
         let input_fen = Input::fen_from_array(&inputs);
         let output = self.game.process_input(inputs, false, false);
-        return OutputModel::new(output, input_fen.as_str());
+        OutputModel::new(output, input_fen.as_str())
     }
 
     pub fn process_input_fen(&mut self, input_fen: &str) -> OutputModel {
         let inputs = Input::array_from_fen(input_fen);
         let output = self.game.process_input(inputs, false, false);
-        return OutputModel::new(output, input_fen);
+        OutputModel::new(output, input_fen)
     }
 
     pub fn remove_item(&mut self, location: Location) {
@@ -2533,28 +2536,24 @@ impl MonsGameModel {
     }
 
     pub fn item(&self, at: Location) -> Option<ItemModel> {
-        if let Some(item) = self.game.board.item(at) {
-            return Some(ItemModel::new(item));
-        } else {
-            return None;
-        }
+        self.game.board.item(at).map(ItemModel::new)
     }
 
     pub fn square(&self, at: Location) -> SquareModel {
         let square = self.game.board.square(at);
-        return SquareModel::new(&square);
+        SquareModel::new(&square)
     }
 
     pub fn is_later_than(&self, other_fen: &str) -> bool {
         if let Some(other_game) = MonsGame::from_fen(other_fen, false) {
-            return self.game.is_later_than(&other_game);
+            self.game.is_later_than(&other_game)
         } else {
-            return true;
+            true
         }
     }
 
     pub fn is_moves_verified(&self) -> bool {
-        return self.game.is_moves_verified;
+        self.game.is_moves_verified
     }
 
     pub fn verify_moves(&mut self, flat_moves_string_w: &str, flat_moves_string_b: &str) -> bool {
@@ -2603,30 +2602,30 @@ impl MonsGameModel {
                 self.game.verbose_tracking_entities.shrink_to_fit();
             }
             self.game.is_moves_verified = true;
-            return true;
+            true
         } else {
-            return false;
+            false
         }
     }
 
     pub fn active_color(&self) -> Color {
-        return self.game.active_color;
+        self.game.active_color
     }
 
     pub fn winner_color(&self) -> Option<Color> {
-        return self.game.winner_color();
+        self.game.winner_color()
     }
 
     pub fn black_score(&self) -> i32 {
-        return self.game.black_score;
+        self.game.black_score
     }
 
     pub fn white_score(&self) -> i32 {
-        return self.game.white_score;
+        self.game.white_score
     }
 
     pub fn turn_number(&self) -> i32 {
-        return self.game.turn_number;
+        self.game.turn_number
     }
 
     pub fn inactive_player_items_counters(&self) -> Vec<i32> {
@@ -2634,7 +2633,7 @@ impl MonsGameModel {
             Color::White => self.game.white_potions_count,
             Color::Black => self.game.black_potions_count,
         };
-        return [0, 0, 0, player_potions_count].to_vec();
+        [0, 0, 0, player_potions_count].to_vec()
     }
 
     pub fn takeback_fens(&self) -> Vec<String> {
@@ -2643,13 +2642,13 @@ impl MonsGameModel {
 
     pub fn available_move_kinds(&self) -> Vec<i32> {
         let map = self.game.available_move_kinds();
-        return [
+        [
             map[&AvailableMoveKind::MonMove],
             map[&AvailableMoveKind::ManaMove],
             map[&AvailableMoveKind::Action],
             map[&AvailableMoveKind::Potion],
         ]
-        .to_vec();
+        .to_vec()
     }
 
     pub fn locations_with_content(&self) -> Vec<Location> {
@@ -2665,14 +2664,14 @@ impl MonsGameModel {
         locations.extend(mons_bases);
         locations.sort();
         locations.dedup();
-        return locations;
+        locations
     }
 
     pub fn verbose_tracking_entities(&self) -> Vec<VerboseTrackingEntityModel> {
         self.game
             .verbose_tracking_entities
             .iter()
-            .map(|e| VerboseTrackingEntityModel::new(e))
+            .map(VerboseTrackingEntityModel::new)
             .collect()
     }
 }
@@ -2843,11 +2842,11 @@ impl MonsGameModel {
         }
         let perspective = self.game.active_color;
         let game = self.game.clone_for_simulation();
-        AsyncSmartSearchStart::Pending(Self::new_async_smart_search_state(
+        AsyncSmartSearchStart::Pending(Box::new(Self::new_async_smart_search_state(
             game,
             perspective,
             config,
-        ))
+        )))
     }
 
     fn shipping_search_config_for_preference(
@@ -2868,7 +2867,7 @@ impl MonsGameModel {
     ) -> OutputModel {
         let mut state = match self.begin_async_smart_search(preference) {
             AsyncSmartSearchStart::Immediate(output) => return output,
-            AsyncSmartSearchStart::Pending(state) => state,
+            AsyncSmartSearchStart::Pending(state) => *state,
         };
 
         for _ in 0..1_000_000usize {
@@ -3688,13 +3687,13 @@ impl MonsGameModel {
         }
         gain += exact_turn.same_turn_score_window_value.max(0) * 20;
         if let Some(steps) = exact_turn.safe_supermana_progress_steps {
-            gain += 12i32.saturating_sub(steps.max(0).min(12)) * 4;
+            gain += 12i32.saturating_sub(steps.clamp(0, 12)) * 4;
         }
         if let Some(steps) = exact_turn.safe_opponent_mana_progress_steps {
-            gain += 12i32.saturating_sub(steps.max(0).min(12)) * 4;
+            gain += 12i32.saturating_sub(steps.clamp(0, 12)) * 4;
         }
         if let Some(steps) = exact_turn.score_path_best_steps {
-            gain += 8i32.saturating_sub(steps.max(0).min(8)) * 3;
+            gain += 8i32.saturating_sub(steps.clamp(0, 8)) * 3;
         }
         gain
     }
@@ -4264,6 +4263,7 @@ impl MonsGameModel {
             || Self::events_spirit_opponent_mana_setup(events, board_after, perspective)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn interview_root_soft_priority(
         config: AutomoveSearchConfig,
         supermana_progress: bool,
@@ -4827,9 +4827,7 @@ impl MonsGameModel {
         let after_drainer_steps = Self::approximate_best_drainer_to_mana_steps(after, perspective);
         if after_drainer_steps
             .zip(before_drainer_steps)
-            .map_or(false, |(after_steps, before_steps)| {
-                after_steps < before_steps
-            })
+            .is_some_and(|(after_steps, before_steps)| after_steps < before_steps)
         {
             return true;
         }
@@ -4838,9 +4836,7 @@ impl MonsGameModel {
         let after_carrier_steps = Self::approximate_best_carrier_steps(after, perspective);
         after_carrier_steps
             .zip(before_carrier_steps)
-            .map_or(false, |(after_steps, before_steps)| {
-                after_steps < before_steps
-            })
+            .is_some_and(|(after_steps, before_steps)| after_steps < before_steps)
     }
 
     fn collect_targeted_spirit_score_inputs(
@@ -4914,7 +4910,7 @@ impl MonsGameModel {
                         after_turn.map_or(0, |turn| turn.same_turn_score_window_value);
                     let scores_now = if opponent_mana_only {
                         Self::events_score_opponent_mana(&events, perspective)
-                            || after_turn.map_or(false, |turn| turn.safe_opponent_mana_progress)
+                            || after_turn.is_some_and(|turn| turn.safe_opponent_mana_progress)
                     } else {
                         Self::score_for_color(&after_game, perspective) > score_before
                             || after_same_turn_score_window_value > 0
@@ -6282,14 +6278,14 @@ impl MonsGameModel {
         let mut selected = vec![false; scored_states.len()];
         selected[preserve_index] = true;
         let mut selected_count = 1usize;
-        for index in 0..scored_states.len() {
+        for selected_entry in selected.iter_mut() {
             if selected_count >= limit {
                 break;
             }
-            if selected[index] {
+            if *selected_entry {
                 continue;
             }
-            selected[index] = true;
+            *selected_entry = true;
             selected_count += 1;
         }
 
@@ -6868,15 +6864,10 @@ impl MonsGameModel {
             return None;
         }
 
-        let Some(candidate_inputs) = plan.compiled_chunks.first() else {
-            return None;
-        };
-        let Some(candidate_index) = root_moves
+        let candidate_inputs = plan.compiled_chunks.first()?;
+        let candidate_index = root_moves
             .iter()
-            .position(|candidate| candidate.inputs.as_slice() == candidate_inputs.as_slice())
-        else {
-            return None;
-        };
+            .position(|candidate| candidate.inputs.as_slice() == candidate_inputs.as_slice())?;
         let candidate = &root_moves[candidate_index];
         if Self::turn_engine_root_move_is_unsafe(candidate) {
             return None;
@@ -7236,15 +7227,15 @@ impl MonsGameModel {
                 && config.enable_turn_engine_low_budget_guard
                 && Self::pro_v2_is_early_white_turn_start(game);
         if clamp_early_white_turn_start {
-            engine.own_seed_cap = engine.own_seed_cap.min(14).max(1);
-            engine.own_beam = engine.own_beam.min(5).max(1);
-            engine.per_node_family_cap = engine.per_node_family_cap.min(4).max(1);
-            engine.step_cap = engine.step_cap.min(6).max(1);
-            engine.opponent_seed_cap = engine.opponent_seed_cap.min(1).max(1);
-            engine.opponent_beam = engine.opponent_beam.min(1).max(1);
-            engine.reply_seed_cap = engine.reply_seed_cap.min(1).max(1);
-            engine.reply_beam = engine.reply_beam.min(1).max(1);
-            engine.expansion_cap = engine.expansion_cap.min(48).max(1);
+            engine.own_seed_cap = engine.own_seed_cap.clamp(1, 14);
+            engine.own_beam = engine.own_beam.clamp(1, 5);
+            engine.per_node_family_cap = engine.per_node_family_cap.clamp(1, 4);
+            engine.step_cap = engine.step_cap.clamp(1, 6);
+            engine.opponent_seed_cap = 1;
+            engine.opponent_beam = 1;
+            engine.reply_seed_cap = 1;
+            engine.reply_beam = 1;
+            engine.expansion_cap = engine.expansion_cap.clamp(1, 48);
         }
         engine
     }
@@ -7253,24 +7244,19 @@ impl MonsGameModel {
     fn turn_engine_rerank_config(config: AutomoveSearchConfig) -> TurnEngineConfig {
         let mut engine = Self::turn_engine_config_from_search_config(config);
         let pro_v2 = Self::turn_engine_mode_uses_macro_plans(config.turn_engine_mode);
-        engine.own_seed_cap = engine.own_seed_cap.min(if pro_v2 { 12 } else { 8 }).max(1);
-        engine.own_beam = engine.own_beam.min(if pro_v2 { 5 } else { 4 }).max(1);
+        engine.own_seed_cap = engine.own_seed_cap.clamp(1, if pro_v2 { 12 } else { 8 });
+        engine.own_beam = engine.own_beam.clamp(1, if pro_v2 { 5 } else { 4 });
         engine.per_node_family_cap = engine
             .per_node_family_cap
-            .min(if pro_v2 { 4 } else { 3 })
-            .max(1);
-        engine.step_cap = engine.step_cap.min(5).max(1);
+            .clamp(1, if pro_v2 { 4 } else { 3 });
+        engine.step_cap = engine.step_cap.clamp(1, 5);
         engine.opponent_seed_cap = engine
             .opponent_seed_cap
-            .min(if pro_v2 { 6 } else { 4 })
-            .max(1);
-        engine.opponent_beam = engine.opponent_beam.min(if pro_v2 { 3 } else { 2 }).max(1);
-        engine.reply_seed_cap = engine.reply_seed_cap.min(if pro_v2 { 3 } else { 2 }).max(1);
+            .clamp(1, if pro_v2 { 6 } else { 4 });
+        engine.opponent_beam = engine.opponent_beam.clamp(1, if pro_v2 { 3 } else { 2 });
+        engine.reply_seed_cap = engine.reply_seed_cap.clamp(1, if pro_v2 { 3 } else { 2 });
         engine.reply_beam = if pro_v2 { 2 } else { 1 };
-        engine.expansion_cap = engine
-            .expansion_cap
-            .min(if pro_v2 { 144 } else { 96 })
-            .max(1);
+        engine.expansion_cap = engine.expansion_cap.clamp(1, if pro_v2 { 144 } else { 96 });
         engine
     }
 
@@ -7281,24 +7267,19 @@ impl MonsGameModel {
     ) -> TurnEngineConfig {
         let mut engine = Self::turn_engine_config_for_game(game, config);
         let pro_v2 = Self::turn_engine_mode_uses_macro_plans(config.turn_engine_mode);
-        engine.own_seed_cap = engine.own_seed_cap.min(if pro_v2 { 8 } else { 6 }).max(1);
-        engine.own_beam = engine.own_beam.min(if pro_v2 { 3 } else { 2 }).max(1);
+        engine.own_seed_cap = engine.own_seed_cap.clamp(1, if pro_v2 { 8 } else { 6 });
+        engine.own_beam = engine.own_beam.clamp(1, if pro_v2 { 3 } else { 2 });
         engine.per_node_family_cap = engine
             .per_node_family_cap
-            .min(if pro_v2 { 3 } else { 2 })
-            .max(1);
-        engine.step_cap = engine.step_cap.min(4).max(1);
+            .clamp(1, if pro_v2 { 3 } else { 2 });
+        engine.step_cap = engine.step_cap.clamp(1, 4);
         engine.opponent_seed_cap = engine
             .opponent_seed_cap
-            .min(if pro_v2 { 2 } else { 1 })
-            .max(1);
+            .clamp(1, if pro_v2 { 2 } else { 1 });
         engine.opponent_beam = 1;
         engine.reply_seed_cap = 1;
         engine.reply_beam = 1;
-        engine.expansion_cap = engine
-            .expansion_cap
-            .min(if pro_v2 { 64 } else { 48 })
-            .max(1);
+        engine.expansion_cap = engine.expansion_cap.clamp(1, if pro_v2 { 64 } else { 48 });
         engine
     }
 
@@ -7682,9 +7663,9 @@ impl MonsGameModel {
                 engine_config,
                 family,
             );
-            if !Self::pro_v2_selected_followup_projection_live(config) {
-                base_utility.max(base_state_utility)
-            } else if !Self::can_turn_engine_project_root(selected, perspective) {
+            if !Self::pro_v2_selected_followup_projection_live(config)
+                || !Self::can_turn_engine_project_root(selected, perspective)
+            {
                 base_utility.max(base_state_utility)
             } else {
                 let selected_has_followup_surface = selected.own_drainer_vulnerable
@@ -10142,11 +10123,13 @@ impl MonsGameModel {
             };
         });
         #[cfg(test)]
-        update_top_level_turn_engine_selector_disable_reason(if config.enable_turn_engine_selector {
-            "not_disabled"
-        } else {
-            "pre_disabled"
-        });
+        update_top_level_turn_engine_selector_disable_reason(
+            if config.enable_turn_engine_selector {
+                "not_disabled"
+            } else {
+                "pre_disabled"
+            },
+        );
         let mut prechecked_cached_inputs = None;
         if Self::pro_v2_low_budget_guard_live(config) {
             prechecked_cached_inputs = turn_engine_cached_step(game, live_turn_engine_config);
@@ -10220,12 +10203,13 @@ impl MonsGameModel {
             };
         });
         #[cfg(test)]
-        update_top_level_turn_engine_selector_last_return_stage(if config.enable_turn_engine_selector
-        {
-            "engine_enabled"
-        } else {
-            "engine_disabled"
-        });
+        update_top_level_turn_engine_selector_last_return_stage(
+            if config.enable_turn_engine_selector {
+                "engine_enabled"
+            } else {
+                "engine_disabled"
+            },
+        );
         if !config.enable_turn_engine_selector
             && matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
             && Self::pro_v2_is_white_turn_one_mana_only_followup(game)
@@ -10344,7 +10328,7 @@ impl MonsGameModel {
                     .map(|candidate| candidate.inputs.clone())
                     .collect::<Vec<_>>();
                 let allowed_head_matches = |plan: &TurnPlan| {
-                    plan.compiled_chunks.first().map_or(false, |chunk| {
+                    plan.compiled_chunks.first().is_some_and(|chunk| {
                         allowed_root_steps.iter().any(|inputs| inputs == chunk)
                     })
                 };
@@ -10444,9 +10428,7 @@ impl MonsGameModel {
                     diagnostics.last_return_stage = "engine_forced_prepass";
                 });
                 #[cfg(test)]
-                update_top_level_turn_engine_selector_last_return_stage(
-                    "engine_forced_prepass",
-                );
+                update_top_level_turn_engine_selector_last_return_stage("engine_forced_prepass");
                 if let Some(plan) = engine_head_plan.as_ref() {
                     if plan.compiled_chunks.first() == Some(&forced_inputs) {
                         turn_engine_commit_plan(
@@ -10580,11 +10562,9 @@ impl MonsGameModel {
                 let best_prelim_score = prelim_scores.iter().copied().max().unwrap_or(i32::MIN);
                 root_moves =
                     Self::sort_root_moves_by_ranked_scores(root_moves, prelim_scores.as_slice());
-                if config.iterative_deepening_alpha_margin > 0 {
-                    if best_prelim_score != i32::MIN {
-                        alpha = best_prelim_score
-                            .saturating_sub(config.iterative_deepening_alpha_margin);
-                    }
+                if config.iterative_deepening_alpha_margin > 0 && best_prelim_score != i32::MIN {
+                    alpha =
+                        best_prelim_score.saturating_sub(config.iterative_deepening_alpha_margin);
                 }
             }
 
@@ -10780,9 +10760,7 @@ impl MonsGameModel {
                 diagnostics.last_return_stage = "search_only_forced_prepass";
             });
             #[cfg(test)]
-            update_top_level_turn_engine_selector_last_return_stage(
-                "search_only_forced_prepass",
-            );
+            update_top_level_turn_engine_selector_last_return_stage("search_only_forced_prepass");
             return forced_inputs;
         }
 
@@ -10866,11 +10844,8 @@ impl MonsGameModel {
             root_moves =
                 Self::sort_root_moves_by_ranked_scores(root_moves, prelim_scores.as_slice());
             // Optionally initialize alpha from preliminary best score
-            if config.iterative_deepening_alpha_margin > 0 {
-                if best_prelim_score != i32::MIN {
-                    alpha =
-                        best_prelim_score.saturating_sub(config.iterative_deepening_alpha_margin);
-                }
+            if config.iterative_deepening_alpha_margin > 0 && best_prelim_score != i32::MIN {
+                alpha = best_prelim_score.saturating_sub(config.iterative_deepening_alpha_margin);
             }
         }
 
@@ -10938,6 +10913,7 @@ impl MonsGameModel {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn evaluate_root_candidate_score(
         candidate: &ScoredRootMove,
         perspective: Color,
@@ -11090,7 +11066,7 @@ impl MonsGameModel {
         let scout_depth = if config.enable_two_pass_volatility_focus || config.depth <= 3 {
             1
         } else {
-            config.depth.min(SMART_TWO_PASS_ROOT_SCOUT_DEPTH).max(1)
+            config.depth.clamp(1, SMART_TWO_PASS_ROOT_SCOUT_DEPTH)
         };
         let scout_share_bp = (10_000 - config.root_focus_budget_share_bp).clamp(500, 4_000);
         let scout_budget = if scout_depth <= 1 {
@@ -11371,6 +11347,7 @@ impl MonsGameModel {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn search_score(
         game: &MonsGame,
         perspective: Color,
@@ -11703,11 +11680,10 @@ impl MonsGameModel {
                     if config.enable_killer_move_ordering
                         && child.hash != 0
                         && depth < killer_table.len()
+                        && killer_table[depth][0] != child.hash
                     {
-                        if killer_table[depth][0] != child.hash {
-                            killer_table[depth][1] = killer_table[depth][0];
-                            killer_table[depth][0] = child.hash;
-                        }
+                        killer_table[depth][1] = killer_table[depth][0];
+                        killer_table[depth][0] = child.hash;
                     }
                     // Record history heuristic on beta cutoff
                     if config.enable_history_heuristic && child.hash != 0 {
@@ -11828,11 +11804,10 @@ impl MonsGameModel {
                     if config.enable_killer_move_ordering
                         && child.hash != 0
                         && depth < killer_table.len()
+                        && killer_table[depth][0] != child.hash
                     {
-                        if killer_table[depth][0] != child.hash {
-                            killer_table[depth][1] = killer_table[depth][0];
-                            killer_table[depth][0] = child.hash;
-                        }
+                        killer_table[depth][1] = killer_table[depth][0];
+                        killer_table[depth][0] = child.hash;
                     }
                     // Record history heuristic on alpha cutoff
                     if config.enable_history_heuristic && child.hash != 0 {
@@ -11933,6 +11908,7 @@ impl MonsGameModel {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn build_child_eval_bundle(
         game: &MonsGame,
         simulated_game: &MonsGame,
@@ -12103,6 +12079,7 @@ impl MonsGameModel {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn cheap_child_ordering_heuristic(
         game: &MonsGame,
         simulated_game: &MonsGame,
@@ -12163,6 +12140,7 @@ impl MonsGameModel {
         heuristic_cmp.then_with(|| b.child_hash.cmp(&a.child_hash))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn child_requires_full_ordering_pass(
         transition: &LegalInputTransition,
         perspective: Color,
@@ -12363,10 +12341,10 @@ impl MonsGameModel {
         update_turn_engine_selector_diagnostics(|diagnostics| {
             diagnostics.ranked_child_states_children_enumerated += child_transitions.len();
         });
-        let retain_supermana_progress = exact_turn_before.map_or(false, |turn| {
+        let retain_supermana_progress = exact_turn_before.is_some_and(|turn| {
             turn.safe_supermana_progress || turn.spirit_assisted_supermana_progress
         });
-        let retain_opponent_mana_progress = exact_turn_before.map_or(false, |turn| {
+        let retain_opponent_mana_progress = exact_turn_before.is_some_and(|turn| {
             turn.safe_opponent_mana_progress
                 || turn.spirit_assisted_opponent_mana_progress
                 || turn.spirit_assisted_denial
@@ -13033,7 +13011,7 @@ impl MonsGameModel {
                 continue;
             };
             let reverse = (*to, *from, mon.color, mon.kind);
-            if seen_moves.iter().any(|seen| *seen == reverse) {
+            if seen_moves.contains(&reverse) {
                 return true;
             }
             seen_moves.push((*from, *to, mon.color, mon.kind));
@@ -13198,6 +13176,7 @@ impl MonsGameModel {
     }
 
     #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
     fn move_efficiency_delta(
         game: &MonsGame,
         simulated_game: &MonsGame,
@@ -13237,6 +13216,7 @@ impl MonsGameModel {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn move_efficiency_delta_from_before_snapshot_with_narrowing(
         game: &MonsGame,
         simulated_game: &MonsGame,
@@ -13277,6 +13257,7 @@ impl MonsGameModel {
     }
 
     #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
     fn move_efficiency_delta_from_before_snapshot(
         game: &MonsGame,
         simulated_game: &MonsGame,
@@ -13310,6 +13291,7 @@ impl MonsGameModel {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn move_efficiency_delta_from_before_snapshot_with_after_snapshot(
         game: &MonsGame,
         simulated_game: &MonsGame,
@@ -14250,9 +14232,7 @@ impl MonsGameModel {
     ) -> bool {
         board
             .find_awake_angel(color)
-            .map_or(false, |angel_location| {
-                angel_location.distance(&location) == 1
-            })
+            .is_some_and(|angel_location| angel_location.distance(&location) == 1)
     }
 
     #[inline]
@@ -15551,6 +15531,7 @@ impl MonsGameModel {
         plain_competes
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn pro_v2_root_advisor_should_compete_in_approval_shortlist(
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
@@ -15798,8 +15779,8 @@ impl MonsGameModel {
             .into_iter()
             .map(|index| {
                 let challenger = &scored_roots[index];
-                if !(challenger.spirit_own_mana_setup_now
-                    && !challenger.spirit_same_turn_score_setup_now)
+                if !challenger.spirit_own_mana_setup_now
+                    || challenger.spirit_same_turn_score_setup_now
                 {
                     return index;
                 }
@@ -16946,13 +16927,12 @@ impl MonsGameModel {
             let weak_window_progress_competes = weak_window_context
                 && Self::root_progress_or_setup_better(challenger, approved)
                 && challenger.score >= approved.score.saturating_sub(32);
+            let utility_or_progress_competes =
+                Self::pro_v2_root_advisor_utility_competes(challenger_utility, approved_utility)
+                    || Self::root_progress_or_setup_better(challenger, approved);
             if challenger_snapshot.allows_immediate_opponent_win
                 || challenger_snapshot.opponent_reaches_match_point
-                || (!weak_window_progress_competes
-                    && !(Self::pro_v2_root_advisor_utility_competes(
-                        challenger_utility,
-                        approved_utility,
-                    ) || Self::root_progress_or_setup_better(challenger, approved)))
+                || (!weak_window_progress_competes && !utility_or_progress_competes)
                 || (!weak_window_progress_competes
                     && challenger_snapshot.worst_reply_score.saturating_add(192)
                         < approved_snapshot.worst_reply_score)
@@ -18969,7 +18949,7 @@ impl MonsGameModel {
             ),
         );
 
-        let representative_specs: [(ProV2RootAdvisorReasonCode, fn(&ScoredRootMove) -> bool); 5] = [
+        let representative_specs: [RootMoveRepresentativeSpec; 5] = [
             (
                 ProV2RootAdvisorReasonCode::PreserveSpiritRepresentative,
                 |root| root.spirit_same_turn_score_setup_now || root.spirit_own_mana_setup_now,
@@ -19112,7 +19092,7 @@ impl MonsGameModel {
         let mut utility_cache = std::collections::HashMap::<usize, TurnEngineUtility>::new();
         let mut spirit_followup_scores = std::collections::HashMap::<usize, i32>::new();
         let mut selection_indices = candidate_indices.clone();
-        let representative_specs: [(ProV2RootAdvisorReasonCode, fn(&RootEvaluation) -> bool); 5] = [
+        let representative_specs: [RootEvaluationRepresentativeSpec; 5] = [
             (
                 ProV2RootAdvisorReasonCode::PreserveSpiritRepresentative,
                 |root| root.spirit_same_turn_score_setup_now || root.spirit_own_mana_setup_now,
@@ -20323,8 +20303,8 @@ impl MonsGameModel {
             && (!game.player_can_use_action() || !game.player_can_move_mana())
         {
             config.max_visited_nodes = config.max_visited_nodes.min(6_000);
-            config.root_branch_limit = config.root_branch_limit.min(12).max(1);
-            config.root_reply_risk_reply_limit = config.root_reply_risk_reply_limit.min(12).max(1);
+            config.root_branch_limit = config.root_branch_limit.clamp(1, 12);
+            config.root_reply_risk_reply_limit = config.root_reply_risk_reply_limit.clamp(1, 12);
             config.root_reply_risk_node_share_bp = config.root_reply_risk_node_share_bp.min(1_200);
         }
 
@@ -21192,16 +21172,10 @@ impl MonsGameModel {
             .unwrap_or(i32::MIN);
         let spirit_utilities = spirit_indices
             .iter()
-            .filter_map(|index| {
+            .map(|index| {
                 let root = &scored_roots[*index];
                 let family = Self::turn_engine_root_evaluation_family(root);
-                Some(Self::turn_engine_selected_override_utility(
-                    game,
-                    root,
-                    perspective,
-                    config,
-                    family,
-                ))
+                Self::turn_engine_selected_override_utility(game, root, perspective, config, family)
             })
             .collect::<Vec<_>>();
         if spirit_utilities.is_empty() {
@@ -21733,7 +21707,7 @@ impl MonsGameModel {
         {
             return std::collections::HashMap::new();
         }
-        let has_tactical_window = shortlist.first().map_or(false, |index| {
+        let has_tactical_window = shortlist.first().is_some_and(|index| {
             let root = &scored_roots[*index];
             root.wins_immediately
                 || root.attacks_opponent_drainer
@@ -21833,6 +21807,7 @@ impl MonsGameModel {
         projections
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn pro_v2_plain_spirit_reply_risk_pick(
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
@@ -21956,6 +21931,7 @@ impl MonsGameModel {
         Some(best_index)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn pro_v2_mixed_plain_spirit_projection_order(
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
@@ -22739,6 +22715,7 @@ impl MonsGameModel {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn pro_v2_black_plain_spirit_followup_reply_order(
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
@@ -22845,6 +22822,7 @@ impl MonsGameModel {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn pro_v2_early_black_plain_spirit_sibling_reply_order(
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
@@ -23281,6 +23259,7 @@ impl MonsGameModel {
                 >= incumbent_snapshot.worst_reply_score
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn pro_v2_early_black_plain_spirit_mana_reply_order(
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
@@ -23409,6 +23388,7 @@ impl MonsGameModel {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn pro_v2_safe_non_spirit_followup_order(
         _game: &MonsGame,
         scored_roots: &[RootEvaluation],
@@ -23517,13 +23497,9 @@ impl MonsGameModel {
             return None;
         }
 
-        if challenger_score >= spirit_score.saturating_add(FOLLOWUP_MARGIN) {
-            Some(if candidate_is_challenger {
-                std::cmp::Ordering::Greater
-            } else {
-                std::cmp::Ordering::Less
-            })
-        } else if relaxed_opening_tempo_competes {
+        if challenger_score >= spirit_score.saturating_add(FOLLOWUP_MARGIN)
+            || relaxed_opening_tempo_competes
+        {
             Some(if candidate_is_challenger {
                 std::cmp::Ordering::Greater
             } else {
@@ -23986,6 +23962,7 @@ impl MonsGameModel {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn is_better_reply_risk_candidate(
         game: &MonsGame,
         candidate_index: usize,
@@ -25054,6 +25031,7 @@ impl MonsGameModel {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn cached_search_preferability_score(
         game: &MonsGame,
         perspective: Color,
@@ -25077,6 +25055,7 @@ impl MonsGameModel {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn cached_search_preferability_score_with_hash(
         game: &MonsGame,
         perspective: Color,
@@ -29045,7 +29024,7 @@ mod opening_book_tests {
         let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
             .expect("selected spirit-score inputs should be legal");
         assert!(
-            after.white_score >= game.white_score + 1,
+            after.white_score > game.white_score,
             "selected line should score own mana immediately, inputs={:?}, events={:?}",
             inputs,
             events
@@ -29101,7 +29080,7 @@ mod opening_book_tests {
         let (after, events) = MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs)
             .expect("selected spirit-score inputs should be legal");
         assert!(
-            after.white_score >= game.white_score + 1,
+            after.white_score > game.white_score,
             "selected line should still score own mana immediately under capped root enumeration, inputs={:?}, events={:?}",
             inputs,
             events
@@ -30637,7 +30616,7 @@ mod opening_book_tests {
             events: Vec::new(),
         };
 
-        let mut transitions = vec![weaker, stronger.clone()];
+        let mut transitions = [weaker, stronger.clone()];
         transitions.sort_by(|a, b| {
             MonsGameModel::compare_same_turn_score_window_transitions(a, b, Color::White)
         });
@@ -30670,7 +30649,7 @@ mod opening_book_tests {
             quiet: true,
             ..MoveClassFlags::default()
         };
-        let mut scored_states = vec![
+        let mut scored_states = [
             (100, ranked_child_state_for_test(&game, 1, 0, quiet)),
             (100, ranked_child_state_for_test(&game, 2, 40, quiet)),
         ];
@@ -30708,7 +30687,7 @@ mod opening_book_tests {
             carrier_progress: true,
             ..MoveClassFlags::default()
         };
-        let mut scored_states = vec![
+        let mut scored_states = [
             (100, ranked_child_state_for_test(&game, 1, 20, quiet)),
             (100, ranked_child_state_for_test(&game, 2, 20, tactical)),
         ];
@@ -32357,16 +32336,13 @@ mod opening_book_tests {
             crate::models::automove_exact::exact_turn_summary(&after, Color::White);
         assert!(
             exact_turn_after.safe_supermana_progress
-                || matches!(
-                    after.board.occupied().find(|(_, item)| matches!(
+                || after.board.occupied().find(|(_, item)| matches!(
                         item,
                         Item::MonWithMana {
                             mon,
                             mana: Mana::Supermana,
                         } if mon.color == Color::White && mon.kind == MonKind::Drainer
-                    )),
-                    Some(_)
-                ),
+                    )).is_some(),
             "selected line should preserve the exact same-turn supermana threat, inputs={:?}, events={:?}",
             inputs,
             events
@@ -32425,16 +32401,13 @@ mod opening_book_tests {
             crate::models::automove_exact::exact_turn_summary(&after, Color::White);
         assert!(
             exact_turn_after.safe_supermana_progress
-                || matches!(
-                    after.board.occupied().find(|(_, item)| matches!(
+                || after.board.occupied().find(|(_, item)| matches!(
                         item,
                         Item::MonWithMana {
                             mon,
                             mana: Mana::Supermana,
                         } if mon.color == Color::White && mon.kind == MonKind::Drainer
-                    )),
-                    Some(_)
-                ),
+                    )).is_some(),
             "selected line should preserve the exact same-turn supermana threat under capped root enumeration, inputs={:?}, events={:?}",
             inputs,
             events
@@ -35205,9 +35178,7 @@ mod opening_book_tests {
         let exact = crate::models::automove_exact::exact_state_analysis(&game)
             .white
             .best_drainer_pickup
-            .map_or(false, |path| {
-                path.total_moves <= Config::MONS_MOVES_PER_TURN
-            });
+            .is_some_and(|path| path.total_moves <= Config::MONS_MOVES_PER_TURN);
         let exhaustive = exhaustive_same_turn_reachable(&game, Color::White, |state, _| {
             state.white_score > game.white_score
         });
@@ -35638,11 +35609,7 @@ impl NextInputModel {
                 _ => None,
             },
             kind: input.kind,
-            actor_mon_item: if input.actor_mon_item.is_some() {
-                Some(ItemModel::new(&input.actor_mon_item.unwrap()))
-            } else {
-                None
-            },
+            actor_mon_item: input.actor_mon_item.as_ref().map(ItemModel::new),
         }
     }
 }
@@ -35717,7 +35684,7 @@ impl EventModel {
             Event::MysticAction { mystic, from, to } => EventModel {
                 kind: EventModelKind::MysticAction,
                 item: None,
-                mon: Some(mystic.clone()),
+                mon: Some(*mystic),
                 mana: None,
                 loc1: Some(*from),
                 loc2: Some(*to),
@@ -35726,7 +35693,7 @@ impl EventModel {
             Event::DemonAction { demon, from, to } => EventModel {
                 kind: EventModelKind::DemonAction,
                 item: None,
-                mon: Some(demon.clone()),
+                mon: Some(*demon),
                 mana: None,
                 loc1: Some(*from),
                 loc2: Some(*to),
@@ -35735,7 +35702,7 @@ impl EventModel {
             Event::DemonAdditionalStep { demon, from, to } => EventModel {
                 kind: EventModelKind::DemonAdditionalStep,
                 item: None,
-                mon: Some(demon.clone()),
+                mon: Some(*demon),
                 mana: None,
                 loc1: Some(*from),
                 loc2: Some(*to),
@@ -35758,7 +35725,7 @@ impl EventModel {
             Event::PickupBomb { by, at } => EventModel {
                 kind: EventModelKind::PickupBomb,
                 item: None,
-                mon: Some(by.clone()),
+                mon: Some(*by),
                 mana: None,
                 loc1: Some(*at),
                 loc2: None,
@@ -35776,7 +35743,7 @@ impl EventModel {
             Event::PickupMana { mana, by, at } => EventModel {
                 kind: EventModelKind::PickupMana,
                 item: None,
-                mon: Some(by.clone()),
+                mon: Some(*by),
                 mana: Some(ManaModel::new(mana)),
                 loc1: Some(*at),
                 loc2: None,
@@ -35785,7 +35752,7 @@ impl EventModel {
             Event::MonFainted { mon, from, to } => EventModel {
                 kind: EventModelKind::MonFainted,
                 item: None,
-                mon: Some(mon.clone()),
+                mon: Some(*mon),
                 mana: None,
                 loc1: Some(*from),
                 loc2: Some(*to),
@@ -35812,7 +35779,7 @@ impl EventModel {
             Event::BombAttack { by, from, to } => EventModel {
                 kind: EventModelKind::BombAttack,
                 item: None,
-                mon: Some(by.clone()),
+                mon: Some(*by),
                 mana: None,
                 loc1: Some(*from),
                 loc2: Some(*to),
@@ -35821,7 +35788,7 @@ impl EventModel {
             Event::MonAwake { mon, at } => EventModel {
                 kind: EventModelKind::MonAwake,
                 item: None,
-                mon: Some(mon.clone()),
+                mon: Some(*mon),
                 mana: None,
                 loc1: Some(*at),
                 loc2: None,
@@ -35903,7 +35870,7 @@ impl VerboseTrackingEntityModel {
         self.color
     }
     pub fn events(&self) -> Vec<EventModel> {
-        self.events.iter().map(|e| EventModel::new(e)).collect()
+        self.events.iter().map(EventModel::new).collect()
     }
     pub fn events_fen(&self) -> String {
         self.events

@@ -491,12 +491,16 @@ fn runtime_decision_probe(
         config,
         pre_accept_family,
     );
-    let head_score = head_rank.and_then(|index| scored_roots.get(index)).map(|root| root.score);
+    let head_score = head_rank
+        .and_then(|index| scored_roots.get(index))
+        .map(|root| root.score);
     let head_plan_primary_axes_vs_pre_accept = head_plan.as_ref().map(|plan| {
-        format_ordering_probe(crate::models::automove_turn_engine::compare_utility_primary_axes(
-            plan.utility,
-            pre_accept_utility,
-        ))
+        format_ordering_probe(
+            crate::models::automove_turn_engine::compare_utility_primary_axes(
+                plan.utility,
+                pre_accept_utility,
+            ),
+        )
     });
     let head_accepted = head_plan.as_ref().is_some_and(|plan| {
         MonsGameModel::accept_turn_engine_head_after_search(
@@ -1056,10 +1060,9 @@ fn pro_signal_triage_passes(
         return off_target_changed <= 1;
     }
 
-    target_changed == 0
-        && off_target_changed == 0
-        && frontier_profile_name == "frontier_pro_v2_guarded"
+    frontier_profile_name == "frontier_pro_v2_guarded"
         && shipping_profile_name == "shipping_pro_search"
+        && target_changed == 0
 }
 
 const TRIAGE_TOP_ROOT_DIGEST_SIZE: usize = 5;

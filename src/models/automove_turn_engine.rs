@@ -1017,7 +1017,7 @@ fn ranked_head_candidate_plans(
         return Vec::new();
     }
 
-    let mut plans = match generate_plans_for_mode(
+    let mut plans = generate_plans_for_mode(
         game,
         perspective,
         config,
@@ -1025,10 +1025,8 @@ fn ranked_head_candidate_plans(
         config.own_beam.max(1),
         config.step_cap.max(1),
         config.expansion_cap.max(1),
-    ) {
-        Ok(plans) => plans,
-        Err(_) => Vec::new(),
-    };
+    )
+    .unwrap_or_default();
 
     if plans.is_empty() {
         if let Some(plan) = fallback_single_action_plan(game, perspective, config) {
@@ -1108,9 +1106,9 @@ fn build_best_plan_v1(
     let mut best_plan: Option<TurnPlan> = None;
     for mut plan in plans {
         plan.utility = evaluate_plan_with_replies(game, &plan, perspective, config);
-        let replace = best_plan.as_ref().map_or(true, |current| {
-            compare_plans(&plan, current) == Ordering::Greater
-        });
+        let replace = best_plan
+            .as_ref()
+            .is_none_or(|current| compare_plans(&plan, current) == Ordering::Greater);
         if replace {
             best_plan = Some(plan);
         }
@@ -1144,7 +1142,7 @@ fn best_plan_from_allowed_heads(
         };
         plan.utility = evaluate_plan_with_replies(root, &plan, perspective, config);
         let meta = allowed_head_selection_meta(root, &plan, perspective, rank, allowed_len);
-        let replace = best_plan.as_ref().map_or(true, |(current, current_meta)| {
+        let replace = best_plan.as_ref().is_none_or(|(current, current_meta)| {
             compare_allowed_head_plans(&plan, meta, current, *current_meta) == Ordering::Greater
         });
         if replace {
@@ -1203,9 +1201,9 @@ fn fallback_single_action_plan(
             package_meta: TurnPackageMeta::default(),
         };
         plan.utility = evaluate_plan_with_replies(game, &plan, perspective, config);
-        let replace = best_plan.as_ref().map_or(true, |current| {
-            compare_plans(&plan, current) == Ordering::Greater
-        });
+        let replace = best_plan
+            .as_ref()
+            .is_none_or(|current| compare_plans(&plan, current) == Ordering::Greater);
         if replace {
             best_plan = Some(plan);
         }
@@ -1272,7 +1270,7 @@ fn fallback_single_action_plan_from_allowed_heads(
             first_step_opponent_immediate_loss: opponent_can_win_immediately(&after, perspective),
             first_step_drainer_safety: own_drainer_safety_score(&after.board, perspective),
         };
-        let replace = best_plan.as_ref().map_or(true, |(current, current_meta)| {
+        let replace = best_plan.as_ref().is_none_or(|(current, current_meta)| {
             compare_allowed_head_plans(&plan, meta, current, *current_meta) == Ordering::Greater
         });
         if replace {
@@ -1429,7 +1427,7 @@ fn compare_opportunity_plans(left: &OpportunityPlan, right: &OpportunityPlan) ->
 }
 
 fn opportunity_reply_shortlist_len(total: usize, beam: usize) -> usize {
-    total.min(beam.saturating_mul(2).max(6).min(12))
+    total.min(beam.saturating_mul(2).clamp(6, 12))
 }
 
 #[allow(dead_code)]
@@ -1594,9 +1592,9 @@ fn build_best_opportunity_plan(
     let mut best_plan: Option<TurnPlan> = None;
     for mut plan in plans {
         plan.utility = evaluate_plan_with_replies(game, &plan, perspective, config);
-        let replace = best_plan.as_ref().map_or(true, |current| {
-            compare_plans(&plan, current) == Ordering::Greater
-        });
+        let replace = best_plan
+            .as_ref()
+            .is_none_or(|current| compare_plans(&plan, current) == Ordering::Greater);
         if replace {
             best_plan = Some(plan);
         }
@@ -1656,7 +1654,7 @@ fn generate_opportunity_plans(
         let head_utility = evaluate_state_utility(&after, game, perspective, config);
         let should_keep = seen
             .get(&snapshot.state_hash)
-            .map_or(true, |existing| order > *existing);
+            .is_none_or(|existing| order > *existing);
         if !should_keep {
             continue;
         }
@@ -1765,7 +1763,7 @@ fn generate_opportunity_plans(
                 let snapshot = TurnSnapshot::from_game(&after);
                 let should_keep = seen
                     .get(&snapshot.state_hash)
-                    .map_or(true, |existing| order > *existing);
+                    .is_none_or(|existing| order > *existing);
                 if !should_keep {
                     continue;
                 }
@@ -2069,7 +2067,7 @@ fn macro_followup_seed_candidates(
             .max(8),
         Some(allowed_families.as_slice()),
     );
-    candidates.retain(|opportunity| !used_actions.iter().any(|used| *used == opportunity.action));
+    candidates.retain(|opportunity| !used_actions.contains(&opportunity.action));
     candidates.sort_by(|left, right| {
         let left_score = opportunity_score(left, emergency)
             + i64::from(macro_followup_family_bonus(
@@ -2204,7 +2202,7 @@ fn build_macro_from_head_opportunity(
 
             if best_followup
                 .as_ref()
-                .map_or(true, |(best_score, _, _, _, best_goal)| {
+                .is_none_or(|(best_score, _, _, _, best_goal)| {
                     score > *best_score
                         || (score == *best_score
                             && family_rank(next_goal_family) < family_rank(*best_goal))
@@ -2349,7 +2347,7 @@ fn generate_macro_plans(
             config,
         );
         let key = (opportunity.end_snapshot.state_hash, opportunity.signature);
-        let should_keep = seen.get(&key).map_or(true, |existing| order > *existing);
+        let should_keep = seen.get(&key).is_none_or(|existing| order > *existing);
         if !should_keep {
             continue;
         }
@@ -2441,7 +2439,7 @@ fn generate_macro_plans(
                     config,
                 );
                 let key = (opportunity.end_snapshot.state_hash, signature);
-                let should_keep = seen.get(&key).map_or(true, |existing| order > *existing);
+                let should_keep = seen.get(&key).is_none_or(|existing| order > *existing);
                 if !should_keep {
                     continue;
                 }
@@ -2558,7 +2556,7 @@ fn generate_turn_plans(
         let head_utility = evaluate_state_utility(&after, game, perspective, config);
         let should_keep = seen
             .get(&snapshot.state_hash)
-            .map_or(true, |existing| order > *existing);
+            .is_none_or(|existing| order > *existing);
         if !should_keep {
             continue;
         }
@@ -2642,7 +2640,7 @@ fn generate_turn_plans(
                 let snapshot = TurnSnapshot::from_game(&after);
                 let should_keep = seen
                     .get(&snapshot.state_hash)
-                    .map_or(true, |existing| order > *existing);
+                    .is_none_or(|existing| order > *existing);
                 if !should_keep {
                     continue;
                 }
@@ -2759,7 +2757,7 @@ fn evaluate_plan_with_replies(
         own_seed_cap: config.opponent_seed_cap.max(1),
         own_beam: config.opponent_beam.max(1),
         per_node_family_cap: config.per_node_family_cap.max(1),
-        step_cap: config.step_cap.min(4).max(1),
+        step_cap: config.step_cap.clamp(1, 4),
         opponent_seed_cap: config.reply_seed_cap.max(1),
         opponent_beam: config.reply_beam.max(1),
         reply_seed_cap: 0,
@@ -2772,7 +2770,7 @@ fn evaluate_plan_with_replies(
             .enable_lazy_oracle_score_window_projection,
     };
     let opponent_plans = match generate_plans_for_mode(
-        &after,
+        after,
         perspective.other(),
         opponent_config,
         opponent_config.own_seed_cap,
@@ -2825,7 +2823,7 @@ fn evaluate_plan_with_replies(
         own_seed_cap: config.reply_seed_cap.max(1),
         own_beam: config.reply_beam.max(1),
         per_node_family_cap: config.per_node_family_cap.max(1),
-        step_cap: config.step_cap.min(3).max(1),
+        step_cap: config.step_cap.clamp(1, 3),
         opponent_seed_cap: 0,
         opponent_beam: 0,
         reply_seed_cap: 0,
@@ -2838,7 +2836,7 @@ fn evaluate_plan_with_replies(
             .enable_lazy_oracle_score_window_projection,
     };
     let reply_plans = match generate_plans_for_mode(
-        &after_opponent,
+        after_opponent,
         perspective,
         reply_config,
         reply_config.own_seed_cap,
@@ -2859,7 +2857,7 @@ fn evaluate_plan_with_replies(
 }
 
 fn reply_shortlist_len(total: usize, beam: usize) -> usize {
-    total.min(beam.saturating_mul(2).max(4).min(8))
+    total.min(beam.saturating_mul(2).clamp(4, 8))
 }
 
 fn evaluate_state_utility(
@@ -3052,11 +3050,11 @@ fn active_turn_score_window(game: &MonsGame, color: Color) -> i32 {
 }
 
 fn bundle_chunk_cap_for_config(config: TurnEngineConfig) -> usize {
-    config.step_cap.max(1).min(6)
+    config.step_cap.clamp(1, 6)
 }
 
 fn bundle_plan_cap_for_config(config: TurnEngineConfig) -> usize {
-    config.step_cap.max(1).min(4)
+    config.step_cap.clamp(1, 4)
 }
 
 fn saturating_i64_to_i32(value: i64) -> i32 {
@@ -3324,7 +3322,7 @@ fn turn_opportunity_from_seed(
 
 fn family_allowed(allowed_families: Option<&[TurnPlanFamily]>, family: TurnPlanFamily) -> bool {
     allowed_families
-        .map(|families| families.iter().any(|candidate| *candidate == family))
+        .map(|families| families.contains(&family))
         .unwrap_or(true)
 }
 
@@ -3373,9 +3371,13 @@ fn discover_turn_opportunities_v2(
     .into_iter()
     .any(|family| family_allowed(allowed_families, family))
     {
-        seeds.extend(
-            oracle_walk_seeds(game, perspective, context, allowed_families, config).into_iter(),
-        );
+        seeds.extend(oracle_walk_seeds(
+            game,
+            perspective,
+            context,
+            allowed_families,
+            config,
+        ));
     }
     if family_allowed(allowed_families, TurnPlanFamily::SpiritImpact) {
         seeds.extend(spirit_impact_seeds(game, perspective, config));
@@ -4417,7 +4419,7 @@ fn oracle_walk_seeds_with_projection_mode(
             let spirit_denial_improved = allow_spirit
                 && (actor_capabilities.can_emit_spirit
                     || actor_capabilities.can_emit_opponent_mana)
-                && after_turn.map_or(false, |summary| {
+                && after_turn.is_some_and(|summary| {
                     summary.spirit_assisted_denial_value > before_turn.spirit_assisted_denial_value
                 });
             if opponent_progress_improved || spirit_denial_improved {
@@ -4452,7 +4454,7 @@ fn oracle_walk_seeds_with_projection_mode(
             let spirit_utility_delta = after_spirit.1.saturating_sub(before_spirit.1);
             let spirit_setup_improved = spirit_setup_gain_delta > 0 || spirit_utility_delta > 0;
             let spirit_score_base_improved = actor_capabilities.can_emit_spirit
-                && after_turn.map_or(false, |summary| {
+                && after_turn.is_some_and(|summary| {
                     summary.spirit_assisted_score_value > before_turn.spirit_assisted_score_value
                 });
             let spirit_score_window_improved = actor_capabilities.can_emit_spirit
@@ -4461,7 +4463,7 @@ fn oracle_walk_seeds_with_projection_mode(
                         && !spirit_setup_improved
                         && load_after_score_window() > before_turn.same_turn_score_window_value
                 } else {
-                    after_turn.map_or(false, |summary| {
+                    after_turn.is_some_and(|summary| {
                         summary.same_turn_score_window_value
                             > before_turn.same_turn_score_window_value
                     })
@@ -4926,11 +4928,11 @@ fn compile_action_direct(
     Some((after, inputs))
 }
 
-fn best_transition_for_action<'a>(
+fn best_transition_for_action(
     game: &MonsGame,
     perspective: Color,
     action: TurnAction,
-    transitions: &'a [LegalInputTransition],
+    transitions: &[LegalInputTransition],
 ) -> Option<(i32, usize)> {
     let mut best: Option<(i32, usize)> = None;
     for (index, transition) in transitions.iter().enumerate() {
@@ -4950,7 +4952,7 @@ fn best_transition_for_action<'a>(
             perspective,
             action,
         );
-        if best.as_ref().map_or(true, |(best_score, best_index)| {
+        if best.as_ref().is_none_or(|(best_score, best_index)| {
             score > *best_score
                 || (score == *best_score && transition.inputs < transitions[*best_index].inputs)
         }) {
@@ -4971,9 +4973,7 @@ fn compile_action_from_pool_fallback(
         best = best_transition_for_action(game, perspective, action, &compile_pool.transitions);
     }
 
-    let Some((_, best_index)) = best else {
-        return None;
-    };
+    let (_, best_index) = best?;
     let best_transition = &compile_pool.transitions[best_index];
 
     let consistent_hash = MonsGameModel::search_state_hash(&best_transition.game);
@@ -5296,7 +5296,7 @@ fn actor_can_bomb_target_now(
 }
 
 fn location_guarded_by_angel(angel_location: Option<Location>, location: Location) -> bool {
-    angel_location.map_or(false, |angel| angel.distance(&location) == 1)
+    angel_location.is_some_and(|angel| angel.distance(&location) == 1)
 }
 
 fn demon_attack_path_clear(board: &Board, from: Location, target: Location) -> bool {
