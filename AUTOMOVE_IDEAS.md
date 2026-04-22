@@ -27,6 +27,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - The live non-win root probe then aligned `vs_shipping_pro_black_recovery_branch` to shipping `l6,0;l6,1` through `ApprovedLegacySelector`, while the other four live walls stayed on the same surfaces as before.
   - The package cleared `guardrails`, retained `pro-triage` at `target_changed=4 / off_target_changed=0`, exact-lite, and advisory stage-1 CPU at `1.566 / 1.534 / 1.364`.
   - It still failed retained `pro-reliability` at `0.8333 / 0.9167 / 0.8333`, so the code was discarded.
+- This iteration spent an even narrower black-only runtime fallback and killed it too:
+  - Instead of changing the legacy selector globally, the local candidate only let `pro_v2_root_advisor_black_legacy_alignment_override` search the current `reply_risk_shortlist` for the best vulnerable mana challenger on the weak plain-spirit black seam.
+  - That aligned `vs_shipping_pro_black_recovery_branch` to shipping `l6,0;l6,1`, passed a focused retained board assertion, and left the nearby white confirm and black post-search retained checks intact.
+  - The package still cleared `guardrails`, retained `pro-triage` at `target_changed=4 / off_target_changed=0`, exact-lite, and advisory stage-1 CPU at `1.561 / 1.522 / 1.367`.
+  - It still failed retained `pro-reliability` at `0.9167 / 0.9167 / 0.8333`, so the code was discarded.
 - This turn did not spend another canonical loop. A board-local probe on the rotated Pro white confirm seam `l10,4;l9,3` vs shipping `l7,8;l6,9` showed frontier already prefers the incumbent on its own metrics:
   - Reply floor: incumbent `431`, shipping root `338`.
   - Selected override utility: incumbent `TurnEngineUtility { ... eval_score: 431 }`, shipping root `TurnEngineUtility { ... eval_score: 338 }`.
@@ -57,6 +62,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - If that board matters again, start from root scoring/root-rank generation for quiet early white mana-only roots instead of shortlist or post-search acceptance.
 - Treat `black_recovery_branch` as an active seam, but do not reopen the simple turn-six spirit safety gate; that line fixes the local board and retained triage while still regressing Fast duel strength.
 - If `black_recovery_branch` is reopened, start from the traced legacy-selector config difference instead of another threshold tweak. The live ProV1 legacy selector currently inherits `shortlist_config`, which disables the reply-risk guard; simply switching that selector to full `config` does align `l6,0;l6,1`, but it also fails retained `pro-reliability` at `0.8333 / 0.9167 / 0.8333`, so any future black fix has to be narrower than that global config swap.
+- The narrower reply-risk-shortlist fallback is also not enough. Even when the black legacy-alignment override only searches the local `reply_risk_shortlist`, the line still dies at `0.9167 / 0.9167 / 0.8333`, so the next black attempt has to explain the retained Fast regression instead of just tightening the black chooser again.
 - Do not reopen the resolved white turn-three sibling boards unless a future challenger regresses them.
 - Any future challenger still has to respect stage-1 CPU pressure; a package that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 
@@ -70,4 +76,5 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Do not reopen the blunt black turn-six spirit safety gate that aligns `black_recovery_branch` by banning unsafe preserved-spirit reentry; it already failed retained `pro-reliability` on Fast at `0.8333`.
 - Do not paper over `black_recovery_branch` with a score-only mana fallback. The first scan-based attempt picked `l6,0;l7,0` instead of shipping `l6,0;l6,1`.
 - Do not globally switch the ProV1 legacy selector from `shortlist_config` to full `config`; that reply-risk-on reroute aligns `black_recovery_branch` locally but still fails retained `pro-reliability` at `0.8333 / 0.9167 / 0.8333`.
+- Do not reopen the reply-risk-shortlist-only black legacy fallback that picks the best-ranked vulnerable mana root from the local shortlist; it aligns `black_recovery_branch` and still dies on retained Fast at `0.8333`.
 - Do not reopen packages that are already archived in `docs/automove-archive.md` unless there is a brand-new shared hypothesis.
