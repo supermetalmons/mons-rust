@@ -22,6 +22,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - The package still clears the small retained loop: `guardrails` passed, `pro-triage` stayed at `target_changed=5 / off_target_changed=0`, exact-lite passed, and retained `pro-reliability` passed at `0.9167 / 0.9167 / 1.0000`.
 - `pro-reliability-confirm` failed: `0.9375 / 0.9062 / 0.8750`, with Fast falling below the `0.90` floor.
 - Advisory stage-1 CPU remains elevated but unchanged in character: `1.552 / 1.526 / 1.363` versus `shipping_pro_search`.
+- This iteration spent one narrow black-only runtime reroute and killed it:
+  - Inside `pro_v2_root_advisor_select_root`, swapping the ProV1 legacy selector from `shortlist_config` to the full runtime `config` re-enabled the reply-risk guard for that selector.
+  - The live non-win root probe then aligned `vs_shipping_pro_black_recovery_branch` to shipping `l6,0;l6,1` through `ApprovedLegacySelector`, while the other four live walls stayed on the same surfaces as before.
+  - The package cleared `guardrails`, retained `pro-triage` at `target_changed=4 / off_target_changed=0`, exact-lite, and advisory stage-1 CPU at `1.566 / 1.534 / 1.364`.
+  - It still failed retained `pro-reliability` at `0.8333 / 0.9167 / 0.8333`, so the code was discarded.
 - This turn did not spend another canonical loop. A board-local probe on the rotated Pro white confirm seam `l10,4;l9,3` vs shipping `l7,8;l6,9` showed frontier already prefers the incumbent on its own metrics:
   - Reply floor: incumbent `431`, shipping root `338`.
   - Selected override utility: incumbent `TurnEngineUtility { ... eval_score: 431 }`, shipping root `TurnEngineUtility { ... eval_score: 338 }`.
@@ -51,7 +56,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Do not spend another advisor/head patch on the rotated Pro white no-action seam `l10,4;l9,3` vs `l7,8;l6,9`; the incumbent already wins on frontier reply-floor and selected-utility metrics, so another approval override would be fighting the current model rather than fixing a local routing bug.
 - If that board matters again, start from root scoring/root-rank generation for quiet early white mana-only roots instead of shortlist or post-search acceptance.
 - Treat `black_recovery_branch` as an active seam, but do not reopen the simple turn-six spirit safety gate; that line fixes the local board and retained triage while still regressing Fast duel strength.
-- If `black_recovery_branch` is reopened, trace the legacy-selector plumbing inside `pro_v2_root_advisor_select_root` before changing another threshold. The direct black legacy-alignment override already says `l6,0;l6,1` should win, so the live blocker now looks like a path/config mismatch rather than a missing score guard.
+- If `black_recovery_branch` is reopened, start from the traced legacy-selector config difference instead of another threshold tweak. The live ProV1 legacy selector currently inherits `shortlist_config`, which disables the reply-risk guard; simply switching that selector to full `config` does align `l6,0;l6,1`, but it also fails retained `pro-reliability` at `0.8333 / 0.9167 / 0.8333`, so any future black fix has to be narrower than that global config swap.
 - Do not reopen the resolved white turn-three sibling boards unless a future challenger regresses them.
 - Any future challenger still has to respect stage-1 CPU pressure; a package that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 
@@ -64,4 +69,5 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Do not reopen partial three-wall packages that only fix `opening_reply_white`, `black_recovery_branch`, and `white_head_acceptance`; that line can still fail retained duels and regress the currently clean fast pack.
 - Do not reopen the blunt black turn-six spirit safety gate that aligns `black_recovery_branch` by banning unsafe preserved-spirit reentry; it already failed retained `pro-reliability` on Fast at `0.8333`.
 - Do not paper over `black_recovery_branch` with a score-only mana fallback. The first scan-based attempt picked `l6,0;l7,0` instead of shipping `l6,0;l6,1`.
+- Do not globally switch the ProV1 legacy selector from `shortlist_config` to full `config`; that reply-risk-on reroute aligns `black_recovery_branch` locally but still fails retained `pro-reliability` at `0.8333 / 0.9167 / 0.8333`.
 - Do not reopen packages that are already archived in `docs/automove-archive.md` unless there is a brand-new shared hypothesis.
