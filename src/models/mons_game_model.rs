@@ -16597,6 +16597,163 @@ impl MonsGameModel {
         weak_black_no_action_window_legacy_mana.then_some(legacy_index)
     }
 
+    fn pro_v2_root_advisor_white_turn_three_legacy_alignment_override(
+        game: &MonsGame,
+        scored_roots: &[RootEvaluation],
+        selection_indices: &[usize],
+        approved_index: usize,
+        legacy_index: usize,
+        config: AutomoveSearchConfig,
+    ) -> Option<usize> {
+        if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
+            || game.active_color != Color::White
+            || game.turn_number != 3
+            || approved_index == legacy_index
+        {
+            return None;
+        }
+
+        let approved = scored_roots.get(approved_index)?;
+        let legacy = scored_roots.get(legacy_index)?;
+        let approved_family = Self::turn_engine_root_evaluation_family(approved);
+        let legacy_family = Self::turn_engine_root_evaluation_family(legacy);
+        let exact_context =
+            crate::models::automove_exact::exact_opportunity_context(game, game.active_color);
+        let approved_non_tactical = !approved.wins_immediately
+            && !approved.attacks_opponent_drainer
+            && !approved.scores_supermana_this_turn
+            && !approved.scores_opponent_mana_this_turn
+            && !approved.safe_supermana_pickup_now
+            && !approved.safe_opponent_mana_pickup_now
+            && !approved.mana_handoff_to_opponent
+            && !approved.has_roundtrip;
+        let legacy_non_tactical = !legacy.wins_immediately
+            && !legacy.attacks_opponent_drainer
+            && !legacy.scores_supermana_this_turn
+            && !legacy.scores_opponent_mana_this_turn
+            && !legacy.safe_supermana_pickup_now
+            && !legacy.safe_opponent_mana_pickup_now
+            && !legacy.mana_handoff_to_opponent
+            && !legacy.has_roundtrip;
+
+        let white_no_action_split_legacy_mana = game.mons_moves_count >= 3
+            && !game.player_can_use_action()
+            && game.player_can_move_mana()
+            && selection_indices.contains(&legacy_index)
+            && exact_context.delta.same_turn_score_window_value == 0
+            && exact_context.delta.opponent_window_deny_gain == 0
+            && !exact_context.delta.drainer_attack_available
+            && approved_family == TurnPlanFamily::ManaTempo
+            && legacy_family == TurnPlanFamily::ManaTempo
+            && approved_non_tactical
+            && legacy_non_tactical
+            && !approved.spirit_development
+            && !legacy.spirit_development
+            && !approved.spirit_same_turn_score_setup_now
+            && !legacy.spirit_same_turn_score_setup_now
+            && !approved.spirit_own_mana_setup_now
+            && !legacy.spirit_own_mana_setup_now
+            && !approved.own_drainer_vulnerable
+            && !legacy.own_drainer_vulnerable
+            && !approved.own_drainer_walk_vulnerable
+            && !legacy.own_drainer_walk_vulnerable
+            && approved.safe_supermana_progress_steps == legacy.safe_supermana_progress_steps
+            && approved.safe_opponent_mana_progress_steps == legacy.safe_opponent_mana_progress_steps
+            && approved.score_path_best_steps == legacy.score_path_best_steps
+            && approved.spirit_setup_gain == legacy.spirit_setup_gain
+            && legacy.score >= approved.score.saturating_add(16)
+            && legacy.root_rank <= approved.root_rank.saturating_add(4);
+        if white_no_action_split_legacy_mana {
+            return Some(legacy_index);
+        }
+
+        None
+    }
+
+    fn pro_v2_root_advisor_white_turn_three_attack_bridge_escape(
+        game: &MonsGame,
+        scored_roots: &[RootEvaluation],
+        selection_indices: &[usize],
+        approved_index: usize,
+        config: AutomoveSearchConfig,
+    ) -> Option<usize> {
+        if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
+            || game.active_color != Color::White
+            || game.turn_number != 3
+            || selection_indices.len() != 1
+            || selection_indices[0] != approved_index
+            || scored_roots.is_empty()
+        {
+            return None;
+        }
+
+        let approved = scored_roots.get(approved_index)?;
+        let exact_context =
+            crate::models::automove_exact::exact_opportunity_context(game, game.active_color);
+        if !exact_context.delta.drainer_attack_available
+            || exact_context.delta.same_turn_score_window_value != 0
+            || exact_context.delta.opponent_window_deny_gain != 0
+            || game.mons_moves_count < 2
+            || !game.player_can_use_action()
+            || !game.player_can_move_mana()
+            || Self::turn_engine_root_evaluation_family(approved) != TurnPlanFamily::SpiritImpact
+            || !approved.spirit_development
+            || approved.spirit_same_turn_score_setup_now
+            || !approved.spirit_own_mana_setup_now
+            || approved.wins_immediately
+            || approved.attacks_opponent_drainer
+            || approved.scores_supermana_this_turn
+            || approved.scores_opponent_mana_this_turn
+            || approved.safe_supermana_pickup_now
+            || approved.safe_opponent_mana_pickup_now
+            || approved.mana_handoff_to_opponent
+            || approved.has_roundtrip
+            || Self::turn_engine_root_evaluation_is_unsafe(approved)
+            || approved.own_drainer_vulnerable
+            || approved.own_drainer_walk_vulnerable
+        {
+            return None;
+        }
+
+        scored_roots
+            .iter()
+            .enumerate()
+            .filter(|(index, root)| {
+                *index != approved_index
+                    && !selection_indices.contains(index)
+                    && Self::turn_engine_root_evaluation_family(root) == TurnPlanFamily::ManaTempo
+                    && !root.spirit_development
+                    && !root.spirit_same_turn_score_setup_now
+                    && !root.spirit_own_mana_setup_now
+                    && !root.wins_immediately
+                    && !root.attacks_opponent_drainer
+                    && !root.scores_supermana_this_turn
+                    && !root.scores_opponent_mana_this_turn
+                    && !root.safe_supermana_pickup_now
+                    && !root.safe_opponent_mana_pickup_now
+                    && !root.mana_handoff_to_opponent
+                    && !root.has_roundtrip
+                    && !Self::turn_engine_root_evaluation_is_unsafe(root)
+                    && !root.own_drainer_vulnerable
+                    && !root.own_drainer_walk_vulnerable
+                    && root.safe_supermana_progress_steps == approved.safe_supermana_progress_steps
+                    && root.safe_opponent_mana_progress_steps
+                        == approved.safe_opponent_mana_progress_steps
+                    && root.score_path_best_steps == approved.score_path_best_steps
+                    && root.inputs.len() >= 3
+                    && root.root_rank <= approved.root_rank.saturating_add(2)
+            })
+            .min_by(|(left, _), (right, _)| {
+                scored_roots[*left]
+                    .root_rank
+                    .cmp(&scored_roots[*right].root_rank)
+                    .then_with(|| {
+                        Self::compare_ranked_scored_root_indices(scored_roots, *left, *right)
+                    })
+            })
+            .map(|(index, _)| index)
+    }
+
     fn pro_v2_root_advisor_white_mana_competition_override(
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
@@ -19555,6 +19712,27 @@ impl MonsGameModel {
                 config,
             )
         {
+            approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedFamilyCompetition);
+        }
+        if let Some(index) = legacy_approved_index.and_then(|legacy_index| {
+            Self::pro_v2_root_advisor_white_turn_three_legacy_alignment_override(
+                game,
+                scored_roots,
+                selection_indices.as_slice(),
+                approved_index.0,
+                legacy_index,
+                config,
+            )
+        }) {
+            approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedLegacySelector);
+        }
+        if let Some(index) = Self::pro_v2_root_advisor_white_turn_three_attack_bridge_escape(
+            game,
+            scored_roots,
+            selection_indices.as_slice(),
+            approved_index.0,
+            config,
+        ) {
             approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedFamilyCompetition);
         }
         if let Some(index) = Self::pro_v2_root_advisor_white_mana_only_competition_override(
@@ -29421,6 +29599,99 @@ mod opening_book_tests {
             interview_soft_priority: 0,
             classes: MoveClassFlags::default(),
         }
+    }
+
+    #[test]
+    fn white_turn_three_legacy_alignment_override_prefers_split_trace_legacy_root() {
+        let game = MonsGame::from_fen(
+            "0 0 w 1 0 4 0 0 3 n03y0xn03e0xn03/n05a0xn05/n02xxmn01s0xn01d0xn04/n06xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n03xxMxxMn01xxMn04/E0xn04S0xn05/n05D0xn05/n04A0xn03Y0xn02",
+            false,
+        )
+        .expect("valid white split-trace fen");
+        let mut approved = root_evaluation_for_projection_test(
+            &game,
+            Location::new(8, 0),
+            370,
+            false,
+            false,
+            false,
+        );
+        approved.root_rank = 0;
+        approved.safe_supermana_progress_steps = 4;
+        approved.safe_opponent_mana_progress_steps = 5;
+        approved.spirit_setup_gain = 60;
+
+        let mut legacy = root_evaluation_for_projection_test(
+            &game,
+            Location::new(10, 8),
+            393,
+            false,
+            false,
+            false,
+        );
+        legacy.root_rank = 2;
+        legacy.safe_supermana_progress_steps = 4;
+        legacy.safe_opponent_mana_progress_steps = 5;
+        legacy.spirit_setup_gain = 60;
+
+        let scored_roots = [approved, legacy];
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.turn_engine_mode = TurnEngineMode::ProV2;
+
+        assert_eq!(
+            MonsGameModel::pro_v2_root_advisor_white_turn_three_legacy_alignment_override(
+                &game,
+                &scored_roots,
+                &[0, 1],
+                0,
+                1,
+                config,
+            ),
+            Some(1),
+        );
+    }
+
+    #[test]
+    fn white_turn_three_attack_bridge_escape_prefers_full_root_mana_escape() {
+        let game = MonsGame::from_fen(
+            "0 0 w 0 0 2 0 0 3 n11/n03y0xn01s0xa0xe0xn03/n05d0xn05/n03xxmxxmn01xxmn04/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n01E0xn01xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n04D0xS0xn01Y0xn03/n04A0xn06",
+            false,
+        )
+        .expect("valid white bridge fen");
+        let mut approved =
+            root_evaluation_for_projection_test(&game, Location::new(9, 5), 95_582, true, false, false);
+        approved.root_rank = 0;
+        approved.spirit_own_mana_setup_now = true;
+        approved.spirit_setup_gain = 132;
+        approved.safe_supermana_progress_steps = 4;
+        approved.safe_opponent_mana_progress_steps = 5;
+
+        let mut legacy =
+            root_evaluation_for_projection_test(&game, Location::new(6, 1), 1_510, false, false, false);
+        legacy.root_rank = 0;
+        legacy.inputs = vec![
+            Input::Location(Location::new(6, 1)),
+            Input::Location(Location::new(5, 0)),
+            Input::Modifier(Modifier::SelectBomb),
+        ];
+        legacy.spirit_setup_gain = 60;
+        legacy.safe_supermana_progress_steps = 4;
+        legacy.safe_opponent_mana_progress_steps = 5;
+
+        let scored_roots = [approved, legacy];
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.turn_engine_mode = TurnEngineMode::ProV2;
+
+        assert_eq!(
+            MonsGameModel::pro_v2_root_advisor_white_turn_three_attack_bridge_escape(
+                &game,
+                &scored_roots,
+                &[0],
+                0,
+                config,
+            ),
+            Some(1),
+        );
     }
 
     #[test]
