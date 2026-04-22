@@ -1262,6 +1262,15 @@ fn frontier_pro_v2_guarded_profile_prefers_shipping_white_confirm_pro_ply23_root
 }
 
 #[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_white_confirm_pro_ply9_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "WHITE_CONFIRM_PRO_PLY9",
+        "0 0 w 1 0 0 0 0 3 n11/n03y0xd0ms0xa0xe0xn03/n11/n06xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn06/n07xxMn01Y0xn01/n05S0xn01D0xn03/n03E0xA0xn06",
+        "l9,7;l10,8",
+    );
+}
+
+#[test]
 fn frontier_pro_v2_guarded_profile_prefers_shipping_black_head_runtime_duel_pro_root() {
     assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
         "BLACK_HEAD_RUNTIME_DUEL_PRO",

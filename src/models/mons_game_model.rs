@@ -8866,6 +8866,51 @@ impl MonsGameModel {
                 && !drainer_attack_better
                 && !same_turn_window_better
                 && !pickup_upgrade;
+        let selected_white_recovery_root_blocks_non_concrete_window_head =
+            matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
+                && game.active_color == Color::White
+                && game.turn_number == 3
+                && game.mons_moves_count == 0
+                && !game.player_can_use_action()
+                && game.player_can_move_mana()
+                && matches!(
+                    plan.head_family,
+                    TurnPlanFamily::SafeSupermanaProgress
+                        | TurnPlanFamily::SafeOpponentManaProgress
+                )
+                && matches!(plan.goal_family, TurnPlanFamily::ImmediateScore)
+                && Self::is_pro_v2_non_concrete_mana_window_root(candidate)
+                && matches!(
+                    selected_family,
+                    TurnPlanFamily::DrainerSafetyRecovery
+                )
+                && selected.classes.drainer_safety_recover
+                && !selected_unsafe
+                && !selected.own_drainer_vulnerable
+                && !selected.own_drainer_walk_vulnerable
+                && !selected.wins_immediately
+                && !selected.attacks_opponent_drainer
+                && !selected.spirit_development
+                && !selected.spirit_same_turn_score_setup_now
+                && !selected.spirit_own_mana_setup_now
+                && selected.same_turn_score_window_value == 0
+                && !selected.scores_supermana_this_turn
+                && !selected.scores_opponent_mana_this_turn
+                && !selected.safe_supermana_pickup_now
+                && !selected.safe_opponent_mana_pickup_now
+                && !selected.mana_handoff_to_opponent
+                && !selected.has_roundtrip
+                && candidate.inputs.first() == selected.inputs.first()
+                && candidate.own_drainer_vulnerable
+                && !candidate.classes.drainer_safety_recover
+                && selected.safe_supermana_progress_steps
+                    <= candidate.safe_supermana_progress_steps
+                && selected.safe_opponent_mana_progress_steps
+                    <= candidate.safe_opponent_mana_progress_steps
+                && selected.score_path_best_steps > candidate.score_path_best_steps
+                && !scores_now_better
+                && !drainer_attack_better
+                && !pickup_upgrade;
         if selected_early_black_safe_mana_root_blocks_weaker_mana_head {
             return false;
         }
@@ -8873,6 +8918,9 @@ impl MonsGameModel {
             return false;
         }
         if selected_white_safe_mana_root_blocks_vulnerable_mana_head {
+            return false;
+        }
+        if selected_white_recovery_root_blocks_non_concrete_window_head {
             return false;
         }
         let narrow_white_mana_only_progress_tie_override = macro_mode
@@ -18287,6 +18335,83 @@ impl MonsGameModel {
             })
     }
 
+    fn pro_v2_root_advisor_white_turn_three_no_action_recovery_override(
+        game: &MonsGame,
+        scored_roots: &[RootEvaluation],
+        approved_index: usize,
+        config: AutomoveSearchConfig,
+    ) -> Option<usize> {
+        if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
+            || game.active_color != Color::White
+            || game.turn_number != 3
+            || game.mons_moves_count != 0
+            || game.player_can_use_action()
+            || !game.player_can_move_mana()
+            || scored_roots.is_empty()
+        {
+            return None;
+        }
+
+        let exact_context =
+            crate::models::automove_exact::exact_opportunity_context(game, game.active_color);
+        if exact_context.delta.same_turn_score_window_value > 1
+            || exact_context.delta.opponent_window_deny_gain > 1
+            || (exact_context.delta.same_turn_score_window_value == 0
+                && exact_context.delta.opponent_window_deny_gain == 0)
+            || exact_context.delta.drainer_safety >= 0
+        {
+            return None;
+        }
+
+        let approved = scored_roots.get(approved_index)?;
+        if !Self::is_pro_v2_non_concrete_mana_window_root(approved)
+            || !approved.own_drainer_vulnerable
+            || approved.own_drainer_walk_vulnerable
+            || approved.spirit_development
+            || approved.spirit_same_turn_score_setup_now
+            || approved.spirit_own_mana_setup_now
+        {
+            return None;
+        }
+
+        scored_roots
+            .iter()
+            .enumerate()
+            .filter(|(index, root)| {
+                *index != approved_index
+                    && Self::turn_engine_root_evaluation_family(root)
+                        == TurnPlanFamily::DrainerSafetyRecovery
+                    && root.classes.drainer_safety_recover
+                    && !Self::turn_engine_root_evaluation_is_unsafe(root)
+                    && !root.own_drainer_vulnerable
+                    && !root.own_drainer_walk_vulnerable
+                    && !root.wins_immediately
+                    && !root.attacks_opponent_drainer
+                    && !root.spirit_development
+                    && !root.spirit_same_turn_score_setup_now
+                    && !root.spirit_own_mana_setup_now
+                    && root.same_turn_score_window_value == 0
+                    && !root.scores_supermana_this_turn
+                    && !root.scores_opponent_mana_this_turn
+                    && !root.safe_supermana_pickup_now
+                    && !root.safe_opponent_mana_pickup_now
+                    && !root.mana_handoff_to_opponent
+                    && !root.has_roundtrip
+                    && root.inputs.first() == approved.inputs.first()
+                    && root.root_rank <= approved.root_rank
+                    && root.score_path_best_steps > approved.score_path_best_steps
+            })
+            .min_by(|(left, _), (right, _)| {
+                scored_roots[*left]
+                    .root_rank
+                    .cmp(&scored_roots[*right].root_rank)
+                    .then_with(|| {
+                        Self::compare_ranked_scored_root_indices(scored_roots, *left, *right)
+                    })
+            })
+            .map(|(index, _)| index)
+    }
+
     fn pro_v2_root_advisor_white_early_safe_progress_setup_competition_override(
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
@@ -19731,6 +19856,14 @@ impl MonsGameModel {
             game,
             scored_roots,
             selection_indices.as_slice(),
+            approved_index.0,
+            config,
+        ) {
+            approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedFamilyCompetition);
+        }
+        if let Some(index) = Self::pro_v2_root_advisor_white_turn_three_no_action_recovery_override(
+            game,
+            scored_roots,
             approved_index.0,
             config,
         ) {
