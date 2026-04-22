@@ -26,6 +26,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - Reply floor: incumbent `431`, shipping root `338`.
   - Selected override utility: incumbent `TurnEngineUtility { ... eval_score: 431 }`, shipping root `TurnEngineUtility { ... eval_score: 338 }`.
   - The shortlist is still just those two safe `ManaTempo` roots, and neither gets a turn-engine projection.
+- This iteration spent one narrow black-only runtime candidate and killed it:
+  - A turn-six black spirit-reentry safety gate stopped the unsafe preserved-spirit fallback on `black_recovery_branch` and aligned that board to shipping `l6,0;l6,1`.
+  - The cut cleared `guardrails`, retained `pro-triage` at `target_changed=4 / off_target_changed=0`, exact-lite, and advisory stage-1 CPU at `1.563 / 1.531 / 1.368`.
+  - It still failed retained `pro-reliability` at `0.9167 / 0.9167 / 0.8333`, so the code was discarded.
 - The two rotated white turn-three retained misses are fixed:
   - Pro white turn-3 no-action board `0 0 w 1 0 3 0 0 3 ...` now aligns to `l9,3;l10,4`.
   - Normal white turn-3 board `0 0 w 1 0 4 0 0 3 ...` now aligns to `l7,7;l6,6`.
@@ -42,7 +46,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Keep the new white turn-three no-action recovery guard; it fixes a real confirm board without disturbing the retained small loop.
 - Do not spend another advisor/head patch on the rotated Pro white no-action seam `l10,4;l9,3` vs `l7,8;l6,9`; the incumbent already wins on frontier reply-floor and selected-utility metrics, so another approval override would be fighting the current model rather than fixing a local routing bug.
 - If that board matters again, start from root scoring/root-rank generation for quiet early white mana-only roots instead of shortlist or post-search acceptance.
-- Treat `black_recovery_branch` as the next active Pro seam; it still does not look like the same local bug as the earlier white recovery board.
+- Treat `black_recovery_branch` as an active seam, but do not reopen the simple turn-six spirit safety gate; that line fixes the local board and retained triage while still regressing Fast duel strength.
+- If `black_recovery_branch` is reopened, start from a more selective approval/root-scoring hypothesis than "block unsafe spirit reentry whenever the shipping mana root exists."
 - Do not reopen the resolved white turn-three sibling boards unless a future challenger regresses them.
 - Any future challenger still has to respect stage-1 CPU pressure; a package that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 
@@ -53,4 +58,5 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Do not spend canonical gates on a challenger that stays behaviorally inert at `target_changed=0 off_target_changed=0`.
 - Do not treat “all live walls aligned” as enough if duel strength or CPU cost still fails.
 - Do not reopen partial three-wall packages that only fix `opening_reply_white`, `black_recovery_branch`, and `white_head_acceptance`; that line can still fail retained duels and regress the currently clean fast pack.
+- Do not reopen the blunt black turn-six spirit safety gate that aligns `black_recovery_branch` by banning unsafe preserved-spirit reentry; it already failed retained `pro-reliability` on Fast at `0.8333`.
 - Do not reopen packages that are already archived in `docs/automove-archive.md` unless there is a brand-new shared hypothesis.
