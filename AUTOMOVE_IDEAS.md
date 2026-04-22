@@ -22,6 +22,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - The package still clears the small retained loop: `guardrails` passed, `pro-triage` stayed at `target_changed=5 / off_target_changed=0`, exact-lite passed, and retained `pro-reliability` passed at `0.9167 / 0.9167 / 1.0000`.
 - `pro-reliability-confirm` failed: `0.9375 / 0.9062 / 0.8750`, with Fast falling below the `0.90` floor.
 - Advisory stage-1 CPU remains elevated but unchanged in character: `1.552 / 1.526 / 1.363` versus `shipping_pro_search`.
+- This turn did not spend another canonical loop. A board-local probe on the rotated Pro white confirm seam `l10,4;l9,3` vs shipping `l7,8;l6,9` showed frontier already prefers the incumbent on its own metrics:
+  - Reply floor: incumbent `431`, shipping root `338`.
+  - Selected override utility: incumbent `TurnEngineUtility { ... eval_score: 431 }`, shipping root `TurnEngineUtility { ... eval_score: 338 }`.
+  - The shortlist is still just those two safe `ManaTempo` roots, and neither gets a turn-engine projection.
 - The two rotated white turn-three retained misses are fixed:
   - Pro white turn-3 no-action board `0 0 w 1 0 3 0 0 3 ...` now aligns to `l9,3;l10,4`.
   - Normal white turn-3 board `0 0 w 1 0 4 0 0 3 ...` now aligns to `l7,7;l6,6`.
@@ -29,14 +33,16 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - Pro still loses on `black_recovery_branch`.
   - The earlier white confirm board `l9,7;l8,7` vs `l9,7;l10,8` is gone from the current Pro confirm trace.
   - Pro confirm rotated onto the next white turn-three no-action seam: `l10,4;l9,3` vs shipping `l7,8;l6,9`.
+  - The new probe shows that rotated white board is not another approval-order or head-acceptance miss; it is a root-scoring/model mismatch under current frontier metrics.
   - Normal and Fast stayed below the floor at the same aggregate rates, so the broader confirm-only white/black seam family remains unresolved.
 
 ## Next Hypothesis
 
 - The next real blocker is confirm, not the small retained loop.
 - Keep the new white turn-three no-action recovery guard; it fixes a real confirm board without disturbing the retained small loop.
-- Start from the next Pro confirm white no-action seam `l10,4;l9,3` vs `l7,8;l6,9`; the current blocker is still early white confirm routing, but the surface has moved one board deeper after the recovery fix.
-- Treat `black_recovery_branch` as the second Pro seam after that new white board is understood; it still does not look like the same local bug.
+- Do not spend another advisor/head patch on the rotated Pro white no-action seam `l10,4;l9,3` vs `l7,8;l6,9`; the incumbent already wins on frontier reply-floor and selected-utility metrics, so another approval override would be fighting the current model rather than fixing a local routing bug.
+- If that board matters again, start from root scoring/root-rank generation for quiet early white mana-only roots instead of shortlist or post-search acceptance.
+- Treat `black_recovery_branch` as the next active Pro seam; it still does not look like the same local bug as the earlier white recovery board.
 - Do not reopen the resolved white turn-three sibling boards unless a future challenger regresses them.
 - Any future challenger still has to respect stage-1 CPU pressure; a package that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 

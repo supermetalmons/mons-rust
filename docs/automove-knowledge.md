@@ -28,6 +28,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - The confirm-only frontier losses are currently clustered around two seams: early white head acceptance where `engine_post_search` accepts a frontier head that shipping rejects or never executes, and a separate late black search-vs-spirit approval seam.
 - On white turn-three no-action weak-window boards, a safe `DrainerSafetyRecovery` root can be the correct `pre_accept` answer even when the reply-risk shortlist is dominated by vulnerable `ManaTempo` window roots. ProV2 has to both admit that recovery root at approval time and prevent `engine_post_search` from immediately reinstalling the vulnerable one-window head.
 - Fixing one early white confirm recovery board can leave the aggregate confirm gate completely unchanged; when that happens, the right read is that the seam rotated, not that the local fix was fake.
+- If a rotated white confirm seam shows the incumbent quiet `ManaTempo` root ahead on both reply floor and selected override utility, it is not another shortlist-order or head-acceptance bug. Treat that as a root-scoring/model mismatch and do not paper over it with another advisor override.
 - Runtime cost is a real gate. A candidate that fixes live walls but pushes stage-1 CPU into the `1.5x+` range against `shipping_pro_search` is still non-promotable.
 - Wrapper-only reroutes, fallback widening, shortlist widening, and metadata-only advisor changes saturate quickly; the real frontier is shared approval and head logic.
 
@@ -45,6 +46,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `smart_automove_pro_forced_turn_engine_retained_churn_probe`
 - `smart_automove_pro_root_advisor_trace_probe`
 - `smart_automove_pro_white_turn_three_sibling_root_probe`
+- `white_confirm_pro_ply11_reply_order_probe`
 
 ## Kill Rules
 
