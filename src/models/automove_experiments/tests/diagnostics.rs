@@ -322,6 +322,108 @@ fn white_confirm_pro_ply11_reply_order_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: inspect black recovery branch legacy-alignment guards"]
+fn black_recovery_branch_legacy_alignment_probe() {
+    let game = MonsGame::from_fen(
+        "1 0 b 0 0 2 0 0 6 n05d1xn05/n05s0xa0xe0xn03/n07xxmn03/n03xxmn03xxmn03/n03xxmn01xxmn03Y0xn01/n05xxUn05/y0xn04xxMn05/n03xxMn03xxMn03/n07xxMn03/n02E0xn02S0xn05/n04A1xD1xn05",
+        false,
+    )
+    .expect("valid black recovery branch fen");
+    let perspective = game.active_color;
+    let (config, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let candidate_indices = MonsGameModel::filtered_root_candidate_indices(
+        &game,
+        scored_roots.as_slice(),
+        perspective,
+        config,
+    );
+    let reply_risk_shortlist = MonsGameModel::reply_risk_guard_shortlist_indices(
+        scored_roots.as_slice(),
+        candidate_indices.as_slice(),
+        config,
+    );
+    let approved_index = scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == "l1,5;l3,3;l2,3")
+        .expect("approved spirit root should exist");
+    let legacy_index = scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == "l6,0;l6,1")
+        .expect("legacy mana root should exist");
+    let approved = &scored_roots[approved_index];
+    let legacy = &scored_roots[legacy_index];
+    let exact_context =
+        crate::models::automove_exact::exact_opportunity_context(&game, game.active_color);
+    let approved_non_tactical = !approved.wins_immediately
+        && !approved.attacks_opponent_drainer
+        && !approved.scores_supermana_this_turn
+        && !approved.scores_opponent_mana_this_turn
+        && !approved.safe_supermana_pickup_now
+        && !approved.safe_opponent_mana_pickup_now
+        && !approved.mana_handoff_to_opponent
+        && !approved.has_roundtrip;
+    let legacy_non_tactical = !legacy.wins_immediately
+        && !legacy.attacks_opponent_drainer
+        && !legacy.scores_supermana_this_turn
+        && !legacy.scores_opponent_mana_this_turn
+        && !legacy.safe_supermana_pickup_now
+        && !legacy.safe_opponent_mana_pickup_now
+        && !legacy.mana_handoff_to_opponent
+        && !legacy.has_roundtrip;
+    let override_index = MonsGameModel::pro_v2_root_advisor_black_legacy_alignment_override(
+        &game,
+        scored_roots.as_slice(),
+        candidate_indices.as_slice(),
+        approved_index,
+        legacy_index,
+        config,
+    );
+    let mut legacy_selector_config = config;
+    legacy_selector_config.enable_root_reply_risk_guard = false;
+    legacy_selector_config.turn_engine_mode = TurnEngineMode::ProV1;
+    let pro_v1_candidate_selected = MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
+        &game,
+        scored_roots.as_slice(),
+        candidate_indices.as_slice(),
+        perspective,
+        legacy_selector_config,
+    );
+    let (probe_legacy_selected, probe_legacy_full_pool_selected, _, _) =
+        pro_v2_legacy_selector_probe(&game, SmartAutomovePreference::Pro);
+
+    println!(
+        "BLACK_RECOVERY_BRANCH_LEGACY_ALIGNMENT approved={} legacy={} candidate_contains_legacy={} shortlist={:?} approved_family={:?} legacy_family={:?} approved_plain_spirit={} approved_progress_surface={} approved_non_tactical={} legacy_non_tactical={} exact_window={} exact_deny={} exact_attack={} approved_vulnerable={} legacy_vulnerable={} legacy_score_ge_approved={} override={:?} pro_v1_candidate_selected={} probe_legacy_selected={} probe_legacy_full_pool_selected={}",
+        format_root_probe(scored_roots.get(approved_index)),
+        format_root_probe(scored_roots.get(legacy_index)),
+        candidate_indices.contains(&legacy_index),
+        reply_risk_shortlist
+            .iter()
+            .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+            .collect::<Vec<_>>(),
+        MonsGameModel::turn_engine_root_evaluation_family(approved),
+        MonsGameModel::turn_engine_root_evaluation_family(legacy),
+        MonsGameModel::is_plain_spirit_development_root(approved),
+        MonsGameModel::turn_engine_root_evaluation_has_progress_surface(approved),
+        approved_non_tactical,
+        legacy_non_tactical,
+        exact_context.delta.same_turn_score_window_value,
+        exact_context.delta.opponent_window_deny_gain,
+        exact_context.delta.drainer_attack_available,
+        approved.own_drainer_vulnerable,
+        legacy.own_drainer_vulnerable,
+        legacy.score >= approved.score,
+        override_index.map(|index| Input::fen_from_array(&scored_roots[index].inputs)),
+        Input::fen_from_array(&pro_v1_candidate_selected),
+        probe_legacy_selected,
+        probe_legacy_full_pool_selected,
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: replay exact pro-reliability duel seeds and log frontier non-win openings"]
 fn smart_automove_pro_reliability_nonwin_trace_probe() {
     let frontier_profile = reliability_frontier_profile_id();
