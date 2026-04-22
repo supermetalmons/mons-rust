@@ -16662,6 +16662,7 @@ impl MonsGameModel {
             && approved.score_path_best_steps == legacy.score_path_best_steps
             && approved.spirit_setup_gain == legacy.spirit_setup_gain
             && legacy.score >= approved.score.saturating_add(16)
+            && legacy.root_rank >= approved.root_rank.saturating_add(2)
             && legacy.root_rank <= approved.root_rank.saturating_add(4);
         if white_no_action_split_legacy_mana {
             return Some(legacy_index);

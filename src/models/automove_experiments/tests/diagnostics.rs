@@ -451,6 +451,72 @@ fn smart_automove_pro_reliability_live_nonwin_root_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: inspect white turn-three sibling surfaces on retained and duel boards"]
+fn smart_automove_pro_white_turn_three_sibling_root_probe() {
+    #[derive(Clone, Copy)]
+    struct ProbeCase {
+        label: &'static str,
+        board_fen: &'static str,
+    }
+
+    fn top_root_details(game: &MonsGame) -> Vec<String> {
+        let (_, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            game,
+        );
+        scored_roots
+            .iter()
+            .take(10)
+            .map(|root| {
+                format!(
+                    "{}:{}",
+                    Input::fen_from_array(&root.inputs),
+                    format_root_probe(Some(root))
+                )
+            })
+            .collect()
+    }
+
+    let cases = [
+        ProbeCase {
+            label: "retained_normal_v92",
+            board_fen: "0 0 w 1 0 4 0 0 3 n06a0xn04/n03y0xn01d0xxxmn01e0xn02/n04s0xn06/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n03xxMxxMn01xxMY0xn03/n05S0xn05/n04A0xD0xn05/n02E0xn08",
+        },
+        ProbeCase {
+            label: "retained_fast_v94",
+            board_fen: "0 0 w 1 0 4 0 0 3 n07e0xn03/n03y0xn01s0xn01a0xn03/n06d0xxxmn03/n03xxmxxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn03Y0xn03/n03E0xn01S0xn05/n04A0xD0xn05",
+        },
+        ProbeCase {
+            label: "duel_pro_new_turn_three",
+            board_fen: "0 0 w 1 0 3 0 0 3 n03y0xn03e0xn03/n05a0xn05/n02xxmn01s0xn01d0xn04/n06xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n03xxMxxMn01xxMn04/E0xn04S0xn05/n03A0xn01D0xn05/n08Y0xn02",
+        },
+        ProbeCase {
+            label: "duel_pro_split_trace",
+            board_fen: "0 0 w 1 0 4 0 0 3 n03y0xn03e0xn03/n05a0xn05/n02xxmn01s0xn01d0xn04/n06xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n03xxMxxMn01xxMn04/E0xn04S0xn05/n05D0xn05/n04A0xn03Y0xn02",
+        },
+    ];
+
+    for case in cases {
+        let game = MonsGame::from_fen(case.board_fen, false)
+            .unwrap_or_else(|| panic!("{}: valid board fen", case.label));
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        clear_turn_engine_plan_cache();
+        clear_turn_engine_diagnostics();
+        clear_turn_engine_selector_diagnostics();
+        let frontier_probe =
+            runtime_decision_probe("frontier_pro_v2_guarded", SmartAutomovePreference::Pro, &game);
+        let frontier_advisor = pro_v2_root_advisor_decision_snapshot();
+        let frontier_roots = top_root_details(&game);
+        println!(
+            "WHITE_T3_SIBLING label={} probe={:?} advisor={:?} roots={:?}",
+            case.label, frontier_probe, frontier_advisor, frontier_roots,
+        );
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: bounded selector/exact hotspot probe for pro reliability corpus"]
 fn smart_automove_pro_reliability_hotspot_probe() {
     use std::collections::BTreeMap;

@@ -187,6 +187,25 @@ fn frontier_pro_v2_guarded_profile_prefers_v30_white_turn_four_mana_sibling_norm
 }
 
 #[test]
+fn frontier_pro_v2_guarded_profile_prefers_v30_white_turn_three_mana_sibling_pro_root() {
+    let game = MonsGame::from_fen(
+        "0 0 w 1 0 3 0 0 3 n03y0xn03e0xn03/n05a0xn05/n02xxmn01s0xn01d0xn04/n06xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n03xxMxxMn01xxMn04/E0xn04S0xn05/n03A0xn01D0xn05/n08Y0xn02",
+        false,
+    )
+    .expect("white turn-three mana sibling pro fen should be valid");
+    clear_exact_state_analysis_cache();
+    clear_turn_engine_plan_cache();
+    assert_eq!(
+        profile_decision_move_fen(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game
+        ),
+        "l9,3;l10,4"
+    );
+}
+
+#[test]
 fn frontier_pro_v2_guarded_profile_prefers_v30_white_turn_four_mana_sibling_fast_root() {
     let game = MonsGame::from_fen(
         "0 0 w 1 0 4 0 0 3 n07e0xn03/n03y0xn01s0xn01a0xn03/n06d0xxxmn03/n03xxmxxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn03Y0xn03/n03E0xn01S0xn05/n04A0xD0xn05",

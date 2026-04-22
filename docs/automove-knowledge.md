@@ -22,6 +22,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `white_split_trace` can move independently of the other white walls; fixing mana-sibling competition there does not solve the late white head seams.
 - A narrow package that fixes only `opening_reply_white`, `black_recovery_branch`, and `normal_white_head_acceptance` is still not enough; the retained duel can stay at `0.8333 / 0.7500 / 0.7500` and previously clean fast/normal packs can regress.
 - Cheap turn-three white approval escapes can fix `white_split_trace` and `black_bridge_nonwin` together while keeping Fast clean, but retained duel coverage can rotate onto new white turn-three misses outside the original five-board live probe.
+- On white turn-three no-action mana boards, the legacy-alignment override is only safe when the legacy root is at least two root-rank slots worse than the currently approved safe root; allowing the `+1` case reopens the rotated Pro/Normal sibling misses.
+- The rotated white turn-three sibling misses were resolved by tightening that legacy-alignment rank-gap check, not by widening omitted-root reentry or adding another late preserved-root shim.
 - Runtime cost is a real gate. A candidate that fixes live walls but pushes stage-1 CPU into the `1.5x+` range against `shipping_pro_search` is still non-promotable.
 - Wrapper-only reroutes, fallback widening, shortlist widening, and metadata-only advisor changes saturate quickly; the real frontier is shared approval and head logic.
 
@@ -38,6 +40,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `smart_automove_pro_triage_retained_churn_probe`
 - `smart_automove_pro_forced_turn_engine_retained_churn_probe`
 - `smart_automove_pro_root_advisor_trace_probe`
+- `smart_automove_pro_white_turn_three_sibling_root_probe`
 
 ## Kill Rules
 

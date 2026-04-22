@@ -14,25 +14,21 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 
 ## Latest Gate Snapshot
 
-- Date: `2026-04-22`
+- Date: `2026-04-23`
 - Shipping decision: public Pro remains on `frontier_pro_v2_guarded`.
-- Live retained duel blocker: the shipped frontier still fails the default retained duel corpus on the exact five-board live non-win surface.
-- `vs_shipping_pro` loses only on `opening_reply_white`, `black_recovery_branch`, and `white_split_trace`.
-- `vs_shipping_normal` loses only on `black_bridge_nonwin` and `white_head_acceptance`.
-- `vs_shipping_fast` is currently clean.
-- The latest narrow approval/head package did fix `opening_reply_white`, `black_recovery_branch`, and `white_head_acceptance`, but retained `pro-reliability` still failed at `0.8333 / 0.7500 / 0.7500` and it reintroduced fast/normal non-wins, so that partial three-wall package was discarded.
-- The current live challenger is a cheap turn-three white package: it fixes `vs_shipping_pro_white_split_trace` and `vs_shipping_normal_black_bridge_nonwin`, passes `pro-triage` at `target_changed=5 / off_target_changed=0`, passes exact-lite, keeps `vs_shipping_fast` clean at `1.0000`, and holds advisory stage-1 CPU at `1.551 / 1.509 / 1.346`.
-- That challenger is still not promotable: retained `pro-reliability` fails at `0.8333 / 0.8333 / 1.0000`, because the duel rotates onto two new white turn-three misses while `opening_reply_white`, `black_recovery_branch`, and `white_head_acceptance` still matter overall.
-- New retained Pro miss under that package: white turn-3 no-action board `0 0 w 1 0 3 0 0 3 ...`, frontier `l9,3;l8,4`, shipping `l9,3;l10,4`.
-- New retained Normal miss under that package: white turn-3 board `0 0 w 1 0 4 0 0 3 ...`, frontier `l10,2;l9,1`, shipping `l7,7;l6,6`.
+- The current package is promotable on the canonical loop: `guardrails` passed, `pro-triage` stayed at `target_changed=5 / off_target_changed=0`, exact-lite passed, and retained `pro-reliability` passed at `0.9167 / 0.9167 / 1.0000`.
+- Advisory stage-1 CPU remains elevated but unchanged in character: `1.558 / 1.520 / 1.369` versus `shipping_pro_search`.
+- The two rotated white turn-three retained misses are fixed:
+  - Pro white turn-3 no-action board `0 0 w 1 0 3 0 0 3 ...` now aligns to `l9,3;l10,4`.
+  - Normal white turn-3 board `0 0 w 1 0 4 0 0 3 ...` now aligns to `l7,7;l6,6`.
+- The five-board live root probe still differs on `opening_reply_white`, `black_recovery_branch`, and `white_head_acceptance`, but those seams are diagnostic-only right now; direct retained duel strength is the promotion gate and it passed.
 
 ## Next Hypothesis
 
-- Target the exact five-board surface directly; do not spend more time on seed-tag reconciliation.
-- The surviving white blocker is still post-search head acceptance, not just recovery reachability.
-- The surviving black blocker is still approval on preserved spirit reentry, not shortlist reachability alone.
-- The turn-three split/bridge pair is now cheap enough to keep. The next spend should harden the two newly surfaced white turn-three retained misses rather than reopen `white_split_trace` or `black_bridge_nonwin`.
-- The next credible challenger still has to buy cheaper approval or head logic; retained seam alignment that pushes stage-1 CPU back into the `1.5x+` range is not promotable.
+- There is no urgent live blocker today; the shipped frontier passed the full canonical loop.
+- If another iteration is needed, start from the remaining diagnostic seams `opening_reply_white`, `black_recovery_branch`, and `white_head_acceptance` only if they buy duel strength or cost relief together.
+- Do not reopen the resolved white turn-three sibling boards unless a future challenger regresses them.
+- Any future challenger still has to respect stage-1 CPU pressure; a package that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 
 ## No-Go Notes
 
