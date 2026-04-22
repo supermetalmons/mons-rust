@@ -14,12 +14,13 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 
 ## Latest Gate Snapshot
 
-- Date: `2026-04-21`
+- Date: `2026-04-22`
 - Shipping decision: public Pro remains on `frontier_pro_v2_guarded`.
 - Live retained duel blocker: the shipped frontier still fails the default retained duel corpus on the exact five-board live non-win surface.
 - `vs_shipping_pro` loses only on `opening_reply_white`, `black_recovery_branch`, and `white_split_trace`.
 - `vs_shipping_normal` loses only on `black_bridge_nonwin` and `white_head_acceptance`.
 - `vs_shipping_fast` is currently clean.
+- The latest narrow approval/head package did fix `opening_reply_white`, `black_recovery_branch`, and `white_head_acceptance`, but retained `pro-reliability` still failed at `0.8333 / 0.7500 / 0.7500` and it reintroduced fast/normal non-wins, so that partial three-wall package was discarded.
 
 ## Next Hypothesis
 
@@ -34,4 +35,5 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Do not treat retained `primary_pro` churn by itself as promotion evidence.
 - Do not spend canonical gates on a challenger that stays behaviorally inert at `target_changed=0 off_target_changed=0`.
 - Do not treat “all live walls aligned” as enough if duel strength or CPU cost still fails.
+- Do not reopen partial three-wall packages that only fix `opening_reply_white`, `black_recovery_branch`, and `white_head_acceptance`; that line can still fail retained duels and regress the currently clean fast pack.
 - Do not reopen packages that are already archived in `docs/automove-archive.md` unless there is a brand-new shared hypothesis.

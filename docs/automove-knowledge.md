@@ -20,6 +20,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - White `normal_white_head_acceptance` is a vulnerable-window recovery seam where safer recovery roots already exist but still lose at final head acceptance.
 - Black `black_recovery_branch` is not a reachability problem alone; the preserved spirit path can keep winning approval even when the shipping mana root is already available.
 - `white_split_trace` can move independently of the other white walls; fixing mana-sibling competition there does not solve the late white head seams.
+- A narrow package that fixes only `opening_reply_white`, `black_recovery_branch`, and `normal_white_head_acceptance` is still not enough; the retained duel can stay at `0.8333 / 0.7500 / 0.7500` and previously clean fast/normal packs can regress.
 - Runtime cost is a real gate. A candidate that fixes live walls but pushes stage-1 CPU into the `1.5x+` range against `shipping_pro_search` is still non-promotable.
 - Wrapper-only reroutes, fallback widening, shortlist widening, and metadata-only advisor changes saturate quickly; the real frontier is shared approval and head logic.
 
@@ -45,5 +46,6 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - Kill any line that only changes advisor labels or `pre_accept` metadata while the final selected root stays unchanged.
 - Kill any line that widens shortlist or injection coverage without moving the approved root on the live walls.
 - Kill any line that fixes only `white_split_trace` while leaving the other white and black walls unchanged.
+- Kill any line that regresses a duel pack that is currently clean, even if it fixes part of the retained live wall surface.
 - Kill any line that aligns live walls but still fails retained duel strength or canonical cost.
 - Do not reopen archived profiles, archived seams, or archived wave packages without a brand-new shared hypothesis.
