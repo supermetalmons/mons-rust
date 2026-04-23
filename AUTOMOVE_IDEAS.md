@@ -86,6 +86,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - The focused `black_recovery_branch_selector_ordering_probe` still shows shipping loses to both the approved plain-spirit root and the no-guard ProV1 spirit replay under frontier's own reply-risk/selector ordering.
   - The focused `black_progress_vs_setup_residue_probe` still shows shipping is only a candidate, not shortlisted; the full-pool frontier model prefers a different own-setup spirit challenger (`l1,5;l3,7;l2,8`) over shipping's `l1,5;l2,7;l1,8`.
   - Treat this as a diagnostic-only iteration: the next spend must explain one of those shipping-disabled orderings below the current frontier metric layer before adding another local fallback.
+- This iteration kept no runtime code and added `black_shipping_disabled_ordering_surface_probe` to split the two remaining black residual mechanisms under both runtime configs:
+  - On `black_recovery_branch`, both profiles build the same vulnerable-mana reply-risk shortlist and the raw reply-risk guard chooses shipping `l6,0;l6,1`. Frontier diverges only after ProV2 advisor reentry adds and approves the plain-spirit root `l1,5;l3,3;l2,3`; shipping never runs that advisor layer because the selector is disabled.
+  - On `black_progress_vs_setup_residue`, shipping's scored roots still contain the safe-progress incumbent `l7,1;l9,3`, but `filtered_root_candidate_indices` excludes it under the shipping `ProV1` surface. The spirit-setup prefilter has all competition booleans false there, so reply-risk only compares the own-setup spirit siblings and selects `l1,5;l2,7;l1,8`.
+  - The same Fast board under frontier `ProV2` keeps the safe-progress root in candidates because `progress_competes=true` and `followup_progress_competes=true`; frontier then shortlists only that safe-progress root.
+  - This makes the next black spend narrower: do not add another root-level fallback until a probe explains whether those ProV2 progress-competition predicates are genuinely over-broad on black turn-six setup-progress boards or whether shipping's ProV1 filter is simply a non-retainable baseline preference.
 - Board-local confirm diagnostics collapsed the earlier two-board black Fast residue into one real live seam:
   - On `l0,0;l1,1` vs shipping `l7,1;l8,0`, frontier already matches shipping on the current retained package.
   - The only live confirm Fast approval miss was `l0,5;l1,5` vs shipping `l2,5;l3,7;l2,8`, where legacy and shipping already agree on the spirit own-setup progress root.
@@ -246,8 +251,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 
 ## Next Hypothesis
 
-- The current package remains promotable and there is no live runtime challenger after this clean-tree refresh.
-- The next spend should explain the remaining Pro/Fast shipping-disabled no-go orderings below the existing local guard layer, not reopen simple wrapper/head/shortlist fixes.
+- The current package remains promotable and there is no live runtime challenger after this diagnostic split.
+- The next spend should target the Fast black progress-vs-setup filter layer: explain whether the ProV2 `progress_competes` / `followup_progress_competes` predicates should ever preserve the safe-progress root over black turn-six own-setup spirit roots on this surface. Do not touch runtime behavior until that scope is proven against nearby retained black setup/progress boards.
 - Keep the new white turn-three no-action recovery guard, the black late-fast safe-mana override, the white early setup repair, the black late reply-risk setup rescue, the exact white early engine-disabled wrapper fallback, the black late weak-window safe-progress setup rescue, the white nonnegative-deny and negative-deny search-only fallbacks, the white turn-five same-window plus mid-turn head guards, and the white confirm ProV1 tiebreak fallback together; they now form the promoted retained package.
 - For `black_recovery_branch`, do not reapply the shortlist-local legacy fallback. The selector-ordering probe now shows shipping `l6,0;l6,1` loses to the current approved preserved-spirit root on reply floor and also fails to beat the no-guard ProV1 spirit replay `l1,5;l2,7;l1,8`.
 - For `white_confirm_pro_ply11`, the promotable signal is now specifically the two-root equal-score safe quiet `ManaTempo` shortlist plus raw `search-only + ProV1` tiebreak. Do not broaden that branch into a shipping mirror or advisor override for unequal-score, non-quiet, progress, tactical, or outside-shortlist boards.

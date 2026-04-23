@@ -1997,6 +1997,350 @@ fn black_pro_lane_split_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: compare remaining black shipping-disabled residual ordering under frontier and shipping configs"]
+fn black_shipping_disabled_ordering_surface_probe() {
+    #[derive(Clone, Copy)]
+    struct ResidualCase {
+        label: &'static str,
+        board_fen: &'static str,
+        frontier_root: &'static str,
+        shipping_root: &'static str,
+        extra_roots: &'static [&'static str],
+    }
+
+    fn snapshot_probe(
+        root: &RootEvaluation,
+        projection: Option<&TurnEngineRootProjection>,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+        reply_limit: usize,
+    ) -> String {
+        let snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+            root,
+            projection,
+            perspective,
+            config,
+            reply_limit,
+        );
+        format!(
+            "win={} match_point={} floor={}",
+            snapshot.allows_immediate_opponent_win,
+            snapshot.opponent_reaches_match_point,
+            snapshot.worst_reply_score,
+        )
+    }
+
+    fn pairwise_probe(
+        game: &MonsGame,
+        scored_roots: &[RootEvaluation],
+        projections: &std::collections::HashMap<usize, TurnEngineRootProjection>,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+        reply_limit: usize,
+        challenger_index: usize,
+        incumbent_index: usize,
+    ) -> String {
+        let challenger_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+            &scored_roots[challenger_index],
+            projections.get(&challenger_index),
+            perspective,
+            config,
+            reply_limit,
+        );
+        let incumbent_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+            &scored_roots[incumbent_index],
+            projections.get(&incumbent_index),
+            perspective,
+            config,
+            reply_limit,
+        );
+        let better = MonsGameModel::is_better_reply_risk_candidate(
+            game,
+            challenger_index,
+            challenger_snapshot,
+            incumbent_index,
+            incumbent_snapshot,
+            projections.get(&challenger_index),
+            projections.get(&incumbent_index),
+            scored_roots,
+            perspective,
+            config,
+            &mut std::collections::HashMap::new(),
+        );
+        format!(
+            "{}_vs_{}={} floors={}/{}",
+            Input::fen_from_array(&scored_roots[challenger_index].inputs),
+            Input::fen_from_array(&scored_roots[incumbent_index].inputs),
+            better,
+            challenger_snapshot.worst_reply_score,
+            incumbent_snapshot.worst_reply_score,
+        )
+    }
+
+    fn profile_surface(case: ResidualCase, profile: &str) -> String {
+        let game = MonsGame::from_fen(case.board_fen, false)
+            .unwrap_or_else(|| panic!("{} should have a valid fen", case.label));
+        let perspective = game.active_color;
+        let probe = runtime_decision_probe(profile, SmartAutomovePreference::Pro, &game);
+        let (config, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+            profile,
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let candidate_indices = MonsGameModel::filtered_root_candidate_indices(
+            &game,
+            scored_roots.as_slice(),
+            perspective,
+            config,
+        );
+        let all_indices = (0..scored_roots.len()).collect::<Vec<_>>();
+        let spirit_setup_indices = all_indices
+            .iter()
+            .copied()
+            .filter(|index| {
+                let root = &scored_roots[*index];
+                root.spirit_own_mana_setup_now
+                    && !root.own_drainer_vulnerable
+                    && !root.mana_handoff_to_opponent
+            })
+            .collect::<Vec<_>>();
+        let spirit_setup_filter_surface = if spirit_setup_indices.is_empty() {
+            "spirit_setup_candidates=[]".to_string()
+        } else {
+            format!(
+                "spirit_setup_candidates={:?} progress_competes={} followup_progress_competes={} risky_score_competes={} negative_deny_competes={} score_competes={} projection_competes={} risky_recovery_competes={}",
+                spirit_setup_indices
+                    .iter()
+                    .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+                    .collect::<Vec<_>>(),
+                MonsGameModel::safe_progress_competes_with_spirit_pref(
+                    scored_roots.as_slice(),
+                    all_indices.as_slice(),
+                    config.turn_engine_mode,
+                ),
+                MonsGameModel::followup_progress_competes_with_spirit_pref(
+                    &game,
+                    scored_roots.as_slice(),
+                    all_indices.as_slice(),
+                    perspective,
+                    config,
+                ),
+                MonsGameModel::risky_score_competes_with_spirit_pref(
+                    scored_roots.as_slice(),
+                    all_indices.as_slice(),
+                    config.turn_engine_mode,
+                ),
+                MonsGameModel::negative_deny_competes_with_spirit_pref(
+                    scored_roots.as_slice(),
+                    all_indices.as_slice(),
+                    perspective,
+                    config,
+                ),
+                MonsGameModel::score_competes_with_spirit_pref(
+                    scored_roots.as_slice(),
+                    all_indices.as_slice(),
+                    config.turn_engine_mode,
+                ),
+                MonsGameModel::projection_competes_with_spirit_pref(
+                    scored_roots.as_slice(),
+                    all_indices.as_slice(),
+                    perspective,
+                    config,
+                ),
+                MonsGameModel::risky_recovery_competes_with_spirit_pref(
+                    &game,
+                    scored_roots.as_slice(),
+                    all_indices.as_slice(),
+                    perspective,
+                    config,
+                ),
+            )
+        };
+        let shortlist = MonsGameModel::reply_risk_guard_shortlist_indices(
+            scored_roots.as_slice(),
+            candidate_indices.as_slice(),
+            config,
+        );
+        let projections = MonsGameModel::turn_engine_reply_risk_projections(
+            scored_roots.as_slice(),
+            shortlist.as_slice(),
+            perspective,
+            config,
+        );
+        let root_node_budget = ((config.max_visited_nodes
+            * config.root_reply_risk_node_share_bp.max(0) as usize)
+            / 10_000)
+            .max(shortlist.len())
+            .max(1);
+        let per_root_reply_limit = (root_node_budget / shortlist.len().max(1))
+            .max(1)
+            .min(config.root_reply_risk_reply_limit.max(1));
+        let reply_guard_selected = MonsGameModel::pick_root_move_with_reply_risk_guard(
+            &game,
+            scored_roots.as_slice(),
+            candidate_indices.as_slice(),
+            perspective,
+            config,
+        )
+        .map(|index| Input::fen_from_array(&scored_roots[index].inputs));
+        let final_pick = MonsGameModel::pick_root_move_with_exploration(
+            &game,
+            scored_roots.as_slice(),
+            perspective,
+            config,
+        );
+        let mut target_fens = vec![case.frontier_root, case.shipping_root];
+        for extra in case.extra_roots {
+            if !target_fens.contains(extra) {
+                target_fens.push(extra);
+            }
+        }
+        let target_indices = target_fens
+            .iter()
+            .map(|target| {
+                (
+                    *target,
+                    scored_roots
+                        .iter()
+                        .position(|root| Input::fen_from_array(&root.inputs) == *target),
+                )
+            })
+            .collect::<Vec<_>>();
+        let target_details = target_indices
+            .iter()
+            .map(|(target, maybe_index)| {
+                let Some(index) = maybe_index else {
+                    return format!("{} => missing", target);
+                };
+                let root = &scored_roots[*index];
+                let family = MonsGameModel::turn_engine_root_evaluation_family(root);
+                let utility = MonsGameModel::turn_engine_selected_override_utility(
+                    &game,
+                    root,
+                    perspective,
+                    config,
+                    family,
+                );
+                format!(
+                    "{} => index={} candidate_pos={:?} shortlist_pos={:?} family={:?} utility={} snapshot={} projection={:?} {}",
+                    target,
+                    index,
+                    candidate_indices.iter().position(|candidate| candidate == index),
+                    shortlist.iter().position(|candidate| candidate == index),
+                    family,
+                    format_turn_engine_utility_probe(utility),
+                    snapshot_probe(
+                        root,
+                        projections.get(index),
+                        perspective,
+                        config,
+                        per_root_reply_limit,
+                    ),
+                    projections.get(index).map(|projection| {
+                        format!(
+                            "{:?}/{:?}/{}",
+                            projection.plan.head_family,
+                            projection.plan.goal_family,
+                            format_turn_engine_utility_probe(projection.plan.utility),
+                        )
+                    }),
+                    format_root_probe(Some(root)),
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut pairwise = Vec::new();
+        for (left_label, left_index) in target_indices.iter() {
+            let Some(left_index) = *left_index else {
+                continue;
+            };
+            for (right_label, right_index) in target_indices.iter() {
+                if left_label == right_label {
+                    continue;
+                }
+                let Some(right_index) = *right_index else {
+                    continue;
+                };
+                pairwise.push(pairwise_probe(
+                    &game,
+                    scored_roots.as_slice(),
+                    &projections,
+                    perspective,
+                    config,
+                    per_root_reply_limit,
+                    left_index,
+                    right_index,
+                ));
+            }
+        }
+        let shortlist_details = shortlist
+            .iter()
+            .map(|index| {
+                format!(
+                    "{} => {}",
+                    Input::fen_from_array(&scored_roots[*index].inputs),
+                    format_root_probe(scored_roots.get(*index)),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        format!(
+            "profile={} config(selector={} head_rerank={} mode={:?} reply_guard={} margin={} shortlist_max={} reply_limit={} node_share_bp={}) probe={:?} final_pick={} reply_guard_selected={:?} candidate_count={} spirit_setup_filter_surface={} shortlist={:?} shortlist_details={:?} target_details={:?} pairwise={:?}",
+            profile,
+            config.enable_turn_engine_selector,
+            config.enable_turn_head_rerank,
+            config.turn_engine_mode,
+            config.enable_root_reply_risk_guard,
+            config.root_reply_risk_score_margin,
+            config.root_reply_risk_shortlist_max,
+            config.root_reply_risk_reply_limit,
+            config.root_reply_risk_node_share_bp,
+            probe,
+            Input::fen_from_array(&final_pick),
+            reply_guard_selected,
+            candidate_indices.len(),
+            spirit_setup_filter_surface,
+            shortlist
+                .iter()
+                .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+                .collect::<Vec<_>>(),
+            shortlist_details,
+            target_details,
+            pairwise,
+        )
+    }
+
+    let cases = [
+        ResidualCase {
+            label: "black_recovery_branch",
+            board_fen: "1 0 b 0 0 2 0 0 6 n05d1xn05/n05s0xa0xe0xn03/n07xxmn03/n03xxmn03xxmn03/n03xxmn01xxmn03Y0xn01/n05xxUn05/y0xn04xxMn05/n03xxMn03xxMn03/n07xxMn03/n02E0xn02S0xn05/n04A1xD1xn05",
+            frontier_root: "l1,5;l3,3;l2,3",
+            shipping_root: "l6,0;l6,1",
+            extra_roots: &["l1,5;l2,7;l1,8", "l6,0;l7,0"],
+        },
+        ResidualCase {
+            label: "black_progress_vs_setup_residue",
+            board_fen: "1 0 b 0 0 0 0 0 6 n05d0xn05/n05s0xa0xe0xn03/n02xxmn04xxmn03/n07xxmn03/n03xxmn01xxmn05/n05xxUn04xxQ/n05xxMn05/n01y0xn01S0xE0xn01xxMxxMn03/n01xxMn09/n03A0xn03Y0xn03/n05D1xn05",
+            frontier_root: "l7,1;l9,3",
+            shipping_root: "l1,5;l2,7;l1,8",
+            extra_roots: &["l1,5;l3,7;l2,8"],
+        },
+    ];
+
+    for case in cases {
+        println!(
+            "BLACK_SHIPPING_DISABLED_ORDERING label={} context={} frontier_surface={{ {} }} shipping_surface={{ {} }}",
+            case.label,
+            exact_opportunity_context_probe(
+                &MonsGame::from_fen(case.board_fen, false)
+                    .expect("case board should be valid")
+            ),
+            profile_surface(case, "frontier_pro_v2_guarded"),
+            profile_surface(case, "shipping_pro_search"),
+        );
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: inspect remaining late black confirm fast setup seam"]
 fn black_confirm_fast_setup_split_probe() {
     log_black_confirm_fast_runtime_seam_probe(
