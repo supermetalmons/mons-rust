@@ -135,7 +135,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Do not reopen the direct black engine-disabled shipping fallback on `l7,1;l9,3` vs `l1,5;l2,7;l1,8`. It fixes the local residue board and still fails `pro-reliability-confirm` at `0.9375 / 0.9062 / 0.8750`.
 - Do not reopen the already-rotated black confirm Fast lane split `l0,0;l1,1` vs `l7,1;l8,0`; frontier already matches shipping there on the current retained package.
 - Do not reopen the resolved black confirm Fast setup split `l0,5;l1,5` vs `l2,5;l3,7;l2,8`; that board is now covered by `frontier_pro_v2_guarded_profile_prefers_shipping_black_confirm_fast_setup_root` and confirm passed with it in place.
-- The next unresolved black spend is back to the older progress-vs-setup residue `l7,1;l9,3` vs `l1,5;l2,7;l1,8`, not another confirm Fast engine-disabled seam.
+- The remaining black residue `l7,1;l9,3` vs `l1,5;l2,7;l1,8` is no longer a good place for another blind advisor spend.
+  - The improved ignored `black_progress_vs_setup_residue_probe` now shows the shipping root is missing from `reply_risk_shortlist`, but that still is not the whole story.
+  - Across the full frontier candidate pool, the strongest spirit-own-setup progress challenger under the current utility/followup model is actually `l1,5;l3,7;l2,8`, not shipping `l1,5;l2,7;l1,8`.
+  - Shipping therefore is not doing a simple “pick the best full-pool own-setup progress root” step that frontier could safely mirror with another advisor family-competition override.
+  - Do not spend canonical gates on that board again unless the local probe first explains the engine-disabled ordering that prefers shipping's `l1,5;l2,7;l1,8` over the stronger full-pool challenger.
 - Do not reopen the resolved late black Fast seam `l1,8;l1,9` vs `l1,8;l0,8`, the resolved early white Fast seam `l9,7;l8,6` vs `l9,7;l7,6;l7,7`, the resolved black late setup seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8`, the resolved black confirm Fast setup seam `l0,5;l1,5` vs `l2,5;l3,7;l2,8`, or the resolved white early engine-disabled seam `l8,5;l7,6` vs `l9,5;l8,3;l7,4` unless a future challenger regresses them.
 - Any future challenger still has to respect stage-1 CPU pressure; a package that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 

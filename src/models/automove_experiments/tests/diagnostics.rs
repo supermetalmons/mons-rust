@@ -634,9 +634,97 @@ fn black_progress_vs_setup_residue_probe() {
         profile_decision_move_fen("shipping_pro_search", SmartAutomovePreference::Pro, &game);
     let shipping_runtime_probe =
         runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+    let frontier_top_root_details = scored_roots
+        .iter()
+        .take(8)
+        .map(|root| {
+            format!(
+                "{} => {}",
+                Input::fen_from_array(&root.inputs),
+                format_root_probe(Some(root)),
+            )
+        })
+        .collect::<Vec<_>>();
+    let shortlist_root_details = reply_risk_shortlist
+        .iter()
+        .map(|index| {
+            format!(
+                "{} => {}",
+                Input::fen_from_array(&scored_roots[*index].inputs),
+                format_root_probe(scored_roots.get(*index)),
+            )
+        })
+        .collect::<Vec<_>>();
+    let spirit_setup_progress_candidates = candidate_indices
+        .iter()
+        .copied()
+        .filter(|index| {
+            let root = &scored_roots[*index];
+            MonsGameModel::turn_engine_root_evaluation_family(root) == TurnPlanFamily::SpiritImpact
+                && root.spirit_own_mana_setup_now
+                && !root.spirit_same_turn_score_setup_now
+                && MonsGameModel::turn_engine_root_evaluation_has_progress_surface(root)
+                && !MonsGameModel::turn_engine_root_evaluation_is_unsafe(root)
+        })
+        .map(|index| {
+            format!(
+                "{} => {}",
+                Input::fen_from_array(&scored_roots[index].inputs),
+                format_root_probe(scored_roots.get(index)),
+            )
+        })
+        .collect::<Vec<_>>();
+    let root_node_budget = ((config.max_visited_nodes
+        * config.root_reply_risk_node_share_bp.max(0) as usize)
+        / 10_000)
+        .max(candidate_indices.len())
+        .max(1);
+    let per_root_reply_limit = (root_node_budget / candidate_indices.len().max(1))
+        .max(1)
+        .min(config.root_reply_risk_reply_limit.max(1));
+    let spirit_setup_progress_candidate_metrics = candidate_indices
+        .iter()
+        .copied()
+        .filter(|index| {
+            let root = &scored_roots[*index];
+            MonsGameModel::turn_engine_root_evaluation_family(root) == TurnPlanFamily::SpiritImpact
+                && root.spirit_own_mana_setup_now
+                && !root.spirit_same_turn_score_setup_now
+                && MonsGameModel::turn_engine_root_evaluation_has_progress_surface(root)
+                && !MonsGameModel::turn_engine_root_evaluation_is_unsafe(root)
+        })
+        .map(|index| {
+            let root = &scored_roots[index];
+            let utility = MonsGameModel::turn_engine_selected_override_utility(
+                &game,
+                root,
+                perspective,
+                config,
+                TurnPlanFamily::SpiritImpact,
+            );
+            let snapshot = MonsGameModel::root_reply_risk_snapshot(
+                &root.game,
+                perspective,
+                config,
+                per_root_reply_limit,
+            );
+            let followup =
+                MonsGameModel::pro_v2_spirit_followup_floor_score(&root.game, perspective, config);
+            format!(
+                "{} => utility={:?} worst_reply={} match_point={} immediate_win={} followup={} {}",
+                Input::fen_from_array(&root.inputs),
+                utility,
+                snapshot.worst_reply_score,
+                snapshot.opponent_reaches_match_point,
+                snapshot.allows_immediate_opponent_win,
+                followup,
+                format_root_probe(Some(root)),
+            )
+        })
+        .collect::<Vec<_>>();
 
     println!(
-        "BLACK_PROGRESS_VS_SETUP_RESIDUE context={} approved={} shipping={} candidate_contains_shipping={} shortlist={:?} approved_family={:?} shipping_family={:?} approved_plain_spirit={} approved_progress_surface={} shipping_progress_surface={} approved_non_tactical={} shipping_non_tactical={} exact_window={} exact_deny={} exact_attack={} approved_vulnerable={} shipping_vulnerable={} shipping_score_ge_approved={} pro_v1_candidate_selected={} probe_legacy_selected={} probe_legacy_full_pool_selected={} shipping_selected={} runtime_probe={:?} shipping_runtime_probe={:?}",
+        "BLACK_PROGRESS_VS_SETUP_RESIDUE context={} approved={} shipping={} candidate_contains_shipping={} shortlist={:?} shortlist_root_details={:?} spirit_setup_progress_candidates={:?} spirit_setup_progress_candidate_metrics={:?} frontier_top_root_details={:?} approved_family={:?} shipping_family={:?} approved_plain_spirit={} approved_progress_surface={} shipping_progress_surface={} approved_non_tactical={} shipping_non_tactical={} exact_window={} exact_deny={} exact_attack={} approved_vulnerable={} shipping_vulnerable={} shipping_score_ge_approved={} pro_v1_candidate_selected={} probe_legacy_selected={} probe_legacy_full_pool_selected={} shipping_selected={} runtime_probe={:?} shipping_runtime_probe={:?}",
         exact_opportunity_context_probe(&game),
         format_root_probe(scored_roots.get(approved_index)),
         format_root_probe(scored_roots.get(shipping_index)),
@@ -645,6 +733,10 @@ fn black_progress_vs_setup_residue_probe() {
             .iter()
             .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
             .collect::<Vec<_>>(),
+        shortlist_root_details,
+        spirit_setup_progress_candidates,
+        spirit_setup_progress_candidate_metrics,
+        frontier_top_root_details,
         MonsGameModel::turn_engine_root_evaluation_family(approved),
         MonsGameModel::turn_engine_root_evaluation_family(shipping),
         MonsGameModel::is_plain_spirit_development_root(approved),

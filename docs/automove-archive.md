@@ -287,3 +287,10 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The larger confirm duel killed it. `smart_automove_pool_pro_reliability_gate` vs `shipping_pro_search` failed at `0.9375 / 0.9062 / 0.8750`, with Fast below the floor.
 - The confirm-sized Fast non-win trace showed why the wrapper is too shallow. The pack still included the old white search-only split `l9,4;l8,3` vs shipping `l9,4;l8,5`, and it also rotated onto two later black engine-disabled seams: `l0,0;l1,1` vs shipping `l7,1;l8,0`, and `l0,5;l1,5` vs shipping `l2,5;l3,7;l2,8`.
 - Durable outcome: do not keep or reopen the direct black engine-disabled shipping fallback on `l7,1;l9,3`. Preserve the improved residue probe and move the next black spend onto the later Fast seams instead of mirroring shipping on the earlier turn-six board.
+
+## Black Residue Full-Pool Advisor Probe Wave
+
+- No new runtime challenger survived this wave either. The only kept change is a stronger ignored `black_progress_vs_setup_residue_probe` that now reports shortlist membership plus utility, reply-floor, and followup metrics for the competing `SpiritImpact` own-setup progress roots on `l7,1;l9,3` vs shipping `l1,5;l2,7;l1,8`.
+- The useful lesson is that the remaining black residue is not a safe “promote the shipping root from the full pool” advisor fix.
+- The probe confirms the shipping root is still absent from `reply_risk_shortlist`, but it also shows the strongest full-pool own-setup progress challenger under frontier's current metrics is `l1,5;l3,7;l2,8`, not shipping `l1,5;l2,7;l1,8`.
+- Durable outcome: do not reopen this board with another blind advisor family-competition override. Any future black spend here has to explain the engine-disabled ordering that makes shipping choose `l1,5;l2,7;l1,8` instead of the stronger full-pool spirit candidate first.
