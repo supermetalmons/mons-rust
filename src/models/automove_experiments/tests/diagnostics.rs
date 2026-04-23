@@ -2137,6 +2137,105 @@ fn smart_automove_pro_reliability_hotspot_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: trace the retained Fast hotspot opening and its first real divergence"]
+fn fast_hotspot_trace_probe() {
+    fn turn_digest(trace: &DuelTraceGame) -> Vec<String> {
+        trace
+            .profile_a_turns
+            .iter()
+            .take(6)
+            .map(|turn| {
+                format!(
+                    "ply={} board={} move={}",
+                    turn.ply, turn.board_fen, turn.move_fen
+                )
+            })
+            .collect()
+    }
+
+    let opening_fen =
+        "0 0 w 0 0 0 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n03E0xA0xD0xS0xY0xn03";
+    let frontier_profile = reliability_frontier_profile_id();
+    let shipping_profile = reliability_shipping_profile_id();
+
+    with_env_override("SMART_USE_WHITE_OPENING_BOOK", "false", || {
+        println!(
+            "fast hotspot trace probe: frontier={} shipping={} opening={}",
+            frontier_profile, shipping_profile, opening_fen
+        );
+
+        for frontier_is_white in [true, false] {
+            let frontier_trace = play_profile_duel_trace(
+                frontier_profile.as_str(),
+                shipping_profile.as_str(),
+                SmartAutomovePreference::Fast,
+                opening_fen,
+                frontier_is_white,
+                96,
+            );
+            let shipping_trace = play_profile_duel_trace(
+                shipping_profile.as_str(),
+                shipping_profile.as_str(),
+                SmartAutomovePreference::Fast,
+                opening_fen,
+                frontier_is_white,
+                96,
+            );
+            let divergence = first_duel_trace_divergence(&frontier_trace, &shipping_trace).map(
+                |diff| {
+                    let board = MonsGame::from_fen(diff.board_fen.as_str(), false)
+                        .expect("divergence board fen should be valid");
+                    let frontier_probe = runtime_decision_probe(
+                        frontier_profile.as_str(),
+                        SmartAutomovePreference::Pro,
+                        &board,
+                    );
+                    let shipping_probe = runtime_decision_probe(
+                        shipping_profile.as_str(),
+                        SmartAutomovePreference::Pro,
+                        &board,
+                    );
+                    format!(
+                        "first_diff_ply={} board={} frontier_move={} shipping_move={} frontier(selected={} pre_accept={} stage={} head={:?} accepted={} top={:?}) shipping(selected={} pre_accept={} stage={} head={:?} accepted={} top={:?})",
+                        diff.ply,
+                        diff.board_fen,
+                        diff.profile_a_move_fen,
+                        diff.profile_b_move_fen,
+                        frontier_probe.selected_input_fen,
+                        frontier_probe.pre_accept_input_fen,
+                        frontier_probe.selector_last_stage,
+                        frontier_probe.head_input_fen,
+                        frontier_probe.head_accepted,
+                        frontier_probe.top_root_fens,
+                        shipping_probe.selected_input_fen,
+                        shipping_probe.pre_accept_input_fen,
+                        shipping_probe.selector_last_stage,
+                        shipping_probe.head_input_fen,
+                        shipping_probe.head_accepted,
+                        shipping_probe.top_root_fens,
+                    )
+                },
+            );
+
+            println!(
+                "FAST_HOTSPOT frontier_is_white={} identical_trace={} frontier_result={} shipping_result={} frontier_final={} shipping_final={} frontier_profile_a_turns={} shipping_profile_a_turns={} {} frontier_turn_digest={:?} shipping_turn_digest={:?}",
+                frontier_is_white,
+                frontier_trace == shipping_trace,
+                format_match_result(frontier_trace.result),
+                format_match_result(shipping_trace.result),
+                frontier_trace.final_fen,
+                shipping_trace.final_fen,
+                frontier_trace.profile_a_turns.len(),
+                shipping_trace.profile_a_turns.len(),
+                divergence.unwrap_or_else(|| "first_diff=none".to_string()),
+                turn_digest(&frontier_trace),
+                turn_digest(&shipping_trace),
+            );
+        }
+    });
+}
+
+#[test]
 #[ignore = "diagnostic: trace unified ProV2 root advisor decisions on retained footholds and duel boards"]
 fn smart_automove_pro_root_advisor_trace_probe() {
     #[derive(Clone)]

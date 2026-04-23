@@ -311,3 +311,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The probe shows shipping `l1,6;l1,5` is already in the frontier `reply_risk_shortlist` beside frontier `l1,6;l1,7` and the rejected head `l2,6;l1,5`. All three are the same safe-progress family.
 - It also shows shipping's root loses on frontier's own selector metrics: the reply floor is tied, `shipping_vs_frontier=false`, and frontier keeps better local utility because it preserves `drainer_safety=2` while shipping drops to `-1`.
 - Durable outcome: do not reopen the later black lane split with another advisor or reply-risk ordering tweak. Shipping only reaches `l1,6;l1,5` because it disables the turn-engine selector on that board, so this is another shipping-disabled lower-safety ordering mismatch rather than a live frontier bug.
+
+## Fast Hotspot Trace Wave
+
+- No new runtime challenger survived this wave either. The only kept change is a focused ignored `fast_hotspot_trace_probe` for the retained Fast hotspot opening `0 0 w 0 0 0 0 0 1 n03y0xs0xd0xa0xe0xn03/...`.
+- The main value of that probe is that it killed the lazy “Fast is still failing only on no-diff gate noise” read for the current promoted package.
+- On the current promoted tree, the hotspot opening really does diverge when frontier is white. The first drift is at `ply=57` on `1 1 w 0 0 1 0 0 9 n04s1xn06/...`, where frontier plays `l9,5;l8,6` from `engine_post_search` and shipping plays `l8,5;l7,7;l8,8` from `engine_disabled`. Frontier's head is rejected, so this is not another head-acceptance issue.
+- The same opening with frontier as black is not a fresh target. It rotates back onto the known `black_recovery_branch` split `l1,5;l3,3;l2,3` vs shipping `l6,0;l6,1`.
+- Durable outcome: do not spend the next wave treating the retained Fast hotspot as identical-behavior noise. The efficient next step is to classify that late white engine-disabled divergence board before reopening any older black or white no-go seam.
