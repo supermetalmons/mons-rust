@@ -4,6 +4,15 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Blocker Hotspot Fingerprint Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave first reran bounded nonwin traces only to recover the current black blocker boards on clean logs: `outer_edge_mana_rows` on `vs_shipping_normal` still logged `2` nonwins, including late black `l1,6;l1,5` vs shipping `l2,6;l3,7`, and `alternating_mana_rows` on `vs_shipping_fast` logged `4` nonwins, including black `l2,7;l1,6` vs shipping `l2,7;l1,8`.
+- A temporary three-board hotspot fingerprint probe then compared late black `outer_edge`, black `alternating`, and the repeated white `forward_bridge` head-accept board.
+- The commonality was only the expected frontier-vs-search-only cost shape. On all three boards, frontier and shipping enumerated the same selector pool sizes, while frontier paid extra exact/pickup/secure-mana/tactical-spirit work on top of the shipping search-only baseline.
+- That was not a shared runtime mechanism. `outer_edge` still drifted at `pre_accept` into lower-ranked same-family `ManaTempo`, `alternating` still drifted at `pre_accept` into outside-family `DrainerSafetyRecovery`, and repeated white `forward_bridge` still kept shipping at `pre_accept` and only flipped at head acceptance. The exact contexts also stayed split between `window=1/deny=1` and `window=0/deny=0`.
+- Durable outcome: do not reopen a shared exact/selector hotspot spend across the remaining repeated seams. Keep the clean-board FEN recovery and the no-go lesson, discard the temporary probe code.
+
 ## White Forward-Bridge Structure Probe Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
