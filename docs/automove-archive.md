@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Black Late-Mana Structure Probe Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave targeted the only plausible shared black runtime angle left after the isolated Fast traces: whether the unresolved Normal `outer_edge_mana_rows` black seam and the repeated Fast `alternating_mana_rows` black seam were really the same late-mana mechanism.
+- They were not. On `outer_edge_mana_rows` black, shipping `l2,6;l3,7` was still the legacy-selected, reply-risk-shortlisted `ManaTempo` root, and frontier still drifted to lower-ranked `ManaTempo l1,6;l1,5` through `ApprovedReplyRiskGuard`.
+- On the repeated `alternating_mana_rows` black seam, shipping `l2,7;l1,8` was also the legacy-selected `ManaTempo` root, but frontier did not lose to another shortlisted `ManaTempo`. It approved outside-shortlist `DrainerSafetyRecovery l2,7;l1,6` through `ApprovedFamilyCompetition`, while the ordered shortlist itself stayed on `ManaTempo`.
+- Durable outcome: do not reopen a shared black late-mana spend across `outer_edge_mana_rows` and `alternating_mana_rows`. The move pairs look related, but the advisor/shortlist failure modes are different, so there is still no common runtime mechanism.
+
 ## Fast Variant-Isolation Trace Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
