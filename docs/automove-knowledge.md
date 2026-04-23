@@ -31,6 +31,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow, `AUTOMOVE_IDEAS.md` for th
 - Wrapper-only reroutes, fallback widening, shortlist widening, and metadata-only advisor changes saturate quickly; durable progress usually needs shared approval, head, or scoring logic.
 - Extending a retained shipping-fallback path to a wider black weak-window surface is not automatically safer than advisor surgery; one direct late-black shipping-fallback expansion fixed the traced sampled boards and still rotated the sampled gate down to Fast `0.7500`.
 - When an explicit-variant nonwin trace splits the remaining sampled residue across different turn families or selector stages, keep the wave diagnostic-only. The current `outer_edge_mana_rows` plus Fast `forward_bridge_mana_rows` / `corner_chain_mana_rows` residue did not collapse to one mechanism, and isolated Fast `classic` did not reproduce.
+- A direct white turn-three mana-only legacy-progress override on a positive-safety `window=0/deny=0` surface is still only a local repair. One cut aligned the clean `outer_edge_mana_rows` white board and reduced the explicit outer-edge Normal trace from `2` nonwins to `1`, but the sampled gate stayed at Pro `1.0000`, Normal `0.9167`, Fast `0.8333`.
 
 ## Retained Package Lessons
 
@@ -73,6 +74,7 @@ cargo test --release --lib <test_name> -- --ignored --nocapture
 - Kill any sampled-pass line that only moved through stacked narrow late-ply head/advisor overrides and then broadens all-variant nonwins; the direct white late spirit-setup head block plus black weak-window mana-lane package did exactly that.
 - Kill any late black shipping-fallback expansion that only fixes the traced sampled black boards and rotates Fast losses elsewhere; the direct weak-window extension did exactly that.
 - Kill any wave whose explicit-variant nonwin trace splits the remaining sampled blockers across unrelated early/late or `engine_disabled` / `engine_post_search` surfaces. Archive the probe and do not guess a shared fallback from mixed residue.
+- Kill any white turn-three mana-only legacy-progress override that only removes the clean white half of `outer_edge_mana_rows`; the direct positive-safety `window=0/deny=0` cut did that and still left the sampled gate blocked by late black `outer_edge` plus Fast `alternating_mana_rows` and `forward_bridge_mana_rows`.
 - Kill any line that stays inert at `target_changed=0 off_target_changed=0` against active `frontier_pro_v2_guarded`.
 - Kill any line that only changes advisor labels or `pre_accept` metadata while the final selected root stays unchanged.
 - Kill any line that widens shortlist or injection coverage without moving the approved root on the live walls.

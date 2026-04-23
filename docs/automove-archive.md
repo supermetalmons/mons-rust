@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## White Mana-Only Legacy-Progress Wave
+
+- No runtime challenger survived this wave. The local candidate added a narrow `ApprovedLegacySelector` carve-out inside the white turn-three legacy-alignment advisor path for mana-only, `window=0`, `deny=0`, positive-safety boards where legacy already preferred a vulnerable safe-progress root over approved non-vulnerable `ManaTempo`.
+- The line did move the clean local seam. On the explicit `outer_edge_mana_rows` white board, frontier aligned from `l10,4;l9,5` to shipping `l9,4;l8,3`, and the explicit `vs_shipping_normal` outer-edge trace dropped from `2` nonwins to `1`, leaving only the late black miss.
+- That still was not promotable. The canonical loop cleared `guardrails`, `variant-smoke`, `pro-triage`, and `runtime-preflight`, then sampled `pro-reliability` still failed at Pro `1.0000`, Normal `0.9167`, Fast `0.8333`; confidence `0.9998 / 0.9968 / 0.9807`; frontier average move times stayed below `200ms`.
+- The remaining sampled blockers on that line were still broad enough to kill it: Normal `outer_edge_mana_rows` stayed at `0.5000`, and Fast `alternating_mana_rows` plus `forward_bridge_mana_rows` stayed at `0.5000`; `classic` and `corner_chain_mana_rows` were clean on that sample.
+- Durable outcome: do not reopen the direct white turn-three mana-only legacy-progress override on the positive-safety `window=0/deny=0` surface. Keep the lesson that it only removed the clean white half of `outer_edge_mana_rows`, discard the runtime code and temporary retained board.
+
 ## Variant-Blocker Trace Wave
 
 - No runtime challenger was cut in this wave. The spend was diagnostic-only: explicit-variant `smart_automove_pro_reliability_nonwin_trace_probe` replays against the current sampled blockers on the kept `frontier_pro_v2_guarded` tree.
