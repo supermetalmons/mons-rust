@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Black Progress Material Dampening Wave
+
+- No runtime challenger survived this wave. The target was the black Fast progress-vs-setup residue where frontier keeps safe progress `l7,1;l9,3` and shipping chooses the setup root `l1,5;l2,7;l1,8`.
+- The existing attribution probe confirmed the local residual score story: on the target, safe progress beat setup mostly through `fainted_mon` and `fainted_cooldown_step`.
+- A narrow scoring cut zeroed those two material/cooldown terms only for the scoped black turn-six action+mana window/deny state. It did reduce the target residual deltas from `843/778` after-root to `83/18`, and from `862/797` at worst reply to `102/37`.
+- The line was still behaviorally inert. Final frontier selection stayed on `l7,1;l9,3`, while the retained turn-ten setup-control board stayed on shipping/setup as intended. Because `target_changed=0`, the runtime code was discarded before canonical gate spend.
+- Durable outcome: material/cooldown explains the local residual valuation, but material-only scoring is not a live challenger. Future work must explain the selector layer that keeps safe progress after the residual gap is mostly removed.
+
 ## Black Recovery Static-Exact Wave
 
 - No runtime challenger survived this wave. The target was the remaining `black_recovery_branch` seam where pairwise attribution showed static exact evaluation could flip the local reply-floor ordering toward shipping.

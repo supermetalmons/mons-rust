@@ -15,7 +15,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Release readiness was refreshed on `2026-04-23`: public Pro wiring still ships `frontier_pro_v2_guarded`, experimentation remains test-only, and the full canonical confirm loop passed without selection-behavior changes.
 - The remaining classified residuals are not current selection-layer targets:
   - `black_recovery_branch`: static exact evaluation is now killed as a direct runtime spend; broad scoped exact picked the wrong spirit sibling, and reply-floor-only exact aligned the board locally but failed retained reliability.
-  - black Fast progress-vs-setup residue: explained as material/cooldown residual valuation, not a shortlist/advisor/wrapper miss.
+  - black Fast progress-vs-setup residue: material/cooldown explains most of the residual valuation gap, but material-only dampening is behaviorally inert at final selection.
 
 ## Latest Gate Snapshot
 
@@ -26,12 +26,13 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Release containment: public `Pro` dispatch still routes through `select_frontier_pro_v2_guarded_inputs`; `automove_experiments` remains under `#[cfg(test)]`, so diagnostics and experiment harness code are not production selection code.
 - First multi-variant sampled reliability check of the shipped frontier stopped at the new gate: Pro `0.5000`, Normal `0.5000`, Fast `0.9167`. The current shipped frontier is retained/shipped, but it is not fresh multi-variant promotion evidence.
 - This iteration killed the `black_recovery_branch` static-exact spend. A reply-floor-only exact cut passed `guardrails`, `variant-smoke`, `pro-triage`, and `runtime-preflight`, then failed sampled `pro-reliability` at Pro `0.5000`, Normal `0.5000`, Fast `0.9167`; average move times stayed under `200ms`. The runtime code was discarded.
+- This iteration also killed black progress material/cooldown-only scoring. Zeroing `fainted_mon` and `fainted_cooldown_step` only on the scoped black turn-six window/deny state shrank the target residual delta from `843/778` to `83/18` and preserved the turn-ten setup-control board, but final selection still stayed on `l7,1;l9,3`.
 
 ## Next Hypothesis
 
-- Default to no runtime change until a focused probe produces a new shared mechanism below the current no-go layer.
+- There is no live challenger after the latest no-go. Default to no runtime change until a focused probe produces a new shared mechanism below the current no-go layer.
 - For `black_recovery_branch`, do not retry broad static exact or reply-floor-only static exact. Reopen only with a new mechanism that improves direct multi-variant duel strength, not just the local board.
-- For black progress-vs-setup residue, reopen only with a narrow material/cooldown valuation hypothesis proven against retained setup-control boards.
+- For black progress-vs-setup residue, do not retry material/cooldown-only scoring. Reopen only with a mechanism that explains why the selector still chooses safe progress after the material residual gap is removed.
 - For white search-order residue, do not retry wrapper config mirroring, broad `ProV1` reroutes, root-rank gates, or simple shortlist widening. Reopen only with a mechanism that separates unresolved siblings from the retained vulnerable guard below the current shortlist/reply-risk surface.
 
 ## Active No-Go Notes
@@ -45,5 +46,6 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Do not reopen the direct black engine-disabled shipping fallback on `l7,1;l9,3` vs `l1,5;l2,7;l1,8`; it fixed the local board and still failed confirm.
 - Do not reopen the black shortlist-local, guarded-legacy, or direct `black_recovery_branch` fallback variants; they align the board locally and still fail retained reliability.
 - Do not reopen `black_recovery_branch` with broad scoped static exact or reply-floor-only static exact; the former selected `l1,5;l2,6`, and the latter still failed sampled retained reliability.
+- Do not reopen black progress-vs-setup with material/cooldown-only scoring; it reduces the local residual gap but leaves the selected root unchanged.
 - Do not broaden white turn-three no-action recovery from turn-start to `mons_moves_count == 1`; that line already failed retained reliability.
 - Do not broaden white search-order fallback into raw `search-only + ProV1`, shipping own caps, root-rank checks, or wrapper config toggles; each has a documented retained-control failure or inert wrapper path.
