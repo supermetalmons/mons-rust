@@ -34,6 +34,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - This iteration kept and promoted a sixth narrow black late repair in the same package:
   - It adds `pro_v2_root_advisor_black_late_weak_window_safe_progress_setup_override`, letting a late black action+mana weak-window safe-progress incumbent yield to a reply-risk-shortlisted `SpiritImpact` own-setup progress root when the exact context is only `window<=1 / deny<=1`, utility stays competitive, setup gain is at least `+64`, and the root-rank gap stays within four.
   - The retained regression for that board now lives in `frontier_pro_v2_guarded_profile_prefers_shipping_black_confirm_fast_setup_root`.
+- This iteration kept and promoted a seventh narrow white runtime repair in the same package:
+  - It adds `select_white_nonnegative_deny_search_only_fallback_inputs`, a wrapper-level reroute on the exact white turn-three mana-only weak-window vulnerable context where frontier currently exits through `engine_post_search`, but only when the frontier-selected utility still has nonnegative deny gain.
+  - In that narrow case, frontier replays the board through raw `search-only + ProV1` semantics and aligns the remaining Fast sibling `l9,4;l8,3` to shipping `l9,4;l8,5` without reopening the retained vulnerable guard.
+  - The retained regression for that board now lives in `frontier_pro_v2_guarded_uses_white_nonnegative_deny_search_only_fallback_on_fast_root`.
 - Board-local confirm diagnostics collapsed the earlier two-board black Fast residue into one real live seam:
   - On `l0,0;l1,1` vs shipping `l7,1;l8,0`, frontier already matches shipping on the current retained package.
   - The only live confirm Fast approval miss was `l0,5;l1,5` vs shipping `l2,5;l3,7;l2,8`, where legacy and shipping already agree on the spirit own-setup progress root.
@@ -53,7 +57,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - `frontier_pro_v2_guarded_uses_white_early_engine_disabled_fallback_on_normal_root` now aligns to shipping `l9,5;l8,3;l7,4` while preserving the frontier `pre_accept` root `l8,5;l7,6`.
   - `frontier_pro_v2_guarded_profile_prefers_shipping_white_late_mana_sibling_duel_normal_root` stayed aligned to shipping `l7,7;l6,5;l6,6`.
   - `frontier_pro_v2_guarded_profile_prefers_shipping_black_late_fast_trace_root` stayed aligned to shipping `l1,8;l0,8`.
+- The local retained slice for the new nonnegative-deny white fallback stayed clean:
+  - `frontier_pro_v2_guarded_uses_white_nonnegative_deny_search_only_fallback_on_fast_root` now aligns to shipping `l9,4;l8,5` while preserving the frontier `pre_accept` root `l9,4;l8,3`.
+  - `frontier_pro_v2_guarded_profile_keeps_v30_white_turn_three_mana_only_vulnerable_root` still keeps the retained frontier root `l8,4;l7,3`.
+  - `frontier_pro_v2_guarded_uses_white_early_engine_disabled_fallback_on_normal_root` still aligns to shipping `l9,5;l8,3;l7,4`.
 - The package now clears confirm as well: `pro-reliability-confirm` passed at `0.9375 / 0.9062 / 0.9375`.
+- The refreshed canonical loop for the new white nonnegative-deny fallback stayed clean:
+  - `guardrails` passed.
+  - `pro-triage` stayed at `target_changed=5 / off_target_changed=0`.
+  - exact-lite passed.
+  - advisory stage-1 CPU stayed in the same band at `1.550 / 1.527 / 1.366`.
+  - retained `pro-reliability` passed at `0.9167 / 0.9968` across Pro, Normal, and Fast.
+  - `pro-reliability-confirm` passed at `0.9375 / 1.0000`, `0.9062 / 1.0000`, and `0.9375 / 1.0000`.
 - The refreshed canonical loop for the new black weak-window setup rescue stayed clean:
   - `guardrails` passed.
   - `pro-triage` stayed at `target_changed=5 / off_target_changed=0`.
@@ -213,8 +228,12 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - The new ignored `white_vulnerable_guard_search_order_probe` closes the next obvious narrowing read.
   - At the current shortlist/reply-risk layer, the retained vulnerable guard is the same class as the unresolved white sibling: frontier still keeps a singleton vulnerable `ManaTempo` shortlist, shipping still only wins through `search_only_engine_allowed_head` on an outside-shortlist rank-0 `DrainerSafetyRecovery` root, and `shipping_vs_frontier` is still `false`.
   - The only difference is scale, not mechanism: the vulnerable guard has a smaller reply-floor and utility gap (`930` vs `633`) than the unresolved sibling (`1191` vs `730`), but no distinct shortlist, projection, or advisor signal appears that could justify a simple white context split.
-  - Treat that as another hard stop on wrapper-local gating ideas. If the white search-order family is ever reopened, the next spend has to distinguish boards below the current reply-risk/shortlist surface or normalize the underlying root scoring, not just gate on the coarse white mana-only context.
-  - There is no live runtime challenger today; the next spend needs a tighter shared hypothesis than “lower white rerank seed or step breadth.”
+  - This iteration found one narrow wrapper-local split that is safe enough to keep.
+  - The new ignored `white_search_order_non_negative_deny_scope_probe` shows the remaining Fast sibling is the only local white search-order board where the frontier-selected utility still has nonnegative deny gain; the Normal sibling, the late white Fast hotspot, and the retained vulnerable guard all stay negative on that same metric.
+  - The kept `select_white_nonnegative_deny_search_only_fallback_inputs` uses that extra signal to reroute only the Fast sibling through raw `search-only + ProV1`, fixing `l9,4;l8,3` to shipping `l9,4;l8,5` while leaving the retained vulnerable guard on `l8,4;l7,3`.
+  - The refreshed canonical loop on that kept package passed `guardrails`, `pro-triage` (`target_changed=5 / off_target_changed=0`), exact-lite, advisory stage-1 CPU (`1.550 / 1.527 / 1.366`), retained `pro-reliability` (`0.9167 / 0.9968` for Pro, Normal, and Fast), and `pro-reliability-confirm` (`0.9375 / 1.0000`, `0.9062 / 1.0000`, `0.9375 / 1.0000`).
+  - The sibling `white_search_order_shipping_caps_scope_probe` remains a no-go. Raw `search-only + shipping own caps + ProV2` fixes both white siblings, but it still misses the late hotspot and also flips the retained vulnerable guard to shipping.
+  - Treat that as the new live white frontier: the kept fallback is only for the nonnegative-deny Fast sibling. The remaining unresolved white local seams are the negative-deny Normal sibling `l9,4;l8,3` vs shipping `l9,4;l8,5` and the late Fast hotspot `l9,5;l8,6` vs shipping `l8,5;l7,7;l8,8`.
 - Do not reopen the resolved late black Fast seam `l1,8;l1,9` vs `l1,8;l0,8`, the resolved early white Fast seam `l9,7;l8,6` vs `l9,7;l7,6;l7,7`, the resolved black late setup seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8`, the resolved black confirm Fast setup seam `l0,5;l1,5` vs `l2,5;l3,7;l2,8`, or the resolved white early engine-disabled seam `l8,5;l7,6` vs `l9,5;l8,3;l7,4` unless a future challenger regresses them.
 - Any future challenger still has to respect stage-1 CPU pressure; a package that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 
