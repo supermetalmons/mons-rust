@@ -2284,6 +2284,137 @@ fn white_search_order_rerank_own_cap_probe() {
     }
 }
 
+#[test]
+#[ignore = "diagnostic: measure rerank seed-vs-step scope on white ordering boards"]
+fn white_search_order_seed_step_scope_probe() {
+    struct ProbeCase {
+        label: &'static str,
+        board_fen: &'static str,
+    }
+
+    fn root_moves_for_config(
+        game: &MonsGame,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+    ) -> Vec<ScoredRootMove> {
+        let mut root_moves = MonsGameModel::ranked_root_moves(game, perspective, config);
+        if config.enable_turn_engine_root_injection {
+            MonsGameModel::inject_turn_engine_root_candidates(
+                game,
+                perspective,
+                config,
+                &mut root_moves,
+            );
+        }
+        root_moves
+    }
+
+    fn describe_plan(plan: Option<&TurnPlan>) -> Option<String> {
+        plan.map(|plan| {
+            format!(
+                "{}/{:?}/{:?}/{}",
+                Input::fen_from_array(plan.compiled_chunks.first().unwrap_or(&Vec::new())),
+                plan.head_family,
+                plan.goal_family,
+                format_turn_engine_utility_probe(plan.utility),
+            )
+        })
+    }
+
+    let cases = [
+        ProbeCase {
+            label: "white_ply9_search_ordering",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n05d0xn05/n05s0xa0xe0xn03/n03y0xn03xxmn03/n02xxmn01xxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn07/n04D0xS0xn01Y0xn03/n02E0xn01A0xn06",
+        },
+        ProbeCase {
+            label: "white_normal_ply11_search_ordering",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n06a0xn04/n03y0xn01d0xxxmn01e0xn02/n04s0xn06/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn02Y0xn04/n04D0xS0xn05/n03E0xA0xn06",
+        },
+        ProbeCase {
+            label: "white_late_fast_hotspot",
+            board_fen:
+                "1 1 w 0 0 1 0 0 9 n04s1xn06/n06a0xn04/n05e0xd0xn04/n03xxmxxmn02xxmn03/n05xxmn03Y0xn01/n05xxUn05/E0xn04xxMn01xxMn03/n01y0xn01xxMn03xxMn03/n05S0xn05/n05D0xn05/n04A1xn06",
+        },
+    ];
+
+    for case in cases {
+        let game = MonsGame::from_fen(case.board_fen, false)
+            .unwrap_or_else(|| panic!("{}: valid board fen", case.label));
+        let perspective = game.active_color;
+        let shipping_config =
+            calibration_runtime_config("shipping_pro_search", &game, SmartAutomovePreference::Pro);
+        let frontier_config = calibration_runtime_config(
+            "frontier_pro_v2_guarded",
+            &game,
+            SmartAutomovePreference::Pro,
+        );
+        let frontier_probe = runtime_decision_probe(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let shipping_probe =
+            runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+        let frontier_heads = root_moves_for_config(&game, perspective, frontier_config)
+            .into_iter()
+            .map(|candidate| candidate.inputs)
+            .collect::<Vec<_>>();
+        let frontier_base = calibration_turn_engine_rerank_config(frontier_config);
+        let shipping_rerank = calibration_turn_engine_rerank_config(shipping_config);
+        let shipping_pro_v2 =
+            calibration_turn_engine_rerank_config_with_mode(shipping_config, TurnEngineMode::ProV2);
+        let mut seed_only = frontier_base;
+        seed_only.own_seed_cap = shipping_pro_v2.own_seed_cap;
+        let mut step_only = frontier_base;
+        step_only.step_cap = shipping_pro_v2.step_cap;
+
+        let frontier_plan = turn_engine_candidate_plan_from_allowed_heads(
+            &game,
+            perspective,
+            frontier_base,
+            frontier_heads.as_slice(),
+        );
+        let seed_only_plan = turn_engine_candidate_plan_from_allowed_heads(
+            &game,
+            perspective,
+            seed_only,
+            frontier_heads.as_slice(),
+        );
+        let step_only_plan = turn_engine_candidate_plan_from_allowed_heads(
+            &game,
+            perspective,
+            step_only,
+            frontier_heads.as_slice(),
+        );
+        let shipping_on_frontier_heads = turn_engine_candidate_plan_from_allowed_heads(
+            &game,
+            perspective,
+            shipping_rerank,
+            frontier_heads.as_slice(),
+        );
+
+        println!(
+            "WHITE_SEED_STEP_SCOPE label={} context={} frontier_stage={} shipping_stage={} frontier_base={:?} seed_only={:?} step_only={:?} shipping_on_frontier_heads={:?} caps(frontier={{seed:{},step:{}}}, shipping={{seed:{},step:{}}}, shipping_pro_v2={{seed:{},step:{}}})",
+            case.label,
+            exact_opportunity_context_probe(&game),
+            frontier_probe.selector_last_stage,
+            shipping_probe.selector_last_stage,
+            describe_plan(frontier_plan.as_ref()),
+            describe_plan(seed_only_plan.as_ref()),
+            describe_plan(step_only_plan.as_ref()),
+            describe_plan(shipping_on_frontier_heads.as_ref()),
+            frontier_base.own_seed_cap,
+            frontier_base.step_cap,
+            shipping_rerank.own_seed_cap,
+            shipping_rerank.step_cap,
+            shipping_pro_v2.own_seed_cap,
+            shipping_pro_v2.step_cap,
+        );
+    }
+}
+
 fn log_white_search_order_split_probe(probe_label: &'static str, board_fen: &'static str) {
     let game = MonsGame::from_fen(board_fen, false)
         .unwrap_or_else(|| panic!("valid white search-order split fen for {probe_label}"));

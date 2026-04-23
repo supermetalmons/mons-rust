@@ -73,7 +73,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `white_search_order_rerank_budget_probe` narrows that mismatch to frontier's rerank own-search breadth. On both white search-order siblings, swapping only frontier's rerank own caps (`own_seed_cap`, `own_beam`, `per_node_family_cap`, `step_cap`) to the shipping `ProV2` values already flips the best allowed-head plan to `l9,4;l8,5`, while swapping only reply caps or only expansion cap leaves frontier on `l9,4;l8,3`.
 - So the live white residue is not waiting on reply-search breadth or a larger expansion pool. The concrete frontier-side mismatch surface is rerank own-search breadth under `ProV2`.
 - `white_search_order_rerank_own_cap_probe` narrows that again to the smallest active levers. `step_cap` alone flips both white siblings to shipping `l9,4;l8,5` and reproduces the shipping rerank utility on both boards; `own_seed_cap` alone also flips both boards but does not reproduce the same rerank utility on the Fast board.
-- `own_beam` alone and `per_node_family_cap` alone do not move the live white boards. So the concrete frontier-side mismatch is rerank own-search depth/seed, with `step_cap` the cleanest single-cap explanation observed so far.
+- `own_beam` alone and `per_node_family_cap` alone do not move the live white boards.
+- `white_search_order_seed_step_scope_probe` kills the simplest runtime read of that result. On the two white search-order siblings, both `own_seed_cap` and `step_cap` still flip frontier to shipping `l9,4;l8,5`. But on `white_late_fast_hotspot`, shrinking either knob drags frontier off its current `l9,5;l8,6` plan onto a different third spirit line, while shipping's rerank on the same frontier head set stays on `l9,5;l8,6`.
+- So the concrete frontier-side mismatch is rerank own-search depth/seed, but neither broad `own_seed_cap` shrink nor broad `step_cap` shrink is a safe runtime lever for the remaining white residue.
 - If a rotated white confirm seam shows the incumbent quiet `ManaTempo` root ahead on both reply floor and selected override utility, it is not another shortlist-order or head-acceptance bug. Treat that as a root-scoring/model mismatch and do not paper over it with another advisor override.
 - Runtime cost is a real gate. A candidate that fixes live walls but pushes stage-1 CPU into the `1.5x+` range against `shipping_pro_search` is still non-promotable.
 - Wrapper-only reroutes, fallback widening, shortlist widening, and metadata-only advisor changes saturate quickly; the real frontier is shared approval and head logic.
@@ -107,6 +109,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `white_search_order_rerank_mode_probe`
 - `white_search_order_rerank_budget_probe`
 - `white_search_order_rerank_own_cap_probe`
+- `white_search_order_seed_step_scope_probe`
 
 ## Kill Rules
 
