@@ -319,3 +319,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - On the current promoted tree, the hotspot opening really does diverge when frontier is white. The first drift is at `ply=57` on `1 1 w 0 0 1 0 0 9 n04s1xn06/...`, where frontier plays `l9,5;l8,6` from `engine_post_search` and shipping plays `l8,5;l7,7;l8,8` from `engine_disabled`. Frontier's head is rejected, so this is not another head-acceptance issue.
 - The same opening with frontier as black is not a fresh target. It rotates back onto the known `black_recovery_branch` split `l1,5;l3,3;l2,3` vs shipping `l6,0;l6,1`.
 - Durable outcome: do not spend the next wave treating the retained Fast hotspot as identical-behavior noise. The efficient next step is to classify that late white engine-disabled divergence board before reopening any older black or white no-go seam.
+
+## White Late Fast Hotspot Wave
+
+- No new runtime challenger survived this wave either. The only kept change is a focused ignored `white_late_fast_hotspot_probe` for the late white Fast hotspot board `1 1 w 0 0 1 0 0 9 n04s1xn06/...`.
+- The useful lesson is that this board does not admit the obvious shipping mirror.
+- Frontier's approved root `l9,5;l8,6` is the only reply-risk-shortlisted root and preserves the stronger reply floor (`921` vs shipping `651`).
+- Shipping's move `l8,5;l7,7;l8,8` is outside the frontier shortlist, loses under frontier's own reply-risk comparator (`shipping_vs_frontier=false`), and is not even the strongest spirit-progress candidate in the full pool.
+- Durable outcome: treat this as another shipping-only search ordering mismatch, not a live wrapper-fallback or advisor omission. Do not reopen it with direct shipping mirroring, shortlist widening, or a simple spirit-family override without a new explanation for shipping's search-only ordering.

@@ -32,6 +32,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - The earlier Fast `first_diff=none` read was package-specific, not a durable property of the current promoted tree. `fast_hotspot_trace_probe` now shows the retained hotspot opening `0 0 w 0 0 0 0 0 1 n03y0xs0xd0xa0xe0xn03/...` really does diverge on the current promoted package when frontier is white.
 - The fresh part of that hotspot is late and white-owned: `ply=57` on `1 1 w 0 0 1 0 0 9 n04s1xn06/...`, where frontier chooses `l9,5;l8,6` from `engine_post_search` while shipping chooses `l8,5;l7,7;l8,8` from `engine_disabled`. Frontier's head is already rejected there, so treat it as a late white engine-disabled ordering mismatch, not another head-acceptance bug.
 - The same hotspot opening with frontier as black is not a new seam. It simply rotates back onto the already-known `black_recovery_branch` split `l1,5;l3,3;l2,3` vs shipping `l6,0;l6,1`.
+- `white_late_fast_hotspot_probe` shows that late white hotspot is not a safe wrapper-fallback candidate either. Frontier's approved `SafeSupermanaProgress` root `l9,5;l8,6` is the only reply-risk-shortlisted root and keeps the stronger reply floor (`921` vs shipping `651`).
+- Shipping's move `l8,5;l7,7;l8,8` is outside the frontier shortlist, loses under frontier's own reply-risk comparator (`shipping_vs_frontier=false`), and is not even the strongest spirit-progress candidate in the full pool. Treat that as another shipping-only search ordering mismatch, not a live frontier omission.
 - That late black Fast seam was not a head-acceptance mismatch after all. On the live board, `pre_accept`, head, and final selection all stayed on the same vulnerable root; the actual fix point was the advisor's existing late-window mana safety override.
 - The durable fix on that board is narrow: let `pro_v2_root_advisor_black_late_window_mana_safety_override` rescue a rank-zero vulnerable one-window `ManaTempo` root only when a same-lane safe sibling also restores the lane's progress surface. That keeps the retained `l1,8;l0,8` board aligned without disturbing the small loop.
 - A second late black advisor miss was narrower than the earlier legacy-selector seams. On late black action+mana turn-start boards with no window or deny pressure, a quiet no-progress `ManaTempo` incumbent can still be the wrong retained answer when the reply-risk shortlist isolates a quiet `SpiritImpact` own-setup challenger that keeps the same progress path and gains at least `+64` setup. That rescue belongs in advisor family competition, not in search-only reranking.
@@ -81,6 +83,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `black_confirm_fast_lane_split_probe`
 - `black_confirm_fast_setup_split_probe`
 - `fast_hotspot_trace_probe`
+- `white_late_fast_hotspot_probe`
 
 ## Kill Rules
 

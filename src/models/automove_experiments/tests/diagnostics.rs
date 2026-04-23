@@ -1309,6 +1309,165 @@ fn white_fast_ply10_reply_order_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: inspect late white fast hotspot utility and shortlist ordering"]
+fn white_late_fast_hotspot_probe() {
+    let game = MonsGame::from_fen(
+        "1 1 w 0 0 1 0 0 9 n04s1xn06/n06a0xn04/n05e0xd0xn04/n03xxmxxmn02xxmn03/n05xxmn03Y0xn01/n05xxUn05/E0xn04xxMn01xxMn03/n01y0xn01xxMn03xxMn03/n05S0xn05/n05D0xn05/n04A1xn06",
+        false,
+    )
+    .expect("valid late white fast hotspot fen");
+    let perspective = game.active_color;
+    let frontier_probe = runtime_decision_probe(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let frontier_advisor = pro_v2_root_advisor_decision_snapshot();
+    let shipping_probe =
+        runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+    let (config, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let candidate_indices = MonsGameModel::filtered_root_candidate_indices(
+        &game,
+        scored_roots.as_slice(),
+        perspective,
+        config,
+    );
+    let shortlist = MonsGameModel::reply_risk_guard_shortlist_indices(
+        scored_roots.as_slice(),
+        candidate_indices.as_slice(),
+        config,
+    );
+    let projections = MonsGameModel::turn_engine_reply_risk_projections(
+        scored_roots.as_slice(),
+        shortlist.as_slice(),
+        perspective,
+        config,
+    );
+    let frontier_index = scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == frontier_probe.selected_input_fen)
+        .expect("frontier root should exist");
+    let shipping_index = scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == shipping_probe.selected_input_fen)
+        .expect("shipping root should exist");
+    let root_node_budget = ((config.max_visited_nodes
+        * config.root_reply_risk_node_share_bp.max(0) as usize)
+        / 10_000)
+        .max(shortlist.len())
+        .max(1);
+    let per_root_reply_limit = (root_node_budget / shortlist.len().max(1))
+        .max(1)
+        .min(config.root_reply_risk_reply_limit.max(1));
+    let frontier_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+        &scored_roots[frontier_index],
+        projections.get(&frontier_index),
+        perspective,
+        config,
+        per_root_reply_limit,
+    );
+    let shipping_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+        &scored_roots[shipping_index],
+        projections.get(&shipping_index),
+        perspective,
+        config,
+        per_root_reply_limit,
+    );
+    let frontier_family =
+        MonsGameModel::turn_engine_root_evaluation_family(&scored_roots[frontier_index]);
+    let shipping_family =
+        MonsGameModel::turn_engine_root_evaluation_family(&scored_roots[shipping_index]);
+    let frontier_utility = MonsGameModel::turn_engine_selected_override_utility(
+        &game,
+        &scored_roots[frontier_index],
+        perspective,
+        config,
+        frontier_family,
+    );
+    let shipping_utility = MonsGameModel::turn_engine_selected_override_utility(
+        &game,
+        &scored_roots[shipping_index],
+        perspective,
+        config,
+        shipping_family,
+    );
+    let shipping_beats_frontier = MonsGameModel::is_better_reply_risk_candidate(
+        &game,
+        shipping_index,
+        shipping_snapshot,
+        frontier_index,
+        frontier_snapshot,
+        projections.get(&shipping_index),
+        projections.get(&frontier_index),
+        scored_roots.as_slice(),
+        perspective,
+        config,
+        &mut std::collections::HashMap::new(),
+    );
+    let top_root_details = scored_roots
+        .iter()
+        .take(8)
+        .map(|root| {
+            format!(
+                "{}:{}",
+                Input::fen_from_array(&root.inputs),
+                format_root_probe(Some(root))
+            )
+        })
+        .collect::<Vec<_>>();
+
+    println!(
+        "WHITE_LATE_FAST_HOTSPOT context={} shortlist={:?} frontier_probe={:?} shipping_probe={:?} advisor={:?} frontier={} shipping={} frontier_snapshot={} shipping_snapshot={} frontier_utility={} shipping_utility={} shipping_vs_frontier={} frontier_projection={:?} shipping_projection={:?} top_root_details={:?}",
+        exact_opportunity_context_probe(&game),
+        shortlist
+            .iter()
+            .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+            .collect::<Vec<_>>(),
+        frontier_probe,
+        shipping_probe,
+        frontier_advisor,
+        format_root_probe(scored_roots.get(frontier_index)),
+        format_root_probe(scored_roots.get(shipping_index)),
+        format!(
+            "win={} match_point={} floor={}",
+            frontier_snapshot.allows_immediate_opponent_win,
+            frontier_snapshot.opponent_reaches_match_point,
+            frontier_snapshot.worst_reply_score,
+        ),
+        format!(
+            "win={} match_point={} floor={}",
+            shipping_snapshot.allows_immediate_opponent_win,
+            shipping_snapshot.opponent_reaches_match_point,
+            shipping_snapshot.worst_reply_score,
+        ),
+        format_turn_engine_utility_probe(frontier_utility),
+        format_turn_engine_utility_probe(shipping_utility),
+        shipping_beats_frontier,
+        projections.get(&frontier_index).map(|projection| {
+            format!(
+                "{:?}/{:?}/{}",
+                projection.plan.head_family,
+                projection.plan.goal_family,
+                format_turn_engine_utility_probe(projection.plan.utility),
+            )
+        }),
+        projections.get(&shipping_index).map(|projection| {
+            format!(
+                "{:?}/{:?}/{}",
+                projection.plan.head_family,
+                projection.plan.goal_family,
+                format_turn_engine_utility_probe(projection.plan.utility),
+            )
+        }),
+        top_root_details,
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: inspect white fast ply9 search-only split"]
 fn white_fast_ply9_search_only_split_probe() {
     let game = MonsGame::from_fen(

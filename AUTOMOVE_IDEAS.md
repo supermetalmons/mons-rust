@@ -158,7 +158,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - The new ignored `fast_hotspot_trace_probe` disproves the simplest no-diff read on the current promoted package. Replaying the retained hotspot opening `0 0 w 0 0 0 0 0 1 n03y0xs0xd0xa0xe0xn03/...` shows a real late white divergence when frontier is white.
   - The first fresh drift is at `ply=57` on `1 1 w 0 0 1 0 0 9 n04s1xn06/...`, where frontier plays `l9,5;l8,6` from `engine_post_search` and shipping plays `l8,5;l7,7;l8,8` from `engine_disabled`. Frontier's head is rejected, so this is not another head-acceptance seam.
   - The `frontier_is_white=false` replay on the same opening does not create a new target; it just rotates back onto the known black `black_recovery_branch` split `l1,5;l3,3;l2,3` vs shipping `l6,0;l6,1`.
-  - The next efficient spend is to classify the late white engine-disabled hotspot board before reopening either of the older no-go local seams.
+  - The new ignored `white_late_fast_hotspot_probe` classifies that late white board and kills the obvious wrapper fix.
+  - Frontier's approved root `l9,5;l8,6` is the only reply-risk-shortlisted root and keeps the much stronger reply floor (`921` vs shipping `651`).
+  - Shipping's move `l8,5;l7,7;l8,8` is outside the frontier shortlist, loses under frontier's own reply-risk comparator (`shipping_vs_frontier=false`), and is not even the strongest spirit-progress candidate in the pool.
+  - Do not reopen that late white Fast hotspot with a direct shipping mirror, a preserved-spirit shortlist widening, or another simple family-competition override unless a future probe first explains shipping's search-only ordering.
+  - There is no live runtime challenger today; the next spend needs a brand-new shared hypothesis, not another direct attack on the current Pro, Normal, or Fast local seams.
 - Do not reopen the resolved late black Fast seam `l1,8;l1,9` vs `l1,8;l0,8`, the resolved early white Fast seam `l9,7;l8,6` vs `l9,7;l7,6;l7,7`, the resolved black late setup seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8`, the resolved black confirm Fast setup seam `l0,5;l1,5` vs `l2,5;l3,7;l2,8`, or the resolved white early engine-disabled seam `l8,5;l7,6` vs `l9,5;l8,3;l7,4` unless a future challenger regresses them.
 - Any future challenger still has to respect stage-1 CPU pressure; a package that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 
