@@ -88,6 +88,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `white_search_order_wrapper_branch_probe` shows what happens when that wrapper reapply is truly bypassed. Raw `search-only + ProV2` still keeps frontier's current white outputs, raw `search-only + shipping own caps + ProV2` fixes the two `ply9/ply11` siblings but not the late Fast hotspot, and raw `search-only + ProV1` matches shipping on all three local white seams.
 - That still is not a live runtime answer. `white_search_order_raw_prov1_scope_probe` shows the obvious broad gate for that line is too wide: the same raw `search-only + ProV1` reroute also flips the retained `frontier_pro_v2_guarded_profile_keeps_v30_white_turn_three_mana_only_vulnerable_root` from `l8,4;l7,3` to shipping `l8,4;l8,5`, even though it shares the same coarse `turn=3 / mons_moves=1 / no-action / mana-only / window=1 / deny=1 / drainer_safety<0` context as the unresolved white siblings.
 - So the white wrapper frontier is now tighter: actual search-only `ProV1` semantics are a real local explanation, but no coarse white context gate found so far can separate the unresolved siblings from the retained vulnerable guard. Any future white wrapper spend has to distinguish those boards with a narrower root-scoring or shortlist theory, not just a broad branch into shipping-like search-only semantics.
+- `white_vulnerable_guard_search_order_probe` closes the next narrowing read at the current metric layer. The retained vulnerable guard and the unresolved white sibling have the same mechanism under frontier's existing shortlist/reply-risk logic: a singleton vulnerable `ManaTempo` shortlist, no projection/advisor extension rescue, and an outside-shortlist rank-0 shipping `DrainerSafetyRecovery` root that still loses under `is_better_reply_risk_candidate`.
+- The difference there is only numeric scale, not a new categorical signal. The vulnerable guard's floor/utility gap (`930` vs `633`) is smaller than the unresolved sibling's (`1191` vs `730`), but there is still no distinct shortlist, projection, or advisor feature that would justify a simple wrapper gate between them.
+- So do not expect another wrapper-local white context split at the current shortlist/reply-risk surface to be promotable. If the white search-order family is reopened, the next spend has to distinguish boards below that surface or normalize the root scoring that creates the same frontier-vs-shipping disagreement on both boards.
 - If a rotated white confirm seam shows the incumbent quiet `ManaTempo` root ahead on both reply floor and selected override utility, it is not another shortlist-order or head-acceptance bug. Treat that as a root-scoring/model mismatch and do not paper over it with another advisor override.
 - Runtime cost is a real gate. A candidate that fixes live walls but pushes stage-1 CPU into the `1.5x+` range against `shipping_pro_search` is still non-promotable.
 - Wrapper-only reroutes, fallback widening, shortlist widening, and metadata-only advisor changes saturate quickly; the real frontier is shared approval and head logic.
@@ -126,6 +129,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `white_search_order_selector_disable_probe`
 - `white_search_order_wrapper_branch_probe`
 - `white_search_order_raw_prov1_scope_probe`
+- `white_vulnerable_guard_search_order_probe`
 
 ## Kill Rules
 

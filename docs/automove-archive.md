@@ -434,3 +434,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Raw `search-only + ProV1` matches shipping on all three local white seams, so search-only `ProV1` semantics are a real explanation rather than a dead config artifact.
 - That broad line is still not safe enough to keep. The scope probe shows the same raw `search-only + ProV1` reroute also flips the retained vulnerable white turn-three guard from `l8,4;l7,3` to shipping `l8,4;l8,5`, even though it shares the same coarse `turn=3 / mons_moves=1 / no-action / mana-only / window=1 / deny=1 / drainer_safety<0` context as the unresolved white siblings.
 - Durable outcome: do not reopen the white search-order family with a broad wrapper-level search-only `ProV1` gate on that coarse white context. Any future white wrapper spend has to distinguish the retained vulnerable guard from the unresolved siblings with a narrower theory than “use shipping-like search-only semantics here.”
+
+## White Vulnerable-Guard Search-Order Comparison Wave
+
+- No new runtime challenger survived this wave. The kept diagnostic is `white_vulnerable_guard_search_order_probe`.
+- The useful result is that the retained vulnerable white turn-three guard is not a different class from the unresolved white search-order siblings at the current shortlist/reply-risk layer.
+- On the retained guard board, frontier still keeps a singleton vulnerable `ManaTempo` shortlist and shipping still only wins through `search_only_engine_allowed_head` on an outside-shortlist rank-0 `DrainerSafetyRecovery` root, just like the unresolved sibling boards.
+- `shipping_vs_frontier` is still `false` there too, and there is still no projection or advisor reentry signal that would justify a simple wrapper-local split between the guard board and the unresolved siblings.
+- Durable outcome: do not reopen the white search-order family with another wrapper-level gate based on the current reply-risk/shortlist surface. Any future white spend has to distinguish boards below that surface or change the root scoring that makes both boards disagree in the same way.

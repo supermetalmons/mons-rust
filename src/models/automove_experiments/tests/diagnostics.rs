@@ -3063,6 +3063,15 @@ fn white_fast_ply9_search_only_split_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: inspect retained vulnerable white mana-only guard against search-order family"]
+fn white_vulnerable_guard_search_order_probe() {
+    log_white_search_order_split_probe(
+        "WHITE_VULNERABLE_GUARD_SEARCH_ORDER",
+        "0 0 w 1 0 1 0 0 3 n06a0xn04/n03y0xn01d0xxxmn01e0xn02/n04s0xn06/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n03xxMn02xxMn04/n04D0xn06/n04E0xn01S0xn04/n04A0xn02Y0xn03",
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: inspect retained normal white ply11 search-only split"]
 fn white_normal_ply11_search_only_split_probe() {
     log_white_search_order_split_probe(
