@@ -7,7 +7,8 @@ use crate::models::automove_exact::{
 };
 use crate::models::automove_turn_engine::{
     clear_turn_engine_diagnostics, clear_turn_engine_plan_cache, turn_engine_cached_step,
-    turn_engine_candidate_plan, turn_engine_diagnostics_snapshot, TurnEngineConfig,
+    turn_engine_candidate_plan, turn_engine_candidate_plan_from_allowed_heads,
+    turn_engine_diagnostics_snapshot, turn_engine_ranked_plan_digests_for_test, TurnEngineConfig,
     TurnEngineDiagnostics,
 };
 use crate::models::mons_game_model::automove_runtime_variants::{
@@ -141,6 +142,25 @@ fn calibration_runtime_config(
 
 fn calibration_turn_engine_config(config: AutomoveSearchConfig) -> TurnEngineConfig {
     shared_turn_engine_config_from_search_config(config)
+}
+
+fn calibration_turn_engine_rerank_config(config: AutomoveSearchConfig) -> TurnEngineConfig {
+    let mut engine = shared_turn_engine_config_from_search_config(config);
+    let pro_v2 = matches!(config.turn_engine_mode, TurnEngineMode::ProV2);
+    engine.own_seed_cap = engine.own_seed_cap.clamp(1, if pro_v2 { 12 } else { 8 });
+    engine.own_beam = engine.own_beam.clamp(1, if pro_v2 { 5 } else { 4 });
+    engine.per_node_family_cap = engine
+        .per_node_family_cap
+        .clamp(1, if pro_v2 { 4 } else { 3 });
+    engine.step_cap = engine.step_cap.clamp(1, 5);
+    engine.opponent_seed_cap = engine
+        .opponent_seed_cap
+        .clamp(1, if pro_v2 { 6 } else { 4 });
+    engine.opponent_beam = engine.opponent_beam.clamp(1, if pro_v2 { 3 } else { 2 });
+    engine.reply_seed_cap = engine.reply_seed_cap.clamp(1, if pro_v2 { 3 } else { 2 });
+    engine.reply_beam = if pro_v2 { 2 } else { 1 };
+    engine.expansion_cap = engine.expansion_cap.clamp(1, if pro_v2 { 144 } else { 96 });
+    engine
 }
 
 #[test]

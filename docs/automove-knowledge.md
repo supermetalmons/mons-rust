@@ -66,6 +66,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - The late white Fast hotspot does not share that property. Shipping `l8,5;l7,7;l8,8` is rejected by `ProgressGate` and is not an allowed rerank candidate even on shipping's own root set, so it is not another hidden rerank omission.
 - Even the narrower rerank-admissible read does not make `white_ply9_search_ordering` promotable. A frontier-local rerank-semantics fallback fixes `l9,4;l8,3` locally and still fails retained `pro-reliability` at `0.9167 / 0.8333 / 0.9167`, because Normal rotates onto other early-white engine-disabled seams such as `l8,5;l7,6` vs shipping `l8,7;l7,8` and `l8,5;l7,6` vs shipping `l8,5;l7,4`.
 - Treat rotated residue from a discarded challenger as provisional until a clean-tree retained trace confirms it. The discarded white rerank fallback temporarily rotated Normal onto early-white engine-disabled boards, but the cleaned promoted package collapses back to the white `l9,4;l8,3` vs `l9,4;l8,5` search-order family.
+- `white_search_order_allowed_head_probe` closes the remaining “maybe the frontier root set just lacks shipping's rerank head” read. On both white search-order siblings, shipping's rerank engine still picks `l9,4;l8,5` when it is fed the frontier root set, while frontier's own rerank config still prefers `l9,4;l8,3`.
+- That means the live white residue is deeper than root-set reachability or rerank admissibility alone. The split is in rerank-engine profile semantics (`ProV1` shipping rerank vs `ProV2` frontier rerank), not in whether `l9,4;l8,5` is present or allowed on frontier.
 - If a rotated white confirm seam shows the incumbent quiet `ManaTempo` root ahead on both reply floor and selected override utility, it is not another shortlist-order or head-acceptance bug. Treat that as a root-scoring/model mismatch and do not paper over it with another advisor override.
 - Runtime cost is a real gate. A candidate that fixes live walls but pushes stage-1 CPU into the `1.5x+` range against `shipping_pro_search` is still non-promotable.
 - Wrapper-only reroutes, fallback widening, shortlist widening, and metadata-only advisor changes saturate quickly; the real frontier is shared approval and head logic.
@@ -95,6 +97,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `white_profile_config_ordering_probe`
 - `white_ordering_rerank_semantics_probe`
 - `white_normal_ply11_search_only_split_probe`
+- `white_search_order_allowed_head_probe`
 
 ## Kill Rules
 

@@ -1678,6 +1678,157 @@ fn white_ordering_rerank_semantics_probe() {
     }
 }
 
+#[test]
+#[ignore = "diagnostic: inspect allowed-head rerank plans on white search-order family"]
+fn white_search_order_allowed_head_probe() {
+    struct ProbeCase {
+        label: &'static str,
+        board_fen: &'static str,
+    }
+
+    fn root_moves_for_config(
+        game: &MonsGame,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+    ) -> Vec<ScoredRootMove> {
+        let mut root_moves = MonsGameModel::ranked_root_moves(game, perspective, config);
+        if config.enable_turn_engine_root_injection {
+            MonsGameModel::inject_turn_engine_root_candidates(
+                game,
+                perspective,
+                config,
+                &mut root_moves,
+            );
+        }
+        root_moves
+    }
+
+    let cases = [
+        ProbeCase {
+            label: "white_ply9_search_ordering",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n05d0xn05/n05s0xa0xe0xn03/n03y0xn03xxmn03/n02xxmn01xxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn07/n04D0xS0xn01Y0xn03/n02E0xn01A0xn06",
+        },
+        ProbeCase {
+            label: "white_normal_ply11_search_ordering",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n06a0xn04/n03y0xn01d0xxxmn01e0xn02/n04s0xn06/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn02Y0xn04/n04D0xS0xn05/n03E0xA0xn06",
+        },
+    ];
+
+    for case in cases {
+        let game = MonsGame::from_fen(case.board_fen, false)
+            .unwrap_or_else(|| panic!("{}: valid board fen", case.label));
+        let perspective = game.active_color;
+        let shipping_config =
+            calibration_runtime_config("shipping_pro_search", &game, SmartAutomovePreference::Pro);
+        let frontier_config = calibration_runtime_config(
+            "frontier_pro_v2_guarded",
+            &game,
+            SmartAutomovePreference::Pro,
+        );
+        let shipping_rerank_config = calibration_turn_engine_rerank_config(shipping_config);
+        let frontier_rerank_config = calibration_turn_engine_rerank_config(frontier_config);
+        let shipping_root_moves = root_moves_for_config(&game, perspective, shipping_config);
+        let frontier_root_moves = root_moves_for_config(&game, perspective, frontier_config);
+        let shipping_allowed_heads = shipping_root_moves
+            .iter()
+            .map(|candidate| candidate.inputs.clone())
+            .collect::<Vec<_>>();
+        let frontier_allowed_heads = frontier_root_moves
+            .iter()
+            .map(|candidate| candidate.inputs.clone())
+            .collect::<Vec<_>>();
+        let shipping_plan = turn_engine_candidate_plan_from_allowed_heads(
+            &game,
+            perspective,
+            shipping_rerank_config,
+            shipping_allowed_heads.as_slice(),
+        );
+        let shipping_on_frontier_heads = turn_engine_candidate_plan_from_allowed_heads(
+            &game,
+            perspective,
+            shipping_rerank_config,
+            frontier_allowed_heads.as_slice(),
+        );
+        let frontier_plan = turn_engine_candidate_plan_from_allowed_heads(
+            &game,
+            perspective,
+            frontier_rerank_config,
+            frontier_allowed_heads.as_slice(),
+        );
+        let shipping_ranked_plans = turn_engine_ranked_plan_digests_for_test(
+            &game,
+            perspective,
+            shipping_rerank_config,
+            5,
+        );
+        let frontier_ranked_plans = turn_engine_ranked_plan_digests_for_test(
+            &game,
+            perspective,
+            frontier_rerank_config,
+            5,
+        );
+
+        println!(
+            "WHITE_ALLOWED_HEAD_RERANK label={} context={} shipping_allowed_best={:?} shipping_on_frontier_heads={:?} frontier_allowed_best={:?} shipping_ranked_plans={:?} frontier_ranked_plans={:?}",
+            case.label,
+            exact_opportunity_context_probe(&game),
+            shipping_plan.as_ref().map(|plan| {
+                format!(
+                    "{}/{:?}/{:?}/{}",
+                    Input::fen_from_array(plan.compiled_chunks.first().unwrap_or(&Vec::new())),
+                    plan.head_family,
+                    plan.goal_family,
+                    format_turn_engine_utility_probe(plan.utility),
+                )
+            }),
+            shipping_on_frontier_heads.as_ref().map(|plan| {
+                format!(
+                    "{}/{:?}/{:?}/{}",
+                    Input::fen_from_array(plan.compiled_chunks.first().unwrap_or(&Vec::new())),
+                    plan.head_family,
+                    plan.goal_family,
+                    format_turn_engine_utility_probe(plan.utility),
+                )
+            }),
+            frontier_plan.as_ref().map(|plan| {
+                format!(
+                    "{}/{:?}/{:?}/{}",
+                    Input::fen_from_array(plan.compiled_chunks.first().unwrap_or(&Vec::new())),
+                    plan.head_family,
+                    plan.goal_family,
+                    format_turn_engine_utility_probe(plan.utility),
+                )
+            }),
+            shipping_ranked_plans
+                .iter()
+                .map(|digest| {
+                    format!(
+                        "{}/{:?}/{:?}/{}",
+                        digest.head_inputs_fen,
+                        digest.head_family,
+                        digest.goal_family,
+                        format_turn_engine_utility_probe(digest.utility),
+                    )
+                })
+                .collect::<Vec<_>>(),
+            frontier_ranked_plans
+                .iter()
+                .map(|digest| {
+                    format!(
+                        "{}/{:?}/{:?}/{}",
+                        digest.head_inputs_fen,
+                        digest.head_family,
+                        digest.goal_family,
+                        format_turn_engine_utility_probe(digest.utility),
+                    )
+                })
+                .collect::<Vec<_>>(),
+        );
+    }
+}
+
 fn log_white_search_order_split_probe(probe_label: &'static str, board_fen: &'static str) {
     let game = MonsGame::from_fen(board_fen, false)
         .unwrap_or_else(|| panic!("valid white search-order split fen for {probe_label}"));
