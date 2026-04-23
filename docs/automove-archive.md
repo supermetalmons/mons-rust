@@ -367,3 +367,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The useful result is that the live white search-order family is not blocked by root-set reachability. On both `white_ply9_search_ordering` and `white_normal_ply11_search_ordering`, shipping's rerank engine still chooses `l9,4;l8,5` when it is fed the frontier root set.
 - Frontier's own rerank engine config on the same allowed heads still prefers `l9,4;l8,3`, with `l9,4;l8,5` only appearing as a lower-ranked rerank plan.
 - Durable outcome: treat the current white residue as a rerank-engine profile split (`shipping` ProV1 rerank vs `frontier` ProV2 rerank), not as a selector-disabled root omission. Another wrapper fallback that only patches root choice is not a real explanation.
+
+## White Rerank Mode Wave
+
+- No new runtime challenger survived this wave. The kept diagnostic is `white_search_order_rerank_mode_probe`.
+- The useful result is that the white rerank split is narrower than “ProV2 everywhere is wrong” but stronger than a pure root-set or admissibility issue.
+- On both white search-order siblings, forcing only the frontier rerank engine mode from `ProV2` to `ProV1` already flips the best allowed-head plan to shipping `l9,4;l8,5`.
+- Shipping still chooses `l9,4;l8,5` even when its rerank mode is forced to `ProV2`, so the mismatch is not a generic mode-only story either.
+- Durable outcome: treat the live white residue as a frontier-`ProV2` rerank semantics split. Do not jump straight from that fact to another narrow runtime mode-swap fallback without fresh retained-duel evidence.

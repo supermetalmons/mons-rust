@@ -9,7 +9,7 @@ use crate::models::automove_turn_engine::{
     clear_turn_engine_diagnostics, clear_turn_engine_plan_cache, turn_engine_cached_step,
     turn_engine_candidate_plan, turn_engine_candidate_plan_from_allowed_heads,
     turn_engine_diagnostics_snapshot, turn_engine_ranked_plan_digests_for_test, TurnEngineConfig,
-    TurnEngineDiagnostics,
+    TurnEngineDiagnostics, TurnEngineMode,
 };
 use crate::models::mons_game_model::automove_runtime_variants::{
     apply_frontier_pro_v2_guarded_config, clear_frontier_runtime_variant_branch,
@@ -161,6 +161,15 @@ fn calibration_turn_engine_rerank_config(config: AutomoveSearchConfig) -> TurnEn
     engine.reply_beam = if pro_v2 { 2 } else { 1 };
     engine.expansion_cap = engine.expansion_cap.clamp(1, if pro_v2 { 144 } else { 96 });
     engine
+}
+
+fn calibration_turn_engine_rerank_config_with_mode(
+    config: AutomoveSearchConfig,
+    mode: TurnEngineMode,
+) -> TurnEngineConfig {
+    let mut config = config;
+    config.turn_engine_mode = mode;
+    calibration_turn_engine_rerank_config(config)
 }
 
 #[test]
