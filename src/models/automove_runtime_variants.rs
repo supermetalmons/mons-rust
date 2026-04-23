@@ -230,6 +230,86 @@ fn select_score_window_tactical_fallback_inputs(
     ))
 }
 
+fn select_white_early_engine_disabled_fallback_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+    frontier_inputs: &[Input],
+) -> Option<Vec<Input>> {
+    let white_turn_five_turn_start_action_mana = game.active_color == Color::White
+        && game.turn_number == 5
+        && game.mons_moves_count == 0
+        && game.player_can_use_action()
+        && game.player_can_move_mana();
+    if !white_turn_five_turn_start_action_mana || frontier_inputs.is_empty() {
+        return None;
+    }
+
+    let context = crate::models::automove_exact::exact_opportunity_context(game, game.active_color);
+    if context.opponent_can_win_immediately
+        || context.delta.same_turn_score_window_value != 1
+        || context.delta.opponent_window_deny_gain != 1
+        || context.delta.drainer_attack_available
+        || context.delta.drainer_safety >= 0
+    {
+        return None;
+    }
+
+    let frontier_runtime = apply_frontier_pro_v2_guarded_config(config);
+    let frontier_roots = MonsGameModel::ranked_root_moves(game, game.active_color, frontier_runtime);
+    let frontier_selected = frontier_roots
+        .iter()
+        .find(|root| root.inputs.as_slice() == frontier_inputs)?;
+    if frontier_selected.wins_immediately
+        || frontier_selected.attacks_opponent_drainer
+        || frontier_selected.spirit_development
+        || frontier_selected.spirit_same_turn_score_setup_now
+        || frontier_selected.spirit_own_mana_setup_now
+        || frontier_selected.scores_supermana_this_turn
+        || frontier_selected.scores_opponent_mana_this_turn
+        || frontier_selected.safe_supermana_pickup_now
+        || frontier_selected.safe_opponent_mana_pickup_now
+        || frontier_selected.supermana_progress
+        || frontier_selected.opponent_mana_progress
+        || !frontier_selected.own_drainer_vulnerable
+        || frontier_selected.own_drainer_walk_vulnerable
+        || frontier_selected.mana_handoff_to_opponent
+        || frontier_selected.has_roundtrip
+        || frontier_selected.same_turn_score_window_value != 1
+    {
+        return None;
+    }
+
+    let shipping_runtime = shipping_search_config_for_game(game, SmartAutomovePreference::Pro);
+    let shipping_inputs = select_shipping_search_inputs(game, shipping_runtime);
+    if shipping_inputs.is_empty() || shipping_inputs == frontier_inputs {
+        return None;
+    }
+
+    let shipping_roots = MonsGameModel::ranked_root_moves(game, game.active_color, shipping_runtime);
+    let shipping_selected = shipping_roots
+        .iter()
+        .find(|root| root.inputs.as_slice() == shipping_inputs.as_slice())?;
+    if !shipping_selected.spirit_development
+        || shipping_selected.spirit_same_turn_score_setup_now
+        || !MonsGameModel::turn_engine_root_move_has_progress_surface(shipping_selected)
+        || shipping_selected.wins_immediately
+        || shipping_selected.attacks_opponent_drainer
+        || shipping_selected.scores_supermana_this_turn
+        || shipping_selected.scores_opponent_mana_this_turn
+        || shipping_selected.safe_supermana_pickup_now
+        || shipping_selected.safe_opponent_mana_pickup_now
+        || shipping_selected.mana_handoff_to_opponent
+        || shipping_selected.has_roundtrip
+        || !shipping_selected.own_drainer_vulnerable
+        || shipping_selected.own_drainer_walk_vulnerable
+        || shipping_selected.same_turn_score_window_value != 0
+    {
+        return None;
+    }
+
+    Some(shipping_inputs)
+}
+
 fn select_late_black_search_fallback_inputs(
     game: &MonsGame,
     frontier_inputs: &[Input],
@@ -323,6 +403,15 @@ pub(crate) fn select_frontier_pro_v2_guarded_inputs(
     }
 
     let frontier_inputs = execute_frontier_candidate_inputs(game, config);
+    if let Some(inputs) = select_white_early_engine_disabled_fallback_inputs(
+        game,
+        config,
+        frontier_inputs.as_slice(),
+    ) {
+        #[cfg(test)]
+        set_frontier_runtime_variant_branch("white_early_engine_disabled_fallback");
+        return inputs;
+    }
     if let Some(inputs) = select_late_black_search_fallback_inputs(game, frontier_inputs.as_slice())
     {
         #[cfg(test)]

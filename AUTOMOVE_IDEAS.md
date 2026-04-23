@@ -28,13 +28,21 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - This iteration kept and promoted a fourth narrow black late repair in the same package:
   - It adds `pro_v2_root_advisor_black_late_reply_risk_setup_override`, allowing a late black action+mana quiet no-progress `ManaTempo` incumbent to yield to a reply-risk-shortlisted quiet `SpiritImpact` own-setup challenger when that challenger preserves the same progress path, gains at least `+64` setup, and is within four root-rank slots.
   - The retained regression for that board now lives in `frontier_pro_v2_guarded_profile_prefers_shipping_black_late_setup_reply_risk_root`.
+- This iteration kept and promoted a fifth narrow early-white runtime repair in the same package:
+  - It adds `select_white_early_engine_disabled_fallback_inputs`, a wrapper-level reroute that mirrors shipping only on the exact weak-window turn-five white action+mana board class where frontier keeps engine selection enabled and gets trapped on a vulnerable `ManaTempo` root.
+  - The retained regression for that board now lives in `frontier_pro_v2_guarded_uses_white_early_engine_disabled_fallback_on_normal_root`.
 - The package still clears the small retained loop: `guardrails` passed, `pro-triage` stayed at `target_changed=5 / off_target_changed=0`, exact-lite passed, and retained `pro-reliability` passed at `0.9167 / 0.9167 / 1.0000`.
 - The local retained slice for the new black fix stayed clean:
   - `frontier_pro_v2_guarded_profile_prefers_shipping_black_late_fast_trace_root` now aligns to shipping `l1,8;l0,8`.
   - `frontier_pro_v2_guarded_keeps_recovery_on_black_late_fast_trace_root` stayed aligned to shipping `l2,5;l0,5;l1,6`.
   - `frontier_pro_v2_guarded_profile_prefers_shipping_black_late_fast_second_lane_nonwin_root` stayed aligned to shipping `l0,8;l1,9`.
   - `frontier_pro_v2_guarded_rejects_late_black_plain_spirit_progress_head_without_concrete_gain` still passes.
+- The local retained slice for the new white fix stayed clean:
+  - `frontier_pro_v2_guarded_uses_white_early_engine_disabled_fallback_on_normal_root` now aligns to shipping `l9,5;l8,3;l7,4` while preserving the frontier `pre_accept` root `l8,5;l7,6`.
+  - `frontier_pro_v2_guarded_profile_prefers_shipping_white_late_mana_sibling_duel_normal_root` stayed aligned to shipping `l7,7;l6,5;l6,6`.
+  - `frontier_pro_v2_guarded_profile_prefers_shipping_black_late_fast_trace_root` stayed aligned to shipping `l1,8;l0,8`.
 - The package now clears confirm as well: `pro-reliability-confirm` passed at `0.9375 / 0.9062 / 0.9375`.
+- The earlier engine-disabled early-white Normal seam `l8,5;l7,6` vs shipping `l9,5;l8,3;l7,4` is now gone from the retained and confirm surfaces.
 - The repaired white and black Fast walls are both gone from the `4x4` Fast non-win trace:
   - `l1,8;l1,9` vs shipping `l1,8;l0,8` no longer appears.
   - `l9,7;l8,6` vs shipping `l9,7;l7,6;l7,7` no longer appears.
@@ -95,16 +103,16 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 ## Next Hypothesis
 
 - The current package is promotable. The next spend is no longer about confirm rescue.
-- Keep the new white turn-three no-action recovery guard, the black late-fast safe-mana override, the white early setup repair, and the new black late reply-risk setup rescue together; they now form the promoted retained package.
+- Keep the new white turn-three no-action recovery guard, the black late-fast safe-mana override, the white early setup repair, the new black late reply-risk setup rescue, and the exact white early engine-disabled wrapper fallback together; they now form the promoted retained package.
 - Do not reopen the resolved black confirm seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8`; that board is now covered by the retained suite and confirm passed with it in place.
 - Do not reopen the direct runtime-variant white search-only recovery fallback on `l9,4;l8,3` vs `l9,4;l8,5`. Both the shipping-assisted and frontier-local versions still fail retained `pro-reliability` at `0.9167 / 0.8333 / 0.9167`.
-- The next unresolved white spend has to explain the remaining engine-disabled early-white Normal seam `l8,5;l7,6` vs shipping `l9,5;l8,3;l7,4`, not just the earlier `ply9` recovery board in isolation.
+- Do not reopen the resolved engine-disabled early-white Normal seam `l8,5;l7,6` vs shipping `l9,5;l8,3;l7,4` unless a future challenger regresses it. The kept fix is the exact runtime wrapper fallback, not another broader white recovery override.
 - Do not reopen that white seam by broadening the turn-three no-action recovery override to `mons_moves_count == 1`. That line still fails retained `pro-reliability` at `0.9167 / 0.7500 / 0.9167` by rotating Normal onto engine-disabled early-white boards.
-- The next unresolved black diagnostic seam is `l7,1;l9,3` vs `l1,5;l2,7;l1,8`, but it is not another shortlist or legacy-selector fix:
+- The next unresolved black diagnostic seam is `l7,1;l9,3` vs `l1,5;l2,7;l1,8`, and it is still the next best spend if a new challenger is needed:
   - The full-pool frontier chooser already stays on the safe-progress incumbent.
   - The candidate-only ProV1 replay prefers a different spirit root than shipping.
   - If that board matters again, start from progress-vs-setup scoring or root-rank generation rather than another reply-risk or legacy-alignment tweak.
-- Do not reopen the resolved late black Fast seam `l1,8;l1,9` vs `l1,8;l0,8`, the resolved early white Fast seam `l9,7;l8,6` vs `l9,7;l7,6;l7,7`, or the resolved black late setup seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8` unless a future challenger regresses them.
+- Do not reopen the resolved late black Fast seam `l1,8;l1,9` vs `l1,8;l0,8`, the resolved early white Fast seam `l9,7;l8,6` vs `l9,7;l7,6;l7,7`, the resolved black late setup seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8`, or the resolved white early engine-disabled seam `l8,5;l7,6` vs `l9,5;l8,3;l7,4` unless a future challenger regresses them.
 - Any future challenger still has to respect stage-1 CPU pressure; a package that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 
 ## No-Go Notes

@@ -1030,6 +1030,38 @@ fn frontier_pro_v2_guarded_profile_prefers_shipping_white_late_mana_sibling_duel
 }
 
 #[test]
+fn frontier_pro_v2_guarded_uses_white_early_engine_disabled_fallback_on_normal_root() {
+    let game = MonsGame::from_fen(
+        "0 0 w 0 0 0 0 0 5 n06a0xn04/n07d0me0xn02/n02y0xn01s0xn06/n04xxmn01xxmxxmn03/n03xxmn07/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n02xxMn02Y0xxxMn04/n03xxMn01D0xn05/n03E0xA0xS0xn05/n11",
+        false,
+    )
+    .expect("white early engine-disabled normal fen should be valid");
+
+    clear_turn_engine_selector_diagnostics();
+    let probe = runtime_decision_probe(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let shipping_selected =
+        profile_decision_move_fen("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+
+    println!(
+        "WHITE_EARLY_ENGINE_DISABLED_NORMAL shipping_selected={} context={} probe={:?}",
+        shipping_selected,
+        exact_opportunity_context_probe(&game),
+        probe,
+    );
+    assert_eq!(shipping_selected, "l9,5;l8,3;l7,4");
+    assert_eq!(probe.selected_input_fen, "l9,5;l8,3;l7,4");
+    assert_eq!(probe.pre_accept_input_fen, "l8,5;l7,6");
+    assert_eq!(
+        probe.runtime_variant_branch,
+        "white_early_engine_disabled_fallback"
+    );
+}
+
+#[test]
 fn frontier_pro_v2_guarded_profile_prefers_shipping_black_post_search_duel_normal_root() {
     let game = MonsGame::from_fen(
         "0 1 b 0 0 0 0 0 8 n10d0x/n06a0xn04/n05s0xn01e0xn03/n02xxmxxmy0xn06/E0xn10/n04xxmxxUxxmn03xxQ/n03xxMY0xn01S0xxxMn03/n04D0Mn06/n04xxMA0xn05/n09xxMn01/n11",
