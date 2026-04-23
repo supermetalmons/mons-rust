@@ -1112,7 +1112,10 @@ fn black_progress_residual_weight_attribution_probe() {
         )
     }
 
-    fn material_dampened_selection_probe(game: &MonsGame) -> String {
+    fn material_dampened_selection_probe(
+        game: &MonsGame,
+        setup_root_fens: &[&'static str],
+    ) -> String {
         static MATERIAL_DAMPENED_WEIGHTS: std::sync::OnceLock<ScoringWeights> =
             std::sync::OnceLock::new();
 
@@ -1168,9 +1171,23 @@ fn black_progress_residual_weight_attribution_probe() {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
+        let (dampened_config, dampened_roots, _, _) =
+            runtime_scored_roots_with_config(game, config);
+        let approved_index = root_index(dampened_roots.as_slice(), selected_input_fen.as_str());
+        let candidate_gate = approved_index
+            .map(|approved_index| {
+                material_dampened_setup_gate_probe(
+                    game,
+                    dampened_config,
+                    dampened_roots.as_slice(),
+                    approved_index,
+                    setup_root_fens,
+                )
+            })
+            .unwrap_or_else(|| "setup_gate=approved_root_missing".to_string());
 
         format!(
-            "material_dampened_selected={} branch={} selector(stage={} top_stage={} disable={} top_disable={} head_calls={} head_hits={}) approved={} shortlist={:?} preserved={:?}",
+            "material_dampened_selected={} branch={} selector(stage={} top_stage={} disable={} top_disable={} head_calls={} head_hits={}) approved={} shortlist={:?} preserved={:?} {}",
             selected_input_fen,
             runtime_variant_branch,
             selector_diag.last_return_stage,
@@ -1182,6 +1199,169 @@ fn black_progress_residual_weight_attribution_probe() {
             approved,
             shortlist,
             preserved,
+            candidate_gate,
+        )
+    }
+
+    fn material_dampened_setup_gate_probe(
+        game: &MonsGame,
+        mut config: AutomoveSearchConfig,
+        scored_roots: &[RootEvaluation],
+        approved_index: usize,
+        setup_root_fens: &[&'static str],
+    ) -> String {
+        static MATERIAL_DAMPENED_WEIGHTS: std::sync::OnceLock<ScoringWeights> =
+            std::sync::OnceLock::new();
+
+        config.scoring_weights = MATERIAL_DAMPENED_WEIGHTS.get_or_init(|| {
+            let mut weights = *config.scoring_weights;
+            weights.fainted_mon = 0;
+            weights.fainted_cooldown_step = 0;
+            weights
+        });
+
+        let Some(approved) = scored_roots.get(approved_index) else {
+            return "setup_gate=approved_index_out_of_range".to_string();
+        };
+        let approved_family = MonsGameModel::turn_engine_root_evaluation_family(approved);
+        let approved_utility = MonsGameModel::turn_engine_selected_override_utility(
+            game,
+            approved,
+            game.active_color,
+            config,
+            approved_family,
+        );
+        let reply_limit = config.root_reply_risk_reply_limit.clamp(1, 24);
+        let approved_snapshot = MonsGameModel::root_reply_risk_snapshot(
+            &approved.game,
+            game.active_color,
+            config,
+            reply_limit,
+        );
+        let approved_followup = MonsGameModel::pro_v2_spirit_followup_floor_score(
+            &approved.game,
+            game.active_color,
+            config,
+        );
+        let exact_context =
+            crate::models::automove_exact::exact_opportunity_context(game, game.active_color);
+        let weak_window_context = exact_context.delta.same_turn_score_window_value <= 1
+            && exact_context.delta.opponent_window_deny_gain <= 1
+            && !exact_context.delta.drainer_attack_available
+            && (exact_context.delta.same_turn_score_window_value > 0
+                || exact_context.delta.opponent_window_deny_gain > 0);
+
+        let entries = setup_root_fens
+            .iter()
+            .map(|setup_root_fen| {
+                let Some(index) = root_index(scored_roots, setup_root_fen) else {
+                    return format!("{setup_root_fen}:missing");
+                };
+                let challenger = &scored_roots[index];
+                let challenger_family =
+                    MonsGameModel::turn_engine_root_evaluation_family(challenger);
+                let challenger_utility = MonsGameModel::turn_engine_selected_override_utility(
+                    game,
+                    challenger,
+                    game.active_color,
+                    config,
+                    challenger_family,
+                );
+                let challenger_snapshot = MonsGameModel::root_reply_risk_snapshot(
+                    &challenger.game,
+                    game.active_color,
+                    config,
+                    reply_limit,
+                );
+                let challenger_followup = MonsGameModel::pro_v2_spirit_followup_floor_score(
+                    &challenger.game,
+                    game.active_color,
+                    config,
+                );
+                let utility_order =
+                    crate::models::automove_turn_engine::compare_utility_primary_axes(
+                        challenger_utility,
+                        approved_utility,
+                    );
+                let utility_competes = MonsGameModel::pro_v2_root_advisor_utility_competes(
+                    challenger_utility,
+                    approved_utility,
+                );
+                let score_gap = approved.score.saturating_sub(challenger.score);
+                let setup_gain_gap =
+                    challenger.spirit_setup_gain.saturating_sub(approved.spirit_setup_gain);
+                let progress_surface =
+                    MonsGameModel::turn_engine_root_evaluation_has_progress_surface(challenger);
+                let safe = MonsGameModel::pro_v2_root_advisor_root_evaluation_is_safe(challenger);
+                let base_shape = challenger_family == TurnPlanFamily::SpiritImpact
+                    && challenger.spirit_own_mana_setup_now
+                    && !challenger.spirit_same_turn_score_setup_now
+                    && progress_surface
+                    && !challenger.wins_immediately
+                    && !challenger.attacks_opponent_drainer
+                    && challenger.same_turn_score_window_value == 0
+                    && !challenger.scores_supermana_this_turn
+                    && !challenger.scores_opponent_mana_this_turn
+                    && !challenger.safe_supermana_pickup_now
+                    && !challenger.safe_opponent_mana_pickup_now
+                    && challenger.mana_handoff_to_opponent == approved.mana_handoff_to_opponent
+                    && challenger.has_roundtrip == approved.has_roundtrip
+                    && safe
+                    && challenger.own_drainer_vulnerable == approved.own_drainer_vulnerable
+                    && challenger.own_drainer_walk_vulnerable
+                        == approved.own_drainer_walk_vulnerable
+                    && challenger.supermana_progress == approved.supermana_progress
+                    && challenger.opponent_mana_progress == approved.opponent_mana_progress;
+                let current_rank_gate =
+                    challenger.root_rank <= approved.root_rank.saturating_add(4);
+                let higher_scoring_rank_candidate = challenger.score >= approved.score
+                    && challenger.root_rank <= approved.root_rank.saturating_add(12);
+                let current_passes_override = base_shape
+                    && utility_competes
+                    && score_gap <= 32
+                    && setup_gain_gap >= 64
+                    && current_rank_gate;
+
+                format!(
+                    "{} idx={} rank={} score={} score_gap={} setup_gain={} setup_gap={} family={:?} base_shape={} utility_order={} utility_competes={} score_gate={} setup_gate={} current_rank_gate={} higher_scoring_rank_candidate={} current_passes_override={} reply(worst={} imm_loss={} match_point={}) followup={} followup_gap={} utility={}",
+                    setup_root_fen,
+                    index,
+                    challenger.root_rank,
+                    challenger.score,
+                    score_gap,
+                    challenger.spirit_setup_gain,
+                    setup_gain_gap,
+                    challenger_family,
+                    base_shape,
+                    format_ordering_probe(utility_order),
+                    utility_competes,
+                    score_gap <= 32,
+                    setup_gain_gap >= 64,
+                    current_rank_gate,
+                    higher_scoring_rank_candidate,
+                    current_passes_override,
+                    challenger_snapshot.worst_reply_score,
+                    challenger_snapshot.allows_immediate_opponent_win,
+                    challenger_snapshot.opponent_reaches_match_point,
+                    challenger_followup,
+                    challenger_followup - approved_followup,
+                    format_turn_engine_utility_probe(challenger_utility),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        format!(
+            "setup_gate approved(rank={} score={} family={:?} weak_window={} reply(worst={} imm_loss={} match_point={}) followup={} utility={}) candidates={:?}",
+            approved.root_rank,
+            approved.score,
+            approved_family,
+            weak_window_context,
+            approved_snapshot.worst_reply_score,
+            approved_snapshot.allows_immediate_opponent_win,
+            approved_snapshot.opponent_reaches_match_point,
+            approved_followup,
+            format_turn_engine_utility_probe(approved_utility),
+            entries,
         )
     }
 
@@ -1213,7 +1393,7 @@ fn black_progress_residual_weight_attribution_probe() {
         };
         let safe_root = &scored_roots[safe_index];
         let material_dampened_selector = if case.label == "black_progress_vs_setup_residue" {
-            material_dampened_selection_probe(&game)
+            material_dampened_selection_probe(&game, case.setup_roots)
         } else {
             "material_dampened=out_of_scope".to_string()
         };

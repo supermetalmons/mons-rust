@@ -908,6 +908,18 @@ fn profile_runtime_scored_roots_with_forced_engine_inputs(
     Option<Vec<Input>>,
 ) {
     let config = calibration_runtime_config(profile_name, game, mode);
+    runtime_scored_roots_with_config(game, config)
+}
+
+fn runtime_scored_roots_with_config(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> (
+    AutomoveSearchConfig,
+    Vec<RootEvaluation>,
+    Option<TurnPlan>,
+    Option<Vec<Input>>,
+) {
     let perspective = game.active_color;
     let mut root_moves = MonsGameModel::ranked_root_moves(game, perspective, config);
     let engine_plan = if config.enable_turn_engine_selector {

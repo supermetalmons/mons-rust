@@ -40,7 +40,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow, `AUTOMOVE_IDEAS.md` for th
 ## Residual Map
 
 - `black_recovery_branch`: not a root-availability problem. The current live model prefers the approved plain-spirit root or a no-guard ProV1 spirit replay over shipping under frontier metrics. Static exact scoring is not a promotable direct spend: broad scoped exact selected the wrong spirit sibling, and reply-floor-only exact aligned the local board but failed retained sampled reliability.
-- Black Fast progress-vs-setup residue: not solved by direct wrapper mirrors, material-only scoring, or final-selector-only changes. The safe-progress edge largely comes from residual board-state material/cooldown terms, but removing those terms in the scoped turn-six window/deny state still leaves advisor approval on safe progress as `ApprovedReplyRiskGuard`; the shipping setup root is already present in the reply-risk shortlist. Reopen only with a mechanism that proves that advisor approval is wrong and preserves retained setup-control boards.
+- Black Fast progress-vs-setup residue: not solved by direct wrapper mirrors, material-only scoring, final-selector-only changes, or a combined scoped material-plus-rank advisor exception. The safe-progress edge largely comes from residual board-state material/cooldown terms, but a line that zeroed those terms and let higher-scoring setup roots outrank the safe-progress root fixed the local board and still failed sampled reliability. Reopen only with a mechanism that improves retained multi-variant duel strength, not just the local residue.
 - White search-order residue: not a wrapper config, root-set, or simple rerank-cap problem. The shipping recovery root can be reachable and still lose at shortlist/reply-risk under frontier metrics; any future spend must distinguish unresolved siblings from retained vulnerable guards below that surface.
 
 ## Diagnostic Toolbox
@@ -74,4 +74,5 @@ cargo test --release --lib <test_name> -- --ignored --nocapture
 - Kill any `black_recovery_branch` line that reopens broad scoped static exact or reply-floor-only static exact without a new direct duel-strength mechanism.
 - Kill any black progress-vs-setup line that only dampens `fainted_mon` / `fainted_cooldown_step`; that is local-score movement, not selection movement.
 - Kill any black progress-vs-setup line that patches final selection without moving the material-dampened `ApprovedReplyRiskGuard` advisor approval.
+- Kill any black progress-vs-setup line that combines scoped material dampening with a higher-rank setup advisor exception unless it brings new sampled duel-strength evidence; the direct version failed Pro `0.5000`, Normal `0.5000`, Fast `0.8333`.
 - Do not reopen archived profiles, archived seams, or archived wave packages without a brand-new shared hypothesis.

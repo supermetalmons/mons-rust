@@ -28,12 +28,13 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - This iteration killed the `black_recovery_branch` static-exact spend. A reply-floor-only exact cut passed `guardrails`, `variant-smoke`, `pro-triage`, and `runtime-preflight`, then failed sampled `pro-reliability` at Pro `0.5000`, Normal `0.5000`, Fast `0.9167`; average move times stayed under `200ms`. The runtime code was discarded.
 - This iteration also killed black progress material/cooldown-only scoring. Zeroing `fainted_mon` and `fainted_cooldown_step` only on the scoped black turn-six window/deny state shrank the target residual delta from `843/778` to `83/18` and preserved the turn-ten setup-control board, but final selection still stayed on `l7,1;l9,3`.
 - Follow-up selector-layer probe for black progress retained only diagnostic code. Under the material-dampened replay, frontier still selected `l7,1;l9,3` through `frontier_execute` / `engine_post_search`, with advisor approval `l7,1;l9,3:SafeSupermanaProgress:ApprovedReplyRiskGuard:rank0`; shipping setup `l1,5;l2,7;l1,8` was already present in the reply-risk shortlist at rank `10`.
+- This iteration killed the combined black progress material-plus-rank line. The runtime cut aligned the local residue to shipping setup `l1,5;l2,7;l1,8`, passed `guardrails`, `variant-smoke`, `pro-triage`, and `runtime-preflight`, then failed sampled `pro-reliability`: Pro `0.5000`, Normal `0.5000`, Fast `0.8333`; average move times stayed below `200ms`. The runtime code was discarded.
 
 ## Next Hypothesis
 
 - There is no live challenger after the latest no-go. Default to no runtime change until a focused probe produces a new shared mechanism below the current no-go layer.
 - For `black_recovery_branch`, do not retry broad static exact or reply-floor-only static exact. Reopen only with a new mechanism that improves direct multi-variant duel strength, not just the local board.
-- For black progress-vs-setup residue, do not retry material/cooldown-only scoring or final-selector-only patches. Reopen only with a mechanism that proves the `ApprovedReplyRiskGuard` advisor approval is wrong on the residue while preserving retained setup-control boards.
+- For black progress-vs-setup residue, do not retry material/cooldown-only scoring, final-selector-only patches, or the scoped material-plus-higher-rank advisor exception. Reopen only with a mechanism that improves sampled multi-variant duel strength, not just the local residue.
 - For white search-order residue, do not retry wrapper config mirroring, broad `ProV1` reroutes, root-rank gates, or simple shortlist widening. Reopen only with a mechanism that separates unresolved siblings from the retained vulnerable guard below the current shortlist/reply-risk surface.
 
 ## Active No-Go Notes
@@ -49,5 +50,6 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Do not reopen `black_recovery_branch` with broad scoped static exact or reply-floor-only static exact; the former selected `l1,5;l2,6`, and the latter still failed sampled retained reliability.
 - Do not reopen black progress-vs-setup with material/cooldown-only scoring; it reduces the local residual gap but leaves the selected root unchanged.
 - Do not reopen black progress-vs-setup with final-selector-only changes; the material-dampened replay still approves safe progress at the advisor `ApprovedReplyRiskGuard` layer.
+- Do not reopen black progress-vs-setup with the combined scoped material dampening plus higher-scoring setup-rank exception; it fixes the board locally and still fails sampled retained reliability.
 - Do not broaden white turn-three no-action recovery from turn-start to `mons_moves_count == 1`; that line already failed retained reliability.
 - Do not broaden white search-order fallback into raw `search-only + ProV1`, shipping own caps, root-rank checks, or wrapper config toggles; each has a documented retained-control failure or inert wrapper path.

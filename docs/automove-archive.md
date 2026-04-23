@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Black Progress Material Plus Rank Wave
+
+- No runtime challenger survived this wave. The local candidate combined frontier-only scoped material/cooldown dampening on the black turn-six weak-window residue with a higher-scoring setup-rank exception in the advisor path.
+- The focused probe moved the local target: frontier aligned from safe progress `l7,1;l9,3` to shipping setup `l1,5;l2,7;l1,8`, and the retained turn-ten setup-control board stayed aligned.
+- Cheap gates were clean enough to spend the sampled duel: `guardrails`, `variant-smoke`, `pro-triage`, and `runtime-preflight` all passed.
+- Sampled retained reliability killed it hard: Pro `0.5000`, Normal `0.5000`, Fast `0.8333`, with confidence `0.0000 / 0.0000 / 0.9807`. Frontier average move times were `148.34ms / 179.83ms / 161.71ms`, so cost was not the failure.
+- Durable outcome: even a mechanism that both removes the material gap and moves advisor approval is only local board repair. Do not reopen this residue with scoped material-plus-rank advisor changes unless there is new evidence for retained multi-variant duel strength.
+
 ## Black Progress Selector-Layer Probe
 
 - No runtime challenger was cut in this wave. The retained change is diagnostic-only: `black_progress_residual_weight_attribution_probe` now also replays the target under material-dampened weights and reports the advisor/selector layer.
