@@ -498,3 +498,14 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - On the retained vulnerable guard, shipping `l8,4;l8,5` still shows `selected_rank=4` under the shipping runtime, but its underlying `root_rank` is already `0`; the raw shipping-own-caps replay also gives that same guard move `root_rank=0`.
 - Later supersession: selected rank under the raw shipping-own-caps replay, not root rank, did become a safe separator. The promoted follow-up only keeps that replay when the move is the top scored focused candidate; the Normal sibling is `selected_rank=0`, while the retained vulnerable guard stays `selected_rank=4`.
 - Durable outcome: do not reopen the negative-deny white search-order family with another runtime gate based on `root_rank == 0`. The useful layer is the scored focused selected rank after the exact capped replay, not the underlying root rank.
+
+## Sampled Late-Ply Repair Wave
+
+- No promotable challenger came out of this wave. The kept runtime package repaired several stable retained late Normal/Fast seams around `frontier_pro_v2_guarded`, but sampled `pro-reliability` still failed at Pro `1.0000`, Normal `0.9167`, Fast `0.8333`, with confidence `0.9998 / 0.9968 / 0.9807`; frontier average move times were `151.76ms / 190.31ms / 170.39ms`.
+- The useful local repairs that survived retained replay were narrow: black late search/head-accept Normal guards, a black turn-six vulnerable-progress mana override, an early black setup-branch legacy spirit override, and a white turn-start spirit-setup head blocker. Those changes fixed the sampled retained boards they were derived from.
+- Promotion still died on rotated late-ply sampled boards. The remaining sampled blockers at the end of the wave were Normal `outer_edge_mana_rows` and Fast `alternating_mana_rows` plus `forward_bridge_mana_rows`.
+- The clean reproducible live blockers were deeper late-ply search/head splits, not the earlier retained seams:
+  - Normal black late search board: frontier approved quiet `l1,6;l1,5` while shipping stayed on `l2,6;l3,7`.
+  - Fast white branch head-accept board: frontier accepted `l9,6;l7,4;l7,3` over the advisor-approved shipping root `l9,6;l7,6;l7,7`.
+- One traced Fast black nonwin was not safe to keep as retained coverage. The copied board snapshot did not reproduce the live shipping-selected root on a clean retained replay and collapsed back to frontier instead.
+- Durable outcome: when sampled losses rotate into late-ply boards, keep only the stable retained repairs and archive the reproducibility rule. Do not retain copied `first_diff_ply` boards unless the retained harness reproduces the same final shipping-selected root.

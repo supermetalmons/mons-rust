@@ -13,9 +13,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Quick automove iteration uses seeded sampled game variants; final promotion confirmation uses all current variants.
 - There is no second live challenger today.
 - Release readiness was refreshed on `2026-04-23`: public Pro wiring still ships `frontier_pro_v2_guarded`, experimentation remains test-only, and the full canonical confirm loop passed without selection-behavior changes.
-- The remaining classified residuals are not current selection-layer targets:
-  - `black_recovery_branch`: static exact evaluation is now killed as a direct runtime spend; broad scoped exact picked the wrong spirit sibling, and reply-floor-only exact aligned the board locally but failed retained reliability.
-  - black Fast progress-vs-setup residue: material/cooldown explains most of the residual valuation gap, but material-only dampening is behaviorally inert. A selector-layer replay shows the safe-progress root is still advisor-approved as `ApprovedReplyRiskGuard` even with the shipping setup root already in the reply-risk shortlist.
+- The current local package around `frontier_pro_v2_guarded` is still not promotable on the sampled Pro gate, even after fixing several retained late Normal/Fast boards.
+- Remaining sampled blockers at the end of this wave are variant-level, not just the earlier retained boards:
+  - Normal `outer_edge_mana_rows`
+  - Fast `alternating_mana_rows`
+  - Fast `forward_bridge_mana_rows`
 
 ## Latest Gate Snapshot
 
@@ -24,18 +26,21 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Release verification passed under the previous Classic-era gate shape: `cargo fmt --check`, host and wasm `cargo build --release --lib`, `git diff --check`, `cargo test --release --lib smart_automove_tactical_selected_profile -- --ignored --nocapture`, and `./scripts/run-automove-canonical-loop.sh --confirm frontier_pro_v2_guarded`.
 - Previous confirm duel metrics: Pro `0.9688`, Normal `1.0000`, Fast `0.9688`, each with confidence `1.0000`; frontier average move times stayed below `200ms`.
 - Release containment: public `Pro` dispatch still routes through `select_frontier_pro_v2_guarded_inputs`; `automove_experiments` remains under `#[cfg(test)]`, so diagnostics and experiment harness code are not production selection code.
-- First multi-variant sampled reliability check of the shipped frontier stopped at the new gate: Pro `0.5000`, Normal `0.5000`, Fast `0.9167`. The current shipped frontier is retained/shipped, but it is not fresh multi-variant promotion evidence.
+- Latest sampled `pro-reliability` gate for the kept local package still failed promotion: Pro `1.0000`, Normal `0.9167`, Fast `0.8333`; confidence `0.9998 / 0.9968 / 0.9807`; frontier average move times `151.76ms / 190.31ms / 170.39ms`.
 - This iteration killed the `black_recovery_branch` static-exact spend. A reply-floor-only exact cut passed `guardrails`, `variant-smoke`, `pro-triage`, and `runtime-preflight`, then failed sampled `pro-reliability` at Pro `0.5000`, Normal `0.5000`, Fast `0.9167`; average move times stayed under `200ms`. The runtime code was discarded.
 - This iteration also killed black progress material/cooldown-only scoring. Zeroing `fainted_mon` and `fainted_cooldown_step` only on the scoped black turn-six window/deny state shrank the target residual delta from `843/778` to `83/18` and preserved the turn-ten setup-control board, but final selection still stayed on `l7,1;l9,3`.
 - Follow-up selector-layer probe for black progress retained only diagnostic code. Under the material-dampened replay, frontier still selected `l7,1;l9,3` through `frontier_execute` / `engine_post_search`, with advisor approval `l7,1;l9,3:SafeSupermanaProgress:ApprovedReplyRiskGuard:rank0`; shipping setup `l1,5;l2,7;l1,8` was already present in the reply-risk shortlist at rank `10`.
 - This iteration killed the combined black progress material-plus-rank line. The runtime cut aligned the local residue to shipping setup `l1,5;l2,7;l1,8`, passed `guardrails`, `variant-smoke`, `pro-triage`, and `runtime-preflight`, then failed sampled `pro-reliability`: Pro `0.5000`, Normal `0.5000`, Fast `0.8333`; average move times stayed below `200ms`. The runtime code was discarded.
+- The kept runtime edits from this wave repaired several stable retained late boards, including black search/head-accept Normal seams and two Fast seams, but the sampled gate still rotated to deeper late-ply losses.
+- One traced Fast nonwin from this wave was not safe to retain. The copied board snapshot replayed to frontier's own move instead of the live shipping-selected root, so only the reproducibility lesson is kept.
 
 ## Next Hypothesis
 
-- There is no live challenger after the latest no-go. Default to no runtime change until a focused probe produces a new shared mechanism below the current no-go layer.
+- There is no promotable challenger after the latest sampled no-go. Default to no broad runtime change until a focused probe produces a new shared mechanism below the current late-ply search/head layer.
 - For `black_recovery_branch`, do not retry broad static exact or reply-floor-only static exact. Reopen only with a new mechanism that improves direct multi-variant duel strength, not just the local board.
 - For black progress-vs-setup residue, do not retry material/cooldown-only scoring, final-selector-only patches, or the scoped material-plus-higher-rank advisor exception. Reopen only with a mechanism that improves sampled multi-variant duel strength, not just the local residue.
 - For white search-order residue, do not retry wrapper config mirroring, broad `ProV1` reroutes, root-rank gates, or simple shortlist widening. Reopen only with a mechanism that separates unresolved siblings from the retained vulnerable guard below the current shortlist/reply-risk surface.
+- For the current late-ply sampled residue, do not promote copied `first_diff_ply` boards into retained until the clean retained replay reproduces the same final shipping-selected root.
 
 ## Active No-Go Notes
 

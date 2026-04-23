@@ -25,6 +25,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow, `AUTOMOVE_IDEAS.md` for th
 - Passing the small `pro-reliability` gate does not guarantee confirm readiness.
 - Passing sampled variants does not guarantee all-variant readiness.
 - Treat rotated residue from a discarded challenger as provisional until a clean-tree retained trace confirms it.
+- Do not promote a live `first_diff_ply` board into retained until the retained replay reproduces the same final shipping-selected root; copied late-ply snapshots can collapse back to frontier on clean replay.
 - Runtime cost is a real gate. A candidate that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 - Wrapper-only reroutes, fallback widening, shortlist widening, and metadata-only advisor changes saturate quickly; durable progress usually needs shared approval, head, or scoring logic.
 
@@ -70,6 +71,7 @@ cargo test --release --lib <test_name> -- --ignored --nocapture
 - Kill any line that only changes advisor labels or `pre_accept` metadata while the final selected root stays unchanged.
 - Kill any line that widens shortlist or injection coverage without moving the approved root on the live walls.
 - Kill any line that aligns live walls but still fails retained duel strength or canonical cost.
+- Kill any retained-board addition whose copied board state does not replay the same shipping-selected root on a clean retained harness run.
 - Kill any `black_recovery_branch` line that only forces shipping `l6,0;l6,1` above the current reply-risk and no-guard selector ordering.
 - Kill any `black_recovery_branch` line that reopens broad scoped static exact or reply-floor-only static exact without a new direct duel-strength mechanism.
 - Kill any black progress-vs-setup line that only dampens `fainted_mon` / `fainted_cooldown_step`; that is local-score movement, not selection movement.

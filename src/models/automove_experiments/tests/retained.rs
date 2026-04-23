@@ -1386,6 +1386,15 @@ fn frontier_pro_v2_guarded_profile_prefers_shipping_white_flat_nonwin_duel_pro_r
 }
 
 #[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_white_late_post_search_duel_sampled_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "WHITE_LATE_POST_SEARCH_DUEL_SAMPLED",
+        "0 0 w 0 0 1 0 0 3 n07e0xn03/n05s0xn01a0xn03/n03y0xn03d0xn03/n08xxmn02/xxmxxmn08xxm/xxQxxmn03xxUn03xxMxxQ/xxMxxMn07xxMxxM/n03S0xn07/n11/n04D0xn01Y0xn04/n02E0xn01A0xn06 8",
+        "l7,3;l5,5;l6,4",
+    );
+}
+
+#[test]
 fn frontier_pro_v2_guarded_rejects_black_post_search_spirit_reentry_duel_pro_root() {
     let game = MonsGame::from_fen(
         "1 0 b 0 0 0 0 0 6 n05d1xa0xn04/n05s0xn01e0xn03/n07xxmn03/n03xxmn03xxmn03/n03xxmn01xxmn03Y0xn01/n05xxUn05/n05xxMn05/n01y0xn01xxMn03xxMn03/n07xxMn03/n02E0xn02S0xn05/n04A1xD1xn05",
@@ -1421,6 +1430,24 @@ fn frontier_pro_v2_guarded_profile_prefers_shipping_black_head_nonwin_duel_pro_r
         "BLACK_HEAD_NONWIN_DUEL_PRO",
         "0 0 b 0 0 2 0 0 2 n03y0xn01d0xn01e0xn03/n04s0xa0xn05/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n05S0xn05/n03A0xn07/n02E0xn02D0xn02Y0xn02",
         "l1,4;l3,4;l3,3",
+    );
+}
+
+#[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_black_head_duel_sampled_pro_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "BLACK_HEAD_DUEL_SAMPLED_PRO",
+        "0 0 b 0 0 3 0 0 2 n03y0xn03e0xn03/n05s0xd0xa0xn03/n11/n11/xxmxxmn07xxmxxm/xxQxxmn03xxUn03xxMxxQ/xxMxxMn07xxMxxM/n11/n04S0xn06/n04D0xn01Y0xn04/n02E0xn01A0xn06 8",
+        "l1,6;l2,7",
+    );
+}
+
+#[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_black_head_duel_sampled_normal_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "BLACK_HEAD_DUEL_SAMPLED_NORMAL",
+        "0 0 b 0 0 1 0 0 2 n03y0xn01d0xa0xe0xn03/n05s0xn05/n11/n11/xxmxxmn07xxmxxm/xxQxxmn03xxUn03xxMxxQ/xxMxxMn07xxMxxM/n11/n04D0xn06/n04A0xn01S0xn01Y0xn02/n03E0xn07 8",
+        "l1,5;l0,3;l1,3",
     );
 }
 
@@ -1837,5 +1864,131 @@ fn frontier_pro_v2_guarded_rejects_white_harvest_non_progress_window_injection()
     assert_eq!(
         profile_decision_move_fen("frontier_pro_v2_guarded", fixture.mode, &fixture.game),
         "l7,2;l6,1",
+    );
+}
+
+#[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_white_head_accept_duel_sampled_pro_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "WHITE_HEAD_ACCEPT_DUEL_SAMPLED_PRO",
+        "0 0 w 1 0 3 0 0 3 n07e0xn03/n05s0xn01a0xn03/n03y0xn03d0xn03/n08xxmn02/xxmxxmn08xxm/xxQxxmn07xxMxxQ/xxMxxMn02xxUn04xxMxxM/n03S0xn07/n03D0xn07/n03A0xn02Y0xn04/n02E0xn08 8",
+        "l9,6;l8,5",
+    );
+}
+
+#[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_black_followup_duel_sampled_pro_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "BLACK_FOLLOWUP_DUEL_SAMPLED_PRO",
+        "0 0 b 1 0 1 0 0 4 n06a0xe0xn03/n07d0xn03/n05s0xn05/n08xxmn02/xxmxxmn01y0xn06xxm/xxQxxmn07xxMxxQ/n01xxMn02xxUn04xxMxxM/xxMn04S0xn05/n03D0xn07/n03E0xA0xn02Y0xn03/n11 8",
+        "l4,3;l4,4",
+    );
+}
+
+#[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_white_sibling_duel_sampled_pro_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "WHITE_SIBLING_DUEL_SAMPLED_PRO",
+        "0 0 w 1 0 4 0 0 3 n11/n02y0xn01s0xd0xa0xe0xn03/n06xxmxxmn03/n04xxmn06/n03xxmn03xxmn03/xxQn04xxUn04xxQ/n03xxMn03xxMn03/n02E0xn01xxMxxMn01xxMn03/n05D0xn05/n05A0xS0xn01Y0xn02/n11 6",
+        "l7,2;l6,2",
+    );
+}
+
+#[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_white_three_step_duel_sampled_pro_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "WHITE_THREE_STEP_DUEL_SAMPLED_PRO",
+        "0 0 w 0 0 1 0 0 3 n11/n02y0xn01s0xa0xd0xn01e0xn02/n07xxmn03/n03xxmn01xxmn05/n03xxmn03xxmn03/xxQn04xxUn04xxQ/n03xxMn03xxMn03/n04xxMxxMxxMn04/n05D0xn05/n02E0xA0xn01S0xn05/n07Y0xn03 6",
+        "l9,5;l7,6;l7,7",
+    );
+}
+
+#[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_black_sibling_duel_sampled_pro_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "BLACK_SIBLING_DUEL_SAMPLED_PRO",
+        "0 0 b 0 0 1 0 0 2 n03y0xs0xd0xn01e0xn03/n05a0xn05/n11/n03xxmn01xxmn01xxmn03/n04xxmn01xxmn04/xxQn04xxUn04xxQ/n04xxMn01xxMn04/n03xxMn01xxMn01xxMn03/n05S0xn05/n02A0xn08/n02E0xn02D0xn01Y0xn03 1",
+        "l0,4;l1,4",
+    );
+}
+
+#[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_black_head_accept_duel_sampled_normal_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "BLACK_HEAD_ACCEPT_DUEL_SAMPLED_NORMAL",
+        "0 0 b 1 0 3 0 0 4 n07e0xd0xn02/n07a0xn03/n05s0xn05/n09xxmn01/xxmxxmn02y0xn05xxm/xxQxxmn07xxMxxQ/xxMxxMn02xxUn05xxM/n04D0xn01S0xn01xxMn02/n03A0xn07/n02E0xn05Y0xn02/n11 8",
+        "l2,5;l2,6",
+    );
+}
+
+#[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_black_followup_duel_sampled_normal_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "BLACK_FOLLOWUP_DUEL_SAMPLED_NORMAL",
+        "0 0 b 0 0 1 0 0 2 n03y0xn01d0xa0xe0xn03/n05s0xn05/n11/n11/n01xxmn01xxmn01xxmn01xxmn01xxmn01/xxQn04xxUn04xxQ/n01xxMn01xxMn01xxMn01xxMn01xxMn01/n11/n05D0xY0xn04/n05A0xn05/n03E0xn02S0xn04 4",
+        "l1,5;l2,5",
+    );
+}
+
+#[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_white_head_accept_duel_sampled_normal_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "WHITE_HEAD_ACCEPT_DUEL_SAMPLED_NORMAL",
+        "0 1 w 0 0 0 0 0 5 n05d1xn05/n02y0xn03a0xe0xn03/n04s0xn06/n05xxmn01xxmn03/n04xxmn01xxmn04/xxQn04xxUn05/n01E0xn04xxMn04/n03xxMxxMxxMn01xxMY0xn02/n11/n05S0xn05/n04A0xD0xn05 1",
+        "l9,5;l7,4;l8,3",
+    );
+}
+
+#[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_black_cluster_duel_sampled_normal_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "BLACK_CLUSTER_DUEL_SAMPLED_NORMAL",
+        "0 0 b 0 0 1 0 0 4 n03y0xn01d1xa0xe0xn03/n05s0xn05/n02xxmn08/n05xxmn01xxmn03/n04xxmn01xxmn04/xxQn04xxUn05/E0xn05xxMn04/n03xxMxxMxxMn01xxMY0xn02/n11/n05S0xn05/n04A0xD1xn05 1",
+        "l1,5;l3,5;l3,4",
+    );
+}
+
+#[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_black_head_accept_search_only_duel_sampled_normal_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "BLACK_HEAD_ACCEPT_SEARCH_ONLY_DUEL_SAMPLED_NORMAL",
+        "0 0 b 1 0 1 0 0 4 n06a0xn04/n03y0xd0mn01e0xn04/n04s0xn06/n01xxmn09/n04xxmn01xxmn01xxmn02/xxQn04xxUn04Y0x/n02xxMn05xxMn02/n03xxMn03xxMn03/n04xxMS0xn05/n03E0xn01D0xn05/n04A0xn06 3",
+        "l1,4;l1,5",
+    );
+}
+
+#[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_black_late_mana_duel_sampled_normal_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "BLACK_LATE_MANA_DUEL_SAMPLED_NORMAL",
+        "2 0 b 0 0 0 0 0 6 n07e0xd0xn02/n08a0xn02/n06s0xn01xxmn02/n11/xxmxxmn02y0xn05xxm/xxQxxmn07xxMxxQ/xxMxxMn03S0xn04xxM/n11/n03A0xn03xxMn03/n02E0xn05Y0xn02/D0xn10 8",
+        "l0,7;l1,6",
+    );
+}
+
+#[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_black_late_head_accept_duel_sampled_normal_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "BLACK_LATE_HEAD_ACCEPT_DUEL_SAMPLED_NORMAL",
+        "0 0 b 1 0 0 0 0 6 n05d0xn05/n01xxmn03s0xa0xe0xn03/n03y0xn07/n03xxmn03xxmn03/n04xxmn01xxmn04/E0xn04xxUn05/n06xxMn04/n03xxMxxMS0xn02Y0xn02/n06xxMn04/n05A0xD0xn02xxMn01/n11 1",
+        "l0,5;l1,4",
+    );
+}
+
+#[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_black_branch_duel_sampled_fast_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "BLACK_BRANCH_DUEL_SAMPLED_FAST",
+        "0 0 b 0 0 2 0 0 2 n03y0xn01d0xa0xe0xn03/n11/n05s0xn05/n11/n01xxmn01xxmn01xxmn01xxmn01xxmn01/xxQn04xxUn04xxQ/n01xxMn01xxMn01xxMn01xxMn01xxMn01/n11/n05Y0xn05/n04E0xD0xn05/n04A0xn01S0xn04 4",
+        "l2,5;l4,3;l3,3",
+    );
+}
+
+#[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_white_head_accept_duel_sampled_fast_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "WHITE_HEAD_ACCEPT_DUEL_SAMPLED_FAST",
+        "0 0 w 0 0 0 0 0 5 n05d1xn03xxmn01/n03y0xn02e0xa0xn03/n11/n04xxmn03s0xn02/n03xxmxxmxxmn03Y0xn01/xxQn04xxUxxMn04/n05xxMn01xxMn03/n06xxMn04/n01E0xn02xxMn06/n05D0xS0xn04/n04A0xn06 10",
+        "l9,6;l8,4;l9,5",
     );
 }
