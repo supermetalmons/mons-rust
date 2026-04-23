@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Same-Family Late Mana Residual Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave tested the only plausible shared scoring angle left inside the current same-family `ManaTempo` drifts: late black `outer_edge` plus the new Pro white `l9,7;l8,8` vs `l9,7;l8,7` and `l6,7;l7,6` vs `l6,7;l7,7` seams.
+- The black `outer_edge` seam and the white `l9,7;l8,8` vs `l9,7;l8,7` seam both came back as exact ties at the scoring layer. They had zero residual delta, zero `search_eval` delta, and identical `TurnEngineUtility` despite different selected roots.
+- The white `l6,7;l7,6` vs `l6,7;l7,7` seam did not match that shape. It carried a real residual delta (`-112`) concentrated in `spirit_action_utility` and `mana_close_to_same_pool`.
+- Durable outcome: do not reopen a shared same-family late mana scoring spend. Two seams are tie-order surfaces and the third is a different residual-scoring surface, so there is still no common mechanism.
+
 ## All-Blocker Recurrence Trace Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
