@@ -59,12 +59,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - The branch replays only that two-root, equal-surface board class through raw `search-only + ProV1` semantics and keeps the result only when the replayed root is the other shortlisted equal-score quiet `ManaTempo` root with identical setup/progress-step metrics.
   - It fixes `WHITE_CONFIRM_PRO_PLY11` from frontier/pre-accept `l10,4;l9,3` to shipping `l7,8;l6,9`.
   - The retained regression for that board now lives in `frontier_pro_v2_guarded_profile_prefers_shipping_white_confirm_pro_ply11_root`.
-- This iteration kept a twelfth narrow white runtime repair in the same package, but it did not promote the package:
+- This iteration kept a twelfth narrow white runtime repair in the same package:
   - It adds `select_white_confirm_prov1_better_ordered_search_only_fallback_inputs`, a wrapper-level replay for the later white turn-three `mons_moves>=3` no-action mana-only confirm surface where raw `search-only + ProV1` names a safe quiet `ManaTempo` root already in the candidate and reply-risk shortlists.
   - The branch only keeps that replay when both roots share quiet `ManaTempo` class, setup gain, progress-step metrics, and score-path steps, and the replayed root is already non-worse on score and better on root rank.
   - It fixes `WHITE_CONFIRM_PRO_PLY15` from frontier/pre-accept `l6,5;l7,6` to shipping `l6,3;l7,3`.
   - The retained regression for that board now lives in `frontier_pro_v2_guarded_profile_prefers_shipping_white_confirm_pro_ply15_root`.
   - A refreshed Pro-only confirm trace removed the ply15 split but still reported `total_nonwins=2`: the known `black_recovery_branch`, plus a new white `ply26` head-acceptance split where frontier accepts `l10,10;l9,9` over pre-accept/shipping `l10,4;l9,3`.
+- This iteration kept and promoted a thirteenth narrow white head-acceptance repair in the same package:
+  - It extends `accept_turn_engine_head_after_search` so a white turn-five mid-turn mana-only safe quiet `ManaTempo` pre-accept root can block a deferred recovery/progress head when the head has no concrete score, pickup, attack, or window gain, is much worse by root rank, and its head utility fails the selected root's primary-axis eval tolerance.
+  - It fixes `WHITE_CONFIRM_PRO_PLY26` from accepted head `l10,10;l9,9` back to shipping/pre-accept `l10,4;l9,3`.
+  - The retained regression for that board now lives in `frontier_pro_v2_guarded_rejects_white_turn_five_deferred_recovery_progress_head_pro_root`.
+  - A refreshed Pro-only confirm trace collapsed to `total_nonwins=1`, leaving only the classified `black_recovery_branch`.
+  - The full canonical confirm loop passed: guardrails, primary Pro triage `target_changed=5 / off_target_changed=0`, exact-lite, advisory stage-1 CPU `1.551 / 1.516 / 1.360`, retained `pro-reliability` `0.9167 / 1.0000 / 1.0000`, and `pro-reliability-confirm` `0.9688 / 0.9688 / 0.9688` with confidence `1.0000`.
 - Board-local confirm diagnostics collapsed the earlier two-board black Fast residue into one real live seam:
   - On `l0,0;l1,1` vs shipping `l7,1;l8,0`, frontier already matches shipping on the current retained package.
   - The only live confirm Fast approval miss was `l0,5;l1,5` vs shipping `l2,5;l3,7;l2,8`, where legacy and shipping already agree on the spirit own-setup progress root.

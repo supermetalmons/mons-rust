@@ -2186,6 +2186,10 @@ fn white_normal_turn_five_head_acceptance_probe() {
             label: "fast_repeat1_opening1_ply24_head_over_pre_accept",
             fen: "0 0 w 0 0 2 0 0 5 n05d0xn05/n06a0xn04/n03xxmn01s0xn05/n02xxmn03e0xn01xxmn02/n03y0xn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n11/n02xxMn03S0xD0MY0xn02/n04A0xn06/n02E0xn08",
         },
+        ProbeCase {
+            label: "confirm_pro_repeat3_opening2_ply26_head_over_pre_accept",
+            fen: "1 1 w 1 0 2 0 0 5 d0xn10/n05s0xn01e0xn03/n03y0xn01a0xn05/n03xxmn02xxmn04/n05xxmn01xxmn03/xxQn04xxUn04Y0x/n05xxMn01xxMn03/n03xxMn07/n03xxMn07/n05S0xn05/n03E0xA0xn05D0x",
+        },
     ];
 
     for case in cases {

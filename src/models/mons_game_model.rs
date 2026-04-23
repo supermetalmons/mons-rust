@@ -9020,6 +9020,68 @@ impl MonsGameModel {
                 && !drainer_attack_better
                 && !same_turn_window_better
                 && !pickup_upgrade;
+        let selected_white_safe_mana_root_blocks_deferred_recovery_progress_head =
+            matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
+                && game.active_color == Color::White
+                && game.turn_number == 5
+                && game.mons_moves_count >= 1
+                && !game.player_can_use_action()
+                && game.player_can_move_mana()
+                && matches!(
+                    plan.head_family,
+                    TurnPlanFamily::SafeSupermanaProgress
+                        | TurnPlanFamily::SafeOpponentManaProgress
+                )
+                && matches!(plan.goal_family, TurnPlanFamily::DrainerSafetyRecovery)
+                && matches!(candidate_family, TurnPlanFamily::ManaTempo)
+                && matches!(selected_family, TurnPlanFamily::ManaTempo)
+                && !candidate_unsafe
+                && !selected_unsafe
+                && !candidate_progress_surface
+                && !selected_progress_surface
+                && !candidate.spirit_development
+                && !selected.spirit_development
+                && !candidate.spirit_same_turn_score_setup_now
+                && !selected.spirit_same_turn_score_setup_now
+                && !candidate.spirit_own_mana_setup_now
+                && !selected.spirit_own_mana_setup_now
+                && !candidate.wins_immediately
+                && !selected.wins_immediately
+                && !candidate.attacks_opponent_drainer
+                && !selected.attacks_opponent_drainer
+                && !candidate.scores_supermana_this_turn
+                && !selected.scores_supermana_this_turn
+                && !candidate.scores_opponent_mana_this_turn
+                && !selected.scores_opponent_mana_this_turn
+                && !candidate.safe_supermana_pickup_now
+                && !selected.safe_supermana_pickup_now
+                && !candidate.safe_opponent_mana_pickup_now
+                && !selected.safe_opponent_mana_pickup_now
+                && candidate.same_turn_score_window_value == 0
+                && selected.same_turn_score_window_value == 0
+                && candidate.safe_supermana_progress_steps
+                    <= selected.safe_supermana_progress_steps
+                && candidate.safe_opponent_mana_progress_steps
+                    <= selected.safe_opponent_mana_progress_steps
+                && candidate.score_path_best_steps == selected.score_path_best_steps
+                && candidate.spirit_setup_gain <= selected.spirit_setup_gain.saturating_add(16)
+                && !candidate.own_drainer_vulnerable
+                && !selected.own_drainer_vulnerable
+                && !candidate.own_drainer_walk_vulnerable
+                && !selected.own_drainer_walk_vulnerable
+                && !candidate.mana_handoff_to_opponent
+                && !selected.mana_handoff_to_opponent
+                && !candidate.has_roundtrip
+                && !selected.has_roundtrip
+                && candidate.root_rank >= selected.root_rank.saturating_add(8)
+                && candidate.score.saturating_sub(selected.score) <= 128
+                && !scores_now_better
+                && !drainer_attack_better
+                && !same_turn_window_better
+                && !pickup_upgrade
+                && !plan
+                    .head_utility
+                    .supports_primary_axes_eval_tolerance(selected_utility_value(), 192);
         let selected_white_safe_mana_root_blocks_vulnerable_mana_head =
             matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
                 && game.active_color == Color::White
@@ -9119,6 +9181,9 @@ impl MonsGameModel {
             return false;
         }
         if selected_white_mid_turn_spirit_setup_root_blocks_window_mana_head {
+            return false;
+        }
+        if selected_white_safe_mana_root_blocks_deferred_recovery_progress_head {
             return false;
         }
         if selected_white_safe_mana_root_blocks_vulnerable_mana_head {

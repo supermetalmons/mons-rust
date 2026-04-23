@@ -1247,6 +1247,36 @@ fn frontier_pro_v2_guarded_rejects_white_turn_five_spirit_setup_pre_accept_fast_
 }
 
 #[test]
+fn frontier_pro_v2_guarded_rejects_white_turn_five_deferred_recovery_progress_head_pro_root() {
+    let game = MonsGame::from_fen(
+        "1 1 w 1 0 2 0 0 5 d0xn10/n05s0xn01e0xn03/n03y0xn01a0xn05/n03xxmn02xxmn04/n05xxmn01xxmn03/xxQn04xxUn04Y0x/n05xxMn01xxMn03/n03xxMn07/n03xxMn07/n05S0xn05/n03E0xA0xn05D0x",
+        false,
+    )
+    .expect("white turn-five deferred recovery progress head fen should be valid");
+
+    clear_turn_engine_selector_diagnostics();
+    let probe = runtime_decision_probe(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let shipping_selected =
+        profile_decision_move_fen("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+
+    println!(
+        "WHITE_TURN_FIVE_DEFERRED_RECOVERY_PROGRESS_HEAD shipping_selected={} context={} probe={:?}",
+        shipping_selected,
+        exact_opportunity_context_probe(&game),
+        probe,
+    );
+    assert_eq!(shipping_selected, "l10,4;l9,3");
+    assert_eq!(probe.selected_input_fen, "l10,4;l9,3");
+    assert_eq!(probe.pre_accept_input_fen, "l10,4;l9,3");
+    assert_eq!(probe.head_input_fen.as_deref(), Some("l10,10;l9,9"));
+    assert!(!probe.head_accepted);
+}
+
+#[test]
 fn frontier_pro_v2_guarded_profile_prefers_shipping_black_post_search_duel_normal_root() {
     let game = MonsGame::from_fen(
         "0 1 b 0 0 0 0 0 8 n10d0x/n06a0xn04/n05s0xn01e0xn03/n02xxmxxmy0xn06/E0xn10/n04xxmxxUxxmn03xxQ/n03xxMY0xn01S0xxxMn03/n04D0Mn06/n04xxMA0xn05/n09xxMn01/n11",
