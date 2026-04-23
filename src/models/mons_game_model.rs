@@ -17626,12 +17626,13 @@ impl MonsGameModel {
         let approved = scored_roots.get(approved_index)?;
         if Self::turn_engine_root_evaluation_family(approved) != TurnPlanFamily::ManaTempo
             || !Self::is_pro_v2_non_concrete_mana_window_root(approved)
-            || approved.root_rank == 0
             || !approved.own_drainer_vulnerable
             || approved.own_drainer_walk_vulnerable
         {
             return None;
         }
+        let approved_progress_surface =
+            Self::turn_engine_root_evaluation_has_progress_surface(approved);
 
         selection_indices
             .iter()
@@ -17639,6 +17640,11 @@ impl MonsGameModel {
             .filter(|index| *index != approved_index)
             .filter(|index| {
                 let challenger = &scored_roots[*index];
+                let challenger_progress_surface =
+                    Self::turn_engine_root_evaluation_has_progress_surface(challenger);
+                let challenger_progress_better =
+                    Self::root_progress_or_setup_better(challenger, approved)
+                        || (challenger_progress_surface && !approved_progress_surface);
                 Self::turn_engine_root_evaluation_family(challenger) == TurnPlanFamily::ManaTempo
                     && challenger.inputs.first() == approved.inputs.first()
                     && challenger.same_turn_score_window_value == 0
@@ -17653,6 +17659,7 @@ impl MonsGameModel {
                     && !challenger.mana_handoff_to_opponent
                     && !challenger.has_roundtrip
                     && !Self::turn_engine_root_evaluation_is_unsafe(challenger)
+                    && (approved.root_rank > 0 || challenger_progress_better)
                     && approved.score.saturating_sub(challenger.score) <= 32
                     && challenger.root_rank <= approved.root_rank.saturating_add(2)
             })
@@ -29825,6 +29832,118 @@ mod opening_book_tests {
                 config,
             ),
             Some(1),
+        );
+    }
+
+    #[test]
+    fn black_late_window_mana_safety_override_allows_rank_zero_escape_with_progress_gain() {
+        let game = MonsGame::from_fen(
+            "3 1 b 1 0 2 0 0 14 n11/n07a0xd0xxxmn01/n01xxmn03s0xn05/n03xxmn07/n05xxmn01e0xn01Y0xn01/n11/n04xxUn01S0xn04/n04xxMn06/n01y0xA0xn04xxMn03/n01D0xn09/n03E1xn07",
+            false,
+        )
+        .expect("valid black late fast trace fen");
+        let mut approved = root_evaluation_for_projection_test(
+            &game,
+            Location::new(1, 8),
+            -809_483,
+            false,
+            true,
+            false,
+        );
+        approved.root_rank = 0;
+        approved.inputs = vec![
+            Input::Location(Location::new(1, 8)),
+            Input::Location(Location::new(1, 9)),
+        ];
+        approved.same_turn_score_window_value = 1;
+        approved.safe_supermana_progress_steps = 15;
+        approved.safe_opponent_mana_progress_steps = 15;
+
+        let mut challenger = root_evaluation_for_projection_test(
+            &game,
+            Location::new(1, 8),
+            -809_492,
+            false,
+            false,
+            false,
+        );
+        challenger.root_rank = 1;
+        challenger.inputs = vec![
+            Input::Location(Location::new(1, 8)),
+            Input::Location(Location::new(0, 8)),
+        ];
+        challenger.safe_supermana_progress_steps = 6;
+        challenger.safe_opponent_mana_progress_steps = 7;
+
+        let scored_roots = [approved, challenger];
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.turn_engine_mode = TurnEngineMode::ProV2;
+
+        assert_eq!(
+            MonsGameModel::pro_v2_root_advisor_black_late_window_mana_safety_override(
+                &game,
+                &scored_roots,
+                &[0, 1],
+                0,
+                config,
+            ),
+            Some(1),
+        );
+    }
+
+    #[test]
+    fn black_late_window_mana_safety_override_keeps_rank_zero_window_without_progress_gain() {
+        let game = MonsGame::from_fen(
+            "3 1 b 1 0 2 0 0 14 n11/n07a0xd0xxxmn01/n01xxmn03s0xn05/n03xxmn07/n05xxmn01e0xn01Y0xn01/n11/n04xxUn01S0xn04/n04xxMn06/n01y0xA0xn04xxMn03/n01D0xn09/n03E1xn07",
+            false,
+        )
+        .expect("valid black late fast trace fen");
+        let mut approved = root_evaluation_for_projection_test(
+            &game,
+            Location::new(1, 8),
+            -809_483,
+            false,
+            true,
+            false,
+        );
+        approved.root_rank = 0;
+        approved.inputs = vec![
+            Input::Location(Location::new(1, 8)),
+            Input::Location(Location::new(1, 9)),
+        ];
+        approved.same_turn_score_window_value = 1;
+        approved.safe_supermana_progress_steps = 15;
+        approved.safe_opponent_mana_progress_steps = 15;
+
+        let mut challenger = root_evaluation_for_projection_test(
+            &game,
+            Location::new(1, 8),
+            -809_492,
+            false,
+            false,
+            false,
+        );
+        challenger.root_rank = 1;
+        challenger.inputs = vec![
+            Input::Location(Location::new(1, 8)),
+            Input::Location(Location::new(0, 8)),
+        ];
+        challenger.safe_supermana_progress_steps = 15;
+        challenger.safe_opponent_mana_progress_steps = 15;
+
+        let scored_roots = [approved, challenger];
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.turn_engine_mode = TurnEngineMode::ProV2;
+
+        assert_eq!(
+            MonsGameModel::pro_v2_root_advisor_black_late_window_mana_safety_override(
+                &game,
+                &scored_roots,
+                &[0, 1],
+                0,
+                config,
+            ),
+            None,
         );
     }
 

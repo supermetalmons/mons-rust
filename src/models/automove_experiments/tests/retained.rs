@@ -1370,35 +1370,12 @@ fn frontier_pro_v2_guarded_profile_prefers_shipping_black_turn_ten_nonwin_root()
 }
 
 #[test]
-fn frontier_pro_v2_guarded_prefers_windowed_mana_on_black_late_fast_trace_root() {
-    let game = MonsGame::from_fen(
+fn frontier_pro_v2_guarded_profile_prefers_shipping_black_late_fast_trace_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "BLACK_LATE_FAST_TRACE",
         "3 1 b 1 0 2 0 0 14 n11/n07a0xd0xxxmn01/n01xxmn03s0xn05/n03xxmn07/n05xxmn01e0xn01Y0xn01/n11/n04xxUn01S0xn04/n04xxMn06/n01y0xA0xn04xxMn03/n01D0xn09/n03E1xn07",
-        false,
-    )
-    .expect("black late fast mana lane trace fen should be valid");
-
-    clear_turn_engine_selector_diagnostics();
-    let probe = runtime_decision_probe(
-        "frontier_pro_v2_guarded",
-        SmartAutomovePreference::Pro,
-        &game,
+        "l1,8;l0,8",
     );
-    let advisor = pro_v2_root_advisor_decision_snapshot();
-    let shipping_selected =
-        profile_decision_move_fen("shipping_pro_search", SmartAutomovePreference::Pro, &game);
-
-    println!(
-        "BLACK_LATE_FAST_MANA_LANE_TRACE shipping_selected={} context={} probe={:?} advisor={:?}",
-        shipping_selected,
-        exact_opportunity_context_probe(&game),
-        probe,
-        advisor,
-    );
-    assert_eq!(shipping_selected, "l1,8;l0,8");
-    assert_eq!(probe.selected_input_fen, "l1,8;l1,9");
-    assert_eq!(probe.pre_accept_input_fen, "l1,8;l1,9");
-    assert_eq!(probe.head_input_fen.as_deref(), Some("l1,8;l1,9"));
-    assert!(probe.head_accepted);
 }
 
 #[test]

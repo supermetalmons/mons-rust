@@ -322,6 +322,141 @@ fn white_confirm_pro_ply11_reply_order_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: inspect late black fast reply-order utility and floor"]
+fn black_late_fast_reply_order_probe() {
+    let game = MonsGame::from_fen(
+        "3 1 b 1 0 2 0 0 14 n11/n07a0xd0xxxmn01/n01xxmn03s0xn05/n03xxmn07/n05xxmn01e0xn01Y0xn01/n11/n04xxUn01S0xn04/n04xxMn06/n01y0xA0xn04xxMn03/n01D0xn09/n03E1xn07",
+        false,
+    )
+    .expect("valid black late fast trace fen");
+    let perspective = game.active_color;
+    let (config, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let candidate_indices = MonsGameModel::filtered_root_candidate_indices(
+        &game,
+        scored_roots.as_slice(),
+        perspective,
+        config,
+    );
+    let shortlist = MonsGameModel::reply_risk_guard_shortlist_indices(
+        scored_roots.as_slice(),
+        candidate_indices.as_slice(),
+        config,
+    );
+    let projections = MonsGameModel::turn_engine_reply_risk_projections(
+        scored_roots.as_slice(),
+        shortlist.as_slice(),
+        perspective,
+        config,
+    );
+    let approved_index = scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == "l1,8;l1,9")
+        .expect("approved root should exist");
+    let shipping_index = scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == "l1,8;l0,8")
+        .expect("shipping root should exist");
+    let root_node_budget = ((config.max_visited_nodes
+        * config.root_reply_risk_node_share_bp.max(0) as usize)
+        / 10_000)
+        .max(shortlist.len())
+        .max(1);
+    let per_root_reply_limit = (root_node_budget / shortlist.len().max(1))
+        .max(1)
+        .min(config.root_reply_risk_reply_limit.max(1));
+    let approved_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+        &scored_roots[approved_index],
+        projections.get(&approved_index),
+        perspective,
+        config,
+        per_root_reply_limit,
+    );
+    let shipping_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+        &scored_roots[shipping_index],
+        projections.get(&shipping_index),
+        perspective,
+        config,
+        per_root_reply_limit,
+    );
+    let approved_family =
+        MonsGameModel::turn_engine_root_evaluation_family(&scored_roots[approved_index]);
+    let shipping_family =
+        MonsGameModel::turn_engine_root_evaluation_family(&scored_roots[shipping_index]);
+    let approved_utility = MonsGameModel::turn_engine_selected_override_utility(
+        &game,
+        &scored_roots[approved_index],
+        perspective,
+        config,
+        approved_family,
+    );
+    let shipping_utility = MonsGameModel::turn_engine_selected_override_utility(
+        &game,
+        &scored_roots[shipping_index],
+        perspective,
+        config,
+        shipping_family,
+    );
+    let shipping_beats_approved = MonsGameModel::is_better_reply_risk_candidate(
+        &game,
+        shipping_index,
+        shipping_snapshot,
+        approved_index,
+        approved_snapshot,
+        projections.get(&shipping_index),
+        projections.get(&approved_index),
+        scored_roots.as_slice(),
+        perspective,
+        config,
+        &mut std::collections::HashMap::new(),
+    );
+
+    println!(
+        "BLACK_LATE_FAST_REPLY_ORDER shortlist={:?} approved={} shipping={} approved_snapshot={} shipping_snapshot={} approved_utility={} shipping_utility={} shipping_vs_approved={} approved_projection={:?} shipping_projection={:?}",
+        shortlist
+            .iter()
+            .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+            .collect::<Vec<_>>(),
+        format_root_probe(scored_roots.get(approved_index)),
+        format_root_probe(scored_roots.get(shipping_index)),
+        format!(
+            "win={} match_point={} floor={}",
+            approved_snapshot.allows_immediate_opponent_win,
+            approved_snapshot.opponent_reaches_match_point,
+            approved_snapshot.worst_reply_score,
+        ),
+        format!(
+            "win={} match_point={} floor={}",
+            shipping_snapshot.allows_immediate_opponent_win,
+            shipping_snapshot.opponent_reaches_match_point,
+            shipping_snapshot.worst_reply_score,
+        ),
+        format_turn_engine_utility_probe(approved_utility),
+        format_turn_engine_utility_probe(shipping_utility),
+        shipping_beats_approved,
+        projections.get(&approved_index).map(|projection| {
+            format!(
+                "{:?}/{:?}/{}",
+                projection.plan.head_family,
+                projection.plan.goal_family,
+                format_turn_engine_utility_probe(projection.plan.utility),
+            )
+        }),
+        projections.get(&shipping_index).map(|projection| {
+            format!(
+                "{:?}/{:?}/{}",
+                projection.plan.head_family,
+                projection.plan.goal_family,
+                format_turn_engine_utility_probe(projection.plan.utility),
+            )
+        }),
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: inspect black recovery branch legacy-alignment guards"]
 fn black_recovery_branch_legacy_alignment_probe() {
     let game = MonsGame::from_fen(
