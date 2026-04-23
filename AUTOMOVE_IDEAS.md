@@ -153,7 +153,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - Treat that seam as another shipping-disabled lower-safety ordering mismatch, not a live advisor/head-acceptance bug.
 - The two remaining local seams now both sit in known no-go classes:
   - `pro`: later black lane split `l1,6;l1,7` vs shipping `l1,6;l1,5` is a same-family selector-disable mismatch where shipping's root already loses on frontier metrics.
-  - `normal`: white `ply9` search-only split `l9,4;l8,3` vs shipping `l9,4;l8,5` is the previously disproved white search-only recovery seam.
+  - `normal`: white `ply9` search-only split `l9,4;l8,3` vs shipping `l9,4;l8,5` is now also fully classified as a no-go ordering mismatch.
+  - The kept `white_fast_ply9_search_only_split_probe` shows frontier's approved `l9,4;l8,3` is the only reply-risk-shortlisted root and keeps the stronger floor (`1191` vs shipping `730`).
+  - Shipping's `l9,4;l8,5` is a full-pool `DrainerSafetyRecovery` root that sits outside the frontier shortlist, loses under frontier's own reply-risk comparator (`shipping_vs_frontier=false`), and is only reached through shipping's `search_only_engine_allowed_head` path.
+  - Do not reopen that `ply9` white seam with direct shipping mirroring, shortlist widening, or another simple recovery override unless a future probe first explains shipping's search-only ordering.
   - `fast`: the retained gate can still fail on two no-diff games with `first_diff=none`.
   - The new ignored `fast_hotspot_trace_probe` disproves the simplest no-diff read on the current promoted package. Replaying the retained hotspot opening `0 0 w 0 0 0 0 0 1 n03y0xs0xd0xa0xe0xn03/...` shows a real late white divergence when frontier is white.
   - The first fresh drift is at `ply=57` on `1 1 w 0 0 1 0 0 9 n04s1xn06/...`, where frontier plays `l9,5;l8,6` from `engine_post_search` and shipping plays `l8,5;l7,7;l8,8` from `engine_disabled`. Frontier's head is rejected, so this is not another head-acceptance seam.

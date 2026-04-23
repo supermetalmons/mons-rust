@@ -327,3 +327,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Frontier's approved root `l9,5;l8,6` is the only reply-risk-shortlisted root and preserves the stronger reply floor (`921` vs shipping `651`).
 - Shipping's move `l8,5;l7,7;l8,8` is outside the frontier shortlist, loses under frontier's own reply-risk comparator (`shipping_vs_frontier=false`), and is not even the strongest spirit-progress candidate in the full pool.
 - Durable outcome: treat this as another shipping-only search ordering mismatch, not a live wrapper-fallback or advisor omission. Do not reopen it with direct shipping mirroring, shortlist widening, or a simple spirit-family override without a new explanation for shipping's search-only ordering.
+
+## White Ply9 Search Ordering Wave
+
+- No new runtime challenger survived this wave either. The only kept result is the stronger read from the existing ignored `white_fast_ply9_search_only_split_probe` on `l9,4;l8,3` vs shipping `l9,4;l8,5`.
+- The useful lesson is that the remaining white `ply9` seam is not just “previously disproved” in aggregate; it is locally another shipping-only ordering mismatch.
+- Frontier's approved `l9,4;l8,3` is the only reply-risk-shortlisted root and keeps the stronger floor (`1191` vs shipping `730`).
+- Shipping's `l9,4;l8,5` is a full-pool `DrainerSafetyRecovery` root outside the frontier shortlist and still loses under frontier's own reply-risk comparator (`shipping_vs_frontier=false`).
+- Durable outcome: do not reopen that `ply9` seam with direct shipping mirroring, shortlist widening, or another simple recovery override without a new explanation for shipping's `search_only_engine_allowed_head` ordering.
