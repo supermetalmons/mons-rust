@@ -400,3 +400,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - On the two live white search-order siblings, shrinking either frontier rerank `own_seed_cap` or frontier rerank `step_cap` still flips the allowed-head plan from `l9,4;l8,3` to shipping `l9,4;l8,5`.
 - On the late white Fast hotspot, though, the same broad cap shrink does not leave the board stable and does not reproduce shipping. `own_seed_cap` shrink moves frontier to `l8,5;l6,5;l5,4`, `step_cap` shrink moves it to `l8,5;l6,5;l6,4`, and shipping's rerank on the frontier head set still stays on `l9,5;l8,6`.
 - Durable outcome: broad white rerank `own_seed_cap` or `step_cap` shrink is not a safe runtime answer. Any future white rerank spend has to gate more tightly than “lower frontier rerank seed/step breadth.”
+
+## White Runtime Step Clamp Wave
+
+- No new runtime challenger survived this wave. The attempted cut was the narrowest live follow-up to the seed/step probes: clamp frontier `ProV2` rerank `step_cap` to `1` only on the exact white `turn=3 / mons_moves=1 / no-action / mana-only / window=1 / deny=1 / drainer_safety<0` board class.
+- The useful result is that the live white search-order residue is not controlled by `turn_engine_rerank_config` alone.
+- The focused retained slice failed immediately. On both white siblings, frontier still selected `l9,4;l8,3` instead of shipping `l9,4;l8,5`.
+- The runtime shape did not budge: selector stage stayed `engine_post_search`, the accepted head stayed `l9,4;l8,3`, and the approved shortlist stayed a singleton on that same root.
+- Durable outcome: do not reopen the white search-order family with another board-local rerank-cap runtime tweak unless a future probe first shows how that tweak can move shortlist or approved-root behavior instead of only changing allowed-head rerank plans in isolation.
