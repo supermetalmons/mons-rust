@@ -8864,6 +8864,57 @@ impl MonsGameModel {
                 && !drainer_attack_better
                 && !same_turn_window_better
                 && !pickup_upgrade;
+        let selected_white_same_window_mana_root_blocks_lower_scored_mana_head =
+            matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
+                && game.active_color == Color::White
+                && game.turn_number == 5
+                && game.mons_moves_count == 0
+                && game.player_can_move_mana()
+                && matches!(
+                    plan.head_family,
+                    TurnPlanFamily::SafeSupermanaProgress
+                        | TurnPlanFamily::SafeOpponentManaProgress
+                )
+                && matches!(plan.goal_family, TurnPlanFamily::ImmediateScore)
+                && matches!(candidate_family, TurnPlanFamily::ManaTempo)
+                && matches!(selected_family, TurnPlanFamily::ManaTempo)
+                && candidate_unsafe == selected_unsafe
+                && !candidate.spirit_development
+                && !selected.spirit_development
+                && !candidate.spirit_same_turn_score_setup_now
+                && !selected.spirit_same_turn_score_setup_now
+                && !candidate.spirit_own_mana_setup_now
+                && !selected.spirit_own_mana_setup_now
+                && !candidate.wins_immediately
+                && !selected.wins_immediately
+                && !candidate.attacks_opponent_drainer
+                && !selected.attacks_opponent_drainer
+                && !candidate.scores_supermana_this_turn
+                && !selected.scores_supermana_this_turn
+                && !candidate.scores_opponent_mana_this_turn
+                && !selected.scores_opponent_mana_this_turn
+                && !candidate.safe_supermana_pickup_now
+                && !selected.safe_supermana_pickup_now
+                && !candidate.safe_opponent_mana_pickup_now
+                && !selected.safe_opponent_mana_pickup_now
+                && candidate.same_turn_score_window_value > 0
+                && candidate.same_turn_score_window_value == selected.same_turn_score_window_value
+                && !candidate_progress_surface
+                && !selected_progress_surface
+                && candidate.safe_supermana_progress_steps
+                    == selected.safe_supermana_progress_steps
+                && candidate.safe_opponent_mana_progress_steps
+                    == selected.safe_opponent_mana_progress_steps
+                && candidate.inputs.first() == selected.inputs.first()
+                && candidate.own_drainer_vulnerable == selected.own_drainer_vulnerable
+                && candidate.own_drainer_walk_vulnerable == selected.own_drainer_walk_vulnerable
+                && candidate.mana_handoff_to_opponent == selected.mana_handoff_to_opponent
+                && candidate.has_roundtrip == selected.has_roundtrip
+                && selected.score > candidate.score
+                && !scores_now_better
+                && !drainer_attack_better
+                && !same_turn_window_better
+                && !pickup_upgrade;
         let selected_white_safe_mana_root_blocks_vulnerable_mana_head =
             matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
                 && game.active_color == Color::White
@@ -8954,6 +9005,9 @@ impl MonsGameModel {
             return false;
         }
         if selected_black_quiet_mana_root_blocks_lower_scored_mana_head {
+            return false;
+        }
+        if selected_white_same_window_mana_root_blocks_lower_scored_mana_head {
             return false;
         }
         if selected_white_safe_mana_root_blocks_vulnerable_mana_head {

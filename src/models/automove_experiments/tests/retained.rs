@@ -1127,6 +1127,66 @@ fn frontier_pro_v2_guarded_uses_white_negative_deny_search_only_selected_rank_fa
 }
 
 #[test]
+fn frontier_pro_v2_guarded_rejects_white_turn_five_same_window_mana_head_normal_root() {
+    let game = MonsGame::from_fen(
+        "0 0 w 1 0 0 0 0 5 n06a0xn04/n07d0me0xn02/n02y0xn01s0xn06/n04xxmn01xxmxxmn03/n03xxmn07/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n02xxMn01xxMY0xxxMn04/n05D0xn05/n03E0xA0xS0xn05/n11",
+        false,
+    )
+    .expect("white normal turn-five same-window head fen should be valid");
+
+    clear_turn_engine_selector_diagnostics();
+    let probe = runtime_decision_probe(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let shipping_selected =
+        profile_decision_move_fen("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+
+    println!(
+        "WHITE_TURN_FIVE_SAME_WINDOW_MANA_HEAD shipping_selected={} context={} probe={:?}",
+        shipping_selected,
+        exact_opportunity_context_probe(&game),
+        probe,
+    );
+    assert_eq!(shipping_selected, "l8,5;l7,4");
+    assert_eq!(probe.selected_input_fen, "l8,5;l7,4");
+    assert_eq!(probe.pre_accept_input_fen, "l8,5;l7,4");
+    assert_eq!(probe.head_input_fen.as_deref(), Some("l8,5;l7,6"));
+    assert!(!probe.head_accepted);
+}
+
+#[test]
+fn frontier_pro_v2_guarded_rejects_white_turn_five_same_window_mana_head_action_normal_root() {
+    let game = MonsGame::from_fen(
+        "0 1 w 0 0 0 0 0 5 n06a0xn03d0x/n08e0xn02/n02y0xn01s0xn06/n04xxmn03xxmn02/n03xxmn01xxmn05/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n03E0xA0xD0xn05/n05S0xn01Y0xn03/n11",
+        false,
+    )
+    .expect("white normal turn-five same-window action head fen should be valid");
+
+    clear_turn_engine_selector_diagnostics();
+    let probe = runtime_decision_probe(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let shipping_selected =
+        profile_decision_move_fen("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+
+    println!(
+        "WHITE_TURN_FIVE_SAME_WINDOW_MANA_ACTION_HEAD shipping_selected={} context={} probe={:?}",
+        shipping_selected,
+        exact_opportunity_context_probe(&game),
+        probe,
+    );
+    assert_eq!(shipping_selected, "l8,5;l7,4");
+    assert_eq!(probe.selected_input_fen, "l8,5;l7,4");
+    assert_eq!(probe.pre_accept_input_fen, "l8,5;l7,4");
+    assert_eq!(probe.head_input_fen.as_deref(), Some("l8,5;l7,6"));
+    assert!(!probe.head_accepted);
+}
+
+#[test]
 fn frontier_pro_v2_guarded_profile_prefers_shipping_black_post_search_duel_normal_root() {
     let game = MonsGame::from_fen(
         "0 1 b 0 0 0 0 0 8 n10d0x/n06a0xn04/n05s0xn01e0xn03/n02xxmxxmy0xn06/E0xn10/n04xxmxxUxxmn03xxQ/n03xxMY0xn01S0xxxMn03/n04D0Mn06/n04xxMA0xn05/n09xxMn01/n11",

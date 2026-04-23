@@ -1468,6 +1468,237 @@ fn white_late_fast_hotspot_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: inspect rotated white normal head acceptance"]
+fn white_normal_turn_five_head_acceptance_probe() {
+    struct ProbeCase {
+        label: &'static str,
+        fen: &'static str,
+    }
+
+    let cases = [
+        ProbeCase {
+            label: "repeat1_opening1_ply24",
+            fen: "0 0 w 1 0 0 0 0 5 n06a0xn04/n07d0me0xn02/n02y0xn01s0xn06/n04xxmn01xxmxxmn03/n03xxmn07/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n02xxMn01xxMY0xxxMn04/n05D0xn05/n03E0xA0xS0xn05/n11",
+        },
+        ProbeCase {
+            label: "repeat1_opening2_ply22",
+            fen: "0 1 w 0 0 0 0 0 5 n06a0xn03d0x/n08e0xn02/n02y0xn01s0xn06/n04xxmn03xxmn02/n03xxmn01xxmn05/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n03E0xA0xD0xn05/n05S0xn01Y0xn03/n11",
+        },
+    ];
+
+    for case in cases {
+        let game = MonsGame::from_fen(case.fen, false)
+            .unwrap_or_else(|| panic!("{} fen should be valid", case.label));
+        let perspective = game.active_color;
+        let frontier_probe = runtime_decision_probe(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let frontier_advisor = pro_v2_root_advisor_decision_snapshot();
+        let shipping_probe =
+            runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+        let (config, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let candidate_indices = MonsGameModel::filtered_root_candidate_indices(
+            &game,
+            scored_roots.as_slice(),
+            perspective,
+            config,
+        );
+        let shortlist = MonsGameModel::reply_risk_guard_shortlist_indices(
+            scored_roots.as_slice(),
+            candidate_indices.as_slice(),
+            config,
+        );
+        let projections = MonsGameModel::turn_engine_reply_risk_projections(
+            scored_roots.as_slice(),
+            shortlist.as_slice(),
+            perspective,
+            config,
+        );
+        let frontier_index = scored_roots
+            .iter()
+            .position(|root| {
+                Input::fen_from_array(&root.inputs) == frontier_probe.selected_input_fen
+            })
+            .expect("frontier root should exist");
+        let pre_accept_index = scored_roots
+            .iter()
+            .position(|root| {
+                Input::fen_from_array(&root.inputs) == frontier_probe.pre_accept_input_fen
+            })
+            .expect("pre-accept root should exist");
+        let shipping_index = scored_roots
+            .iter()
+            .position(|root| {
+                Input::fen_from_array(&root.inputs) == shipping_probe.selected_input_fen
+            })
+            .expect("shipping root should exist");
+        let root_node_budget = ((config.max_visited_nodes
+            * config.root_reply_risk_node_share_bp.max(0) as usize)
+            / 10_000)
+            .max(shortlist.len())
+            .max(1);
+        let per_root_reply_limit = (root_node_budget / shortlist.len().max(1))
+            .max(1)
+            .min(config.root_reply_risk_reply_limit.max(1));
+        let frontier_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+            &scored_roots[frontier_index],
+            projections.get(&frontier_index),
+            perspective,
+            config,
+            per_root_reply_limit,
+        );
+        let pre_accept_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+            &scored_roots[pre_accept_index],
+            projections.get(&pre_accept_index),
+            perspective,
+            config,
+            per_root_reply_limit,
+        );
+        let shipping_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+            &scored_roots[shipping_index],
+            projections.get(&shipping_index),
+            perspective,
+            config,
+            per_root_reply_limit,
+        );
+        let frontier_family =
+            MonsGameModel::turn_engine_root_evaluation_family(&scored_roots[frontier_index]);
+        let pre_accept_family =
+            MonsGameModel::turn_engine_root_evaluation_family(&scored_roots[pre_accept_index]);
+        let shipping_family =
+            MonsGameModel::turn_engine_root_evaluation_family(&scored_roots[shipping_index]);
+        let frontier_utility = MonsGameModel::turn_engine_selected_override_utility(
+            &game,
+            &scored_roots[frontier_index],
+            perspective,
+            config,
+            frontier_family,
+        );
+        let pre_accept_utility = MonsGameModel::turn_engine_selected_override_utility(
+            &game,
+            &scored_roots[pre_accept_index],
+            perspective,
+            config,
+            pre_accept_family,
+        );
+        let shipping_utility = MonsGameModel::turn_engine_selected_override_utility(
+            &game,
+            &scored_roots[shipping_index],
+            perspective,
+            config,
+            shipping_family,
+        );
+        let shipping_beats_frontier = MonsGameModel::is_better_reply_risk_candidate(
+            &game,
+            shipping_index,
+            shipping_snapshot,
+            frontier_index,
+            frontier_snapshot,
+            projections.get(&shipping_index),
+            projections.get(&frontier_index),
+            scored_roots.as_slice(),
+            perspective,
+            config,
+            &mut std::collections::HashMap::new(),
+        );
+        let pre_accept_beats_frontier = MonsGameModel::is_better_reply_risk_candidate(
+            &game,
+            pre_accept_index,
+            pre_accept_snapshot,
+            frontier_index,
+            frontier_snapshot,
+            projections.get(&pre_accept_index),
+            projections.get(&frontier_index),
+            scored_roots.as_slice(),
+            perspective,
+            config,
+            &mut std::collections::HashMap::new(),
+        );
+        let top_root_details = scored_roots
+            .iter()
+            .take(8)
+            .map(|root| {
+                format!(
+                    "{}:{}",
+                    Input::fen_from_array(&root.inputs),
+                    format_root_probe(Some(root))
+                )
+            })
+            .collect::<Vec<_>>();
+
+        println!(
+            "WHITE_NORMAL_TURN_FIVE_HEAD label={} context={} shortlist={:?} frontier_probe={:?} shipping_probe={:?} advisor={:?} frontier={} pre_accept={} shipping={} frontier_snapshot={} pre_accept_snapshot={} shipping_snapshot={} frontier_utility={} pre_accept_utility={} shipping_utility={} pre_accept_vs_frontier={} shipping_vs_frontier={} frontier_projection={:?} pre_accept_projection={:?} shipping_projection={:?} top_root_details={:?}",
+            case.label,
+            exact_opportunity_context_probe(&game),
+            shortlist
+                .iter()
+                .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+                .collect::<Vec<_>>(),
+            frontier_probe,
+            shipping_probe,
+            frontier_advisor,
+            format_root_probe(scored_roots.get(frontier_index)),
+            format_root_probe(scored_roots.get(pre_accept_index)),
+            format_root_probe(scored_roots.get(shipping_index)),
+            format!(
+                "win={} match_point={} floor={}",
+                frontier_snapshot.allows_immediate_opponent_win,
+                frontier_snapshot.opponent_reaches_match_point,
+                frontier_snapshot.worst_reply_score,
+            ),
+            format!(
+                "win={} match_point={} floor={}",
+                pre_accept_snapshot.allows_immediate_opponent_win,
+                pre_accept_snapshot.opponent_reaches_match_point,
+                pre_accept_snapshot.worst_reply_score,
+            ),
+            format!(
+                "win={} match_point={} floor={}",
+                shipping_snapshot.allows_immediate_opponent_win,
+                shipping_snapshot.opponent_reaches_match_point,
+                shipping_snapshot.worst_reply_score,
+            ),
+            format_turn_engine_utility_probe(frontier_utility),
+            format_turn_engine_utility_probe(pre_accept_utility),
+            format_turn_engine_utility_probe(shipping_utility),
+            pre_accept_beats_frontier,
+            shipping_beats_frontier,
+            projections.get(&frontier_index).map(|projection| {
+                format!(
+                    "{:?}/{:?}/{}",
+                    projection.plan.head_family,
+                    projection.plan.goal_family,
+                    format_turn_engine_utility_probe(projection.plan.utility),
+                )
+            }),
+            projections.get(&pre_accept_index).map(|projection| {
+                format!(
+                    "{:?}/{:?}/{}",
+                    projection.plan.head_family,
+                    projection.plan.goal_family,
+                    format_turn_engine_utility_probe(projection.plan.utility),
+                )
+            }),
+            projections.get(&shipping_index).map(|projection| {
+                format!(
+                    "{:?}/{:?}/{}",
+                    projection.plan.head_family,
+                    projection.plan.goal_family,
+                    format_turn_engine_utility_probe(projection.plan.utility),
+                )
+            }),
+            top_root_details,
+        );
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: compare static frontier vs shipping config on remaining white ordering boards"]
 fn white_profile_config_ordering_probe() {
     struct ProbeCase {

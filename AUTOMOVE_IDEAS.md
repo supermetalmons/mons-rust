@@ -43,6 +43,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - The branch replays the board through raw `search-only + shipping own caps + ProV2` and only keeps that result when the replayed move is the top scored focused candidate (`selected_rank == 0`), which separates the Normal sibling from the retained vulnerable guard.
   - It fixes the Normal sibling `l9,4;l8,3` to shipping `l9,4;l8,5` while preserving the retained vulnerable guard `l8,4;l7,3`.
   - The retained regression for that board now lives in `frontier_pro_v2_guarded_uses_white_negative_deny_search_only_selected_rank_fallback_on_normal_root`.
+- This iteration kept and promoted a ninth narrow white head-acceptance repair in the same package:
+  - It adds a ProV2 final head-rejection guard for white turn-five turn-start boards where the accepted head tries to replace an already-approved same-window `ManaTempo` root with a lower-scored same-family mana head.
+  - The new guard only fires when both roots share the same first move, same positive same-turn score window, same vulnerability/handoff/roundtrip flags, no score-now/pickup/attack/setup upgrade exists, and the approved root has the higher search score.
+  - It fixes the repeated clean-tree Normal siblings `l8,5;l7,6` to shipping/pre-accept `l8,5;l7,4` without moving the existing retained white head and engine-disabled guards.
+  - The retained regressions for those boards now live in `frontier_pro_v2_guarded_rejects_white_turn_five_same_window_mana_head_normal_root` and `frontier_pro_v2_guarded_rejects_white_turn_five_same_window_mana_head_action_normal_root`.
 - Board-local confirm diagnostics collapsed the earlier two-board black Fast residue into one real live seam:
   - On `l0,0;l1,1` vs shipping `l7,1;l8,0`, frontier already matches shipping on the current retained package.
   - The only live confirm Fast approval miss was `l0,5;l1,5` vs shipping `l2,5;l3,7;l2,8`, where legacy and shipping already agree on the spirit own-setup progress root.
@@ -71,7 +76,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - `frontier_pro_v2_guarded_profile_keeps_v30_white_turn_three_mana_only_vulnerable_root` still keeps the retained frontier root `l8,4;l7,3`.
   - `frontier_pro_v2_guarded_uses_white_nonnegative_deny_search_only_fallback_on_fast_root` still aligns to shipping `l9,4;l8,5`.
   - `white_late_fast_hotspot_probe` stayed on frontier `l9,5;l8,6`, so the fallback did not try to paper over that no-go hotspot.
+- The local retained slice for the new white turn-five same-window head guard stayed clean:
+  - `frontier_pro_v2_guarded_rejects_white_turn_five_same_window_mana_head_normal_root` now rejects head `l8,5;l7,6` and keeps shipping/pre-accept `l8,5;l7,4`.
+  - `frontier_pro_v2_guarded_rejects_white_turn_five_same_window_mana_head_action_normal_root` now rejects head `l8,5;l7,6` and keeps shipping/pre-accept `l8,5;l7,4`.
+  - `frontier_pro_v2_guarded_rejects_v30_white_vulnerable_progress_head_flat_nonwin_normal_root`, `frontier_pro_v2_guarded_accepts_v30_white_head_flat_nonwin_normal_root`, and `frontier_pro_v2_guarded_uses_white_early_engine_disabled_fallback_on_normal_root` stayed clean.
 - The package now clears confirm as well: `pro-reliability-confirm` passed at `0.9375 / 0.9062 / 0.9375`.
+- The refreshed canonical loop for the new white turn-five same-window head guard stayed clean:
+  - `guardrails` passed.
+  - `pro-triage` stayed at `target_changed=5 / off_target_changed=0`.
+  - exact-lite passed.
+  - advisory stage-1 CPU stayed in the same band at `1.554 / 1.528 / 1.374`.
+  - retained `pro-reliability` passed at `0.9167 / 1.0000 / 0.9167` with confidence at least `0.9968`.
+  - `pro-reliability-confirm` passed at `0.9375 / 0.9375 / 0.9375` with confidence `1.0000`.
 - The refreshed canonical loop for the new negative-deny selected-rank fallback stayed clean:
   - `guardrails` passed.
   - `pro-triage` stayed at `target_changed=5 / off_target_changed=0`.
@@ -159,7 +175,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 ## Next Hypothesis
 
 - The current package is promotable. The next spend is no longer about confirm rescue.
-- Keep the new white turn-three no-action recovery guard, the black late-fast safe-mana override, the white early setup repair, the black late reply-risk setup rescue, the exact white early engine-disabled wrapper fallback, and the new black late weak-window safe-progress setup rescue together; they now form the promoted retained package.
+- Keep the new white turn-three no-action recovery guard, the black late-fast safe-mana override, the white early setup repair, the black late reply-risk setup rescue, the exact white early engine-disabled wrapper fallback, the black late weak-window safe-progress setup rescue, the white nonnegative-deny and negative-deny search-only fallbacks, and the white turn-five same-window head guard together; they now form the promoted retained package.
 - Do not reopen the resolved black confirm seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8`; that board is now covered by the retained suite and confirm passed with it in place.
 - Do not reopen the direct runtime-variant white search-only recovery fallback on `l9,4;l8,3` vs `l9,4;l8,5`. Both the shipping-assisted and frontier-local versions still fail retained `pro-reliability` at `0.9167 / 0.8333 / 0.9167`.
 - Do not reopen the resolved engine-disabled early-white Normal seam `l8,5;l7,6` vs shipping `l9,5;l8,3;l7,4` unless a future challenger regresses it. The kept fix is the exact runtime wrapper fallback, not another broader white recovery override.
