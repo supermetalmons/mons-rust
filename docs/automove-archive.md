@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## White Safe-Progress Retained Extension Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave tested the only plausible retained white reuse path left on the `forward_bridge` safe-progress seam by comparing it directly against the retained Pro board that already ships `l9,6;l8,7`.
+- The overlap was only the final move. The retained `WHITE_POST_SEARCH_DUEL_PRO` board is a quiet `ManaTempo` approval on `window=0/deny=0`; frontier and shipping both select `l9,6;l8,7`, and there are no shortlist-live `SpiritImpact` roots at all.
+- The `forward_bridge` seam is different. It is a `window=1/deny=1` board where frontier approves `SafeSupermanaProgress l9,6;l8,7`, while shipping `SpiritImpact l9,6;l7,7;l8,8` stays candidate-live and shortlist-live with several spirit siblings.
+- Durable outcome: do not extend the retained white `l9,6;l8,7` post-search control into the `forward_bridge` seam. Matching final moves were a false lead; the family mix and shortlist shape are different.
+
 ## White-Black Safe-Progress Structure Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
