@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## White Forward-Bridge Search-Order Structure Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave tested the last plausible white reuse path by comparing the `forward_bridge` safe-progress seam directly against the retained early-white engine-disabled/search-only controls.
+- The retained boards did not match. `white_early_engine_disabled_normal` still approved `ManaTempo l8,5;l7,6` through `ApprovedReplyRiskGuard`, while shipping `SpiritImpact l9,5;l8,3;l7,4` stayed candidate-live but outside shortlist alongside many other spirit roots. `white_negative_deny_search_only_selected_rank_normal` was different again: it approved `ManaTempo l9,4;l8,3` through `ApprovedReplyRiskGuard` and had no spirit candidates live at all.
+- The `forward_bridge` seam is different from both. It approves `SafeSupermanaProgress l9,6;l8,7`, while shipping `SpiritImpact l9,6;l7,7;l8,8` stays candidate-live and shortlist-live with other spirit siblings.
+- Durable outcome: do not extend the retained white engine-disabled/search-only package into `forward_bridge`. Matching stage labels were a false lead; the approved family and spirit-candidate shape are different.
+
 ## White Safe-Progress Retained Extension Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
