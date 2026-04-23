@@ -8880,10 +8880,7 @@ impl MonsGameModel {
                 )
                 && matches!(plan.goal_family, TurnPlanFamily::ImmediateScore)
                 && Self::is_pro_v2_non_concrete_mana_window_root(candidate)
-                && matches!(
-                    selected_family,
-                    TurnPlanFamily::DrainerSafetyRecovery
-                )
+                && matches!(selected_family, TurnPlanFamily::DrainerSafetyRecovery)
                 && selected.classes.drainer_safety_recover
                 && !selected_unsafe
                 && !selected.own_drainer_vulnerable
@@ -16706,7 +16703,8 @@ impl MonsGameModel {
             && !approved.own_drainer_walk_vulnerable
             && !legacy.own_drainer_walk_vulnerable
             && approved.safe_supermana_progress_steps == legacy.safe_supermana_progress_steps
-            && approved.safe_opponent_mana_progress_steps == legacy.safe_opponent_mana_progress_steps
+            && approved.safe_opponent_mana_progress_steps
+                == legacy.safe_opponent_mana_progress_steps
             && approved.score_path_best_steps == legacy.score_path_best_steps
             && approved.spirit_setup_gain == legacy.spirit_setup_gain
             && legacy.score >= approved.score.saturating_add(16)
@@ -18492,8 +18490,7 @@ impl MonsGameModel {
                         == approved.own_drainer_walk_vulnerable
                     && (approved.score.saturating_sub(challenger.score) <= 32
                         || strong_setup_progress_rank_rescue)
-                    && challenger.spirit_setup_gain
-                        >= approved.spirit_setup_gain.saturating_add(64)
+                    && challenger.spirit_setup_gain >= approved.spirit_setup_gain.saturating_add(64)
                     && challenger.safe_supermana_progress_steps
                         <= approved.safe_supermana_progress_steps
                     && challenger.safe_opponent_mana_progress_steps
@@ -18875,6 +18872,99 @@ impl MonsGameModel {
                 scored_roots[*left]
                     .root_rank
                     .cmp(&scored_roots[*right].root_rank)
+                    .then_with(|| {
+                        Self::compare_ranked_scored_root_indices(scored_roots, *left, *right)
+                    })
+            })
+    }
+
+    fn pro_v2_root_advisor_black_late_reply_risk_setup_override(
+        game: &MonsGame,
+        scored_roots: &[RootEvaluation],
+        reply_risk_shortlist: &[usize],
+        approved_index: usize,
+        config: AutomoveSearchConfig,
+    ) -> Option<usize> {
+        if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
+            || !Self::pro_v2_is_late_black_action_mana_turn_start(game)
+            || reply_risk_shortlist.is_empty()
+            || scored_roots.is_empty()
+        {
+            return None;
+        }
+
+        let exact_context =
+            crate::models::automove_exact::exact_opportunity_context(game, game.active_color);
+        if exact_context.delta.same_turn_score_window_value != 0
+            || exact_context.delta.opponent_window_deny_gain != 0
+            || exact_context.delta.drainer_attack_available
+        {
+            return None;
+        }
+
+        let approved = scored_roots.get(approved_index)?;
+        if Self::turn_engine_root_evaluation_family(approved) != TurnPlanFamily::ManaTempo
+            || approved.spirit_development
+            || approved.spirit_same_turn_score_setup_now
+            || approved.spirit_own_mana_setup_now
+            || Self::turn_engine_root_evaluation_has_progress_surface(approved)
+            || approved.wins_immediately
+            || approved.attacks_opponent_drainer
+            || approved.same_turn_score_window_value > 0
+            || approved.scores_supermana_this_turn
+            || approved.scores_opponent_mana_this_turn
+            || approved.safe_supermana_pickup_now
+            || approved.safe_opponent_mana_pickup_now
+            || approved.mana_handoff_to_opponent
+            || approved.has_roundtrip
+            || Self::turn_engine_root_evaluation_is_unsafe(approved)
+            || approved.own_drainer_vulnerable
+            || approved.own_drainer_walk_vulnerable
+        {
+            return None;
+        }
+
+        reply_risk_shortlist
+            .iter()
+            .copied()
+            .filter(|index| *index != approved_index)
+            .filter(|index| {
+                let challenger = &scored_roots[*index];
+                Self::turn_engine_root_evaluation_family(challenger) == TurnPlanFamily::SpiritImpact
+                    && challenger.spirit_own_mana_setup_now
+                    && !challenger.spirit_same_turn_score_setup_now
+                    && !Self::turn_engine_root_evaluation_has_progress_surface(challenger)
+                    && !challenger.wins_immediately
+                    && !challenger.attacks_opponent_drainer
+                    && challenger.same_turn_score_window_value == 0
+                    && !challenger.scores_supermana_this_turn
+                    && !challenger.scores_opponent_mana_this_turn
+                    && !challenger.safe_supermana_pickup_now
+                    && !challenger.safe_opponent_mana_pickup_now
+                    && !challenger.mana_handoff_to_opponent
+                    && !challenger.has_roundtrip
+                    && !Self::turn_engine_root_evaluation_is_unsafe(challenger)
+                    && !challenger.own_drainer_vulnerable
+                    && !challenger.own_drainer_walk_vulnerable
+                    && challenger.spirit_setup_gain >= approved.spirit_setup_gain.saturating_add(64)
+                    && approved.score.saturating_sub(challenger.score) <= 2048
+                    && challenger.safe_supermana_progress_steps
+                        == approved.safe_supermana_progress_steps
+                    && challenger.safe_opponent_mana_progress_steps
+                        == approved.safe_opponent_mana_progress_steps
+                    && challenger.score_path_best_steps == approved.score_path_best_steps
+                    && challenger.root_rank < approved.root_rank
+                    && approved.root_rank.abs_diff(challenger.root_rank) <= 4
+            })
+            .min_by(|left, right| {
+                scored_roots[*left]
+                    .root_rank
+                    .cmp(&scored_roots[*right].root_rank)
+                    .then_with(|| {
+                        scored_roots[*right]
+                            .spirit_setup_gain
+                            .cmp(&scored_roots[*left].spirit_setup_gain)
+                    })
                     .then_with(|| {
                         Self::compare_ranked_scored_root_indices(scored_roots, *left, *right)
                     })
@@ -19932,6 +20022,15 @@ impl MonsGameModel {
             selection_indices.as_slice(),
             approved_index.0,
             perspective,
+            config,
+        ) {
+            approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedFamilyCompetition);
+        }
+        if let Some(index) = Self::pro_v2_root_advisor_black_late_reply_risk_setup_override(
+            game,
+            scored_roots,
+            reply_risk_shortlist.as_slice(),
+            approved_index.0,
             config,
         ) {
             approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedFamilyCompetition);
@@ -29810,16 +29909,28 @@ mod opening_book_tests {
             false,
         )
         .expect("valid white bridge fen");
-        let mut approved =
-            root_evaluation_for_projection_test(&game, Location::new(9, 5), 95_582, true, false, false);
+        let mut approved = root_evaluation_for_projection_test(
+            &game,
+            Location::new(9, 5),
+            95_582,
+            true,
+            false,
+            false,
+        );
         approved.root_rank = 0;
         approved.spirit_own_mana_setup_now = true;
         approved.spirit_setup_gain = 132;
         approved.safe_supermana_progress_steps = 4;
         approved.safe_opponent_mana_progress_steps = 5;
 
-        let mut legacy =
-            root_evaluation_for_projection_test(&game, Location::new(6, 1), 1_510, false, false, false);
+        let mut legacy = root_evaluation_for_projection_test(
+            &game,
+            Location::new(6, 1),
+            1_510,
+            false,
+            false,
+            false,
+        );
         legacy.root_rank = 0;
         legacy.inputs = vec![
             Input::Location(Location::new(6, 1)),
@@ -29951,6 +30062,128 @@ mod opening_book_tests {
                 &game,
                 &scored_roots,
                 &[0, 1],
+                0,
+                config,
+            ),
+            None,
+        );
+    }
+
+    #[test]
+    fn black_late_reply_risk_setup_override_prefers_shortlisted_own_setup_root() {
+        let game = MonsGame::from_fen(
+            "1 1 b 0 0 0 0 0 8 d0xn10/n05s0xa0xe0xxxmn02/n11/n07xxmn03/n03xxmn02xxmn04/n10xxQ/n02y0xn01D0UxxMn01xxMn03/n02xxMS0xn01A0xxxMn04/n06Y0xn04/n03E0xn07/n11",
+            false,
+        )
+        .expect("valid black late reply-risk setup fen");
+        let mut approved = root_evaluation_for_projection_test(
+            &game,
+            Location::new(6, 2),
+            2155,
+            false,
+            false,
+            false,
+        );
+        approved.root_rank = 2;
+        approved.inputs = vec![
+            Input::Location(Location::new(6, 2)),
+            Input::Location(Location::new(5, 3)),
+        ];
+        approved.safe_supermana_progress_steps = 15;
+        approved.safe_opponent_mana_progress_steps = 6;
+        approved.score_path_best_steps = 33;
+        approved.spirit_setup_gain = 24;
+
+        let mut challenger = root_evaluation_for_projection_test(
+            &game,
+            Location::new(1, 5),
+            453,
+            true,
+            false,
+            false,
+        );
+        challenger.root_rank = 0;
+        challenger.inputs = vec![
+            Input::Location(Location::new(1, 5)),
+            Input::Location(Location::new(3, 7)),
+            Input::Location(Location::new(2, 8)),
+        ];
+        challenger.spirit_own_mana_setup_now = true;
+        challenger.safe_supermana_progress_steps = 15;
+        challenger.safe_opponent_mana_progress_steps = 6;
+        challenger.score_path_best_steps = 33;
+        challenger.spirit_setup_gain = 96;
+
+        let scored_roots = [approved, challenger];
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.turn_engine_mode = TurnEngineMode::ProV2;
+
+        assert_eq!(
+            MonsGameModel::pro_v2_root_advisor_black_late_reply_risk_setup_override(
+                &game,
+                &scored_roots,
+                &[1],
+                0,
+                config,
+            ),
+            Some(1),
+        );
+    }
+
+    #[test]
+    fn black_late_reply_risk_setup_override_keeps_small_setup_gain_mana_root() {
+        let game = MonsGame::from_fen(
+            "1 1 b 0 0 0 0 0 8 d0xn10/n05s0xa0xe0xxxmn02/n11/n07xxmn03/n03xxmn02xxmn04/n10xxQ/n02y0xn01D0UxxMn01xxMn03/n02xxMS0xn01A0xxxMn04/n06Y0xn04/n03E0xn07/n11",
+            false,
+        )
+        .expect("valid black late reply-risk setup fen");
+        let mut approved = root_evaluation_for_projection_test(
+            &game,
+            Location::new(6, 2),
+            2155,
+            false,
+            false,
+            false,
+        );
+        approved.root_rank = 2;
+        approved.inputs = vec![
+            Input::Location(Location::new(6, 2)),
+            Input::Location(Location::new(5, 3)),
+        ];
+        approved.safe_supermana_progress_steps = 15;
+        approved.safe_opponent_mana_progress_steps = 6;
+        approved.score_path_best_steps = 33;
+        approved.spirit_setup_gain = 24;
+
+        let mut challenger = root_evaluation_for_projection_test(
+            &game,
+            Location::new(1, 5),
+            453,
+            true,
+            false,
+            false,
+        );
+        challenger.root_rank = 0;
+        challenger.inputs = vec![
+            Input::Location(Location::new(1, 5)),
+            Input::Location(Location::new(3, 7)),
+            Input::Location(Location::new(2, 8)),
+        ];
+        challenger.spirit_own_mana_setup_now = true;
+        challenger.safe_supermana_progress_steps = 15;
+        challenger.safe_opponent_mana_progress_steps = 6;
+        challenger.score_path_best_steps = 33;
+        challenger.spirit_setup_gain = 80;
+
+        let scored_roots = [approved, challenger];
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.turn_engine_mode = TurnEngineMode::ProV2;
+
+        assert_eq!(
+            MonsGameModel::pro_v2_root_advisor_black_late_reply_risk_setup_override(
+                &game,
+                &scored_roots,
+                &[1],
                 0,
                 config,
             ),

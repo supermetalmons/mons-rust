@@ -26,6 +26,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - Tracing that shortlist-local fallback showed the retained Fast failure was not fresh collateral from `black_recovery_branch`; both Fast non-wins were the already-pinned late black head-accept seam `l1,8;l1,9` vs shipping `l1,8;l0,8`.
 - That late black Fast seam was not a head-acceptance mismatch after all. On the live board, `pre_accept`, head, and final selection all stayed on the same vulnerable root; the actual fix point was the advisor's existing late-window mana safety override.
 - The durable fix on that board is narrow: let `pro_v2_root_advisor_black_late_window_mana_safety_override` rescue a rank-zero vulnerable one-window `ManaTempo` root only when a same-lane safe sibling also restores the lane's progress surface. That keeps the retained `l1,8;l0,8` board aligned without disturbing the small loop.
+- A second late black advisor miss was narrower than the earlier legacy-selector seams. On late black action+mana turn-start boards with no window or deny pressure, a quiet no-progress `ManaTempo` incumbent can still be the wrong retained answer when the reply-risk shortlist isolates a quiet `SpiritImpact` own-setup challenger that keeps the same progress path and gains at least `+64` setup. That rescue belongs in advisor family competition, not in search-only reranking.
+- The remaining black board `l7,1;l9,3` vs shipping `l1,5;l2,7;l1,8` is not another legacy/search shortlist seam. Frontier already keeps the safe-progress incumbent on the full pool, while the candidate-only ProV1 replay prefers a different spirit root than shipping. Treat that as a progress-vs-setup/model-ranking mismatch rather than another reply-risk or legacy-alignment bug.
 - On white turn-three action+mana mid-turn boards, a safe-progress incumbent can still be the wrong retained choice even when it wins raw search score. If a spirit-own-setup challenger preserves the same progress surface, gains at least `+64` setup, and leads by at least six root-rank slots, `pro_v2_root_advisor_white_early_safe_progress_setup_competition_override` should still be allowed to rescue that spirit line across a wider score gap.
 - On that same black seam, a score-only mana fallback is unsafe: the first naive scan picked `l6,0;l7,0` instead of the actual shipping legacy root.
 - `white_split_trace` can move independently of the other white walls; fixing mana-sibling competition there does not solve the late white head seams.
@@ -34,7 +36,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - On white turn-three no-action mana boards, the legacy-alignment override is only safe when the legacy root is at least two root-rank slots worse than the currently approved safe root; allowing the `+1` case reopens the rotated Pro/Normal sibling misses.
 - The rotated white turn-three sibling misses were resolved by tightening that legacy-alignment rank-gap check, not by widening omitted-root reentry or adding another late preserved-root shim.
 - Passing the small `pro-reliability` gate at `3x2` does not guarantee confirm readiness; the `4x4` confirm spend can still uncover Fast and Normal losses that never appear in the smaller sample.
-- The confirm-only frontier losses are currently clustered around two seams: early white head acceptance where `engine_post_search` accepts a frontier head that shipping rejects or never executes, and a separate late black search-vs-spirit approval seam.
+- Recent confirm-only frontier losses clustered around two seams: early white head acceptance where `engine_post_search` accepts a frontier head that shipping rejects or never executes, and a separate late black search-vs-spirit approval seam.
 - On white turn-three no-action weak-window boards, a safe `DrainerSafetyRecovery` root can be the correct `pre_accept` answer even when the reply-risk shortlist is dominated by vulnerable `ManaTempo` window roots. ProV2 has to both admit that recovery root at approval time and prevent `engine_post_search` from immediately reinstalling the vulnerable one-window head.
 - Broadening that white turn-three no-action recovery rule from turn-start only to `mons_moves_count == 1`, even with a paired head-rejection guard, is too broad to keep. It does fix `l9,4;l8,3` vs shipping `l9,4;l8,5`, but it also drags older vulnerable white mana-only boards onto recovery roots and fails retained `pro-reliability` at `0.9167 / 0.7500 / 0.9167` by rotating Normal onto engine-disabled early-white seams such as `l8,5;l7,6` vs `l8,7;l7,8` and `l9,4;l8,5` vs `l9,4;l9,3`.
 - Fixing one early white confirm recovery board can leave the aggregate confirm gate completely unchanged; when that happens, the right read is that the seam rotated, not that the local fix was fake.
@@ -60,6 +62,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `smart_automove_pro_white_turn_three_sibling_root_probe`
 - `white_confirm_pro_ply11_reply_order_probe`
 - `black_recovery_branch_legacy_alignment_probe`
+- `black_progress_vs_setup_residue_probe`
 
 ## Kill Rules
 

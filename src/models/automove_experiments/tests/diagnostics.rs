@@ -520,13 +520,14 @@ fn black_recovery_branch_legacy_alignment_probe() {
     let mut legacy_selector_config = config;
     legacy_selector_config.enable_root_reply_risk_guard = false;
     legacy_selector_config.turn_engine_mode = TurnEngineMode::ProV1;
-    let pro_v1_candidate_selected = MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
-        &game,
-        scored_roots.as_slice(),
-        candidate_indices.as_slice(),
-        perspective,
-        legacy_selector_config,
-    );
+    let pro_v1_candidate_selected =
+        MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
+            &game,
+            scored_roots.as_slice(),
+            candidate_indices.as_slice(),
+            perspective,
+            legacy_selector_config,
+        );
     let (probe_legacy_selected, probe_legacy_full_pool_selected, _, _) =
         pro_v2_legacy_selector_probe(&game, SmartAutomovePreference::Pro);
 
@@ -555,6 +556,108 @@ fn black_recovery_branch_legacy_alignment_probe() {
         Input::fen_from_array(&pro_v1_candidate_selected),
         probe_legacy_selected,
         probe_legacy_full_pool_selected,
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect remaining black progress-vs-setup residue board"]
+fn black_progress_vs_setup_residue_probe() {
+    let game = MonsGame::from_fen(
+        "1 0 b 0 0 0 0 0 6 n05d0xn05/n05s0xa0xe0xn03/n02xxmn04xxmn03/n07xxmn03/n03xxmn01xxmn05/n05xxUn04xxQ/n05xxMn05/n01y0xn01S0xE0xn01xxMxxMn03/n01xxMn09/n03A0xn03Y0xn03/n05D1xn05",
+        false,
+    )
+    .expect("valid black residue fen");
+    let perspective = game.active_color;
+    let (config, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let candidate_indices = MonsGameModel::filtered_root_candidate_indices(
+        &game,
+        scored_roots.as_slice(),
+        perspective,
+        config,
+    );
+    let reply_risk_shortlist = MonsGameModel::reply_risk_guard_shortlist_indices(
+        scored_roots.as_slice(),
+        candidate_indices.as_slice(),
+        config,
+    );
+    let approved_index = scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == "l7,1;l9,3")
+        .expect("approved root should exist");
+    let shipping_index = scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == "l1,5;l2,7;l1,8")
+        .expect("shipping root should exist");
+    let approved = &scored_roots[approved_index];
+    let shipping = &scored_roots[shipping_index];
+    let exact_context =
+        crate::models::automove_exact::exact_opportunity_context(&game, game.active_color);
+    let approved_non_tactical = !approved.wins_immediately
+        && !approved.attacks_opponent_drainer
+        && !approved.scores_supermana_this_turn
+        && !approved.scores_opponent_mana_this_turn
+        && !approved.safe_supermana_pickup_now
+        && !approved.safe_opponent_mana_pickup_now
+        && !approved.mana_handoff_to_opponent
+        && !approved.has_roundtrip;
+    let shipping_non_tactical = !shipping.wins_immediately
+        && !shipping.attacks_opponent_drainer
+        && !shipping.scores_supermana_this_turn
+        && !shipping.scores_opponent_mana_this_turn
+        && !shipping.safe_supermana_pickup_now
+        && !shipping.safe_opponent_mana_pickup_now
+        && !shipping.mana_handoff_to_opponent
+        && !shipping.has_roundtrip;
+    let mut legacy_selector_config = config;
+    legacy_selector_config.enable_root_reply_risk_guard = false;
+    legacy_selector_config.turn_engine_mode = TurnEngineMode::ProV1;
+    let pro_v1_candidate_selected =
+        MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
+            &game,
+            scored_roots.as_slice(),
+            candidate_indices.as_slice(),
+            perspective,
+            legacy_selector_config,
+        );
+    let (probe_legacy_selected, probe_legacy_full_pool_selected, _, _) =
+        pro_v2_legacy_selector_probe(&game, SmartAutomovePreference::Pro);
+    let runtime_probe = runtime_decision_probe(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+
+    println!(
+        "BLACK_PROGRESS_VS_SETUP_RESIDUE context={} approved={} shipping={} candidate_contains_shipping={} shortlist={:?} approved_family={:?} shipping_family={:?} approved_plain_spirit={} approved_progress_surface={} shipping_progress_surface={} approved_non_tactical={} shipping_non_tactical={} exact_window={} exact_deny={} exact_attack={} approved_vulnerable={} shipping_vulnerable={} shipping_score_ge_approved={} pro_v1_candidate_selected={} probe_legacy_selected={} probe_legacy_full_pool_selected={} runtime_probe={:?}",
+        exact_opportunity_context_probe(&game),
+        format_root_probe(scored_roots.get(approved_index)),
+        format_root_probe(scored_roots.get(shipping_index)),
+        candidate_indices.contains(&shipping_index),
+        reply_risk_shortlist
+            .iter()
+            .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+            .collect::<Vec<_>>(),
+        MonsGameModel::turn_engine_root_evaluation_family(approved),
+        MonsGameModel::turn_engine_root_evaluation_family(shipping),
+        MonsGameModel::is_plain_spirit_development_root(approved),
+        MonsGameModel::turn_engine_root_evaluation_has_progress_surface(approved),
+        MonsGameModel::turn_engine_root_evaluation_has_progress_surface(shipping),
+        approved_non_tactical,
+        shipping_non_tactical,
+        exact_context.delta.same_turn_score_window_value,
+        exact_context.delta.opponent_window_deny_gain,
+        exact_context.delta.drainer_attack_available,
+        approved.own_drainer_vulnerable,
+        shipping.own_drainer_vulnerable,
+        shipping.score >= approved.score,
+        Input::fen_from_array(&pro_v1_candidate_selected),
+        probe_legacy_selected,
+        probe_legacy_full_pool_selected,
+        runtime_probe,
     );
 }
 
