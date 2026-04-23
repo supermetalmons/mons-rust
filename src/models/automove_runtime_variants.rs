@@ -664,6 +664,92 @@ fn select_white_confirm_prov1_search_only_tiebreak_fallback_inputs(
     Some(search_only_inputs)
 }
 
+fn select_white_confirm_prov1_better_ordered_search_only_fallback_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+    frontier_inputs: &[Input],
+) -> Option<Vec<Input>> {
+    let white_turn_three_late_mana_only = game.active_color == Color::White
+        && game.turn_number == 3
+        && game.mons_moves_count >= 3
+        && !game.player_can_use_action()
+        && game.player_can_move_mana();
+    if !white_turn_three_late_mana_only || frontier_inputs.is_empty() {
+        return None;
+    }
+
+    let context = crate::models::automove_exact::exact_opportunity_context(game, game.active_color);
+    if context.opponent_can_win_immediately
+        || context.delta.same_turn_score_window_value != 0
+        || context.delta.spirit_gain != 0
+        || context.delta.opponent_window_deny_gain != 0
+        || context.delta.drainer_attack_available
+        || context.delta.safe_supermana_progress_steps.is_some()
+        || context.delta.safe_opponent_mana_progress_steps.is_some()
+        || context.delta.drainer_safety < 0
+    {
+        return None;
+    }
+
+    let frontier_runtime = apply_frontier_pro_v2_guarded_config(config);
+    let frontier_roots = focused_scored_roots_for_frontier_runtime(game, frontier_runtime);
+    let frontier_index = frontier_roots
+        .iter()
+        .position(|root| root.inputs.as_slice() == frontier_inputs)?;
+    let candidate_indices = MonsGameModel::filtered_root_candidate_indices(
+        game,
+        frontier_roots.as_slice(),
+        game.active_color,
+        frontier_runtime,
+    );
+    if !candidate_indices.contains(&frontier_index) {
+        return None;
+    }
+    let shortlist = MonsGameModel::reply_risk_guard_shortlist_indices(
+        frontier_roots.as_slice(),
+        candidate_indices.as_slice(),
+        frontier_runtime,
+    );
+    if !shortlist.contains(&frontier_index) {
+        return None;
+    }
+
+    let mut search_only_runtime = frontier_runtime;
+    search_only_runtime.enable_turn_engine_selector = false;
+    search_only_runtime.enable_turn_head_rerank = true;
+    search_only_runtime.turn_engine_mode = TurnEngineMode::ProV1;
+
+    let search_only_inputs = select_shipping_search_inputs(game, search_only_runtime);
+    if search_only_inputs.is_empty() || search_only_inputs == frontier_inputs {
+        return None;
+    }
+
+    let search_only_index = frontier_roots
+        .iter()
+        .position(|root| root.inputs.as_slice() == search_only_inputs.as_slice())?;
+    if !candidate_indices.contains(&search_only_index) || !shortlist.contains(&search_only_index) {
+        return None;
+    }
+
+    let frontier_selected = &frontier_roots[frontier_index];
+    let search_only_selected = &frontier_roots[search_only_index];
+    if search_only_selected.score < frontier_selected.score
+        || search_only_selected.root_rank >= frontier_selected.root_rank
+        || frontier_selected.spirit_setup_gain != search_only_selected.spirit_setup_gain
+        || frontier_selected.safe_supermana_progress_steps
+            != search_only_selected.safe_supermana_progress_steps
+        || frontier_selected.safe_opponent_mana_progress_steps
+            != search_only_selected.safe_opponent_mana_progress_steps
+        || frontier_selected.score_path_best_steps != search_only_selected.score_path_best_steps
+        || !is_safe_quiet_mana_tempo_root(frontier_selected)
+        || !is_safe_quiet_mana_tempo_root(search_only_selected)
+    {
+        return None;
+    }
+
+    Some(search_only_inputs)
+}
+
 fn select_late_black_search_fallback_inputs(
     game: &MonsGame,
     frontier_inputs: &[Input],
@@ -791,6 +877,17 @@ pub(crate) fn select_frontier_pro_v2_guarded_inputs(
     ) {
         #[cfg(test)]
         set_frontier_runtime_variant_branch("white_confirm_prov1_search_only_tiebreak_fallback");
+        return inputs;
+    }
+    if let Some(inputs) = select_white_confirm_prov1_better_ordered_search_only_fallback_inputs(
+        game,
+        config,
+        frontier_inputs.as_slice(),
+    ) {
+        #[cfg(test)]
+        set_frontier_runtime_variant_branch(
+            "white_confirm_prov1_better_ordered_search_only_fallback",
+        );
         return inputs;
     }
     if let Some(inputs) = select_late_black_search_fallback_inputs(game, frontier_inputs.as_slice())

@@ -4385,6 +4385,15 @@ fn white_normal_ply11_search_only_split_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: inspect white pro ply15 search-only split"]
+fn white_pro_ply15_search_only_split_probe() {
+    log_white_search_order_split_probe(
+        "WHITE_PRO_PLY15_SEARCH_ONLY_SPLIT",
+        "0 0 w 1 0 5 0 0 3 n11/n03y0xd0ms0xa0xe0xn03/n11/n06xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04Y0x/n03xxMn01xxMn01xxMn03/n04xxMn06/n11/n05S0xn02D0Mn02/n03E0xA0xn06",
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: replay exact pro-reliability duel seeds and log frontier non-win openings"]
 fn smart_automove_pro_reliability_nonwin_trace_probe() {
     let frontier_profile = reliability_frontier_profile_id();
