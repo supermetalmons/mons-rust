@@ -335,3 +335,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Frontier's approved `l9,4;l8,3` is the only reply-risk-shortlisted root and keeps the stronger floor (`1191` vs shipping `730`).
 - Shipping's `l9,4;l8,5` is a full-pool `DrainerSafetyRecovery` root outside the frontier shortlist and still loses under frontier's own reply-risk comparator (`shipping_vs_frontier=false`).
 - Durable outcome: do not reopen that `ply9` seam with direct shipping mirroring, shortlist widening, or another simple recovery override without a new explanation for shipping's `search_only_engine_allowed_head` ordering.
+
+## White Ordering Config Wave
+
+- No new runtime challenger survived this wave either. The only kept change is a focused ignored `white_profile_config_ordering_probe` for the two remaining white ordering boards: `white_ply9_search_ordering` and `white_late_fast_hotspot`.
+- The useful lesson is that there is no hidden per-board config branch separating those seams from the promoted package.
+- On both boards, shipping and frontier use the same depth (`4`), node budget (`15774`), reply-risk shortlist budget (`9 / 24 / 2000`), and scoring weights.
+- The remaining difference is structural and profile-level: shipping stays `selector=false`, `head_rerank=true`, `mode=ProV1`, while frontier stays `selector=true`, `head_rerank=false`, `mode=ProV2` with the extra ProV2 guards.
+- Durable outcome: treat the remaining white seams as search-profile semantics, not board-local config misses. Do not reopen them with another board-local wrapper or guard tweak unless there is a brand-new shared hypothesis.

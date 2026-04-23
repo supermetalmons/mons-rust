@@ -1468,6 +1468,85 @@ fn white_late_fast_hotspot_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: compare static frontier vs shipping config on remaining white ordering boards"]
+fn white_profile_config_ordering_probe() {
+    struct ProbeCase {
+        label: &'static str,
+        board_fen: &'static str,
+    }
+
+    let cases = [
+        ProbeCase {
+            label: "white_ply9_search_ordering",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n05d0xn05/n05s0xa0xe0xn03/n03y0xn03xxmn03/n02xxmn01xxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn07/n04D0xS0xn01Y0xn03/n02E0xn01A0xn06",
+        },
+        ProbeCase {
+            label: "white_late_fast_hotspot",
+            board_fen:
+                "1 1 w 0 0 1 0 0 9 n04s1xn06/n06a0xn04/n05e0xd0xn04/n03xxmxxmn02xxmn03/n05xxmn03Y0xn01/n05xxUn05/E0xn04xxMn01xxMn03/n01y0xn01xxMn03xxMn03/n05S0xn05/n05D0xn05/n04A1xn06",
+        },
+    ];
+
+    for case in cases {
+        let game = MonsGame::from_fen(case.board_fen, false)
+            .unwrap_or_else(|| panic!("{}: valid board fen", case.label));
+        let shipping_config =
+            calibration_runtime_config("shipping_pro_search", &game, SmartAutomovePreference::Pro);
+        let frontier_config = calibration_runtime_config(
+            "frontier_pro_v2_guarded",
+            &game,
+            SmartAutomovePreference::Pro,
+        );
+        let frontier_probe = runtime_decision_probe(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let shipping_probe =
+            runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+
+        println!(
+            "WHITE_PROFILE_CONFIG_ORDERING label={} context={} same_scoring_weights={} shipping(depth={} nodes={} selector={} head_rerank={} mode={:?} reply_guard={} shortlist_max={} reply_limit={} node_share_bp={} low_budget={} mid_progress={} mid_tactical={} late_safe_mana={}) frontier(depth={} nodes={} selector={} head_rerank={} mode={:?} reply_guard={} shortlist_max={} reply_limit={} node_share_bp={} low_budget={} mid_progress={} mid_tactical={} late_safe_mana={}) shipping_stage={} frontier_stage={}",
+            case.label,
+            exact_opportunity_context_probe(&game),
+            std::ptr::eq(
+                shipping_config.scoring_weights,
+                frontier_config.scoring_weights,
+            ),
+            shipping_config.depth,
+            shipping_config.max_visited_nodes,
+            shipping_config.enable_turn_engine_selector,
+            shipping_config.enable_turn_head_rerank,
+            shipping_config.turn_engine_mode,
+            shipping_config.enable_root_reply_risk_guard,
+            shipping_config.root_reply_risk_shortlist_max,
+            shipping_config.root_reply_risk_reply_limit,
+            shipping_config.root_reply_risk_node_share_bp,
+            shipping_config.enable_turn_engine_low_budget_guard,
+            shipping_config.enable_turn_engine_mid_turn_progress_guard,
+            shipping_config.enable_turn_engine_mid_turn_tactical_guard,
+            shipping_config.enable_turn_engine_late_safe_mana_root_preference,
+            frontier_config.depth,
+            frontier_config.max_visited_nodes,
+            frontier_config.enable_turn_engine_selector,
+            frontier_config.enable_turn_head_rerank,
+            frontier_config.turn_engine_mode,
+            frontier_config.enable_root_reply_risk_guard,
+            frontier_config.root_reply_risk_shortlist_max,
+            frontier_config.root_reply_risk_reply_limit,
+            frontier_config.root_reply_risk_node_share_bp,
+            frontier_config.enable_turn_engine_low_budget_guard,
+            frontier_config.enable_turn_engine_mid_turn_progress_guard,
+            frontier_config.enable_turn_engine_mid_turn_tactical_guard,
+            frontier_config.enable_turn_engine_late_safe_mana_root_preference,
+            shipping_probe.selector_last_stage,
+            frontier_probe.selector_last_stage,
+        );
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: inspect white fast ply9 search-only split"]
 fn white_fast_ply9_search_only_split_probe() {
     let game = MonsGame::from_fen(

@@ -60,6 +60,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - The same logic distinguishes the remaining early white Fast seams: `l9,7;l8,6` vs `l9,7;l7,6;l7,7` was an advisor-layer safe-progress-vs-setup competition miss, while `l9,4;l8,3` vs `l9,4;l8,5` is a search-only rerank split where shipping changes the same pre-accept root through the search-only allowance path. Do not treat those as the same bug class.
 - `white_fast_ply9_search_only_split_probe` now closes that remaining white `ply9` split as a live target too. Frontier's approved `l9,4;l8,3` is the only reply-risk-shortlisted root and keeps the stronger floor (`1191` vs shipping `730`).
 - Shipping's `l9,4;l8,5` is a full-pool `DrainerSafetyRecovery` root outside the frontier shortlist, loses under frontier's own reply-risk comparator (`shipping_vs_frontier=false`), and is only reached through shipping's `search_only_engine_allowed_head` ordering. Treat that seam as another shipping-only search ordering mismatch, not a live frontier omission.
+- `white_profile_config_ordering_probe` closes the last obvious hidden-config hypothesis for the remaining white seams. On both the `ply9` search-order board and the late Fast hotspot, shipping and frontier use the same depth, node budget, reply-risk shortlist budget, and scoring weights.
+- The difference on those boards is purely structural and profile-level: shipping stays `selector=false`, `head_rerank=true`, `mode=ProV1`, while frontier stays `selector=true`, `head_rerank=false`, `mode=ProV2` with the extra ProV2 guards. Treat those white seams as search-profile semantics, not per-board config misses.
 - If a rotated white confirm seam shows the incumbent quiet `ManaTempo` root ahead on both reply floor and selected override utility, it is not another shortlist-order or head-acceptance bug. Treat that as a root-scoring/model mismatch and do not paper over it with another advisor override.
 - Runtime cost is a real gate. A candidate that fixes live walls but pushes stage-1 CPU into the `1.5x+` range against `shipping_pro_search` is still non-promotable.
 - Wrapper-only reroutes, fallback widening, shortlist widening, and metadata-only advisor changes saturate quickly; the real frontier is shared approval and head logic.
@@ -86,6 +88,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `black_confirm_fast_setup_split_probe`
 - `fast_hotspot_trace_probe`
 - `white_late_fast_hotspot_probe`
+- `white_profile_config_ordering_probe`
 
 ## Kill Rules
 
