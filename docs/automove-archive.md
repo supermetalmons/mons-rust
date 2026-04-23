@@ -4,6 +4,17 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## White Forward-Bridge Retained Sampled Head-Accept Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave compared the repeated white `forward_bridge` seam directly against the retained sampled white head-accept controls in Pro, Normal, and Fast.
+- The retained sampled controls did not collapse to one reusable package.
+- The retained Pro control is a pure `ManaTempo` `ApprovedReplyRiskGuard` board on `window=0/deny=0`; frontier and shipping both stay on `l9,6;l8,5`, and the head is rejected.
+- The retained Normal control is closer but still different: it is `SpiritImpact` on `window=1/deny=1`, shipping `l9,5;l7,4;l8,3` is advisor-approved through `ApprovedFamilyCompetition`, and frontier still keeps shipping while rejecting a lower-ranked spirit head.
+- The retained Fast control is different again: it is `SpiritImpact` through `ApprovedReplyRiskGuard` with a singleton shortlist, one preserved sibling representative, and a rejected vulnerable `ManaTempo` head.
+- The repeated `forward_bridge` seam is none of those. It is a `window=0/deny=0` `SpiritImpact` own-setup board where shipping `l9,6;l7,6;l7,7` is advisor-approved through `ApprovedFamilyCompetition`, the shortlist stays full of spirit own-setup siblings, and frontier only loses later by accepting head `l9,6;l7,4;l7,3`.
+- Durable outcome: do not extend the retained sampled white head-accept package into the repeated `forward_bridge` seam. Matching “head-accept” labels were not enough; the family mix, context, shortlist density, and approval path still diverge.
+
 ## White Forward-Bridge Head Structure Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
