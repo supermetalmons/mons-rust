@@ -20,7 +20,6 @@ pub(in super::super) struct CrossBudgetDuelConfig<'a> {
     pub repeats: usize,
     pub games_per_repeat: usize,
     pub max_plies: usize,
-    pub use_white_opening_book: bool,
 }
 
 pub(in super::super) fn select_inputs_with_runtime_fallback(
@@ -82,7 +81,6 @@ pub(in super::super) fn play_one_game_budget_duel_with_timing(
     clear_exact_state_analysis_cache();
     clear_turn_engine_plan_cache();
     clear_turn_engine_selector_diagnostics();
-    let use_white_opening_book = env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false);
     let mut timing = DuelTimingStats::default();
 
     for _ in 0..max_plies {
@@ -103,13 +101,7 @@ pub(in super::super) fn play_one_game_budget_duel_with_timing(
 
         let config = actor_budget.runtime_config_for_game(&game);
         let start = Instant::now();
-        let inputs = if use_white_opening_book {
-            MonsGameModel::white_first_turn_opening_next_inputs(&game).unwrap_or_else(|| {
-                select_inputs_with_runtime_fallback(actor_model.select_inputs, &game, config)
-            })
-        } else {
-            select_inputs_with_runtime_fallback(actor_model.select_inputs, &game, config)
-        };
+        let inputs = select_inputs_with_runtime_fallback(actor_model.select_inputs, &game, config);
         let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
         if a_to_move {
             timing.record_profile_a_turn(elapsed_ms);
@@ -405,16 +397,7 @@ pub(in super::super) fn run_cross_budget_duel_with_timing(
     let budget_b = SearchBudget::from_preference(config.mode_b);
 
     let original_max_plies = env::var("SMART_POOL_MAX_PLIES").ok();
-    let original_opening_book = env::var("SMART_USE_WHITE_OPENING_BOOK").ok();
     env::set_var("SMART_POOL_MAX_PLIES", config.max_plies.to_string());
-    env::set_var(
-        "SMART_USE_WHITE_OPENING_BOOK",
-        if config.use_white_opening_book {
-            "true"
-        } else {
-            "false"
-        },
-    );
 
     let mut aggregate = TimedMatchupStats::default();
     let progress = env_bool("SMART_DUEL_PROGRESS").unwrap_or(false);
@@ -470,12 +453,6 @@ pub(in super::super) fn run_cross_budget_duel_with_timing(
     } else {
         env::remove_var("SMART_POOL_MAX_PLIES");
     }
-    if let Some(previous) = original_opening_book {
-        env::set_var("SMART_USE_WHITE_OPENING_BOOK", previous);
-    } else {
-        env::remove_var("SMART_USE_WHITE_OPENING_BOOK");
-    }
-
     aggregate
 }
 

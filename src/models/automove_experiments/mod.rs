@@ -49,19 +49,7 @@ impl SearchBudget {
 
     fn runtime_config_for_game(self, game: &MonsGame) -> AutomoveSearchConfig {
         if let Some(preference) = SmartAutomovePreference::from_api_value(self.label) {
-            let hinted_context = if matches!(preference, SmartAutomovePreference::Pro)
-                && env_bool("SMART_USE_WHITE_OPENING_BOOK").unwrap_or(false)
-            {
-                ShippingProContext::OpeningBookDriven
-            } else {
-                ShippingProContext::Unknown
-            };
-            MonsGameModel::shipping_search_config_for_game_with_context(
-                game,
-                preference,
-                hinted_context,
-            )
-            .0
+            MonsGameModel::shipping_search_config_for_game(game, preference)
         } else {
             MonsGameModel::with_runtime_scoring_weights(
                 game,
@@ -202,4 +190,4 @@ mod profiles;
 #[cfg(test)]
 mod tests;
 
-use self::harness::{env_bool, one_sided_binomial_p_value};
+use self::harness::one_sided_binomial_p_value;

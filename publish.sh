@@ -8,12 +8,6 @@ if ! cargo test; then
     exit 1
 fi
 
-echo "Running release opening reply speed gate..."
-if ! cargo test --release --lib smart_automove_release_opening_black_reply_speed_gate -- --ignored --nocapture; then
-    echo "Release speed gate failed. Aborting publish."
-    exit 1
-fi
-
 echo "Running release mixed runtime speed gate..."
 if ! cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --ignored --nocapture; then
     echo "Release mixed runtime speed gate failed. Aborting publish."

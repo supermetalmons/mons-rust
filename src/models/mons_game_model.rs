@@ -19,16 +19,6 @@ pub(crate) mod automove_runtime_variants;
 #[derive(Debug)]
 pub struct MonsGameModel {
     game: MonsGame,
-    #[cfg(any(target_arch = "wasm32", test))]
-    pro_runtime_context_hint: std::cell::Cell<ShippingProContext>,
-}
-
-#[cfg(any(target_arch = "wasm32", test))]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ShippingProContext {
-    Unknown,
-    OpeningBookDriven,
-    Independent,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -361,12 +351,7 @@ fn turn_engine_own_drainer_safety_score(board: &Board, color: Color) -> i32 {
 
 impl Clone for MonsGameModel {
     fn clone(&self) -> Self {
-        let cloned = Self::with_game(self.game.clone());
-        #[cfg(any(target_arch = "wasm32", test))]
-        cloned
-            .pro_runtime_context_hint
-            .set(self.pro_runtime_context_hint.get());
-        cloned
+        Self::with_game(self.game.clone())
     }
 }
 
@@ -563,84 +548,6 @@ type U64HashSet = std::collections::HashSet<u64, U64BuildHasher>;
 
 #[cfg(any(target_arch = "wasm32", test))]
 type FastHashMap<K, V> = std::collections::HashMap<K, V, U64BuildHasher>;
-const WHITE_OPENING_BOOK: [[&str; 5]; 9] = [
-    [
-        "l10,3;l9,2",
-        "l9,2;l8,1",
-        "l8,1;l7,0",
-        "l7,0;l6,0",
-        "l6,0;l5,0;mp",
-    ],
-    [
-        "l10,7;l9,8",
-        "l9,8;l8,9",
-        "l8,9;l7,10",
-        "l7,10;l6,10",
-        "l6,10;l5,10;mp",
-    ],
-    [
-        "l10,4;l9,4",
-        "l9,4;l8,4",
-        "l8,4;l7,3",
-        "l7,3;l6,4",
-        "l6,4;l5,4",
-    ],
-    [
-        "l10,5;l9,5",
-        "l9,5;l8,5",
-        "l10,6;l9,6",
-        "l9,6;l8,6",
-        "l8,6;l7,5",
-    ],
-    [
-        "l10,5;l9,5",
-        "l9,5;l8,5",
-        "l10,6;l9,6",
-        "l9,6;l8,6",
-        "l10,4;l9,5",
-    ],
-    [
-        "l10,5;l9,5",
-        "l9,5;l8,5",
-        "l8,5;l7,5",
-        "l10,4;l9,5",
-        "l9,5;l8,5",
-    ],
-    [
-        "l10,6;l9,7",
-        "l9,7;l8,6",
-        "l8,6;l7,5",
-        "l10,4;l9,4",
-        "l9,4;l8,5",
-    ],
-    [
-        "l10,5;l9,5",
-        "l9,5;l8,5",
-        "l10,3;l9,2",
-        "l10,6;l9,6",
-        "l9,6;l8,7",
-    ],
-    [
-        "l10,3;l9,3",
-        "l10,4;l9,4",
-        "l10,5;l9,5",
-        "l10,6;l9,6",
-        "l10,7;l9,7",
-    ],
-];
-static PARSED_WHITE_OPENING_BOOK: std::sync::LazyLock<Vec<Vec<Vec<Input>>>> =
-    std::sync::LazyLock::new(|| {
-        WHITE_OPENING_BOOK
-            .iter()
-            .map(|sequence| {
-                sequence
-                    .iter()
-                    .map(|step| Input::array_from_fen(step))
-                    .collect()
-            })
-            .collect()
-    });
-
 #[cfg(any(target_arch = "wasm32", test))]
 const RUNTIME_NORMAL_BALANCED_DISTANCE_SPIRIT_BASE_SCORING_WEIGHTS: ScoringWeights =
     ScoringWeights {
@@ -2355,11 +2262,7 @@ struct AsyncSmartSearchState {
 #[wasm_bindgen]
 impl MonsGameModel {
     fn with_game(game: MonsGame) -> Self {
-        Self {
-            game,
-            #[cfg(any(target_arch = "wasm32", test))]
-            pro_runtime_context_hint: std::cell::Cell::new(ShippingProContext::Unknown),
-        }
+        Self { game }
     }
 
     pub fn new(variant: GameVariant) -> MonsGameModel {
@@ -2435,14 +2338,6 @@ impl MonsGameModel {
     }
 
     fn automove_game(game: &mut MonsGame) -> OutputModel {
-        if let Some(opening_inputs) = Self::white_first_turn_opening_next_inputs(game) {
-            let input_fen = Input::fen_from_array(&opening_inputs);
-            let output = game.process_input(opening_inputs, false, false);
-            if matches!(output, Output::Events(_)) {
-                return OutputModel::new(output, input_fen.as_str());
-            }
-        }
-
         let automove_start_options = Some(SuggestedStartInputOptions::for_automove());
         let mut inputs = Vec::new();
         let mut output =
@@ -2676,77 +2571,8 @@ impl MonsGameModel {
     }
 }
 
-impl MonsGameModel {
-    #[cfg(any(target_arch = "wasm32", test))]
-    fn is_white_opening_book_first_move_inputs(game: &MonsGame, inputs: &[Input]) -> bool {
-        game.variant().supports_opening_book()
-            && PARSED_WHITE_OPENING_BOOK.iter().any(|sequence| {
-                sequence
-                    .first()
-                    .is_some_and(|opening_inputs| opening_inputs.as_slice() == inputs)
-            })
-    }
-
-    fn white_first_turn_opening_next_inputs(game: &MonsGame) -> Option<Vec<Input>> {
-        if !game.variant().supports_opening_book()
-            || game.active_color != Color::White
-            || !game.is_first_turn()
-        {
-            return None;
-        }
-
-        let parsed_book = &*PARSED_WHITE_OPENING_BOOK;
-        let opening_step = game.mons_moves_count.max(0) as usize;
-        if opening_step >= parsed_book[0].len() {
-            return None;
-        }
-
-        let current_fen = game.fen();
-        let mut viable_sequences = Vec::new();
-
-        for (sequence_index, sequence) in parsed_book.iter().enumerate() {
-            let mut simulated = MonsGame::new(false, game.variant());
-            let mut prefix_is_valid = true;
-            for step_inputs in sequence.iter().take(opening_step) {
-                if !matches!(
-                    simulated.process_input(step_inputs.clone(), false, false),
-                    Output::Events(_)
-                ) {
-                    prefix_is_valid = false;
-                    break;
-                }
-            }
-
-            if !prefix_is_valid || simulated.fen() != current_fen {
-                continue;
-            }
-
-            let next_inputs = &sequence[opening_step];
-            let mut probe = game.clone_for_simulation();
-            if matches!(
-                probe.process_input_slice(next_inputs.as_slice(), true, false),
-                Output::Events(_)
-            ) {
-                viable_sequences.push(sequence_index);
-            }
-        }
-
-        if viable_sequences.is_empty() {
-            return None;
-        }
-
-        let chosen = viable_sequences[random_index(viable_sequences.len())];
-        Some(parsed_book[chosen][opening_step].clone())
-    }
-}
-
 #[cfg(any(target_arch = "wasm32", test))]
 impl MonsGameModel {
-    fn mark_opening_book_driven_context(&self) {
-        self.pro_runtime_context_hint
-            .set(ShippingProContext::OpeningBookDriven);
-    }
-
     fn public_runtime_inputs(
         &self,
         preference: SmartAutomovePreference,
@@ -2775,16 +2601,6 @@ impl MonsGameModel {
     }
 
     fn smart_automove_output(&self, preference: SmartAutomovePreference) -> OutputModel {
-        if let Some(opening_inputs) = Self::white_first_turn_opening_next_inputs(&self.game) {
-            let mut game = self.game.clone_for_simulation();
-            let input_fen = Input::fen_from_array(&opening_inputs);
-            let output = game.process_input(opening_inputs, false, false);
-            if matches!(output, Output::Events(_)) {
-                self.mark_opening_book_driven_context();
-                return OutputModel::new(output, input_fen.as_str());
-            }
-        }
-
         let config = self.shipping_search_config_for_preference(preference);
         let inputs = self.public_runtime_inputs(preference, config);
         self.output_model_from_runtime_inputs(inputs)
@@ -2821,19 +2637,6 @@ impl MonsGameModel {
         &self,
         preference: SmartAutomovePreference,
     ) -> AsyncSmartSearchStart {
-        if let Some(opening_inputs) = Self::white_first_turn_opening_next_inputs(&self.game) {
-            let mut game = self.game.clone_for_simulation();
-            let input_fen = Input::fen_from_array(&opening_inputs);
-            let output = game.process_input(opening_inputs, false, false);
-            if matches!(output, Output::Events(_)) {
-                self.mark_opening_book_driven_context();
-                return AsyncSmartSearchStart::Immediate(OutputModel::new(
-                    output,
-                    input_fen.as_str(),
-                ));
-            }
-        }
-
         clear_exact_state_analysis_cache();
         let config = self.shipping_search_config_for_preference(preference);
         if matches!(preference, SmartAutomovePreference::Pro) {
@@ -2853,11 +2656,7 @@ impl MonsGameModel {
         &self,
         preference: SmartAutomovePreference,
     ) -> AutomoveSearchConfig {
-        let hinted = self.pro_runtime_context_hint.get();
-        let (config, resolved_context) =
-            Self::shipping_search_config_for_game_with_context(&self.game, preference, hinted);
-        self.pro_runtime_context_hint.set(resolved_context);
-        config
+        Self::shipping_search_config_for_game(&self.game, preference)
     }
 
     #[cfg(test)]
@@ -2882,36 +2681,22 @@ impl MonsGameModel {
         );
     }
 
-    fn shipping_search_config_for_game_with_context(
+    fn shipping_search_config_for_game(
         game: &MonsGame,
         preference: SmartAutomovePreference,
-        hinted_context: ShippingProContext,
-    ) -> (AutomoveSearchConfig, ShippingProContext) {
-        let opening_black_reply = hinted_context == ShippingProContext::OpeningBookDriven
-            || Self::detect_opening_book_context(game);
+    ) -> AutomoveSearchConfig {
         let mut config = Self::with_runtime_scoring_weights(
             game,
             AutomoveSearchConfig::from_preference(preference),
         );
-        let resolved_context = if Self::uses_deep_runtime_context(preference) {
-            let resolved = Self::resolve_pro_runtime_context(game, hinted_context);
-            config = Self::apply_deep_runtime_context_profile(game, config, preference, resolved);
-            resolved
-        } else {
-            hinted_context
-        };
-        if opening_black_reply {
-            config = match preference {
-                SmartAutomovePreference::Fast => Self::apply_fast_opening_reply_profile(config),
-                SmartAutomovePreference::Normal => Self::apply_normal_opening_reply_profile(config),
-                SmartAutomovePreference::Pro => Self::apply_pro_opening_reply_profile(config),
-            };
+        if Self::uses_deep_runtime_context(preference) {
+            config = Self::apply_deep_runtime_context_profile(game, config, preference);
         }
         config = Self::with_pre_exact_runtime_policy(config);
         if matches!(preference, SmartAutomovePreference::Normal) {
             config = Self::apply_runtime_normal_fast_core_budget_spend_profile(config);
         }
-        (config, resolved_context)
+        config
     }
 
     fn uses_deep_runtime_context(preference: SmartAutomovePreference) -> bool {
@@ -2922,106 +2707,11 @@ impl MonsGameModel {
         game: &MonsGame,
         config: AutomoveSearchConfig,
         preference: SmartAutomovePreference,
-        context: ShippingProContext,
     ) -> AutomoveSearchConfig {
         match preference {
-            SmartAutomovePreference::Pro => {
-                Self::apply_pro_runtime_context_profile(game, config, context)
-            }
+            SmartAutomovePreference::Pro => Self::apply_pro_primary_profile(game, config),
             SmartAutomovePreference::Fast | SmartAutomovePreference::Normal => config,
         }
-    }
-
-    fn resolve_pro_runtime_context(
-        game: &MonsGame,
-        hinted_context: ShippingProContext,
-    ) -> ShippingProContext {
-        if hinted_context == ShippingProContext::OpeningBookDriven {
-            return ShippingProContext::OpeningBookDriven;
-        }
-        if Self::detect_opening_book_context(game) {
-            ShippingProContext::OpeningBookDriven
-        } else {
-            ShippingProContext::Independent
-        }
-    }
-
-    fn detect_opening_book_context(game: &MonsGame) -> bool {
-        if !game.variant().supports_opening_book()
-            || game.turn_number != 2
-            || game.active_color != Color::Black
-        {
-            return false;
-        }
-        let current_fen = game.fen();
-        for sequence in PARSED_WHITE_OPENING_BOOK.iter() {
-            if sequence.is_empty() {
-                continue;
-            }
-            let mut simulated = MonsGame::new(false, game.variant());
-            let mut valid = true;
-            for step_inputs in sequence.iter() {
-                if !matches!(
-                    simulated.process_input(step_inputs.clone(), false, false),
-                    Output::Events(_)
-                ) {
-                    valid = false;
-                    break;
-                }
-                if simulated.turn_number == 2 && simulated.active_color == Color::Black {
-                    break;
-                }
-            }
-            if valid
-                && simulated.turn_number == 2
-                && simulated.active_color == Color::Black
-                && simulated.fen() == current_fen
-            {
-                return true;
-            }
-        }
-        false
-    }
-
-    fn apply_fast_opening_reply_profile(config: AutomoveSearchConfig) -> AutomoveSearchConfig {
-        if config.depth > SMART_AUTOMOVE_FAST_DEPTH as usize {
-            return config;
-        }
-        Self::apply_opening_reply_latency_profile(config, 2, 320, 18, 8, 108, 48)
-    }
-
-    fn apply_normal_opening_reply_profile(config: AutomoveSearchConfig) -> AutomoveSearchConfig {
-        Self::apply_opening_reply_latency_profile(config, 2, 420, 20, 9, 120, 56)
-    }
-
-    fn apply_pro_opening_reply_profile(config: AutomoveSearchConfig) -> AutomoveSearchConfig {
-        Self::apply_opening_reply_latency_profile(config, 3, 1_100, 20, 10, 132, 72)
-    }
-
-    fn apply_opening_reply_latency_profile(
-        mut config: AutomoveSearchConfig,
-        depth: usize,
-        max_visited_nodes: usize,
-        root_branch_limit: usize,
-        node_branch_limit: usize,
-        root_enum_limit: usize,
-        node_enum_limit: usize,
-    ) -> AutomoveSearchConfig {
-        config.depth = depth;
-        config.max_visited_nodes = max_visited_nodes;
-        config.root_branch_limit = root_branch_limit;
-        config.node_branch_limit = node_branch_limit;
-        config.root_enum_limit = root_enum_limit;
-        config.node_enum_limit = node_enum_limit;
-        config.enable_root_efficiency = false;
-        config.enable_child_move_class_coverage = false;
-        config.enable_two_pass_root_allocation = false;
-        config.enable_root_aspiration = false;
-        config.enable_selective_extensions = false;
-        config.enable_normal_root_safety_deep_floor = false;
-        config.root_reply_risk_reply_limit = config.root_reply_risk_reply_limit.min(8);
-        config.root_reply_risk_node_share_bp = config.root_reply_risk_node_share_bp.min(560);
-        config
     }
 
     fn apply_runtime_normal_fast_policy_block(
@@ -3093,19 +2783,6 @@ impl MonsGameModel {
         config
     }
 
-    fn apply_pro_runtime_context_profile(
-        game: &MonsGame,
-        config: AutomoveSearchConfig,
-        context: ShippingProContext,
-    ) -> AutomoveSearchConfig {
-        match context {
-            ShippingProContext::OpeningBookDriven => Self::apply_pro_confirmation_profile(config),
-            ShippingProContext::Unknown | ShippingProContext::Independent => {
-                Self::apply_pro_primary_profile(game, config)
-            }
-        }
-    }
-
     fn apply_pro_primary_profile(
         game: &MonsGame,
         mut config: AutomoveSearchConfig,
@@ -3151,45 +2828,6 @@ impl MonsGameModel {
         config.enable_quiescence_tactical_children_only = true;
         config.quiescence_tactical_enum_limit = 12;
         config
-    }
-
-    fn apply_pro_confirmation_profile(mut config: AutomoveSearchConfig) -> AutomoveSearchConfig {
-        if config.depth < SMART_AUTOMOVE_PRO_DEPTH as usize {
-            return config;
-        }
-        config.max_visited_nodes = SMART_AUTOMOVE_PRO_MAX_VISITED_NODES as usize;
-        config.enable_forced_tactical_prepass = false;
-        config.root_branch_limit = config.root_branch_limit.clamp(14, 34);
-        config.node_branch_limit = config.node_branch_limit.clamp(9, 15);
-        config.root_enum_limit =
-            (config.root_branch_limit * 6).clamp(config.root_branch_limit, 204);
-        config.node_enum_limit =
-            ((config.node_branch_limit + 2) * 6).clamp(config.node_branch_limit, 132);
-        config.enable_futility_pruning = true;
-        config.futility_margin = 2_500;
-        config.enable_quiet_reductions = true;
-        config.quiet_reduction_depth_threshold = 2;
-        config.enable_root_reply_risk_guard = true;
-        config.root_reply_risk_score_margin = 155;
-        config.root_reply_risk_shortlist_max = 7;
-        config.root_reply_risk_reply_limit = 18;
-        config.root_reply_risk_node_share_bp = 1_400;
-        config.enable_normal_root_safety_rerank = true;
-        config.enable_normal_root_safety_deep_floor = false;
-        config.root_drainer_safety_score_margin = 4_300;
-        config.enable_selective_extensions = true;
-        config.max_extensions_per_path = 1;
-        config.selective_extension_node_share_bp = 1_200;
-        config.enable_turn_engine_root_injection = false;
-        config.turn_engine_root_injection_limit = 0;
-        config.turn_engine_root_max_heuristic_gap = 0;
-        config.turn_engine_root_injection_emergency_only = false;
-        config
-    }
-
-    #[cfg(test)]
-    fn pro_runtime_context_hint_for_tests(&self) -> ShippingProContext {
-        self.pro_runtime_context_hint.get()
     }
 
     fn with_pre_exact_runtime_policy(mut config: AutomoveSearchConfig) -> AutomoveSearchConfig {
@@ -19092,83 +18730,6 @@ impl MonsGameModel {
             && Self::is_same_non_tactical_progress_lane_root_pair(candidate, incumbent)
     }
 
-    fn is_pro_v2_white_opening_quiet_spirit_sibling_pair(
-        candidate: &RootEvaluation,
-        incumbent: &RootEvaluation,
-        config: AutomoveSearchConfig,
-    ) -> bool {
-        Self::is_same_opening_safe_setup_pair(candidate, incumbent, config)
-            && Self::turn_engine_root_evaluation_family(candidate) == TurnPlanFamily::SpiritImpact
-            && Self::turn_engine_root_evaluation_family(incumbent) == TurnPlanFamily::SpiritImpact
-            && candidate.spirit_development
-            && incumbent.spirit_development
-            && !candidate.spirit_same_turn_score_setup_now
-            && !incumbent.spirit_same_turn_score_setup_now
-            && !candidate.spirit_own_mana_setup_now
-            && !incumbent.spirit_own_mana_setup_now
-            && !candidate.supermana_progress
-            && !incumbent.supermana_progress
-            && !candidate.opponent_mana_progress
-            && !incumbent.opponent_mana_progress
-            && candidate.spirit_setup_gain == incumbent.spirit_setup_gain
-    }
-
-    fn pro_v2_root_advisor_white_opening_spirit_competition_override(
-        game: &MonsGame,
-        scored_roots: &[RootEvaluation],
-        _selection_indices: &[usize],
-        approved_index: usize,
-        config: AutomoveSearchConfig,
-    ) -> Option<usize> {
-        if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
-            || !game.variant().supports_opening_book()
-            || game.active_color != Color::White
-            || !game.is_first_turn()
-            || game.mons_moves_count != 0
-            || game.player_can_use_action()
-            || game.player_can_move_mana()
-            || scored_roots.is_empty()
-        {
-            return None;
-        }
-
-        const WHITE_OPENING_SPIRIT_SCORE_GAP_MAX: i32 = 24;
-        const WHITE_OPENING_SPIRIT_ROOT_RANK_GAP_MAX: usize = 3;
-
-        let approved = scored_roots.get(approved_index)?;
-        if !approved.spirit_development
-            || approved.spirit_same_turn_score_setup_now
-            || approved.spirit_own_mana_setup_now
-            || Self::turn_engine_root_evaluation_family(approved) != TurnPlanFamily::SpiritImpact
-            || Self::is_white_opening_book_first_move_inputs(game, approved.inputs.as_slice())
-        {
-            return None;
-        }
-
-        scored_roots
-            .iter()
-            .enumerate()
-            .map(|(index, _)| index)
-            .filter(|index| *index != approved_index)
-            .filter(|index| {
-                let challenger = &scored_roots[*index];
-                Self::is_pro_v2_white_opening_quiet_spirit_sibling_pair(
-                    challenger, approved, config,
-                ) && Self::is_white_opening_book_first_move_inputs(
-                    game,
-                    challenger.inputs.as_slice(),
-                ) && approved.score.saturating_sub(challenger.score)
-                    <= WHITE_OPENING_SPIRIT_SCORE_GAP_MAX
-                    && challenger.root_rank
-                        <= approved
-                            .root_rank
-                            .saturating_add(WHITE_OPENING_SPIRIT_ROOT_RANK_GAP_MAX)
-            })
-            .min_by(|left, right| {
-                Self::compare_ranked_scored_root_indices(scored_roots, *left, *right)
-            })
-    }
-
     fn is_pro_v2_late_black_spirit_followup_mana_pair(
         game: &MonsGame,
         candidate: &RootEvaluation,
@@ -20494,15 +20055,6 @@ impl MonsGameModel {
             selection_indices.as_slice(),
             approved_index.0,
             perspective,
-            config,
-        ) {
-            approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedFamilyCompetition);
-        }
-        if let Some(index) = Self::pro_v2_root_advisor_white_opening_spirit_competition_override(
-            game,
-            scored_roots,
-            selection_indices.as_slice(),
-            approved_index.0,
             config,
         ) {
             approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedFamilyCompetition);
@@ -26186,11 +25738,8 @@ mod evaluation_cache_tests {
             ],
             Color::White,
         );
-        let (config, _) = MonsGameModel::shipping_search_config_for_game_with_context(
-            &game,
-            SmartAutomovePreference::Pro,
-            ShippingProContext::Independent,
-        );
+        let config =
+            MonsGameModel::shipping_search_config_for_game(&game, SmartAutomovePreference::Pro);
 
         let first = MonsGameModel::evaluate_search_preferability(&game, Color::White, config);
         let second = MonsGameModel::evaluate_search_preferability(&game, Color::White, config);
@@ -26239,11 +25788,8 @@ mod evaluation_cache_tests {
             ],
             Color::White,
         );
-        let (mut config, _) = MonsGameModel::shipping_search_config_for_game_with_context(
-            &game,
-            SmartAutomovePreference::Pro,
-            ShippingProContext::Independent,
-        );
+        let mut config =
+            MonsGameModel::shipping_search_config_for_game(&game, SmartAutomovePreference::Pro);
         config.enable_local_scoring_eval_ctx = false;
         let without_context =
             MonsGameModel::evaluate_search_preferability(&game, Color::White, config);
@@ -27394,7 +26940,7 @@ mod evaluation_cache_tests {
 }
 
 #[cfg(test)]
-mod opening_book_tests {
+mod smart_automove_tests {
     use super::*;
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
@@ -27419,59 +26965,9 @@ mod opening_book_tests {
         game
     }
 
-    fn advance_opening_book_until_black_turn(game: &mut MonsGame) {
-        let mut applied_steps = 0;
-        while game.turn_number == 1 && applied_steps < 8 {
-            let inputs = MonsGameModel::white_first_turn_opening_next_inputs(game)
-                .expect("expected opening-book continuation during white first turn");
-            assert!(matches!(
-                game.process_input(inputs, false, false),
-                Output::Events(_)
-            ));
-            applied_steps += 1;
-        }
-        assert_eq!(
-            game.turn_number, 2,
-            "opening book should finish white first turn"
-        );
-        assert_eq!(game.active_color, Color::Black);
-    }
-
-    fn apply_opening_book_sequence(game: &mut MonsGame, sequence_index: usize) {
-        for inputs in PARSED_WHITE_OPENING_BOOK[sequence_index].iter() {
-            assert!(matches!(
-                game.process_input(inputs.clone(), false, false),
-                Output::Events(_)
-            ));
-        }
-        assert_eq!(
-            game.turn_number, 2,
-            "opening sequence should finish white first turn"
-        );
-        assert_eq!(game.active_color, Color::Black);
-    }
-
-    fn opening_black_reply_fixture(
-        label: &'static str,
-        sequence_index: usize,
-    ) -> (&'static str, MonsGame) {
-        let mut game = MonsGame::new(false, GameVariant::Classic);
-        apply_opening_book_sequence(&mut game, sequence_index);
-        (label, game)
-    }
-
-    fn opening_black_reply_fixtures() -> Vec<(&'static str, MonsGame)> {
-        vec![
-            opening_black_reply_fixture("left-route", 0),
-            opening_black_reply_fixture("center-route", 2),
-            opening_black_reply_fixture("right-route", 1),
-        ]
-    }
-
     #[derive(Clone)]
     struct RuntimeSpeedFixture {
         game: MonsGame,
-        opening_book_driven: bool,
     }
 
     fn apply_seeded_runtime_move(game: &mut MonsGame, rng: &mut StdRng) -> bool {
@@ -27564,34 +27060,18 @@ mod opening_book_tests {
     }
 
     fn mixed_runtime_speed_gate_fixtures() -> Vec<RuntimeSpeedFixture> {
-        let mut fixtures = opening_black_reply_fixtures()
+        let mut fixtures = seeded_runtime_speed_positions(0x5eed_0ee1, 3, 2, 6)
             .into_iter()
-            .map(|(_, game)| RuntimeSpeedFixture {
-                game,
-                opening_book_driven: true,
-            })
+            .map(|game| RuntimeSpeedFixture { game })
             .collect::<Vec<_>>();
-
-        fixtures.extend(
-            seeded_runtime_speed_positions(0x5eed_0ee1, 3, 2, 6)
-                .into_iter()
-                .map(|game| RuntimeSpeedFixture {
-                    game,
-                    opening_book_driven: false,
-                }),
-        );
         fixtures.extend(
             seeded_runtime_speed_positions(0x5eed_1d00, 3, 10, 16)
                 .into_iter()
-                .map(|game| RuntimeSpeedFixture {
-                    game,
-                    opening_book_driven: false,
-                }),
+                .map(|game| RuntimeSpeedFixture { game }),
         );
         fixtures.extend([
             RuntimeSpeedFixture {
                 game: immediate_score_runtime_fixture(),
-                opening_book_driven: false,
             },
             RuntimeSpeedFixture {
                 game: game_with_items(
@@ -27618,7 +27098,6 @@ mod opening_book_tests {
                     Color::White,
                     2,
                 ),
-                opening_book_driven: false,
             },
             RuntimeSpeedFixture {
                 game: game_with_items(
@@ -27645,7 +27124,6 @@ mod opening_book_tests {
                     Color::White,
                     2,
                 ),
-                opening_book_driven: false,
             },
         ]);
 
@@ -27653,42 +27131,7 @@ mod opening_book_tests {
     }
 
     fn clone_model_for_smart_automove_tests(model: &MonsGameModel) -> MonsGameModel {
-        let cloned = MonsGameModel::with_game(model.game.clone_for_simulation());
-        cloned
-            .pro_runtime_context_hint
-            .set(model.pro_runtime_context_hint.get());
-        cloned
-    }
-
-    fn advance_smart_opening_book_until_black_turn(
-        model: &mut MonsGameModel,
-        preference: SmartAutomovePreference,
-    ) {
-        let mut applied_steps = 0;
-        while model.game.turn_number == 1 && applied_steps < 8 {
-            let output = model.smart_automove_output(preference);
-            assert_eq!(
-                output.kind,
-                OutputModelKind::Events,
-                "opening-book smart output should be events for {}",
-                preference.as_api_value()
-            );
-            let applied = model.process_input_fen(output.input_fen().as_str());
-            assert_eq!(
-                applied.kind,
-                OutputModelKind::Events,
-                "opening-book smart input fen should apply cleanly for {}",
-                preference.as_api_value()
-            );
-            applied_steps += 1;
-        }
-        assert_eq!(
-            model.game.turn_number,
-            2,
-            "opening book should finish white first turn for {}",
-            preference.as_api_value()
-        );
-        assert_eq!(model.game.active_color, Color::Black);
+        MonsGameModel::with_game(model.game.clone_for_simulation())
     }
 
     fn apply_smart_preference_step(
@@ -27860,176 +27303,6 @@ mod opening_book_tests {
     }
 
     #[test]
-    fn white_opening_book_selects_a_valid_first_move() {
-        let game = MonsGame::new(false, GameVariant::Classic);
-        let opening_inputs = MonsGameModel::white_first_turn_opening_next_inputs(&game)
-            .expect("expected opening-book move on initial white turn");
-        let opening_fen = Input::fen_from_array(&opening_inputs);
-        let allowed = [
-            "l10,3;l9,2",
-            "l10,7;l9,8",
-            "l10,4;l9,4",
-            "l10,5;l9,5",
-            "l10,6;l9,7",
-            "l10,3;l9,3",
-        ];
-        assert!(allowed.contains(&opening_fen.as_str()));
-    }
-
-    #[test]
-    fn white_opening_book_continues_unique_prefix() {
-        let mut game = MonsGame::new(false, GameVariant::Classic);
-        let first_inputs = Input::array_from_fen("l10,3;l9,2");
-        assert!(matches!(
-            game.process_input(first_inputs, false, false),
-            Output::Events(_)
-        ));
-
-        let next_inputs = MonsGameModel::white_first_turn_opening_next_inputs(&game)
-            .expect("expected follow-up opening move");
-        assert_eq!(Input::fen_from_array(&next_inputs), "l9,2;l8,1");
-    }
-
-    #[test]
-    fn white_opening_book_falls_back_when_position_diverged() {
-        let mut game = MonsGame::new(false, GameVariant::Classic);
-        let custom_inputs = Input::array_from_fen("l10,3;l9,4");
-        assert!(matches!(
-            game.process_input(custom_inputs, false, false),
-            Output::Events(_)
-        ));
-        assert!(MonsGameModel::white_first_turn_opening_next_inputs(&game).is_none());
-    }
-
-    #[test]
-    fn white_opening_book_is_disabled_for_non_classic_variants() {
-        for variant in [
-            GameVariant::SwappedManaRows,
-            GameVariant::OffsetArcManaRows,
-            GameVariant::CenterSpokeManaRows,
-            GameVariant::AlternatingManaRows,
-            GameVariant::InnerWedgeManaRows,
-            GameVariant::OuterWedgeManaRows,
-            GameVariant::BentCenterManaRows,
-            GameVariant::OuterEdgeManaRows,
-            GameVariant::SplitFlankManaRows,
-            GameVariant::ForwardBridgeManaRows,
-            GameVariant::CornerChainManaRows,
-        ] {
-            let game = MonsGame::new(false, variant);
-            assert!(
-                MonsGameModel::white_first_turn_opening_next_inputs(&game).is_none(),
-                "{variant:?} should not use the classic opening book"
-            );
-        }
-    }
-
-    #[test]
-    fn opening_book_context_detection_is_disabled_for_non_classic_variants() {
-        for variant in [
-            GameVariant::SwappedManaRows,
-            GameVariant::OffsetArcManaRows,
-            GameVariant::CenterSpokeManaRows,
-            GameVariant::AlternatingManaRows,
-            GameVariant::InnerWedgeManaRows,
-            GameVariant::OuterWedgeManaRows,
-            GameVariant::BentCenterManaRows,
-            GameVariant::OuterEdgeManaRows,
-            GameVariant::SplitFlankManaRows,
-            GameVariant::ForwardBridgeManaRows,
-            GameVariant::CornerChainManaRows,
-        ] {
-            let mut game = MonsGame::new(false, variant);
-            game.active_color = Color::Black;
-            game.turn_number = 2;
-            assert!(
-                !MonsGameModel::detect_opening_book_context(&game),
-                "{variant:?} should not detect classic opening-book context"
-            );
-        }
-    }
-
-    #[test]
-    fn white_opening_spirit_competition_override_is_classic_only() {
-        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
-        config.turn_engine_mode = TurnEngineMode::ProV2;
-        let opening_inputs = PARSED_WHITE_OPENING_BOOK[0][0].clone();
-
-        let classic_game = MonsGame::new(false, GameVariant::Classic);
-        let mut classic_approved = root_evaluation_for_projection_test(
-            &classic_game,
-            Location::new(10, 3),
-            920,
-            true,
-            false,
-            false,
-        );
-        classic_approved.inputs = Input::array_from_fen("l10,3;l9,4");
-        classic_approved.efficiency = 90;
-        classic_approved.root_rank = 0;
-
-        let mut classic_challenger = root_evaluation_for_projection_test(
-            &classic_game,
-            Location::new(10, 3),
-            905,
-            true,
-            false,
-            false,
-        );
-        classic_challenger.inputs = opening_inputs.clone();
-        classic_challenger.efficiency = 90;
-        classic_challenger.root_rank = 1;
-        let classic_scored_roots = [classic_approved, classic_challenger];
-
-        assert_eq!(
-            MonsGameModel::pro_v2_root_advisor_white_opening_spirit_competition_override(
-                &classic_game,
-                &classic_scored_roots,
-                &[],
-                0,
-                config,
-            ),
-            Some(1)
-        );
-
-        let swapped_game = MonsGame::new(false, GameVariant::SwappedManaRows);
-        let mut swapped_approved = root_evaluation_for_projection_test(
-            &swapped_game,
-            Location::new(10, 3),
-            920,
-            true,
-            false,
-            false,
-        );
-        swapped_approved.inputs = Input::array_from_fen("l10,3;l9,4");
-        swapped_approved.efficiency = 90;
-        swapped_approved.root_rank = 0;
-
-        let mut swapped_challenger = root_evaluation_for_projection_test(
-            &swapped_game,
-            Location::new(10, 3),
-            905,
-            true,
-            false,
-            false,
-        );
-        swapped_challenger.inputs = opening_inputs;
-        swapped_challenger.efficiency = 90;
-        swapped_challenger.root_rank = 1;
-        let swapped_scored_roots = [swapped_approved, swapped_challenger];
-        assert_eq!(
-            MonsGameModel::pro_v2_root_advisor_white_opening_spirit_competition_override(
-                &swapped_game,
-                &swapped_scored_roots,
-                &[],
-                0,
-                config,
-            ),
-            None
-        );
-    }
-
-    #[test]
     fn pro_mode_is_accepted_and_produces_legal_inputs() {
         assert_eq!(
             SmartAutomovePreference::from_api_value("pro"),
@@ -28072,70 +27345,6 @@ mod opening_book_tests {
             MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs).is_some(),
             "pro mode selected inputs should be legal"
         );
-    }
-
-    #[test]
-    fn opening_book_move_marks_pro_runtime_context_hint() {
-        let model = MonsGameModel::new(GameVariant::Classic);
-        assert_eq!(
-            model.pro_runtime_context_hint_for_tests(),
-            ShippingProContext::Unknown
-        );
-        model.mark_opening_book_driven_context();
-        assert_eq!(
-            model.pro_runtime_context_hint_for_tests(),
-            ShippingProContext::OpeningBookDriven
-        );
-    }
-
-    #[test]
-    fn smart_automove_output_uses_opening_book_until_black_turn_for_all_modes() {
-        for preference in [
-            SmartAutomovePreference::Fast,
-            SmartAutomovePreference::Normal,
-            SmartAutomovePreference::Pro,
-        ] {
-            let mut model = MonsGameModel::new_for_simulation(GameVariant::Classic);
-            advance_smart_opening_book_until_black_turn(&mut model, preference);
-            assert_eq!(
-                model.pro_runtime_context_hint_for_tests(),
-                ShippingProContext::OpeningBookDriven
-            );
-        }
-    }
-
-    #[test]
-    fn smart_automove_black_reply_opening_fixtures_are_legal_for_all_modes() {
-        let (label, game) = opening_black_reply_fixture("center-route", 2);
-        for preference in [
-            SmartAutomovePreference::Fast,
-            SmartAutomovePreference::Normal,
-            SmartAutomovePreference::Pro,
-        ] {
-            let model = MonsGameModel::with_game(game.clone_for_simulation());
-            model.mark_opening_book_driven_context();
-            let mut config = model.shipping_search_config_for_preference(preference);
-            config.depth = 1;
-            config.max_visited_nodes = 8;
-            config.root_branch_limit = 1;
-            config.node_branch_limit = 1;
-            config.root_enum_limit = 1;
-            config.node_enum_limit = 1;
-
-            let inputs = MonsGameModel::smart_search_best_inputs(&model.game, config);
-            assert!(
-                !inputs.is_empty(),
-                "{} should produce at least one black reply on {}",
-                preference.as_api_value(),
-                label
-            );
-            assert!(
-                MonsGameModel::apply_inputs_for_search_with_events(&model.game, &inputs).is_some(),
-                "{} should stay legal on {}",
-                preference.as_api_value(),
-                label
-            );
-        }
     }
 
     #[test]
@@ -28414,9 +27623,6 @@ mod opening_book_tests {
             2,
         );
         let base_model = MonsGameModel::with_game(game);
-        base_model
-            .pro_runtime_context_hint
-            .set(ShippingProContext::Independent);
 
         for preference in [
             SmartAutomovePreference::Fast,
@@ -28456,58 +27662,6 @@ mod opening_book_tests {
     }
 
     #[test]
-    #[ignore = "release-only opening reply latency guard for publish flow"]
-    fn smart_automove_release_opening_black_reply_speed_gate() {
-        use std::time::Instant;
-
-        let fixtures = opening_black_reply_fixtures();
-        let passes = 3usize;
-        let limits_ms = [
-            (SmartAutomovePreference::Fast, 250.0),
-            (SmartAutomovePreference::Normal, 250.0),
-            (SmartAutomovePreference::Pro, 500.0),
-        ];
-
-        for (preference, limit_ms) in limits_ms {
-            let warm_model = MonsGameModel::with_game(fixtures[0].1.clone_for_simulation());
-            warm_model.mark_opening_book_driven_context();
-            let warm_output = warm_model.smart_automove_output(preference);
-            assert_eq!(warm_output.kind, OutputModelKind::Events);
-
-            let mut pass_averages = Vec::with_capacity(passes);
-            for _ in 0..passes {
-                let mut total_ms = 0.0;
-                for (_, fixture) in fixtures.iter() {
-                    crate::models::automove_exact::clear_exact_state_analysis_cache();
-                    let model = MonsGameModel::with_game(fixture.clone_for_simulation());
-                    model.mark_opening_book_driven_context();
-                    let start = Instant::now();
-                    let output = model.smart_automove_output(preference);
-                    total_ms += start.elapsed().as_secs_f64() * 1000.0;
-                    assert_eq!(output.kind, OutputModelKind::Events);
-                }
-                pass_averages.push(total_ms / fixtures.len() as f64);
-            }
-
-            pass_averages.sort_by(|a, b| a.partial_cmp(b).expect("finite timings"));
-            let median_avg_ms = pass_averages[passes / 2];
-            println!(
-                "release opening reply speed gate {}: median_avg_ms={:.2} limit_ms={:.2}",
-                preference.as_api_value(),
-                median_avg_ms,
-                limit_ms
-            );
-            assert!(
-                median_avg_ms <= limit_ms,
-                "{} opening-black-reply median {:.2}ms exceeded limit {:.2}ms",
-                preference.as_api_value(),
-                median_avg_ms,
-                limit_ms
-            );
-        }
-    }
-
-    #[test]
     #[ignore = "release-only mixed-position latency and cpu-ordering guard for publish flow"]
     fn smart_automove_release_mixed_runtime_speed_gate() {
         use std::time::Instant;
@@ -28528,9 +27682,6 @@ mod opening_book_tests {
         for (preference, limit_ms) in limits_ms {
             let warm_fixture = &fixtures[0];
             let warm_model = MonsGameModel::with_game(warm_fixture.game.clone_for_simulation());
-            if warm_fixture.opening_book_driven {
-                warm_model.mark_opening_book_driven_context();
-            }
             let warm_output = warm_model.smart_automove_output(preference);
             assert_eq!(warm_output.kind, OutputModelKind::Events);
 
@@ -28540,9 +27691,6 @@ mod opening_book_tests {
                 for fixture in &fixtures {
                     crate::models::automove_exact::clear_exact_state_analysis_cache();
                     let model = MonsGameModel::with_game(fixture.game.clone_for_simulation());
-                    if fixture.opening_book_driven {
-                        model.mark_opening_book_driven_context();
-                    }
                     let start = Instant::now();
                     let output = model.smart_automove_output(preference);
                     total_ms += start.elapsed().as_secs_f64() * 1000.0;
@@ -28634,38 +27782,7 @@ mod opening_book_tests {
     }
 
     #[test]
-    fn pro_runtime_context_resolver_handles_unknown_opening_and_independent() {
-        let mut opening_game = MonsGame::new(false, GameVariant::Classic);
-        advance_opening_book_until_black_turn(&mut opening_game);
-        assert_eq!(
-            MonsGameModel::resolve_pro_runtime_context(&opening_game, ShippingProContext::Unknown),
-            ShippingProContext::OpeningBookDriven
-        );
-        assert_eq!(
-            MonsGameModel::resolve_pro_runtime_context(
-                &opening_game,
-                ShippingProContext::OpeningBookDriven
-            ),
-            ShippingProContext::OpeningBookDriven
-        );
-
-        let mut independent_game = MonsGame::new(false, GameVariant::Classic);
-        let diverged_inputs = Input::array_from_fen("l10,3;l9,4");
-        assert!(matches!(
-            independent_game.process_input(diverged_inputs, false, false),
-            Output::Events(_)
-        ));
-        assert_eq!(
-            MonsGameModel::resolve_pro_runtime_context(
-                &independent_game,
-                ShippingProContext::Unknown
-            ),
-            ShippingProContext::Independent
-        );
-    }
-
-    #[test]
-    fn pro_runtime_context_profile_applies_expected_tuning() {
+    fn pro_runtime_profile_applies_expected_tuning() {
         let base_game = MonsGame::new(false, GameVariant::Classic);
         let independent_model = MonsGameModel::with_game(base_game);
         let independent_config =
@@ -28702,37 +27819,6 @@ mod opening_book_tests {
         assert_eq!(independent_config.turn_engine_root_injection_limit, 0);
         assert_eq!(independent_config.turn_engine_root_max_heuristic_gap, 0);
         assert!(!independent_config.turn_engine_root_injection_emergency_only);
-
-        let mut opening_game = MonsGame::new(false, GameVariant::Classic);
-        advance_opening_book_until_black_turn(&mut opening_game);
-        let opening_model = MonsGameModel::with_game(opening_game);
-        let opening_config =
-            opening_model.shipping_search_config_for_preference(SmartAutomovePreference::Pro);
-        assert_eq!(opening_config.depth, 3);
-        assert_eq!(opening_config.max_visited_nodes, 1_100);
-        assert_eq!(opening_config.root_branch_limit, 20);
-        assert_eq!(opening_config.node_branch_limit, 10);
-        assert_eq!(opening_config.root_enum_limit, 132);
-        assert_eq!(opening_config.node_enum_limit, 72);
-        assert!(!opening_config.enable_root_efficiency);
-        assert!(!opening_config.enable_child_move_class_coverage);
-        assert!(
-            !opening_config.enable_turn_engine_selector,
-            "opening-book-driven shipping Pro runtime must keep turn-engine disabled"
-        );
-        assert!(!opening_config.enable_two_pass_root_allocation);
-        assert!(!opening_config.enable_root_aspiration);
-        assert!(!opening_config.enable_selective_extensions);
-        assert_eq!(opening_config.root_reply_risk_score_margin, 155);
-        assert_eq!(opening_config.root_reply_risk_shortlist_max, 7);
-        assert!(!opening_config.enable_turn_engine_root_injection);
-        assert!(!opening_config.turn_engine_root_injection_emergency_only);
-        assert_eq!(opening_config.root_reply_risk_reply_limit, 8);
-        assert_eq!(opening_config.root_reply_risk_node_share_bp, 560);
-        assert!(!opening_config.enable_normal_root_safety_deep_floor);
-        assert!(!opening_config.enable_quiescence_tactical_children_only);
-        assert_eq!(opening_config.root_drainer_safety_score_margin, 4_300);
-        assert_eq!(opening_config.selective_extension_node_share_bp, 1_200);
     }
 
     #[test]
@@ -29532,48 +28618,6 @@ mod opening_book_tests {
                     preference.as_api_value()
                 );
             }
-
-            let mut opening_game = MonsGame::new(false, GameVariant::Classic);
-            advance_opening_book_until_black_turn(&mut opening_game);
-            let opening_model = MonsGameModel::with_game(opening_game);
-            let opening_config = opening_model.shipping_search_config_for_preference(preference);
-            assert!(
-                !opening_config.enable_root_exact_tactics,
-                "{} should keep root exact tactics disabled in opening profiles",
-                preference.as_api_value()
-            );
-            assert!(
-                !opening_config.enable_child_exact_tactics,
-                "{} should keep child exact tactics disabled in opening profiles",
-                preference.as_api_value()
-            );
-            assert!(
-                !opening_config.enable_static_exact_evaluation,
-                "{} should keep static exact evaluation disabled in opening profiles",
-                preference.as_api_value()
-            );
-            assert!(
-                !opening_config.enable_exact_lite_progress_checks,
-                "{} should keep exact-lite progress checks disabled in opening profiles",
-                preference.as_api_value()
-            );
-            assert!(
-                !opening_config.enable_exact_lite_spirit_window_checks,
-                "{} should keep exact-lite spirit checks disabled in opening profiles",
-                preference.as_api_value()
-            );
-            assert_eq!(
-                opening_config.exact_lite_root_call_budget,
-                0,
-                "{} should keep exact-lite root budget at zero in opening profiles",
-                preference.as_api_value()
-            );
-            assert_eq!(
-                opening_config.exact_lite_static_call_budget,
-                0,
-                "{} should keep exact-lite static budget at zero in opening profiles",
-                preference.as_api_value()
-            );
         }
     }
 

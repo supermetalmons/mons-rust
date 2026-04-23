@@ -28,31 +28,11 @@ fn set_frontier_runtime_variant_branch(branch: &'static str) {
     FRONTIER_RUNTIME_VARIANT_BRANCH.with(|last_branch| *last_branch.borrow_mut() = branch);
 }
 
-fn opening_book_enabled() -> bool {
-    std::env::var("SMART_USE_WHITE_OPENING_BOOK")
-        .ok()
-        .map(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes"
-            )
-        })
-        .unwrap_or(false)
-}
-
 fn shipping_search_config_for_game(
     game: &MonsGame,
     preference: SmartAutomovePreference,
 ) -> AutomoveSearchConfig {
-    let hinted_context = if game.variant().supports_opening_book()
-        && matches!(preference, SmartAutomovePreference::Pro)
-        && opening_book_enabled()
-    {
-        ShippingProContext::OpeningBookDriven
-    } else {
-        ShippingProContext::Unknown
-    };
-    MonsGameModel::shipping_search_config_for_game_with_context(game, preference, hinted_context).0
+    MonsGameModel::shipping_search_config_for_game(game, preference)
 }
 
 fn select_shipping_search_inputs_internal(
@@ -126,18 +106,6 @@ pub(crate) fn apply_frontier_pro_v2_guarded_config(
         runtime.enable_turn_engine_late_safe_mana_root_preference = true;
     }
     runtime
-}
-
-fn select_opening_book_fallback_inputs(game: &MonsGame) -> Option<Vec<Input>> {
-    if !game.variant().supports_opening_book() || !opening_book_enabled() {
-        return None;
-    }
-
-    let opening_runtime = shipping_search_config_for_game(game, SmartAutomovePreference::Normal);
-    Some(select_shipping_search_inputs(
-        game,
-        MonsGameModel::with_pre_exact_runtime_policy(opening_runtime),
-    ))
 }
 
 fn select_early_white_fallback_inputs(
@@ -829,11 +797,6 @@ pub(crate) fn select_frontier_pro_v2_guarded_inputs(
     game: &MonsGame,
     config: AutomoveSearchConfig,
 ) -> Vec<Input> {
-    if let Some(inputs) = select_opening_book_fallback_inputs(game) {
-        #[cfg(test)]
-        set_frontier_runtime_variant_branch("opening_book_fallback");
-        return inputs;
-    }
     if let Some(inputs) = select_early_white_fallback_inputs(game, config) {
         #[cfg(test)]
         set_frontier_runtime_variant_branch("early_white_fallback");

@@ -11,7 +11,7 @@ default shipping profile:
 
 canonical order:
   1. guardrails
-  2. SMART_TRIAGE_SURFACE=primary_pro pro-triage
+  2. pro-triage
   3. runtime-preflight
   4. pro-reliability
   5. pro-reliability-confirm (only when --confirm is passed)
@@ -53,15 +53,7 @@ print_artifact_summary() {
 run_stage() {
   local stage_name="$1"
   last_stage="${stage_name}"
-  case "${stage_name}" in
-    pro-triage)
-      SMART_TRIAGE_SURFACE=primary_pro \
-        ./scripts/run-automove-experiment.sh "${stage_name}" "${frontier}" "${shipping}"
-      ;;
-    *)
-      ./scripts/run-automove-experiment.sh "${stage_name}" "${frontier}" "${shipping}"
-      ;;
-  esac
+  ./scripts/run-automove-experiment.sh "${stage_name}" "${frontier}" "${shipping}"
 }
 
 confirm=false

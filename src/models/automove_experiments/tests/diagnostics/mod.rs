@@ -437,68 +437,67 @@ fn smart_automove_pro_reliability_duel_trace_probe() {
         },
     ];
 
-    with_env_override("SMART_USE_WHITE_OPENING_BOOK", "false", || {
-        println!(
-            "pro reliability duel trace probe: frontier={} shipping={} repeats={} games_per_repeat={} max_plies={} trace_limit={}",
-            frontier_profile,
-            shipping_profile,
-            repeats,
-            games,
-            max_plies,
-            trace_limit,
-        );
+    println!(
+        "pro reliability duel trace probe: frontier={} shipping={} repeats={} games_per_repeat={} max_plies={} trace_limit={}",
+        frontier_profile,
+        shipping_profile,
+        repeats,
+        games,
+        max_plies,
+        trace_limit,
+    );
 
-        for duel in duel_specs {
-            let opponent_budget = SearchBudget::from_preference(duel.opponent_mode);
-            let mut regressions = 0usize;
-            let mut improvements = 0usize;
-            let mut total_games = 0usize;
-            let mut printed = 0usize;
-            let mut move_pair_counts = BTreeMap::<(String, String), usize>::new();
+    for duel in duel_specs {
+        let opponent_budget = SearchBudget::from_preference(duel.opponent_mode);
+        let mut regressions = 0usize;
+        let mut improvements = 0usize;
+        let mut total_games = 0usize;
+        let mut printed = 0usize;
+        let mut move_pair_counts = BTreeMap::<(String, String), usize>::new();
 
-            for repeat_index in 0..repeats {
-                let seed = seed_for_budget_duel_repeat_and_tag(
-                    pro_budget(),
-                    opponent_budget,
-                    repeat_index,
-                    duel.seed_tag.as_str(),
-                );
-                let opening_fens = generate_opening_fens_cached(seed, games);
-                for (game_index, opening_fen) in opening_fens.iter().enumerate() {
-                    for frontier_is_white in [true, false] {
-                        total_games += 1;
-                        let frontier_trace = play_profile_duel_trace(
-                            frontier_profile.as_str(),
-                            shipping_profile.as_str(),
-                            duel.opponent_mode,
-                            opening_fen.as_str(),
-                            frontier_is_white,
-                            max_plies,
-                        );
-                        let shipping_trace = play_profile_duel_trace(
-                            shipping_profile.as_str(),
-                            shipping_profile.as_str(),
-                            duel.opponent_mode,
-                            opening_fen.as_str(),
-                            frontier_is_white,
-                            max_plies,
-                        );
-                        let delta = match_result_points(frontier_trace.result)
-                            - match_result_points(shipping_trace.result);
-                        if delta < 0 {
-                            regressions += 1;
-                            let first_divergence =
-                                first_duel_trace_divergence(&frontier_trace, &shipping_trace);
-                            if let Some(divergence) = first_divergence.as_ref() {
-                                *move_pair_counts
-                                    .entry((
-                                        divergence.profile_a_move_fen.clone(),
-                                        divergence.profile_b_move_fen.clone(),
-                                    ))
-                                    .or_default() += 1;
-                            }
-                            if printed < trace_limit {
-                                let detail = first_divergence.as_ref().map(|divergence| {
+        for repeat_index in 0..repeats {
+            let seed = seed_for_budget_duel_repeat_and_tag(
+                pro_budget(),
+                opponent_budget,
+                repeat_index,
+                duel.seed_tag.as_str(),
+            );
+            let opening_fens = generate_opening_fens_cached(seed, games);
+            for (game_index, opening_fen) in opening_fens.iter().enumerate() {
+                for frontier_is_white in [true, false] {
+                    total_games += 1;
+                    let frontier_trace = play_profile_duel_trace(
+                        frontier_profile.as_str(),
+                        shipping_profile.as_str(),
+                        duel.opponent_mode,
+                        opening_fen.as_str(),
+                        frontier_is_white,
+                        max_plies,
+                    );
+                    let shipping_trace = play_profile_duel_trace(
+                        shipping_profile.as_str(),
+                        shipping_profile.as_str(),
+                        duel.opponent_mode,
+                        opening_fen.as_str(),
+                        frontier_is_white,
+                        max_plies,
+                    );
+                    let delta = match_result_points(frontier_trace.result)
+                        - match_result_points(shipping_trace.result);
+                    if delta < 0 {
+                        regressions += 1;
+                        let first_divergence =
+                            first_duel_trace_divergence(&frontier_trace, &shipping_trace);
+                        if let Some(divergence) = first_divergence.as_ref() {
+                            *move_pair_counts
+                                .entry((
+                                    divergence.profile_a_move_fen.clone(),
+                                    divergence.profile_b_move_fen.clone(),
+                                ))
+                                .or_default() += 1;
+                        }
+                        if printed < trace_limit {
+                            let detail = first_divergence.as_ref().map(|divergence| {
                                     let board = MonsGame::from_fen(
                                         divergence.board_fen.as_str(),
                                         false,
@@ -545,7 +544,7 @@ fn smart_automove_pro_reliability_duel_trace_probe() {
                                     )
                                 });
 
-                                println!(
+                            println!(
                                     "PRO_RELIABILITY_TRACE duel={} repeat={} opening_index={} frontier_is_white={} opening={} frontier_result={} shipping_result={} frontier_final={} shipping_final={} {}",
                                     duel.label,
                                     repeat_index,
@@ -558,16 +557,16 @@ fn smart_automove_pro_reliability_duel_trace_probe() {
                                     shipping_trace.final_fen,
                                     detail.unwrap_or_else(|| "first_diff=none".to_string()),
                                 );
-                                printed += 1;
-                            }
-                        } else if delta > 0 {
-                            improvements += 1;
+                            printed += 1;
                         }
+                    } else if delta > 0 {
+                        improvements += 1;
                     }
                 }
             }
+        }
 
-            println!(
+        println!(
                 "PRO_RELIABILITY_TRACE_SUMMARY duel={} total_games={} regressions={} improvements={} flat={} repeated_move_pairs={:?}",
                 duel.label,
                 total_games,
@@ -576,8 +575,7 @@ fn smart_automove_pro_reliability_duel_trace_probe() {
                 total_games.saturating_sub(regressions + improvements),
                 move_pair_counts,
             );
-        }
-    });
+    }
 }
 
 #[test]
@@ -1220,60 +1218,59 @@ fn smart_automove_pro_reliability_nonwin_trace_probe() {
         ),
     ];
 
-    with_env_override("SMART_USE_WHITE_OPENING_BOOK", "false", || {
-        println!(
-            "pro reliability non-win trace probe: frontier={} shipping={} repeats={} games_per_repeat={} max_plies={} trace_limit={} duel_filter={:?}",
-            frontier_profile,
-            shipping_profile,
-            repeats,
-            games,
-            max_plies,
-            trace_limit,
-            duel_filter,
-        );
+    println!(
+        "pro reliability non-win trace probe: frontier={} shipping={} repeats={} games_per_repeat={} max_plies={} trace_limit={} duel_filter={:?}",
+        frontier_profile,
+        shipping_profile,
+        repeats,
+        games,
+        max_plies,
+        trace_limit,
+        duel_filter,
+    );
 
-        for (duel_label, opponent_mode, duel_seed_tag) in duel_specs {
-            if duel_filter
-                .as_deref()
-                .is_some_and(|filter| filter != duel_label)
-            {
-                continue;
-            }
+    for (duel_label, opponent_mode, duel_seed_tag) in duel_specs {
+        if duel_filter
+            .as_deref()
+            .is_some_and(|filter| filter != duel_label)
+        {
+            continue;
+        }
 
-            let opponent_budget = SearchBudget::from_preference(opponent_mode);
-            let mut nonwins = 0usize;
-            let mut printed = 0usize;
+        let opponent_budget = SearchBudget::from_preference(opponent_mode);
+        let mut nonwins = 0usize;
+        let mut printed = 0usize;
 
-            for repeat_index in 0..repeats {
-                let seed = seed_for_budget_duel_repeat_and_tag(
-                    pro_budget(),
-                    opponent_budget,
-                    repeat_index,
-                    duel_seed_tag.as_str(),
-                );
-                let opening_fens = generate_opening_fens_cached(seed, games);
-                for (game_index, opening_fen) in opening_fens.iter().enumerate() {
-                    for frontier_is_white in [true, false] {
-                        let frontier_trace = play_profile_duel_trace(
-                            frontier_profile.as_str(),
-                            shipping_profile.as_str(),
-                            opponent_mode,
-                            opening_fen.as_str(),
-                            frontier_is_white,
-                            max_plies,
-                        );
-                        if !matches!(frontier_trace.result, MatchResult::ProfileAWin) {
-                            nonwins += 1;
-                            if printed < trace_limit {
-                                let shipping_trace = play_profile_duel_trace(
-                                    shipping_profile.as_str(),
-                                    shipping_profile.as_str(),
-                                    opponent_mode,
-                                    opening_fen.as_str(),
-                                    frontier_is_white,
-                                    max_plies,
-                                );
-                                let detail = first_duel_trace_divergence(
+        for repeat_index in 0..repeats {
+            let seed = seed_for_budget_duel_repeat_and_tag(
+                pro_budget(),
+                opponent_budget,
+                repeat_index,
+                duel_seed_tag.as_str(),
+            );
+            let opening_fens = generate_opening_fens_cached(seed, games);
+            for (game_index, opening_fen) in opening_fens.iter().enumerate() {
+                for frontier_is_white in [true, false] {
+                    let frontier_trace = play_profile_duel_trace(
+                        frontier_profile.as_str(),
+                        shipping_profile.as_str(),
+                        opponent_mode,
+                        opening_fen.as_str(),
+                        frontier_is_white,
+                        max_plies,
+                    );
+                    if !matches!(frontier_trace.result, MatchResult::ProfileAWin) {
+                        nonwins += 1;
+                        if printed < trace_limit {
+                            let shipping_trace = play_profile_duel_trace(
+                                shipping_profile.as_str(),
+                                shipping_profile.as_str(),
+                                opponent_mode,
+                                opening_fen.as_str(),
+                                frontier_is_white,
+                                max_plies,
+                            );
+                            let detail = first_duel_trace_divergence(
                                     &frontier_trace,
                                     &shipping_trace,
                                 )
@@ -1315,7 +1312,7 @@ fn smart_automove_pro_reliability_nonwin_trace_probe() {
                                 })
                                 .unwrap_or_else(|| "first_diff=none".to_string());
 
-                                println!(
+                            println!(
                                     "PRO_RELIABILITY_NONWIN duel={} repeat={} opening_index={} frontier_is_white={} opening={} frontier_result={} shipping_result={} frontier_final={} shipping_final={} {}",
                                     duel_label,
                                     repeat_index,
@@ -1328,19 +1325,18 @@ fn smart_automove_pro_reliability_nonwin_trace_probe() {
                                     shipping_trace.final_fen,
                                     detail,
                                 );
-                                printed += 1;
-                            }
+                            printed += 1;
                         }
                     }
                 }
             }
-
-            println!(
-                "PRO_RELIABILITY_NONWIN_SUMMARY duel={} total_nonwins={} trace_limit={}",
-                duel_label, nonwins, trace_limit,
-            );
         }
-    });
+
+        println!(
+            "PRO_RELIABILITY_NONWIN_SUMMARY duel={} total_nonwins={} trace_limit={}",
+            duel_label, nonwins, trace_limit,
+        );
+    }
 }
 
 #[test]
@@ -1354,7 +1350,6 @@ fn smart_automove_pro_reliability_hotspot_probe() {
         label: &'static str,
         game: MonsGame,
         mode: SmartAutomovePreference,
-        opening_book_driven: bool,
         config_tweak: Option<fn(AutomoveSearchConfig) -> AutomoveSearchConfig>,
     }
 
@@ -1363,7 +1358,6 @@ fn smart_automove_pro_reliability_hotspot_probe() {
             label,
             game: fixture.game,
             mode: fixture.mode,
-            opening_book_driven: fixture.opening_book_driven,
             config_tweak: fixture.config_tweak,
         }
     }
@@ -1569,7 +1563,6 @@ fn smart_automove_pro_reliability_hotspot_probe() {
             )
             .expect("loss opening a fen should be valid"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
         },
         ProbeCase {
@@ -1580,7 +1573,6 @@ fn smart_automove_pro_reliability_hotspot_probe() {
             )
             .expect("loss opening b fen should be valid"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
         },
         ProbeCase {
@@ -1609,7 +1601,6 @@ fn smart_automove_pro_reliability_hotspot_probe() {
                 Color::White,
             ),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
         },
     ];
@@ -1621,37 +1612,27 @@ fn smart_automove_pro_reliability_hotspot_probe() {
         cases.len()
     );
     for case in cases {
-        with_env_override(
-            "SMART_USE_WHITE_OPENING_BOOK",
-            if case.opening_book_driven {
-                "true"
-            } else {
-                "false"
-            },
-            || {
-                let frontier = run_probe_for_profile(frontier_profile.as_str(), &case);
-                let shipping = run_probe_for_profile(shipping_profile.as_str(), &case);
+        let frontier = run_probe_for_profile(frontier_profile.as_str(), &case);
+        let shipping = run_probe_for_profile(shipping_profile.as_str(), &case);
 
-                println!(
-                    "HOTSPOT label={} changed={} frontier_move={} shipping_move={} ms={:.2}/{:.2} selector(last_stage={}/{}) exact={} engine={} fen={}",
-                    case.label,
-                    frontier.move_fen != shipping.move_fen,
-                    frontier.move_fen,
-                    shipping.move_fen,
-                    frontier.elapsed_ms,
-                    shipping.elapsed_ms,
-                    frontier.selector_diag.last_return_stage,
-                    shipping.selector_diag.last_return_stage,
-                    format_metric_delta(&exact_metrics(&frontier), &exact_metrics(&shipping)),
-                    format_metric_delta(&engine_metrics(&frontier), &engine_metrics(&shipping)),
-                    case.game.fen(),
-                );
-                println!(
-                    "HOTSPOT_SELECTOR label={} {}",
-                    case.label,
-                    format_metric_delta(&selector_metrics(&frontier), &selector_metrics(&shipping)),
-                );
-            },
+        println!(
+            "HOTSPOT label={} changed={} frontier_move={} shipping_move={} ms={:.2}/{:.2} selector(last_stage={}/{}) exact={} engine={} fen={}",
+            case.label,
+            frontier.move_fen != shipping.move_fen,
+            frontier.move_fen,
+            shipping.move_fen,
+            frontier.elapsed_ms,
+            shipping.elapsed_ms,
+            frontier.selector_diag.last_return_stage,
+            shipping.selector_diag.last_return_stage,
+            format_metric_delta(&exact_metrics(&frontier), &exact_metrics(&shipping)),
+            format_metric_delta(&engine_metrics(&frontier), &engine_metrics(&shipping)),
+            case.game.fen(),
+        );
+        println!(
+            "HOTSPOT_SELECTOR label={} {}",
+            case.label,
+            format_metric_delta(&selector_metrics(&frontier), &selector_metrics(&shipping)),
         );
     }
 }
@@ -1664,7 +1645,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
         label: &'static str,
         game: MonsGame,
         mode: SmartAutomovePreference,
-        opening_book_driven: bool,
         expect_selected_matches_approved: bool,
     }
 
@@ -1674,7 +1654,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
             label: id,
             game: fixture.game,
             mode: fixture.mode,
-            opening_book_driven: fixture.opening_book_driven,
             expect_selected_matches_approved: true,
         }
     }
@@ -1694,7 +1673,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
             )
             .expect("valid pro white duel-trace fen"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             expect_selected_matches_approved: true,
         },
         AdvisorTraceCase {
@@ -1705,7 +1683,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
             )
             .expect("valid normal white duel-trace fen"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             expect_selected_matches_approved: true,
         },
         AdvisorTraceCase {
@@ -1716,14 +1693,12 @@ fn smart_automove_pro_root_advisor_trace_probe() {
             )
             .expect("valid normal black duel-trace fen"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             expect_selected_matches_approved: true,
         },
         AdvisorTraceCase {
             label: "duel_trace_fast_black_mana",
             game: primary_pro_fixture_by_id("primary_black_turn_four_action_mana_ply15").game,
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             expect_selected_matches_approved: true,
         },
         AdvisorTraceCase {
@@ -1734,7 +1709,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
             )
             .expect("valid normal black plain-followup duel-trace fen"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             expect_selected_matches_approved: true,
         },
         AdvisorTraceCase {
@@ -1745,7 +1719,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
             )
             .expect("valid normal white mana sibling v92 duel-trace fen"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             expect_selected_matches_approved: true,
         },
         AdvisorTraceCase {
@@ -1756,7 +1729,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
             )
             .expect("valid fast white duel-trace fen"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             expect_selected_matches_approved: true,
         },
         AdvisorTraceCase {
@@ -1767,7 +1739,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
             )
             .expect("valid fast white mana sibling v94 duel-trace fen"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             expect_selected_matches_approved: true,
         },
         AdvisorTraceCase {
@@ -1778,7 +1749,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
             )
             .expect("valid fast black non-win v1 duel-trace fen"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             expect_selected_matches_approved: true,
         },
         AdvisorTraceCase {
@@ -1789,7 +1759,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
             )
             .expect("valid pro black shared late post-search nonwin fen"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             expect_selected_matches_approved: true,
         },
         AdvisorTraceCase {
@@ -1800,7 +1769,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
             )
             .expect("valid pro black turn-four followup nonwin fen"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             expect_selected_matches_approved: true,
         },
         AdvisorTraceCase {
@@ -1811,7 +1779,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
             )
             .expect("valid pro white late post-search nonwin fen"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             expect_selected_matches_approved: true,
         },
         AdvisorTraceCase {
@@ -1822,7 +1789,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
             )
             .expect("valid pro white harvest followup nonwin fen"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             expect_selected_matches_approved: true,
         },
         AdvisorTraceCase {
@@ -1833,7 +1799,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
             )
             .expect("valid pro white late cluster nonwin fen"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             expect_selected_matches_approved: true,
         },
         AdvisorTraceCase {
@@ -1844,7 +1809,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
             )
             .expect("valid pro black turn ten nonwin fen"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             expect_selected_matches_approved: true,
         },
         AdvisorTraceCase {
@@ -1855,7 +1819,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
             )
             .expect("valid fast black late mana lane nonwin fen"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             expect_selected_matches_approved: true,
         },
         AdvisorTraceCase {
@@ -1866,7 +1829,6 @@ fn smart_automove_pro_root_advisor_trace_probe() {
             )
             .expect("valid fast black late second lane nonwin fen"),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             expect_selected_matches_approved: true,
         },
     ];
@@ -1878,50 +1840,41 @@ fn smart_automove_pro_root_advisor_trace_probe() {
         clear_turn_engine_diagnostics();
         clear_turn_engine_selector_diagnostics();
 
-        with_env_override(
-            "SMART_USE_WHITE_OPENING_BOOK",
-            if case.opening_book_driven {
-                "true"
-            } else {
-                "false"
-            },
-            || {
-                let configured_runtime =
-                    calibration_runtime_config("frontier_pro_v2_guarded", &case.game, case.mode);
-                let selected =
-                    MonsGameModel::smart_search_best_inputs(&case.game, configured_runtime);
-                let decision = pro_v2_root_advisor_decision_snapshot()
-                    .unwrap_or_else(|| panic!("advisor decision missing for {}", case.label));
-                let approved_root = decision
-                    .approved_root
-                    .as_ref()
-                    .unwrap_or_else(|| panic!("approved root missing for {}", case.label));
+        let configured_runtime =
+            calibration_runtime_config("frontier_pro_v2_guarded", &case.game, case.mode);
+        let selected = MonsGameModel::smart_search_best_inputs(&case.game, configured_runtime);
+        let decision = pro_v2_root_advisor_decision_snapshot()
+            .unwrap_or_else(|| panic!("advisor decision missing for {}", case.label));
+        let approved_root = decision
+            .approved_root
+            .as_ref()
+            .unwrap_or_else(|| panic!("approved root missing for {}", case.label));
 
-                let ordered_shortlist = decision
-                    .ordered_shortlist
-                    .iter()
-                    .map(format_root_advisor_entry_probe)
-                    .collect::<Vec<_>>()
-                    .join(" | ");
-                let preserved = decision
-                    .preserved_family_representatives
-                    .iter()
-                    .map(format_root_advisor_entry_probe)
-                    .collect::<Vec<_>>()
-                    .join(" | ");
-                let injected = decision.injected_root.as_ref().map_or_else(
-                    || "none".to_string(),
-                    |root| {
-                        format!(
-                            "{}:{:?}:admitted={}:reason={:?}",
-                            Input::fen_from_array(&root.inputs),
-                            root.family,
-                            root.admitted,
-                            root.reason,
-                        )
-                    },
-                );
-                println!(
+        let ordered_shortlist = decision
+            .ordered_shortlist
+            .iter()
+            .map(format_root_advisor_entry_probe)
+            .collect::<Vec<_>>()
+            .join(" | ");
+        let preserved = decision
+            .preserved_family_representatives
+            .iter()
+            .map(format_root_advisor_entry_probe)
+            .collect::<Vec<_>>()
+            .join(" | ");
+        let injected = decision.injected_root.as_ref().map_or_else(
+            || "none".to_string(),
+            |root| {
+                format!(
+                    "{}:{:?}:admitted={}:reason={:?}",
+                    Input::fen_from_array(&root.inputs),
+                    root.family,
+                    root.admitted,
+                    root.reason,
+                )
+            },
+        );
+        println!(
                     "ROOT_ADVISOR_TRACE label={} mode={:?} selected={} approved={} injected={} shortlist=[{}] preserved=[{}] fen={}",
                     case.label,
                     case.mode,
@@ -1932,19 +1885,17 @@ fn smart_automove_pro_root_advisor_trace_probe() {
                     preserved,
                     case.game.fen(),
                 );
-                if case.expect_selected_matches_approved {
-                    assert_eq!(
-                        approved_root.inputs, selected,
-                        "advisor-approved root must match the selected runtime move on {}",
-                        case.label,
-                    );
-                }
-                assert!(
-                    !decision.ordered_shortlist.is_empty(),
-                    "advisor shortlist must be non-empty on {}",
-                    case.label,
-                );
-            },
+        if case.expect_selected_matches_approved {
+            assert_eq!(
+                approved_root.inputs, selected,
+                "advisor-approved root must match the selected runtime move on {}",
+                case.label,
+            );
+        }
+        assert!(
+            !decision.ordered_shortlist.is_empty(),
+            "advisor shortlist must be non-empty on {}",
+            case.label,
         );
     }
 }
@@ -1975,85 +1926,84 @@ fn smart_automove_pro_triage_retained_churn_probe() {
     );
     for fixture_id in fixture_ids {
         let fixture = primary_pro_fixture_by_id(fixture_id);
-        with_env_override("SMART_USE_WHITE_OPENING_BOOK", "false", || {
-            for profile_name in [frontier_profile, shipping_profile] {
-                clear_exact_state_analysis_cache();
-                clear_exact_query_diagnostics();
-                clear_turn_engine_plan_cache();
-                clear_turn_engine_diagnostics();
-                clear_turn_engine_selector_diagnostics();
+        for profile_name in [frontier_profile, shipping_profile] {
+            clear_exact_state_analysis_cache();
+            clear_exact_query_diagnostics();
+            clear_turn_engine_plan_cache();
+            clear_turn_engine_diagnostics();
+            clear_turn_engine_selector_diagnostics();
 
-                let snapshot = pro_triage_fixture_snapshot(
-                    profile_name,
-                    profile_selector_from_name(profile_name)
-                        .unwrap_or_else(|| panic!("profile '{}' not found", profile_name)),
-                    &fixture,
-                );
-                let (config, scored_roots) =
-                    profile_scored_roots(profile_name, fixture.mode, &fixture.game);
-                let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
+            let snapshot = pro_triage_fixture_snapshot(
+                profile_name,
+                profile_selector_from_name(profile_name)
+                    .unwrap_or_else(|| panic!("profile '{}' not found", profile_name)),
+                &fixture,
+            );
+            let (config, scored_roots) =
+                profile_scored_roots(profile_name, fixture.mode, &fixture.game);
+            let pre_accept_selected = MonsGameModel::pick_root_move_with_exploration(
+                &fixture.game,
+                scored_roots.as_slice(),
+                fixture.game.active_color,
+                config,
+            );
+            let pre_accept_selected_fen = Input::fen_from_array(&pre_accept_selected);
+            let pre_accept_selected_rank = scored_roots
+                .iter()
+                .position(|root| root.inputs == pre_accept_selected)
+                .unwrap_or(scored_roots.len());
+            let head_plan = if config.enable_turn_engine_selector {
+                turn_engine_candidate_plan(
                     &fixture.game,
-                    scored_roots.as_slice(),
                     fixture.game.active_color,
+                    MonsGameModel::turn_engine_config_for_game(&fixture.game, config),
+                )
+            } else {
+                None
+            };
+            let selector_diag = turn_engine_selector_diagnostics_snapshot();
+            let engine_diag = turn_engine_diagnostics_snapshot();
+            let exact_diag = exact_query_diagnostics_snapshot();
+            let selected_root = scored_roots
+                .iter()
+                .find(|root| Input::fen_from_array(&root.inputs) == snapshot.selected_input_fen);
+            let head_root = head_plan
+                .as_ref()
+                .and_then(|plan| plan.compiled_chunks.first())
+                .and_then(|chunk| {
+                    scored_roots
+                        .iter()
+                        .find(|root| root.inputs.as_slice() == chunk.as_slice())
+                });
+            let reply_limit = config.node_enum_limit.clamp(
+                SMART_NORMAL_ROOT_SAFETY_REPLY_LIMIT_MIN,
+                SMART_NORMAL_ROOT_SAFETY_REPLY_LIMIT_MAX,
+            );
+            let my_score_before =
+                MonsGameModel::score_for_color(&fixture.game, fixture.game.active_color);
+            let start_options = MonsGameModel::automove_start_input_options(config);
+            let selected_normal_snapshot = selected_root.map(|root| {
+                MonsGameModel::normal_root_safety_snapshot(
+                    &root.game,
+                    fixture.game.active_color,
+                    my_score_before,
                     config,
-                );
-                let pre_accept_selected_fen = Input::fen_from_array(&pre_accept_selected);
-                let pre_accept_selected_rank = scored_roots
-                    .iter()
-                    .position(|root| root.inputs == pre_accept_selected)
-                    .unwrap_or(scored_roots.len());
-                let head_plan = if config.enable_turn_engine_selector {
-                    turn_engine_candidate_plan(
-                        &fixture.game,
-                        fixture.game.active_color,
-                        MonsGameModel::turn_engine_config_for_game(&fixture.game, config),
-                    )
-                } else {
-                    None
-                };
-                let selector_diag = turn_engine_selector_diagnostics_snapshot();
-                let engine_diag = turn_engine_diagnostics_snapshot();
-                let exact_diag = exact_query_diagnostics_snapshot();
-                let selected_root = scored_roots.iter().find(|root| {
-                    Input::fen_from_array(&root.inputs) == snapshot.selected_input_fen
-                });
-                let head_root = head_plan
-                    .as_ref()
-                    .and_then(|plan| plan.compiled_chunks.first())
-                    .and_then(|chunk| {
-                        scored_roots
-                            .iter()
-                            .find(|root| root.inputs.as_slice() == chunk.as_slice())
-                    });
-                let reply_limit = config.node_enum_limit.clamp(
-                    SMART_NORMAL_ROOT_SAFETY_REPLY_LIMIT_MIN,
-                    SMART_NORMAL_ROOT_SAFETY_REPLY_LIMIT_MAX,
-                );
-                let my_score_before =
-                    MonsGameModel::score_for_color(&fixture.game, fixture.game.active_color);
-                let start_options = MonsGameModel::automove_start_input_options(config);
-                let selected_normal_snapshot = selected_root.map(|root| {
-                    MonsGameModel::normal_root_safety_snapshot(
-                        &root.game,
-                        fixture.game.active_color,
-                        my_score_before,
-                        config,
-                        reply_limit,
-                        start_options,
-                    )
-                });
-                let head_normal_snapshot = head_root.map(|root| {
-                    MonsGameModel::normal_root_safety_snapshot(
-                        &root.game,
-                        fixture.game.active_color,
-                        my_score_before,
-                        config,
-                        reply_limit,
-                        start_options,
-                    )
-                });
+                    reply_limit,
+                    start_options,
+                )
+            });
+            let head_normal_snapshot = head_root.map(|root| {
+                MonsGameModel::normal_root_safety_snapshot(
+                    &root.game,
+                    fixture.game.active_color,
+                    my_score_before,
+                    config,
+                    reply_limit,
+                    start_options,
+                )
+            });
 
-                println!(
+            println!(
                     "RETAINED_CHURN fixture={} profile={} selected_rank={} selected={} pre_accept_rank={} pre_accept={} top_roots={:?} selector(last_stage={} head_calls={} head_hits={} child_calls={} children={} shortlist={} full_pass={} prefer_builds={} prefer_hits={}) head_plan(first_chunk={:?} selected_matches_head={} head_family={:?} goal_family={:?} utility={:?} head_utility={:?}) selected_root=\"{}\" head_root=\"{}\" normal_safety(selected=\"{}\" head=\"{}\") engine(accepted={} cache_hits={} cache_misses={} reply_calls={}) exact(tactical_spirit_calls={} tactical_spirit_hits={} secure_mana_calls={} secure_mana_hits={} pickup_calls={} pickup_hits={}) fen={}",
                     fixture.id,
                     profile_name,
@@ -2098,8 +2048,7 @@ fn smart_automove_pro_triage_retained_churn_probe() {
                     exact_diag.pickup_path_cache_hits,
                     fixture.game.fen(),
                 );
-            }
-        });
+        }
     }
 }
 

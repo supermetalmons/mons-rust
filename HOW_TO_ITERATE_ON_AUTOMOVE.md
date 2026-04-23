@@ -19,7 +19,7 @@ Archived profiles, archived seams, and archived stages are not valid experiment 
 
 - Retained profiles: `shipping_pro_search`, `frontier_pro_v2_guarded`
 - Canonical stages: `guardrails`, `pro-triage`, `runtime-preflight`, `pro-reliability`, `pro-reliability-confirm`
-- Canonical triage surfaces: `opening_reply`, `primary_pro`
+- Canonical triage surface: `primary_pro`
 
 ## Canonical Loop
 
@@ -42,7 +42,7 @@ Use `./scripts/run-automove-experiment.sh` when you need one stage at a time or 
 
 ```sh
 ./scripts/run-automove-experiment.sh guardrails frontier_pro_v2_guarded
-SMART_TRIAGE_SURFACE=opening_reply ./scripts/run-automove-experiment.sh pro-triage frontier_pro_v2_guarded
+./scripts/run-automove-experiment.sh pro-triage frontier_pro_v2_guarded
 ./scripts/run-automove-experiment.sh runtime-preflight frontier_pro_v2_guarded
 ./scripts/run-automove-experiment.sh pro-reliability frontier_pro_v2_guarded
 ```

@@ -276,9 +276,9 @@ fn smart_automove_pool_exact_lite_diagnostics_gate() {
 }
 
 #[test]
-#[ignore = "deterministic fixture-first triage for pro opening_reply and primary_pro surfaces"]
+#[ignore = "deterministic fixture-first triage for primary_pro surface"]
 fn smart_automove_pool_pro_signal_triage() {
-    let surface = triage_surface_from_env();
+    let surface = TriageSurface::PrimaryPro;
     let frontier_profile_name = frontier_profile_id();
     let shipping_profile_name = shipping_profile_id();
     let frontier_selector = profile_selector_from_name(frontier_profile_name.as_str())
@@ -289,14 +289,6 @@ fn smart_automove_pool_pro_signal_triage() {
     assert_tactical_guardrails(frontier_selector, frontier_profile_name.as_str());
     assert_interview_policy_regressions(frontier_selector, frontier_profile_name.as_str());
 
-    let opening_changed = compare_pro_triage_fixture_pack(
-        TriageSurface::OpeningReply,
-        frontier_profile_name.as_str(),
-        frontier_selector,
-        shipping_profile_name.as_str(),
-        shipping_selector,
-        opening_reply_triage_fixtures().as_slice(),
-    );
     let primary_changed = compare_pro_triage_fixture_pack(
         TriageSurface::PrimaryPro,
         frontier_profile_name.as_str(),
@@ -306,10 +298,8 @@ fn smart_automove_pool_pro_signal_triage() {
         primary_pro_triage_fixtures().as_slice(),
     );
 
-    let (target_changed, off_target_changed) = match surface {
-        TriageSurface::OpeningReply => (opening_changed, primary_changed),
-        TriageSurface::PrimaryPro => (primary_changed, opening_changed),
-    };
+    let target_changed = primary_changed;
+    let off_target_changed = 0;
 
     println!(
         "pro triage surface={} target_changed={} off_target_changed={}",
@@ -376,7 +366,6 @@ fn smart_automove_pool_pro_reliability_gate() {
         repeats,
         games_per_repeat: games,
         max_plies,
-        use_white_opening_book: false,
     });
     let normal_stats = run_cross_budget_duel_with_timing(CrossBudgetDuelConfig {
         profile_a: frontier_profile.as_str(),
@@ -387,7 +376,6 @@ fn smart_automove_pool_pro_reliability_gate() {
         repeats,
         games_per_repeat: games,
         max_plies,
-        use_white_opening_book: false,
     });
     let fast_stats = run_cross_budget_duel_with_timing(CrossBudgetDuelConfig {
         profile_a: frontier_profile.as_str(),
@@ -398,7 +386,6 @@ fn smart_automove_pool_pro_reliability_gate() {
         repeats,
         games_per_repeat: games,
         max_plies,
-        use_white_opening_book: false,
     });
 
     let pro_total_games = pro_stats.matchup.total_games();

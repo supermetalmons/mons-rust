@@ -2,7 +2,6 @@
 set -euo pipefail
 
 usage() {
-  local triage_surfaces="opening_reply primary_pro"
   cat <<'EOF_HELP'
 usage:
   ./scripts/run-automove-experiment.sh <stage> <frontier> [shipping]
@@ -13,20 +12,18 @@ single-stage runner:
 stages:
   guardrails              tactical guardrails only; the cheap first gate
   runtime-preflight       stage-1 cpu report (advisory for Pro) + exact-lite diagnostics; writes the duel stamp
-  pro-triage              deterministic Pro triage for opening_reply or primary_pro
+  pro-triage              deterministic primary_pro triage
   pro-reliability         focused Pro-vs-Pro, Pro-vs-Normal, and Pro-vs-Fast reliability gate
   pro-reliability-confirm larger confirmation gate with the same three Pro matchups
 
 defaults:
   shipping = shipping_pro_search for Pro stages
 EOF_HELP
-  cat <<EOF_HELP
-  pro triage surfaces = ${triage_surfaces}
-
+  cat <<'EOF_HELP'
 examples:
   ./scripts/run-automove-experiment.sh guardrails frontier_pro_v2_guarded
   ./scripts/run-automove-experiment.sh runtime-preflight frontier_pro_v2_guarded
-  SMART_TRIAGE_SURFACE=primary_pro ./scripts/run-automove-experiment.sh pro-triage frontier_pro_v2_guarded
+  ./scripts/run-automove-experiment.sh pro-triage frontier_pro_v2_guarded
   ./scripts/run-automove-experiment.sh pro-reliability frontier_pro_v2_guarded
   ./scripts/run-automove-experiment.sh pro-reliability-confirm frontier_pro_v2_guarded
 EOF_HELP
@@ -205,9 +202,8 @@ case "${stage}" in
     run_runtime_preflight
     ;;
   pro-triage)
-    triage_surface="${SMART_TRIAGE_SURFACE:-unset}"
     run_cargo_logged \
-      "pro_triage_${triage_surface}_${frontier}" \
+      "pro_triage_primary_pro_${frontier}" \
       "smart_automove_pool_pro_signal_triage" \
       "SMART_SHIPPING_PROFILE=${shipping}"
     ;;

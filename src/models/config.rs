@@ -59,10 +59,6 @@ impl GameVariant {
         }
     }
 
-    pub const fn supports_opening_book(self) -> bool {
-        matches!(self, Self::Classic)
-    }
-
     pub fn from_fen(fen: &str) -> Option<Self> {
         fen.parse::<i32>().ok().and_then(Self::from_id)
     }

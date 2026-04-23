@@ -4,22 +4,12 @@ use super::runner::{select_inputs_with_runtime_fallback, tactical_game_with_item
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in super::super) enum TriageSurface {
-    OpeningReply,
     PrimaryPro,
 }
 
 impl TriageSurface {
-    pub(in super::super) fn parse(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "opening_reply" => Some(Self::OpeningReply),
-            "primary_pro" => Some(Self::PrimaryPro),
-            _ => None,
-        }
-    }
-
     pub(in super::super) fn as_str(self) -> &'static str {
         match self {
-            Self::OpeningReply => "opening_reply",
             Self::PrimaryPro => "primary_pro",
         }
     }
@@ -30,7 +20,6 @@ pub(in super::super) struct TriageFixture {
     pub id: &'static str,
     pub game: MonsGame,
     pub mode: SmartAutomovePreference,
-    pub opening_book_driven: bool,
     pub config_tweak: Option<fn(AutomoveSearchConfig) -> AutomoveSearchConfig>,
     pub expected_selected_input_fen: Option<&'static str>,
 }
@@ -272,16 +261,16 @@ fn derived_triage_game_after_white_opening_turn(start_fen: &str, label: &str) ->
 
     while game.active_color == Color::White && game.turn_number == start_turn && applied_steps < 12
     {
-        let opening_inputs = MonsGameModel::white_first_turn_opening_next_inputs(&game)
-            .or_else(|| {
-                let selector = profile_selector_from_name("shipping_pro_search")
-                    .unwrap_or_else(|| panic!("{}: shipping_pro_search selector available", label));
-                let config = SearchBudget::from_preference(SmartAutomovePreference::Pro)
-                    .runtime_config_for_game(&game);
-                Some(select_inputs_with_runtime_fallback(selector, &game, config))
-            })
-            .filter(|inputs| !inputs.is_empty())
-            .unwrap_or_else(|| panic!("{}: white opening turn available", label));
+        let selector = profile_selector_from_name("shipping_pro_search")
+            .unwrap_or_else(|| panic!("{}: shipping_pro_search selector available", label));
+        let config = SearchBudget::from_preference(SmartAutomovePreference::Pro)
+            .runtime_config_for_game(&game);
+        let opening_inputs = select_inputs_with_runtime_fallback(selector, &game, config);
+        assert!(
+            !opening_inputs.is_empty(),
+            "{}: white opening turn available",
+            label
+        );
         let (after, _) =
             MonsGameModel::apply_inputs_for_search_with_events(&game, opening_inputs.as_slice())
                 .unwrap_or_else(|| panic!("{}: white opening turn applies", label));
@@ -641,12 +630,12 @@ fn human_win_pro_c_triage_game() -> MonsGame {
     .expect("human_win_pro_c: valid fen")
 }
 
-fn live_nonwin_opening_reply_white_triage_game() -> MonsGame {
+fn live_nonwin_white_reply_triage_game() -> MonsGame {
     MonsGame::from_fen(
         "1 0 w 1 0 1 0 0 5 n01d0xn09/n01xxmn04a0xe0xn03/n03y0xn01s0xn01xxmn03/n11/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn05/n04xxMn02xxMn03/n05S0xn05/n04E0xA0xn01Y0xn03/n10D0x",
         false,
     )
-    .expect("live_nonwin_opening_reply_white: valid fen")
+    .expect("live_nonwin_white_reply: valid fen")
 }
 
 fn live_nonwin_black_vulnerable_spirit_reentry_triage_game() -> MonsGame {
@@ -657,73 +646,12 @@ fn live_nonwin_black_vulnerable_spirit_reentry_triage_game() -> MonsGame {
     .expect("live_nonwin_black_vulnerable_spirit_reentry: valid fen")
 }
 
-fn apply_triage_opening_sequence(game: &mut MonsGame, sequence: &[&str; 5]) {
-    for step in sequence {
-        let inputs = Input::array_from_fen(step);
-        assert!(matches!(
-            game.process_input(inputs, false, false),
-            Output::Events(_)
-        ));
-    }
-    assert_eq!(game.turn_number, 2);
-    assert_eq!(game.active_color, Color::Black);
-}
-
-fn opening_black_reply_triage_fixture(id: &'static str, sequence: &[&str; 5]) -> TriageFixture {
-    let mut game = MonsGame::new(false, GameVariant::Classic);
-    apply_triage_opening_sequence(&mut game, sequence);
-    TriageFixture {
-        id,
-        game,
-        mode: SmartAutomovePreference::Pro,
-        opening_book_driven: true,
-        config_tweak: None,
-        expected_selected_input_fen: None,
-    }
-}
-
-pub(in super::super) fn opening_reply_triage_fixtures() -> Vec<TriageFixture> {
-    vec![
-        opening_black_reply_triage_fixture(
-            "opening_left_route",
-            &[
-                "l10,3;l9,2",
-                "l9,2;l8,1",
-                "l8,1;l7,0",
-                "l7,0;l6,0",
-                "l6,0;l5,0;mp",
-            ],
-        ),
-        opening_black_reply_triage_fixture(
-            "opening_center_route",
-            &[
-                "l10,4;l9,4",
-                "l9,4;l8,4",
-                "l8,4;l7,3",
-                "l7,3;l6,4",
-                "l6,4;l5,4",
-            ],
-        ),
-        opening_black_reply_triage_fixture(
-            "opening_right_route",
-            &[
-                "l10,7;l9,8",
-                "l9,8;l8,9",
-                "l8,9;l7,10",
-                "l7,10;l6,10",
-                "l6,10;l5,10;mp",
-            ],
-        ),
-    ]
-}
-
 pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
     vec![
         TriageFixture {
             id: "primary_supermana_progress",
             game: supermana_progress_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -731,7 +659,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_opponent_mana_progress",
             game: opponent_mana_progress_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -739,7 +666,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_drainer_safety",
             game: drainer_safety_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -747,7 +673,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_ext_sensitive_no_ext_a",
             game: extension_sensitive_no_ext_a_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l2,6;l3,7"),
         },
@@ -755,7 +680,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_ext_sensitive_more_ext_a",
             game: extension_sensitive_more_ext_a_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -763,7 +687,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_ext_sensitive_no_ext_b",
             game: extension_sensitive_no_ext_b_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l3,6;l2,6"),
         },
@@ -771,7 +694,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_ext_sensitive_more_ext_b",
             game: extension_sensitive_more_ext_b_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -779,7 +701,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_harvest_black_override_loss_a",
             game: harvested_black_override_loss_a_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,6;l1,6"),
         },
@@ -787,7 +708,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_harvest_black_override_loss_b",
             game: harvested_black_override_loss_b_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,6;l1,6"),
         },
@@ -795,7 +715,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_harvest_black_late_kill_loss_a",
             game: harvested_black_late_kill_loss_a_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l6,1;l7,2"),
         },
@@ -803,7 +722,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_harvest_black_late_kill_loss_b",
             game: harvested_black_late_kill_loss_b_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l6,1;l7,2"),
         },
@@ -811,7 +729,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_harvest_white_score_route_win_a",
             game: harvested_white_score_route_win_a_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l7,4;l8,3"),
         },
@@ -819,7 +736,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_harvest_white_score_route_win_b",
             game: harvested_white_score_route_win_b_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l10,5;l9,4"),
         },
@@ -827,7 +743,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_white_mana_sibling_ply9",
             game: white_mana_sibling_ply9_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l5,0;l5,1"),
         },
@@ -835,15 +750,13 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_white_safe_progress_rerank_ply27",
             game: white_safe_progress_rerank_ply27_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l9,4;l8,3"),
         },
         TriageFixture {
-            id: "primary_live_nonwin_opening_reply_white",
-            game: live_nonwin_opening_reply_white_triage_game(),
+            id: "primary_live_nonwin_white_reply",
+            game: live_nonwin_white_reply_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -851,7 +764,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_live_nonwin_black_vulnerable_spirit_reentry",
             game: live_nonwin_black_vulnerable_spirit_reentry_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -859,7 +771,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_loss_opening_a",
             game: black_loss_opening_a_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l10,6;l9,6"),
         },
@@ -867,7 +778,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_loss_opening_b",
             game: black_loss_opening_b_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -875,7 +785,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_loss_opening_a_after_white",
             game: black_loss_opening_a_after_white_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -883,7 +792,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_loss_opening_b_after_white",
             game: black_loss_opening_b_after_white_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -891,7 +799,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_loss_opening_a_black_turn",
             game: black_loss_opening_a_black_turn_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,4;l1,5"),
         },
@@ -899,7 +806,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_reliability_opening_0_ba_black_turn",
             game: black_reliability_opening_0_ba_black_turn_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,4;l1,5"),
         },
@@ -907,7 +813,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_reliability_opening_0_ba_live_black_turn",
             game: black_reliability_opening_0_ba_live_black_turn_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,4;l1,5"),
         },
@@ -915,7 +820,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_reliability_opening_1_ab_live_black_turn",
             game: black_reliability_opening_1_ab_live_black_turn_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -923,7 +827,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_loss_opening_b_black_turn",
             game: black_loss_opening_b_black_turn_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,4;l1,4"),
         },
@@ -931,7 +834,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_reduced_gate_opening_1_black_turn",
             game: black_reduced_gate_opening_1_black_turn_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,4;l1,5"),
         },
@@ -939,7 +841,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_loss_runtime_b_ply3",
             game: black_loss_runtime_b_ply3_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -947,7 +848,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_harvest_loss_a_ply2",
             game: black_harvest_loss_a_ply2_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,3;l1,2"),
         },
@@ -955,7 +855,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_harvest_loss_b_ply3",
             game: black_harvest_loss_b_ply3_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,4;l1,5"),
         },
@@ -963,7 +862,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_negative_deny_ply4",
             game: black_negative_deny_ply4_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,5;l1,6"),
         },
@@ -971,7 +869,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_late_accepted_head_ply4",
             game: black_late_accepted_head_ply4_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l1,5;l1,7;l0,7"),
         },
@@ -979,7 +876,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_turn_four_action_mana_ply15",
             game: black_turn_four_action_mana_ply15_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l1,6;l2,7"),
         },
@@ -987,7 +883,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_mana_bridge_ply20",
             game: black_mana_bridge_ply20_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,5;l1,4"),
         },
@@ -995,7 +890,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_spirit_bridge_ply19",
             game: black_spirit_bridge_ply19_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l1,5;l1,7;l0,7"),
         },
@@ -1003,7 +897,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_reliability_opening_3_ply3",
             game: black_reliability_opening_3_ply3_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -1011,7 +904,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_gate_loss_a_ply4",
             game: black_gate_loss_a_ply4_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,4;l1,5"),
         },
@@ -1019,7 +911,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_gate_loss_a_ply5",
             game: black_gate_loss_a_ply5_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,3;l1,3"),
         },
@@ -1027,7 +918,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_gate_loss_b_ply3",
             game: black_gate_loss_b_ply3_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,3;l1,2"),
         },
@@ -1035,7 +925,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_loss_opening_a_ply6",
             game: black_loss_opening_a_ply6_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,5;l1,6"),
         },
@@ -1043,7 +932,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_loss_opening_a_ply3",
             game: black_loss_opening_a_ply3_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l10,4;l9,5"),
         },
@@ -1051,7 +939,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_loss_opening_b_ply5",
             game: black_loss_opening_b_ply5_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,4;l1,5"),
         },
@@ -1059,7 +946,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_loss_opening_a_ply7",
             game: black_loss_opening_a_ply7_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,7;l1,7"),
         },
@@ -1067,7 +953,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_loss_opening_c_ply6",
             game: black_loss_opening_c_ply6_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l0,7;l1,7"),
         },
@@ -1075,7 +960,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_loss_opening_a_ply19",
             game: black_loss_opening_a_ply19_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l2,5;l1,4"),
         },
@@ -1083,7 +967,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_reduced_gate_opening_1_ply19",
             game: black_reduced_gate_opening_1_ply19_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l1,4;l2,5"),
         },
@@ -1091,7 +974,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_reduced_gate_opening_1_ply21",
             game: black_reduced_gate_opening_1_ply21_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l1,6;l2,6"),
         },
@@ -1099,7 +981,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_reduced_gate_opening_1_ply31",
             game: black_reduced_gate_opening_1_ply31_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l1,5;l3,5;l3,6"),
         },
@@ -1107,7 +988,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_loss_opening_c_ply17",
             game: black_loss_opening_c_ply17_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l1,5;l3,4;l2,5"),
         },
@@ -1115,7 +995,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_white_harvest_loss_a_ply2",
             game: white_harvest_loss_a_ply2_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -1123,7 +1002,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_white_harvest_loss_b_ply10",
             game: white_harvest_loss_b_ply10_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -1131,7 +1009,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_white_harvest_loss_c_ply24",
             game: white_harvest_loss_c_ply24_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -1139,7 +1016,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_white_harvest_loss_d_ply25",
             game: white_harvest_loss_d_ply25_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -1147,7 +1023,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_white_fast_accepted_head_ply13",
             game: white_fast_accepted_head_ply13_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: Some("l9,4;l8,4"),
         },
@@ -1155,7 +1030,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_white_fast_screen_opening_0_ply9",
             game: white_fast_screen_opening_0_ply9_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -1163,7 +1037,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "primary_black_gate_loss_b_ply31",
             game: black_gate_loss_b_ply31_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -1171,7 +1044,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "human_win_pro_a",
             game: human_win_pro_a_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -1179,7 +1051,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "human_win_pro_b",
             game: human_win_pro_b_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },
@@ -1187,7 +1058,6 @@ pub(in super::super) fn primary_pro_triage_fixtures() -> Vec<TriageFixture> {
             id: "human_win_pro_c",
             game: human_win_pro_c_triage_game(),
             mode: SmartAutomovePreference::Pro,
-            opening_book_driven: false,
             config_tweak: None,
             expected_selected_input_fen: None,
         },

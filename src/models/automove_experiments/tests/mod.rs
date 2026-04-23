@@ -1045,18 +1045,6 @@ fn assert_pro_reliability_duel_passes(label: &str, metrics: ProReliabilityGateMe
     );
 }
 
-fn triage_surface_from_env() -> TriageSurface {
-    let value = env::var("SMART_TRIAGE_SURFACE").unwrap_or_else(|_| {
-        panic!("SMART_TRIAGE_SURFACE is required (expected one of: opening_reply, primary_pro)")
-    });
-    TriageSurface::parse(value.as_str()).unwrap_or_else(|| {
-        panic!(
-            "unknown SMART_TRIAGE_SURFACE='{}' (expected one of: opening_reply, primary_pro)",
-            value
-        )
-    })
-}
-
 fn pro_signal_triage_passes(
     frontier_profile_name: &str,
     shipping_profile_name: &str,
@@ -1098,66 +1086,51 @@ fn pro_triage_fixture_snapshot(
     selector: AutomoveSelector,
     fixture: &TriageFixture,
 ) -> ProTriageSnapshot {
-    with_env_override(
-        "SMART_USE_WHITE_OPENING_BOOK",
-        if fixture.opening_book_driven {
-            "true"
-        } else {
-            "false"
-        },
+    let base_config = fixture
+        .config_tweak
+        .map(|tweak| {
+            tweak(
+                SearchBudget::from_preference(fixture.mode).runtime_config_for_game(&fixture.game),
+            )
+        })
+        .unwrap_or_else(|| {
+            SearchBudget::from_preference(fixture.mode).runtime_config_for_game(&fixture.game)
+        });
+    let resolved_config = profile_runtime_config_for_name(profile_name, &fixture.game, base_config)
+        .unwrap_or(base_config);
+    let inputs = select_inputs_with_runtime_fallback(selector, &fixture.game, base_config);
+    assert!(
+        !inputs.is_empty(),
+        "triage fixture '{}' produced no legal move for mode {}",
+        fixture.id,
+        fixture.mode.as_api_value()
+    );
+    MonsGameModel::apply_inputs_for_search_with_events(&fixture.game, &inputs).unwrap_or_else(
         || {
-            let base_config = fixture
-                .config_tweak
-                .map(|tweak| {
-                    tweak(
-                        SearchBudget::from_preference(fixture.mode)
-                            .runtime_config_for_game(&fixture.game),
-                    )
-                })
-                .unwrap_or_else(|| {
-                    SearchBudget::from_preference(fixture.mode)
-                        .runtime_config_for_game(&fixture.game)
-                });
-            let resolved_config =
-                profile_runtime_config_for_name(profile_name, &fixture.game, base_config)
-                    .unwrap_or(base_config);
-            let inputs = select_inputs_with_runtime_fallback(selector, &fixture.game, base_config);
-            assert!(
-                !inputs.is_empty(),
-                "triage fixture '{}' produced no legal move for mode {}",
+            panic!(
+                "triage fixture '{}' selected illegal move in mode {}",
                 fixture.id,
                 fixture.mode.as_api_value()
-            );
-            MonsGameModel::apply_inputs_for_search_with_events(&fixture.game, &inputs)
-                .unwrap_or_else(|| {
-                    panic!(
-                        "triage fixture '{}' selected illegal move in mode {}",
-                        fixture.id,
-                        fixture.mode.as_api_value()
-                    )
-                });
-            let input_fen = Input::fen_from_array(&inputs);
-            let ranked_roots = MonsGameModel::ranked_root_moves(
-                &fixture.game,
-                fixture.game.active_color,
-                resolved_config,
-            );
-            let selected_rank = ranked_roots
-                .iter()
-                .position(|root| Input::fen_from_array(&root.inputs) == input_fen)
-                .unwrap_or(ranked_roots.len());
-
-            ProTriageSnapshot {
-                selected_rank,
-                selected_input_fen: input_fen,
-                top_root_fens: ranked_roots
-                    .iter()
-                    .take(TRIAGE_TOP_ROOT_DIGEST_SIZE)
-                    .map(|root| Input::fen_from_array(&root.inputs))
-                    .collect(),
-            }
+            )
         },
-    )
+    );
+    let input_fen = Input::fen_from_array(&inputs);
+    let ranked_roots =
+        MonsGameModel::ranked_root_moves(&fixture.game, fixture.game.active_color, resolved_config);
+    let selected_rank = ranked_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == input_fen)
+        .unwrap_or(ranked_roots.len());
+
+    ProTriageSnapshot {
+        selected_rank,
+        selected_input_fen: input_fen,
+        top_root_fens: ranked_roots
+            .iter()
+            .take(TRIAGE_TOP_ROOT_DIGEST_SIZE)
+            .map(|root| Input::fen_from_array(&root.inputs))
+            .collect(),
+    }
 }
 
 fn pro_triage_surface_signal_changed(
@@ -1183,7 +1156,6 @@ fn pro_triage_fixture_changed(
                 pro_triage_surface_signal_changed(candidate, baseline)
             }
         }
-        TriageSurface::OpeningReply => pro_triage_surface_signal_changed(candidate, baseline),
     }
 }
 
@@ -1207,11 +1179,10 @@ fn compare_pro_triage_fixture_pack(
             changed += 1;
         }
         println!(
-            "pro triage surface={} fixture={} mode={} opening_book={} expected={:?} changed={} frontier_profile={} frontier={:?} shipping_profile={} shipping={:?}",
+            "pro triage surface={} fixture={} mode={} expected={:?} changed={} frontier_profile={} frontier={:?} shipping_profile={} shipping={:?}",
             surface.as_str(),
             fixture.id,
             fixture.mode.as_api_value(),
-            fixture.opening_book_driven,
             fixture.expected_selected_input_fen,
             fixture_changed,
             frontier_profile,

@@ -62,6 +62,5 @@ Use `keep/<name>` for any branch that should survive repo cleanup.
 - Confirm public Pro still routes through `frontier_pro_v2_guarded`.
 - Confirm `shipping_pro_search` remains available as the retained baseline.
 - Run `cargo test`.
-- Run `cargo test --release --lib smart_automove_release_opening_black_reply_speed_gate -- --ignored --nocapture`.
 - Run `cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --ignored --nocapture`.
 - Clean disposable experiment artifacts after validation with `./scripts/clean-experiment-artifacts.sh`.
