@@ -4,6 +4,15 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## All-Blocker Recurrence Trace Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave widened recurrence tracing over the full active blocker set instead of probing one blocker at a time: `SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows,alternating_mana_rows,forward_bridge_mana_rows` with `smart_automove_pro_reliability_duel_trace_probe`, `repeats=4`, and `games=3`.
+- The broader trace did not collapse the residue. Across `24` games per duel, Pro logged `3` regressions, Normal `3`, and Fast `7`.
+- Every per-duel `repeated_move_pairs` entry stayed singleton. The isolated repeated white head-accept seam and isolated black mana sibling seam stopped dominating once the full blocker set was traced together.
+- The widened trace also broadened the blocker surface instead of shrinking it. Alongside the known `alternating` and `forward_bridge` misses, it exposed extra singleton Pro/Normal seams such as `l9,7;l8,8` vs `l9,7;l8,7`, `l6,7;l7,6` vs `l6,7;l7,7`, and `l9,6;l9,4;l8,4` vs `l9,6;l7,8;l8,8`.
+- Durable outcome: do not reopen a shared spend across `outer_edge_mana_rows`, `alternating_mana_rows`, and `forward_bridge_mana_rows`. Keep the broadened recurrence counts and no-go lesson, discard the logs.
+
 ## Blocker Hotspot Fingerprint Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
