@@ -255,6 +255,13 @@ fn profile_scored_roots(
     game: &MonsGame,
 ) -> (AutomoveSearchConfig, Vec<RootEvaluation>) {
     let config = calibration_runtime_config(profile_name, game, mode);
+    (config, scored_roots_for_runtime_config(game, config))
+}
+
+fn scored_roots_for_runtime_config(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> Vec<RootEvaluation> {
     let perspective = game.active_color;
     let root_moves = MonsGameModel::ranked_root_moves(game, perspective, config);
     let (root_moves, scout_visited_nodes) =
@@ -330,7 +337,7 @@ fn profile_scored_roots(
         });
     }
 
-    (config, scored_roots)
+    scored_roots
 }
 
 fn format_root_probe(root: Option<&RootEvaluation>) -> String {

@@ -1757,18 +1757,10 @@ fn white_search_order_allowed_head_probe() {
             frontier_rerank_config,
             frontier_allowed_heads.as_slice(),
         );
-        let shipping_ranked_plans = turn_engine_ranked_plan_digests_for_test(
-            &game,
-            perspective,
-            shipping_rerank_config,
-            5,
-        );
-        let frontier_ranked_plans = turn_engine_ranked_plan_digests_for_test(
-            &game,
-            perspective,
-            frontier_rerank_config,
-            5,
-        );
+        let shipping_ranked_plans =
+            turn_engine_ranked_plan_digests_for_test(&game, perspective, shipping_rerank_config, 5);
+        let frontier_ranked_plans =
+            turn_engine_ranked_plan_digests_for_test(&game, perspective, frontier_rerank_config, 5);
 
         println!(
             "WHITE_ALLOWED_HEAD_RERANK label={} context={} shipping_allowed_best={:?} shipping_on_frontier_heads={:?} frontier_allowed_best={:?} shipping_ranked_plans={:?} frontier_ranked_plans={:?}",
@@ -1883,15 +1875,11 @@ fn white_search_order_rerank_mode_probe() {
             .map(|candidate| candidate.inputs)
             .collect::<Vec<_>>();
         let frontier_rerank_pro_v2 = calibration_turn_engine_rerank_config(frontier_config);
-        let frontier_rerank_pro_v1 = calibration_turn_engine_rerank_config_with_mode(
-            frontier_config,
-            TurnEngineMode::ProV1,
-        );
+        let frontier_rerank_pro_v1 =
+            calibration_turn_engine_rerank_config_with_mode(frontier_config, TurnEngineMode::ProV1);
         let shipping_rerank_pro_v1 = calibration_turn_engine_rerank_config(shipping_config);
-        let shipping_rerank_pro_v2 = calibration_turn_engine_rerank_config_with_mode(
-            shipping_config,
-            TurnEngineMode::ProV2,
-        );
+        let shipping_rerank_pro_v2 =
+            calibration_turn_engine_rerank_config_with_mode(shipping_config, TurnEngineMode::ProV2);
         let frontier_plan_pro_v2 = turn_engine_candidate_plan_from_allowed_heads(
             &game,
             perspective,
@@ -2644,7 +2632,9 @@ fn white_search_order_shortlist_gate_probe() {
         );
         let shipping_index = scored_roots
             .iter()
-            .position(|root| Input::fen_from_array(&root.inputs) == shipping_probe.selected_input_fen)
+            .position(|root| {
+                Input::fen_from_array(&root.inputs) == shipping_probe.selected_input_fen
+            })
             .expect("shipping root should exist");
         let best_candidate_score = candidate_indices
             .iter()
@@ -2654,15 +2644,16 @@ fn white_search_order_shortlist_gate_probe() {
         let shipping_score = scored_roots[shipping_index].score;
         let shipping_in_candidates = candidate_indices.contains(&shipping_index);
         let shipping_in_shortlist = shortlist.contains(&shipping_index);
-        let shipping_passes_margin =
-            shipping_score.saturating_add(config.root_reply_risk_score_margin.max(0))
-                >= best_candidate_score;
-        let safe_progress_extension = MonsGameModel::pro_v2_safe_progress_sibling_shortlist_extension(
-            scored_roots.as_slice(),
-            candidate_indices.as_slice(),
-            shortlist.as_slice(),
-            config,
-        );
+        let shipping_passes_margin = shipping_score
+            .saturating_add(config.root_reply_risk_score_margin.max(0))
+            >= best_candidate_score;
+        let safe_progress_extension =
+            MonsGameModel::pro_v2_safe_progress_sibling_shortlist_extension(
+                scored_roots.as_slice(),
+                candidate_indices.as_slice(),
+                shortlist.as_slice(),
+                config,
+            );
         let shortlist_anchor = shortlist.first().copied();
         let shipping_same_progress_as_anchor = shortlist_anchor.is_some_and(|anchor_index| {
             MonsGameModel::is_same_non_tactical_progress_lane_root_pair(
@@ -2734,8 +2725,11 @@ fn white_search_order_selector_disable_probe() {
     ) -> VariantProbeResult {
         let selector = profile_selector_from_name("frontier_pro_v2_guarded")
             .expect("frontier profile selector should exist");
-        let mut config =
-            calibration_runtime_config("frontier_pro_v2_guarded", game, SmartAutomovePreference::Pro);
+        let mut config = calibration_runtime_config(
+            "frontier_pro_v2_guarded",
+            game,
+            SmartAutomovePreference::Pro,
+        );
         tweak(&mut config);
 
         clear_exact_state_analysis_cache();
@@ -2792,8 +2786,11 @@ fn white_search_order_selector_disable_probe() {
         let selector_off_shipping_own_caps_pro_v2 = run_frontier_variant(&game, |config| {
             config.enable_turn_engine_selector = false;
             config.enable_turn_head_rerank = true;
-            let shipping =
-                calibration_runtime_config("shipping_pro_search", &game, SmartAutomovePreference::Pro);
+            let shipping = calibration_runtime_config(
+                "shipping_pro_search",
+                &game,
+                SmartAutomovePreference::Pro,
+            );
             config.turn_engine_seed_cap = shipping.turn_engine_seed_cap;
             config.turn_engine_beam_width = shipping.turn_engine_beam_width;
             config.turn_engine_per_node_family_cap = shipping.turn_engine_per_node_family_cap;
@@ -2855,8 +2852,11 @@ fn white_search_order_wrapper_branch_probe() {
     ) -> VariantProbeResult {
         let selector = profile_selector_from_name("shipping_pro_search")
             .expect("shipping profile selector should exist");
-        let mut config =
-            calibration_runtime_config("frontier_pro_v2_guarded", game, SmartAutomovePreference::Pro);
+        let mut config = calibration_runtime_config(
+            "frontier_pro_v2_guarded",
+            game,
+            SmartAutomovePreference::Pro,
+        );
         tweak(&mut config);
 
         clear_exact_state_analysis_cache();
@@ -2911,8 +2911,11 @@ fn white_search_order_wrapper_branch_probe() {
         let raw_search_only_shipping_own_caps_pro_v2 = run_raw_search_variant(&game, |config| {
             config.enable_turn_engine_selector = false;
             config.enable_turn_head_rerank = true;
-            let shipping =
-                calibration_runtime_config("shipping_pro_search", &game, SmartAutomovePreference::Pro);
+            let shipping = calibration_runtime_config(
+                "shipping_pro_search",
+                &game,
+                SmartAutomovePreference::Pro,
+            );
             config.turn_engine_seed_cap = shipping.turn_engine_seed_cap;
             config.turn_engine_beam_width = shipping.turn_engine_beam_width;
             config.turn_engine_per_node_family_cap = shipping.turn_engine_per_node_family_cap;
@@ -2960,8 +2963,11 @@ fn white_search_order_raw_prov1_scope_probe() {
     fn raw_search_only_pro_v1_move(game: &MonsGame) -> (String, &'static str, &'static str) {
         let selector = profile_selector_from_name("shipping_pro_search")
             .expect("shipping profile selector should exist");
-        let mut config =
-            calibration_runtime_config("frontier_pro_v2_guarded", game, SmartAutomovePreference::Pro);
+        let mut config = calibration_runtime_config(
+            "frontier_pro_v2_guarded",
+            game,
+            SmartAutomovePreference::Pro,
+        );
         config.enable_turn_engine_selector = false;
         config.enable_turn_head_rerank = true;
         config.turn_engine_mode = TurnEngineMode::ProV1;
@@ -3082,8 +3088,11 @@ fn white_search_order_non_negative_deny_scope_probe() {
     fn raw_search_only_pro_v1_move(game: &MonsGame) -> (String, &'static str, &'static str) {
         let selector = profile_selector_from_name("shipping_pro_search")
             .expect("shipping profile selector should exist");
-        let mut config =
-            calibration_runtime_config("frontier_pro_v2_guarded", game, SmartAutomovePreference::Pro);
+        let mut config = calibration_runtime_config(
+            "frontier_pro_v2_guarded",
+            game,
+            SmartAutomovePreference::Pro,
+        );
         config.enable_turn_engine_selector = false;
         config.enable_turn_head_rerank = true;
         config.turn_engine_mode = TurnEngineMode::ProV1;
@@ -3164,7 +3173,9 @@ fn white_search_order_non_negative_deny_scope_probe() {
         );
         let frontier_index = scored_roots
             .iter()
-            .position(|root| Input::fen_from_array(&root.inputs) == frontier_probe.selected_input_fen)
+            .position(|root| {
+                Input::fen_from_array(&root.inputs) == frontier_probe.selected_input_fen
+            })
             .expect("frontier selected root should exist");
         let frontier_family =
             MonsGameModel::turn_engine_root_evaluation_family(&scored_roots[frontier_index]);
@@ -3212,8 +3223,11 @@ fn white_search_order_shipping_caps_scope_probe() {
     ) -> (String, &'static str, &'static str) {
         let selector = profile_selector_from_name("shipping_pro_search")
             .expect("shipping profile selector should exist");
-        let mut config =
-            calibration_runtime_config("frontier_pro_v2_guarded", game, SmartAutomovePreference::Pro);
+        let mut config = calibration_runtime_config(
+            "frontier_pro_v2_guarded",
+            game,
+            SmartAutomovePreference::Pro,
+        );
         config.enable_turn_engine_selector = false;
         config.enable_turn_head_rerank = true;
         let shipping =
@@ -3321,11 +3335,14 @@ fn white_search_order_rank_surface_probe() {
 
     fn raw_search_only_shipping_own_caps_snapshot(
         game: &MonsGame,
-    ) -> (String, usize, &'static str, &'static str) {
+    ) -> (String, Option<usize>, usize, &'static str, &'static str) {
         let selector = profile_selector_from_name("shipping_pro_search")
             .expect("shipping profile selector should exist");
-        let mut config =
-            calibration_runtime_config("frontier_pro_v2_guarded", game, SmartAutomovePreference::Pro);
+        let mut config = calibration_runtime_config(
+            "frontier_pro_v2_guarded",
+            game,
+            SmartAutomovePreference::Pro,
+        );
         config.enable_turn_engine_selector = false;
         config.enable_turn_head_rerank = true;
         let shipping =
@@ -3343,8 +3360,9 @@ fn white_search_order_rank_surface_probe() {
 
         let inputs = select_inputs_with_runtime_fallback(selector, game, config);
         let input_fen = Input::fen_from_array(&inputs);
-        let roots = MonsGameModel::ranked_root_moves(game, game.active_color, config);
-        let root_rank = roots
+        let scored_roots = scored_roots_for_runtime_config(game, config);
+        let selected_rank = scored_roots.iter().position(|root| root.inputs == inputs);
+        let root_rank = scored_roots
             .iter()
             .find(|root| root.inputs.as_slice() == inputs.as_slice())
             .map(|root| root.root_rank)
@@ -3352,6 +3370,7 @@ fn white_search_order_rank_surface_probe() {
         let selector_diag = turn_engine_selector_diagnostics_snapshot();
         (
             input_fen,
+            selected_rank,
             root_rank,
             selector_diag.last_return_stage,
             selector_diag.selector_disable_reason,
@@ -3388,10 +3407,8 @@ fn white_search_order_rank_surface_probe() {
             runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
         let shipping_runtime =
             calibration_runtime_config("shipping_pro_search", &game, SmartAutomovePreference::Pro);
-        let shipping_inputs = automove_runtime_variants::select_shipping_search_inputs(
-            &game,
-            shipping_runtime,
-        );
+        let shipping_inputs =
+            automove_runtime_variants::select_shipping_search_inputs(&game, shipping_runtime);
         let shipping_roots =
             MonsGameModel::ranked_root_moves(&game, game.active_color, shipping_runtime);
         let shipping_root_rank = shipping_roots
@@ -3399,11 +3416,16 @@ fn white_search_order_rank_surface_probe() {
             .find(|root| root.inputs.as_slice() == shipping_inputs.as_slice())
             .map(|root| root.root_rank)
             .expect("shipping selected move should exist in ranked roots");
-        let (raw_caps_move, raw_caps_root_rank, raw_caps_stage, raw_caps_disable_reason) =
-            raw_search_only_shipping_own_caps_snapshot(&game);
+        let (
+            raw_caps_move,
+            raw_caps_selected_rank,
+            raw_caps_root_rank,
+            raw_caps_stage,
+            raw_caps_disable_reason,
+        ) = raw_search_only_shipping_own_caps_snapshot(&game);
 
         println!(
-            "WHITE_SEARCH_ORDER_RANK_SURFACE label={} context={} frontier(selected={} stage={}) shipping(selected={} selected_rank={:?} root_rank={}) raw_shipping_caps(move={} root_rank={} stage={} disable_reason={})",
+            "WHITE_SEARCH_ORDER_RANK_SURFACE label={} context={} frontier(selected={} stage={}) shipping(selected={} selected_rank={:?} root_rank={}) raw_shipping_caps(move={} selected_rank={:?} root_rank={} stage={} disable_reason={})",
             case.label,
             exact_opportunity_context_probe(&game),
             frontier_probe.selected_input_fen,
@@ -3412,6 +3434,7 @@ fn white_search_order_rank_surface_probe() {
             shipping_probe.selected_rank,
             shipping_root_rank,
             raw_caps_move,
+            raw_caps_selected_rank,
             raw_caps_root_rank,
             raw_caps_stage,
             raw_caps_disable_reason,

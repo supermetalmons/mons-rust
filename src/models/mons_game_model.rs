@@ -7572,6 +7572,48 @@ impl MonsGameModel {
     }
 
     #[cfg(any(target_arch = "wasm32", test))]
+    pub(crate) fn focused_candidate_rank_for_runtime_inputs(
+        game: &MonsGame,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+        selected_inputs: &[Input],
+    ) -> Option<usize> {
+        let mut root_moves = Self::ranked_root_moves(game, perspective, config);
+        let engine_plan = if config.enable_turn_engine_selector {
+            turn_engine_candidate_plan(
+                game,
+                perspective,
+                Self::turn_engine_config_for_game(game, config),
+            )
+        } else {
+            None
+        };
+        let advisor_decision = Self::pro_v2_root_advisor_presearch(
+            game,
+            perspective,
+            config,
+            &mut root_moves,
+            engine_plan.as_ref(),
+        );
+        let advisor_priority_inputs = advisor_decision
+            .as_ref()
+            .map(Self::pro_v2_root_advisor_priority_inputs)
+            .unwrap_or_default();
+        let (root_moves, _) = Self::focused_root_candidates_with_priority_inputs(
+            game,
+            perspective,
+            root_moves,
+            config,
+            true,
+            (!advisor_priority_inputs.is_empty()).then_some(advisor_priority_inputs.as_slice()),
+            None,
+        );
+        root_moves
+            .iter()
+            .position(|root| root.inputs.as_slice() == selected_inputs)
+    }
+
+    #[cfg(any(target_arch = "wasm32", test))]
     fn turn_engine_root_plan_utility(
         root: &MonsGame,
         selected: &RootEvaluation,
@@ -19069,8 +19111,7 @@ impl MonsGameModel {
                         approved_utility,
                     )
                     && approved.score.saturating_sub(challenger.score) <= 32
-                    && challenger.spirit_setup_gain
-                        >= approved.spirit_setup_gain.saturating_add(64)
+                    && challenger.spirit_setup_gain >= approved.spirit_setup_gain.saturating_add(64)
                     && challenger.root_rank <= approved.root_rank.saturating_add(4)
             })
             .max_by(|left, right| {

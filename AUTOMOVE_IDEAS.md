@@ -38,6 +38,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - It adds `select_white_nonnegative_deny_search_only_fallback_inputs`, a wrapper-level reroute on the exact white turn-three mana-only weak-window vulnerable context where frontier currently exits through `engine_post_search`, but only when the frontier-selected utility still has nonnegative deny gain.
   - In that narrow case, frontier replays the board through raw `search-only + ProV1` semantics and aligns the remaining Fast sibling `l9,4;l8,3` to shipping `l9,4;l8,5` without reopening the retained vulnerable guard.
   - The retained regression for that board now lives in `frontier_pro_v2_guarded_uses_white_nonnegative_deny_search_only_fallback_on_fast_root`.
+- This iteration kept and promoted an eighth narrow white runtime repair in the same package:
+  - It adds `select_white_negative_deny_search_only_selected_rank_fallback_inputs`, a wrapper-level reroute for the formerly remaining negative-deny Normal sibling on the same white turn-three mana-only weak-window vulnerable context.
+  - The branch replays the board through raw `search-only + shipping own caps + ProV2` and only keeps that result when the replayed move is the top scored focused candidate (`selected_rank == 0`), which separates the Normal sibling from the retained vulnerable guard.
+  - It fixes the Normal sibling `l9,4;l8,3` to shipping `l9,4;l8,5` while preserving the retained vulnerable guard `l8,4;l7,3`.
+  - The retained regression for that board now lives in `frontier_pro_v2_guarded_uses_white_negative_deny_search_only_selected_rank_fallback_on_normal_root`.
 - Board-local confirm diagnostics collapsed the earlier two-board black Fast residue into one real live seam:
   - On `l0,0;l1,1` vs shipping `l7,1;l8,0`, frontier already matches shipping on the current retained package.
   - The only live confirm Fast approval miss was `l0,5;l1,5` vs shipping `l2,5;l3,7;l2,8`, where legacy and shipping already agree on the spirit own-setup progress root.
@@ -61,7 +66,19 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - `frontier_pro_v2_guarded_uses_white_nonnegative_deny_search_only_fallback_on_fast_root` now aligns to shipping `l9,4;l8,5` while preserving the frontier `pre_accept` root `l9,4;l8,3`.
   - `frontier_pro_v2_guarded_profile_keeps_v30_white_turn_three_mana_only_vulnerable_root` still keeps the retained frontier root `l8,4;l7,3`.
   - `frontier_pro_v2_guarded_uses_white_early_engine_disabled_fallback_on_normal_root` still aligns to shipping `l9,5;l8,3;l7,4`.
+- The local retained slice for the new negative-deny selected-rank fallback stayed clean:
+  - `frontier_pro_v2_guarded_uses_white_negative_deny_search_only_selected_rank_fallback_on_normal_root` now aligns to shipping `l9,4;l8,5` while preserving the frontier `pre_accept` root `l9,4;l8,3`.
+  - `frontier_pro_v2_guarded_profile_keeps_v30_white_turn_three_mana_only_vulnerable_root` still keeps the retained frontier root `l8,4;l7,3`.
+  - `frontier_pro_v2_guarded_uses_white_nonnegative_deny_search_only_fallback_on_fast_root` still aligns to shipping `l9,4;l8,5`.
+  - `white_late_fast_hotspot_probe` stayed on frontier `l9,5;l8,6`, so the fallback did not try to paper over that no-go hotspot.
 - The package now clears confirm as well: `pro-reliability-confirm` passed at `0.9375 / 0.9062 / 0.9375`.
+- The refreshed canonical loop for the new negative-deny selected-rank fallback stayed clean:
+  - `guardrails` passed.
+  - `pro-triage` stayed at `target_changed=5 / off_target_changed=0`.
+  - exact-lite passed.
+  - advisory stage-1 CPU stayed in the same band at `1.554 / 1.524 / 1.368`.
+  - retained `pro-reliability` passed at `0.9167 / 0.9167 / 0.9167` with confidence `0.9968`.
+  - `pro-reliability-confirm` passed at `0.9375 / 0.9062 / 0.9375` with confidence `1.0000`.
 - The refreshed canonical loop for the new white nonnegative-deny fallback stayed clean:
   - `guardrails` passed.
   - `pro-triage` stayed at `target_changed=5 / off_target_changed=0`.
@@ -233,14 +250,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - The kept `select_white_nonnegative_deny_search_only_fallback_inputs` uses that extra signal to reroute only the Fast sibling through raw `search-only + ProV1`, fixing `l9,4;l8,3` to shipping `l9,4;l8,5` while leaving the retained vulnerable guard on `l8,4;l7,3`.
   - The refreshed canonical loop on that kept package passed `guardrails`, `pro-triage` (`target_changed=5 / off_target_changed=0`), exact-lite, advisory stage-1 CPU (`1.550 / 1.527 / 1.366`), retained `pro-reliability` (`0.9167 / 0.9968` for Pro, Normal, and Fast), and `pro-reliability-confirm` (`0.9375 / 1.0000`, `0.9062 / 1.0000`, `0.9375 / 1.0000`).
   - The sibling `white_search_order_shipping_caps_scope_probe` remains a no-go. Raw `search-only + shipping own caps + ProV2` fixes both white siblings, but it still misses the late hotspot and also flips the retained vulnerable guard to shipping.
-  - Treat that as the new live white frontier: the kept fallback is only for the nonnegative-deny Fast sibling. The remaining unresolved white local seams are the negative-deny Normal sibling `l9,4;l8,3` vs shipping `l9,4;l8,5` and the late Fast hotspot `l9,5;l8,6` vs shipping `l8,5;l7,7;l8,8`.
-  - This iteration spent the next obvious negative-deny white follow-up and killed it before any gate spend.
-  - Two wrapper cuts were tested on the remaining Normal sibling `l9,4;l8,3` vs shipping `l9,4;l8,5`: first a raw `search-only + shipping own caps + ProV2` reroute gated on the replayed root being rank `0`, then a direct shipping fallback gated on the shipping move being rank `0` in the shipping search.
-  - Both lines still flipped the retained vulnerable guard `l8,4;l7,3` to shipping `l8,4;l8,5`, so neither runtime cut survived the focused retained slice.
-  - The new ignored `white_search_order_rank_surface_probe` explains why those rank-based gates are fake separation.
-  - On the unresolved Normal sibling, shipping `l9,4;l8,5` is `selected_rank=0` and `root_rank=0`.
-  - On the retained vulnerable guard, shipping `l8,4;l8,5` still shows `selected_rank=4` under the shipping runtime, but its underlying `root_rank` is already `0`; the raw shipping-own-caps replay also gives that same guard move `root_rank=0`.
-  - So neither current root-rank surface nor current selected-rank surface separates the negative-deny Normal sibling from the retained vulnerable guard. Any future white spend there has to distinguish a deeper ranking layer than “shipping root is top-ranked here.”
+  - That was the live white frontier before the selected-rank follow-up: the kept fallback only covered the nonnegative-deny Fast sibling, leaving the negative-deny Normal sibling `l9,4;l8,3` vs shipping `l9,4;l8,5` and the late Fast hotspot `l9,5;l8,6` vs shipping `l8,5;l7,7;l8,8`.
+  - The previous iteration spent the next obvious negative-deny white follow-up and killed the root-rank read before any gate spend.
+  - Two wrapper cuts were tested on the remaining Normal sibling `l9,4;l8,3` vs shipping `l9,4;l8,5`: first a raw `search-only + shipping own caps + ProV2` reroute gated on the replayed root being `root_rank=0`, then a direct shipping fallback gated on the shipping move being `root_rank=0` in the shipping search.
+  - Both lines still flipped the retained vulnerable guard `l8,4;l7,3` to shipping `l8,4;l8,5`, so neither root-rank runtime cut survived the focused retained slice.
+  - The enhanced `white_search_order_rank_surface_probe` explains why root rank was fake separation and selected rank was the missing layer.
+  - On the formerly unresolved Normal sibling, shipping `l9,4;l8,5` is `selected_rank=0` and `root_rank=0`.
+  - On the retained vulnerable guard, shipping `l8,4;l8,5` still shows `selected_rank=4` under the shipping runtime, and the raw shipping-own-caps replay also keeps that guard at `selected_rank=4` even though its underlying `root_rank` is already `0`.
+  - The kept `select_white_negative_deny_search_only_selected_rank_fallback_inputs` uses that selected-rank layer, not root rank, and survived the retained and confirm loops.
 - Do not reopen the resolved late black Fast seam `l1,8;l1,9` vs `l1,8;l0,8`, the resolved early white Fast seam `l9,7;l8,6` vs `l9,7;l7,6;l7,7`, the resolved black late setup seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8`, the resolved black confirm Fast setup seam `l0,5;l1,5` vs `l2,5;l3,7;l2,8`, or the resolved white early engine-disabled seam `l8,5;l7,6` vs `l9,5;l8,3;l7,4` unless a future challenger regresses them.
 - Any future challenger still has to respect stage-1 CPU pressure; a package that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 
@@ -271,5 +288,5 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Do not spend the next wave on the white search-order family as if flipping frontier runtime config to `selector=false` or `head_rerank=true` before calling `select_frontier_pro_v2_guarded_inputs` were a meaningful experiment. The selector-disable probe shows the guarded wrapper reapplies `apply_frontier_pro_v2_guarded_config`, so those config-only toggles are wrapper-inert.
 - Do not spend the next wave on the white search-order family as if a broad wrapper-level `search-only + ProV1` reroute on the white `turn=3 / mons_moves=1 / no-action / mana-only / window=1 / deny=1 / drainer_safety<0` context were already safe. The scope probe shows that exact coarse gate also flips the retained vulnerable guard from `l8,4;l7,3` to shipping `l8,4;l8,5`.
 - Do not spend the next wave on the white search-order family as if the retained vulnerable guard were a different shortlist/reply-risk class from the unresolved siblings. The new vulnerable-guard probe shows the mechanism is the same at that layer: singleton vulnerable `ManaTempo` shortlist, outside-shortlist shipping `DrainerSafetyRecovery`, and `shipping_vs_frontier=false`.
-- Do not spend the next wave on the negative-deny white search-order sibling as if `root_rank == 0` were a safe separation signal for shipping or capped search-only replays. The new rank-surface probe shows the retained vulnerable guard already promotes its shipping recovery root to `root_rank=0` too, even when shipping only selects it later as `selected_rank=4`.
+- Do not spend the next wave on the negative-deny white search-order sibling as if `root_rank == 0` were a safe separation signal for shipping or capped search-only replays. The enhanced rank-surface probe shows the retained vulnerable guard already promotes its shipping recovery root to `root_rank=0` too, even when the capped replay keeps it at `selected_rank=4`.
 - Do not reopen packages that are already archived in `docs/automove-archive.md` unless there is a brand-new shared hypothesis.

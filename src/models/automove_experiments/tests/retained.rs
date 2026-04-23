@@ -1094,6 +1094,39 @@ fn frontier_pro_v2_guarded_uses_white_nonnegative_deny_search_only_fallback_on_f
 }
 
 #[test]
+fn frontier_pro_v2_guarded_uses_white_negative_deny_search_only_selected_rank_fallback_on_normal_root(
+) {
+    let game = MonsGame::from_fen(
+        "0 0 w 1 0 1 0 0 3 n06a0xn04/n03y0xn01d0xxxmn01e0xn02/n04s0xn06/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn02Y0xn04/n04D0xS0xn05/n03E0xA0xn06",
+        false,
+    )
+    .expect("white normal ply11 search-order fen should be valid");
+
+    clear_turn_engine_selector_diagnostics();
+    let probe = runtime_decision_probe(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let shipping_selected =
+        profile_decision_move_fen("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+
+    println!(
+        "WHITE_NEGATIVE_DENY_SELECTED_RANK_NORMAL shipping_selected={} context={} probe={:?}",
+        shipping_selected,
+        exact_opportunity_context_probe(&game),
+        probe,
+    );
+    assert_eq!(shipping_selected, "l9,4;l8,5");
+    assert_eq!(probe.selected_input_fen, "l9,4;l8,5");
+    assert_eq!(probe.pre_accept_input_fen, "l9,4;l8,3");
+    assert_eq!(
+        probe.runtime_variant_branch,
+        "white_negative_deny_search_only_selected_rank_fallback"
+    );
+}
+
+#[test]
 fn frontier_pro_v2_guarded_profile_prefers_shipping_black_post_search_duel_normal_root() {
     let game = MonsGame::from_fen(
         "0 1 b 0 0 0 0 0 8 n10d0x/n06a0xn04/n05s0xn01e0xn03/n02xxmxxmy0xn06/E0xn10/n04xxmxxUxxmn03xxQ/n03xxMY0xn01S0xxxMn03/n04D0Mn06/n04xxMA0xn05/n09xxMn01/n11",

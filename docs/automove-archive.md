@@ -450,7 +450,8 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The second cut used direct shipping fallback on the same board and tried to keep it only when the shipping move was `root_rank=0` in the shipping search.
 - Both cuts still reopened the retained vulnerable guard `l8,4;l7,3` to shipping `l8,4;l8,5`, so both runtime changes were discarded.
 - The kept diagnostic is `white_search_order_rank_surface_probe`.
-- Its useful result is that the current rank surfaces are fake separation for the negative-deny white seam.
-- On the unresolved Normal sibling, shipping `l9,4;l8,5` is both `selected_rank=0` and `root_rank=0`.
+- Its useful result is that root rank is fake separation for the negative-deny white seam.
+- On the then-unresolved Normal sibling, shipping `l9,4;l8,5` is both `selected_rank=0` and `root_rank=0`.
 - On the retained vulnerable guard, shipping `l8,4;l8,5` still shows `selected_rank=4` under the shipping runtime, but its underlying `root_rank` is already `0`; the raw shipping-own-caps replay also gives that same guard move `root_rank=0`.
-- Durable outcome: do not reopen the negative-deny white search-order family with another runtime gate based on current selected-rank or root-rank surfaces. Any future white spend there has to distinguish a deeper ranking layer than “shipping root becomes top-ranked.”
+- Later supersession: selected rank under the raw shipping-own-caps replay, not root rank, did become a safe separator. The promoted follow-up only keeps that replay when the move is the top scored focused candidate; the Normal sibling is `selected_rank=0`, while the retained vulnerable guard stays `selected_rank=4`.
+- Durable outcome: do not reopen the negative-deny white search-order family with another runtime gate based on `root_rank == 0`. The useful layer is the scored focused selected rank after the exact capped replay, not the underlying root rank.

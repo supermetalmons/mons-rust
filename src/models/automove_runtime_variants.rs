@@ -255,7 +255,8 @@ fn select_white_early_engine_disabled_fallback_inputs(
     }
 
     let frontier_runtime = apply_frontier_pro_v2_guarded_config(config);
-    let frontier_roots = MonsGameModel::ranked_root_moves(game, game.active_color, frontier_runtime);
+    let frontier_roots =
+        MonsGameModel::ranked_root_moves(game, game.active_color, frontier_runtime);
     let frontier_selected = frontier_roots
         .iter()
         .find(|root| root.inputs.as_slice() == frontier_inputs)?;
@@ -285,7 +286,8 @@ fn select_white_early_engine_disabled_fallback_inputs(
         return None;
     }
 
-    let shipping_roots = MonsGameModel::ranked_root_moves(game, game.active_color, shipping_runtime);
+    let shipping_roots =
+        MonsGameModel::ranked_root_moves(game, game.active_color, shipping_runtime);
     let shipping_selected = shipping_roots
         .iter()
         .find(|root| root.inputs.as_slice() == shipping_inputs.as_slice())?;
@@ -335,7 +337,8 @@ fn select_white_nonnegative_deny_search_only_fallback_inputs(
     }
 
     let frontier_runtime = apply_frontier_pro_v2_guarded_config(config);
-    let frontier_roots = MonsGameModel::ranked_root_moves(game, game.active_color, frontier_runtime);
+    let frontier_roots =
+        MonsGameModel::ranked_root_moves(game, game.active_color, frontier_runtime);
     let frontier_selected = frontier_roots
         .iter()
         .find(|root| root.inputs.as_slice() == frontier_inputs)?;
@@ -358,6 +361,76 @@ fn select_white_nonnegative_deny_search_only_fallback_inputs(
 
     let search_only_inputs = select_shipping_search_inputs(game, search_only_runtime);
     if search_only_inputs.is_empty() || search_only_inputs == frontier_inputs {
+        return None;
+    }
+
+    Some(search_only_inputs)
+}
+
+fn select_white_negative_deny_search_only_selected_rank_fallback_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+    frontier_inputs: &[Input],
+) -> Option<Vec<Input>> {
+    let white_turn_three_mana_only = game.active_color == Color::White
+        && game.turn_number == 3
+        && game.mons_moves_count == 1
+        && !game.player_can_use_action()
+        && game.player_can_move_mana();
+    if !white_turn_three_mana_only || frontier_inputs.is_empty() {
+        return None;
+    }
+
+    let context = crate::models::automove_exact::exact_opportunity_context(game, game.active_color);
+    if context.opponent_can_win_immediately
+        || context.delta.same_turn_score_window_value != 1
+        || context.delta.opponent_window_deny_gain != 1
+        || context.delta.drainer_attack_available
+        || context.delta.drainer_safety >= 0
+    {
+        return None;
+    }
+
+    let frontier_runtime = apply_frontier_pro_v2_guarded_config(config);
+    let frontier_roots =
+        MonsGameModel::ranked_root_moves(game, game.active_color, frontier_runtime);
+    let frontier_selected = frontier_roots
+        .iter()
+        .find(|root| root.inputs.as_slice() == frontier_inputs)?;
+    let frontier_family = MonsGameModel::turn_engine_root_move_family(frontier_selected);
+    let frontier_utility = MonsGameModel::turn_engine_scored_root_utility(
+        game,
+        frontier_selected,
+        game.active_color,
+        frontier_runtime,
+        frontier_family,
+    );
+    if frontier_utility.has_nonnegative_deny_gain() {
+        return None;
+    }
+
+    let mut search_only_runtime = frontier_runtime;
+    search_only_runtime.enable_turn_engine_selector = false;
+    search_only_runtime.enable_turn_head_rerank = true;
+    let shipping_runtime = shipping_search_config_for_game(game, SmartAutomovePreference::Pro);
+    search_only_runtime.turn_engine_seed_cap = shipping_runtime.turn_engine_seed_cap;
+    search_only_runtime.turn_engine_beam_width = shipping_runtime.turn_engine_beam_width;
+    search_only_runtime.turn_engine_per_node_family_cap =
+        shipping_runtime.turn_engine_per_node_family_cap;
+    search_only_runtime.turn_engine_step_cap = shipping_runtime.turn_engine_step_cap;
+
+    let search_only_inputs = select_shipping_search_inputs(game, search_only_runtime);
+    if search_only_inputs.is_empty() || search_only_inputs == frontier_inputs {
+        return None;
+    }
+
+    let selected_rank = MonsGameModel::focused_candidate_rank_for_runtime_inputs(
+        game,
+        game.active_color,
+        search_only_runtime,
+        search_only_inputs.as_slice(),
+    )?;
+    if selected_rank != 0 {
         return None;
     }
 
@@ -457,11 +530,9 @@ pub(crate) fn select_frontier_pro_v2_guarded_inputs(
     }
 
     let frontier_inputs = execute_frontier_candidate_inputs(game, config);
-    if let Some(inputs) = select_white_early_engine_disabled_fallback_inputs(
-        game,
-        config,
-        frontier_inputs.as_slice(),
-    ) {
+    if let Some(inputs) =
+        select_white_early_engine_disabled_fallback_inputs(game, config, frontier_inputs.as_slice())
+    {
         #[cfg(test)]
         set_frontier_runtime_variant_branch("white_early_engine_disabled_fallback");
         return inputs;
@@ -473,6 +544,17 @@ pub(crate) fn select_frontier_pro_v2_guarded_inputs(
     ) {
         #[cfg(test)]
         set_frontier_runtime_variant_branch("white_nonnegative_deny_search_only_fallback");
+        return inputs;
+    }
+    if let Some(inputs) = select_white_negative_deny_search_only_selected_rank_fallback_inputs(
+        game,
+        config,
+        frontier_inputs.as_slice(),
+    ) {
+        #[cfg(test)]
+        set_frontier_runtime_variant_branch(
+            "white_negative_deny_search_only_selected_rank_fallback",
+        );
         return inputs;
     }
     if let Some(inputs) = select_late_black_search_fallback_inputs(game, frontier_inputs.as_slice())
