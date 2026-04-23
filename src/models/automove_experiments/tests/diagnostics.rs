@@ -630,9 +630,13 @@ fn black_progress_vs_setup_residue_probe() {
         SmartAutomovePreference::Pro,
         &game,
     );
+    let shipping_selected =
+        profile_decision_move_fen("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+    let shipping_runtime_probe =
+        runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
 
     println!(
-        "BLACK_PROGRESS_VS_SETUP_RESIDUE context={} approved={} shipping={} candidate_contains_shipping={} shortlist={:?} approved_family={:?} shipping_family={:?} approved_plain_spirit={} approved_progress_surface={} shipping_progress_surface={} approved_non_tactical={} shipping_non_tactical={} exact_window={} exact_deny={} exact_attack={} approved_vulnerable={} shipping_vulnerable={} shipping_score_ge_approved={} pro_v1_candidate_selected={} probe_legacy_selected={} probe_legacy_full_pool_selected={} runtime_probe={:?}",
+        "BLACK_PROGRESS_VS_SETUP_RESIDUE context={} approved={} shipping={} candidate_contains_shipping={} shortlist={:?} approved_family={:?} shipping_family={:?} approved_plain_spirit={} approved_progress_surface={} shipping_progress_surface={} approved_non_tactical={} shipping_non_tactical={} exact_window={} exact_deny={} exact_attack={} approved_vulnerable={} shipping_vulnerable={} shipping_score_ge_approved={} pro_v1_candidate_selected={} probe_legacy_selected={} probe_legacy_full_pool_selected={} shipping_selected={} runtime_probe={:?} shipping_runtime_probe={:?}",
         exact_opportunity_context_probe(&game),
         format_root_probe(scored_roots.get(approved_index)),
         format_root_probe(scored_roots.get(shipping_index)),
@@ -657,7 +661,9 @@ fn black_progress_vs_setup_residue_probe() {
         Input::fen_from_array(&pro_v1_candidate_selected),
         probe_legacy_selected,
         probe_legacy_full_pool_selected,
+        shipping_selected,
         runtime_probe,
+        shipping_runtime_probe,
     );
 }
 

@@ -278,3 +278,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Retained duel strength still killed both versions in the same place. `smart_automove_pool_pro_reliability_gate` vs `shipping_pro_search` failed at `0.9167 / 0.8333 / 0.9167`, with Normal below the floor.
 - The follow-up Normal non-win trace showed why the direct fallback is not enough. The pack still included the engine-disabled early-white split `l8,5;l7,6` vs shipping `l9,5;l8,3;l7,4`, so fixing the earlier `ply9` recovery board in isolation still leaves the retained Normal blocker alive.
 - Durable outcome: do not reopen direct runtime-variant white search-only recovery fallbacks for `l9,4;l8,3`. Keep the lesson, discard the code, and move the next white spend onto the remaining engine-disabled early-white seam instead.
+
+## Black Residue Shipping Fallback Wave
+
+- No new frontier challenger survived this wave. The local candidate added `select_black_progress_setup_engine_disabled_fallback_inputs`, mirroring shipping on the exact black turn-six action+mana weak-window residue board where frontier keeps `l7,1;l9,3` and shipping disables engine selection to play `l1,5;l2,7;l1,8`.
+- The local board movement was real. The new retained assertion aligned that residue board to shipping, while the nearby retained white engine-disabled, late black Fast, and late black reply-risk setup walls all stayed clean.
+- The cheap gates and the smaller retained duel also stayed clean enough to justify confirm. `guardrails` passed, retained `pro-triage` stayed at `target_changed=5 / off_target_changed=0`, exact-lite passed, advisory stage-1 CPU came back at `1.555 / 1.526 / 1.369`, and retained `pro-reliability` passed at `0.9167 / 0.9167 / 1.0000`.
+- The larger confirm duel killed it. `smart_automove_pool_pro_reliability_gate` vs `shipping_pro_search` failed at `0.9375 / 0.9062 / 0.8750`, with Fast below the floor.
+- The confirm-sized Fast non-win trace showed why the wrapper is too shallow. The pack still included the old white search-only split `l9,4;l8,3` vs shipping `l9,4;l8,5`, and it also rotated onto two later black engine-disabled seams: `l0,0;l1,1` vs shipping `l7,1;l8,0`, and `l0,5;l1,5` vs shipping `l2,5;l3,7;l2,8`.
+- Durable outcome: do not keep or reopen the direct black engine-disabled shipping fallback on `l7,1;l9,3`. Preserve the improved residue probe and move the next black spend onto the later Fast seams instead of mirroring shipping on the earlier turn-six board.

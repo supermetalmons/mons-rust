@@ -31,6 +31,12 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - This iteration kept and promoted a fifth narrow early-white runtime repair in the same package:
   - It adds `select_white_early_engine_disabled_fallback_inputs`, a wrapper-level reroute that mirrors shipping only on the exact weak-window turn-five white action+mana board class where frontier keeps engine selection enabled and gets trapped on a vulnerable `ManaTempo` root.
   - The retained regression for that board now lives in `frontier_pro_v2_guarded_uses_white_early_engine_disabled_fallback_on_normal_root`.
+- This iteration spent the remaining turn-six black residue board directly and killed that line:
+  - It added a wrapper-level `select_black_progress_setup_engine_disabled_fallback_inputs` that mirrored shipping on the exact black turn-six action+mana weak-window board where frontier keeps the safe-progress root `l7,1;l9,3` and shipping disables engine selection to choose the spirit-own-setup line `l1,5;l2,7;l1,8`.
+  - Locally, that fixed the residue board and kept the nearby retained white engine-disabled, late black Fast, and late black reply-risk setup walls clean.
+  - The package still cleared `guardrails`, retained `pro-triage` at `target_changed=5 / off_target_changed=0`, exact-lite, advisory stage-1 CPU at `1.555 / 1.526 / 1.369`, and retained `pro-reliability` at `0.9167 / 0.9167 / 1.0000`.
+  - `pro-reliability-confirm` failed at `0.9375 / 0.9062 / 0.8750`, so the code was discarded.
+  - The confirm-sized Fast non-win trace showed why the wrapper is too shallow: alongside the old white search-only split `l9,4;l8,3` vs shipping `l9,4;l8,5`, the pack rotated onto two later black engine-disabled seams, `l0,0;l1,1` vs shipping `l7,1;l8,0` and `l0,5;l1,5` vs shipping `l2,5;l3,7;l2,8`.
 - The package still clears the small retained loop: `guardrails` passed, `pro-triage` stayed at `target_changed=5 / off_target_changed=0`, exact-lite passed, and retained `pro-reliability` passed at `0.9167 / 0.9167 / 1.0000`.
 - The local retained slice for the new black fix stayed clean:
   - `frontier_pro_v2_guarded_profile_prefers_shipping_black_late_fast_trace_root` now aligns to shipping `l1,8;l0,8`.
@@ -51,6 +57,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - Frontier already keeps the safe-progress incumbent on the full pool.
   - The candidate-only ProV1 replay prefers a different spirit root than shipping.
   - Treat it as a progress-vs-setup/model-ranking mismatch, not another late black reply-risk shortlist miss.
+- The ignored `black_progress_vs_setup_residue_probe` is now more useful than before:
+  - It confirms the actual shipping move on that board is still `l1,5;l2,7;l1,8`, not the candidate-only ProV1 replay `l1,5;l3,7;l2,8`.
+  - Shipping reaches that move with `engine_disabled`, while frontier stays on `frontier_execute` with `l7,1;l9,3`.
 - This iteration spent a broader white turn-three no-action recovery cut and killed it:
   - It widened `pro_v2_root_advisor_white_turn_three_no_action_recovery_override` from `mons_moves_count == 0` to `<= 1` and paired that with a post-search head reject for same-lane vulnerable `ManaTempo -> DrainerSafetyRecovery` recovery pairs.
   - Locally, that did fix the retained white Fast seam `l9,4;l8,3` vs shipping `l9,4;l8,5`, and it also aligned the older vulnerable white mana-only board `l8,4;l7,3` to shipping `l8,4;l8,5`.
@@ -108,10 +117,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Do not reopen the direct runtime-variant white search-only recovery fallback on `l9,4;l8,3` vs `l9,4;l8,5`. Both the shipping-assisted and frontier-local versions still fail retained `pro-reliability` at `0.9167 / 0.8333 / 0.9167`.
 - Do not reopen the resolved engine-disabled early-white Normal seam `l8,5;l7,6` vs shipping `l9,5;l8,3;l7,4` unless a future challenger regresses it. The kept fix is the exact runtime wrapper fallback, not another broader white recovery override.
 - Do not reopen that white seam by broadening the turn-three no-action recovery override to `mons_moves_count == 1`. That line still fails retained `pro-reliability` at `0.9167 / 0.7500 / 0.9167` by rotating Normal onto engine-disabled early-white boards.
-- The next unresolved black diagnostic seam is `l7,1;l9,3` vs `l1,5;l2,7;l1,8`, and it is still the next best spend if a new challenger is needed:
-  - The full-pool frontier chooser already stays on the safe-progress incumbent.
-  - The candidate-only ProV1 replay prefers a different spirit root than shipping.
-  - If that board matters again, start from progress-vs-setup scoring or root-rank generation rather than another reply-risk or legacy-alignment tweak.
+- Do not reopen the direct black engine-disabled shipping fallback on `l7,1;l9,3` vs `l1,5;l2,7;l1,8`. It fixes the local residue board and still fails `pro-reliability-confirm` at `0.9375 / 0.9062 / 0.8750`.
+- The next unresolved black spend has to explain the later confirm Fast seams `l0,0;l1,1` vs shipping `l7,1;l8,0` and `l0,5;l1,5` vs shipping `l2,5;l3,7;l2,8`, not just mirror shipping on the earlier turn-six residue board.
 - Do not reopen the resolved late black Fast seam `l1,8;l1,9` vs `l1,8;l0,8`, the resolved early white Fast seam `l9,7;l8,6` vs `l9,7;l7,6;l7,7`, the resolved black late setup seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8`, or the resolved white early engine-disabled seam `l8,5;l7,6` vs `l9,5;l8,3;l7,4` unless a future challenger regresses them.
 - Any future challenger still has to respect stage-1 CPU pressure; a package that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 
