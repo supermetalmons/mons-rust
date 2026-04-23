@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Fast Variant-Isolation Trace Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- `forward_bridge_mana_rows` was isolated first with `smart_automove_pro_reliability_duel_trace_probe`. Across `24` Fast games it logged `8` regressions, `4` improvements, and `12` flat games. The repeated pair did get stronger: the white head-accept seam `l9,6;l7,4;l7,3` vs shipping `l9,6;l7,6;l7,7` appeared `3` times.
+- That still was not one-variant collapse. The same `forward_bridge_mana_rows` trace kept five singleton seams behind the repeated pair, including black mana/progress misses (`l0,6;l1,6` vs `l2,3;l3,4`, `l7,1;l9,3` vs `l1,5;l3,4;l2,3`) and extra white spirit/setup siblings (`l9,6;l8,7` vs `l9,6;l7,7;l8,8`, `l9,7;l8,6` vs `l9,7;l7,6;l7,7`, `l9,5;l9,6` vs `l7,3;l6,2`).
+- `alternating_mana_rows` was then isolated with `smart_automove_pro_reliability_nonwin_trace_probe` on `vs_shipping_fast`. It logged `7` Fast nonwins. The black mana sibling seam `l2,7;l1,6` vs `l2,7;l1,8` repeated `2` times, but the rest of the variant still stayed singleton: `l0,10;l0,9` vs `l4,0;l5,0;mb`, `l1,6;l1,7` vs `l1,6;l0,5`, `l2,5;l0,5;l1,6` vs `l2,5;l4,7;l3,8`, `l8,5;l10,5;l9,4` vs `l8,5;l6,3;l7,2`, and `l2,4;l1,5` vs `l2,4;l1,3`.
+- Durable outcome: do not spend isolated `forward_bridge_mana_rows` or `alternating_mana_rows` runtime code yet. Each variant now has one repeated pair, but neither variant collapsed to a single runtime mechanism.
+
 ## Fast Recurrence Trace Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
