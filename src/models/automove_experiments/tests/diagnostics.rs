@@ -3088,6 +3088,389 @@ fn black_progress_reply_floor_breakdown_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: attribute black progress-vs-setup residual board-state scoring"]
+fn black_progress_residual_weight_attribution_probe() {
+    use crate::models::scoring::{evaluate_preferability_breakdown_with_weights, ScoringWeights};
+
+    #[derive(Clone, Copy)]
+    struct AttributionCase {
+        label: &'static str,
+        board_fen: &'static str,
+        safe_progress_root: &'static str,
+        setup_roots: &'static [&'static str],
+    }
+
+    struct WorstReply {
+        input_fen: String,
+        score: i32,
+        events: String,
+        game: MonsGame,
+    }
+
+    fn root_index(scored_roots: &[RootEvaluation], root_fen: &str) -> Option<usize> {
+        scored_roots
+            .iter()
+            .position(|root| Input::fen_from_array(&root.inputs) == root_fen)
+    }
+
+    fn zeroed_like(base: &ScoringWeights) -> ScoringWeights {
+        ScoringWeights {
+            use_legacy_formula: base.use_legacy_formula,
+            include_regular_mana_move_windows: base.include_regular_mana_move_windows,
+            include_match_point_window: base.include_match_point_window,
+            next_turn_window_scale_bp: base.next_turn_window_scale_bp,
+            double_confirmed_score: false,
+            confirmed_score: 0,
+            fainted_mon: 0,
+            fainted_drainer: 0,
+            fainted_cooldown_step: 0,
+            drainer_at_risk: 0,
+            mana_close_to_same_pool: 0,
+            mon_with_mana_close_to_any_pool: 0,
+            extra_for_supermana: 0,
+            extra_for_opponents_mana: 0,
+            drainer_close_to_mana: 0,
+            drainer_holding_mana: 0,
+            drainer_close_to_own_pool: 0,
+            drainer_close_to_supermana: 0,
+            mon_close_to_center: 0,
+            spirit_close_to_enemy: 0,
+            spirit_on_own_base_penalty: 0,
+            angel_guarding_drainer: 0,
+            angel_close_to_friendly_drainer: 0,
+            has_consumable: 0,
+            active_mon: 0,
+            regular_mana_to_owner_pool: 0,
+            regular_mana_drainer_control: 0,
+            supermana_drainer_control: 0,
+            supermana_race_control: 0,
+            opponent_mana_denial: 0,
+            mana_carrier_at_risk: 0,
+            mana_carrier_guarded: 0,
+            mana_carrier_one_step_from_pool: 0,
+            supermana_carrier_one_step_from_pool_extra: 0,
+            immediate_winning_carrier: 0,
+            drainer_best_mana_path: 0,
+            drainer_pickup_score_this_turn: 0,
+            mana_carrier_score_this_turn: 0,
+            drainer_immediate_threat: 0,
+            score_race_path_progress: 0,
+            opponent_score_race_path_progress: 0,
+            score_race_multi_path: 0,
+            opponent_score_race_multi_path: 0,
+            immediate_score_window: 0,
+            opponent_immediate_score_window: 0,
+            immediate_score_multi_window: 0,
+            opponent_immediate_score_multi_window: 0,
+            spirit_action_utility: 0,
+            drainer_danger_boolean: 0,
+            mana_carrier_danger_boolean: 0,
+            drainer_walk_threat_boolean: 0,
+            mana_carrier_walk_threat_boolean: 0,
+            opponent_drainer_attack_bonus: 0,
+            attacker_close_to_opponent_drainer: 0,
+        }
+    }
+
+    fn residual_score(game: &MonsGame, perspective: Color, weights: &ScoringWeights) -> i32 {
+        evaluate_preferability_breakdown_with_weights(game, perspective, weights)
+            .terms
+            .residual_board_state
+    }
+
+    fn residual_field_scores(
+        game: &MonsGame,
+        perspective: Color,
+        base: &ScoringWeights,
+    ) -> Vec<(&'static str, i32)> {
+        let mut scores = Vec::new();
+        macro_rules! add_field {
+            ($field:ident) => {{
+                let mut weights = zeroed_like(base);
+                weights.$field = base.$field;
+                scores.push((
+                    stringify!($field),
+                    residual_score(game, perspective, &weights),
+                ));
+            }};
+        }
+
+        add_field!(confirmed_score);
+        add_field!(fainted_mon);
+        add_field!(fainted_drainer);
+        add_field!(fainted_cooldown_step);
+        add_field!(drainer_at_risk);
+        add_field!(mana_close_to_same_pool);
+        add_field!(mon_with_mana_close_to_any_pool);
+        add_field!(extra_for_supermana);
+        add_field!(extra_for_opponents_mana);
+        add_field!(drainer_close_to_mana);
+        add_field!(drainer_holding_mana);
+        add_field!(drainer_close_to_own_pool);
+        add_field!(drainer_close_to_supermana);
+        add_field!(mon_close_to_center);
+        add_field!(spirit_close_to_enemy);
+        add_field!(spirit_on_own_base_penalty);
+        add_field!(angel_guarding_drainer);
+        add_field!(angel_close_to_friendly_drainer);
+        add_field!(has_consumable);
+        add_field!(active_mon);
+        add_field!(regular_mana_to_owner_pool);
+        add_field!(regular_mana_drainer_control);
+        add_field!(supermana_drainer_control);
+        add_field!(supermana_race_control);
+        add_field!(opponent_mana_denial);
+        add_field!(mana_carrier_at_risk);
+        add_field!(mana_carrier_guarded);
+        add_field!(mana_carrier_one_step_from_pool);
+        add_field!(supermana_carrier_one_step_from_pool_extra);
+        add_field!(immediate_winning_carrier);
+        add_field!(drainer_best_mana_path);
+        add_field!(drainer_pickup_score_this_turn);
+        add_field!(mana_carrier_score_this_turn);
+        add_field!(drainer_immediate_threat);
+        add_field!(score_race_path_progress);
+        add_field!(opponent_score_race_path_progress);
+        add_field!(score_race_multi_path);
+        add_field!(opponent_score_race_multi_path);
+        add_field!(immediate_score_window);
+        add_field!(opponent_immediate_score_window);
+        add_field!(immediate_score_multi_window);
+        add_field!(opponent_immediate_score_multi_window);
+        add_field!(spirit_action_utility);
+        add_field!(drainer_danger_boolean);
+        add_field!(mana_carrier_danger_boolean);
+        add_field!(drainer_walk_threat_boolean);
+        add_field!(mana_carrier_walk_threat_boolean);
+        add_field!(opponent_drainer_attack_bonus);
+        add_field!(attacker_close_to_opponent_drainer);
+
+        scores
+    }
+
+    fn top_residual_deltas(
+        left_label: &str,
+        left_game: &MonsGame,
+        right_label: &str,
+        right_game: &MonsGame,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+    ) -> String {
+        let left_breakdown = evaluate_preferability_breakdown_with_weights(
+            left_game,
+            perspective,
+            config.scoring_weights,
+        );
+        let right_breakdown = evaluate_preferability_breakdown_with_weights(
+            right_game,
+            perspective,
+            config.scoring_weights,
+        );
+        let left_scores = residual_field_scores(left_game, perspective, config.scoring_weights);
+        let right_scores = residual_field_scores(right_game, perspective, config.scoring_weights);
+        let mut deltas = left_scores
+            .into_iter()
+            .zip(right_scores)
+            .map(|((left_name, left_score), (right_name, right_score))| {
+                assert_eq!(left_name, right_name);
+                (left_name, left_score - right_score, left_score, right_score)
+            })
+            .collect::<Vec<_>>();
+        let field_sum_delta = deltas.iter().map(|(_, delta, _, _)| *delta).sum::<i32>();
+        deltas.sort_by(|left, right| {
+            right
+                .1
+                .abs()
+                .cmp(&left.1.abs())
+                .then_with(|| left.0.cmp(right.0))
+        });
+        let top = deltas
+            .iter()
+            .filter(|(_, delta, _, _)| *delta != 0)
+            .take(14)
+            .map(|(name, delta, left_score, right_score)| {
+                format!("{name}:{delta}({left_score}-{right_score})")
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+
+        format!(
+            "{left_label}_minus_{right_label} total_delta={} residual_delta={} field_sum_delta={} left_terms={:?} right_terms={:?} left_features={:?} right_features={:?} top_residual_fields=[{}]",
+            left_breakdown.total - right_breakdown.total,
+            left_breakdown.terms.residual_board_state - right_breakdown.terms.residual_board_state,
+            field_sum_delta,
+            left_breakdown.terms,
+            right_breakdown.terms,
+            left_breakdown.features,
+            right_breakdown.features,
+            top,
+        )
+    }
+
+    fn worst_reply_state(
+        state_after_move: &MonsGame,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+    ) -> Option<WorstReply> {
+        let reply_limit = config.root_reply_risk_reply_limit.max(1).min(24);
+        let replies = MonsGameModel::enumerate_legal_transitions(
+            state_after_move,
+            reply_limit,
+            MonsGameModel::automove_start_input_options(config),
+        );
+        replies
+            .into_iter()
+            .map(|reply| {
+                let score = match reply.game.winner_color() {
+                    Some(winner) if winner == perspective => SMART_TERMINAL_SCORE / 2,
+                    Some(_) => -SMART_TERMINAL_SCORE / 2,
+                    None => MonsGameModel::evaluate_search_preferability(
+                        &reply.game,
+                        perspective,
+                        config,
+                    ),
+                };
+                (score, Input::fen_from_array(&reply.inputs), reply)
+            })
+            .min_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)))
+            .map(|(score, input_fen, reply)| WorstReply {
+                input_fen,
+                score,
+                events: format!("{:?}", reply.events),
+                game: reply.game,
+            })
+    }
+
+    fn pair_attribution(
+        safe_root: &RootEvaluation,
+        setup_root: &RootEvaluation,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+    ) -> String {
+        let safe_fen = Input::fen_from_array(&safe_root.inputs);
+        let setup_fen = Input::fen_from_array(&setup_root.inputs);
+        let after_root = top_residual_deltas(
+            "safe_after_root",
+            &safe_root.game,
+            "setup_after_root",
+            &setup_root.game,
+            perspective,
+            config,
+        );
+        let worst_reply = match (
+            worst_reply_state(&safe_root.game, perspective, config),
+            worst_reply_state(&setup_root.game, perspective, config),
+        ) {
+            (Some(safe_reply), Some(setup_reply)) => format!(
+                "safe_worst_reply={} safe_worst_score={} safe_worst_events={} setup_worst_reply={} setup_worst_score={} setup_worst_events={} {}",
+                safe_reply.input_fen,
+                safe_reply.score,
+                safe_reply.events,
+                setup_reply.input_fen,
+                setup_reply.score,
+                setup_reply.events,
+                top_residual_deltas(
+                    "safe_worst_reply",
+                    &safe_reply.game,
+                    "setup_worst_reply",
+                    &setup_reply.game,
+                    perspective,
+                    config,
+                ),
+            ),
+            (None, None) => "worst_reply=no_replies".to_string(),
+            (None, Some(setup_reply)) => format!(
+                "safe_worst_reply=none setup_worst_reply={} setup_worst_score={} setup_worst_events={}",
+                setup_reply.input_fen, setup_reply.score, setup_reply.events,
+            ),
+            (Some(safe_reply), None) => format!(
+                "safe_worst_reply={} safe_worst_score={} safe_worst_events={} setup_worst_reply=none",
+                safe_reply.input_fen, safe_reply.score, safe_reply.events,
+            ),
+        };
+
+        format!(
+            "safe_root={} safe_probe={} setup_root={} setup_probe={} after_root={{ {} }} worst_reply={{ {} }}",
+            safe_fen,
+            format_root_probe(Some(safe_root)),
+            setup_fen,
+            format_root_probe(Some(setup_root)),
+            after_root,
+            worst_reply,
+        )
+    }
+
+    fn surface_for_case(case: AttributionCase) -> String {
+        let game = MonsGame::from_fen(case.board_fen, false)
+            .unwrap_or_else(|| panic!("{} should have a valid fen", case.label));
+        let perspective = game.active_color;
+        let frontier_probe = runtime_decision_probe(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let shipping_probe =
+            runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+        let (config, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let Some(safe_index) = root_index(scored_roots.as_slice(), case.safe_progress_root) else {
+            return format!(
+                "label={} context={} frontier_selected={} shipping_selected={} safe_root={} missing",
+                case.label,
+                exact_opportunity_context_probe(&game),
+                frontier_probe.selected_input_fen,
+                shipping_probe.selected_input_fen,
+                case.safe_progress_root,
+            );
+        };
+        let safe_root = &scored_roots[safe_index];
+
+        format!(
+            "label={} context={} frontier_selected={} shipping_selected={} comparisons={:?}",
+            case.label,
+            exact_opportunity_context_probe(&game),
+            frontier_probe.selected_input_fen,
+            shipping_probe.selected_input_fen,
+            case.setup_roots
+                .iter()
+                .map(|setup_root_fen| {
+                    let Some(setup_index) = root_index(scored_roots.as_slice(), setup_root_fen)
+                    else {
+                        return format!("setup_root={} missing", setup_root_fen);
+                    };
+                    pair_attribution(safe_root, &scored_roots[setup_index], perspective, config)
+                })
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    let cases = [
+        AttributionCase {
+            label: "black_progress_vs_setup_residue",
+            board_fen: "1 0 b 0 0 0 0 0 6 n05d0xn05/n05s0xa0xe0xn03/n02xxmn04xxmn03/n07xxmn03/n03xxmn01xxmn05/n05xxUn04xxQ/n05xxMn05/n01y0xn01S0xE0xn01xxMxxMn03/n01xxMn09/n03A0xn03Y0xn03/n05D1xn05",
+            safe_progress_root: "l7,1;l9,3",
+            setup_roots: &["l1,5;l2,7;l1,8", "l1,5;l3,7;l2,8"],
+        },
+        AttributionCase {
+            label: "black_confirm_fast_setup_control",
+            board_fen: "2 1 b 0 0 0 0 0 10 n05d0xn03xxmn01/n04a0xn02e0xn03/n05s0xn05/E0xn02xxmn03xxmn03/n05xxmn05/n05xxUn04xxQ/n05xxMn05/n03S0xn01Y0xxxMn04/n03y0xn04xxMn02/n03A0xn07/n05D1xn05",
+            safe_progress_root: "l0,5;l1,5",
+            setup_roots: &["l2,5;l3,7;l2,8"],
+        },
+    ];
+
+    for case in cases {
+        println!(
+            "BLACK_PROGRESS_RESIDUAL_WEIGHT_ATTRIBUTION {}",
+            surface_for_case(case)
+        );
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: inspect remaining late black confirm fast setup seam"]
 fn black_confirm_fast_setup_split_probe() {
     log_black_confirm_fast_runtime_seam_probe(

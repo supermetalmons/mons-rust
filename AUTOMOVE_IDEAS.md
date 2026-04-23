@@ -11,7 +11,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - The live experiment surface is Pro-only: 2 retained profiles and 5 canonical stages.
 - The default operator entrypoint is `./scripts/run-automove-canonical-loop.sh`.
 - There is no second live challenger today.
-- The latest diagnostic follow-up kept no runtime code: confirm-sized traces still show exactly one known Pro no-go (`black_recovery_branch`), zero Normal non-wins, and exactly one known Fast no-go (`black_progress_vs_setup_residue`).
+- The latest diagnostic follow-up kept no runtime code: the known Fast `black_progress_vs_setup_residue` is now attributed to generic residual board-state material/cooldown scoring rather than a selection-layer, reply-risk, or explicit tactical/window term.
 
 ## Latest Gate Snapshot
 
@@ -106,6 +106,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - The worst replies are quiet black mon moves, not immediate wins, match-point reaches, or tactical score swings, so the current model is preferring safe progress because generic positional/mana evaluation likes the resulting board more than the spirit setup board.
   - On the retained `black_confirm_fast_setup` board, the same raw reply guard still prefers safe progress, but the kept setup root is score-tied and has the better `score_delta` axis (`726` vs `660`), giving the existing family override enough close-surface evidence to recover setup.
   - The next black spend, if any, should inspect residual board-state scoring/feature contributions for this exact setup-vs-safe-progress pair. Do not spend more selection-layer work on this residue until that positional scoring gap is explained.
+- This iteration kept no runtime code and added `black_progress_residual_weight_attribution_probe` to attribute that residual board-state gap:
+  - On `black_progress_vs_setup_residue`, the safe-progress residual edge reconstructs exactly from individual scoring weights: `+843` after-root versus shipping setup, `+778` after-root versus the better-ranked setup sibling, and `+862` / `+797` after the respective quiet worst replies.
+  - The largest safe-progress contributors are generic material/cooldown terms, not setup/progress logic: `fainted_mon` contributes `+520` and `fainted_cooldown_step` contributes `+240`; smaller terms include `active_mon`, drainer/angel positioning, and reply-state guardian terms. Setup only modestly wins terms such as `mana_close_to_same_pool`, and sometimes `spirit_on_own_base_penalty` after worst reply.
+  - The retained `black_confirm_fast_setup` control also has residual scoring strongly favoring safe progress (`+900` after-root, `+1032` after worst replies), yet the promoted advisor correctly selects setup there because the setup root is score-tied, already shortlisted, and has close-surface family evidence. That makes broad residual-weight tuning, selector fallback, or wrapper mirroring unsafe for this residue.
+  - Treat the Fast black progress-vs-setup residue as explained and still no-go at the current model layer. Reopen it only if a future probe finds a narrow way to value the material/cooldown tradeoff differently without breaking retained setup-control boards.
 - Board-local confirm diagnostics collapsed the earlier two-board black Fast residue into one real live seam:
   - On `l0,0;l1,1` vs shipping `l7,1;l8,0`, frontier already matches shipping on the current retained package.
   - The only live confirm Fast approval miss was `l0,5;l1,5` vs shipping `l2,5;l3,7;l2,8`, where legacy and shipping already agree on the spirit own-setup progress root.
@@ -267,7 +272,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 ## Next Hypothesis
 
 - The current package remains promotable and there is no live runtime challenger after this diagnostic split.
-- The next spend should target the Fast black progress-vs-setup filter layer: explain whether the ProV2 `progress_competes` / `followup_progress_competes` predicates should ever preserve the safe-progress root over black turn-six own-setup spirit roots on this surface. Do not touch runtime behavior until that scope is proven against nearby retained black setup/progress boards.
+- The next spend should not target the Fast black progress-vs-setup selection layer. That residue has now been narrowed past predicate scope, shortlist economics, reply-floor terms, and residual-weight attribution; any future attempt must first explain a narrow material/cooldown valuation change that does not break retained setup-control boards.
 - Keep the new white turn-three no-action recovery guard, the black late-fast safe-mana override, the white early setup repair, the black late reply-risk setup rescue, the exact white early engine-disabled wrapper fallback, the black late weak-window safe-progress setup rescue, the white nonnegative-deny and negative-deny search-only fallbacks, the white turn-five same-window plus mid-turn head guards, and the white confirm ProV1 tiebreak fallback together; they now form the promoted retained package.
 - For `black_recovery_branch`, do not reapply the shortlist-local legacy fallback. The selector-ordering probe now shows shipping `l6,0;l6,1` loses to the current approved preserved-spirit root on reply floor and also fails to beat the no-guard ProV1 spirit replay `l1,5;l2,7;l1,8`.
 - For `white_confirm_pro_ply11`, the promotable signal is now specifically the two-root equal-score safe quiet `ManaTempo` shortlist plus raw `search-only + ProV1` tiebreak. Do not broaden that branch into a shipping mirror or advisor override for unequal-score, non-quiet, progress, tactical, or outside-shortlist boards.
