@@ -85,6 +85,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `white_search_order_selector_disable_probe` closes off the obvious wrapper-level config-mirroring read. On both white siblings and on `white_late_fast_hotspot`, forcing the incoming frontier runtime config to `selector=false`, `head_rerank=true`, shipping-like own caps, or even `TurnEngineMode::ProV1` still leaves the live decision on the same frontier `engine_post_search` result.
 - That is a wrapper-plumbing fact, not evidence that selector-disabled semantics themselves are impossible. `select_frontier_pro_v2_guarded_inputs` re-enters through `apply_frontier_pro_v2_guarded_config`, so config-only selector-disable toggles do not survive wrapper entry.
 - So do not spend another white wave on shallow runtime-config mirroring against the frontier wrapper. If the white search-order family is ever reopened, the spend has to change wrapper branching itself or move deeper shortlist/root scoring behavior.
+- `white_search_order_wrapper_branch_probe` shows what happens when that wrapper reapply is truly bypassed. Raw `search-only + ProV2` still keeps frontier's current white outputs, raw `search-only + shipping own caps + ProV2` fixes the two `ply9/ply11` siblings but not the late Fast hotspot, and raw `search-only + ProV1` matches shipping on all three local white seams.
+- That still is not a live runtime answer. `white_search_order_raw_prov1_scope_probe` shows the obvious broad gate for that line is too wide: the same raw `search-only + ProV1` reroute also flips the retained `frontier_pro_v2_guarded_profile_keeps_v30_white_turn_three_mana_only_vulnerable_root` from `l8,4;l7,3` to shipping `l8,4;l8,5`, even though it shares the same coarse `turn=3 / mons_moves=1 / no-action / mana-only / window=1 / deny=1 / drainer_safety<0` context as the unresolved white siblings.
+- So the white wrapper frontier is now tighter: actual search-only `ProV1` semantics are a real local explanation, but no coarse white context gate found so far can separate the unresolved siblings from the retained vulnerable guard. Any future white wrapper spend has to distinguish those boards with a narrower root-scoring or shortlist theory, not just a broad branch into shipping-like search-only semantics.
 - If a rotated white confirm seam shows the incumbent quiet `ManaTempo` root ahead on both reply floor and selected override utility, it is not another shortlist-order or head-acceptance bug. Treat that as a root-scoring/model mismatch and do not paper over it with another advisor override.
 - Runtime cost is a real gate. A candidate that fixes live walls but pushes stage-1 CPU into the `1.5x+` range against `shipping_pro_search` is still non-promotable.
 - Wrapper-only reroutes, fallback widening, shortlist widening, and metadata-only advisor changes saturate quickly; the real frontier is shared approval and head logic.
@@ -121,6 +124,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `white_search_order_seed_step_scope_probe`
 - `white_search_order_shortlist_gate_probe`
 - `white_search_order_selector_disable_probe`
+- `white_search_order_wrapper_branch_probe`
+- `white_search_order_raw_prov1_scope_probe`
 
 ## Kill Rules
 

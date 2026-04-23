@@ -2835,6 +2835,225 @@ fn white_search_order_selector_disable_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: inspect raw wrapper-branch variants on white ordering family"]
+fn white_search_order_wrapper_branch_probe() {
+    struct ProbeCase {
+        label: &'static str,
+        board_fen: &'static str,
+    }
+
+    #[derive(Debug)]
+    struct VariantProbeResult {
+        move_fen: String,
+        stage: &'static str,
+        disable_reason: &'static str,
+    }
+
+    fn run_raw_search_variant(
+        game: &MonsGame,
+        tweak: impl FnOnce(&mut AutomoveSearchConfig),
+    ) -> VariantProbeResult {
+        let selector = profile_selector_from_name("shipping_pro_search")
+            .expect("shipping profile selector should exist");
+        let mut config =
+            calibration_runtime_config("frontier_pro_v2_guarded", game, SmartAutomovePreference::Pro);
+        tweak(&mut config);
+
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        clear_turn_engine_plan_cache();
+        clear_turn_engine_diagnostics();
+        clear_turn_engine_selector_diagnostics();
+
+        let inputs = select_inputs_with_runtime_fallback(selector, game, config);
+        let move_fen = Input::fen_from_array(&inputs);
+        let selector_diag = turn_engine_selector_diagnostics_snapshot();
+
+        VariantProbeResult {
+            move_fen,
+            stage: selector_diag.last_return_stage,
+            disable_reason: selector_diag.selector_disable_reason,
+        }
+    }
+
+    let cases = [
+        ProbeCase {
+            label: "white_fast_ply9_search_ordering",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n05d0xn05/n05s0xa0xe0xn03/n03y0xn03xxmn03/n02xxmn01xxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn07/n04D0xS0xn01Y0xn03/n02E0xn01A0xn06",
+        },
+        ProbeCase {
+            label: "white_normal_ply11_search_ordering",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n06a0xn04/n03y0xn01d0xxxmn01e0xn02/n04s0xn06/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn02Y0xn04/n04D0xS0xn05/n03E0xA0xn06",
+        },
+        ProbeCase {
+            label: "white_late_fast_hotspot",
+            board_fen:
+                "1 1 w 0 0 1 0 0 9 n04s1xn06/n06a0xn04/n05e0xd0xn04/n03xxmxxmn02xxmn03/n05xxmn03Y0xn01/n05xxUn05/E0xn04xxMn01xxMn03/n01y0xn01xxMn03xxMn03/n05S0xn05/n05D0xn05/n04A1xn06",
+        },
+    ];
+
+    for case in cases {
+        let game = MonsGame::from_fen(case.board_fen, false)
+            .unwrap_or_else(|| panic!("{}: valid board fen", case.label));
+        let frontier_probe = runtime_decision_probe(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let shipping_probe =
+            runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+        let raw_search_only_pro_v2 = run_raw_search_variant(&game, |config| {
+            config.enable_turn_engine_selector = false;
+            config.enable_turn_head_rerank = true;
+        });
+        let raw_search_only_shipping_own_caps_pro_v2 = run_raw_search_variant(&game, |config| {
+            config.enable_turn_engine_selector = false;
+            config.enable_turn_head_rerank = true;
+            let shipping =
+                calibration_runtime_config("shipping_pro_search", &game, SmartAutomovePreference::Pro);
+            config.turn_engine_seed_cap = shipping.turn_engine_seed_cap;
+            config.turn_engine_beam_width = shipping.turn_engine_beam_width;
+            config.turn_engine_per_node_family_cap = shipping.turn_engine_per_node_family_cap;
+            config.turn_engine_step_cap = shipping.turn_engine_step_cap;
+        });
+        let raw_search_only_pro_v1 = run_raw_search_variant(&game, |config| {
+            config.enable_turn_engine_selector = false;
+            config.enable_turn_head_rerank = true;
+            config.turn_engine_mode = TurnEngineMode::ProV1;
+        });
+
+        println!(
+            "WHITE_SEARCH_ORDER_WRAPPER_BRANCH label={} context={} frontier(selected={} stage={} disable_reason={}) raw_search_only_pro_v2(move={} stage={} disable_reason={} matches_shipping={}) raw_search_only_shipping_own_caps_pro_v2(move={} stage={} disable_reason={} matches_shipping={}) raw_search_only_pro_v1(move={} stage={} disable_reason={} matches_shipping={}) shipping(selected={} stage={})",
+            case.label,
+            exact_opportunity_context_probe(&game),
+            frontier_probe.selected_input_fen,
+            frontier_probe.selector_last_stage,
+            frontier_probe.selector_disable_reason,
+            raw_search_only_pro_v2.move_fen,
+            raw_search_only_pro_v2.stage,
+            raw_search_only_pro_v2.disable_reason,
+            raw_search_only_pro_v2.move_fen == shipping_probe.selected_input_fen,
+            raw_search_only_shipping_own_caps_pro_v2.move_fen,
+            raw_search_only_shipping_own_caps_pro_v2.stage,
+            raw_search_only_shipping_own_caps_pro_v2.disable_reason,
+            raw_search_only_shipping_own_caps_pro_v2.move_fen == shipping_probe.selected_input_fen,
+            raw_search_only_pro_v1.move_fen,
+            raw_search_only_pro_v1.stage,
+            raw_search_only_pro_v1.disable_reason,
+            raw_search_only_pro_v1.move_fen == shipping_probe.selected_input_fen,
+            shipping_probe.selected_input_fen,
+            shipping_probe.selector_last_stage,
+        );
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: inspect raw search-only prov1 scope on white retained slice"]
+fn white_search_order_raw_prov1_scope_probe() {
+    struct ProbeCase {
+        label: &'static str,
+        board_fen: &'static str,
+    }
+
+    fn raw_search_only_pro_v1_move(game: &MonsGame) -> (String, &'static str, &'static str) {
+        let selector = profile_selector_from_name("shipping_pro_search")
+            .expect("shipping profile selector should exist");
+        let mut config =
+            calibration_runtime_config("frontier_pro_v2_guarded", game, SmartAutomovePreference::Pro);
+        config.enable_turn_engine_selector = false;
+        config.enable_turn_head_rerank = true;
+        config.turn_engine_mode = TurnEngineMode::ProV1;
+
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        clear_turn_engine_plan_cache();
+        clear_turn_engine_diagnostics();
+        clear_turn_engine_selector_diagnostics();
+
+        let inputs = select_inputs_with_runtime_fallback(selector, game, config);
+        let selector_diag = turn_engine_selector_diagnostics_snapshot();
+        (
+            Input::fen_from_array(&inputs),
+            selector_diag.last_return_stage,
+            selector_diag.selector_disable_reason,
+        )
+    }
+
+    let cases = [
+        ProbeCase {
+            label: "target_white_fast_ply9_search_ordering",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n05d0xn05/n05s0xa0xe0xn03/n03y0xn03xxmn03/n02xxmn01xxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn07/n04D0xS0xn01Y0xn03/n02E0xn01A0xn06",
+        },
+        ProbeCase {
+            label: "target_white_normal_ply11_search_ordering",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n06a0xn04/n03y0xn01d0xxxmn01e0xn02/n04s0xn06/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn02Y0xn04/n04D0xS0xn05/n03E0xA0xn06",
+        },
+        ProbeCase {
+            label: "target_white_late_fast_hotspot",
+            board_fen:
+                "1 1 w 0 0 1 0 0 9 n04s1xn06/n06a0xn04/n05e0xd0xn04/n03xxmxxmn02xxmn03/n05xxmn03Y0xn01/n05xxUn05/E0xn04xxMn01xxMn03/n01y0xn01xxMn03xxMn03/n05S0xn05/n05D0xn05/n04A1xn06",
+        },
+        ProbeCase {
+            label: "guard_white_turn_three_mana_only_vulnerable",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n06a0xn04/n03y0xn01d0xxxmn01e0xn02/n04s0xn06/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n03xxMn02xxMn04/n04D0xn06/n04E0xn01S0xn04/n04A0xn02Y0xn03",
+        },
+        ProbeCase {
+            label: "guard_white_turn_three_mana_only_non_vulnerable",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n07e0xn03/n03y0xn01s0xn01a0xn03/n06d0xxxmn03/n03xxmxxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn07/n05S0xn05/n03E0xA0xD0xn02Y0xn02",
+        },
+        ProbeCase {
+            label: "guard_white_early_engine_disabled_normal",
+            board_fen:
+                "0 0 w 0 0 0 0 0 5 n06a0xn04/n07d0me0xn02/n02y0xn01s0xn06/n04xxmn01xxmxxmn03/n03xxmn07/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n02xxMn02Y0xxxMn04/n03xxMn01D0xn05/n03E0xA0xS0xn05/n11",
+        },
+        ProbeCase {
+            label: "guard_white_post_search_duel_pro",
+            board_fen:
+                "1 1 w 1 0 0 0 0 5 n10d0x/n03y0xn03a0xn03/n01xxmn04s0xn01e0xn02/n04xxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n05xxMn01xxMn03/n06xxMn04/n02xxMn02S0xn05/n05A0xY0xn04/D0xn02E0xn07",
+        },
+        ProbeCase {
+            label: "guard_white_confirm_pro_ply9",
+            board_fen:
+                "0 0 w 1 0 0 0 0 3 n11/n03y0xd0ms0xa0xe0xn03/n11/n06xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn06/n07xxMn01Y0xn01/n05S0xn01D0xn03/n03E0xA0xn06",
+        },
+    ];
+
+    for case in cases {
+        let game = MonsGame::from_fen(case.board_fen, false)
+            .unwrap_or_else(|| panic!("{}: valid board fen", case.label));
+        let frontier_probe = runtime_decision_probe(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let shipping_probe =
+            runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+        let (raw_move, raw_stage, raw_disable_reason) = raw_search_only_pro_v1_move(&game);
+
+        println!(
+            "WHITE_SEARCH_ORDER_RAW_PROV1_SCOPE label={} context={} frontier(selected={} stage={}) raw_search_only_pro_v1(move={} stage={} disable_reason={} matches_frontier={} matches_shipping={}) shipping(selected={} stage={})",
+            case.label,
+            exact_opportunity_context_probe(&game),
+            frontier_probe.selected_input_fen,
+            frontier_probe.selector_last_stage,
+            raw_move,
+            raw_stage,
+            raw_disable_reason,
+            raw_move == frontier_probe.selected_input_fen,
+            raw_move == shipping_probe.selected_input_fen,
+            shipping_probe.selected_input_fen,
+            shipping_probe.selector_last_stage,
+        );
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: inspect white fast ply9 search-only split"]
 fn white_fast_ply9_search_only_split_probe() {
     log_white_search_order_split_probe(

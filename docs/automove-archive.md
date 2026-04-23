@@ -424,3 +424,13 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - On both white search-order siblings and on `white_late_fast_hotspot`, forcing the incoming frontier runtime config to `selector=false`, `head_rerank=true`, shipping-like own caps, or even `TurnEngineMode::ProV1` still leaves the live decision unchanged on frontier `engine_post_search`.
 - The code path explains why: `select_frontier_pro_v2_guarded_inputs` always routes frontier execution back through `apply_frontier_pro_v2_guarded_config`, so those config-only selector-disable toggles are reapplied away before search runs.
 - Durable outcome: do not reopen the white search-order family with another wrapper-local config-only selector-disable or head-rerank mirror. Any future white wrapper spend has to change wrapper branching itself, or move deeper into shortlist/root-scoring behavior.
+
+## White Raw Search-Only ProV1 Scope Wave
+
+- No new runtime challenger survived this wave. The kept diagnostics are `white_search_order_wrapper_branch_probe` and `white_search_order_raw_prov1_scope_probe`.
+- The useful result is that once the guarded wrapper is truly bypassed, raw search-only branch choices become locally meaningful.
+- Raw `search-only + ProV2` still keeps frontier `l9,4;l8,3` on the two white search-order siblings and keeps frontier `l9,5;l8,6` on the late Fast hotspot.
+- Raw `search-only + shipping own caps + ProV2` fixes the two `ply9/ply11` siblings but still leaves the hotspot on frontier.
+- Raw `search-only + ProV1` matches shipping on all three local white seams, so search-only `ProV1` semantics are a real explanation rather than a dead config artifact.
+- That broad line is still not safe enough to keep. The scope probe shows the same raw `search-only + ProV1` reroute also flips the retained vulnerable white turn-three guard from `l8,4;l7,3` to shipping `l8,4;l8,5`, even though it shares the same coarse `turn=3 / mons_moves=1 / no-action / mana-only / window=1 / deny=1 / drainer_safety<0` context as the unresolved white siblings.
+- Durable outcome: do not reopen the white search-order family with a broad wrapper-level search-only `ProV1` gate on that coarse white context. Any future white wrapper spend has to distinguish the retained vulnerable guard from the unresolved siblings with a narrower theory than “use shipping-like search-only semantics here.”
