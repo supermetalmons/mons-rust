@@ -571,6 +571,391 @@ fn black_recovery_branch_legacy_alignment_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: inspect black recovery branch selector ordering"]
+fn black_recovery_branch_selector_ordering_probe() {
+    let game = MonsGame::from_fen(
+        "1 0 b 0 0 2 0 0 6 n05d1xn05/n05s0xa0xe0xn03/n07xxmn03/n03xxmn03xxmn03/n03xxmn01xxmn03Y0xn01/n05xxUn05/y0xn04xxMn05/n03xxMn03xxMn03/n07xxMn03/n02E0xn02S0xn05/n04A1xD1xn05",
+        false,
+    )
+    .expect("valid black recovery branch fen");
+    let perspective = game.active_color;
+    let (config, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let candidate_indices = MonsGameModel::filtered_root_candidate_indices(
+        &game,
+        scored_roots.as_slice(),
+        perspective,
+        config,
+    );
+    let reply_risk_shortlist = MonsGameModel::reply_risk_guard_shortlist_indices(
+        scored_roots.as_slice(),
+        candidate_indices.as_slice(),
+        config,
+    );
+    let guard_projections = MonsGameModel::turn_engine_reply_risk_projections(
+        scored_roots.as_slice(),
+        reply_risk_shortlist.as_slice(),
+        perspective,
+        config,
+    );
+    let root_node_budget = ((config.max_visited_nodes
+        * config.root_reply_risk_node_share_bp.max(0) as usize)
+        / 10_000)
+        .max(reply_risk_shortlist.len())
+        .max(1);
+    let per_root_reply_limit = (root_node_budget / reply_risk_shortlist.len().max(1))
+        .max(1)
+        .min(config.root_reply_risk_reply_limit.max(1));
+    let frontier_index = scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == "l1,5;l3,3;l2,3")
+        .expect("frontier spirit root should exist");
+    let shipping_index = scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == "l6,0;l6,1")
+        .expect("shipping mana root should exist");
+    let score_leader_index = scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == "l6,0;l7,0")
+        .expect("score-leading mana sibling should exist");
+    let mut legacy_selector_config = config;
+    legacy_selector_config.enable_root_reply_risk_guard = false;
+    legacy_selector_config.turn_engine_mode = TurnEngineMode::ProV1;
+    let all_indices = (0..scored_roots.len()).collect::<Vec<_>>();
+    let pro_v1_candidate_selected =
+        MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
+            &game,
+            scored_roots.as_slice(),
+            candidate_indices.as_slice(),
+            perspective,
+            legacy_selector_config,
+        );
+    let pro_v1_candidate_index = scored_roots
+        .iter()
+        .position(|root| root.inputs == pro_v1_candidate_selected)
+        .expect("candidate-only ProV1 selected root should exist");
+    let pro_v1_full_pool_selected =
+        MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
+            &game,
+            scored_roots.as_slice(),
+            all_indices.as_slice(),
+            perspective,
+            legacy_selector_config,
+        );
+    let pro_v1_full_pool_index = scored_roots
+        .iter()
+        .position(|root| root.inputs == pro_v1_full_pool_selected)
+        .expect("full-pool ProV1 selected root should exist");
+    let mut pro_v2_no_guard_config = config;
+    pro_v2_no_guard_config.enable_root_reply_risk_guard = false;
+    let pro_v2_no_guard_candidate_selected =
+        MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
+            &game,
+            scored_roots.as_slice(),
+            candidate_indices.as_slice(),
+            perspective,
+            pro_v2_no_guard_config,
+        );
+    let pro_v2_no_guard_full_pool_selected =
+        MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
+            &game,
+            scored_roots.as_slice(),
+            all_indices.as_slice(),
+            perspective,
+            pro_v2_no_guard_config,
+        );
+    let target_indices = [
+        frontier_index,
+        pro_v1_candidate_index,
+        shipping_index,
+        score_leader_index,
+        pro_v1_full_pool_index,
+    ]
+    .into_iter()
+    .fold(Vec::<usize>::new(), |mut indices, index| {
+        if !indices.contains(&index) {
+            indices.push(index);
+        }
+        indices
+    });
+    let target_projections = MonsGameModel::turn_engine_reply_risk_projections(
+        scored_roots.as_slice(),
+        target_indices.as_slice(),
+        perspective,
+        config,
+    );
+    let target_specs = [
+        ("frontier", frontier_index),
+        ("pro_v1_candidate", pro_v1_candidate_index),
+        ("shipping", shipping_index),
+        ("score_leader", score_leader_index),
+        ("pro_v1_full_pool", pro_v1_full_pool_index),
+    ];
+    let target_details = target_specs
+        .iter()
+        .map(|(label, index)| {
+            let root = &scored_roots[*index];
+            let family = MonsGameModel::turn_engine_root_evaluation_family(root);
+            let utility = MonsGameModel::turn_engine_selected_override_utility(
+                &game,
+                root,
+                perspective,
+                config,
+                family,
+            );
+            let guard_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+                root,
+                guard_projections.get(index),
+                perspective,
+                config,
+                per_root_reply_limit,
+            );
+            let target_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+                root,
+                target_projections.get(index),
+                perspective,
+                config,
+                per_root_reply_limit,
+            );
+            format!(
+                "{}={} index={} candidate_pos={:?} shortlist_pos={:?} family={:?} plain_spirit={} progress_surface={} utility={} guard_snapshot=win:{} match:{} floor:{} target_snapshot=win:{} match:{} floor:{} guard_projection={:?} target_projection={:?} followup={} details={}",
+                label,
+                Input::fen_from_array(&root.inputs),
+                index,
+                candidate_indices
+                    .iter()
+                    .position(|candidate_index| candidate_index == index),
+                reply_risk_shortlist
+                    .iter()
+                    .position(|shortlist_index| shortlist_index == index),
+                family,
+                MonsGameModel::is_plain_spirit_development_root(root),
+                MonsGameModel::turn_engine_root_evaluation_has_progress_surface(root),
+                format_turn_engine_utility_probe(utility),
+                guard_snapshot.allows_immediate_opponent_win,
+                guard_snapshot.opponent_reaches_match_point,
+                guard_snapshot.worst_reply_score,
+                target_snapshot.allows_immediate_opponent_win,
+                target_snapshot.opponent_reaches_match_point,
+                target_snapshot.worst_reply_score,
+                guard_projections.get(index).map(|projection| {
+                    format!(
+                        "{:?}/{:?}/{}",
+                        projection.plan.head_family,
+                        projection.plan.goal_family,
+                        format_turn_engine_utility_probe(projection.plan.utility),
+                    )
+                }),
+                target_projections.get(index).map(|projection| {
+                    format!(
+                        "{:?}/{:?}/{}",
+                        projection.plan.head_family,
+                        projection.plan.goal_family,
+                        format_turn_engine_utility_probe(projection.plan.utility),
+                    )
+                }),
+                MonsGameModel::pro_v2_spirit_followup_floor_score(&root.game, perspective, config),
+                format_root_probe(scored_roots.get(*index)),
+            )
+        })
+        .collect::<Vec<_>>();
+    let pairwise = [
+        ("shipping_vs_frontier", shipping_index, frontier_index),
+        ("frontier_vs_shipping", frontier_index, shipping_index),
+        (
+            "shipping_vs_pro_v1_candidate",
+            shipping_index,
+            pro_v1_candidate_index,
+        ),
+        (
+            "pro_v1_candidate_vs_shipping",
+            pro_v1_candidate_index,
+            shipping_index,
+        ),
+        (
+            "score_leader_vs_shipping",
+            score_leader_index,
+            shipping_index,
+        ),
+        (
+            "shipping_vs_score_leader",
+            shipping_index,
+            score_leader_index,
+        ),
+    ]
+    .into_iter()
+    .map(|(label, candidate_index, incumbent_index)| {
+        let candidate = &scored_roots[candidate_index];
+        let incumbent = &scored_roots[incumbent_index];
+        let guard_candidate_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+            candidate,
+            guard_projections.get(&candidate_index),
+            perspective,
+            config,
+            per_root_reply_limit,
+        );
+        let guard_incumbent_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+            incumbent,
+            guard_projections.get(&incumbent_index),
+            perspective,
+            config,
+            per_root_reply_limit,
+        );
+        let target_candidate_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+            candidate,
+            target_projections.get(&candidate_index),
+            perspective,
+            config,
+            per_root_reply_limit,
+        );
+        let target_incumbent_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+            incumbent,
+            target_projections.get(&incumbent_index),
+            perspective,
+            config,
+            per_root_reply_limit,
+        );
+        let guard_better = MonsGameModel::is_better_reply_risk_candidate(
+            &game,
+            candidate_index,
+            guard_candidate_snapshot,
+            incumbent_index,
+            guard_incumbent_snapshot,
+            guard_projections.get(&candidate_index),
+            guard_projections.get(&incumbent_index),
+            scored_roots.as_slice(),
+            perspective,
+            config,
+            &mut std::collections::HashMap::new(),
+        );
+        let target_better = MonsGameModel::is_better_reply_risk_candidate(
+            &game,
+            candidate_index,
+            target_candidate_snapshot,
+            incumbent_index,
+            target_incumbent_snapshot,
+            target_projections.get(&candidate_index),
+            target_projections.get(&incumbent_index),
+            scored_roots.as_slice(),
+            perspective,
+            config,
+            &mut std::collections::HashMap::new(),
+        );
+        format!(
+            "{} guard_better={} target_better={} guard_floors={}/{} target_floors={}/{}",
+            label,
+            guard_better,
+            target_better,
+            guard_candidate_snapshot.worst_reply_score,
+            guard_incumbent_snapshot.worst_reply_score,
+            target_candidate_snapshot.worst_reply_score,
+            target_incumbent_snapshot.worst_reply_score,
+        )
+    })
+    .collect::<Vec<_>>();
+    let legacy_alignment_checks = [
+        (
+            "shipping_over_frontier",
+            frontier_index,
+            shipping_index,
+            MonsGameModel::pro_v2_root_advisor_black_legacy_alignment_override(
+                &game,
+                scored_roots.as_slice(),
+                candidate_indices.as_slice(),
+                frontier_index,
+                shipping_index,
+                config,
+            ),
+        ),
+        (
+            "shipping_over_pro_v1_candidate",
+            pro_v1_candidate_index,
+            shipping_index,
+            MonsGameModel::pro_v2_root_advisor_black_legacy_alignment_override(
+                &game,
+                scored_roots.as_slice(),
+                candidate_indices.as_slice(),
+                pro_v1_candidate_index,
+                shipping_index,
+                config,
+            ),
+        ),
+        (
+            "full_pool_legacy_over_frontier",
+            frontier_index,
+            pro_v1_full_pool_index,
+            MonsGameModel::pro_v2_root_advisor_black_legacy_alignment_override(
+                &game,
+                scored_roots.as_slice(),
+                candidate_indices.as_slice(),
+                frontier_index,
+                pro_v1_full_pool_index,
+                config,
+            ),
+        ),
+    ]
+    .into_iter()
+    .map(|(label, approved_index, legacy_index, override_index)| {
+        let approved = &scored_roots[approved_index];
+        let legacy = &scored_roots[legacy_index];
+        format!(
+            "{} approved={} legacy={} approved_family={:?} legacy_family={:?} approved_plain_spirit={} legacy_plain_spirit={} approved_progress_surface={} legacy_progress_surface={} approved_score={} legacy_score={} approved_rank={} legacy_rank={} override={:?}",
+            label,
+            Input::fen_from_array(&approved.inputs),
+            Input::fen_from_array(&legacy.inputs),
+            MonsGameModel::turn_engine_root_evaluation_family(approved),
+            MonsGameModel::turn_engine_root_evaluation_family(legacy),
+            MonsGameModel::is_plain_spirit_development_root(approved),
+            MonsGameModel::is_plain_spirit_development_root(legacy),
+            MonsGameModel::turn_engine_root_evaluation_has_progress_surface(approved),
+            MonsGameModel::turn_engine_root_evaluation_has_progress_surface(legacy),
+            approved.score,
+            legacy.score,
+            approved.root_rank,
+            legacy.root_rank,
+            override_index.map(|index| Input::fen_from_array(&scored_roots[index].inputs)),
+        )
+    })
+    .collect::<Vec<_>>();
+    let frontier_runtime_probe = runtime_decision_probe(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let frontier_advisor = pro_v2_root_advisor_decision_snapshot();
+    let shipping_runtime_probe =
+        runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+
+    println!(
+        "BLACK_RECOVERY_BRANCH_SELECTOR_ORDERING context={} candidate_count={} candidate_head={:?} reply_risk_shortlist={:?} target_details={:?} pairwise={:?} legacy_alignment_checks={:?} pro_v1_candidate_selected={} pro_v1_full_pool_selected={} pro_v2_no_guard_candidate_selected={} pro_v2_no_guard_full_pool_selected={} frontier_runtime_probe={:?} frontier_advisor={:?} shipping_runtime_probe={:?}",
+        exact_opportunity_context_probe(&game),
+        candidate_indices.len(),
+        candidate_indices
+            .iter()
+            .take(16)
+            .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+            .collect::<Vec<_>>(),
+        reply_risk_shortlist
+            .iter()
+            .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+            .collect::<Vec<_>>(),
+        target_details,
+        pairwise,
+        legacy_alignment_checks,
+        Input::fen_from_array(&pro_v1_candidate_selected),
+        Input::fen_from_array(&pro_v1_full_pool_selected),
+        Input::fen_from_array(&pro_v2_no_guard_candidate_selected),
+        Input::fen_from_array(&pro_v2_no_guard_full_pool_selected),
+        frontier_runtime_probe,
+        frontier_advisor,
+        shipping_runtime_probe,
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: inspect remaining black progress-vs-setup residue board"]
 fn black_progress_vs_setup_residue_probe() {
     let game = MonsGame::from_fen(

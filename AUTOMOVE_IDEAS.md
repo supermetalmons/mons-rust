@@ -195,13 +195,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - Pro confirm rotated onto the next white turn-three no-action seam: `l10,4;l9,3` vs shipping `l7,8;l6,9`.
   - The new probe shows that rotated white board is not another approval-order or head-acceptance miss; it is a root-scoring/model mismatch under current frontier metrics.
   - Normal and Fast stayed below the floor at the same aggregate rates, so the broader confirm-only white/black seam family remains unresolved.
+- This iteration stopped at diagnostics and kept no runtime code:
+  - The new ignored `black_recovery_branch_selector_ordering_probe` compares frontier `l1,5;l3,3;l2,3`, shipping `l6,0;l6,1`, the score-leading mana sibling `l6,0;l7,0`, and the no-guard selector replay `l1,5;l2,7;l1,8`.
+  - The actual frontier reply-risk comparator prefers frontier over shipping (`frontier_vs_shipping=true`, floor `-808271` vs `-808282`) and prefers the no-guard ProV1 spirit replay over shipping.
+  - The no-guard ProV1 and ProV2 candidate/full-pool selectors all choose `l1,5;l2,7;l1,8`, not shipping. The guard-enabled diagnostic legacy selector still reports shipping, but that is not the selector used by the live advisor approval path.
+  - The direct black legacy-alignment override can still name shipping over the plain-spirit frontier root, but it does not justify shipping over the no-guard ProV1 spirit replay. That closes the obvious black runtime follow-up for now.
 
 ## Next Hypothesis
 
 - The current package is promotable and there is no live runtime challenger after this iteration.
 - The next spend should explain one of the two residual Pro-only losses below the existing local guard layer, not reopen simple wrapper/head/shortlist fixes.
 - Keep the new white turn-three no-action recovery guard, the black late-fast safe-mana override, the white early setup repair, the black late reply-risk setup rescue, the exact white early engine-disabled wrapper fallback, the black late weak-window safe-progress setup rescue, the white nonnegative-deny and negative-deny search-only fallbacks, and the white turn-five same-window plus mid-turn head guards together; they now form the promoted retained package.
-- For `black_recovery_branch`, do not reapply the shortlist-local legacy fallback unless a new probe first explains why the shipping engine-disabled root `l6,0;l6,1` should beat both the current approved preserved-spirit root and the candidate-only ProV1 spirit replay.
+- For `black_recovery_branch`, do not reapply the shortlist-local legacy fallback. The selector-ordering probe now shows shipping `l6,0;l6,1` loses to the current approved preserved-spirit root on reply floor and also fails to beat the no-guard ProV1 spirit replay `l1,5;l2,7;l1,8`.
 - For `white_confirm_pro_ply11`, do not add a shipping mirror or advisor override unless a new probe first finds a frontier-side metric below reply floor/selected utility that prefers `l7,8;l6,9` over `l10,4;l9,3`.
 - Do not reopen the resolved black confirm seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8`; that board is now covered by the retained suite and confirm passed with it in place.
 - Do not reopen the direct runtime-variant white search-only recovery fallback on `l9,4;l8,3` vs `l9,4;l8,5`. Both the shipping-assisted and frontier-local versions still fail retained `pro-reliability` at `0.9167 / 0.8333 / 0.9167`.

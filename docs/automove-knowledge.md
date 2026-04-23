@@ -26,6 +26,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - Tracing that shortlist-local fallback showed the retained Fast failure was not fresh collateral from `black_recovery_branch`; both Fast non-wins were the already-pinned late black head-accept seam `l1,8;l1,9` vs shipping `l1,8;l0,8`.
 - Replaying that same shortlist-local black legacy fallback on the later promoted package still does not make it promotable. It aligns `black_recovery_branch` and collapses the five-board live nonwin probe back to the older white seams, but retained `pro-reliability` still fails at `0.9167 / 0.9167 / 0.8333`.
 - The refreshed black recovery probe is now strong enough to avoid reopening that line blindly. It prints the full `reply_risk_shortlist` root details and confirms the best-ranked vulnerable mana candidate there is shipping `l6,0;l6,1`, not the earlier wrong score-leader `l6,0;l7,0`.
+- The follow-up `black_recovery_branch_selector_ordering_probe` closes the missing selector-ordering explanation. On the promoted package, frontier's reply-risk comparator prefers the approved plain-spirit root over shipping (`floor -808271` vs `-808282`), and both no-guard ProV1/ProV2 candidate/full-pool selector replays choose `l1,5;l2,7;l1,8` instead of shipping. The shipping mana root only wins in the guard-enabled legacy diagnostic path, not in the live advisor approval selector.
+- So `black_recovery_branch` is no longer a safe local legacy-fallback target. A future black spend must find a signal below the current reply-risk/selector metrics; otherwise selecting `l6,0;l6,1` would be a direct shipping-disabled ordering override against frontier's own model.
 - On that replayed shortlist-local package, the new `pro` miss rotated to a later black lane split `l1,6;l1,7` vs shipping `l1,6;l1,5`, `normal` still lost on the old white `ply9` search-only split `l9,4;l8,3` vs `l9,4;l8,5`, and the retained Fast gate still failed on two no-diff games with `first_diff=none`. Treat that as a hard stop, not a live challenger.
 - The later black lane split is not another shortlist omission. `black_pro_lane_split_probe` shows shipping `l1,6;l1,5` is already in the frontier `reply_risk_shortlist` beside frontier `l1,6;l1,7`, but shipping still loses under frontier's own reply-risk comparison (`shipping_vs_frontier=false`) because the reply floor is tied and frontier keeps better local utility (`drainer_safety=2` vs shipping `-1`).
 - Treat that later black seam as a shipping-disabled lower-safety ordering mismatch, not a live advisor or head-acceptance bug. Shipping reaches `l1,6;l1,5` only because it disables the turn-engine selector on that board.
@@ -126,6 +128,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `smart_automove_pro_white_turn_three_sibling_root_probe`
 - `white_confirm_pro_ply11_reply_order_probe`
 - `black_recovery_branch_legacy_alignment_probe`
+- `black_recovery_branch_selector_ordering_probe`
 - `black_progress_vs_setup_residue_probe`
 - `black_pro_lane_split_probe`
 - `black_confirm_fast_lane_split_probe`
@@ -160,4 +163,5 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - Kill any line that fixes only `white_split_trace` while leaving the other white and black walls unchanged.
 - Kill any line that regresses a duel pack that is currently clean, even if it fixes part of the retained live wall surface.
 - Kill any line that aligns live walls but still fails retained duel strength or canonical cost.
+- Kill any `black_recovery_branch` line that only forces shipping `l6,0;l6,1` above the current reply-risk and no-guard selector ordering; the current model prefers both the approved spirit root and the no-guard ProV1 spirit replay.
 - Do not reopen archived profiles, archived seams, or archived wave packages without a brand-new shared hypothesis.
