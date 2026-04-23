@@ -4,6 +4,17 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Black Outer-Edge Retained Late Structure Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave first reran `smart_automove_pro_reliability_nonwin_trace_probe` on `SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows` with `duel_filter=vs_shipping_normal` to recover the exact late black board on the current corpus.
+- The clean late seam still reproduced: on the recovered turn-eight board, frontier played `l1,6;l1,5` while shipping stayed on `l2,6;l3,7`.
+- The follow-up structure probe compared that board against the retained sampled black late package: `BLACK_LATE_MANA_DUEL_SAMPLED_NORMAL`, `BLACK_LATE_HEAD_ACCEPT_DUEL_SAMPLED_NORMAL`, and `BLACK_HEAD_ACCEPT_SEARCH_ONLY_DUEL_SAMPLED_NORMAL`.
+- The closest retained control still did not match. `BLACK_LATE_MANA_DUEL_SAMPLED_NORMAL` is also late black `ManaTempo` on `window=1/deny=1`, but it keeps shipping `l0,7;l1,6` through `ApprovedFamilyCompetition` on a smaller shortlist that mixes `SafeOpponentManaProgress`; frontier does not drift off shipping there.
+- The other retained controls are further away: `BLACK_LATE_HEAD_ACCEPT_DUEL_SAMPLED_NORMAL` is a `SafeSupermanaProgress` preserved-root board, and `BLACK_HEAD_ACCEPT_SEARCH_ONLY_DUEL_SAMPLED_NORMAL` is a `DrainerSafetyRecovery` search-order board.
+- The live `outer_edge` seam is different. Shipping `l2,6;l3,7` stays inside a dense reply-risk shortlist with several spirit siblings, frontier still approves lower-ranked `l1,6;l1,5` through `ApprovedReplyRiskGuard`, and the head is rejected.
+- Durable outcome: do not extend the retained sampled black late package into the clean late `outer_edge` seam. Shared “late black” labeling was not enough; the approval path, shortlist shape, and family mix still diverge.
+
 ## White Forward-Bridge Retained Sampled Head-Accept Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
