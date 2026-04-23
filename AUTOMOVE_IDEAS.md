@@ -48,6 +48,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - Locally, that did fix the retained white Fast seam `l9,4;l8,3` vs shipping `l9,4;l8,5`, and it also aligned the older vulnerable white mana-only board `l8,4;l7,3` to shipping `l8,4;l8,5`.
   - The package still cleared `guardrails`, retained `pro-triage` at `target_changed=4 / off_target_changed=0`, exact-lite, and advisory stage-1 CPU at `1.551 / 1.527 / 1.365`.
   - It still failed retained `pro-reliability` at `0.9167 / 0.7500 / 0.9167`. The Normal non-win trace rotated onto engine-disabled early white boards, including `l8,5;l7,6` vs shipping `l8,7;l7,8`, `l9,4;l8,5` vs `l9,4;l9,3`, and `l8,5;l7,6` vs `l9,5;l8,3;l7,4`, so the code was discarded.
+- This iteration spent the white search-only split directly and killed that line too:
+  - Both runtime-variant forms targeted the same turn-three mana-only board `l9,4;l8,3` vs shipping `l9,4;l8,5`: first by re-querying shipping locally, then by choosing the nearby safe `DrainerSafetyRecovery` challenger from frontier's own ranked roots.
+  - Both versions fixed the local `ply9` board and kept the nearby retained white confirm, white Fast, and black late-fast walls clean.
+  - Both still failed retained `pro-reliability` at `0.9167 / 0.8333 / 0.9167`, with Normal below the floor at confidence `0.9807`.
+  - The Normal non-win trace still included the engine-disabled early-white split `l8,5;l7,6` vs shipping `l9,5;l8,3;l7,4`, so fixing `l9,4;l8,3` in isolation is not enough. The code was discarded.
 - Advisory stage-1 CPU remains elevated but unchanged in character: `1.552 / 1.526 / 1.363` versus `shipping_pro_search`.
 - With the new black late-fast repair, the small-loop advisory stage-1 CPU stayed in the same band at `1.562 / 1.529 / 1.362`.
 - With the white early followup repair added, the small-loop advisory stage-1 CPU stayed in the same band at `1.559 / 1.523 / 1.361`.
@@ -92,7 +97,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - The current package is promotable. The next spend is no longer about confirm rescue.
 - Keep the new white turn-three no-action recovery guard, the black late-fast safe-mana override, the white early setup repair, and the new black late reply-risk setup rescue together; they now form the promoted retained package.
 - Do not reopen the resolved black confirm seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8`; that board is now covered by the retained suite and confirm passed with it in place.
-- The next unresolved white seam is still the search-only split `l9,4;l8,3` vs `l9,4;l8,5`. Shipping changes that board through the search-only rerank path while frontier stays on the same vulnerable pre-accept root, so future work there should start from search-only/head routing rather than another advisor recovery override.
+- Do not reopen the direct runtime-variant white search-only recovery fallback on `l9,4;l8,3` vs `l9,4;l8,5`. Both the shipping-assisted and frontier-local versions still fail retained `pro-reliability` at `0.9167 / 0.8333 / 0.9167`.
+- The next unresolved white spend has to explain the remaining engine-disabled early-white Normal seam `l8,5;l7,6` vs shipping `l9,5;l8,3;l7,4`, not just the earlier `ply9` recovery board in isolation.
 - Do not reopen that white seam by broadening the turn-three no-action recovery override to `mons_moves_count == 1`. That line still fails retained `pro-reliability` at `0.9167 / 0.7500 / 0.9167` by rotating Normal onto engine-disabled early-white boards.
 - The next unresolved black diagnostic seam is `l7,1;l9,3` vs `l1,5;l2,7;l1,8`, but it is not another shortlist or legacy-selector fix:
   - The full-pool frontier chooser already stays on the safe-progress incumbent.
