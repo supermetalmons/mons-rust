@@ -294,3 +294,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The useful lesson is that the remaining black residue is not a safe “promote the shipping root from the full pool” advisor fix.
 - The probe confirms the shipping root is still absent from `reply_risk_shortlist`, but it also shows the strongest full-pool own-setup progress challenger under frontier's current metrics is `l1,5;l3,7;l2,8`, not shipping `l1,5;l2,7;l1,8`.
 - Durable outcome: do not reopen this board with another blind advisor family-competition override. Any future black spend here has to explain the engine-disabled ordering that makes shipping choose `l1,5;l2,7;l1,8` instead of the stronger full-pool spirit candidate first.
+
+## Black Recovery Shortlist Revisit Wave
+
+- No new runtime challenger survived this revisit either. The local candidate reinstated the shortlist-local vulnerable-mana fallback inside `pro_v2_root_advisor_black_legacy_alignment_override`, choosing the best-ranked vulnerable `ManaTempo` root already present in `reply_risk_shortlist` on `black_recovery_branch`.
+- The local seam movement was real on the cleaned promoted package. `black_recovery_branch` aligned to shipping `l6,0;l6,1`, and the five-board live nonwin root probe collapsed back to the older white seams.
+- The refreshed ignored `black_recovery_branch_legacy_alignment_probe` is worth keeping: it now prints shortlist root details and confirms why the local fallback picks shipping `l6,0;l6,1` instead of the earlier wrong score-leader `l6,0;l7,0`.
+- The broader retained duel still killed the line. The canonical loop passed `guardrails`, `pro-triage`, exact-lite, and advisory stage-1 CPU, then failed retained `pro-reliability` at `0.9167 / 0.9167 / 0.8333`.
+- The failure surface also changed enough to rule out keeping the runtime cut as a live challenger. The new `pro` miss rotated to a later black lane split `l1,6;l1,7` vs shipping `l1,6;l1,5`, `normal` stayed on the old white `ply9` search-only split `l9,4;l8,3` vs `l9,4;l8,5`, and the two Fast non-wins had `first_diff=none`.
+- Durable outcome: even after the earlier late-Fast blocker was repaired, the shortlist-local black legacy fallback is still not promotable. Keep the stronger diagnostic, discard the runtime/test change, and do not reopen this exact line again without explaining the later black lane split plus the no-diff Fast failure.

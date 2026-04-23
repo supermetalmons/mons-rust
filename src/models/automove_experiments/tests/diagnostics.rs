@@ -530,9 +530,19 @@ fn black_recovery_branch_legacy_alignment_probe() {
         );
     let (probe_legacy_selected, probe_legacy_full_pool_selected, _, _) =
         pro_v2_legacy_selector_probe(&game, SmartAutomovePreference::Pro);
+    let shortlist_root_details = reply_risk_shortlist
+        .iter()
+        .map(|index| {
+            format!(
+                "{} => {}",
+                Input::fen_from_array(&scored_roots[*index].inputs),
+                format_root_probe(scored_roots.get(*index)),
+            )
+        })
+        .collect::<Vec<_>>();
 
     println!(
-        "BLACK_RECOVERY_BRANCH_LEGACY_ALIGNMENT approved={} legacy={} candidate_contains_legacy={} shortlist={:?} approved_family={:?} legacy_family={:?} approved_plain_spirit={} approved_progress_surface={} approved_non_tactical={} legacy_non_tactical={} exact_window={} exact_deny={} exact_attack={} approved_vulnerable={} legacy_vulnerable={} legacy_score_ge_approved={} override={:?} pro_v1_candidate_selected={} probe_legacy_selected={} probe_legacy_full_pool_selected={}",
+        "BLACK_RECOVERY_BRANCH_LEGACY_ALIGNMENT approved={} legacy={} candidate_contains_legacy={} shortlist={:?} shortlist_root_details={:?} approved_family={:?} legacy_family={:?} approved_plain_spirit={} approved_progress_surface={} approved_non_tactical={} legacy_non_tactical={} exact_window={} exact_deny={} exact_attack={} approved_vulnerable={} legacy_vulnerable={} legacy_score_ge_approved={} override={:?} pro_v1_candidate_selected={} probe_legacy_selected={} probe_legacy_full_pool_selected={}",
         format_root_probe(scored_roots.get(approved_index)),
         format_root_probe(scored_roots.get(legacy_index)),
         candidate_indices.contains(&legacy_index),
@@ -540,6 +550,7 @@ fn black_recovery_branch_legacy_alignment_probe() {
             .iter()
             .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
             .collect::<Vec<_>>(),
+        shortlist_root_details,
         MonsGameModel::turn_engine_root_evaluation_family(approved),
         MonsGameModel::turn_engine_root_evaluation_family(legacy),
         MonsGameModel::is_plain_spirit_development_root(approved),

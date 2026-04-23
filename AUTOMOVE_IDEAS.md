@@ -140,6 +140,12 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - Across the full frontier candidate pool, the strongest spirit-own-setup progress challenger under the current utility/followup model is actually `l1,5;l3,7;l2,8`, not shipping `l1,5;l2,7;l1,8`.
   - Shipping therefore is not doing a simple “pick the best full-pool own-setup progress root” step that frontier could safely mirror with another advisor family-competition override.
   - Do not spend canonical gates on that board again unless the local probe first explains the engine-disabled ordering that prefers shipping's `l1,5;l2,7;l1,8` over the stronger full-pool challenger.
+- This iteration reopened the older shortlist-local black legacy fallback on the cleaned promoted package and killed it again.
+  - The updated `black_recovery_branch_legacy_alignment_probe` now prints shortlist root details and confirms the key local fact: among the vulnerable mana roots already in `reply_risk_shortlist`, shipping `l6,0;l6,1` is the best-ranked challenger, while the earlier wrong score-leader `l6,0;l7,0` is worse-ranked.
+  - Reinstating that shortlist-local fallback inside `pro_v2_root_advisor_black_legacy_alignment_override` did move the intended seam. `black_recovery_branch` aligned to shipping `l6,0;l6,1`, and the five-board live nonwin root probe collapsed to the older white seams.
+  - The package still failed retained `pro-reliability` at `0.9167 / 0.9167 / 0.8333`, so the runtime change was discarded.
+  - The new `pro` non-win was a later black lane split `l1,6;l1,7` vs shipping `l1,6;l1,5`; `normal` stayed on the old white `ply9` search-only split `l9,4;l8,3` vs `l9,4;l8,5`; and the two Fast non-wins had `first_diff=none`, so the gate still failed without a clean new behavioral target to keep.
+  - Do not reopen that shortlist-local black legacy fallback again unless a future probe first explains both the later black lane split and the no-diff Fast gate failure.
 - Do not reopen the resolved late black Fast seam `l1,8;l1,9` vs `l1,8;l0,8`, the resolved early white Fast seam `l9,7;l8,6` vs `l9,7;l7,6;l7,7`, the resolved black late setup seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8`, the resolved black confirm Fast setup seam `l0,5;l1,5` vs `l2,5;l3,7;l2,8`, or the resolved white early engine-disabled seam `l8,5;l7,6` vs `l9,5;l8,3;l7,4` unless a future challenger regresses them.
 - Any future challenger still has to respect stage-1 CPU pressure; a package that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 
@@ -154,6 +160,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Do not paper over `black_recovery_branch` with a score-only mana fallback. The first scan-based attempt picked `l6,0;l7,0` instead of shipping `l6,0;l6,1`.
 - Do not globally switch the ProV1 legacy selector from `shortlist_config` to full `config`; that reply-risk-on reroute aligns `black_recovery_branch` locally but still fails retained `pro-reliability` at `0.8333 / 0.9167 / 0.8333`.
 - Do not reopen the reply-risk-shortlist-only black legacy fallback that picks the best-ranked vulnerable mana root from the local shortlist; it aligns `black_recovery_branch` and still dies on retained Fast at `0.8333`.
+- Do not reopen that shortlist-local black legacy fallback just because the earlier late-Fast blocker was repaired. Replaying it on the cleaned promoted package still fails retained `pro-reliability` at `0.9167 / 0.9167 / 0.8333`.
 - Do not read that `0.8333` Fast result as new shortlist collateral unless the trace says so. The traced Fast pack was just the pre-existing late black head-accept seam repeated twice.
 - Do not broaden white turn-three no-action recovery from `mons_moves_count == 0` to `<= 1`, even with a paired head reject. That line fixes `l9,4;l8,3` locally and still dies at retained `pro-reliability` `0.9167 / 0.7500 / 0.9167` because Normal rotates onto engine-disabled early-white losses.
 - Do not reopen packages that are already archived in `docs/automove-archive.md` unless there is a brand-new shared hypothesis.
