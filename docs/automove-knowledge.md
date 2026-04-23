@@ -12,14 +12,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow, `AUTOMOVE_IDEAS.md` for th
 - Probe paths are diagnostics only; they do not describe shipping behavior.
 - Promotion evidence comes from direct frontier-vs-baseline duels, not fixture churn alone.
 - `runtime-preflight` still matters after promotion: exact-lite is hard, stage-1 CPU is advisory for Pro.
+- Automove users can play any current `GameVariant`; promotion evidence must cover variant breadth, not just Classic.
 
 ## Experiment Rules
 
 - Pick one hypothesis before editing runtime code.
 - Probe first when the mechanism is unclear. Do not spend canonical gates on a guess.
+- Treat retained Classic fixtures as regression controls, not proof that a candidate is stronger across variants.
+- Use seeded sampled variants for quick kill/pass evidence, then all-variant confirmation for promotion.
 - Separate `pre_accept` search choice from final `engine_post_search` output before changing shared heuristics.
 - A seam can move while the duel gate still fails; local seam coverage is not duel strength.
 - Passing the small `pro-reliability` gate does not guarantee confirm readiness.
+- Passing sampled variants does not guarantee all-variant readiness.
 - Treat rotated residue from a discarded challenger as provisional until a clean-tree retained trace confirms it.
 - Runtime cost is a real gate. A candidate that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 - Wrapper-only reroutes, fallback widening, shortlist widening, and metadata-only advisor changes saturate quickly; durable progress usually needs shared approval, head, or scoring logic.
@@ -60,6 +64,8 @@ cargo test --release --lib <test_name> -- --ignored --nocapture
 
 - Kill any line that fails `guardrails` or pushes off-target retained churn above `1`.
 - Kill any line that does not move direct duel evidence on the candidate-vs-baseline matchup.
+- Kill any line that fails sampled-variant reliability unless the failure exposes a clearly scoped harness issue.
+- Kill any line that passes Classic fixtures but fails all-variant confirmation.
 - Kill any line that stays inert at `target_changed=0 off_target_changed=0` against active `frontier_pro_v2_guarded`.
 - Kill any line that only changes advisor labels or `pre_accept` metadata while the final selected root stays unchanged.
 - Kill any line that widens shortlist or injection coverage without moving the approved root on the live walls.

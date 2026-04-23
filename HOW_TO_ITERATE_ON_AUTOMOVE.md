@@ -7,19 +7,29 @@ Archived profiles, archived seams, and archived stages are not valid experiment 
 ## Quick Reference
 
 1. Default to Pro work.
-2. Treat `frontier_pro_v2_guarded` as both the shipped Pro path and the only retained frontier.
-3. Treat `shipping_pro_search` as the retained search-only baseline.
-4. Use `./scripts/run-automove-canonical-loop.sh` for the default loop.
-5. Pick exactly one live hypothesis before editing runtime code.
-6. Probe first when the mechanism is unclear.
-7. Archive or kill the line before starting another.
-8. Clean logs and stamps before ending the session.
+2. Optimize for reliable strength across all game variants, not only Classic.
+3. Treat `frontier_pro_v2_guarded` as both the shipped Pro path and the only retained frontier.
+4. Treat `shipping_pro_search` as the retained search-only baseline.
+5. Use `./scripts/run-automove-canonical-loop.sh` for the default loop.
+6. Pick exactly one live hypothesis before editing runtime code.
+7. Probe first when the mechanism is unclear.
+8. Archive or kill the line before starting another.
+9. Clean logs and stamps before ending the session.
+
+## Variant Policy
+
+- Quick iteration uses deterministic seeded variant samples. A failed sampled-variant gate is enough to kill a line.
+- Final promotion confirmation uses all current `GameVariant`s by default.
+- Retained `primary_pro` fixtures are Classic regression controls only. They are not broad variant evidence.
+- Use `SMART_AUTOMOVE_VARIANTS=classic,swapped_mana_rows` for a targeted variant rerun.
+- Use `SMART_AUTOMOVE_VARIANT_POLICY=classic`, `sampled`, or `all` only when you need to override the stage default.
+- Variant randomness is seeded and reproducible from logs.
 
 ## Retained Surface
 
 - Retained profiles: `shipping_pro_search`, `frontier_pro_v2_guarded`
-- Canonical stages: `guardrails`, `pro-triage`, `runtime-preflight`, `pro-reliability`, `pro-reliability-confirm`
-- Canonical triage surface: `primary_pro`
+- Canonical stages: `guardrails`, `variant-smoke`, `pro-triage`, `runtime-preflight`, `pro-reliability`, `pro-reliability-confirm`
+- Canonical triage surface: retained Classic `primary_pro`
 
 ## Canonical Loop
 
@@ -29,7 +39,8 @@ CANDIDATE=<retained_profile_id>
 ```
 
 - Default shipping profile: `shipping_pro_search`
-- Default triage surface inside the loop: `primary_pro`
+- Default quick duel variant policy: seeded `sampled`
+- Default triage surface inside the loop: retained Classic `primary_pro`
 - Add `--confirm` only after `pro-reliability` earns the spend:
 
 ```sh
@@ -42,18 +53,21 @@ Use `./scripts/run-automove-experiment.sh` when you need one stage at a time or 
 
 ```sh
 ./scripts/run-automove-experiment.sh guardrails frontier_pro_v2_guarded
+./scripts/run-automove-experiment.sh variant-smoke frontier_pro_v2_guarded
 ./scripts/run-automove-experiment.sh pro-triage frontier_pro_v2_guarded
 ./scripts/run-automove-experiment.sh runtime-preflight frontier_pro_v2_guarded
 ./scripts/run-automove-experiment.sh pro-reliability frontier_pro_v2_guarded
+./scripts/run-automove-experiment.sh pro-reliability-confirm frontier_pro_v2_guarded
 ```
 
 ## Gate Rules
 
 - `guardrails`: run first; kill the line on tactical or interview-policy regressions.
-- `pro-triage`: this is the cheap deterministic retained surface gate; pass only when the target surface moves with `off_target_changed <= 1`, or when the shipped `frontier_pro_v2_guarded` surface is intentionally stable on the probed target.
-- `runtime-preflight`: required before duel stages unless you are doing diagnostics only; exact-lite is hard, stage-1 CPU is advisory for Pro.
-- `pro-reliability`: compare the frontier against `shipping_pro_search` in Pro, Normal, and Fast; pass only with `win_rate >= 0.90`, `confidence >= 0.99`, and frontier average move time `<= 700ms` in all three matchups.
-- `pro-reliability-confirm`: run only after the smaller retained duel gate earns the spend.
+- `variant-smoke`: cheap all-variant legality check for public Fast, Normal, and Pro paths.
+- `pro-triage`: cheap deterministic retained Classic surface gate; pass only when the target surface moves with `off_target_changed <= 1`, or when the shipped `frontier_pro_v2_guarded` surface is intentionally stable on the probed target.
+- `runtime-preflight`: required before duel stages unless you are doing diagnostics only; exact-lite is hard, stage-1 CPU is advisory for Pro, and openings use sampled variants.
+- `pro-reliability`: sampled-variant frontier-vs-`shipping_pro_search` duels in Pro, Normal, and Fast; pass only with `win_rate >= 0.90`, `confidence >= 0.99`, and frontier average move time `<= 700ms` in all three matchups.
+- `pro-reliability-confirm`: all-variant confirmation. Run only after the sampled duel gate earns the spend; it also enforces a per-variant non-regression floor.
 
 ## Iteration Lifecycle
 
@@ -62,7 +76,7 @@ Use `./scripts/run-automove-experiment.sh` when you need one stage at a time or 
 3. Make the narrowest runtime or test-only change that can falsify the hypothesis.
 4. Run the canonical stages in order; stop immediately on a failed hard gate.
 5. If the line fails, discard runtime code and record the no-go in `docs/automove-archive.md` or `docs/automove-knowledge.md`.
-6. If the line passes, promote retained regression coverage before confirm.
+6. If the line passes, promote retained Classic regression coverage before confirm.
 7. End by compressing `AUTOMOVE_IDEAS.md` back to current state plus one next hypothesis.
 
 ## Diagnostic Toolbox
@@ -89,6 +103,8 @@ cargo test --release --lib <test_name> -- --ignored --nocapture
 - Selected-profile logs: `target/experiment-runs/<profile>/`
 - Workflow-only logs: `target/experiment-runs/misc/`
 - Runtime-preflight stamps: `target/experiment-stamps/`
+- Run metadata records the stage variant policy and any explicit variant override.
+- Rust gate logs print resolved variant policy, sample size, and per-variant duel summaries.
 - Logs and stamps are disposable evidence, not durable memory.
 
 Standard cleanup:

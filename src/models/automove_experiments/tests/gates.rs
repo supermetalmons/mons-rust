@@ -57,6 +57,35 @@ fn pro_reliability_gate_passes_only_when_all_matchups_clear_win_confidence_and_m
 }
 
 #[test]
+fn pro_reliability_variant_floor_requires_each_variant_to_hold_even() {
+    let mut stats = TimedMatchupStats::default();
+    stats.record_for_variant(
+        GameVariant::Classic,
+        MatchResult::ProfileAWin,
+        DuelTimingStats::default(),
+    );
+    stats.record_for_variant(
+        GameVariant::Classic,
+        MatchResult::ProfileBWin,
+        DuelTimingStats::default(),
+    );
+    stats.record_for_variant(
+        GameVariant::SwappedManaRows,
+        MatchResult::ProfileAWin,
+        DuelTimingStats::default(),
+    );
+    assert!(pro_reliability_variant_floor_passes(&stats));
+
+    let mut regressed = stats.clone();
+    regressed.record_for_variant(
+        GameVariant::OffsetArcManaRows,
+        MatchResult::ProfileBWin,
+        DuelTimingStats::default(),
+    );
+    assert!(!pro_reliability_variant_floor_passes(&regressed));
+}
+
+#[test]
 fn runtime_preflight_checks_run_when_not_skipped() {
     let stage1_calls = std::cell::Cell::new(0);
     let exact_calls = std::cell::Cell::new(0);
@@ -84,6 +113,93 @@ fn runtime_preflight_checks_are_skipped_when_requested() {
 
     assert_eq!(stage1_calls.get(), 0);
     assert_eq!(exact_calls.get(), 0);
+}
+
+#[test]
+fn automove_experiment_variant_registry_covers_current_game_variants() {
+    assert_eq!(automove_experiment_variants().len(), 12);
+    for expected_id in 0..=11 {
+        let variant = GameVariant::from_id(expected_id).expect("known variant id");
+        assert!(
+            automove_experiment_variants().contains(&variant),
+            "experiment registry should include variant id {}",
+            expected_id
+        );
+    }
+}
+
+#[test]
+fn automove_variant_env_parses_ids_and_labels() {
+    assert_eq!(parse_automove_variant("0"), Some(GameVariant::Classic));
+    assert_eq!(
+        parse_automove_variant("swapped_mana_rows"),
+        Some(GameVariant::SwappedManaRows)
+    );
+    assert_eq!(
+        parse_automove_variant("ForwardBridge"),
+        Some(GameVariant::ForwardBridgeManaRows)
+    );
+    assert_eq!(parse_automove_variant("not_a_variant"), None);
+}
+
+#[test]
+fn sampled_and_all_variant_plans_are_deterministic() {
+    with_env_override("SMART_AUTOMOVE_VARIANTS", "", || {
+        with_env_override("SMART_AUTOMOVE_VARIANT_POLICY", "sampled", || {
+            with_env_override("SMART_AUTOMOVE_VARIANT_SAMPLE_SIZE", "3", || {
+                let first = automove_variant_plan_for_openings(123, 8);
+                let second = automove_variant_plan_for_openings(123, 8);
+                assert_eq!(first.policy, AutomoveVariantPolicy::Sampled);
+                assert_eq!(first.variants, second.variants);
+                assert_eq!(first.variants.len(), 3);
+            });
+        });
+
+        with_env_override("SMART_AUTOMOVE_VARIANT_POLICY", "all", || {
+            let plan = automove_variant_plan_for_openings(123, 12);
+            assert_eq!(plan.policy, AutomoveVariantPolicy::All);
+            assert_eq!(plan.variants.len(), automove_experiment_variants().len());
+            for variant in automove_experiment_variants() {
+                assert!(plan.variants.contains(variant));
+            }
+        });
+    });
+}
+
+#[test]
+fn explicit_variant_env_overrides_policy() {
+    with_env_override("SMART_AUTOMOVE_VARIANT_POLICY", "all", || {
+        with_env_override(
+            "SMART_AUTOMOVE_VARIANTS",
+            "classic,swapped_mana_rows,1",
+            || {
+                let plan = automove_variant_plan_for_openings(9, 12);
+                assert_eq!(plan.policy, AutomoveVariantPolicy::Explicit);
+                assert_eq!(
+                    plan.variants,
+                    vec![GameVariant::Classic, GameVariant::SwappedManaRows]
+                );
+            },
+        );
+    });
+}
+
+#[test]
+fn opening_fen_cache_key_includes_variant_list() {
+    with_env_override("SMART_AUTOMOVE_VARIANT_POLICY", "sampled", || {
+        with_env_override("SMART_AUTOMOVE_VARIANTS", "classic", || {
+            let classic = generate_opening_fens_cached(77, 1);
+            let classic_game =
+                MonsGame::from_fen(classic[0].as_str(), false).expect("classic opening fen");
+            assert_eq!(classic_game.variant(), GameVariant::Classic);
+        });
+        with_env_override("SMART_AUTOMOVE_VARIANTS", "swapped_mana_rows", || {
+            let swapped = generate_opening_fens_cached(77, 1);
+            let swapped_game =
+                MonsGame::from_fen(swapped[0].as_str(), false).expect("swapped opening fen");
+            assert_eq!(swapped_game.variant(), GameVariant::SwappedManaRows);
+        });
+    });
 }
 
 #[test]
@@ -276,7 +392,56 @@ fn smart_automove_pool_exact_lite_diagnostics_gate() {
 }
 
 #[test]
-#[ignore = "deterministic fixture-first triage for primary_pro surface"]
+#[ignore = "cheap legality smoke over every public automove game variant"]
+fn smart_automove_pool_variant_smoke_gate() {
+    let frontier_profile_name = frontier_profile_id();
+    let shipping_profile_name = shipping_profile_id();
+
+    for variant in automove_experiment_variants().iter().copied() {
+        let game = MonsGame::new(false, variant);
+        for (profile_name, mode) in [
+            (
+                shipping_profile_name.as_str(),
+                SmartAutomovePreference::Fast,
+            ),
+            (
+                shipping_profile_name.as_str(),
+                SmartAutomovePreference::Normal,
+            ),
+            (frontier_profile_name.as_str(), SmartAutomovePreference::Pro),
+        ] {
+            let inputs = profile_runtime_inputs(profile_name, mode, &game);
+            assert!(
+                !inputs.is_empty(),
+                "variant smoke produced no inputs for profile={} mode={} variant={}",
+                profile_name,
+                mode.as_api_value(),
+                automove_variant_label(variant)
+            );
+            MonsGameModel::apply_inputs_for_search_with_events(&game, &inputs).unwrap_or_else(
+                || {
+                    panic!(
+                        "variant smoke selected illegal inputs for profile={} mode={} variant={} inputs={}",
+                        profile_name,
+                        mode.as_api_value(),
+                        automove_variant_label(variant),
+                        Input::fen_from_array(&inputs)
+                    )
+                },
+            );
+            println!(
+                "variant smoke profile={} mode={} variant={} inputs={}",
+                profile_name,
+                mode.as_api_value(),
+                automove_variant_label(variant),
+                Input::fen_from_array(&inputs)
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "deterministic fixture-first triage for retained Classic primary_pro surface"]
 fn smart_automove_pool_pro_signal_triage() {
     let surface = TriageSurface::PrimaryPro;
     let frontier_profile_name = frontier_profile_id();
@@ -352,6 +517,8 @@ fn smart_automove_pool_pro_reliability_gate() {
     let max_plies = env_usize("SMART_PRO_RELIABILITY_MAX_PLIES")
         .unwrap_or(96)
         .max(max_plies_floor);
+    let require_variant_floor =
+        env_bool("SMART_PRO_RELIABILITY_REQUIRE_VARIANT_FLOOR").unwrap_or(false);
     let seed_tag = env_string_value("SMART_PRO_RELIABILITY_SEED_TAG")
         .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
     let normal_seed_tag = format!("{}_vs_normal", seed_tag);
@@ -389,60 +556,27 @@ fn smart_automove_pool_pro_reliability_gate() {
     });
 
     let pro_total_games = pro_stats.matchup.total_games();
-    let pro_metrics = ProReliabilityGateMetrics {
-        win_rate: pro_stats.matchup.win_rate_points(),
-        confidence: pro_stats.matchup.confidence_better_than_even(),
-        frontier_avg_ms: pro_stats.timing.profile_a_avg_ms(),
-    };
-    println!(
-        "pro reliability gate vs shipping pro: frontier={} shipping={} total_games={} win_rate={:.4} confidence={:.4} frontier_avg_ms={:.2} shipping_avg_ms={:.2} frontier_turns={} shipping_turns={}",
-        frontier_profile,
-        shipping_profile,
-        pro_total_games,
-        pro_metrics.win_rate,
-        pro_metrics.confidence,
-        pro_metrics.frontier_avg_ms,
-        pro_stats.timing.profile_b_avg_ms(),
-        pro_stats.timing.profile_a_turns,
-        pro_stats.timing.profile_b_turns
+    let pro_metrics = print_pro_reliability_stats(
+        "pro reliability gate vs shipping pro",
+        frontier_profile.as_str(),
+        shipping_profile.as_str(),
+        &pro_stats,
     );
 
     let normal_total_games = normal_stats.matchup.total_games();
-    let normal_metrics = ProReliabilityGateMetrics {
-        win_rate: normal_stats.matchup.win_rate_points(),
-        confidence: normal_stats.matchup.confidence_better_than_even(),
-        frontier_avg_ms: normal_stats.timing.profile_a_avg_ms(),
-    };
-    println!(
-        "pro reliability gate vs shipping normal: frontier={} shipping={} total_games={} win_rate={:.4} confidence={:.4} frontier_avg_ms={:.2} shipping_avg_ms={:.2} frontier_turns={} shipping_turns={}",
-        frontier_profile,
-        shipping_profile,
-        normal_total_games,
-        normal_metrics.win_rate,
-        normal_metrics.confidence,
-        normal_metrics.frontier_avg_ms,
-        normal_stats.timing.profile_b_avg_ms(),
-        normal_stats.timing.profile_a_turns,
-        normal_stats.timing.profile_b_turns
+    let normal_metrics = print_pro_reliability_stats(
+        "pro reliability gate vs shipping normal",
+        frontier_profile.as_str(),
+        shipping_profile.as_str(),
+        &normal_stats,
     );
 
     let fast_total_games = fast_stats.matchup.total_games();
-    let fast_metrics = ProReliabilityGateMetrics {
-        win_rate: fast_stats.matchup.win_rate_points(),
-        confidence: fast_stats.matchup.confidence_better_than_even(),
-        frontier_avg_ms: fast_stats.timing.profile_a_avg_ms(),
-    };
-    println!(
-        "pro reliability gate vs shipping fast: frontier={} shipping={} total_games={} win_rate={:.4} confidence={:.4} frontier_avg_ms={:.2} shipping_avg_ms={:.2} frontier_turns={} shipping_turns={}",
-        frontier_profile,
-        shipping_profile,
-        fast_total_games,
-        fast_metrics.win_rate,
-        fast_metrics.confidence,
-        fast_metrics.frontier_avg_ms,
-        fast_stats.timing.profile_b_avg_ms(),
-        fast_stats.timing.profile_a_turns,
-        fast_stats.timing.profile_b_turns
+    let fast_metrics = print_pro_reliability_stats(
+        "pro reliability gate vs shipping fast",
+        frontier_profile.as_str(),
+        shipping_profile.as_str(),
+        &fast_stats,
     );
 
     let expected_games = repeats.saturating_mul(games).saturating_mul(2);
@@ -480,4 +614,18 @@ fn smart_automove_pool_pro_reliability_gate() {
     assert_pro_reliability_duel_passes("pro reliability gate vs shipping pro", pro_metrics);
     assert_pro_reliability_duel_passes("pro reliability gate vs shipping normal", normal_metrics);
     assert_pro_reliability_duel_passes("pro reliability gate vs shipping fast", fast_metrics);
+    if require_variant_floor {
+        assert_pro_reliability_variant_floor_passes(
+            "pro reliability gate vs shipping pro",
+            &pro_stats,
+        );
+        assert_pro_reliability_variant_floor_passes(
+            "pro reliability gate vs shipping normal",
+            &normal_stats,
+        );
+        assert_pro_reliability_variant_floor_passes(
+            "pro reliability gate vs shipping fast",
+            &fast_stats,
+        );
+    }
 }

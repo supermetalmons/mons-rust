@@ -5,10 +5,66 @@ use crate::models::automove_turn_engine::clear_turn_engine_plan_cache;
 use crate::models::mons_game_model::clear_turn_engine_selector_diagnostics;
 use std::collections::HashMap;
 
-type OpeningFensCacheKey = (u64, usize);
+type OpeningFensCacheKey = (u64, usize, Vec<GameVariant>);
 type OpeningFens = Arc<Vec<String>>;
 type OpeningFensCacheMap = HashMap<OpeningFensCacheKey, OpeningFens>;
 type OpeningFensCache = Mutex<OpeningFensCacheMap>;
+
+const DEFAULT_VARIANT_SAMPLE_SIZE: usize = 4;
+
+pub(in super::super) const AUTOMOVE_EXPERIMENT_VARIANTS: [GameVariant; 12] = [
+    GameVariant::Classic,
+    GameVariant::SwappedManaRows,
+    GameVariant::OffsetArcManaRows,
+    GameVariant::CenterSpokeManaRows,
+    GameVariant::AlternatingManaRows,
+    GameVariant::InnerWedgeManaRows,
+    GameVariant::OuterWedgeManaRows,
+    GameVariant::BentCenterManaRows,
+    GameVariant::OuterEdgeManaRows,
+    GameVariant::SplitFlankManaRows,
+    GameVariant::ForwardBridgeManaRows,
+    GameVariant::CornerChainManaRows,
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in super::super) enum AutomoveVariantPolicy {
+    Classic,
+    Sampled,
+    All,
+    Explicit,
+}
+
+impl AutomoveVariantPolicy {
+    pub(in super::super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Classic => "classic",
+            Self::Sampled => "sampled",
+            Self::All => "all",
+            Self::Explicit => "explicit",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in super::super) struct AutomoveVariantPlan {
+    pub policy: AutomoveVariantPolicy,
+    pub variants: Vec<GameVariant>,
+}
+
+impl AutomoveVariantPlan {
+    pub(in super::super) fn variant_labels(&self) -> Vec<&'static str> {
+        self.variants
+            .iter()
+            .copied()
+            .map(automove_variant_label)
+            .collect()
+    }
+
+    pub(in super::super) fn variant_label_csv(&self) -> String {
+        self.variant_labels().join(",")
+    }
+}
 
 #[derive(Clone, Copy)]
 pub(in super::super) struct CrossBudgetDuelConfig<'a> {
@@ -20,6 +76,149 @@ pub(in super::super) struct CrossBudgetDuelConfig<'a> {
     pub repeats: usize,
     pub games_per_repeat: usize,
     pub max_plies: usize,
+}
+
+pub(in super::super) fn automove_experiment_variants() -> &'static [GameVariant] {
+    &AUTOMOVE_EXPERIMENT_VARIANTS
+}
+
+pub(in super::super) fn automove_variant_label(variant: GameVariant) -> &'static str {
+    match variant {
+        GameVariant::Classic => "classic",
+        GameVariant::SwappedManaRows => "swapped_mana_rows",
+        GameVariant::OffsetArcManaRows => "offset_arc_mana_rows",
+        GameVariant::CenterSpokeManaRows => "center_spoke_mana_rows",
+        GameVariant::AlternatingManaRows => "alternating_mana_rows",
+        GameVariant::InnerWedgeManaRows => "inner_wedge_mana_rows",
+        GameVariant::OuterWedgeManaRows => "outer_wedge_mana_rows",
+        GameVariant::BentCenterManaRows => "bent_center_mana_rows",
+        GameVariant::OuterEdgeManaRows => "outer_edge_mana_rows",
+        GameVariant::SplitFlankManaRows => "split_flank_mana_rows",
+        GameVariant::ForwardBridgeManaRows => "forward_bridge_mana_rows",
+        GameVariant::CornerChainManaRows => "corner_chain_mana_rows",
+    }
+}
+
+fn normalize_variant_token(token: &str) -> String {
+    token
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .collect()
+}
+
+pub(in super::super) fn parse_automove_variant(token: &str) -> Option<GameVariant> {
+    let normalized = normalize_variant_token(token);
+    if let Ok(id) = normalized.parse::<i32>() {
+        return GameVariant::from_id(id);
+    }
+    match normalized.as_str() {
+        "classic" => Some(GameVariant::Classic),
+        "swapped" | "swappedmanarows" => Some(GameVariant::SwappedManaRows),
+        "offset" | "offsetarc" | "offsetarcmanarows" => Some(GameVariant::OffsetArcManaRows),
+        "centerspoke" | "centerspokemanarows" => Some(GameVariant::CenterSpokeManaRows),
+        "alternating" | "alternatingmanarows" => Some(GameVariant::AlternatingManaRows),
+        "innerwedge" | "innerwedgemanarows" => Some(GameVariant::InnerWedgeManaRows),
+        "outerwedge" | "outerwedgemanarows" => Some(GameVariant::OuterWedgeManaRows),
+        "bentcenter" | "bentcentermanarows" => Some(GameVariant::BentCenterManaRows),
+        "outeredge" | "outeredgemanarows" => Some(GameVariant::OuterEdgeManaRows),
+        "splitflank" | "splitflankmanarows" => Some(GameVariant::SplitFlankManaRows),
+        "forwardbridge" | "forwardbridgemanarows" => Some(GameVariant::ForwardBridgeManaRows),
+        "cornerchain" | "cornerchainmanarows" => Some(GameVariant::CornerChainManaRows),
+        _ => None,
+    }
+}
+
+fn parse_automove_variant_policy(token: &str) -> Option<AutomoveVariantPolicy> {
+    match token.trim().to_ascii_lowercase().as_str() {
+        "classic" => Some(AutomoveVariantPolicy::Classic),
+        "sampled" | "sample" => Some(AutomoveVariantPolicy::Sampled),
+        "all" => Some(AutomoveVariantPolicy::All),
+        _ => None,
+    }
+}
+
+fn explicit_automove_variants_from_env() -> Option<Vec<GameVariant>> {
+    let raw = env::var("SMART_AUTOMOVE_VARIANTS").ok()?;
+    let tokens = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    if tokens.is_empty() {
+        return None;
+    }
+
+    let mut variants = Vec::with_capacity(tokens.len());
+    for token in tokens {
+        let Some(variant) = parse_automove_variant(token) else {
+            panic!(
+                "unknown SMART_AUTOMOVE_VARIANTS entry '{}'; expected variant id or label",
+                token
+            );
+        };
+        if !variants.contains(&variant) {
+            variants.push(variant);
+        }
+    }
+    assert!(
+        !variants.is_empty(),
+        "SMART_AUTOMOVE_VARIANTS resolved to an empty variant list"
+    );
+    Some(variants)
+}
+
+fn automove_variant_sample_size(opening_count: usize) -> usize {
+    env_usize("SMART_AUTOMOVE_VARIANT_SAMPLE_SIZE")
+        .unwrap_or(DEFAULT_VARIANT_SAMPLE_SIZE)
+        .max(1)
+        .min(opening_count.max(1))
+        .min(AUTOMOVE_EXPERIMENT_VARIANTS.len())
+}
+
+fn seed_shuffled_automove_variants(seed: u64) -> Vec<GameVariant> {
+    let mut variants = AUTOMOVE_EXPERIMENT_VARIANTS.to_vec();
+    let mut rng = StdRng::seed_from_u64(seed ^ 0x4d56_4152_4941_4e54);
+    for index in (1..variants.len()).rev() {
+        let swap_index = rng.gen_range(0..=index);
+        variants.swap(index, swap_index);
+    }
+    variants
+}
+
+pub(in super::super) fn automove_variant_plan_for_openings(
+    seed: u64,
+    opening_count: usize,
+) -> AutomoveVariantPlan {
+    if let Some(variants) = explicit_automove_variants_from_env() {
+        return AutomoveVariantPlan {
+            policy: AutomoveVariantPolicy::Explicit,
+            variants,
+        };
+    }
+
+    let policy = match env::var("SMART_AUTOMOVE_VARIANT_POLICY").ok() {
+        Some(value) if value.trim().is_empty() => AutomoveVariantPolicy::Sampled,
+        Some(value) => parse_automove_variant_policy(value.as_str()).unwrap_or_else(|| {
+            panic!(
+                "unknown SMART_AUTOMOVE_VARIANT_POLICY '{}'; expected sampled, all, or classic",
+                value
+            )
+        }),
+        None => AutomoveVariantPolicy::Sampled,
+    };
+    let variants = match policy {
+        AutomoveVariantPolicy::Classic => vec![GameVariant::Classic],
+        AutomoveVariantPolicy::Sampled => {
+            let mut variants = seed_shuffled_automove_variants(seed);
+            variants.truncate(automove_variant_sample_size(opening_count));
+            variants
+        }
+        AutomoveVariantPolicy::All => seed_shuffled_automove_variants(seed),
+        AutomoveVariantPolicy::Explicit => unreachable!("explicit policy is env-list only"),
+    };
+    AutomoveVariantPlan { policy, variants }
 }
 
 pub(in super::super) fn select_inputs_with_runtime_fallback(
@@ -54,6 +253,9 @@ pub(in super::super) fn run_budget_duel_series_with_timing(
     let mut stats = TimedMatchupStats::default();
     for game_index in 0..games.max(1) {
         let a_is_white = game_index % 2 == 0;
+        let variant = MonsGame::from_fen(opening_fens[game_index].as_str(), false)
+            .expect("valid opening fen")
+            .variant();
         let (result, timing) = play_one_game_budget_duel_with_timing(
             model_a,
             budget_a,
@@ -63,7 +265,7 @@ pub(in super::super) fn run_budget_duel_series_with_timing(
             opening_fens[game_index].as_str(),
             max_plies,
         );
-        stats.record(result, timing);
+        stats.record_for_variant(variant, result, timing);
     }
     stats
 }
@@ -176,12 +378,36 @@ pub(in super::super) fn adjudicate_non_terminal_game(game: &MonsGame) -> Option<
     }
 }
 
-pub(in super::super) fn generate_opening_fens(seed: u64, count: usize) -> Vec<String> {
+pub(in super::super) fn generate_opening_fens_for_variants(
+    seed: u64,
+    count: usize,
+    variants: &[GameVariant],
+) -> Vec<String> {
+    assert!(
+        !variants.is_empty(),
+        "opening generation requires at least one game variant"
+    );
     let mut rng = StdRng::seed_from_u64(seed);
     let mut fens = Vec::with_capacity(count);
+    let mut attempts = 0usize;
+    let max_attempts = count.max(1).saturating_mul(256);
 
     while fens.len() < count {
-        let mut game = MonsGame::new(false, GameVariant::Classic);
+        attempts += 1;
+        assert!(
+            attempts <= max_attempts,
+            "failed to generate {} valid openings after {} attempts for variants={}",
+            count,
+            max_attempts,
+            variants
+                .iter()
+                .copied()
+                .map(automove_variant_label)
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let variant = variants[fens.len() % variants.len()];
+        let mut game = MonsGame::new(false, variant);
         let opening_plies = rng.gen_range(0..=OPENING_RANDOM_PLIES_MAX);
         let mut valid = true;
 
@@ -209,7 +435,8 @@ pub(in super::super) fn opening_fens_cache() -> &'static OpeningFensCache {
 }
 
 pub(in super::super) fn generate_opening_fens_cached(seed: u64, count: usize) -> Arc<Vec<String>> {
-    let key = (seed, count);
+    let plan = automove_variant_plan_for_openings(seed, count);
+    let key = (seed, count, plan.variants.clone());
     {
         let cache_guard = opening_fens_cache()
             .lock()
@@ -219,7 +446,11 @@ pub(in super::super) fn generate_opening_fens_cached(seed: u64, count: usize) ->
         }
     }
 
-    let generated = Arc::new(generate_opening_fens(seed, count));
+    let generated = Arc::new(generate_opening_fens_for_variants(
+        seed,
+        count,
+        plan.variants.as_slice(),
+    ));
     let mut cache_guard = opening_fens_cache()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -371,6 +602,45 @@ pub(in super::super) fn mirrored_profile_a_timing(
     }
 }
 
+fn timed_stats_for_variant(
+    stats: &TimedMatchupStats,
+    variant: GameVariant,
+) -> (MatchupStats, DuelTimingStats) {
+    stats
+        .per_variant
+        .iter()
+        .find(|variant_stats| variant_stats.variant == variant)
+        .map(|variant_stats| (variant_stats.matchup, variant_stats.timing))
+        .unwrap_or_default()
+}
+
+fn mirrored_profile_a_timed_stats(
+    ab: &TimedMatchupStats,
+    ba: &TimedMatchupStats,
+) -> TimedMatchupStats {
+    let mut mirrored = TimedMatchupStats {
+        matchup: mirrored_profile_a_stats(ab.matchup, ba.matchup),
+        timing: mirrored_profile_a_timing(ab.timing, ba.timing),
+        per_variant: Vec::new(),
+    };
+
+    for variant in automove_experiment_variants().iter().copied() {
+        let (ab_matchup, ab_timing) = timed_stats_for_variant(ab, variant);
+        let (ba_matchup, ba_timing) = timed_stats_for_variant(ba, variant);
+        let matchup = mirrored_profile_a_stats(ab_matchup, ba_matchup);
+        let timing = mirrored_profile_a_timing(ab_timing, ba_timing);
+        if matchup.total_games() > 0 || timing.profile_a_turns > 0 || timing.profile_b_turns > 0 {
+            mirrored.per_variant.push(VariantTimedMatchupStats {
+                variant,
+                matchup,
+                timing,
+            });
+        }
+    }
+
+    mirrored
+}
+
 pub(in super::super) fn run_cross_budget_duel_with_timing(
     config: CrossBudgetDuelConfig<'_>,
 ) -> TimedMatchupStats {
@@ -404,6 +674,20 @@ pub(in super::super) fn run_cross_budget_duel_with_timing(
     for repeat_index in 0..config.repeats.max(1) {
         let seed =
             seed_for_budget_duel_repeat_and_tag(budget_a, budget_b, repeat_index, config.seed_tag);
+        let variant_plan = automove_variant_plan_for_openings(seed, config.games_per_repeat.max(1));
+        println!(
+            "cross-budget variants: {}({}) vs {}({}) seed={} repeat={}/{} policy={} sample_size={} variants={}",
+            config.profile_a,
+            config.mode_a.as_api_value(),
+            config.profile_b,
+            config.mode_b.as_api_value(),
+            config.seed_tag,
+            repeat_index + 1,
+            config.repeats.max(1),
+            variant_plan.policy.as_str(),
+            variant_plan.variants.len(),
+            variant_plan.variant_label_csv()
+        );
         let ab = run_budget_duel_series_with_timing(
             model_a,
             budget_a,
@@ -422,12 +706,7 @@ pub(in super::super) fn run_cross_budget_duel_with_timing(
             seed,
             config.max_plies,
         );
-        aggregate
-            .matchup
-            .merge(mirrored_profile_a_stats(ab.matchup, ba.matchup));
-        aggregate
-            .timing
-            .merge(mirrored_profile_a_timing(ab.timing, ba.timing));
+        aggregate.merge(mirrored_profile_a_timed_stats(&ab, &ba));
         if progress {
             let (delta, confidence) = stats_delta_confidence(aggregate.matchup);
             println!(

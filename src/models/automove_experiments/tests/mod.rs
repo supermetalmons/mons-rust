@@ -113,7 +113,16 @@ fn env_f64(name: &str) -> Option<f64> {
         .and_then(|value| value.trim().parse::<f64>().ok())
 }
 
-fn with_env_override<T>(name: &str, value: &str, f: impl FnOnce() -> T) -> T {
+fn env_override_mutex() -> &'static Mutex<()> {
+    static ENV_OVERRIDE_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+    ENV_OVERRIDE_MUTEX.get_or_init(|| Mutex::new(()))
+}
+
+thread_local! {
+    static ENV_OVERRIDE_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn with_env_override_unlocked<T>(name: &str, value: &str, f: impl FnOnce() -> T) -> T {
     let previous = env::var(name).ok();
     env::set_var(name, value);
     let result = f();
@@ -122,6 +131,20 @@ fn with_env_override<T>(name: &str, value: &str, f: impl FnOnce() -> T) -> T {
     } else {
         env::remove_var(name);
     }
+    result
+}
+
+fn with_env_override<T>(name: &str, value: &str, f: impl FnOnce() -> T) -> T {
+    if ENV_OVERRIDE_DEPTH.with(|depth| depth.get()) > 0 {
+        return with_env_override_unlocked(name, value, f);
+    }
+
+    let _guard = env_override_mutex()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    ENV_OVERRIDE_DEPTH.with(|depth| depth.set(1));
+    let result = with_env_override_unlocked(name, value, f);
+    ENV_OVERRIDE_DEPTH.with(|depth| depth.set(0));
     result
 }
 
@@ -1005,6 +1028,14 @@ struct ProReliabilityGateMetrics {
     frontier_avg_ms: f64,
 }
 
+fn pro_reliability_metrics(stats: &TimedMatchupStats) -> ProReliabilityGateMetrics {
+    ProReliabilityGateMetrics {
+        win_rate: stats.matchup.win_rate_points(),
+        confidence: stats.matchup.confidence_better_than_even(),
+        frontier_avg_ms: stats.timing.profile_a_avg_ms(),
+    }
+}
+
 fn pro_reliability_duel_passes(metrics: ProReliabilityGateMetrics) -> bool {
     metrics.win_rate >= SMART_PRO_RELIABILITY_WIN_RATE_MIN
         && metrics.confidence >= SMART_PRO_RELIABILITY_CONFIDENCE_MIN
@@ -1043,6 +1074,74 @@ fn assert_pro_reliability_duel_passes(label: &str, metrics: ProReliabilityGateMe
         metrics.frontier_avg_ms,
         SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX
     );
+}
+
+fn pro_reliability_variant_floor_passes(stats: &TimedMatchupStats) -> bool {
+    !stats.per_variant.is_empty()
+        && stats.per_variant_stats().into_iter().all(|variant_stats| {
+            variant_stats.matchup.win_rate_points() >= SMART_PRO_RELIABILITY_VARIANT_WIN_RATE_FLOOR
+                && variant_stats.timing.profile_a_avg_ms() <= SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX
+        })
+}
+
+fn assert_pro_reliability_variant_floor_passes(label: &str, stats: &TimedMatchupStats) {
+    for variant_stats in stats.per_variant_stats() {
+        let win_rate = variant_stats.matchup.win_rate_points();
+        let frontier_avg_ms = variant_stats.timing.profile_a_avg_ms();
+        assert!(
+            win_rate >= SMART_PRO_RELIABILITY_VARIANT_WIN_RATE_FLOOR,
+            "{} variant floor failed for {}: win_rate {:.4} < {:.2}",
+            label,
+            automove_variant_label(variant_stats.variant),
+            win_rate,
+            SMART_PRO_RELIABILITY_VARIANT_WIN_RATE_FLOOR
+        );
+        assert!(
+            frontier_avg_ms <= SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX,
+            "{} variant move time failed for {}: frontier_avg_ms {:.2}ms > {:.2}ms",
+            label,
+            automove_variant_label(variant_stats.variant),
+            frontier_avg_ms,
+            SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX
+        );
+    }
+}
+
+fn print_pro_reliability_stats(
+    label: &str,
+    frontier_profile: &str,
+    shipping_profile: &str,
+    stats: &TimedMatchupStats,
+) -> ProReliabilityGateMetrics {
+    let metrics = pro_reliability_metrics(stats);
+    println!(
+        "{}: frontier={} shipping={} total_games={} win_rate={:.4} confidence={:.4} frontier_avg_ms={:.2} shipping_avg_ms={:.2} frontier_turns={} shipping_turns={}",
+        label,
+        frontier_profile,
+        shipping_profile,
+        stats.matchup.total_games(),
+        metrics.win_rate,
+        metrics.confidence,
+        metrics.frontier_avg_ms,
+        stats.timing.profile_b_avg_ms(),
+        stats.timing.profile_a_turns,
+        stats.timing.profile_b_turns
+    );
+    for variant_stats in stats.per_variant_stats() {
+        println!(
+            "{} variant={} total_games={} win_rate={:.4} confidence={:.4} frontier_avg_ms={:.2} shipping_avg_ms={:.2} frontier_turns={} shipping_turns={}",
+            label,
+            automove_variant_label(variant_stats.variant),
+            variant_stats.matchup.total_games(),
+            variant_stats.matchup.win_rate_points(),
+            variant_stats.matchup.confidence_better_than_even(),
+            variant_stats.timing.profile_a_avg_ms(),
+            variant_stats.timing.profile_b_avg_ms(),
+            variant_stats.timing.profile_a_turns,
+            variant_stats.timing.profile_b_turns
+        );
+    }
+    metrics
 }
 
 fn pro_signal_triage_passes(
@@ -1225,10 +1324,8 @@ fn assert_exact_lite_diagnostics_gate_if_enabled(
     let positions = env_usize("SMART_EXACT_LITE_DIAGNOSTIC_POSITIONS")
         .unwrap_or(8)
         .max(1);
-    let openings = generate_opening_fens_cached(
-        seed_for_pairing("exact_lite_diag", frontier_profile_name),
-        positions,
-    );
+    let exact_lite_seed = seed_for_pairing("exact_lite_diag", frontier_profile_name);
+    let openings = generate_opening_fens_cached(exact_lite_seed, positions);
     let cache_repeats = env_usize("SMART_EXACT_LITE_CACHE_REPEATS")
         .unwrap_or(2)
         .max(2);
@@ -1240,6 +1337,14 @@ fn assert_exact_lite_diagnostics_gate_if_enabled(
         .clamp(0.0, 1.0);
 
     let mut any_exact_lite_budget = false;
+    let variant_plan = automove_variant_plan_for_openings(exact_lite_seed, positions);
+    println!(
+        "exact-lite variants frontier={} policy={} sample_size={} variants={}",
+        frontier_profile_name,
+        variant_plan.policy.as_str(),
+        variant_plan.variants.len(),
+        variant_plan.variant_label_csv()
+    );
     for budget in budgets.iter().copied() {
         for opening in openings.iter() {
             let game = MonsGame::from_fen(opening, false).expect("valid opening fen");
@@ -1342,6 +1447,15 @@ fn assert_stage1_cpu_non_regression(
         let speed_seed = seed_for_pairing(
             "stage1_cpu_gate",
             format!("{}:{}", frontier_profile_name, seed_tag).as_str(),
+        );
+        let variant_plan = automove_variant_plan_for_openings(speed_seed, speed_positions);
+        println!(
+            "stage-1 cpu variants seed={} frontier={} policy={} sample_size={} variants={}",
+            seed_tag,
+            frontier_profile_name,
+            variant_plan.policy.as_str(),
+            variant_plan.variants.len(),
+            variant_plan.variant_label_csv()
         );
         let speed_openings = generate_opening_fens_cached(speed_seed, speed_positions);
         let mut ratio_samples = std::collections::HashMap::<&'static str, Vec<f64>>::new();

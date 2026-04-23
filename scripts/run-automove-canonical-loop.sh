@@ -11,10 +11,11 @@ default shipping profile:
 
 canonical order:
   1. guardrails
-  2. pro-triage
-  3. runtime-preflight
-  4. pro-reliability
-  5. pro-reliability-confirm (only when --confirm is passed)
+  2. variant-smoke
+  3. pro-triage
+  4. runtime-preflight
+  5. pro-reliability
+  6. pro-reliability-confirm (only when --confirm is passed)
 EOF
 }
 
@@ -86,6 +87,7 @@ last_stage="startup"
 trap 'status=$?; print_artifact_summary "${status}"' EXIT
 
 run_stage guardrails
+run_stage variant-smoke
 run_stage pro-triage
 run_stage runtime-preflight
 run_stage pro-reliability

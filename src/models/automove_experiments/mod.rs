@@ -12,6 +12,7 @@ const OPENING_RANDOM_PLIES_MAX: usize = 6;
 pub(super) const SMART_PRO_RELIABILITY_WIN_RATE_MIN: f64 = 0.90;
 pub(super) const SMART_PRO_RELIABILITY_CONFIDENCE_MIN: f64 = 0.99;
 pub(super) const SMART_PRO_RELIABILITY_MOVE_AVG_MS_MAX: f64 = 700.0;
+pub(super) const SMART_PRO_RELIABILITY_VARIANT_WIN_RATE_FLOOR: f64 = 0.50;
 // Stronger pro candidates may also be cheaper than the current runtime; keep a
 // floor that preserves a meaningful pro budget without blocking genuinely stronger
 // but cheaper search configurations (e.g. breadth-over-depth wins).
@@ -159,16 +160,72 @@ impl DuelTimingStats {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-struct TimedMatchupStats {
+#[derive(Debug, Clone, Default)]
+struct VariantTimedMatchupStats {
+    variant: GameVariant,
     matchup: MatchupStats,
     timing: DuelTimingStats,
 }
 
+impl VariantTimedMatchupStats {
+    fn merge(&mut self, other: VariantTimedMatchupStats) {
+        self.matchup.merge(other.matchup);
+        self.timing.merge(other.timing);
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct TimedMatchupStats {
+    matchup: MatchupStats,
+    timing: DuelTimingStats,
+    per_variant: Vec<VariantTimedMatchupStats>,
+}
+
 impl TimedMatchupStats {
-    fn record(&mut self, result: MatchResult, timing: DuelTimingStats) {
+    fn record_for_variant(
+        &mut self,
+        variant: GameVariant,
+        result: MatchResult,
+        timing: DuelTimingStats,
+    ) {
         self.matchup.record(result);
         self.timing.merge(timing);
+        let variant_stats = self.variant_stats_mut(variant);
+        variant_stats.matchup.record(result);
+        variant_stats.timing.merge(timing);
+    }
+
+    fn merge(&mut self, other: TimedMatchupStats) {
+        self.matchup.merge(other.matchup);
+        self.timing.merge(other.timing);
+        for variant_stats in other.per_variant {
+            self.variant_stats_mut(variant_stats.variant)
+                .merge(variant_stats);
+        }
+    }
+
+    fn variant_stats_mut(&mut self, variant: GameVariant) -> &mut VariantTimedMatchupStats {
+        if let Some(index) = self
+            .per_variant
+            .iter()
+            .position(|variant_stats| variant_stats.variant == variant)
+        {
+            return &mut self.per_variant[index];
+        }
+        self.per_variant.push(VariantTimedMatchupStats {
+            variant,
+            matchup: MatchupStats::default(),
+            timing: DuelTimingStats::default(),
+        });
+        self.per_variant
+            .last_mut()
+            .expect("just pushed variant stats")
+    }
+
+    fn per_variant_stats(&self) -> Vec<&VariantTimedMatchupStats> {
+        let mut stats = self.per_variant.iter().collect::<Vec<_>>();
+        stats.sort_by_key(|variant_stats| variant_stats.variant.id());
+        stats
     }
 }
 

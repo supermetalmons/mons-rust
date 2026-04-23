@@ -8,8 +8,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 
 - Public Pro routes through `frontier_pro_v2_guarded`.
 - `shipping_pro_search` remains the retained search-only baseline.
-- The live experiment surface is Pro-only: 2 retained profiles and 5 canonical stages.
+- The live experiment surface is Pro-only and multi-variant: 2 retained profiles and 6 canonical stages.
 - The default operator entrypoint is `./scripts/run-automove-canonical-loop.sh`.
+- Quick automove iteration uses seeded sampled game variants; final promotion confirmation uses all current variants.
 - There is no second live challenger today.
 - Release readiness was refreshed on `2026-04-23`: public Pro wiring still ships `frontier_pro_v2_guarded`, experimentation remains test-only, and the full canonical confirm loop passed without selection-behavior changes.
 - The remaining classified residuals are not current selection-layer targets:
@@ -20,9 +21,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 
 - Date: `2026-04-23`
 - Shipping decision: public Pro remains on `frontier_pro_v2_guarded`.
-- Release verification passed: `cargo fmt --check`, host and wasm `cargo build --release --lib`, `git diff --check`, `cargo test --release --lib smart_automove_tactical_selected_profile -- --ignored --nocapture`, and `./scripts/run-automove-canonical-loop.sh --confirm frontier_pro_v2_guarded`.
-- Confirm duel metrics: Pro `0.9688`, Normal `1.0000`, Fast `0.9688`, each with confidence `1.0000`; frontier average move times stayed below `200ms`.
+- Release verification passed under the previous Classic-era gate shape: `cargo fmt --check`, host and wasm `cargo build --release --lib`, `git diff --check`, `cargo test --release --lib smart_automove_tactical_selected_profile -- --ignored --nocapture`, and `./scripts/run-automove-canonical-loop.sh --confirm frontier_pro_v2_guarded`.
+- Previous confirm duel metrics: Pro `0.9688`, Normal `1.0000`, Fast `0.9688`, each with confidence `1.0000`; frontier average move times stayed below `200ms`.
 - Release containment: public `Pro` dispatch still routes through `select_frontier_pro_v2_guarded_inputs`; `automove_experiments` remains under `#[cfg(test)]`, so diagnostics and experiment harness code are not production selection code.
+- First multi-variant sampled reliability check of the shipped frontier stopped at the new gate: Pro `0.5000`, Normal `0.5000`, Fast `0.9167`. The current shipped frontier is retained/shipped, but it is not fresh multi-variant promotion evidence.
 
 ## Next Hypothesis
 
@@ -35,6 +37,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 
 - Do not reopen archived profiles, archived seams, or archived stages.
 - Do not treat retained `primary_pro` churn by itself as promotion evidence.
+- Do not treat Classic retained fixtures as broad variant evidence.
 - Do not spend canonical gates on a challenger that stays behaviorally inert at `target_changed=0 off_target_changed=0`.
 - Do not treat “all live walls aligned” as enough if duel strength or CPU cost still fails.
 - Do not add board-local shipping mirrors for residuals that lose under frontier reply-risk, selector, or residual-score metrics.

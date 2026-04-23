@@ -11,10 +11,11 @@ single-stage runner:
 
 stages:
   guardrails              tactical guardrails only; the cheap first gate
+  variant-smoke           cheap legal/public automove smoke over every game variant
   runtime-preflight       stage-1 cpu report (advisory for Pro) + exact-lite diagnostics; writes the duel stamp
-  pro-triage              deterministic primary_pro triage
-  pro-reliability         focused Pro-vs-Pro, Pro-vs-Normal, and Pro-vs-Fast reliability gate
-  pro-reliability-confirm larger confirmation gate with the same three Pro matchups
+  pro-triage              deterministic retained Classic primary_pro triage
+  pro-reliability         sampled-variant Pro-vs-Pro, Pro-vs-Normal, and Pro-vs-Fast reliability gate
+  pro-reliability-confirm all-variant confirmation gate with the same three Pro matchups
 
 defaults:
   shipping = shipping_pro_search for Pro stages
@@ -22,6 +23,7 @@ EOF_HELP
   cat <<'EOF_HELP'
 examples:
   ./scripts/run-automove-experiment.sh guardrails frontier_pro_v2_guarded
+  ./scripts/run-automove-experiment.sh variant-smoke frontier_pro_v2_guarded
   ./scripts/run-automove-experiment.sh runtime-preflight frontier_pro_v2_guarded
   ./scripts/run-automove-experiment.sh pro-triage frontier_pro_v2_guarded
   ./scripts/run-automove-experiment.sh pro-reliability frontier_pro_v2_guarded
@@ -71,9 +73,13 @@ run_logged() {
   shift
   local frontier_meta="${frontier-}"
   local shipping_meta="${shipping-}"
+  local variant_policy_meta="${SMART_EXPERIMENT_VARIANT_POLICY:-${SMART_AUTOMOVE_VARIANT_POLICY:-}}"
+  local variant_list_meta="${SMART_EXPERIMENT_VARIANTS:-${SMART_AUTOMOVE_VARIANTS:-}}"
   SMART_EXPERIMENT_FRONTIER="${frontier_meta}" \
   SMART_EXPERIMENT_STAGE="${stage}" \
-    SMART_EXPERIMENT_SHIPPING="${shipping_meta}" \
+  SMART_EXPERIMENT_SHIPPING="${shipping_meta}" \
+  SMART_EXPERIMENT_VARIANT_POLICY="${variant_policy_meta}" \
+  SMART_EXPERIMENT_VARIANTS="${variant_list_meta}" \
     ./scripts/run-experiment-logged.sh "${run_name}" -- "$@"
 }
 
@@ -105,6 +111,8 @@ write_preflight_stamp() {
   {
     echo "frontier=${frontier_id}"
     echo "shipping=${shipping}"
+    echo "variant_policy=${SMART_AUTOMOVE_VARIANT_POLICY:-sampled}"
+    echo "variants=${SMART_AUTOMOVE_VARIANTS:-<default>}"
     echo "written_epoch=$(date +%s)"
   } > "${stamp_path}"
   echo "runtime preflight stamp: ${stamp_path}"
@@ -153,13 +161,15 @@ run_runtime_preflight() {
     stage1_extra_env+=("SMART_STAGE1_INCLUDE_PRO=true")
     stage1_extra_env+=("SMART_STAGE1_CPU_ADVISORY=true")
   fi
-  run_cargo_logged \
+  SMART_EXPERIMENT_VARIANT_POLICY="sampled" run_cargo_logged \
     "stage1_cpu_${frontier}" \
     "smart_automove_pool_stage1_cpu_non_regression_gate" \
+    "SMART_AUTOMOVE_VARIANT_POLICY=sampled" \
     "${stage1_extra_env[@]}"
-  run_cargo_logged \
+  SMART_EXPERIMENT_VARIANT_POLICY="sampled" run_cargo_logged \
     "exact_lite_diag_${frontier}" \
-    "smart_automove_pool_exact_lite_diagnostics_gate"
+    "smart_automove_pool_exact_lite_diagnostics_gate" \
+    "SMART_AUTOMOVE_VARIANT_POLICY=sampled"
   write_preflight_stamp "${frontier}"
 }
 
@@ -198,6 +208,12 @@ case "${stage}" in
   guardrails)
     run_cargo_logged "tactical_${frontier}" "smart_automove_tactical_selected_profile"
     ;;
+  variant-smoke)
+    SMART_EXPERIMENT_VARIANT_POLICY="all" run_cargo_logged \
+      "variant_smoke_${frontier}" \
+      "smart_automove_pool_variant_smoke_gate" \
+      "SMART_AUTOMOVE_VARIANT_POLICY=all"
+    ;;
   runtime-preflight)
     run_runtime_preflight
     ;;
@@ -209,8 +225,9 @@ case "${stage}" in
     ;;
   pro-reliability)
     require_fresh_preflight_stamp "${frontier}"
-    run_pro_reliability_gate \
+    SMART_EXPERIMENT_VARIANT_POLICY="sampled" run_pro_reliability_gate \
       "pro_reliability_${frontier}" \
+      "SMART_AUTOMOVE_VARIANT_POLICY=sampled" \
       "SMART_PRO_RELIABILITY_REPEATS=3" \
       "SMART_PRO_RELIABILITY_GAMES=2" \
       "SMART_PRO_RELIABILITY_MAX_PLIES=96" \
@@ -218,10 +235,12 @@ case "${stage}" in
     ;;
   pro-reliability-confirm)
     require_fresh_preflight_stamp "${frontier}"
-    run_pro_reliability_gate \
+    SMART_EXPERIMENT_VARIANT_POLICY="all" run_pro_reliability_gate \
       "pro_reliability_confirm_${frontier}" \
-      "SMART_PRO_RELIABILITY_REPEATS=4" \
-      "SMART_PRO_RELIABILITY_GAMES=4" \
+      "SMART_AUTOMOVE_VARIANT_POLICY=all" \
+      "SMART_PRO_RELIABILITY_REQUIRE_VARIANT_FLOOR=true" \
+      "SMART_PRO_RELIABILITY_REPEATS=2" \
+      "SMART_PRO_RELIABILITY_GAMES=12" \
       "SMART_PRO_RELIABILITY_MAX_PLIES=96" \
       "SMART_SKIP_RUNTIME_PREFLIGHT=true"
     ;;
