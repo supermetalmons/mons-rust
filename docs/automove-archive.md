@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Sampled-Pass Late-Ply Override Wave
+
+- No runtime challenger survived this wave. The local candidate paired a white late spirit-setup branch-head reject with black weak-window mana-lane advisor overrides and a weak-window carve-out in black followup competition.
+- The line did move the targeted sampled late boards. Two new retained boards were briefly promoted locally, and sampled `pro-reliability` passed at Pro `1.0000`, Normal `0.9167`, Fast `0.9167`, with confidence `0.9998 / 0.9968 / 0.9968`.
+- All-variant `pro-reliability-confirm` killed it hard: Pro `0.6667`, Normal `0.7292`, Fast `0.6667`, with confidence `0.9853 / 0.9990 / 0.9853`. Frontier average move times stayed below `200ms`, so the failure was duel strength, not runtime cost.
+- Follow-up `smart_automove_pro_reliability_nonwin_trace_probe` on the confirm corpus logged `16` Pro nonwins across multiple variants and both colors, with repeated late `engine_post_search` / head-accept divergences from shipping. That was broad enough to kill the line instead of stacking more local exceptions.
+- Durable outcome: do not reopen this combined late white head-block plus black weak-window mana-lane package. Keep the confirm metrics and lesson, discard the runtime code and temporary retained boards.
+
 ## Black Progress Material Plus Rank Wave
 
 - No runtime challenger survived this wave. The local candidate combined frontier-only scoped material/cooldown dampening on the black turn-six weak-window residue with a higher-scoring setup-rank exception in the advisor path.

@@ -24,6 +24,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow, `AUTOMOVE_IDEAS.md` for th
 - A seam can move while the duel gate still fails; local seam coverage is not duel strength.
 - Passing the small `pro-reliability` gate does not guarantee confirm readiness.
 - Passing sampled variants does not guarantee all-variant readiness.
+- Stacked narrow late-ply head/advisor overrides are especially suspect. One direct line cleared sampled `pro-reliability` at `1.0000 / 0.9167 / 0.9167` and then collapsed in all-variant confirm at `0.6667 / 0.7292 / 0.6667`.
 - Treat rotated residue from a discarded challenger as provisional until a clean-tree retained trace confirms it.
 - Do not promote a live `first_diff_ply` board into retained until the retained replay reproduces the same final shipping-selected root; copied late-ply snapshots can collapse back to frontier on clean replay.
 - Runtime cost is a real gate. A candidate that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
@@ -67,6 +68,7 @@ cargo test --release --lib <test_name> -- --ignored --nocapture
 - Kill any line that does not move direct duel evidence on the candidate-vs-baseline matchup.
 - Kill any line that fails sampled-variant reliability unless the failure exposes a clearly scoped harness issue.
 - Kill any line that passes Classic fixtures but fails all-variant confirmation.
+- Kill any sampled-pass line that only moved through stacked narrow late-ply head/advisor overrides and then broadens all-variant nonwins; the direct white late spirit-setup head block plus black weak-window mana-lane package did exactly that.
 - Kill any line that stays inert at `target_changed=0 off_target_changed=0` against active `frontier_pro_v2_guarded`.
 - Kill any line that only changes advisor labels or `pre_accept` metadata while the final selected root stays unchanged.
 - Kill any line that widens shortlist or injection coverage without moving the approved root on the live walls.
