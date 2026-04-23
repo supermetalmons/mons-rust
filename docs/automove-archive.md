@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Late Black Outer-Edge Probe Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The remaining Normal `outer_edge_mana_rows` miss narrowed to one late black turn-eight advisor seam. Shipping `l2,6;l3,7` was already the legacy-selected, reply-risk-shortlisted `ManaTempo` root, while frontier still approved lower-ranked `l1,6;l1,5` through `ApprovedReplyRiskGuard`.
+- That seam is real but still too local to spend on by itself. It only explains one remaining Normal board and does not collapse the sampled Fast residue.
+- Explicit Fast replay on `alternating_mana_rows,forward_bridge_mana_rows` still logged `5` nonwins across both colors. The residue mixed `engine_post_search` divergences with head-accepted divergences and included bomb/setup-style misses, so it still does not support one shared runtime hypothesis.
+- Durable outcome: do not spend a direct late-black same-family legacy-alignment override yet. Keep the lesson, discard the probe code, and clean logs/stamps.
+
 ## White Mana-Only Legacy-Progress Wave
 
 - No runtime challenger survived this wave. The local candidate added a narrow `ApprovedLegacySelector` carve-out inside the white turn-three legacy-alignment advisor path for mana-only, `window=0`, `deny=0`, positive-safety boards where legacy already preferred a vulnerable safe-progress root over approved non-vulnerable `ManaTempo`.
