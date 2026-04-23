@@ -322,6 +322,315 @@ fn white_confirm_pro_ply11_reply_order_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: inspect white confirm pro ply11 selector surface"]
+fn white_confirm_pro_ply11_selector_surface_probe() {
+    fn run_raw_search_variant<F>(game: &MonsGame, tweak: F) -> (String, &'static str, &'static str)
+    where
+        F: FnOnce(&mut AutomoveSearchConfig),
+    {
+        let selector = profile_selector_from_name("shipping_pro_search")
+            .expect("shipping profile selector should exist");
+        let mut config = calibration_runtime_config(
+            "frontier_pro_v2_guarded",
+            game,
+            SmartAutomovePreference::Pro,
+        );
+        tweak(&mut config);
+
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        clear_turn_engine_plan_cache();
+        clear_turn_engine_diagnostics();
+        clear_turn_engine_selector_diagnostics();
+
+        let inputs = select_inputs_with_runtime_fallback(selector, game, config);
+        let selector_diag = turn_engine_selector_diagnostics_snapshot();
+        (
+            Input::fen_from_array(&inputs),
+            selector_diag.last_return_stage,
+            selector_diag.selector_disable_reason,
+        )
+    }
+
+    fn eval_breakdown_probe(
+        game: &MonsGame,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+    ) -> String {
+        let search_eval = MonsGameModel::evaluate_search_preferability(game, perspective, config);
+        let breakdown = crate::models::scoring::evaluate_preferability_breakdown_with_weights(
+            game,
+            perspective,
+            config.scoring_weights,
+        );
+        format!(
+            "search_eval={} breakdown_total={} terms={:?} features={:?}",
+            search_eval, breakdown.total, breakdown.terms, breakdown.features,
+        )
+    }
+
+    fn worst_reply_details(
+        root: &RootEvaluation,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+        reply_limit: usize,
+    ) -> Vec<String> {
+        let mut replies = MonsGameModel::enumerate_legal_transitions(
+            &root.game,
+            reply_limit.max(1),
+            MonsGameModel::automove_start_input_options(config),
+        )
+        .into_iter()
+        .map(|reply| {
+            let reply_score = match reply.game.winner_color() {
+                Some(winner) if winner == perspective => SMART_TERMINAL_SCORE / 2,
+                Some(_) => -SMART_TERMINAL_SCORE / 2,
+                None => {
+                    MonsGameModel::evaluate_search_preferability(&reply.game, perspective, config)
+                }
+            };
+            (
+                reply_score,
+                Input::fen_from_array(&reply.inputs),
+                exact_opportunity_context_probe(&reply.game),
+                eval_breakdown_probe(&reply.game, perspective, config),
+            )
+        })
+        .collect::<Vec<_>>();
+        replies.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+        replies
+            .into_iter()
+            .take(4)
+            .map(|(score, inputs, context, breakdown)| {
+                format!(
+                    "{} score={} context={} {}",
+                    inputs, score, context, breakdown
+                )
+            })
+            .collect()
+    }
+
+    let game = MonsGame::from_fen(
+        "0 0 w 1 0 2 0 0 3 n11/n03y0xd0ms0xa0xe0xn03/n11/n06xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn03Y0xn02/n07xxMn03/n05S0xn05/n03E0xA0xn03D0xn02",
+        false,
+    )
+    .expect("valid white confirm pro ply11 fen");
+    let perspective = game.active_color;
+    let frontier_probe = runtime_decision_probe(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let frontier_advisor = pro_v2_root_advisor_decision_snapshot();
+    let shipping_probe =
+        runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+    let (config, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let (shipping_config, shipping_scored_roots, _, _) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(
+            "shipping_pro_search",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+    let candidate_indices = MonsGameModel::filtered_root_candidate_indices(
+        &game,
+        scored_roots.as_slice(),
+        perspective,
+        config,
+    );
+    let shortlist = MonsGameModel::reply_risk_guard_shortlist_indices(
+        scored_roots.as_slice(),
+        candidate_indices.as_slice(),
+        config,
+    );
+    let projections = MonsGameModel::turn_engine_reply_risk_projections(
+        scored_roots.as_slice(),
+        shortlist.as_slice(),
+        perspective,
+        config,
+    );
+    let approved_index = scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == "l10,4;l9,3")
+        .expect("approved root should exist");
+    let shipping_index = scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == "l7,8;l6,9")
+        .expect("shipping root should exist");
+    let root_node_budget = ((config.max_visited_nodes
+        * config.root_reply_risk_node_share_bp.max(0) as usize)
+        / 10_000)
+        .max(shortlist.len())
+        .max(1);
+    let per_root_reply_limit = (root_node_budget / shortlist.len().max(1))
+        .max(1)
+        .min(config.root_reply_risk_reply_limit.max(1));
+    let all_indices = (0..scored_roots.len()).collect::<Vec<_>>();
+    let mut pro_v1_no_guard_config = config;
+    pro_v1_no_guard_config.enable_root_reply_risk_guard = false;
+    pro_v1_no_guard_config.turn_engine_mode = TurnEngineMode::ProV1;
+    let pro_v1_candidate_selected =
+        MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
+            &game,
+            scored_roots.as_slice(),
+            candidate_indices.as_slice(),
+            perspective,
+            pro_v1_no_guard_config,
+        );
+    let pro_v1_full_pool_selected =
+        MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
+            &game,
+            scored_roots.as_slice(),
+            all_indices.as_slice(),
+            perspective,
+            pro_v1_no_guard_config,
+        );
+    let mut pro_v2_no_guard_config = config;
+    pro_v2_no_guard_config.enable_root_reply_risk_guard = false;
+    let pro_v2_candidate_selected =
+        MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
+            &game,
+            scored_roots.as_slice(),
+            candidate_indices.as_slice(),
+            perspective,
+            pro_v2_no_guard_config,
+        );
+    let pro_v2_full_pool_selected =
+        MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
+            &game,
+            scored_roots.as_slice(),
+            all_indices.as_slice(),
+            perspective,
+            pro_v2_no_guard_config,
+        );
+    let raw_search_only_pro_v2 = run_raw_search_variant(&game, |variant| {
+        variant.enable_turn_engine_selector = false;
+        variant.enable_turn_head_rerank = true;
+    });
+    let raw_search_only_pro_v1 = run_raw_search_variant(&game, |variant| {
+        variant.enable_turn_engine_selector = false;
+        variant.enable_turn_head_rerank = true;
+        variant.turn_engine_mode = TurnEngineMode::ProV1;
+    });
+    let raw_search_only_shipping_caps_pro_v2 = run_raw_search_variant(&game, |variant| {
+        variant.enable_turn_engine_selector = false;
+        variant.enable_turn_head_rerank = true;
+        variant.turn_engine_seed_cap = shipping_config.turn_engine_seed_cap;
+        variant.turn_engine_beam_width = shipping_config.turn_engine_beam_width;
+        variant.turn_engine_per_node_family_cap = shipping_config.turn_engine_per_node_family_cap;
+        variant.turn_engine_step_cap = shipping_config.turn_engine_step_cap;
+    });
+    let shipping_root_inputs = Input::array_from_fen("l7,8;l6,9");
+    let approved_root_inputs = Input::array_from_fen("l10,4;l9,3");
+    let shipping_rank_on_shipping = shipping_scored_roots
+        .iter()
+        .position(|root| root.inputs == shipping_root_inputs);
+    let approved_rank_on_shipping = shipping_scored_roots
+        .iter()
+        .position(|root| root.inputs == approved_root_inputs);
+    let target_details = [("approved", approved_index), ("shipping", shipping_index)]
+        .into_iter()
+        .map(|(label, index)| {
+            let root = &scored_roots[index];
+            let family = MonsGameModel::turn_engine_root_evaluation_family(root);
+            let utility = MonsGameModel::turn_engine_selected_override_utility(
+                &game,
+                root,
+                perspective,
+                config,
+                family,
+            );
+            let snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+                root,
+                projections.get(&index),
+                perspective,
+                config,
+                per_root_reply_limit,
+            );
+            format!(
+                "{}={} index={} candidate_pos={:?} shortlist_pos={:?} family={:?} classes={:?} utility={} snapshot=win:{} match:{} floor:{} after_context={} after_eval={} worst_replies={:?} detail={}",
+                label,
+                Input::fen_from_array(&root.inputs),
+                index,
+                candidate_indices
+                    .iter()
+                    .position(|candidate_index| *candidate_index == index),
+                shortlist
+                    .iter()
+                    .position(|shortlist_index| *shortlist_index == index),
+                family,
+                root.classes,
+                format_turn_engine_utility_probe(utility),
+                snapshot.allows_immediate_opponent_win,
+                snapshot.opponent_reaches_match_point,
+                snapshot.worst_reply_score,
+                exact_opportunity_context_probe(&root.game),
+                eval_breakdown_probe(&root.game, perspective, config),
+                worst_reply_details(root, perspective, config, per_root_reply_limit),
+                format_root_probe(Some(root)),
+            )
+        })
+        .collect::<Vec<_>>();
+    let shortlist_details = shortlist
+        .iter()
+        .map(|index| {
+            format!(
+                "{} => {}",
+                Input::fen_from_array(&scored_roots[*index].inputs),
+                format_root_probe(scored_roots.get(*index)),
+            )
+        })
+        .collect::<Vec<_>>();
+    let top_details = scored_roots
+        .iter()
+        .take(16)
+        .map(|root| {
+            format!(
+                "{} => {} classes={:?}",
+                Input::fen_from_array(&root.inputs),
+                format_root_probe(Some(root)),
+                root.classes,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    println!(
+        "WHITE_CONFIRM_PRO_PLY11_SELECTOR_SURFACE context={} frontier_probe={:?} frontier_advisor={:?} shipping_probe={:?} candidate_count={} candidate_head={:?} shortlist={:?} shortlist_details={:?} target_details={:?} top_details={:?} no_guard_selected={{pro_v1_candidate:{}, pro_v1_full_pool:{}, pro_v2_candidate:{}, pro_v2_full_pool:{}}} raw_search={{pro_v2:{:?}, pro_v1:{:?}, shipping_caps_pro_v2:{:?}}} shipping_root_positions={{shipping_rank_on_frontier:{:?}, approved_rank_on_frontier:{:?}, shipping_rank_on_shipping:{:?}, approved_rank_on_shipping:{:?}}}",
+        exact_opportunity_context_probe(&game),
+        frontier_probe,
+        frontier_advisor,
+        shipping_probe,
+        candidate_indices.len(),
+        candidate_indices
+            .iter()
+            .take(20)
+            .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+            .collect::<Vec<_>>(),
+        shortlist
+            .iter()
+            .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+            .collect::<Vec<_>>(),
+        shortlist_details,
+        target_details,
+        top_details,
+        Input::fen_from_array(&pro_v1_candidate_selected),
+        Input::fen_from_array(&pro_v1_full_pool_selected),
+        Input::fen_from_array(&pro_v2_candidate_selected),
+        Input::fen_from_array(&pro_v2_full_pool_selected),
+        raw_search_only_pro_v2,
+        raw_search_only_pro_v1,
+        raw_search_only_shipping_caps_pro_v2,
+        Some(shipping_index),
+        Some(approved_index),
+        shipping_rank_on_shipping,
+        approved_rank_on_shipping,
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: inspect late black fast reply-order utility and floor"]
 fn black_late_fast_reply_order_probe() {
     let game = MonsGame::from_fen(

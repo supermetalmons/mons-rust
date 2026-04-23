@@ -1488,6 +1488,38 @@ fn frontier_pro_v2_guarded_profile_prefers_shipping_white_confirm_pro_ply9_root(
 }
 
 #[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_white_confirm_pro_ply11_root() {
+    let game = MonsGame::from_fen(
+        "0 0 w 1 0 2 0 0 3 n11/n03y0xd0ms0xa0xe0xn03/n11/n06xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn03Y0xn02/n07xxMn03/n05S0xn05/n03E0xA0xn03D0xn02",
+        false,
+    )
+    .expect("white confirm pro ply11 fen should be valid");
+
+    clear_turn_engine_selector_diagnostics();
+    let probe = runtime_decision_probe(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let shipping_selected =
+        profile_decision_move_fen("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+
+    println!(
+        "WHITE_CONFIRM_PRO_PLY11 shipping_selected={} context={} probe={:?}",
+        shipping_selected,
+        exact_opportunity_context_probe(&game),
+        probe,
+    );
+    assert_eq!(shipping_selected, "l7,8;l6,9");
+    assert_eq!(probe.selected_input_fen, "l7,8;l6,9");
+    assert_eq!(probe.pre_accept_input_fen, "l10,4;l9,3");
+    assert_eq!(
+        probe.runtime_variant_branch,
+        "white_confirm_prov1_search_only_tiebreak_fallback"
+    );
+}
+
+#[test]
 fn frontier_pro_v2_guarded_profile_prefers_shipping_black_head_runtime_duel_pro_root() {
     assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
         "BLACK_HEAD_RUNTIME_DUEL_PRO",

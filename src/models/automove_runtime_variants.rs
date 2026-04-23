@@ -437,6 +437,233 @@ fn select_white_negative_deny_search_only_selected_rank_fallback_inputs(
     Some(search_only_inputs)
 }
 
+fn is_safe_quiet_mana_tempo_root(root: &RootEvaluation) -> bool {
+    !root.wins_immediately
+        && !root.attacks_opponent_drainer
+        && !root.own_drainer_vulnerable
+        && !root.own_drainer_walk_vulnerable
+        && !root.spirit_development
+        && !root.spirit_same_turn_score_setup_now
+        && !root.spirit_own_mana_setup_now
+        && !root.mana_handoff_to_opponent
+        && !root.has_roundtrip
+        && !root.scores_supermana_this_turn
+        && !root.scores_opponent_mana_this_turn
+        && !root.safe_supermana_pickup_now
+        && !root.safe_opponent_mana_pickup_now
+        && root.same_turn_score_window_value == 0
+        && !root.supermana_progress
+        && !root.opponent_mana_progress
+        && !root.classes.is_tactical_priority()
+        && !root.classes.carrier_progress
+        && !root.classes.material
+        && root.classes.quiet
+        && matches!(
+            MonsGameModel::turn_engine_root_evaluation_family(root),
+            TurnPlanFamily::ManaTempo
+        )
+}
+
+fn root_evaluation_from_scored_root(candidate: ScoredRootMove, score: i32) -> RootEvaluation {
+    RootEvaluation {
+        root_rank: candidate.root_rank,
+        score,
+        efficiency: candidate.efficiency,
+        inputs: candidate.inputs,
+        game: candidate.game,
+        wins_immediately: candidate.wins_immediately,
+        attacks_opponent_drainer: candidate.attacks_opponent_drainer,
+        own_drainer_vulnerable: candidate.own_drainer_vulnerable,
+        own_drainer_walk_vulnerable: candidate.own_drainer_walk_vulnerable,
+        spirit_development: candidate.spirit_development,
+        keeps_awake_spirit_on_base: candidate.keeps_awake_spirit_on_base,
+        mana_handoff_to_opponent: candidate.mana_handoff_to_opponent,
+        has_roundtrip: candidate.has_roundtrip,
+        scores_supermana_this_turn: candidate.scores_supermana_this_turn,
+        scores_opponent_mana_this_turn: candidate.scores_opponent_mana_this_turn,
+        safe_supermana_pickup_now: candidate.safe_supermana_pickup_now,
+        safe_opponent_mana_pickup_now: candidate.safe_opponent_mana_pickup_now,
+        safe_supermana_progress_steps: candidate.safe_supermana_progress_steps,
+        safe_opponent_mana_progress_steps: candidate.safe_opponent_mana_progress_steps,
+        score_path_best_steps: candidate.score_path_best_steps,
+        same_turn_score_window_value: candidate.same_turn_score_window_value,
+        spirit_setup_gain: candidate.spirit_setup_gain,
+        spirit_same_turn_score_setup_now: candidate.spirit_same_turn_score_setup_now,
+        spirit_own_mana_setup_now: candidate.spirit_own_mana_setup_now,
+        supermana_progress: candidate.supermana_progress,
+        opponent_mana_progress: candidate.opponent_mana_progress,
+        interview_soft_priority: candidate.interview_soft_priority,
+        classes: candidate.classes,
+    }
+}
+
+fn focused_scored_roots_for_frontier_runtime(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> Vec<RootEvaluation> {
+    let perspective = game.active_color;
+    let mut root_moves = MonsGameModel::ranked_root_moves(game, perspective, config);
+    let engine_plan = if config.enable_turn_engine_selector {
+        crate::models::automove_turn_engine::turn_engine_candidate_plan(
+            game,
+            perspective,
+            MonsGameModel::turn_engine_config_for_game(game, config),
+        )
+    } else {
+        None
+    };
+    let advisor_decision = MonsGameModel::pro_v2_root_advisor_presearch(
+        game,
+        perspective,
+        config,
+        &mut root_moves,
+        engine_plan.as_ref(),
+    );
+    let advisor_priority_inputs = advisor_decision
+        .as_ref()
+        .map(MonsGameModel::pro_v2_root_advisor_priority_inputs)
+        .unwrap_or_default();
+    let (root_moves, scout_visited_nodes) =
+        MonsGameModel::focused_root_candidates_with_priority_inputs(
+            game,
+            perspective,
+            root_moves,
+            config,
+            true,
+            (!advisor_priority_inputs.is_empty()).then_some(advisor_priority_inputs.as_slice()),
+            None,
+        );
+
+    let mut visited_nodes = scout_visited_nodes;
+    let mut alpha = i32::MIN;
+    let mut scored_roots = Vec::with_capacity(root_moves.len());
+    let mut transposition_table = U64HashMap::default();
+    let extension_node_budget = if config.enable_selective_extensions
+        && config.selective_extension_node_share_bp > 0
+    {
+        ((config.max_visited_nodes * config.selective_extension_node_share_bp as usize) / 10_000)
+            .max(1)
+    } else {
+        0
+    };
+    let mut extension_nodes_used = 0usize;
+    let mut killer_table: KillerTable = [[0u64; 2]; MAX_SMART_SEARCH_DEPTH + 2];
+    let mut history_table: HistoryTable = HistoryTable::default();
+    let mut quiescence_nodes_used = 0usize;
+
+    for candidate in root_moves {
+        if visited_nodes >= config.max_visited_nodes {
+            break;
+        }
+        visited_nodes += 1;
+        let candidate_score = MonsGameModel::evaluate_root_candidate_score(
+            &candidate,
+            perspective,
+            alpha,
+            &mut visited_nodes,
+            config,
+            &mut transposition_table,
+            &mut extension_nodes_used,
+            extension_node_budget,
+            true,
+            &mut killer_table,
+            &mut history_table,
+            &mut quiescence_nodes_used,
+        );
+        if candidate_score > alpha {
+            alpha = candidate_score;
+        }
+        scored_roots.push(root_evaluation_from_scored_root(candidate, candidate_score));
+    }
+
+    scored_roots
+}
+
+fn select_white_confirm_prov1_search_only_tiebreak_fallback_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+    frontier_inputs: &[Input],
+) -> Option<Vec<Input>> {
+    let white_turn_three_mons2_mana_only = game.active_color == Color::White
+        && game.turn_number == 3
+        && game.mons_moves_count == 2
+        && !game.player_can_use_action()
+        && game.player_can_move_mana();
+    if !white_turn_three_mons2_mana_only || frontier_inputs.is_empty() {
+        return None;
+    }
+
+    let context = crate::models::automove_exact::exact_opportunity_context(game, game.active_color);
+    if context.opponent_can_win_immediately
+        || context.delta.same_turn_score_window_value != 0
+        || context.delta.spirit_gain != 0
+        || context.delta.opponent_window_deny_gain != 0
+        || context.delta.drainer_attack_available
+        || context.delta.safe_supermana_progress_steps.is_some()
+        || context.delta.safe_opponent_mana_progress_steps.is_some()
+        || context.delta.drainer_safety < 0
+    {
+        return None;
+    }
+
+    let frontier_runtime = apply_frontier_pro_v2_guarded_config(config);
+    let frontier_roots = focused_scored_roots_for_frontier_runtime(game, frontier_runtime);
+    let frontier_index = frontier_roots
+        .iter()
+        .position(|root| root.inputs.as_slice() == frontier_inputs)?;
+    let candidate_indices = MonsGameModel::filtered_root_candidate_indices(
+        game,
+        frontier_roots.as_slice(),
+        game.active_color,
+        frontier_runtime,
+    );
+    if candidate_indices.len() != 2 || !candidate_indices.contains(&frontier_index) {
+        return None;
+    }
+    let shortlist = MonsGameModel::reply_risk_guard_shortlist_indices(
+        frontier_roots.as_slice(),
+        candidate_indices.as_slice(),
+        frontier_runtime,
+    );
+    if shortlist.len() != candidate_indices.len() || !shortlist.contains(&frontier_index) {
+        return None;
+    }
+
+    let mut search_only_runtime = frontier_runtime;
+    search_only_runtime.enable_turn_engine_selector = false;
+    search_only_runtime.enable_turn_head_rerank = true;
+    search_only_runtime.turn_engine_mode = TurnEngineMode::ProV1;
+
+    let search_only_inputs = select_shipping_search_inputs(game, search_only_runtime);
+    if search_only_inputs.is_empty() || search_only_inputs == frontier_inputs {
+        return None;
+    }
+
+    let search_only_index = frontier_roots
+        .iter()
+        .position(|root| root.inputs.as_slice() == search_only_inputs.as_slice())?;
+    if !candidate_indices.contains(&search_only_index) || !shortlist.contains(&search_only_index) {
+        return None;
+    }
+
+    let frontier_selected = &frontier_roots[frontier_index];
+    let search_only_selected = &frontier_roots[search_only_index];
+    if frontier_selected.score != search_only_selected.score
+        || frontier_selected.spirit_setup_gain != search_only_selected.spirit_setup_gain
+        || frontier_selected.safe_supermana_progress_steps
+            != search_only_selected.safe_supermana_progress_steps
+        || frontier_selected.safe_opponent_mana_progress_steps
+            != search_only_selected.safe_opponent_mana_progress_steps
+        || frontier_selected.score_path_best_steps != search_only_selected.score_path_best_steps
+        || !is_safe_quiet_mana_tempo_root(frontier_selected)
+        || !is_safe_quiet_mana_tempo_root(search_only_selected)
+    {
+        return None;
+    }
+
+    Some(search_only_inputs)
+}
+
 fn select_late_black_search_fallback_inputs(
     game: &MonsGame,
     frontier_inputs: &[Input],
@@ -555,6 +782,15 @@ pub(crate) fn select_frontier_pro_v2_guarded_inputs(
         set_frontier_runtime_variant_branch(
             "white_negative_deny_search_only_selected_rank_fallback",
         );
+        return inputs;
+    }
+    if let Some(inputs) = select_white_confirm_prov1_search_only_tiebreak_fallback_inputs(
+        game,
+        config,
+        frontier_inputs.as_slice(),
+    ) {
+        #[cfg(test)]
+        set_frontier_runtime_variant_branch("white_confirm_prov1_search_only_tiebreak_fallback");
         return inputs;
     }
     if let Some(inputs) = select_late_black_search_fallback_inputs(game, frontier_inputs.as_slice())

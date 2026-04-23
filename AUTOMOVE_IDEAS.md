@@ -54,6 +54,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - The second branch blocks a small-score-gain window `ManaTempo` head from replacing an approved same-window `SpiritImpact` setup root with at least `+64` setup gain and a better score path.
   - It fixes the Normal sibling `l7,3;l8,2` back to shipping/pre-accept `l8,3;l7,4` and the Fast sibling `l8,7;l9,8` back to shipping/pre-accept `l8,6;l6,5;l6,4`.
   - The retained regressions for those boards now live in `frontier_pro_v2_guarded_rejects_white_turn_five_mid_turn_window_mana_head_normal_root` and `frontier_pro_v2_guarded_rejects_white_turn_five_spirit_setup_pre_accept_fast_root`.
+- This iteration kept and promoted an eleventh narrow white runtime repair in the same package:
+  - It adds `select_white_confirm_prov1_search_only_tiebreak_fallback_inputs`, a wrapper-level tiebreak for the exact white turn-three `mons_moves=2` no-action mana-only confirm surface where frontier and shipping disagree between two safe quiet equal-score `ManaTempo` roots already present in the reply-risk shortlist.
+  - The branch replays only that two-root, equal-surface board class through raw `search-only + ProV1` semantics and keeps the result only when the replayed root is the other shortlisted equal-score quiet `ManaTempo` root with identical setup/progress-step metrics.
+  - It fixes `WHITE_CONFIRM_PRO_PLY11` from frontier/pre-accept `l10,4;l9,3` to shipping `l7,8;l6,9`.
+  - The retained regression for that board now lives in `frontier_pro_v2_guarded_profile_prefers_shipping_white_confirm_pro_ply11_root`.
 - Board-local confirm diagnostics collapsed the earlier two-board black Fast residue into one real live seam:
   - On `l0,0;l1,1` vs shipping `l7,1;l8,0`, frontier already matches shipping on the current retained package.
   - The only live confirm Fast approval miss was `l0,5;l1,5` vs shipping `l2,5;l3,7;l2,8`, where legacy and shipping already agree on the spirit own-setup progress root.
@@ -90,6 +95,16 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - `frontier_pro_v2_guarded_rejects_white_turn_five_mid_turn_window_mana_head_normal_root` now rejects head `l7,3;l8,2` and keeps shipping/pre-accept `l8,3;l7,4`.
   - `frontier_pro_v2_guarded_rejects_white_turn_five_spirit_setup_pre_accept_fast_root` now rejects head `l8,7;l9,8` and keeps shipping/pre-accept `l8,6;l6,5;l6,4`.
   - The older turn-five same-window retained guards and the accepted `v30` white-head retained guard stayed clean.
+- The local retained slice for the new white confirm ProV1 tiebreak stayed clean:
+  - `frontier_pro_v2_guarded_profile_prefers_shipping_white_confirm_pro_ply11_root` now aligns to shipping `l7,8;l6,9` while preserving the frontier `pre_accept` root `l10,4;l9,3`.
+  - The broader white confirm retained slice still passes, including `WHITE_CONFIRM_PRO_PLY9`, `WHITE_CONFIRM_PRO_PLY23`, `WHITE_CONFIRM_NORMAL_PLY26`, and `WHITE_CONFIRM_NORMAL_PLY49`.
+  - The existing white wrapper fallbacks still pass: `frontier_pro_v2_guarded_uses_white_early_engine_disabled_fallback_on_normal_root`, `frontier_pro_v2_guarded_uses_white_nonnegative_deny_search_only_fallback_on_fast_root`, and `frontier_pro_v2_guarded_uses_white_negative_deny_search_only_selected_rank_fallback_on_normal_root`.
+- The refreshed canonical loop for the new white confirm ProV1 tiebreak stayed clean:
+  - `guardrails` passed.
+  - `pro-triage` passed.
+  - exact-lite and advisory stage-1 CPU preflight passed.
+  - retained `pro-reliability` passed.
+  - `pro-reliability-confirm` passed at `0.9375 / 0.9688 / 0.9688` with confidence `1.0000` and frontier averages `143.02ms / 164.67ms / 173.98ms`.
 - The package now clears confirm as well: `pro-reliability-confirm` passed at `0.9375 / 0.9688 / 0.9688`.
 - The refreshed canonical loop for the new white turn-five mid-turn head guard stayed clean:
   - `guardrails` passed.
@@ -98,13 +113,14 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - advisory stage-1 CPU stayed in the same band at `1.555 / 1.526 / 1.363`.
   - retained `pro-reliability` passed at `0.9167 / 1.0000 / 1.0000`.
   - `pro-reliability-confirm` passed at `0.9375 / 0.9688 / 0.9688` with confidence `1.0000`.
-- This iteration did not keep runtime code. A Pro-only confirm-size non-win trace on the current promoted package showed exactly the two already-classified residual Pro losses:
+- The previous diagnostic iteration before the current tiebreak kept no runtime code. A Pro-only confirm-size non-win trace on that package showed two already-classified residual Pro losses:
   - `black_recovery_branch`: frontier keeps `l1,5;l3,3;l2,3` while shipping disables engine selection to `l6,0;l6,1`.
   - `white_confirm_pro_ply11`: frontier keeps `l10,4;l9,3` while shipping disables engine selection to `l7,8;l6,9`.
-- The refreshed targeted probes still kill the obvious local follow-ups:
+- The current `white_confirm_prov1_search_only_tiebreak_fallback` resolves `white_confirm_pro_ply11`; `black_recovery_branch` remains in the classified no-go bucket.
+- The refreshed targeted probes still kill the obvious black local follow-ups and explain why the white fix had to be a strict equal-score tiebreak rather than a shipping mirror:
   - `black_recovery_branch_legacy_alignment_probe` still shows the local legacy override can name shipping `l6,0;l6,1`, but the candidate-only ProV1 replay resolves to a different spirit root `l1,5;l2,7;l1,8`.
-  - `white_confirm_pro_ply11_reply_order_probe` still shows frontier's approved root beats shipping under frontier metrics (`floor=431` vs `338`, `shipping_vs_approved=false`).
-- Treat the residual Pro gap as a deeper selector/scoring problem, not as a board-local head, shortlist, or wrapper-mirroring target.
+  - `white_confirm_pro_ply11_reply_order_probe` still shows frontier's approved root beats shipping under immediate frontier metrics (`floor=431` vs `338`, `shipping_vs_approved=false`), while `white_confirm_pro_ply11_selector_surface_probe` isolates the promotable equal-score raw-ProV1 tiebreak.
+- Treat the remaining black residual as a deeper selector/scoring problem, not as a board-local head, shortlist, or wrapper-mirroring target.
 - The refreshed canonical loop for the new white turn-five same-window head guard stayed clean:
   - `guardrails` passed.
   - `pro-triage` stayed at `target_changed=5 / off_target_changed=0`.
@@ -204,10 +220,10 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 ## Next Hypothesis
 
 - The current package is promotable and there is no live runtime challenger after this iteration.
-- The next spend should explain one of the two residual Pro-only losses below the existing local guard layer, not reopen simple wrapper/head/shortlist fixes.
-- Keep the new white turn-three no-action recovery guard, the black late-fast safe-mana override, the white early setup repair, the black late reply-risk setup rescue, the exact white early engine-disabled wrapper fallback, the black late weak-window safe-progress setup rescue, the white nonnegative-deny and negative-deny search-only fallbacks, and the white turn-five same-window plus mid-turn head guards together; they now form the promoted retained package.
+- The next spend should explain the remaining no-go ordering classes below the existing local guard layer, not reopen simple wrapper/head/shortlist fixes.
+- Keep the new white turn-three no-action recovery guard, the black late-fast safe-mana override, the white early setup repair, the black late reply-risk setup rescue, the exact white early engine-disabled wrapper fallback, the black late weak-window safe-progress setup rescue, the white nonnegative-deny and negative-deny search-only fallbacks, the white turn-five same-window plus mid-turn head guards, and the white confirm ProV1 tiebreak fallback together; they now form the promoted retained package.
 - For `black_recovery_branch`, do not reapply the shortlist-local legacy fallback. The selector-ordering probe now shows shipping `l6,0;l6,1` loses to the current approved preserved-spirit root on reply floor and also fails to beat the no-guard ProV1 spirit replay `l1,5;l2,7;l1,8`.
-- For `white_confirm_pro_ply11`, do not add a shipping mirror or advisor override unless a new probe first finds a frontier-side metric below reply floor/selected utility that prefers `l7,8;l6,9` over `l10,4;l9,3`.
+- For `white_confirm_pro_ply11`, the promotable signal is now specifically the two-root equal-score safe quiet `ManaTempo` shortlist plus raw `search-only + ProV1` tiebreak. Do not broaden that branch into a shipping mirror or advisor override for unequal-score, non-quiet, progress, tactical, or outside-shortlist boards.
 - Do not reopen the resolved black confirm seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8`; that board is now covered by the retained suite and confirm passed with it in place.
 - Do not reopen the direct runtime-variant white search-only recovery fallback on `l9,4;l8,3` vs `l9,4;l8,5`. Both the shipping-assisted and frontier-local versions still fail retained `pro-reliability` at `0.9167 / 0.8333 / 0.9167`.
 - Do not reopen the resolved engine-disabled early-white Normal seam `l8,5;l7,6` vs shipping `l9,5;l8,3;l7,4` unless a future challenger regresses it. The kept fix is the exact runtime wrapper fallback, not another broader white recovery override.
