@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Black Recovery Static-Exact Wave
+
+- No runtime challenger survived this wave. The target was the remaining `black_recovery_branch` seam where pairwise attribution showed static exact evaluation could flip the local reply-floor ordering toward shipping.
+- A broad scoped static-exact cut was killed before canonical spend because it did not recover shipping; on the local retained board it selected the new spirit sibling `l1,5;l2,6` instead of shipping `l6,0;l6,1`.
+- A narrower reply-floor-only exact cut did align that board to shipping and passed `guardrails`, `variant-smoke`, retained `pro-triage`, and `runtime-preflight`.
+- Retained sampled duel strength killed it. `pro-reliability` failed at Pro `0.5000`, Normal `0.5000`, Fast `0.9167`, with confidence `0.0000 / 0.0000 / 0.9968`; frontier average move times were `153.71ms / 180.61ms / 159.35ms`, so cost was acceptable but strength was not.
+- Durable outcome: static exact remains useful as an attribution signal but not as a direct `black_recovery_branch` runtime patch. Do not reopen broad static exact or reply-floor-only exact without a new mechanism that improves retained multi-variant duel strength.
+
 ## Promoted Retained Package And Residual Classification Wave
 
 - On `2026-04-23`, the retained package around `frontier_pro_v2_guarded` was refreshed and promoted as the only shipped Pro path.

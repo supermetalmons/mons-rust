@@ -14,7 +14,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - There is no second live challenger today.
 - Release readiness was refreshed on `2026-04-23`: public Pro wiring still ships `frontier_pro_v2_guarded`, experimentation remains test-only, and the full canonical confirm loop passed without selection-behavior changes.
 - The remaining classified residuals are not current selection-layer targets:
-  - `black_recovery_branch`: static exact evaluation is the only fresh signal; local shipping mirrors and legacy-fallback variants are killed.
+  - `black_recovery_branch`: static exact evaluation is now killed as a direct runtime spend; broad scoped exact picked the wrong spirit sibling, and reply-floor-only exact aligned the board locally but failed retained reliability.
   - black Fast progress-vs-setup residue: explained as material/cooldown residual valuation, not a shortlist/advisor/wrapper miss.
 
 ## Latest Gate Snapshot
@@ -25,11 +25,12 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Previous confirm duel metrics: Pro `0.9688`, Normal `1.0000`, Fast `0.9688`, each with confidence `1.0000`; frontier average move times stayed below `200ms`.
 - Release containment: public `Pro` dispatch still routes through `select_frontier_pro_v2_guarded_inputs`; `automove_experiments` remains under `#[cfg(test)]`, so diagnostics and experiment harness code are not production selection code.
 - First multi-variant sampled reliability check of the shipped frontier stopped at the new gate: Pro `0.5000`, Normal `0.5000`, Fast `0.9167`. The current shipped frontier is retained/shipped, but it is not fresh multi-variant promotion evidence.
+- This iteration killed the `black_recovery_branch` static-exact spend. A reply-floor-only exact cut passed `guardrails`, `variant-smoke`, `pro-triage`, and `runtime-preflight`, then failed sampled `pro-reliability` at Pro `0.5000`, Normal `0.5000`, Fast `0.9167`; average move times stayed under `200ms`. The runtime code was discarded.
 
 ## Next Hypothesis
 
 - Default to no runtime change until a focused probe produces a new shared mechanism below the current no-go layer.
-- For `black_recovery_branch`, the only plausible next spend is a scoped static-exact experiment that proves both runtime cost and retained reliability before any selector change.
+- For `black_recovery_branch`, do not retry broad static exact or reply-floor-only static exact. Reopen only with a new mechanism that improves direct multi-variant duel strength, not just the local board.
 - For black progress-vs-setup residue, reopen only with a narrow material/cooldown valuation hypothesis proven against retained setup-control boards.
 - For white search-order residue, do not retry wrapper config mirroring, broad `ProV1` reroutes, root-rank gates, or simple shortlist widening. Reopen only with a mechanism that separates unresolved siblings from the retained vulnerable guard below the current shortlist/reply-risk surface.
 
@@ -43,5 +44,6 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Do not add board-local shipping mirrors for residuals that lose under frontier reply-risk, selector, or residual-score metrics.
 - Do not reopen the direct black engine-disabled shipping fallback on `l7,1;l9,3` vs `l1,5;l2,7;l1,8`; it fixed the local board and still failed confirm.
 - Do not reopen the black shortlist-local, guarded-legacy, or direct `black_recovery_branch` fallback variants; they align the board locally and still fail retained reliability.
+- Do not reopen `black_recovery_branch` with broad scoped static exact or reply-floor-only static exact; the former selected `l1,5;l2,6`, and the latter still failed sampled retained reliability.
 - Do not broaden white turn-three no-action recovery from turn-start to `mons_moves_count == 1`; that line already failed retained reliability.
 - Do not broaden white search-order fallback into raw `search-only + ProV1`, shipping own caps, root-rank checks, or wrapper config toggles; each has a documented retained-control failure or inert wrapper path.
