@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Fast Recurrence Trace Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The widened `smart_automove_pro_reliability_duel_trace_probe` reran `alternating_mana_rows,forward_bridge_mana_rows` against `vs_shipping_fast` with `repeats=4` and `games=3`, for `24` Fast games total. The result was still mixed: `8` regressions, `7` improvements, and `9` flat games.
+- Only one move pair repeated more than once: the already-archived white branch head-accept seam `l9,6;l7,4;l7,3` vs shipping `l9,6;l7,6;l7,7`, which appeared `2` times.
+- Every other Fast regression pair stayed singleton, including the black `alternating_mana_rows` mana/recovery misses, the black `forward_bridge_mana_rows` mana sibling misses, and the white `l9,6;l8,7` vs `l9,6;l7,7;l8,8` spirit/setup seam.
+- Durable outcome: do not reopen a standalone white late head-accept blocker from this trace alone. The repeated pair is real, but the wider Fast blocker set still does not collapse to one runtime mechanism.
+
 ## Late Black Outer-Edge Probe Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
