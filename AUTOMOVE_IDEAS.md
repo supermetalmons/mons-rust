@@ -185,7 +185,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - The new ignored `white_search_order_rerank_budget_probe` narrows that split to a concrete frontier-side rerank budget surface.
   - On both white sibling boards, swapping only frontier's rerank own-search caps (`own_seed_cap`, `own_beam`, `per_node_family_cap`, `step_cap`) to the shipping `ProV2` values already flips the best allowed-head plan to shipping `l9,4;l8,5`.
   - Swapping only the frontier reply caps or only the expansion cap does nothing; frontier stays on `l9,4;l8,3`.
-  - Treat the live white residue as a frontier-`ProV2` rerank own-search-breadth split, not just a selector-disabled ordering seam or a missing recovery root from the frontier root set.
+  - The new ignored `white_search_order_rerank_own_cap_probe` narrows that further to the smallest own-cap levers.
+  - `own_seed_cap` alone already flips both white sibling boards to `l9,4;l8,5`, though the resulting rerank utility is not consistently the exact shipping one on the Fast board.
+  - `step_cap` alone also flips both white sibling boards to `l9,4;l8,5`, and it reproduces the shipping rerank utility on both boards.
+  - `own_beam` alone and `per_node_family_cap` alone do nothing; frontier stays on `l9,4;l8,3`.
+  - Treat the live white residue as a frontier-`ProV2` rerank own-search-depth/seed split, with `step_cap` as the cleanest single-board-local lever seen so far.
   - There is no live runtime challenger today; the next spend needs a brand-new shared hypothesis, not another direct attack on the current Pro, Normal, or Fast local seams.
 - Do not reopen the resolved late black Fast seam `l1,8;l1,9` vs `l1,8;l0,8`, the resolved early white Fast seam `l9,7;l8,6` vs `l9,7;l7,6;l7,7`, the resolved black late setup seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8`, the resolved black confirm Fast setup seam `l0,5;l1,5` vs `l2,5;l3,7;l2,8`, or the resolved white early engine-disabled seam `l8,5;l7,6` vs `l9,5;l8,3;l7,4` unless a future challenger regresses them.
 - Any future challenger still has to respect stage-1 CPU pressure; a package that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
@@ -210,4 +214,5 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Do not spend the next wave on the white search-order family as if the frontier root set were missing shipping's recovery line. The new allowed-head probe shows shipping still chooses `l9,4;l8,5` from the frontier head set; the live split is the rerank engine profile, not root reachability.
 - Do not spend the next wave on the white search-order family as if forcing `TurnEngineMode::ProV1` alone were already a safe runtime answer. The new mode probe only shows that frontier `ProV2` rerank semantics are the specific mismatch surface; it does not prove that a narrow runtime mode swap will survive retained duels.
 - Do not spend the next wave on the white search-order family as if frontier reply-search caps or expansion cap were the missing knob. The new budget probe shows the live split only moves when frontier's rerank own-search caps shrink to the shipping scale.
+- Do not spend the next wave on the white search-order family as if `own_beam` or `per_node_family_cap` were the active frontier-side knobs. The new own-cap probe shows they do not move the live boards by themselves.
 - Do not reopen packages that are already archived in `docs/automove-archive.md` unless there is a brand-new shared hypothesis.

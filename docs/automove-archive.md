@@ -383,3 +383,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - On both white search-order siblings, swapping only frontier's rerank own-search caps (`own_seed_cap`, `own_beam`, `per_node_family_cap`, `step_cap`) to the shipping `ProV2` values already flips the best allowed-head plan from `l9,4;l8,3` to shipping `l9,4;l8,5`.
 - Swapping only frontier's reply caps (`opponent_seed_cap`, `opponent_beam`, `reply_seed_cap`, `reply_beam`) does nothing, and swapping only the expansion cap does nothing.
 - Durable outcome: treat the current white residue as a frontier-`ProV2` rerank own-search-breadth split. If there is ever a runtime spend here, it should be justified against that exact surface rather than against generic reply breadth or expansion arguments.
+
+## White Own-Cap Wave
+
+- No new runtime challenger survived this wave. The kept diagnostic is `white_search_order_rerank_own_cap_probe`.
+- The useful result is that the frontier-side rerank own-search split is not spread evenly across the four own caps.
+- `step_cap` alone flips both white search-order siblings from `l9,4;l8,3` to shipping `l9,4;l8,5`, and it reproduces the shipping rerank utility on both boards.
+- `own_seed_cap` alone also flips both siblings to `l9,4;l8,5`, but it does not reproduce the same rerank utility on the Fast board, so it is a weaker explanation than `step_cap`.
+- `own_beam` alone and `per_node_family_cap` alone do nothing; frontier stays on `l9,4;l8,3`.
+- Durable outcome: treat frontier `ProV2` rerank `step_cap` as the cleanest single-cap explanation for the live white residue seen so far. Do not jump from that directly to a runtime patch on an already promotable package without fresh duel evidence.
