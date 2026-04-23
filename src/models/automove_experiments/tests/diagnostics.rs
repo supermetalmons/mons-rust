@@ -2902,6 +2902,192 @@ fn black_progress_setup_shortlist_economics_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: break down black progress-vs-setup reply floor scoring"]
+fn black_progress_reply_floor_breakdown_probe() {
+    use crate::models::scoring::evaluate_preferability_breakdown_with_weights;
+
+    #[derive(Clone, Copy)]
+    struct BreakdownCase {
+        label: &'static str,
+        board_fen: &'static str,
+        roots: &'static [&'static str],
+    }
+
+    fn root_index(scored_roots: &[RootEvaluation], root_fen: &str) -> Option<usize> {
+        scored_roots
+            .iter()
+            .position(|root| Input::fen_from_array(&root.inputs) == root_fen)
+    }
+
+    fn eval_breakdown_summary(
+        game: &MonsGame,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+    ) -> String {
+        let search_eval = MonsGameModel::evaluate_search_preferability(game, perspective, config);
+        let breakdown = evaluate_preferability_breakdown_with_weights(
+            game,
+            perspective,
+            config.scoring_weights,
+        );
+        format!(
+            "search_eval={} breakdown_total={} terms={:?} features={:?}",
+            search_eval, breakdown.total, breakdown.terms, breakdown.features,
+        )
+    }
+
+    fn worst_reply_details(
+        state_after_move: &MonsGame,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+        reply_limit: usize,
+    ) -> String {
+        let replies = MonsGameModel::enumerate_legal_transitions(
+            state_after_move,
+            reply_limit.max(1),
+            MonsGameModel::automove_start_input_options(config),
+        );
+        if replies.is_empty() {
+            return "no_replies".to_string();
+        }
+
+        let mut scored_replies = replies
+            .into_iter()
+            .map(|reply| {
+                let score = match reply.game.winner_color() {
+                    Some(winner) if winner == perspective => SMART_TERMINAL_SCORE / 2,
+                    Some(_) => -SMART_TERMINAL_SCORE / 2,
+                    None => MonsGameModel::evaluate_search_preferability(
+                        &reply.game,
+                        perspective,
+                        config,
+                    ),
+                };
+                (score, reply)
+            })
+            .collect::<Vec<_>>();
+        scored_replies.sort_by(|left, right| {
+            left.0
+                .cmp(&right.0)
+                .then_with(|| left.1.inputs.cmp(&right.1.inputs))
+        });
+
+        scored_replies
+            .iter()
+            .take(4)
+            .map(|(score, reply)| {
+                format!(
+                    "{} => score={} events={:?} {}",
+                    Input::fen_from_array(&reply.inputs),
+                    score,
+                    reply.events,
+                    eval_breakdown_summary(&reply.game, perspective, config),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" | ")
+    }
+
+    fn root_breakdown(
+        game: &MonsGame,
+        scored_roots: &[RootEvaluation],
+        root_fen: &str,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+    ) -> String {
+        let Some(index) = root_index(scored_roots, root_fen) else {
+            return format!("{root_fen} => missing");
+        };
+        let root = &scored_roots[index];
+        let family = MonsGameModel::turn_engine_root_evaluation_family(root);
+        let utility = MonsGameModel::turn_engine_selected_override_utility(
+            game,
+            root,
+            perspective,
+            config,
+            family,
+        );
+        let reply_limit = config.root_reply_risk_reply_limit.max(1).min(24);
+        let snapshot =
+            MonsGameModel::root_reply_risk_snapshot(&root.game, perspective, config, reply_limit);
+        let followup =
+            MonsGameModel::pro_v2_spirit_followup_floor_score(&root.game, perspective, config);
+
+        format!(
+            "{} => root={} family={:?} utility={:?} snapshot=[worst_reply={} match_point={} immediate_win={}] followup={} after_root_eval={{ {} }} worst_replies=[{}]",
+            root_fen,
+            format_root_probe(Some(root)),
+            family,
+            utility,
+            snapshot.worst_reply_score,
+            snapshot.opponent_reaches_match_point,
+            snapshot.allows_immediate_opponent_win,
+            followup,
+            eval_breakdown_summary(&root.game, perspective, config),
+            worst_reply_details(&root.game, perspective, config, reply_limit),
+        )
+    }
+
+    fn surface_for_case(case: BreakdownCase) -> String {
+        let game = MonsGame::from_fen(case.board_fen, false)
+            .unwrap_or_else(|| panic!("{} should have a valid fen", case.label));
+        let perspective = game.active_color;
+        let frontier_probe = runtime_decision_probe(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let frontier_advisor = pro_v2_root_advisor_decision_snapshot();
+        let shipping_probe =
+            runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+        let (config, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+
+        format!(
+            "label={} context={} frontier_selected={} shipping_selected={} roots={:?} advisor={:?}",
+            case.label,
+            exact_opportunity_context_probe(&game),
+            frontier_probe.selected_input_fen,
+            shipping_probe.selected_input_fen,
+            case.roots
+                .iter()
+                .map(|root_fen| root_breakdown(
+                    &game,
+                    scored_roots.as_slice(),
+                    root_fen,
+                    perspective,
+                    config,
+                ))
+                .collect::<Vec<_>>(),
+            frontier_advisor,
+        )
+    }
+
+    let cases = [
+        BreakdownCase {
+            label: "black_progress_vs_setup_residue",
+            board_fen: "1 0 b 0 0 0 0 0 6 n05d0xn05/n05s0xa0xe0xn03/n02xxmn04xxmn03/n07xxmn03/n03xxmn01xxmn05/n05xxUn04xxQ/n05xxMn05/n01y0xn01S0xE0xn01xxMxxMn03/n01xxMn09/n03A0xn03Y0xn03/n05D1xn05",
+            roots: &["l7,1;l9,3", "l1,5;l2,7;l1,8", "l1,5;l3,7;l2,8"],
+        },
+        BreakdownCase {
+            label: "black_confirm_fast_setup",
+            board_fen: "2 1 b 0 0 0 0 0 10 n05d0xn03xxmn01/n04a0xn02e0xn03/n05s0xn05/E0xn02xxmn03xxmn03/n05xxmn05/n05xxUn04xxQ/n05xxMn05/n03S0xn01Y0xxxMn04/n03y0xn04xxMn02/n03A0xn07/n05D1xn05",
+            roots: &["l2,5;l3,7;l2,8", "l0,5;l1,5", "l2,5;l3,3;l2,2"],
+        },
+    ];
+
+    for case in cases {
+        println!(
+            "BLACK_PROGRESS_REPLY_FLOOR_BREAKDOWN {}",
+            surface_for_case(case)
+        );
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: inspect remaining late black confirm fast setup seam"]
 fn black_confirm_fast_setup_split_probe() {
     log_black_confirm_fast_runtime_seam_probe(
