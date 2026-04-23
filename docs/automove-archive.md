@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Pro Black Recurrence Structure Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave tested the only plausible shared Pro follow-up left after the widened blocker replay by comparing the two repeated black seams directly: repeated `alternating_mana_rows` black `l2,7;l1,6` vs `l2,7;l1,8`, and repeated Pro black `l1,6;l2,7` vs shipping `l1,5;l2,3;l1,2`.
+- The seams only matched on the surface. Both boards were `window=1/deny=1`, frontier still returned through `engine_post_search`, and shipping still stayed `engine_disabled`.
+- Under that, they split again. The `alternating` board still approved outside-shortlist `DrainerSafetyRecovery l2,7;l1,6` through `ApprovedFamilyCompetition` while the shortlist itself stayed on `ManaTempo`. The `l1,6;l2,7` board instead approved shortlisted `SafeSupermanaProgress l1,6;l2,7` through `ApprovedReplyRiskGuard`, while shipping `SpiritImpact l1,5;l2,3;l1,2` survived only as a preserved family representative outside the candidate set.
+- Durable outcome: do not reopen a shared Pro-only black runtime spend across these two repeated seams. Shared stage/context was a false lead; the advisor and candidate-set failure modes are different.
+
 ## Pro-Only Blocker Replay Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
