@@ -1280,6 +1280,15 @@ fn frontier_pro_v2_guarded_profile_prefers_shipping_black_head_runtime_duel_pro_
 }
 
 #[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_white_fast_ply10_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "WHITE_FAST_PLY10",
+        "0 0 w 0 0 1 0 0 3 n05d0xn05/n05s0xa0xe0xn03/n03y0xn03xxmn03/n02xxmn01xxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n05D0xn05/n03E0xn01A0xn01S0xY0xn02/n11",
+        "l9,7;l7,6;l7,7",
+    );
+}
+
+#[test]
 fn frontier_pro_v2_guarded_profile_prefers_shipping_black_engine_disabled_duel_fast_root() {
     assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
         "BLACK_ENGINE_DISABLED_DUEL_FAST",

@@ -22,19 +22,26 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - This iteration kept a second narrow black late-fast repair inside the same live challenger:
   - It extends `pro_v2_root_advisor_black_late_window_mana_safety_override` so a rank-zero vulnerable one-window black `ManaTempo` root can yield to a same-lane safe sibling when that sibling restores the lane's progress surface.
   - The retained regression for that board now lives in `frontier_pro_v2_guarded_profile_prefers_shipping_black_late_fast_trace_root`.
+- This iteration kept a third narrow early-white repair in the same package:
+  - It extends `pro_v2_root_advisor_white_early_safe_progress_setup_competition_override` so a turn-three action+mana safe-progress incumbent can still yield to a spirit-own-setup challenger across a larger score gap when the challenger keeps the same progress surface, gains at least `+64` setup, and is at least six root-rank slots better.
+  - The retained regression for that board now lives in `frontier_pro_v2_guarded_profile_prefers_shipping_white_fast_ply10_root`.
 - The package still clears the small retained loop: `guardrails` passed, `pro-triage` stayed at `target_changed=5 / off_target_changed=0`, exact-lite passed, and retained `pro-reliability` passed at `0.9167 / 0.9167 / 1.0000`.
 - The local retained slice for the new black fix stayed clean:
   - `frontier_pro_v2_guarded_profile_prefers_shipping_black_late_fast_trace_root` now aligns to shipping `l1,8;l0,8`.
   - `frontier_pro_v2_guarded_keeps_recovery_on_black_late_fast_trace_root` stayed aligned to shipping `l2,5;l0,5;l1,6`.
   - `frontier_pro_v2_guarded_profile_prefers_shipping_black_late_fast_second_lane_nonwin_root` stayed aligned to shipping `l0,8;l1,9`.
   - `frontier_pro_v2_guarded_rejects_late_black_plain_spirit_progress_head_without_concrete_gain` still passes.
-- `pro-reliability-confirm` failed: `0.9375 / 0.9062 / 0.8750`, with Fast falling below the `0.90` floor.
-- That confirm result did not improve the aggregate gate, even though the fixed late black Fast seam is now gone:
-  - The old `l1,8;l1,9` vs shipping `l1,8;l0,8` seam no longer appears in the `4x4` Fast non-win trace.
-  - Fast rotated onto two white early boards `l9,7;l8,6` vs `l9,7;l7,6;l7,7` and `l9,4;l8,3` vs `l9,4;l8,5`.
-  - Fast also still includes the black legacy/search seams `l7,1;l9,3` vs `l1,5;l2,7;l1,8` and `l6,2;l5,3` vs `l1,5;l3,7;l2,8`.
+- The package now clears confirm as well: `pro-reliability-confirm` passed at `0.9375 / 0.9062 / 0.9062`.
+- The repaired white and black Fast walls are both gone from the `4x4` Fast non-win trace:
+  - `l1,8;l1,9` vs shipping `l1,8;l0,8` no longer appears.
+  - `l9,7;l8,6` vs shipping `l9,7;l7,6;l7,7` no longer appears.
+- The remaining Fast non-wins in the confirm trace dropped to `3` boards:
+  - White search-only split `l9,4;l8,3` vs `l9,4;l8,5`.
+  - Black legacy/search seam `l7,1;l9,3` vs `l1,5;l2,7;l1,8`.
+  - Black legacy/search seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8`.
 - Advisory stage-1 CPU remains elevated but unchanged in character: `1.552 / 1.526 / 1.363` versus `shipping_pro_search`.
 - With the new black late-fast repair, the small-loop advisory stage-1 CPU stayed in the same band at `1.562 / 1.529 / 1.362`.
+- With the white early followup repair added, the small-loop advisory stage-1 CPU stayed in the same band at `1.559 / 1.523 / 1.361`.
 - This iteration spent one narrow black-only runtime reroute and killed it:
   - Inside `pro_v2_root_advisor_select_root`, swapping the ProV1 legacy selector from `shortlist_config` to the full runtime `config` re-enabled the reply-risk guard for that selector.
   - The live non-win root probe then aligned `vs_shipping_pro_black_recovery_branch` to shipping `l6,0;l6,1` through `ApprovedLegacySelector`, while the other four live walls stayed on the same surfaces as before.
@@ -76,15 +83,18 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - The next real blocker is confirm, not the small retained loop.
 - Keep the new white turn-three no-action recovery guard; it fixes a real confirm board without disturbing the retained small loop.
 - Keep the new black late-fast safe-mana override as well; it removes the retained `l1,8;l1,9` vs `l1,8;l0,8` Fast seam without disturbing the small loop.
+- Keep the new white early followup setup repair as well; it removes the retained `l9,7;l8,6` vs `l9,7;l7,6;l7,7` Fast seam and is now part of the promoted package.
 - Do not spend another advisor/head patch on the rotated Pro white no-action seam `l10,4;l9,3` vs `l7,8;l6,9`; the incumbent already wins on frontier reply-floor and selected-utility metrics, so another approval override would be fighting the current model rather than fixing a local routing bug.
 - If that board matters again, start from root scoring/root-rank generation for quiet early white mana-only roots instead of shortlist or post-search acceptance.
 - Treat `black_recovery_branch` as an active seam, but do not reopen the simple turn-six spirit safety gate; that line fixes the local board and retained triage while still regressing Fast duel strength.
 - Do not reopen the resolved late black Fast seam `l1,8;l1,9` vs `l1,8;l0,8`; that board is now covered by the retained suite and should stay fixed while confirm work moves elsewhere.
+- Do not reopen the resolved early white Fast seam `l9,7;l8,6` vs `l9,7;l7,6;l7,7`; that board is now covered by the retained suite and should stay fixed while future confirm work moves elsewhere.
 - If `black_recovery_branch` is reopened, start from the traced legacy-selector config difference instead of another threshold tweak. The live ProV1 legacy selector currently inherits `shortlist_config`, which disables the reply-risk guard; simply switching that selector to full `config` does align `l6,0;l6,1`, but it also fails retained `pro-reliability` at `0.8333 / 0.9167 / 0.8333`, so any future black fix has to be narrower than that global config swap.
 - The narrower reply-risk-shortlist fallback is also not enough. Even when the black legacy-alignment override only searches the local `reply_risk_shortlist`, the line still dies at `0.9167 / 0.9167 / 0.8333`, so the next black attempt has to explain the retained Fast regression instead of just tightening the black chooser again.
-- The next confirm spend should start from the rotated `4x4` Fast walls instead:
-  - White early head/order seams `l9,7;l8,6` vs `l9,7;l7,6;l7,7` and `l9,4;l8,3` vs `l9,4;l8,5`.
+- The next spend should start from the reduced `4x4` Fast residue instead:
+  - White search-only split `l9,4;l8,3` vs `l9,4;l8,5`.
   - Black legacy/search seams `l7,1;l9,3` vs `l1,5;l2,7;l1,8` and `l6,2;l5,3` vs `l1,5;l3,7;l2,8`.
+- The white `l9,4;l8,3` vs `l9,4;l8,5` board is not another advisor shortlist miss. Shipping changes that board through the search-only rerank path while frontier stays on the same vulnerable pre-accept root, so future work there should start from search-only/head routing rather than another reply-risk override.
 - Do not reopen the resolved white turn-three sibling boards unless a future challenger regresses them.
 - Any future challenger still has to respect stage-1 CPU pressure; a package that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 
