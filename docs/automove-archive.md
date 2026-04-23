@@ -343,3 +343,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - On both boards, shipping and frontier use the same depth (`4`), node budget (`15774`), reply-risk shortlist budget (`9 / 24 / 2000`), and scoring weights.
 - The remaining difference is structural and profile-level: shipping stays `selector=false`, `head_rerank=true`, `mode=ProV1`, while frontier stays `selector=true`, `head_rerank=false`, `mode=ProV2` with the extra ProV2 guards.
 - Durable outcome: treat the remaining white seams as search-profile semantics, not board-local config misses. Do not reopen them with another board-local wrapper or guard tweak unless there is a brand-new shared hypothesis.
+
+## White Rerank Semantics Wave
+
+- No new runtime challenger survived this wave either. The kept diagnostic is `white_ordering_rerank_semantics_probe`, and the discarded runtime cut was a frontier-local rerank-semantics fallback for `white_ply9_search_ordering`.
+- The probe usefully split the two remaining white ordering boards instead of merging them. On `white_ply9_search_ordering`, shipping `l9,4;l8,5` is rank `0` on both the shipping and frontier root sets, is `Accepted` by `classify_turn_engine_rerank_override`, is allowed by `turn_engine_allowed_rerank_override_candidate`, and does not conflict with the ProV2 advisor.
+- The late Fast hotspot is not the same class. On `white_late_fast_hotspot`, shipping `l8,5;l7,7;l8,8` is rejected by `ProgressGate` and is not an allowed rerank candidate even on shipping's own root set.
+- The runtime cut was real but still too shallow. It fixed `l9,4;l8,3` vs shipping `l9,4;l8,5`, passed `guardrails`, `pro-triage` at `target_changed=5 / off_target_changed=0`, exact-lite, and advisory stage-1 CPU at `1.551 / 1.523 / 1.363`, then failed retained `pro-reliability` at `0.9167 / 0.8333 / 0.9167`.
+- The retained Normal trace showed why it cannot stay live: instead of stopping at `ply9`, the pack rotated onto other early-white engine-disabled seams, including `l8,5;l7,6` vs shipping `l8,7;l7,8` and `l8,5;l7,6` vs shipping `l8,5;l7,4`.
+- Durable outcome: do not reopen `white_ply9_search_ordering` with another narrow rerank-semantics wrapper fallback. Even when the shipping root is rerank-admissible and advisor-compatible on frontier, the local repair still is not enough to promote.

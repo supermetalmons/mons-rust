@@ -1547,6 +1547,138 @@ fn white_profile_config_ordering_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: inspect rerank admissibility of remaining white shipping-order roots"]
+fn white_ordering_rerank_semantics_probe() {
+    struct ProbeCase {
+        label: &'static str,
+        board_fen: &'static str,
+    }
+
+    fn root_moves_for_config(
+        game: &MonsGame,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+    ) -> Vec<ScoredRootMove> {
+        let mut root_moves = MonsGameModel::ranked_root_moves(game, perspective, config);
+        if config.enable_turn_engine_root_injection {
+            MonsGameModel::inject_turn_engine_root_candidates(
+                game,
+                perspective,
+                config,
+                &mut root_moves,
+            );
+        }
+        root_moves
+    }
+
+    let cases = [
+        ProbeCase {
+            label: "white_ply9_search_ordering",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n05d0xn05/n05s0xa0xe0xn03/n03y0xn03xxmn03/n02xxmn01xxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn07/n04D0xS0xn01Y0xn03/n02E0xn01A0xn06",
+        },
+        ProbeCase {
+            label: "white_late_fast_hotspot",
+            board_fen:
+                "1 1 w 0 0 1 0 0 9 n04s1xn06/n06a0xn04/n05e0xd0xn04/n03xxmxxmn02xxmn03/n05xxmn03Y0xn01/n05xxUn05/E0xn04xxMn01xxMn03/n01y0xn01xxMn03xxMn03/n05S0xn05/n05D0xn05/n04A1xn06",
+        },
+    ];
+
+    for case in cases {
+        let game = MonsGame::from_fen(case.board_fen, false)
+            .unwrap_or_else(|| panic!("{}: valid board fen", case.label));
+        let perspective = game.active_color;
+        let frontier_probe = runtime_decision_probe(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let shipping_probe =
+            runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+        let frontier_inputs = Input::array_from_fen(frontier_probe.selected_input_fen.as_str());
+        let shipping_inputs = Input::array_from_fen(shipping_probe.selected_input_fen.as_str());
+        let frontier_config = calibration_runtime_config(
+            "frontier_pro_v2_guarded",
+            &game,
+            SmartAutomovePreference::Pro,
+        );
+        let shipping_config =
+            calibration_runtime_config("shipping_pro_search", &game, SmartAutomovePreference::Pro);
+        let frontier_root_moves = root_moves_for_config(&game, perspective, frontier_config);
+        let shipping_root_moves = root_moves_for_config(&game, perspective, shipping_config);
+
+        println!(
+            "WHITE_ORDERING_RERANK label={} context={} shipping_stage={} frontier_stage={} shipping_head_rerank={} frontier_head_rerank={} shipping_should_rerank={} frontier_should_rerank={} shipping_root_rank_on_shipping={:?} shipping_root_rank_on_frontier={:?} frontier_root_rank_on_frontier={:?} shipping_accept_on_shipping={:?} shipping_accept_on_frontier={:?} shipping_allowed_on_shipping={} shipping_allowed_on_frontier={} shipping_conflict_on_shipping={} shipping_conflict_on_frontier={} frontier_accept_on_frontier={:?} frontier_allowed_on_frontier={} frontier_conflict_on_frontier={}",
+            case.label,
+            exact_opportunity_context_probe(&game),
+            shipping_probe.selector_last_stage,
+            frontier_probe.selector_last_stage,
+            shipping_config.enable_turn_head_rerank,
+            frontier_config.enable_turn_head_rerank,
+            MonsGameModel::should_invoke_turn_head_rerank(shipping_root_moves.as_slice()),
+            MonsGameModel::should_invoke_turn_head_rerank(frontier_root_moves.as_slice()),
+            shipping_root_moves
+                .iter()
+                .position(|candidate| candidate.inputs.as_slice() == shipping_inputs.as_slice()),
+            frontier_root_moves
+                .iter()
+                .position(|candidate| candidate.inputs.as_slice() == shipping_inputs.as_slice()),
+            frontier_root_moves
+                .iter()
+                .position(|candidate| candidate.inputs.as_slice() == frontier_inputs.as_slice()),
+            MonsGameModel::classify_turn_engine_rerank_override(
+                shipping_root_moves.as_slice(),
+                shipping_inputs.as_slice(),
+            ),
+            MonsGameModel::classify_turn_engine_rerank_override(
+                frontier_root_moves.as_slice(),
+                shipping_inputs.as_slice(),
+            ),
+            MonsGameModel::turn_engine_allowed_rerank_override_candidate(
+                shipping_root_moves.as_slice(),
+                shipping_inputs.as_slice(),
+            ),
+            MonsGameModel::turn_engine_allowed_rerank_override_candidate(
+                frontier_root_moves.as_slice(),
+                shipping_inputs.as_slice(),
+            ),
+            MonsGameModel::pro_v2_root_advisor_conflicts_with_choice(
+                &game,
+                perspective,
+                shipping_config,
+                shipping_root_moves.as_slice(),
+                None,
+                shipping_inputs.as_slice(),
+            ),
+            MonsGameModel::pro_v2_root_advisor_conflicts_with_choice(
+                &game,
+                perspective,
+                frontier_config,
+                frontier_root_moves.as_slice(),
+                None,
+                shipping_inputs.as_slice(),
+            ),
+            MonsGameModel::classify_turn_engine_rerank_override(
+                frontier_root_moves.as_slice(),
+                frontier_inputs.as_slice(),
+            ),
+            MonsGameModel::turn_engine_allowed_rerank_override_candidate(
+                frontier_root_moves.as_slice(),
+                frontier_inputs.as_slice(),
+            ),
+            MonsGameModel::pro_v2_root_advisor_conflicts_with_choice(
+                &game,
+                perspective,
+                frontier_config,
+                frontier_root_moves.as_slice(),
+                None,
+                frontier_inputs.as_slice(),
+            ),
+        );
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: inspect white fast ply9 search-only split"]
 fn white_fast_ply9_search_only_split_probe() {
     let game = MonsGame::from_fen(

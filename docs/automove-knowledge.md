@@ -62,6 +62,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - Shipping's `l9,4;l8,5` is a full-pool `DrainerSafetyRecovery` root outside the frontier shortlist, loses under frontier's own reply-risk comparator (`shipping_vs_frontier=false`), and is only reached through shipping's `search_only_engine_allowed_head` ordering. Treat that seam as another shipping-only search ordering mismatch, not a live frontier omission.
 - `white_profile_config_ordering_probe` closes the last obvious hidden-config hypothesis for the remaining white seams. On both the `ply9` search-order board and the late Fast hotspot, shipping and frontier use the same depth, node budget, reply-risk shortlist budget, and scoring weights.
 - The difference on those boards is purely structural and profile-level: shipping stays `selector=false`, `head_rerank=true`, `mode=ProV1`, while frontier stays `selector=true`, `head_rerank=false`, `mode=ProV2` with the extra ProV2 guards. Treat those white seams as search-profile semantics, not per-board config misses.
+- `white_ordering_rerank_semantics_probe` sharpens that split. On `white_ply9_search_ordering`, shipping `l9,4;l8,5` is already rank `0` on the frontier root set, is `Accepted` by `classify_turn_engine_rerank_override`, passes `turn_engine_allowed_rerank_override_candidate`, and stays compatible with the ProV2 advisor.
+- The late white Fast hotspot does not share that property. Shipping `l8,5;l7,7;l8,8` is rejected by `ProgressGate` and is not an allowed rerank candidate even on shipping's own root set, so it is not another hidden rerank omission.
+- Even the narrower rerank-admissible read does not make `white_ply9_search_ordering` promotable. A frontier-local rerank-semantics fallback fixes `l9,4;l8,3` locally and still fails retained `pro-reliability` at `0.9167 / 0.8333 / 0.9167`, because Normal rotates onto other early-white engine-disabled seams such as `l8,5;l7,6` vs shipping `l8,7;l7,8` and `l8,5;l7,6` vs shipping `l8,5;l7,4`.
 - If a rotated white confirm seam shows the incumbent quiet `ManaTempo` root ahead on both reply floor and selected override utility, it is not another shortlist-order or head-acceptance bug. Treat that as a root-scoring/model mismatch and do not paper over it with another advisor override.
 - Runtime cost is a real gate. A candidate that fixes live walls but pushes stage-1 CPU into the `1.5x+` range against `shipping_pro_search` is still non-promotable.
 - Wrapper-only reroutes, fallback widening, shortlist widening, and metadata-only advisor changes saturate quickly; the real frontier is shared approval and head logic.
@@ -89,6 +92,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `fast_hotspot_trace_probe`
 - `white_late_fast_hotspot_probe`
 - `white_profile_config_ordering_probe`
+- `white_ordering_rerank_semantics_probe`
 
 ## Kill Rules
 
