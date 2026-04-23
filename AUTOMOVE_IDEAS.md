@@ -146,6 +146,16 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - The package still failed retained `pro-reliability` at `0.9167 / 0.9167 / 0.8333`, so the runtime change was discarded.
   - The new `pro` non-win was a later black lane split `l1,6;l1,7` vs shipping `l1,6;l1,5`; `normal` stayed on the old white `ply9` search-only split `l9,4;l8,3` vs `l9,4;l8,5`; and the two Fast non-wins had `first_diff=none`, so the gate still failed without a clean new behavioral target to keep.
   - Do not reopen that shortlist-local black legacy fallback again unless a future probe first explains both the later black lane split and the no-diff Fast gate failure.
+- This iteration spent the later black lane split directly and killed that line too.
+  - The new ignored `black_pro_lane_split_probe` shows shipping `l1,6;l1,5` is already present in the frontier shortlist beside frontier `l1,6;l1,7` and the rejected head `l2,6;l1,5`.
+  - All three roots are the same safe-progress family and the shipping root does not beat frontier under frontier's own reply-risk comparator: the reply floor is tied, `shipping_vs_frontier=false`, and frontier keeps the better local utility (`drainer_safety=2` vs shipping `-1`).
+  - Shipping only gets `l1,6;l1,5` because it disables the turn-engine selector on that board, not because frontier omitted or mis-ranked the root inside the reply-risk shortlist.
+  - Treat that seam as another shipping-disabled lower-safety ordering mismatch, not a live advisor/head-acceptance bug.
+- The two remaining local seams now both sit in known no-go classes:
+  - `pro`: later black lane split `l1,6;l1,7` vs shipping `l1,6;l1,5` is a same-family selector-disable mismatch where shipping's root already loses on frontier metrics.
+  - `normal`: white `ply9` search-only split `l9,4;l8,3` vs shipping `l9,4;l8,5` is the previously disproved white search-only recovery seam.
+  - `fast`: the retained gate can still fail on two no-diff games with `first_diff=none`.
+  - There is no live runtime challenger today; the next spend has to explain the no-diff Fast failure or find a brand-new shared hypothesis, not reopen either local board directly.
 - Do not reopen the resolved late black Fast seam `l1,8;l1,9` vs `l1,8;l0,8`, the resolved early white Fast seam `l9,7;l8,6` vs `l9,7;l7,6;l7,7`, the resolved black late setup seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8`, the resolved black confirm Fast setup seam `l0,5;l1,5` vs `l2,5;l3,7;l2,8`, or the resolved white early engine-disabled seam `l8,5;l7,6` vs `l9,5;l8,3;l7,4` unless a future challenger regresses them.
 - Any future challenger still has to respect stage-1 CPU pressure; a package that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 
@@ -162,5 +172,6 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Do not reopen the reply-risk-shortlist-only black legacy fallback that picks the best-ranked vulnerable mana root from the local shortlist; it aligns `black_recovery_branch` and still dies on retained Fast at `0.8333`.
 - Do not reopen that shortlist-local black legacy fallback just because the earlier late-Fast blocker was repaired. Replaying it on the cleaned promoted package still fails retained `pro-reliability` at `0.9167 / 0.9167 / 0.8333`.
 - Do not read that `0.8333` Fast result as new shortlist collateral unless the trace says so. The traced Fast pack was just the pre-existing late black head-accept seam repeated twice.
+- Do not reopen the later black lane split `l1,6;l1,7` vs shipping `l1,6;l1,5` with another advisor or reply-risk ordering tweak. The shipping root is already in the frontier shortlist and still loses on frontier's own reply-risk comparison.
 - Do not broaden white turn-three no-action recovery from `mons_moves_count == 0` to `<= 1`, even with a paired head reject. That line fixes `l9,4;l8,3` locally and still dies at retained `pro-reliability` `0.9167 / 0.7500 / 0.9167` because Normal rotates onto engine-disabled early-white losses.
 - Do not reopen packages that are already archived in `docs/automove-archive.md` unless there is a brand-new shared hypothesis.

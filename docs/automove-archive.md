@@ -303,3 +303,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The broader retained duel still killed the line. The canonical loop passed `guardrails`, `pro-triage`, exact-lite, and advisory stage-1 CPU, then failed retained `pro-reliability` at `0.9167 / 0.9167 / 0.8333`.
 - The failure surface also changed enough to rule out keeping the runtime cut as a live challenger. The new `pro` miss rotated to a later black lane split `l1,6;l1,7` vs shipping `l1,6;l1,5`, `normal` stayed on the old white `ply9` search-only split `l9,4;l8,3` vs `l9,4;l8,5`, and the two Fast non-wins had `first_diff=none`.
 - Durable outcome: even after the earlier late-Fast blocker was repaired, the shortlist-local black legacy fallback is still not promotable. Keep the stronger diagnostic, discard the runtime/test change, and do not reopen this exact line again without explaining the later black lane split plus the no-diff Fast failure.
+
+## Black Later Lane Probe Wave
+
+- No new runtime challenger survived this wave either. The only kept change is a focused ignored `black_pro_lane_split_probe` for the later black `pro` miss `l1,6;l1,7` vs shipping `l1,6;l1,5`.
+- The useful lesson is that this seam is not another shortlist omission and not another head-acceptance miss.
+- The probe shows shipping `l1,6;l1,5` is already in the frontier `reply_risk_shortlist` beside frontier `l1,6;l1,7` and the rejected head `l2,6;l1,5`. All three are the same safe-progress family.
+- It also shows shipping's root loses on frontier's own selector metrics: the reply floor is tied, `shipping_vs_frontier=false`, and frontier keeps better local utility because it preserves `drainer_safety=2` while shipping drops to `-1`.
+- Durable outcome: do not reopen the later black lane split with another advisor or reply-risk ordering tweak. Shipping only reaches `l1,6;l1,5` because it disables the turn-engine selector on that board, so this is another shipping-disabled lower-safety ordering mismatch rather than a live frontier bug.

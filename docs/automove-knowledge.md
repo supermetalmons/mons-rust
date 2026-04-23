@@ -27,6 +27,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - Replaying that same shortlist-local black legacy fallback on the later promoted package still does not make it promotable. It aligns `black_recovery_branch` and collapses the five-board live nonwin probe back to the older white seams, but retained `pro-reliability` still fails at `0.9167 / 0.9167 / 0.8333`.
 - The refreshed black recovery probe is now strong enough to avoid reopening that line blindly. It prints the full `reply_risk_shortlist` root details and confirms the best-ranked vulnerable mana candidate there is shipping `l6,0;l6,1`, not the earlier wrong score-leader `l6,0;l7,0`.
 - On that replayed shortlist-local package, the new `pro` miss rotated to a later black lane split `l1,6;l1,7` vs shipping `l1,6;l1,5`, `normal` still lost on the old white `ply9` search-only split `l9,4;l8,3` vs `l9,4;l8,5`, and the retained Fast gate still failed on two no-diff games with `first_diff=none`. Treat that as a hard stop, not a live challenger.
+- The later black lane split is not another shortlist omission. `black_pro_lane_split_probe` shows shipping `l1,6;l1,5` is already in the frontier `reply_risk_shortlist` beside frontier `l1,6;l1,7`, but shipping still loses under frontier's own reply-risk comparison (`shipping_vs_frontier=false`) because the reply floor is tied and frontier keeps better local utility (`drainer_safety=2` vs shipping `-1`).
+- Treat that later black seam as a shipping-disabled lower-safety ordering mismatch, not a live advisor or head-acceptance bug. Shipping reaches `l1,6;l1,5` only because it disables the turn-engine selector on that board.
 - That late black Fast seam was not a head-acceptance mismatch after all. On the live board, `pre_accept`, head, and final selection all stayed on the same vulnerable root; the actual fix point was the advisor's existing late-window mana safety override.
 - The durable fix on that board is narrow: let `pro_v2_root_advisor_black_late_window_mana_safety_override` rescue a rank-zero vulnerable one-window `ManaTempo` root only when a same-lane safe sibling also restores the lane's progress surface. That keeps the retained `l1,8;l0,8` board aligned without disturbing the small loop.
 - A second late black advisor miss was narrower than the earlier legacy-selector seams. On late black action+mana turn-start boards with no window or deny pressure, a quiet no-progress `ManaTempo` incumbent can still be the wrong retained answer when the reply-risk shortlist isolates a quiet `SpiritImpact` own-setup challenger that keeps the same progress path and gains at least `+64` setup. That rescue belongs in advisor family competition, not in search-only reranking.
@@ -72,6 +74,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `white_confirm_pro_ply11_reply_order_probe`
 - `black_recovery_branch_legacy_alignment_probe`
 - `black_progress_vs_setup_residue_probe`
+- `black_pro_lane_split_probe`
 - `black_confirm_fast_lane_split_probe`
 - `black_confirm_fast_setup_split_probe`
 
