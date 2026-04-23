@@ -39,6 +39,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - White search-only split `l9,4;l8,3` vs `l9,4;l8,5`.
   - Black legacy/search seam `l7,1;l9,3` vs `l1,5;l2,7;l1,8`.
   - Black legacy/search seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8`.
+- This iteration spent a broader white turn-three no-action recovery cut and killed it:
+  - It widened `pro_v2_root_advisor_white_turn_three_no_action_recovery_override` from `mons_moves_count == 0` to `<= 1` and paired that with a post-search head reject for same-lane vulnerable `ManaTempo -> DrainerSafetyRecovery` recovery pairs.
+  - Locally, that did fix the retained white Fast seam `l9,4;l8,3` vs shipping `l9,4;l8,5`, and it also aligned the older vulnerable white mana-only board `l8,4;l7,3` to shipping `l8,4;l8,5`.
+  - The package still cleared `guardrails`, retained `pro-triage` at `target_changed=4 / off_target_changed=0`, exact-lite, and advisory stage-1 CPU at `1.551 / 1.527 / 1.365`.
+  - It still failed retained `pro-reliability` at `0.9167 / 0.7500 / 0.9167`. The Normal non-win trace rotated onto engine-disabled early white boards, including `l8,5;l7,6` vs shipping `l8,7;l7,8`, `l9,4;l8,5` vs `l9,4;l9,3`, and `l8,5;l7,6` vs `l9,5;l8,3;l7,4`, so the code was discarded.
 - Advisory stage-1 CPU remains elevated but unchanged in character: `1.552 / 1.526 / 1.363` versus `shipping_pro_search`.
 - With the new black late-fast repair, the small-loop advisory stage-1 CPU stayed in the same band at `1.562 / 1.529 / 1.362`.
 - With the white early followup repair added, the small-loop advisory stage-1 CPU stayed in the same band at `1.559 / 1.523 / 1.361`.
@@ -95,6 +100,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - White search-only split `l9,4;l8,3` vs `l9,4;l8,5`.
   - Black legacy/search seams `l7,1;l9,3` vs `l1,5;l2,7;l1,8` and `l6,2;l5,3` vs `l1,5;l3,7;l2,8`.
 - The white `l9,4;l8,3` vs `l9,4;l8,5` board is not another advisor shortlist miss. Shipping changes that board through the search-only rerank path while frontier stays on the same vulnerable pre-accept root, so future work there should start from search-only/head routing rather than another reply-risk override.
+- Do not reopen that seam by broadening the white turn-three no-action recovery override to `mons_moves_count == 1`. That line does fix `l9,4;l8,3` locally, but it also drags older vulnerable white mana-only boards onto recovery roots and fails retained `pro-reliability` at `0.9167 / 0.7500 / 0.9167` by rotating Normal onto engine-disabled early-white boards.
 - Do not reopen the resolved white turn-three sibling boards unless a future challenger regresses them.
 - Any future challenger still has to respect stage-1 CPU pressure; a package that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 
@@ -110,4 +116,5 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Do not globally switch the ProV1 legacy selector from `shortlist_config` to full `config`; that reply-risk-on reroute aligns `black_recovery_branch` locally but still fails retained `pro-reliability` at `0.8333 / 0.9167 / 0.8333`.
 - Do not reopen the reply-risk-shortlist-only black legacy fallback that picks the best-ranked vulnerable mana root from the local shortlist; it aligns `black_recovery_branch` and still dies on retained Fast at `0.8333`.
 - Do not read that `0.8333` Fast result as new shortlist collateral unless the trace says so. The traced Fast pack was just the pre-existing late black head-accept seam repeated twice.
+- Do not broaden white turn-three no-action recovery from `mons_moves_count == 0` to `<= 1`, even with a paired head reject. That line fixes `l9,4;l8,3` locally and still dies at retained `pro-reliability` `0.9167 / 0.7500 / 0.9167` because Normal rotates onto engine-disabled early-white losses.
 - Do not reopen packages that are already archived in `docs/automove-archive.md` unless there is a brand-new shared hypothesis.
