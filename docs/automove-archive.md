@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## White Late Mana Sibling Surface Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave tested the only nearby retained extension candidate for the new Pro white `l6,7;l7,6` vs `l6,7;l7,7` seam by comparing it directly against the retained late white mana sibling duel-normal board.
+- They were not the same surface. The retained board ships and frontier-aligns on `l7,7;l6,5;l6,6` through `engine_post_search`, keeps a live head plan, and mixes `SpiritImpact` against `SafeSupermanaProgress` under `window=2/deny=2`.
+- The new seam is different. It still ships `l6,7;l7,7`, frontier drifts to `l6,7;l7,6`, the selector is already `engine_disabled`, there is no head plan, and the whole top root pool stays pure `ManaTempo` under `window=0/deny=0`.
+- Durable outcome: do not reopen the retained late white mana sibling path as an extension candidate for `l6,7;l7,6` vs `l6,7;l7,7`. The retained board is a late spirit/setup surface, and the new seam is an early pure-ManaTempo ordering surface.
+
 ## Same-Family Late Mana Residual Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
