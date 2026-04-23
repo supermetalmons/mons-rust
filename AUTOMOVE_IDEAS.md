@@ -11,7 +11,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - The live experiment surface is Pro-only: 2 retained profiles and 5 canonical stages.
 - The default operator entrypoint is `./scripts/run-automove-canonical-loop.sh`.
 - There is no second live challenger today.
-- The latest clean-tree follow-up kept no runtime code: confirm-sized traces now show exactly one known Pro no-go (`black_recovery_branch`), zero Normal non-wins, and exactly one known Fast no-go (`black_progress_vs_setup_residue`).
+- The latest diagnostic follow-up kept no runtime code: confirm-sized traces still show exactly one known Pro no-go (`black_recovery_branch`), zero Normal non-wins, and exactly one known Fast no-go (`black_progress_vs_setup_residue`).
 
 ## Latest Gate Snapshot
 
@@ -91,6 +91,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - On `black_progress_vs_setup_residue`, shipping's scored roots still contain the safe-progress incumbent `l7,1;l9,3`, but `filtered_root_candidate_indices` excludes it under the shipping `ProV1` surface. The spirit-setup prefilter has all competition booleans false there, so reply-risk only compares the own-setup spirit siblings and selects `l1,5;l2,7;l1,8`.
   - The same Fast board under frontier `ProV2` keeps the safe-progress root in candidates because `progress_competes=true` and `followup_progress_competes=true`; frontier then shortlists only that safe-progress root.
   - This makes the next black spend narrower: do not add another root-level fallback until a probe explains whether those ProV2 progress-competition predicates are genuinely over-broad on black turn-six setup-progress boards or whether shipping's ProV1 filter is simply a non-retainable baseline preference.
+- This iteration kept no runtime code and added `black_progress_competition_predicate_scope_probe` to answer that next black spend before trying another runtime change:
+  - On `black_progress_vs_setup_residue`, ProV2 reports `progress_competes=true` and `followup_progress_competes=true` over both the full and filtered candidate sets, then shortlists only safe progress `l7,1;l9,3`; the same root set with a ProV1 filter reports every competition predicate false, filters down to spirit-own-setup roots, and picks shipping `l1,5;l2,7;l1,8`.
+  - On the retained `black_late_setup_reply_risk` board, no safe-progress root competes and all filtered progress predicates stay false; both profiles select the retained setup root `l1,5;l3,7;l2,8`.
+  - On the retained `black_confirm_fast_setup` board, ProV2 does report `progress_competes=true` and keeps a safe-progress root in the pool, but the advisor still approves the retained spirit setup root `l2,5;l3,7;l2,8`; a ProV1 filter also stays on that setup family.
+  - Treat the Fast residue as a no-go at the current candidate-filter layer, not as a safe wrapper/advisor target. A future black spend has to distinguish the score/rank/followup economics that make the residue's setup roots miss the shortlist, while the retained confirm setup board survives later advisor competition.
 - Board-local confirm diagnostics collapsed the earlier two-board black Fast residue into one real live seam:
   - On `l0,0;l1,1` vs shipping `l7,1;l8,0`, frontier already matches shipping on the current retained package.
   - The only live confirm Fast approval miss was `l0,5;l1,5` vs shipping `l2,5;l3,7;l2,8`, where legacy and shipping already agree on the spirit own-setup progress root.

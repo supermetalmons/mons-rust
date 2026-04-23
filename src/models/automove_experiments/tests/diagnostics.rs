@@ -2341,6 +2341,237 @@ fn black_shipping_disabled_ordering_surface_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: scope ProV2 progress competition predicates on black setup/progress boards"]
+fn black_progress_competition_predicate_scope_probe() {
+    #[derive(Clone, Copy)]
+    struct ScopeCase {
+        label: &'static str,
+        board_fen: &'static str,
+        expected_current: &'static str,
+        shipping_root: &'static str,
+    }
+
+    fn competition_summary(
+        game: &MonsGame,
+        scored_roots: &[RootEvaluation],
+        indices: &[usize],
+        perspective: Color,
+        config: AutomoveSearchConfig,
+    ) -> String {
+        format!(
+            "progress_competes={} followup_progress_competes={} risky_score_competes={} negative_deny_competes={} score_competes={} projection_competes={} risky_recovery_competes={}",
+            MonsGameModel::safe_progress_competes_with_spirit_pref(
+                scored_roots,
+                indices,
+                config.turn_engine_mode,
+            ),
+            MonsGameModel::followup_progress_competes_with_spirit_pref(
+                game,
+                scored_roots,
+                indices,
+                perspective,
+                config,
+            ),
+            MonsGameModel::risky_score_competes_with_spirit_pref(
+                scored_roots,
+                indices,
+                config.turn_engine_mode,
+            ),
+            MonsGameModel::negative_deny_competes_with_spirit_pref(
+                scored_roots,
+                indices,
+                perspective,
+                config,
+            ),
+            MonsGameModel::score_competes_with_spirit_pref(
+                scored_roots,
+                indices,
+                config.turn_engine_mode,
+            ),
+            MonsGameModel::projection_competes_with_spirit_pref(
+                scored_roots,
+                indices,
+                perspective,
+                config,
+            ),
+            MonsGameModel::risky_recovery_competes_with_spirit_pref(
+                game,
+                scored_roots,
+                indices,
+                perspective,
+                config,
+            ),
+        )
+    }
+
+    fn root_set_details(scored_roots: &[RootEvaluation], indices: &[usize]) -> Vec<String> {
+        indices
+            .iter()
+            .map(|index| {
+                format!(
+                    "{} => {}",
+                    Input::fen_from_array(&scored_roots[*index].inputs),
+                    format_root_probe(scored_roots.get(*index)),
+                )
+            })
+            .collect()
+    }
+
+    fn surface_for_case(case: ScopeCase) -> String {
+        let game = MonsGame::from_fen(case.board_fen, false)
+            .unwrap_or_else(|| panic!("{} should have a valid fen", case.label));
+        let perspective = game.active_color;
+        let frontier_probe = runtime_decision_probe(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let frontier_advisor = pro_v2_root_advisor_decision_snapshot();
+        let shipping_probe =
+            runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+        let (frontier_config, frontier_roots, _, _) =
+            profile_runtime_scored_roots_with_forced_engine_inputs(
+                "frontier_pro_v2_guarded",
+                SmartAutomovePreference::Pro,
+                &game,
+            );
+        let all_indices = (0..frontier_roots.len()).collect::<Vec<_>>();
+        let filtered_indices = MonsGameModel::filtered_root_candidate_indices(
+            &game,
+            frontier_roots.as_slice(),
+            perspective,
+            frontier_config,
+        );
+        let shortlist = MonsGameModel::reply_risk_guard_shortlist_indices(
+            frontier_roots.as_slice(),
+            filtered_indices.as_slice(),
+            frontier_config,
+        );
+        let mut prov1_filter_config = frontier_config;
+        prov1_filter_config.turn_engine_mode = TurnEngineMode::ProV1;
+        let prov1_filtered_indices = MonsGameModel::filtered_root_candidate_indices(
+            &game,
+            frontier_roots.as_slice(),
+            perspective,
+            prov1_filter_config,
+        );
+        let prov1_filter_pick =
+            MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
+                &game,
+                frontier_roots.as_slice(),
+                prov1_filtered_indices.as_slice(),
+                perspective,
+                prov1_filter_config,
+            );
+        let spirit_setup_indices = all_indices
+            .iter()
+            .copied()
+            .filter(|index| {
+                let root = &frontier_roots[*index];
+                root.spirit_own_mana_setup_now
+                    && !root.own_drainer_vulnerable
+                    && !root.mana_handoff_to_opponent
+            })
+            .collect::<Vec<_>>();
+        let safe_progress_indices = all_indices
+            .iter()
+            .copied()
+            .filter(|index| {
+                let root = &frontier_roots[*index];
+                !MonsGameModel::turn_engine_root_evaluation_is_unsafe(root)
+                    && MonsGameModel::turn_engine_root_evaluation_has_progress_surface(root)
+                    && !root.spirit_development
+                    && !root.spirit_same_turn_score_setup_now
+                    && !root.spirit_own_mana_setup_now
+            })
+            .collect::<Vec<_>>();
+        let expected_index = frontier_roots
+            .iter()
+            .position(|root| Input::fen_from_array(&root.inputs) == case.expected_current);
+        let shipping_index = frontier_roots
+            .iter()
+            .position(|root| Input::fen_from_array(&root.inputs) == case.shipping_root);
+
+        format!(
+            "label={} context={} expected_current={} shipping_root={} frontier_selected={} shipping_selected={} frontier_competition_all=[{}] frontier_competition_filtered=[{}] prov1_filter_competition_all=[{}] filtered={:?} prov1_filtered={:?} shortlist={:?} prov1_filter_pick={} expected_details={} shipping_details={} spirit_setup_roots={:?} safe_progress_roots={:?} advisor={:?}",
+            case.label,
+            exact_opportunity_context_probe(&game),
+            case.expected_current,
+            case.shipping_root,
+            frontier_probe.selected_input_fen,
+            shipping_probe.selected_input_fen,
+            competition_summary(
+                &game,
+                frontier_roots.as_slice(),
+                all_indices.as_slice(),
+                perspective,
+                frontier_config,
+            ),
+            competition_summary(
+                &game,
+                frontier_roots.as_slice(),
+                filtered_indices.as_slice(),
+                perspective,
+                frontier_config,
+            ),
+            competition_summary(
+                &game,
+                frontier_roots.as_slice(),
+                all_indices.as_slice(),
+                perspective,
+                prov1_filter_config,
+            ),
+            filtered_indices
+                .iter()
+                .map(|index| Input::fen_from_array(&frontier_roots[*index].inputs))
+                .collect::<Vec<_>>(),
+            prov1_filtered_indices
+                .iter()
+                .map(|index| Input::fen_from_array(&frontier_roots[*index].inputs))
+                .collect::<Vec<_>>(),
+            shortlist
+                .iter()
+                .map(|index| Input::fen_from_array(&frontier_roots[*index].inputs))
+                .collect::<Vec<_>>(),
+            Input::fen_from_array(&prov1_filter_pick),
+            format_root_probe(expected_index.and_then(|index| frontier_roots.get(index))),
+            format_root_probe(shipping_index.and_then(|index| frontier_roots.get(index))),
+            root_set_details(frontier_roots.as_slice(), spirit_setup_indices.as_slice()),
+            root_set_details(frontier_roots.as_slice(), safe_progress_indices.as_slice()),
+            frontier_advisor,
+        )
+    }
+
+    let cases = [
+        ScopeCase {
+            label: "black_progress_vs_setup_residue",
+            board_fen: "1 0 b 0 0 0 0 0 6 n05d0xn05/n05s0xa0xe0xn03/n02xxmn04xxmn03/n07xxmn03/n03xxmn01xxmn05/n05xxUn04xxQ/n05xxMn05/n01y0xn01S0xE0xn01xxMxxMn03/n01xxMn09/n03A0xn03Y0xn03/n05D1xn05",
+            expected_current: "l7,1;l9,3",
+            shipping_root: "l1,5;l2,7;l1,8",
+        },
+        ScopeCase {
+            label: "black_late_setup_reply_risk",
+            board_fen: "1 1 b 0 0 0 0 0 8 d0xn10/n05s0xa0xe0xxxmn02/n11/n07xxmn03/n03xxmn02xxmn04/n10xxQ/n02y0xn01D0UxxMn01xxMn03/n02xxMS0xn01A0xxxMn04/n06Y0xn04/n03E0xn07/n11",
+            expected_current: "l1,5;l3,7;l2,8",
+            shipping_root: "l1,5;l3,7;l2,8",
+        },
+        ScopeCase {
+            label: "black_confirm_fast_setup",
+            board_fen: "2 1 b 0 0 0 0 0 10 n05d0xn03xxmn01/n04a0xn02e0xn03/n05s0xn05/E0xn02xxmn03xxmn03/n05xxmn05/n05xxUn04xxQ/n05xxMn05/n03S0xn01Y0xxxMn04/n03y0xn04xxMn02/n03A0xn07/n05D1xn05",
+            expected_current: "l2,5;l3,7;l2,8",
+            shipping_root: "l2,5;l3,7;l2,8",
+        },
+    ];
+
+    for case in cases {
+        println!(
+            "BLACK_PROGRESS_COMPETITION_SCOPE {}",
+            surface_for_case(case)
+        );
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: inspect remaining late black confirm fast setup seam"]
 fn black_confirm_fast_setup_split_probe() {
     log_black_confirm_fast_runtime_seam_probe(
