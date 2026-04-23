@@ -1,4 +1,354 @@
 use super::*;
+use crate::models::scoring::{
+    evaluate_preferability_breakdown_with_weights, evaluate_preferability_with_context,
+    evaluate_preferability_with_weights_and_exact_policy, ScoringEvalContext, ScoringWeights,
+};
+
+struct AttributionWorstReply {
+    input_fen: String,
+    score: i32,
+    events: String,
+    game: MonsGame,
+}
+
+fn attribution_root_index(scored_roots: &[RootEvaluation], root_fen: &str) -> Option<usize> {
+    scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == root_fen)
+}
+
+fn zeroed_attribution_weights_like(base: &ScoringWeights) -> ScoringWeights {
+    let mut weights = *base;
+    weights.double_confirmed_score = false;
+    weights.confirmed_score = 0;
+    weights.fainted_mon = 0;
+    weights.fainted_drainer = 0;
+    weights.fainted_cooldown_step = 0;
+    weights.drainer_at_risk = 0;
+    weights.mana_close_to_same_pool = 0;
+    weights.mon_with_mana_close_to_any_pool = 0;
+    weights.extra_for_supermana = 0;
+    weights.extra_for_opponents_mana = 0;
+    weights.drainer_close_to_mana = 0;
+    weights.drainer_holding_mana = 0;
+    weights.drainer_close_to_own_pool = 0;
+    weights.drainer_close_to_supermana = 0;
+    weights.mon_close_to_center = 0;
+    weights.spirit_close_to_enemy = 0;
+    weights.spirit_on_own_base_penalty = 0;
+    weights.angel_guarding_drainer = 0;
+    weights.angel_close_to_friendly_drainer = 0;
+    weights.has_consumable = 0;
+    weights.active_mon = 0;
+    weights.regular_mana_to_owner_pool = 0;
+    weights.regular_mana_drainer_control = 0;
+    weights.supermana_drainer_control = 0;
+    weights.supermana_race_control = 0;
+    weights.opponent_mana_denial = 0;
+    weights.mana_carrier_at_risk = 0;
+    weights.mana_carrier_guarded = 0;
+    weights.mana_carrier_one_step_from_pool = 0;
+    weights.supermana_carrier_one_step_from_pool_extra = 0;
+    weights.immediate_winning_carrier = 0;
+    weights.drainer_best_mana_path = 0;
+    weights.drainer_pickup_score_this_turn = 0;
+    weights.mana_carrier_score_this_turn = 0;
+    weights.drainer_immediate_threat = 0;
+    weights.score_race_path_progress = 0;
+    weights.opponent_score_race_path_progress = 0;
+    weights.score_race_multi_path = 0;
+    weights.opponent_score_race_multi_path = 0;
+    weights.immediate_score_window = 0;
+    weights.opponent_immediate_score_window = 0;
+    weights.immediate_score_multi_window = 0;
+    weights.opponent_immediate_score_multi_window = 0;
+    weights.spirit_action_utility = 0;
+    weights.drainer_danger_boolean = 0;
+    weights.mana_carrier_danger_boolean = 0;
+    weights.drainer_walk_threat_boolean = 0;
+    weights.mana_carrier_walk_threat_boolean = 0;
+    weights.opponent_drainer_attack_bonus = 0;
+    weights.attacker_close_to_opponent_drainer = 0;
+    weights
+}
+
+fn attribution_residual_score(
+    game: &MonsGame,
+    perspective: Color,
+    weights: &ScoringWeights,
+) -> i32 {
+    evaluate_preferability_breakdown_with_weights(game, perspective, weights)
+        .terms
+        .residual_board_state
+}
+
+fn attribution_residual_field_scores(
+    game: &MonsGame,
+    perspective: Color,
+    base: &ScoringWeights,
+) -> Vec<(&'static str, i32)> {
+    let mut scores = Vec::new();
+    macro_rules! add_field {
+        ($field:ident) => {{
+            let mut weights = zeroed_attribution_weights_like(base);
+            weights.$field = base.$field;
+            scores.push((
+                stringify!($field),
+                attribution_residual_score(game, perspective, &weights),
+            ));
+        }};
+    }
+
+    add_field!(confirmed_score);
+    add_field!(fainted_mon);
+    add_field!(fainted_drainer);
+    add_field!(fainted_cooldown_step);
+    add_field!(drainer_at_risk);
+    add_field!(mana_close_to_same_pool);
+    add_field!(mon_with_mana_close_to_any_pool);
+    add_field!(extra_for_supermana);
+    add_field!(extra_for_opponents_mana);
+    add_field!(drainer_close_to_mana);
+    add_field!(drainer_holding_mana);
+    add_field!(drainer_close_to_own_pool);
+    add_field!(drainer_close_to_supermana);
+    add_field!(mon_close_to_center);
+    add_field!(spirit_close_to_enemy);
+    add_field!(spirit_on_own_base_penalty);
+    add_field!(angel_guarding_drainer);
+    add_field!(angel_close_to_friendly_drainer);
+    add_field!(has_consumable);
+    add_field!(active_mon);
+    add_field!(regular_mana_to_owner_pool);
+    add_field!(regular_mana_drainer_control);
+    add_field!(supermana_drainer_control);
+    add_field!(supermana_race_control);
+    add_field!(opponent_mana_denial);
+    add_field!(mana_carrier_at_risk);
+    add_field!(mana_carrier_guarded);
+    add_field!(mana_carrier_one_step_from_pool);
+    add_field!(supermana_carrier_one_step_from_pool_extra);
+    add_field!(immediate_winning_carrier);
+    add_field!(drainer_best_mana_path);
+    add_field!(drainer_pickup_score_this_turn);
+    add_field!(mana_carrier_score_this_turn);
+    add_field!(drainer_immediate_threat);
+    add_field!(score_race_path_progress);
+    add_field!(opponent_score_race_path_progress);
+    add_field!(score_race_multi_path);
+    add_field!(opponent_score_race_multi_path);
+    add_field!(immediate_score_window);
+    add_field!(opponent_immediate_score_window);
+    add_field!(immediate_score_multi_window);
+    add_field!(opponent_immediate_score_multi_window);
+    add_field!(spirit_action_utility);
+    add_field!(drainer_danger_boolean);
+    add_field!(mana_carrier_danger_boolean);
+    add_field!(drainer_walk_threat_boolean);
+    add_field!(mana_carrier_walk_threat_boolean);
+    add_field!(opponent_drainer_attack_bonus);
+    add_field!(attacker_close_to_opponent_drainer);
+
+    scores
+}
+
+fn top_attribution_residual_deltas(
+    left_label: &str,
+    left_game: &MonsGame,
+    right_label: &str,
+    right_game: &MonsGame,
+    perspective: Color,
+    config: AutomoveSearchConfig,
+) -> String {
+    let left_breakdown = evaluate_preferability_breakdown_with_weights(
+        left_game,
+        perspective,
+        config.scoring_weights,
+    );
+    let right_breakdown = evaluate_preferability_breakdown_with_weights(
+        right_game,
+        perspective,
+        config.scoring_weights,
+    );
+    let left_search_eval =
+        MonsGameModel::evaluate_search_preferability(left_game, perspective, config);
+    let right_search_eval =
+        MonsGameModel::evaluate_search_preferability(right_game, perspective, config);
+    let left_scores =
+        attribution_residual_field_scores(left_game, perspective, config.scoring_weights);
+    let right_scores =
+        attribution_residual_field_scores(right_game, perspective, config.scoring_weights);
+    let mut deltas = left_scores
+        .into_iter()
+        .zip(right_scores)
+        .map(|((left_name, left_score), (right_name, right_score))| {
+            assert_eq!(left_name, right_name);
+            (left_name, left_score - right_score, left_score, right_score)
+        })
+        .collect::<Vec<_>>();
+    let field_sum_delta = deltas.iter().map(|(_, delta, _, _)| *delta).sum::<i32>();
+    deltas.sort_by(|left, right| {
+        right
+            .1
+            .abs()
+            .cmp(&left.1.abs())
+            .then_with(|| left.0.cmp(right.0))
+    });
+    let top = deltas
+        .iter()
+        .filter(|(_, delta, _, _)| *delta != 0)
+        .take(14)
+        .map(|(name, delta, left_score, right_score)| {
+            format!("{name}:{delta}({left_score}-{right_score})")
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+
+    format!(
+        "{left_label}_minus_{right_label} search_eval_delta={} search_evals={}/{} breakdown_total_delta={} residual_delta={} field_sum_delta={} left_terms={:?} right_terms={:?} left_features={:?} right_features={:?} top_residual_fields=[{}]",
+        left_search_eval - right_search_eval,
+        left_search_eval,
+        right_search_eval,
+        left_breakdown.total - right_breakdown.total,
+        left_breakdown.terms.residual_board_state - right_breakdown.terms.residual_board_state,
+        field_sum_delta,
+        left_breakdown.terms,
+        right_breakdown.terms,
+        left_breakdown.features,
+        right_breakdown.features,
+        top,
+    )
+}
+
+fn attribution_search_eval_with_flags(
+    game: &MonsGame,
+    perspective: Color,
+    config: AutomoveSearchConfig,
+    allow_exact_static_evaluation: bool,
+    enable_local_ctx: bool,
+    enable_attack_reach_summary: bool,
+    enable_attack_reach_target_narrowing: bool,
+    enable_attack_reach_drainer_target_narrowing: bool,
+) -> i32 {
+    if enable_local_ctx {
+        let context = ScoringEvalContext::new_with_flags(
+            game,
+            allow_exact_static_evaluation,
+            enable_attack_reach_summary,
+            enable_attack_reach_target_narrowing,
+            enable_attack_reach_drainer_target_narrowing,
+        );
+        evaluate_preferability_with_context(
+            game,
+            perspective,
+            config.scoring_weights,
+            allow_exact_static_evaluation,
+            &context,
+        )
+    } else {
+        evaluate_preferability_with_weights_and_exact_policy(
+            game,
+            perspective,
+            config.scoring_weights,
+            allow_exact_static_evaluation,
+        )
+    }
+}
+
+fn attribution_search_eval_variant_deltas(
+    left_label: &str,
+    left_game: &MonsGame,
+    right_label: &str,
+    right_game: &MonsGame,
+    perspective: Color,
+    config: AutomoveSearchConfig,
+) -> String {
+    let variants = [
+        (
+            "config_no_local",
+            config.enable_static_exact_evaluation,
+            false,
+            false,
+            false,
+            false,
+        ),
+        ("exact_on_no_local", true, false, false, false, false),
+        ("exact_off_no_local", false, false, false, false, false),
+        ("exact_on_local_no_reach", true, true, false, false, false),
+        ("exact_off_local_no_reach", false, true, false, false, false),
+        ("exact_on_local_drainer", true, true, true, true, true),
+        ("exact_off_local_drainer", false, true, true, true, true),
+    ];
+    variants
+        .iter()
+        .map(
+            |(label, allow_exact, local_ctx, summary, target, drainer_target)| {
+                let left_score = attribution_search_eval_with_flags(
+                    left_game,
+                    perspective,
+                    config,
+                    *allow_exact,
+                    *local_ctx,
+                    *summary,
+                    *target,
+                    *drainer_target,
+                );
+                let right_score = attribution_search_eval_with_flags(
+                    right_game,
+                    perspective,
+                    config,
+                    *allow_exact,
+                    *local_ctx,
+                    *summary,
+                    *target,
+                    *drainer_target,
+                );
+                format!(
+                    "{}:{}_minus_{}={}({}-{})",
+                    label,
+                    left_label,
+                    right_label,
+                    left_score - right_score,
+                    left_score,
+                    right_score,
+                )
+            },
+        )
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn attribution_worst_reply_state(
+    state_after_move: &MonsGame,
+    perspective: Color,
+    config: AutomoveSearchConfig,
+) -> Option<AttributionWorstReply> {
+    let reply_limit = config.root_reply_risk_reply_limit.max(1).min(24);
+    let replies = MonsGameModel::enumerate_legal_transitions(
+        state_after_move,
+        reply_limit,
+        MonsGameModel::automove_start_input_options(config),
+    );
+    replies
+        .into_iter()
+        .map(|reply| {
+            let score = match reply.game.winner_color() {
+                Some(winner) if winner == perspective => SMART_TERMINAL_SCORE / 2,
+                Some(_) => -SMART_TERMINAL_SCORE / 2,
+                None => {
+                    MonsGameModel::evaluate_search_preferability(&reply.game, perspective, config)
+                }
+            };
+            (score, Input::fen_from_array(&reply.inputs), reply)
+        })
+        .min_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)))
+        .map(|(score, input_fen, reply)| AttributionWorstReply {
+            input_fen,
+            score,
+            events: format!("{:?}", reply.events),
+            game: reply.game,
+        })
+}
 
 #[test]
 #[ignore = "diagnostic: replay exact pro-reliability duel seeds against shipping_pro_search and log first regression divergence"]
@@ -1261,6 +1611,227 @@ fn black_recovery_branch_selector_ordering_probe() {
         frontier_runtime_probe,
         frontier_advisor,
         shipping_runtime_probe,
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: attribute black recovery branch reply-floor scoring"]
+fn black_recovery_branch_reply_floor_attribution_probe() {
+    fn root_attribution_details(
+        game: &MonsGame,
+        scored_roots: &[RootEvaluation],
+        index: usize,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+    ) -> String {
+        let root = &scored_roots[index];
+        let family = MonsGameModel::turn_engine_root_evaluation_family(root);
+        let utility = MonsGameModel::turn_engine_selected_override_utility(
+            game,
+            root,
+            perspective,
+            config,
+            family,
+        );
+        let snapshot = MonsGameModel::root_reply_risk_snapshot(
+            &root.game,
+            perspective,
+            config,
+            config.root_reply_risk_reply_limit.max(1).min(24),
+        );
+
+        format!(
+            "{} index={} family={:?} utility={} floor={} match_point={} immediate_win={} followup={} details={}",
+            Input::fen_from_array(&root.inputs),
+            index,
+            family,
+            format_turn_engine_utility_probe(utility),
+            snapshot.worst_reply_score,
+            snapshot.opponent_reaches_match_point,
+            snapshot.allows_immediate_opponent_win,
+            MonsGameModel::pro_v2_spirit_followup_floor_score(&root.game, perspective, config),
+            format_root_probe(Some(root)),
+        )
+    }
+
+    fn pair_attribution(
+        left_label: &str,
+        left_root: &RootEvaluation,
+        right_label: &str,
+        right_root: &RootEvaluation,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+    ) -> String {
+        let after_root = top_attribution_residual_deltas(
+            &format!("{left_label}_after_root"),
+            &left_root.game,
+            &format!("{right_label}_after_root"),
+            &right_root.game,
+            perspective,
+            config,
+        );
+        let after_root_variants = attribution_search_eval_variant_deltas(
+            &format!("{left_label}_after_root"),
+            &left_root.game,
+            &format!("{right_label}_after_root"),
+            &right_root.game,
+            perspective,
+            config,
+        );
+        let worst_reply = match (
+            attribution_worst_reply_state(&left_root.game, perspective, config),
+            attribution_worst_reply_state(&right_root.game, perspective, config),
+        ) {
+            (Some(left_reply), Some(right_reply)) => format!(
+                "{}_worst_reply={} {}_worst_score={} {}_worst_events={} {}_worst_reply={} {}_worst_score={} {}_worst_events={} search_variants=[{}] {}",
+                left_label,
+                left_reply.input_fen,
+                left_label,
+                left_reply.score,
+                left_label,
+                left_reply.events,
+                right_label,
+                right_reply.input_fen,
+                right_label,
+                right_reply.score,
+                right_label,
+                right_reply.events,
+                attribution_search_eval_variant_deltas(
+                    &format!("{left_label}_worst_reply"),
+                    &left_reply.game,
+                    &format!("{right_label}_worst_reply"),
+                    &right_reply.game,
+                    perspective,
+                    config,
+                ),
+                top_attribution_residual_deltas(
+                    &format!("{left_label}_worst_reply"),
+                    &left_reply.game,
+                    &format!("{right_label}_worst_reply"),
+                    &right_reply.game,
+                    perspective,
+                    config,
+                ),
+            ),
+            (None, None) => "worst_reply=no_replies".to_string(),
+            (None, Some(right_reply)) => format!(
+                "{}_worst_reply=none {}_worst_reply={} {}_worst_score={} {}_worst_events={}",
+                left_label,
+                right_label,
+                right_reply.input_fen,
+                right_label,
+                right_reply.score,
+                right_label,
+                right_reply.events,
+            ),
+            (Some(left_reply), None) => format!(
+                "{}_worst_reply={} {}_worst_score={} {}_worst_events={} {}_worst_reply=none",
+                left_label,
+                left_reply.input_fen,
+                left_label,
+                left_reply.score,
+                left_label,
+                left_reply.events,
+                right_label,
+            ),
+        };
+
+        format!(
+            "{}={} {}={} after_root={{ search_variants=[{}] {} }} worst_reply={{ {} }}",
+            left_label,
+            Input::fen_from_array(&left_root.inputs),
+            right_label,
+            Input::fen_from_array(&right_root.inputs),
+            after_root_variants,
+            after_root,
+            worst_reply,
+        )
+    }
+
+    let game = MonsGame::from_fen(
+        "1 0 b 0 0 2 0 0 6 n05d1xn05/n05s0xa0xe0xn03/n07xxmn03/n03xxmn03xxmn03/n03xxmn01xxmn03Y0xn01/n05xxUn05/y0xn04xxMn05/n03xxMn03xxMn03/n07xxMn03/n02E0xn02S0xn05/n04A1xD1xn05",
+        false,
+    )
+    .expect("valid black recovery branch fen");
+    let perspective = game.active_color;
+    let frontier_probe = runtime_decision_probe(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let shipping_probe =
+        runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+    let (config, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let candidate_indices = MonsGameModel::filtered_root_candidate_indices(
+        &game,
+        scored_roots.as_slice(),
+        perspective,
+        config,
+    );
+    let shortlist = MonsGameModel::reply_risk_guard_shortlist_indices(
+        scored_roots.as_slice(),
+        candidate_indices.as_slice(),
+        config,
+    );
+    let frontier_index = attribution_root_index(scored_roots.as_slice(), "l1,5;l3,3;l2,3")
+        .expect("frontier spirit root should exist");
+    let shipping_index = attribution_root_index(scored_roots.as_slice(), "l6,0;l6,1")
+        .expect("shipping mana root should exist");
+    let pro_v1_candidate_index = attribution_root_index(scored_roots.as_slice(), "l1,5;l2,7;l1,8")
+        .expect("no-guard ProV1 spirit replay root should exist");
+    let score_leader_index = attribution_root_index(scored_roots.as_slice(), "l6,0;l7,0")
+        .expect("score-leading mana sibling should exist");
+
+    println!(
+        "BLACK_RECOVERY_BRANCH_REPLY_FLOOR_ATTRIBUTION context={} frontier_selected={} shipping_selected={} shortlist={:?} roots={:?} comparisons={:?}",
+        exact_opportunity_context_probe(&game),
+        frontier_probe.selected_input_fen,
+        shipping_probe.selected_input_fen,
+        shortlist
+            .iter()
+            .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+            .collect::<Vec<_>>(),
+        [
+            ("frontier", frontier_index),
+            ("shipping", shipping_index),
+            ("pro_v1_candidate", pro_v1_candidate_index),
+            ("score_leader", score_leader_index),
+        ]
+        .iter()
+        .map(|(label, index)| {
+            format!(
+                "{}={}",
+                label,
+                root_attribution_details(&game, scored_roots.as_slice(), *index, perspective, config)
+            )
+        })
+        .collect::<Vec<_>>(),
+        [
+            ("frontier", frontier_index, "shipping", shipping_index),
+            (
+                "pro_v1_candidate",
+                pro_v1_candidate_index,
+                "shipping",
+                shipping_index,
+            ),
+            ("shipping", shipping_index, "score_leader", score_leader_index),
+        ]
+        .iter()
+        .map(|(left_label, left_index, right_label, right_index)| {
+            pair_attribution(
+                left_label,
+                &scored_roots[*left_index],
+                right_label,
+                &scored_roots[*right_index],
+                perspective,
+                config,
+            )
+        })
+        .collect::<Vec<_>>(),
     );
 }
 

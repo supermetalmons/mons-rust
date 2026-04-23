@@ -62,6 +62,7 @@ Use diagnostics only after the canonical loop shows what is still missing.
 - `smart_automove_pro_triage_retained_churn_probe`
 - `smart_automove_pro_forced_turn_engine_retained_churn_probe`
 - `smart_automove_pro_root_advisor_trace_probe`
+- `black_recovery_branch_reply_floor_attribution_probe`
 - `black_progress_residual_weight_attribution_probe`
 
 All diagnostics run through the ignored test harness:
