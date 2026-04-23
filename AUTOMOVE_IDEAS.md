@@ -71,6 +71,13 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - The retained regression for that board now lives in `frontier_pro_v2_guarded_rejects_white_turn_five_deferred_recovery_progress_head_pro_root`.
   - A refreshed Pro-only confirm trace collapsed to `total_nonwins=1`, leaving only the classified `black_recovery_branch`.
   - The full canonical confirm loop passed: guardrails, primary Pro triage `target_changed=5 / off_target_changed=0`, exact-lite, advisory stage-1 CPU `1.551 / 1.516 / 1.360`, retained `pro-reliability` `0.9167 / 1.0000 / 1.0000`, and `pro-reliability-confirm` `0.9688 / 0.9688 / 0.9688` with confidence `1.0000`.
+- This iteration kept and promoted a fourteenth narrow black turn-start advisor repair in the same package:
+  - A clean confirm-sized Normal trace found a singleton black turn-six split at `first_diff_ply=28`: frontier re-entered/approved the vulnerable plain-spirit root `l2,4;l0,6;l1,7`, while shipping disabled engine selection to the vulnerable `ManaTempo` root `l1,6;l2,6`.
+  - The seam was not a head-acceptance bug: frontier `pre_accept` already matched the plain-spirit head. Shipping's mana root was in the frontier candidate/reply-risk shortlist, but the production no-guard ProV1 selector chose a different spirit route; only the guard-enabled ProV1 replay named shipping.
+  - It adds `pro_v2_root_advisor_black_turn_start_guarded_legacy_mana_override`, gated to black turn six turn-start action+mana boards where a non-tactical vulnerable plain-spirit reentry yields only to the guard-enabled legacy `ManaTempo` root with the same vulnerable lane/progress/score-path surface, at least `+256` search score, and at least `+32` reply-floor advantage.
+  - It fixes the Normal confirm singleton from `l2,4;l0,6;l1,7` to shipping `l1,6;l2,6`; the retained regression now lives in `frontier_pro_v2_guarded_profile_prefers_shipping_black_confirm_normal_turn_six_root`.
+  - A refreshed confirm-sized Normal non-win trace dropped from `total_nonwins=1` to `total_nonwins=0`.
+  - The full canonical confirm loop passed: guardrails, primary Pro triage `target_changed=5 / off_target_changed=0`, exact-lite, advisory stage-1 CPU `1.553 / 1.530 / 1.363`, retained `pro-reliability` `0.9167 / 1.0000 / 1.0000`, and `pro-reliability-confirm` `0.9688 / 1.0000 / 0.9688` with confidence `1.0000`.
 - Board-local confirm diagnostics collapsed the earlier two-board black Fast residue into one real live seam:
   - On `l0,0;l1,1` vs shipping `l7,1;l8,0`, frontier already matches shipping on the current retained package.
   - The only live confirm Fast approval miss was `l0,5;l1,5` vs shipping `l2,5;l3,7;l2,8`, where legacy and shipping already agree on the spirit own-setup progress root.

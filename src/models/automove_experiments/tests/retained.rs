@@ -1568,6 +1568,37 @@ fn frontier_pro_v2_guarded_profile_prefers_shipping_black_head_runtime_duel_pro_
 }
 
 #[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_black_confirm_normal_turn_six_root() {
+    let game = MonsGame::from_fen(
+        "0 1 b 0 0 0 0 0 6 n06a0xn03d0x/n06e0xn04/n01y0xn02s0xn06/n03xxmn07/n02xxmn02xxmn01xxmn03/E0xn09xxQ/n03xxMn02xxUn04/n03xxMxxMS0xY0xxxMn03/n05D0xn01xxMn03/n04A0xn06/n11",
+        false,
+    )
+    .expect("black confirm normal turn-six fen should be valid");
+
+    clear_turn_engine_selector_diagnostics();
+    let probe = runtime_decision_probe(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let shipping_selected =
+        profile_decision_move_fen("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+
+    println!(
+        "BLACK_CONFIRM_NORMAL_TURN_SIX shipping_selected={} context={} probe={:?} advisor={:?}",
+        shipping_selected,
+        exact_opportunity_context_probe(&game),
+        probe,
+        pro_v2_root_advisor_decision_snapshot(),
+    );
+    assert_eq!(shipping_selected, "l1,6;l2,6");
+    assert_eq!(probe.selected_input_fen, "l1,6;l2,6");
+    assert_eq!(probe.pre_accept_input_fen, "l1,6;l2,6");
+    assert_eq!(probe.head_input_fen.as_deref(), Some("l2,4;l0,6;l1,7"));
+    assert!(!probe.head_accepted);
+}
+
+#[test]
 fn frontier_pro_v2_guarded_profile_prefers_shipping_white_fast_ply10_root() {
     assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
         "WHITE_FAST_PLY10",

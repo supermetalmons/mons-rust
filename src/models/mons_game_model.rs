@@ -16914,6 +16914,105 @@ impl MonsGameModel {
         weak_black_no_action_window_legacy_mana.then_some(legacy_index)
     }
 
+    fn pro_v2_root_advisor_black_turn_start_guarded_legacy_mana_override(
+        game: &MonsGame,
+        scored_roots: &[RootEvaluation],
+        candidate_indices: &[usize],
+        approved_index: usize,
+        config: AutomoveSearchConfig,
+    ) -> Option<usize> {
+        if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
+            || game.active_color != Color::Black
+            || game.turn_number != 6
+            || game.mons_moves_count != 0
+            || !game.player_can_use_action()
+            || !game.player_can_move_mana()
+            || candidate_indices.is_empty()
+        {
+            return None;
+        }
+
+        let approved = scored_roots.get(approved_index)?;
+        let approved_family = Self::turn_engine_root_evaluation_family(approved);
+        let exact_context =
+            crate::models::automove_exact::exact_opportunity_context(game, game.active_color);
+        let approved_non_tactical = !approved.wins_immediately
+            && !approved.attacks_opponent_drainer
+            && !approved.scores_supermana_this_turn
+            && !approved.scores_opponent_mana_this_turn
+            && !approved.safe_supermana_pickup_now
+            && !approved.safe_opponent_mana_pickup_now
+            && !approved.mana_handoff_to_opponent
+            && !approved.has_roundtrip;
+        if exact_context.delta.same_turn_score_window_value != 0
+            || exact_context.delta.opponent_window_deny_gain != 0
+            || exact_context.delta.drainer_attack_available
+            || approved_family != TurnPlanFamily::SpiritImpact
+            || !Self::is_plain_spirit_development_root(approved)
+            || Self::turn_engine_root_evaluation_has_progress_surface(approved)
+            || !approved_non_tactical
+            || !approved.own_drainer_vulnerable
+        {
+            return None;
+        }
+
+        let mut guarded_legacy_config = config;
+        guarded_legacy_config.turn_engine_mode = TurnEngineMode::ProV1;
+        let legacy_inputs = Self::pick_root_move_with_exploration_from_candidate_indices(
+            game,
+            scored_roots,
+            candidate_indices,
+            game.active_color,
+            guarded_legacy_config,
+        );
+        let legacy_index = scored_roots
+            .iter()
+            .position(|root| root.inputs == legacy_inputs)?;
+        if legacy_index == approved_index || !candidate_indices.contains(&legacy_index) {
+            return None;
+        }
+
+        let legacy = scored_roots.get(legacy_index)?;
+        let legacy_family = Self::turn_engine_root_evaluation_family(legacy);
+        let legacy_non_tactical = !legacy.wins_immediately
+            && !legacy.attacks_opponent_drainer
+            && !legacy.scores_supermana_this_turn
+            && !legacy.scores_opponent_mana_this_turn
+            && !legacy.safe_supermana_pickup_now
+            && !legacy.safe_opponent_mana_pickup_now
+            && !legacy.mana_handoff_to_opponent
+            && !legacy.has_roundtrip;
+        if legacy_family != TurnPlanFamily::ManaTempo
+            || !legacy_non_tactical
+            || !legacy.own_drainer_vulnerable
+            || approved.own_drainer_walk_vulnerable != legacy.own_drainer_walk_vulnerable
+            || approved.safe_supermana_progress_steps != legacy.safe_supermana_progress_steps
+            || approved.safe_opponent_mana_progress_steps
+                != legacy.safe_opponent_mana_progress_steps
+            || approved.score_path_best_steps != legacy.score_path_best_steps
+            || legacy.score < approved.score.saturating_add(256)
+        {
+            return None;
+        }
+
+        let reply_limit = config.root_reply_risk_reply_limit.max(1).min(24);
+        let approved_snapshot =
+            Self::root_reply_risk_snapshot(&approved.game, game.active_color, config, reply_limit);
+        let legacy_snapshot =
+            Self::root_reply_risk_snapshot(&legacy.game, game.active_color, config, reply_limit);
+        if approved_snapshot.allows_immediate_opponent_win
+            || legacy_snapshot.allows_immediate_opponent_win
+            || approved_snapshot.opponent_reaches_match_point
+            || legacy_snapshot.opponent_reaches_match_point
+            || legacy_snapshot.worst_reply_score
+                < approved_snapshot.worst_reply_score.saturating_add(32)
+        {
+            return None;
+        }
+
+        Some(legacy_index)
+    }
+
     fn pro_v2_root_advisor_white_turn_three_legacy_alignment_override(
         game: &MonsGame,
         scored_roots: &[RootEvaluation],
@@ -20208,6 +20307,15 @@ impl MonsGameModel {
                 config,
             )
         }) {
+            approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedLegacySelector);
+        }
+        if let Some(index) = Self::pro_v2_root_advisor_black_turn_start_guarded_legacy_mana_override(
+            game,
+            scored_roots,
+            candidate_indices.as_slice(),
+            approved_index.0,
+            config,
+        ) {
             approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedLegacySelector);
         }
         if let Some(index) = Self::pro_v2_root_advisor_black_late_window_mana_safety_override(

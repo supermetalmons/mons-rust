@@ -1498,6 +1498,12 @@ fn log_black_confirm_fast_runtime_seam_probe(
         candidate_indices.as_slice(),
         config,
     );
+    let projections = MonsGameModel::turn_engine_reply_risk_projections(
+        scored_roots.as_slice(),
+        shortlist.as_slice(),
+        perspective,
+        config,
+    );
     let frontier_index = scored_roots
         .iter()
         .position(|root| Input::fen_from_array(&root.inputs) == frontier_move)
@@ -1512,9 +1518,106 @@ fn log_black_confirm_fast_runtime_seam_probe(
         .expect("shipping move should exist");
     let (probe_legacy_selected, probe_legacy_full_pool_selected, _, _) =
         pro_v2_legacy_selector_probe(&game, SmartAutomovePreference::Pro);
+    let mut production_legacy_config = config;
+    production_legacy_config.enable_root_reply_risk_guard = false;
+    production_legacy_config.turn_engine_mode = TurnEngineMode::ProV1;
+    let production_legacy_selected =
+        MonsGameModel::pick_root_move_with_exploration_from_candidate_indices(
+            &game,
+            scored_roots.as_slice(),
+            candidate_indices.as_slice(),
+            perspective,
+            production_legacy_config,
+        );
+    let direct_legacy_alignment =
+        MonsGameModel::pro_v2_root_advisor_black_legacy_alignment_override(
+            &game,
+            scored_roots.as_slice(),
+            candidate_indices.as_slice(),
+            frontier_index,
+            shipping_index,
+            config,
+        )
+        .map(|index| Input::fen_from_array(&scored_roots[index].inputs));
     let frontier = &scored_roots[frontier_index];
     let frontier_pre_accept = &scored_roots[frontier_pre_accept_index];
     let shipping = &scored_roots[shipping_index];
+    let root_node_budget = ((config.max_visited_nodes
+        * config.root_reply_risk_node_share_bp.max(0) as usize)
+        / 10_000)
+        .max(shortlist.len())
+        .max(1);
+    let per_root_reply_limit = (root_node_budget / shortlist.len().max(1))
+        .max(1)
+        .min(config.root_reply_risk_reply_limit.max(1));
+    let frontier_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+        frontier,
+        projections.get(&frontier_index),
+        perspective,
+        config,
+        per_root_reply_limit,
+    );
+    let frontier_pre_accept_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+        frontier_pre_accept,
+        projections.get(&frontier_pre_accept_index),
+        perspective,
+        config,
+        per_root_reply_limit,
+    );
+    let shipping_snapshot = MonsGameModel::root_reply_risk_snapshot_with_projection(
+        shipping,
+        projections.get(&shipping_index),
+        perspective,
+        config,
+        per_root_reply_limit,
+    );
+    let frontier_utility = MonsGameModel::turn_engine_selected_override_utility(
+        &game,
+        frontier,
+        perspective,
+        config,
+        MonsGameModel::turn_engine_root_evaluation_family(frontier),
+    );
+    let frontier_pre_accept_utility = MonsGameModel::turn_engine_selected_override_utility(
+        &game,
+        frontier_pre_accept,
+        perspective,
+        config,
+        MonsGameModel::turn_engine_root_evaluation_family(frontier_pre_accept),
+    );
+    let shipping_utility = MonsGameModel::turn_engine_selected_override_utility(
+        &game,
+        shipping,
+        perspective,
+        config,
+        MonsGameModel::turn_engine_root_evaluation_family(shipping),
+    );
+    let shipping_beats_frontier = MonsGameModel::is_better_reply_risk_candidate(
+        &game,
+        shipping_index,
+        shipping_snapshot,
+        frontier_index,
+        frontier_snapshot,
+        projections.get(&shipping_index),
+        projections.get(&frontier_index),
+        scored_roots.as_slice(),
+        perspective,
+        config,
+        &mut std::collections::HashMap::new(),
+    );
+    let frontier_beats_shipping = MonsGameModel::is_better_reply_risk_candidate(
+        &game,
+        frontier_index,
+        frontier_snapshot,
+        shipping_index,
+        shipping_snapshot,
+        projections.get(&frontier_index),
+        projections.get(&shipping_index),
+        scored_roots.as_slice(),
+        perspective,
+        config,
+        &mut std::collections::HashMap::new(),
+    );
     let frontier_non_tactical = !frontier.wins_immediately
         && !frontier.attacks_opponent_drainer
         && !frontier.scores_supermana_this_turn
@@ -1551,7 +1654,7 @@ fn log_black_confirm_fast_runtime_seam_probe(
         .collect::<Vec<_>>();
 
     println!(
-        "{} context={} frontier_move={} shipping_move={} shipping_selected={} frontier_probe={:?} shipping_runtime_probe={:?} advisor={:?} frontier={} frontier_pre_accept={} shipping={} frontier_family={:?} frontier_pre_accept_family={:?} shipping_family={:?} frontier_progress_surface={} frontier_pre_accept_progress_surface={} shipping_progress_surface={} frontier_plain_spirit={} frontier_pre_accept_plain_spirit={} shipping_plain_spirit={} frontier_non_tactical={} frontier_pre_accept_non_tactical={} shipping_non_tactical={} candidate_contains_shipping={} shortlist={:?} shortlist_roots={:?} legacy_candidate_selected={} legacy_full_pool_selected={}",
+        "{} context={} frontier_move={} shipping_move={} shipping_selected={} frontier_probe={:?} shipping_runtime_probe={:?} advisor={:?} frontier={} frontier_pre_accept={} shipping={} frontier_snapshot={} frontier_pre_accept_snapshot={} shipping_snapshot={} frontier_utility={} frontier_pre_accept_utility={} shipping_utility={} shipping_vs_frontier={} frontier_vs_shipping={} frontier_projection={:?} frontier_pre_accept_projection={:?} shipping_projection={:?} frontier_family={:?} frontier_pre_accept_family={:?} shipping_family={:?} frontier_progress_surface={} frontier_pre_accept_progress_surface={} shipping_progress_surface={} frontier_plain_spirit={} frontier_pre_accept_plain_spirit={} shipping_plain_spirit={} frontier_non_tactical={} frontier_pre_accept_non_tactical={} shipping_non_tactical={} candidate_contains_shipping={} shortlist={:?} shortlist_roots={:?} legacy_candidate_selected={} legacy_full_pool_selected={} production_legacy_selected={} direct_legacy_alignment={:?}",
         label,
         exact_opportunity_context_probe(&game),
         frontier_move,
@@ -1563,6 +1666,53 @@ fn log_black_confirm_fast_runtime_seam_probe(
         format_root_probe(scored_roots.get(frontier_index)),
         format_root_probe(scored_roots.get(frontier_pre_accept_index)),
         format_root_probe(scored_roots.get(shipping_index)),
+        format!(
+            "win={} match_point={} floor={}",
+            frontier_snapshot.allows_immediate_opponent_win,
+            frontier_snapshot.opponent_reaches_match_point,
+            frontier_snapshot.worst_reply_score,
+        ),
+        format!(
+            "win={} match_point={} floor={}",
+            frontier_pre_accept_snapshot.allows_immediate_opponent_win,
+            frontier_pre_accept_snapshot.opponent_reaches_match_point,
+            frontier_pre_accept_snapshot.worst_reply_score,
+        ),
+        format!(
+            "win={} match_point={} floor={}",
+            shipping_snapshot.allows_immediate_opponent_win,
+            shipping_snapshot.opponent_reaches_match_point,
+            shipping_snapshot.worst_reply_score,
+        ),
+        format_turn_engine_utility_probe(frontier_utility),
+        format_turn_engine_utility_probe(frontier_pre_accept_utility),
+        format_turn_engine_utility_probe(shipping_utility),
+        shipping_beats_frontier,
+        frontier_beats_shipping,
+        projections.get(&frontier_index).map(|projection| {
+            format!(
+                "{:?}/{:?}/{}",
+                projection.plan.head_family,
+                projection.plan.goal_family,
+                format_turn_engine_utility_probe(projection.plan.utility),
+            )
+        }),
+        projections.get(&frontier_pre_accept_index).map(|projection| {
+            format!(
+                "{:?}/{:?}/{}",
+                projection.plan.head_family,
+                projection.plan.goal_family,
+                format_turn_engine_utility_probe(projection.plan.utility),
+            )
+        }),
+        projections.get(&shipping_index).map(|projection| {
+            format!(
+                "{:?}/{:?}/{}",
+                projection.plan.head_family,
+                projection.plan.goal_family,
+                format_turn_engine_utility_probe(projection.plan.utility),
+            )
+        }),
         MonsGameModel::turn_engine_root_evaluation_family(frontier),
         MonsGameModel::turn_engine_root_evaluation_family(frontier_pre_accept),
         MonsGameModel::turn_engine_root_evaluation_family(shipping),
@@ -1583,6 +1733,8 @@ fn log_black_confirm_fast_runtime_seam_probe(
         shortlist_roots,
         probe_legacy_selected,
         probe_legacy_full_pool_selected,
+        Input::fen_from_array(&production_legacy_selected),
+        direct_legacy_alignment,
     );
 }
 
@@ -1852,6 +2004,17 @@ fn black_confirm_fast_setup_split_probe() {
         "2 1 b 0 0 0 0 0 10 n05d0xn03xxmn01/n04a0xn02e0xn03/n05s0xn05/E0xn02xxmn03xxmn03/n05xxmn05/n05xxUn04xxQ/n05xxMn05/n03S0xn01Y0xxxMn04/n03y0xn04xxMn02/n03A0xn07/n05D1xn05",
         "l0,5;l1,5",
         "l2,5;l3,7;l2,8",
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect black normal confirm turn-six head split seam"]
+fn black_confirm_normal_turn_six_head_split_probe() {
+    log_black_confirm_fast_runtime_seam_probe(
+        "BLACK_CONFIRM_NORMAL_TURN_SIX_HEAD_SPLIT",
+        "0 1 b 0 0 0 0 0 6 n06a0xn03d0x/n06e0xn04/n01y0xn02s0xn06/n03xxmn07/n02xxmn02xxmn01xxmn03/E0xn09xxQ/n03xxMn02xxUn04/n03xxMxxMS0xY0xxxMn03/n05D0xn01xxMn03/n04A0xn06/n11",
+        "l2,4;l0,6;l1,7",
+        "l1,6;l2,6",
     );
 }
 
