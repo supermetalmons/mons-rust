@@ -4,6 +4,16 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## White Forward-Bridge Head Structure Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave first reran `smart_automove_pro_reliability_nonwin_trace_probe` on `SMART_AUTOMOVE_VARIANTS=forward_bridge_mana_rows` with `duel_filter=vs_shipping_fast`, `repeats=4`, and `games=3` to recover the live board on the current corpus.
+- The repeated white seam still reproduced cleanly: `l9,6;l7,4;l7,3` vs shipping `l9,6;l7,6;l7,7` appeared `3x` inside `10` Fast nonwins.
+- The follow-up structure probe then compared that board against the retained white turn-five head-reject controls.
+- The retained controls did not match. They are `window=1/deny=1` pure `ManaTempo` boards approved through `ApprovedReplyRiskGuard`, and frontier keeps shipping while rejecting a weaker head.
+- The repeated `forward_bridge` seam is different. It is a `window=0/deny=0` `SpiritImpact` board where shipping `l9,6;l7,6;l7,7` is advisor-approved through `ApprovedFamilyCompetition`, the shortlist stays full of spirit own-setup siblings, and frontier only loses later by accepting head `l9,6;l7,4;l7,3`.
+- Durable outcome: do not extend the retained white turn-five head-reject package into the repeated `forward_bridge` seam. Matching head labels were a false lead; the family, context, advisor path, and shortlist shape are different.
+
 ## White Forward-Bridge Search-Order Structure Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
