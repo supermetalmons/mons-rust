@@ -4,6 +4,18 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Promoted Retained Package And Residual Classification Wave
+
+- On `2026-04-23`, the retained package around `frontier_pro_v2_guarded` was refreshed and promoted as the only shipped Pro path.
+- The promoted package kept the narrow white and black repairs that survived retained and confirm gates: white turn-three no-action recovery, early-white engine-disabled wrapper fallback, nonnegative-deny and selected-rank search-only fallbacks, white turn-five head guards, white confirm ProV1 tiebreaks, black late safe-mana/setup advisor repairs, and the black turn-six guarded legacy mana override.
+- Release verification passed with public Pro still wired through `select_frontier_pro_v2_guarded_inputs`; experimentation stayed gated behind `#[cfg(test)]`.
+- The full canonical confirm loop passed with Pro `0.9688`, Normal `1.0000`, Fast `0.9688`, confidence `1.0000`, and average move times below `200ms`.
+- The remaining residuals were classified as no-go at the current selection layer:
+  - `black_recovery_branch` is only reopened by a scoped static-exact cost/reliability hypothesis; local legacy and shipping-mirror fallbacks were killed.
+  - The black Fast progress-vs-setup residue is explained by residual material/cooldown valuation; shortlist, advisor, and wrapper mirrors were killed.
+  - White search-order residue is not solved by root reachability, root rank, broad ProV1 reroute, wrapper config mirroring, or rerank-cap clamps; future work must separate unresolved siblings from retained vulnerable guards below the current shortlist/reply-risk surface.
+- Durable outcome: the live board was compressed back to one retained frontier, one baseline, one next-hypothesis slot, and explicit no-go notes. Detailed probe diaries remain in git history, not in the live operator flow.
+
 ## Reference Frontier Wave
 
 - Early retained turn-engine work established the shared infrastructure that later made guarded `ProV2` possible.

@@ -16995,7 +16995,7 @@ impl MonsGameModel {
             return None;
         }
 
-        let reply_limit = config.root_reply_risk_reply_limit.max(1).min(24);
+        let reply_limit = config.root_reply_risk_reply_limit.clamp(1, 24);
         let approved_snapshot =
             Self::root_reply_risk_snapshot(&approved.game, game.active_color, config, reply_limit);
         let legacy_snapshot =

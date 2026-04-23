@@ -10,7 +10,10 @@ Archived profiles, archived seams, and archived stages are not valid experiment 
 2. Treat `frontier_pro_v2_guarded` as both the shipped Pro path and the only retained frontier.
 3. Treat `shipping_pro_search` as the retained search-only baseline.
 4. Use `./scripts/run-automove-canonical-loop.sh` for the default loop.
-5. Clean logs and stamps before ending the session.
+5. Pick exactly one live hypothesis before editing runtime code.
+6. Probe first when the mechanism is unclear.
+7. Archive or kill the line before starting another.
+8. Clean logs and stamps before ending the session.
 
 ## Retained Surface
 
@@ -52,6 +55,16 @@ SMART_TRIAGE_SURFACE=opening_reply ./scripts/run-automove-experiment.sh pro-tria
 - `pro-reliability`: compare the frontier against `shipping_pro_search` in Pro, Normal, and Fast; pass only with `win_rate >= 0.90`, `confidence >= 0.99`, and frontier average move time `<= 700ms` in all three matchups.
 - `pro-reliability-confirm`: run only after the smaller retained duel gate earns the spend.
 
+## Iteration Lifecycle
+
+1. Read `AUTOMOVE_IDEAS.md` and select the single current hypothesis.
+2. If the mechanism is not already proven, run one targeted diagnostic before editing runtime code.
+3. Make the narrowest runtime or test-only change that can falsify the hypothesis.
+4. Run the canonical stages in order; stop immediately on a failed hard gate.
+5. If the line fails, discard runtime code and record the no-go in `docs/automove-archive.md` or `docs/automove-knowledge.md`.
+6. If the line passes, promote retained regression coverage before confirm.
+7. End by compressing `AUTOMOVE_IDEAS.md` back to current state plus one next hypothesis.
+
 ## Diagnostic Toolbox
 
 Use diagnostics only after the canonical loop shows what is still missing.
@@ -85,6 +98,13 @@ Standard cleanup:
 ./scripts/clean-experiment-artifacts.sh
 ```
 
+Full local cache cleanup after validation:
+
+```sh
+./scripts/clean-experiment-artifacts.sh --dry-run --all-target
+./scripts/clean-experiment-artifacts.sh --all-target
+```
+
 ## Session End
 
 1. Update `AUTOMOVE_IDEAS.md` with the current live state or next frontier.
@@ -92,3 +112,4 @@ Standard cleanup:
 3. Move retired wave detail into `docs/automove-archive.md`.
 4. Clean disposable artifacts once validation is complete.
 5. Leave exactly one clear next hypothesis, or explicitly record that there is no live challenger.
+6. Do not leave unarchived probe diaries or failed runtime branches in the live board.

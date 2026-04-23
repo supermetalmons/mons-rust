@@ -26,12 +26,14 @@ Quickstart:
 - `./scripts/run-automove-canonical-loop.sh --confirm frontier_pro_v2_guarded`
 - `./scripts/run-automove-experiment.sh <stage> frontier_pro_v2_guarded`
 - `./scripts/clean-experiment-artifacts.sh --dry-run`
+- `./scripts/clean-experiment-artifacts.sh --dry-run --all-target`
 
 Artifacts:
 
 - selected-profile logs: `target/experiment-runs/<profile>/`
 - workflow-only logs: `target/experiment-runs/misc/`
 - runtime-preflight stamps: `target/experiment-stamps/`
+- full local build/artifact cache: `target/` via `--all-target`
 
 ## Rules Tests
 

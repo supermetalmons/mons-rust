@@ -4,12 +4,14 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 usage: ./scripts/clean-experiment-artifacts.sh [--dry-run] [--logs-only|--stamps-only] [--candidate <id>]
+       ./scripts/clean-experiment-artifacts.sh [--dry-run] --all-target
 
 options:
   --dry-run            print removals without deleting anything
   --logs-only          remove experiment logs only
   --stamps-only        remove runtime-preflight stamps only
   --candidate <id>     remove artifacts for a single candidate
+  --all-target         remove the whole local target/ build and artifact cache
   -h, --help, help     show this help
 EOF
 }
@@ -35,6 +37,7 @@ remove_path() {
 dry_run=false
 clean_logs=true
 clean_stamps=true
+clean_all_target=false
 candidate=""
 found_any=false
 
@@ -65,6 +68,9 @@ while [ "$#" -gt 0 ]; do
       candidate="$2"
       shift
       ;;
+    --all-target)
+      clean_all_target=true
+      ;;
     -h|--help|help)
       usage
       exit 0
@@ -77,7 +83,20 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
-if [ -n "${candidate}" ]; then
+if [ "${clean_all_target}" = true ]; then
+  if [ -n "${candidate}" ]; then
+    echo "cannot combine --all-target with --candidate" >&2
+    exit 2
+  fi
+  if [ "${clean_logs}" = false ] || [ "${clean_stamps}" = false ]; then
+    echo "cannot combine --all-target with --logs-only or --stamps-only" >&2
+    exit 2
+  fi
+  remove_path ".DS_Store"
+  remove_path "src/.DS_Store"
+  remove_path "nohup.out"
+  remove_path "target"
+elif [ -n "${candidate}" ]; then
   safe_candidate="$(sanitize "${candidate}")"
   if [ "${clean_logs}" = true ]; then
     remove_path "target/experiment-runs/${safe_candidate}"
