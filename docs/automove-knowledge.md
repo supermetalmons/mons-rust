@@ -8,6 +8,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 
 - Shipping Pro routes through `frontier_pro_v2_guarded`.
 - `shipping_pro_search` is the retained search-only baseline.
+- Release wiring is intentionally narrower than the experiment surface: public `Pro` dispatch goes through `MonsGameModel::public_runtime_inputs` to `select_frontier_pro_v2_guarded_inputs`, while `automove_experiments` and experiment profile selectors are only included under `#[cfg(test)]`.
 - Probe paths are diagnostics only; they do not describe shipping behavior.
 - Promotion evidence comes from direct frontier-vs-baseline duels, not fixture churn alone.
 - `runtime-preflight` still matters after promotion: exact-lite is hard, stage-1 CPU is advisory for Pro.

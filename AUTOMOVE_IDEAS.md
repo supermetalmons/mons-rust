@@ -11,12 +11,15 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - The live experiment surface is Pro-only: 2 retained profiles and 5 canonical stages.
 - The default operator entrypoint is `./scripts/run-automove-canonical-loop.sh`.
 - There is no second live challenger today.
+- Release readiness was refreshed on `2026-04-23`: public Pro wiring still ships `frontier_pro_v2_guarded`, experimentation remains test-only, and the full canonical confirm loop passed without selection-behavior changes.
 - The latest diagnostic follow-up kept no runtime code: `black_recovery_branch` now has a narrower explanation too. The live search-eval path prefers the approved spirit root only with static exact evaluation off; enabling static exact flips the same root pair to shipping, while local scoring-context and attack-reach flags are inert.
 
 ## Latest Gate Snapshot
 
 - Date: `2026-04-23`
 - Shipping decision: public Pro remains on `frontier_pro_v2_guarded`.
+- Release verification: `cargo fmt --check`, host and wasm `cargo build --release --lib`, `git diff --check`, `cargo test --release --lib smart_automove_tactical_selected_profile -- --ignored --nocapture`, and `./scripts/run-automove-canonical-loop.sh --confirm frontier_pro_v2_guarded` passed. Confirm duel metrics were Pro `0.9688`, Normal `1.0000`, Fast `0.9688`, each with confidence `1.0000`, and frontier average move times stayed below `200ms`.
+- Release containment: public `Pro` dispatch still routes through `select_frontier_pro_v2_guarded_inputs`; `automove_experiments` remains under `#[cfg(test)]`, so diagnostic probes and experiment harness code are not production selection code. The retained experiment profile IDs and shipping-profile selector shim are also gated to `#[cfg(test)]` to keep them out of the wasm production build.
 - The current package is the promoted retained package:
   - It adds a white turn-three no-action recovery override so ProV2 can keep the safe `DrainerSafetyRecovery` root on the confirm board `l9,7;l8,7` vs shipping `l9,7;l10,8`.
   - The retained regression for that board now lives in `frontier_pro_v2_guarded_profile_prefers_shipping_white_confirm_pro_ply9_root`.

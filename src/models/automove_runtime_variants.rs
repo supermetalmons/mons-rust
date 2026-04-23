@@ -2,7 +2,9 @@
 
 use super::*;
 
+#[cfg(test)]
 pub(crate) const SHIPPING_PRO_SEARCH_PROFILE_ID: &str = "shipping_pro_search";
+#[cfg(test)]
 pub(crate) const FRONTIER_PRO_V2_GUARDED_PROFILE_ID: &str = "frontier_pro_v2_guarded";
 
 #[cfg(test)]
@@ -89,6 +91,7 @@ pub(crate) fn select_shipping_search_inputs(
     select_shipping_search_inputs_internal(game, config)
 }
 
+#[cfg(test)]
 pub(crate) fn select_shipping_pro_search_inputs(
     game: &MonsGame,
     config: AutomoveSearchConfig,
