@@ -70,6 +70,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - That means the live white residue is deeper than root-set reachability or rerank admissibility alone. The split is in rerank-engine profile semantics (`ProV1` shipping rerank vs `ProV2` frontier rerank), not in whether `l9,4;l8,5` is present or allowed on frontier.
 - `white_search_order_rerank_mode_probe` narrows that profile split one step further. Forcing only the frontier rerank engine mode from `ProV2` to `ProV1` already flips both white sibling boards to shipping `l9,4;l8,5`, while shipping still chooses `l9,4;l8,5` even when its rerank mode is forced to `ProV2`.
 - So the live seam is not “all ProV2 rerank semantics are bad” in general. It is specific to frontier's `ProV2` rerank behavior on those boards, which means a future runtime spend has to explain that profile-specific mismatch rather than just proving the shipping root is reachable.
+- `white_search_order_rerank_budget_probe` narrows that mismatch to frontier's rerank own-search breadth. On both white search-order siblings, swapping only frontier's rerank own caps (`own_seed_cap`, `own_beam`, `per_node_family_cap`, `step_cap`) to the shipping `ProV2` values already flips the best allowed-head plan to `l9,4;l8,5`, while swapping only reply caps or only expansion cap leaves frontier on `l9,4;l8,3`.
+- So the live white residue is not waiting on reply-search breadth or a larger expansion pool. The concrete frontier-side mismatch surface is rerank own-search breadth under `ProV2`.
 - If a rotated white confirm seam shows the incumbent quiet `ManaTempo` root ahead on both reply floor and selected override utility, it is not another shortlist-order or head-acceptance bug. Treat that as a root-scoring/model mismatch and do not paper over it with another advisor override.
 - Runtime cost is a real gate. A candidate that fixes live walls but pushes stage-1 CPU into the `1.5x+` range against `shipping_pro_search` is still non-promotable.
 - Wrapper-only reroutes, fallback widening, shortlist widening, and metadata-only advisor changes saturate quickly; the real frontier is shared approval and head logic.
@@ -101,6 +103,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `white_normal_ply11_search_only_split_probe`
 - `white_search_order_allowed_head_probe`
 - `white_search_order_rerank_mode_probe`
+- `white_search_order_rerank_budget_probe`
 
 ## Kill Rules
 

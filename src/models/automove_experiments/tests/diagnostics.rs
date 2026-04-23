@@ -1961,6 +1961,166 @@ fn white_search_order_rerank_mode_probe() {
     }
 }
 
+#[test]
+#[ignore = "diagnostic: isolate rerank budget structure on white search-order family"]
+fn white_search_order_rerank_budget_probe() {
+    struct ProbeCase {
+        label: &'static str,
+        board_fen: &'static str,
+    }
+
+    fn root_moves_for_config(
+        game: &MonsGame,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+    ) -> Vec<ScoredRootMove> {
+        let mut root_moves = MonsGameModel::ranked_root_moves(game, perspective, config);
+        if config.enable_turn_engine_root_injection {
+            MonsGameModel::inject_turn_engine_root_candidates(
+                game,
+                perspective,
+                config,
+                &mut root_moves,
+            );
+        }
+        root_moves
+    }
+
+    fn describe_plan(plan: Option<&TurnPlan>) -> Option<String> {
+        plan.map(|plan| {
+            format!(
+                "{}/{:?}/{:?}/{}",
+                Input::fen_from_array(plan.compiled_chunks.first().unwrap_or(&Vec::new())),
+                plan.head_family,
+                plan.goal_family,
+                format_turn_engine_utility_probe(plan.utility),
+            )
+        })
+    }
+
+    let cases = [
+        ProbeCase {
+            label: "white_ply9_search_ordering",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n05d0xn05/n05s0xa0xe0xn03/n03y0xn03xxmn03/n02xxmn01xxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn07/n04D0xS0xn01Y0xn03/n02E0xn01A0xn06",
+        },
+        ProbeCase {
+            label: "white_normal_ply11_search_ordering",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n06a0xn04/n03y0xn01d0xxxmn01e0xn02/n04s0xn06/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn02Y0xn04/n04D0xS0xn05/n03E0xA0xn06",
+        },
+    ];
+
+    for case in cases {
+        let game = MonsGame::from_fen(case.board_fen, false)
+            .unwrap_or_else(|| panic!("{}: valid board fen", case.label));
+        let perspective = game.active_color;
+        let shipping_config =
+            calibration_runtime_config("shipping_pro_search", &game, SmartAutomovePreference::Pro);
+        let frontier_config = calibration_runtime_config(
+            "frontier_pro_v2_guarded",
+            &game,
+            SmartAutomovePreference::Pro,
+        );
+        let frontier_heads = root_moves_for_config(&game, perspective, frontier_config)
+            .into_iter()
+            .map(|candidate| candidate.inputs)
+            .collect::<Vec<_>>();
+        let frontier_base = calibration_turn_engine_rerank_config(frontier_config);
+        let shipping_pro_v2 =
+            calibration_turn_engine_rerank_config_with_mode(shipping_config, TurnEngineMode::ProV2);
+        let mut frontier_own_caps = frontier_base;
+        frontier_own_caps.own_seed_cap = shipping_pro_v2.own_seed_cap;
+        frontier_own_caps.own_beam = shipping_pro_v2.own_beam;
+        frontier_own_caps.per_node_family_cap = shipping_pro_v2.per_node_family_cap;
+        frontier_own_caps.step_cap = shipping_pro_v2.step_cap;
+        let mut frontier_reply_caps = frontier_base;
+        frontier_reply_caps.opponent_seed_cap = shipping_pro_v2.opponent_seed_cap;
+        frontier_reply_caps.opponent_beam = shipping_pro_v2.opponent_beam;
+        frontier_reply_caps.reply_seed_cap = shipping_pro_v2.reply_seed_cap;
+        frontier_reply_caps.reply_beam = shipping_pro_v2.reply_beam;
+        let mut frontier_expansion_cap = frontier_base;
+        frontier_expansion_cap.expansion_cap = shipping_pro_v2.expansion_cap;
+        let mut frontier_all_shipping_caps = frontier_base;
+        frontier_all_shipping_caps.own_seed_cap = shipping_pro_v2.own_seed_cap;
+        frontier_all_shipping_caps.own_beam = shipping_pro_v2.own_beam;
+        frontier_all_shipping_caps.per_node_family_cap = shipping_pro_v2.per_node_family_cap;
+        frontier_all_shipping_caps.step_cap = shipping_pro_v2.step_cap;
+        frontier_all_shipping_caps.opponent_seed_cap = shipping_pro_v2.opponent_seed_cap;
+        frontier_all_shipping_caps.opponent_beam = shipping_pro_v2.opponent_beam;
+        frontier_all_shipping_caps.reply_seed_cap = shipping_pro_v2.reply_seed_cap;
+        frontier_all_shipping_caps.reply_beam = shipping_pro_v2.reply_beam;
+        frontier_all_shipping_caps.expansion_cap = shipping_pro_v2.expansion_cap;
+
+        let frontier_plan = turn_engine_candidate_plan_from_allowed_heads(
+            &game,
+            perspective,
+            frontier_base,
+            frontier_heads.as_slice(),
+        );
+        let own_caps_plan = turn_engine_candidate_plan_from_allowed_heads(
+            &game,
+            perspective,
+            frontier_own_caps,
+            frontier_heads.as_slice(),
+        );
+        let reply_caps_plan = turn_engine_candidate_plan_from_allowed_heads(
+            &game,
+            perspective,
+            frontier_reply_caps,
+            frontier_heads.as_slice(),
+        );
+        let expansion_cap_plan = turn_engine_candidate_plan_from_allowed_heads(
+            &game,
+            perspective,
+            frontier_expansion_cap,
+            frontier_heads.as_slice(),
+        );
+        let all_caps_plan = turn_engine_candidate_plan_from_allowed_heads(
+            &game,
+            perspective,
+            frontier_all_shipping_caps,
+            frontier_heads.as_slice(),
+        );
+        let shipping_pro_v2_plan = turn_engine_candidate_plan_from_allowed_heads(
+            &game,
+            perspective,
+            shipping_pro_v2,
+            frontier_heads.as_slice(),
+        );
+
+        println!(
+            "WHITE_RERANK_BUDGET label={} context={} frontier_base={:?} frontier_own_caps={:?} frontier_reply_caps={:?} frontier_expansion_cap={:?} frontier_all_shipping_caps={:?} shipping_pro_v2={:?} caps(frontier={{own:{}:{}:{}:{}, reply:{}:{}:{}:{}, expansion:{}}}, shipping={{own:{}:{}:{}:{}, reply:{}:{}:{}:{}, expansion:{}}})",
+            case.label,
+            exact_opportunity_context_probe(&game),
+            describe_plan(frontier_plan.as_ref()),
+            describe_plan(own_caps_plan.as_ref()),
+            describe_plan(reply_caps_plan.as_ref()),
+            describe_plan(expansion_cap_plan.as_ref()),
+            describe_plan(all_caps_plan.as_ref()),
+            describe_plan(shipping_pro_v2_plan.as_ref()),
+            frontier_base.own_seed_cap,
+            frontier_base.own_beam,
+            frontier_base.per_node_family_cap,
+            frontier_base.step_cap,
+            frontier_base.opponent_seed_cap,
+            frontier_base.opponent_beam,
+            frontier_base.reply_seed_cap,
+            frontier_base.reply_beam,
+            frontier_base.expansion_cap,
+            shipping_pro_v2.own_seed_cap,
+            shipping_pro_v2.own_beam,
+            shipping_pro_v2.per_node_family_cap,
+            shipping_pro_v2.step_cap,
+            shipping_pro_v2.opponent_seed_cap,
+            shipping_pro_v2.opponent_beam,
+            shipping_pro_v2.reply_seed_cap,
+            shipping_pro_v2.reply_beam,
+            shipping_pro_v2.expansion_cap,
+        );
+    }
+}
+
 fn log_white_search_order_split_probe(probe_label: &'static str, board_fen: &'static str) {
     let game = MonsGame::from_fen(board_fen, false)
         .unwrap_or_else(|| panic!("valid white search-order split fen for {probe_label}"));
