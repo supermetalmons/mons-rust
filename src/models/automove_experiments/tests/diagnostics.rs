@@ -2595,6 +2595,124 @@ fn log_white_search_order_split_probe(probe_label: &'static str, board_fen: &'st
 }
 
 #[test]
+#[ignore = "diagnostic: inspect frontier shortlist gating on white search-order family"]
+fn white_search_order_shortlist_gate_probe() {
+    struct ProbeCase {
+        label: &'static str,
+        board_fen: &'static str,
+    }
+
+    let cases = [
+        ProbeCase {
+            label: "white_fast_ply9_search_ordering",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n05d0xn05/n05s0xa0xe0xn03/n03y0xn03xxmn03/n02xxmn01xxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn07/n04D0xS0xn01Y0xn03/n02E0xn01A0xn06",
+        },
+        ProbeCase {
+            label: "white_normal_ply11_search_ordering",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n06a0xn04/n03y0xn01d0xxxmn01e0xn02/n04s0xn06/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn02Y0xn04/n04D0xS0xn05/n03E0xA0xn06",
+        },
+    ];
+
+    for case in cases {
+        let game = MonsGame::from_fen(case.board_fen, false)
+            .unwrap_or_else(|| panic!("{}: valid board fen", case.label));
+        let perspective = game.active_color;
+        let frontier_probe = runtime_decision_probe(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let shipping_probe =
+            runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+        let (config, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let candidate_indices = MonsGameModel::filtered_root_candidate_indices(
+            &game,
+            scored_roots.as_slice(),
+            perspective,
+            config,
+        );
+        let shortlist = MonsGameModel::reply_risk_guard_shortlist_indices(
+            scored_roots.as_slice(),
+            candidate_indices.as_slice(),
+            config,
+        );
+        let shipping_index = scored_roots
+            .iter()
+            .position(|root| Input::fen_from_array(&root.inputs) == shipping_probe.selected_input_fen)
+            .expect("shipping root should exist");
+        let best_candidate_score = candidate_indices
+            .iter()
+            .map(|index| scored_roots[*index].score)
+            .max()
+            .unwrap_or(i32::MIN);
+        let shipping_score = scored_roots[shipping_index].score;
+        let shipping_in_candidates = candidate_indices.contains(&shipping_index);
+        let shipping_in_shortlist = shortlist.contains(&shipping_index);
+        let shipping_passes_margin =
+            shipping_score.saturating_add(config.root_reply_risk_score_margin.max(0))
+                >= best_candidate_score;
+        let safe_progress_extension = MonsGameModel::pro_v2_safe_progress_sibling_shortlist_extension(
+            scored_roots.as_slice(),
+            candidate_indices.as_slice(),
+            shortlist.as_slice(),
+            config,
+        );
+        let shortlist_anchor = shortlist.first().copied();
+        let shipping_same_progress_as_anchor = shortlist_anchor.is_some_and(|anchor_index| {
+            MonsGameModel::is_same_non_tactical_progress_lane_root_pair(
+                &scored_roots[shipping_index],
+                &scored_roots[anchor_index],
+            )
+        });
+
+        println!(
+            "WHITE_SEARCH_ORDER_SHORTLIST_GATE label={} context={} frontier_stage={} shipping_stage={} frontier_selected={} shipping_selected={} shipping_in_candidates={} shipping_in_shortlist={} shipping_passes_margin={} shipping_score_gap={} shortlist_extension={:?} shipping_same_progress_as_anchor={} margin={} shortlist_max={} candidate_fens={:?} shortlist_details={:?} shipping_root={} anchor_root={} shipping_root_detail={} extension_root_detail={}",
+            case.label,
+            exact_opportunity_context_probe(&game),
+            frontier_probe.selector_last_stage,
+            shipping_probe.selector_last_stage,
+            frontier_probe.selected_input_fen,
+            shipping_probe.selected_input_fen,
+            shipping_in_candidates,
+            shipping_in_shortlist,
+            shipping_passes_margin,
+            best_candidate_score.saturating_sub(shipping_score),
+            safe_progress_extension
+                .map(|index| Input::fen_from_array(&scored_roots[index].inputs)),
+            shipping_same_progress_as_anchor,
+            config.root_reply_risk_score_margin.max(0),
+            config.root_reply_risk_shortlist_max.max(1),
+            candidate_indices
+                .iter()
+                .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+                .collect::<Vec<_>>(),
+            shortlist
+                .iter()
+                .map(|index| {
+                    format!(
+                        "{}:{}",
+                        Input::fen_from_array(&scored_roots[*index].inputs),
+                        format_root_probe(Some(&scored_roots[*index]))
+                    )
+                })
+                .collect::<Vec<_>>(),
+            Input::fen_from_array(&scored_roots[shipping_index].inputs),
+            shortlist_anchor
+                .map(|index| Input::fen_from_array(&scored_roots[index].inputs))
+                .unwrap_or_else(|| "none".to_string()),
+            format_root_probe(Some(&scored_roots[shipping_index])),
+            format_root_probe(safe_progress_extension.and_then(|index| scored_roots.get(index))),
+        );
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: inspect white fast ply9 search-only split"]
 fn white_fast_ply9_search_only_split_probe() {
     log_white_search_order_split_probe(

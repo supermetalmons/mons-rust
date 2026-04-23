@@ -79,6 +79,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - A narrower runtime attempt still failed before the canonical loop. Clamping frontier `ProV2` rerank `step_cap` to `1` only on the exact white `turn=3 / mons_moves=1 / no-action / mana-only / window=1 / deny=1 / drainer_safety<0` board class did not move the live runtime decision on either white sibling.
 - On that local slice, frontier still returned through `engine_post_search`, the accepted head stayed `l9,4;l8,3`, and the approved shortlist stayed a singleton on the same root.
 - So the remaining white residue is not waiting on `turn_engine_rerank_config` alone. Any future white spend has to move shortlist/approved-root behavior, not just board-local rerank caps.
+- `white_search_order_shortlist_gate_probe` narrows that approval-path read again. On both white siblings, shipping `l9,4;l8,5` already survives frontier candidate focus and appears in `candidate_indices`.
+- It still dies at shortlist construction. The approved shortlist stays a singleton on vulnerable `l9,4;l8,3` because the score gap to shipping is still about `809k`, far beyond the `165` shortlist margin, and the existing safe-progress sibling shortlist extension does not fire.
+- So the remaining white residue is not waiting on candidate focus or the current safe-progress extension path either. Any future white spend has to explain a brand-new shortlist/approved-root reentry theory, or a deeper root-scoring normalization, rather than another rerank-cap or simple shortlist tweak.
 - If a rotated white confirm seam shows the incumbent quiet `ManaTempo` root ahead on both reply floor and selected override utility, it is not another shortlist-order or head-acceptance bug. Treat that as a root-scoring/model mismatch and do not paper over it with another advisor override.
 - Runtime cost is a real gate. A candidate that fixes live walls but pushes stage-1 CPU into the `1.5x+` range against `shipping_pro_search` is still non-promotable.
 - Wrapper-only reroutes, fallback widening, shortlist widening, and metadata-only advisor changes saturate quickly; the real frontier is shared approval and head logic.
@@ -113,6 +116,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `white_search_order_rerank_budget_probe`
 - `white_search_order_rerank_own_cap_probe`
 - `white_search_order_seed_step_scope_probe`
+- `white_search_order_shortlist_gate_probe`
 
 ## Kill Rules
 
