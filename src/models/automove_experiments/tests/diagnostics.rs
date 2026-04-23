@@ -2572,6 +2572,336 @@ fn black_progress_competition_predicate_scope_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: quantify black progress-vs-setup shortlist economics"]
+fn black_progress_setup_shortlist_economics_probe() {
+    #[derive(Clone, Copy)]
+    struct EconomicsCase {
+        label: &'static str,
+        board_fen: &'static str,
+        frontier_root: &'static str,
+        shipping_root: &'static str,
+        reference_setup_roots: &'static [&'static str],
+    }
+
+    fn root_fens(scored_roots: &[RootEvaluation], indices: &[usize]) -> Vec<String> {
+        indices
+            .iter()
+            .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+            .collect()
+    }
+
+    fn root_index(scored_roots: &[RootEvaluation], root_fen: &str) -> Option<usize> {
+        scored_roots
+            .iter()
+            .position(|root| Input::fen_from_array(&root.inputs) == root_fen)
+    }
+
+    fn push_unique(indices: &mut Vec<usize>, index: Option<usize>) {
+        if let Some(index) = index {
+            if !indices.contains(&index) {
+                indices.push(index);
+            }
+        }
+    }
+
+    fn root_economics(
+        game: &MonsGame,
+        scored_roots: &[RootEvaluation],
+        index: usize,
+        candidate_indices: &[usize],
+        shortlist: &[usize],
+        perspective: Color,
+        config: AutomoveSearchConfig,
+        best_score: i32,
+        best_rank: usize,
+    ) -> String {
+        let root = &scored_roots[index];
+        let family = MonsGameModel::turn_engine_root_evaluation_family(root);
+        let utility = MonsGameModel::turn_engine_selected_override_utility(
+            game,
+            root,
+            perspective,
+            config,
+            family,
+        );
+        let reply_limit = config.root_reply_risk_reply_limit.max(1).min(24);
+        let snapshot =
+            MonsGameModel::root_reply_risk_snapshot(&root.game, perspective, config, reply_limit);
+        let followup =
+            MonsGameModel::pro_v2_spirit_followup_floor_score(&root.game, perspective, config);
+
+        format!(
+            "{} => score_gap={} rank={} rank_gap={} family={:?} in_candidate={} in_shortlist={} utility={:?} worst_reply={} match_point={} immediate_win={} followup={} setup_gain={} super_steps={} opp_steps={} {}",
+            Input::fen_from_array(&root.inputs),
+            best_score.saturating_sub(root.score),
+            root.root_rank,
+            root.root_rank.abs_diff(best_rank),
+            family,
+            candidate_indices.contains(&index),
+            shortlist.contains(&index),
+            utility,
+            snapshot.worst_reply_score,
+            snapshot.opponent_reaches_match_point,
+            snapshot.allows_immediate_opponent_win,
+            followup,
+            root.spirit_setup_gain,
+            root.safe_supermana_progress_steps,
+            root.safe_opponent_mana_progress_steps,
+            format_root_probe(Some(root)),
+        )
+    }
+
+    fn margin_sweep(
+        game: &MonsGame,
+        scored_roots: &[RootEvaluation],
+        perspective: Color,
+        config: AutomoveSearchConfig,
+        target_margins: &[i32],
+    ) -> Vec<String> {
+        let mut margins = target_margins.to_vec();
+        margins.extend([
+            config.root_reply_risk_score_margin,
+            256,
+            384,
+            512,
+            768,
+            1024,
+        ]);
+        margins.sort();
+        margins.dedup();
+
+        margins
+            .into_iter()
+            .map(|margin| {
+                let mut margin_config = config;
+                margin_config.root_reply_risk_score_margin = margin;
+                let candidate_indices = MonsGameModel::filtered_root_candidate_indices(
+                    game,
+                    scored_roots,
+                    perspective,
+                    margin_config,
+                );
+                let shortlist = MonsGameModel::reply_risk_guard_shortlist_indices(
+                    scored_roots,
+                    candidate_indices.as_slice(),
+                    margin_config,
+                );
+                let guard_pick = MonsGameModel::pick_root_move_with_reply_risk_guard(
+                    game,
+                    scored_roots,
+                    candidate_indices.as_slice(),
+                    perspective,
+                    margin_config,
+                )
+                .map(|index| Input::fen_from_array(&scored_roots[index].inputs))
+                .unwrap_or_else(|| "none".to_string());
+                let advisor_pick = MonsGameModel::pro_v2_root_advisor_select_root(
+                    game,
+                    scored_roots,
+                    perspective,
+                    margin_config,
+                );
+
+                format!(
+                    "margin={} shortlist={:?} guard_pick={} advisor_pick={}",
+                    margin,
+                    root_fens(scored_roots, shortlist.as_slice()),
+                    guard_pick,
+                    Input::fen_from_array(&advisor_pick),
+                )
+            })
+            .collect()
+    }
+
+    fn surface_for_case(case: EconomicsCase) -> String {
+        let game = MonsGame::from_fen(case.board_fen, false)
+            .unwrap_or_else(|| panic!("{} should have a valid fen", case.label));
+        let perspective = game.active_color;
+        let frontier_probe = runtime_decision_probe(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let frontier_advisor = pro_v2_root_advisor_decision_snapshot();
+        let shipping_probe =
+            runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+        let (config, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let candidate_indices = MonsGameModel::filtered_root_candidate_indices(
+            &game,
+            scored_roots.as_slice(),
+            perspective,
+            config,
+        );
+        let shortlist = MonsGameModel::reply_risk_guard_shortlist_indices(
+            scored_roots.as_slice(),
+            candidate_indices.as_slice(),
+            config,
+        );
+        let best_score = candidate_indices
+            .iter()
+            .map(|index| scored_roots[*index].score)
+            .max()
+            .unwrap_or(i32::MIN);
+        let best_rank = candidate_indices
+            .iter()
+            .map(|index| scored_roots[*index].root_rank)
+            .min()
+            .unwrap_or(usize::MAX);
+        let safe_progress_indices = candidate_indices
+            .iter()
+            .copied()
+            .filter(|index| {
+                let root = &scored_roots[*index];
+                !MonsGameModel::turn_engine_root_evaluation_is_unsafe(root)
+                    && MonsGameModel::turn_engine_root_evaluation_has_progress_surface(root)
+                    && !root.spirit_development
+                    && !root.spirit_same_turn_score_setup_now
+                    && !root.spirit_own_mana_setup_now
+            })
+            .collect::<Vec<_>>();
+        let setup_progress_indices = candidate_indices
+            .iter()
+            .copied()
+            .filter(|index| {
+                let root = &scored_roots[*index];
+                MonsGameModel::turn_engine_root_evaluation_family(root)
+                    == TurnPlanFamily::SpiritImpact
+                    && root.spirit_own_mana_setup_now
+                    && !root.spirit_same_turn_score_setup_now
+                    && MonsGameModel::turn_engine_root_evaluation_has_progress_surface(root)
+                    && !MonsGameModel::turn_engine_root_evaluation_is_unsafe(root)
+            })
+            .collect::<Vec<_>>();
+        let frontier_index = root_index(scored_roots.as_slice(), case.frontier_root);
+        let shipping_index = root_index(scored_roots.as_slice(), case.shipping_root);
+        let mut detail_indices = Vec::new();
+        push_unique(&mut detail_indices, frontier_index);
+        push_unique(&mut detail_indices, shipping_index);
+        for root_fen in case.reference_setup_roots {
+            push_unique(
+                &mut detail_indices,
+                root_index(scored_roots.as_slice(), root_fen),
+            );
+        }
+        for index in safe_progress_indices.iter().copied() {
+            push_unique(&mut detail_indices, Some(index));
+        }
+        for index in setup_progress_indices.iter().copied().take(8) {
+            push_unique(&mut detail_indices, Some(index));
+        }
+        detail_indices.sort_by(|left, right| {
+            MonsGameModel::compare_ranked_scored_root_indices(
+                scored_roots.as_slice(),
+                *left,
+                *right,
+            )
+        });
+
+        let mut target_margins = Vec::new();
+        for index in detail_indices.iter().copied() {
+            target_margins.push(best_score.saturating_sub(scored_roots[index].score));
+        }
+
+        format!(
+            "label={} context={} frontier_selected={} shipping_selected={} margin={} shortlist_max={} candidate_count={} shortlist={:?} best_score={} best_rank={} frontier_root={} shipping_root={} root_details={:?} margin_sweep={:?} advisor={:?}",
+            case.label,
+            exact_opportunity_context_probe(&game),
+            frontier_probe.selected_input_fen,
+            shipping_probe.selected_input_fen,
+            config.root_reply_risk_score_margin,
+            config.root_reply_risk_shortlist_max,
+            candidate_indices.len(),
+            root_fens(scored_roots.as_slice(), shortlist.as_slice()),
+            best_score,
+            best_rank,
+            frontier_index
+                .map(|index| root_economics(
+                    &game,
+                    scored_roots.as_slice(),
+                    index,
+                    candidate_indices.as_slice(),
+                    shortlist.as_slice(),
+                    perspective,
+                    config,
+                    best_score,
+                    best_rank,
+                ))
+                .unwrap_or_else(|| "missing".to_string()),
+            shipping_index
+                .map(|index| root_economics(
+                    &game,
+                    scored_roots.as_slice(),
+                    index,
+                    candidate_indices.as_slice(),
+                    shortlist.as_slice(),
+                    perspective,
+                    config,
+                    best_score,
+                    best_rank,
+                ))
+                .unwrap_or_else(|| "missing".to_string()),
+            detail_indices
+                .iter()
+                .map(|index| root_economics(
+                    &game,
+                    scored_roots.as_slice(),
+                    *index,
+                    candidate_indices.as_slice(),
+                    shortlist.as_slice(),
+                    perspective,
+                    config,
+                    best_score,
+                    best_rank,
+                ))
+                .collect::<Vec<_>>(),
+            margin_sweep(
+                &game,
+                scored_roots.as_slice(),
+                perspective,
+                config,
+                target_margins.as_slice(),
+            ),
+            frontier_advisor,
+        )
+    }
+
+    let cases = [
+        EconomicsCase {
+            label: "black_progress_vs_setup_residue",
+            board_fen: "1 0 b 0 0 0 0 0 6 n05d0xn05/n05s0xa0xe0xn03/n02xxmn04xxmn03/n07xxmn03/n03xxmn01xxmn05/n05xxUn04xxQ/n05xxMn05/n01y0xn01S0xE0xn01xxMxxMn03/n01xxMn09/n03A0xn03Y0xn03/n05D1xn05",
+            frontier_root: "l7,1;l9,3",
+            shipping_root: "l1,5;l2,7;l1,8",
+            reference_setup_roots: &["l1,5;l3,7;l2,8", "l1,5;l2,7;l2,8"],
+        },
+        EconomicsCase {
+            label: "black_late_setup_reply_risk",
+            board_fen: "1 1 b 0 0 0 0 0 8 d0xn10/n05s0xa0xe0xxxmn02/n11/n07xxmn03/n03xxmn02xxmn04/n10xxQ/n02y0xn01D0UxxMn01xxMn03/n02xxMS0xn01A0xxxMn04/n06Y0xn04/n03E0xn07/n11",
+            frontier_root: "l1,5;l3,7;l2,8",
+            shipping_root: "l1,5;l3,7;l2,8",
+            reference_setup_roots: &[],
+        },
+        EconomicsCase {
+            label: "black_confirm_fast_setup",
+            board_fen: "2 1 b 0 0 0 0 0 10 n05d0xn03xxmn01/n04a0xn02e0xn03/n05s0xn05/E0xn02xxmn03xxmn03/n05xxmn05/n05xxUn04xxQ/n05xxMn05/n03S0xn01Y0xxxMn04/n03y0xn04xxMn02/n03A0xn07/n05D1xn05",
+            frontier_root: "l2,5;l3,7;l2,8",
+            shipping_root: "l2,5;l3,7;l2,8",
+            reference_setup_roots: &["l0,5;l1,5", "l2,5;l3,3;l2,2"],
+        },
+    ];
+
+    for case in cases {
+        println!(
+            "BLACK_PROGRESS_SETUP_SHORTLIST_ECONOMICS {}",
+            surface_for_case(case)
+        );
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: inspect remaining late black confirm fast setup seam"]
 fn black_confirm_fast_setup_split_probe() {
     log_black_confirm_fast_runtime_seam_probe(
