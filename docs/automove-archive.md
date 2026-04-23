@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Late Black Shipping-Fallback Expansion Wave
+
+- No runtime challenger survived this wave. The local candidate extended `select_late_black_search_fallback_inputs` into late weak-window black turn-start and mana-only states.
+- The line did fix the traced sampled black boards directly. The turn-eight weak-window Normal board aligned to shipping mana `l2,6;l3,7`, and the turn-ten weak-window Fast board aligned to shipping recovery `l1,6;l0,5`.
+- That still was not promotable. The canonical loop cleared `guardrails`, `variant-smoke`, `pro-triage`, and `runtime-preflight`, then sampled `pro-reliability` failed at Pro `1.0000`, Normal `0.9167`, Fast `0.7500`; confidence `0.9998 / 0.9968 / 0.9270`; frontier average move times stayed below `200ms`.
+- The sampled failure rotated instead of shrinking. `alternating_mana_rows` recovered, but Fast residue moved to `classic`, `corner_chain_mana_rows`, and `forward_bridge_mana_rows`, while Normal `outer_edge_mana_rows` still failed at `0.5000`.
+- Durable outcome: do not reopen a broad late-black shipping-fallback expansion just because it fixes the currently traced black sampled boards. Keep the lesson, discard the runtime code and temporary retained boards.
+
 ## Sampled-Pass Late-Ply Override Wave
 
 - No runtime challenger survived this wave. The local candidate paired a white late spirit-setup branch-head reject with black weak-window mana-lane advisor overrides and a weak-window carve-out in black followup competition.

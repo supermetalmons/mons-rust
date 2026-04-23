@@ -29,6 +29,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow, `AUTOMOVE_IDEAS.md` for th
 - Do not promote a live `first_diff_ply` board into retained until the retained replay reproduces the same final shipping-selected root; copied late-ply snapshots can collapse back to frontier on clean replay.
 - Runtime cost is a real gate. A candidate that wins local seams while drifting further into the `1.5x+` advisory band is not an upgrade.
 - Wrapper-only reroutes, fallback widening, shortlist widening, and metadata-only advisor changes saturate quickly; durable progress usually needs shared approval, head, or scoring logic.
+- Extending a retained shipping-fallback path to a wider black weak-window surface is not automatically safer than advisor surgery; one direct late-black shipping-fallback expansion fixed the traced sampled boards and still rotated the sampled gate down to Fast `0.7500`.
 
 ## Retained Package Lessons
 
@@ -69,6 +70,7 @@ cargo test --release --lib <test_name> -- --ignored --nocapture
 - Kill any line that fails sampled-variant reliability unless the failure exposes a clearly scoped harness issue.
 - Kill any line that passes Classic fixtures but fails all-variant confirmation.
 - Kill any sampled-pass line that only moved through stacked narrow late-ply head/advisor overrides and then broadens all-variant nonwins; the direct white late spirit-setup head block plus black weak-window mana-lane package did exactly that.
+- Kill any late black shipping-fallback expansion that only fixes the traced sampled black boards and rotates Fast losses elsewhere; the direct weak-window extension did exactly that.
 - Kill any line that stays inert at `target_changed=0 off_target_changed=0` against active `frontier_pro_v2_guarded`.
 - Kill any line that only changes advisor labels or `pre_accept` metadata while the final selected root stays unchanged.
 - Kill any line that widens shortlist or injection coverage without moving the approved root on the live walls.

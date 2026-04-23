@@ -19,6 +19,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - Fast `alternating_mana_rows`
   - Fast `forward_bridge_mana_rows`
 - This iteration killed a sampled-pass late-ply override line. Narrow white late spirit-setup head blocking plus black weak-window mana-lane overrides cleared sampled `pro-reliability`, then failed all-variant `pro-reliability-confirm` hard enough that the runtime code and temporary retained boards were discarded.
+- This iteration also killed a late black shipping-fallback expansion. Extending the retained `late_black_shipping_fallback` variant path fixed the two traced sampled black boards, then still failed sampled `pro-reliability` by rotating Fast losses into `classic`, `corner_chain_mana_rows`, and `forward_bridge_mana_rows`. The runtime code and temporary retained boards were discarded.
 
 ## Latest Gate Snapshot
 
@@ -29,6 +30,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Release containment: public `Pro` dispatch still routes through `select_frontier_pro_v2_guarded_inputs`; `automove_experiments` remains under `#[cfg(test)]`, so diagnostics and experiment harness code are not production selection code.
 - Latest sampled `pro-reliability` gate for the kept local package still failed promotion: Pro `1.0000`, Normal `0.9167`, Fast `0.8333`; confidence `0.9998 / 0.9968 / 0.9807`; frontier average move times `151.76ms / 190.31ms / 170.39ms`.
 - This iteration also killed a sampled-pass late-ply override package. The local candidate stacked a white late spirit-setup branch-head reject with black weak-window mana-lane advisor exceptions, passed sampled `pro-reliability` at Pro `1.0000`, Normal `0.9167`, Fast `0.9167`, then failed all-variant `pro-reliability-confirm` at Pro `0.6667`, Normal `0.7292`, Fast `0.6667`; frontier average move times stayed below `200ms`, so the failure was strength, not cost. The runtime code was discarded.
+- This iteration also killed a late black shipping-fallback expansion. The local candidate extended `select_late_black_search_fallback_inputs` into late weak-window black turn-start and mana-only states, fixed the traced sampled black Normal/Fast boards, then still failed sampled `pro-reliability`: Pro `1.0000`, Normal `0.9167`, Fast `0.7500`; confidence `0.9998 / 0.9968 / 0.9270`; frontier average move times `153.01ms / 194.05ms / 174.84ms`. The runtime code was discarded.
 - This iteration killed the `black_recovery_branch` static-exact spend. A reply-floor-only exact cut passed `guardrails`, `variant-smoke`, `pro-triage`, and `runtime-preflight`, then failed sampled `pro-reliability` at Pro `0.5000`, Normal `0.5000`, Fast `0.9167`; average move times stayed under `200ms`. The runtime code was discarded.
 - This iteration also killed black progress material/cooldown-only scoring. Zeroing `fainted_mon` and `fainted_cooldown_step` only on the scoped black turn-six window/deny state shrank the target residual delta from `843/778` to `83/18` and preserved the turn-ten setup-control board, but final selection still stayed on `l7,1;l9,3`.
 - Follow-up selector-layer probe for black progress retained only diagnostic code. Under the material-dampened replay, frontier still selected `l7,1;l9,3` through `frontier_execute` / `engine_post_search`, with advisor approval `l7,1;l9,3:SafeSupermanaProgress:ApprovedReplyRiskGuard:rank0`; shipping setup `l1,5;l2,7;l1,8` was already present in the reply-risk shortlist at rank `10`.
@@ -44,6 +46,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - For white search-order residue, do not retry wrapper config mirroring, broad `ProV1` reroutes, root-rank gates, or simple shortlist widening. Reopen only with a mechanism that separates unresolved siblings from the retained vulnerable guard below the current shortlist/reply-risk surface.
 - For the current late-ply sampled residue, do not promote copied `first_diff_ply` boards into retained until the clean retained replay reproduces the same final shipping-selected root.
 - Do not reopen the sampled-pass late white head-block plus black weak-window mana-lane override package; it overfit sampled late-ply seams and collapsed in all-variant confirm.
+- Do not reopen a broad late black shipping-fallback expansion. The direct weak-window extension fixed the traced black sampled boards and still rotated Fast losses instead of promoting the sampled gate.
 
 ## Active No-Go Notes
 
