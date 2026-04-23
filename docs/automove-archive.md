@@ -4,6 +4,13 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Black Progress Selector-Layer Probe
+
+- No runtime challenger was cut in this wave. The retained change is diagnostic-only: `black_progress_residual_weight_attribution_probe` now also replays the target under material-dampened weights and reports the advisor/selector layer.
+- The replay kept selecting frontier safe progress `l7,1;l9,3` through `frontier_execute` / `engine_post_search` even with `fainted_mon` and `fainted_cooldown_step` zeroed. The advisor approved that same root as `SafeSupermanaProgress:ApprovedReplyRiskGuard:rank0`.
+- The shipping setup root `l1,5;l2,7;l1,8` was not missing; it appeared in the reply-risk shortlist at rank `10`.
+- Durable outcome: after the material/cooldown gap is removed, this residue is an advisor reply-risk approval problem, not a final-selector mystery. Do not spend on final-selector-only or material-only changes; any future spend must prove why the reply-risk guard should prefer the setup root while preserving retained setup-control boards.
+
 ## Black Progress Material Dampening Wave
 
 - No runtime challenger survived this wave. The target was the black Fast progress-vs-setup residue where frontier keeps safe progress `l7,1;l9,3` and shipping chooses the setup root `l1,5;l2,7;l1,8`.

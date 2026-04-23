@@ -800,7 +800,7 @@ fn black_recovery_branch_reply_floor_attribution_probe() {
 }
 
 #[test]
-#[ignore = "diagnostic: attribute black progress-vs-setup residual board-state scoring"]
+#[ignore = "diagnostic: attribute black progress-vs-setup residual board-state scoring and selector outcome"]
 fn black_progress_residual_weight_attribution_probe() {
     use crate::models::scoring::{evaluate_preferability_breakdown_with_weights, ScoringWeights};
 
@@ -1112,6 +1112,79 @@ fn black_progress_residual_weight_attribution_probe() {
         )
     }
 
+    fn material_dampened_selection_probe(game: &MonsGame) -> String {
+        static MATERIAL_DAMPENED_WEIGHTS: std::sync::OnceLock<ScoringWeights> =
+            std::sync::OnceLock::new();
+
+        let selector = profile_selector_from_name("frontier_pro_v2_guarded")
+            .expect("frontier profile selector should exist");
+        let mut config = calibration_runtime_config(
+            "frontier_pro_v2_guarded",
+            game,
+            SmartAutomovePreference::Pro,
+        );
+        config.scoring_weights = MATERIAL_DAMPENED_WEIGHTS.get_or_init(|| {
+            let mut weights = *config.scoring_weights;
+            weights.fainted_mon = 0;
+            weights.fainted_cooldown_step = 0;
+            weights
+        });
+
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        clear_turn_engine_plan_cache();
+        clear_turn_engine_diagnostics();
+        clear_turn_engine_selector_diagnostics();
+        clear_frontier_runtime_variant_branch();
+
+        let selected = select_inputs_with_runtime_fallback(selector, game, config);
+        let selected_input_fen = Input::fen_from_array(&selected);
+        let selector_diag = turn_engine_selector_diagnostics_snapshot();
+        let runtime_variant_branch = frontier_runtime_variant_branch_snapshot();
+        let advisor = pro_v2_root_advisor_decision_snapshot();
+        let approved = advisor
+            .as_ref()
+            .and_then(|decision| decision.approved_root.as_ref())
+            .map(format_root_advisor_entry_probe)
+            .unwrap_or_else(|| "none".to_string());
+        let shortlist = advisor
+            .as_ref()
+            .map(|decision| {
+                decision
+                    .ordered_shortlist
+                    .iter()
+                    .take(8)
+                    .map(format_root_advisor_entry_probe)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let preserved = advisor
+            .as_ref()
+            .map(|decision| {
+                decision
+                    .preserved_family_representatives
+                    .iter()
+                    .map(format_root_advisor_entry_probe)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        format!(
+            "material_dampened_selected={} branch={} selector(stage={} top_stage={} disable={} top_disable={} head_calls={} head_hits={}) approved={} shortlist={:?} preserved={:?}",
+            selected_input_fen,
+            runtime_variant_branch,
+            selector_diag.last_return_stage,
+            selector_diag.top_level_last_return_stage,
+            selector_diag.selector_disable_reason,
+            selector_diag.top_level_selector_disable_reason,
+            selector_diag.head_plan_calls,
+            selector_diag.head_plan_hits,
+            approved,
+            shortlist,
+            preserved,
+        )
+    }
+
     fn surface_for_case(case: AttributionCase) -> String {
         let game = MonsGame::from_fen(case.board_fen, false)
             .unwrap_or_else(|| panic!("{} should have a valid fen", case.label));
@@ -1139,13 +1212,19 @@ fn black_progress_residual_weight_attribution_probe() {
             );
         };
         let safe_root = &scored_roots[safe_index];
+        let material_dampened_selector = if case.label == "black_progress_vs_setup_residue" {
+            material_dampened_selection_probe(&game)
+        } else {
+            "material_dampened=out_of_scope".to_string()
+        };
 
         format!(
-            "label={} context={} frontier_selected={} shipping_selected={} comparisons={:?}",
+            "label={} context={} frontier_selected={} shipping_selected={} {} comparisons={:?}",
             case.label,
             exact_opportunity_context_probe(&game),
             frontier_probe.selected_input_fen,
             shipping_probe.selected_input_fen,
+            material_dampened_selector,
             case.setup_roots
                 .iter()
                 .map(|setup_root_fen| {
