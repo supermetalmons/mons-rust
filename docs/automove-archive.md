@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Variant-Blocker Trace Wave
+
+- No runtime challenger was cut in this wave. The spend was diagnostic-only: explicit-variant `smart_automove_pro_reliability_nonwin_trace_probe` replays against the current sampled blockers on the kept `frontier_pro_v2_guarded` tree.
+- Normal `outer_edge_mana_rows` did reproduce, but not as one seam. The bounded `vs_shipping_normal` replay logged `2` nonwins: a late black turn-eight `engine_post_search` miss (`l1,6;l1,5` vs shipping `l2,6;l3,7`) and an early white turn-three action+mana `engine_post_search` miss (`l10,4;l9,5` vs shipping `l9,4;l8,3`).
+- Fast explicit `classic,forward_bridge_mana_rows,corner_chain_mana_rows` also stayed mixed. The bounded `vs_shipping_fast` replay logged `5` nonwins, all on `forward_bridge_mana_rows` and `corner_chain_mana_rows`; `forward_bridge` stayed mainly `engine_post_search`, while `corner_chain` also exposed an `engine_disabled` ordering miss.
+- Standalone Fast `classic` explicit replay produced `0` nonwins in the same bounded probe, so the sampled `classic` miss is not yet a stable direct target.
+- Durable outcome: do not spend runtime code on the mixed `outer_edge_mana_rows` plus Fast `forward_bridge_mana_rows` / `corner_chain_mana_rows` residue until a later clean probe collapses it to one shared mechanism. Keep the trace counts and stage split, discard the logs and stamps.
+
 ## Late Black Shipping-Fallback Expansion Wave
 
 - No runtime challenger survived this wave. The local candidate extended `select_late_black_search_fallback_inputs` into late weak-window black turn-start and mana-only states.
