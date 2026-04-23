@@ -82,6 +82,9 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `white_search_order_shortlist_gate_probe` narrows that approval-path read again. On both white siblings, shipping `l9,4;l8,5` already survives frontier candidate focus and appears in `candidate_indices`.
 - It still dies at shortlist construction. The approved shortlist stays a singleton on vulnerable `l9,4;l8,3` because the score gap to shipping is still about `809k`, far beyond the `165` shortlist margin, and the existing safe-progress sibling shortlist extension does not fire.
 - So the remaining white residue is not waiting on candidate focus or the current safe-progress extension path either. Any future white spend has to explain a brand-new shortlist/approved-root reentry theory, or a deeper root-scoring normalization, rather than another rerank-cap or simple shortlist tweak.
+- `white_search_order_selector_disable_probe` closes off the obvious wrapper-level config-mirroring read. On both white siblings and on `white_late_fast_hotspot`, forcing the incoming frontier runtime config to `selector=false`, `head_rerank=true`, shipping-like own caps, or even `TurnEngineMode::ProV1` still leaves the live decision on the same frontier `engine_post_search` result.
+- That is a wrapper-plumbing fact, not evidence that selector-disabled semantics themselves are impossible. `select_frontier_pro_v2_guarded_inputs` re-enters through `apply_frontier_pro_v2_guarded_config`, so config-only selector-disable toggles do not survive wrapper entry.
+- So do not spend another white wave on shallow runtime-config mirroring against the frontier wrapper. If the white search-order family is ever reopened, the spend has to change wrapper branching itself or move deeper shortlist/root scoring behavior.
 - If a rotated white confirm seam shows the incumbent quiet `ManaTempo` root ahead on both reply floor and selected override utility, it is not another shortlist-order or head-acceptance bug. Treat that as a root-scoring/model mismatch and do not paper over it with another advisor override.
 - Runtime cost is a real gate. A candidate that fixes live walls but pushes stage-1 CPU into the `1.5x+` range against `shipping_pro_search` is still non-promotable.
 - Wrapper-only reroutes, fallback widening, shortlist widening, and metadata-only advisor changes saturate quickly; the real frontier is shared approval and head logic.
@@ -117,6 +120,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `white_search_order_rerank_own_cap_probe`
 - `white_search_order_seed_step_scope_probe`
 - `white_search_order_shortlist_gate_probe`
+- `white_search_order_selector_disable_probe`
 
 ## Kill Rules
 

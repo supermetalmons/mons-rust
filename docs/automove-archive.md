@@ -416,3 +416,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - On both white siblings, shipping `l9,4;l8,5` is already present in frontier `candidate_indices`.
 - It still never reaches the approved shortlist. The shortlist stays a singleton on vulnerable `l9,4;l8,3` because that root's score is about `809k` above shipping's, far beyond the `165` shortlist margin, and `pro_v2_safe_progress_sibling_shortlist_extension` returns `None`.
 - Durable outcome: do not reopen the white search-order family with another simple shortlist tweak or another rerank-cap tweak. Any future white spend has to explain a new shortlist/approved-root reentry theory, or a deeper root-scoring normalization, instead of assuming the current focus/extension machinery just missed `l9,4;l8,5`.
+
+## White Selector-Disable Wrapper Probe Wave
+
+- No new runtime challenger survived this wave. The kept diagnostic is `white_search_order_selector_disable_probe`.
+- The useful result is that shallow config mirroring does not actually test selector-disabled white semantics through the guarded frontier wrapper.
+- On both white search-order siblings and on `white_late_fast_hotspot`, forcing the incoming frontier runtime config to `selector=false`, `head_rerank=true`, shipping-like own caps, or even `TurnEngineMode::ProV1` still leaves the live decision unchanged on frontier `engine_post_search`.
+- The code path explains why: `select_frontier_pro_v2_guarded_inputs` always routes frontier execution back through `apply_frontier_pro_v2_guarded_config`, so those config-only selector-disable toggles are reapplied away before search runs.
+- Durable outcome: do not reopen the white search-order family with another wrapper-local config-only selector-disable or head-rerank mirror. Any future white wrapper spend has to change wrapper branching itself, or move deeper into shortlist/root-scoring behavior.
