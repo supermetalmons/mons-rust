@@ -352,3 +352,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The runtime cut was real but still too shallow. It fixed `l9,4;l8,3` vs shipping `l9,4;l8,5`, passed `guardrails`, `pro-triage` at `target_changed=5 / off_target_changed=0`, exact-lite, and advisory stage-1 CPU at `1.551 / 1.523 / 1.363`, then failed retained `pro-reliability` at `0.9167 / 0.8333 / 0.9167`.
 - The retained Normal trace showed why it cannot stay live: instead of stopping at `ply9`, the pack rotated onto other early-white engine-disabled seams, including `l8,5;l7,6` vs shipping `l8,7;l7,8` and `l8,5;l7,6` vs shipping `l8,5;l7,4`.
 - Durable outcome: do not reopen `white_ply9_search_ordering` with another narrow rerank-semantics wrapper fallback. Even when the shipping root is rerank-admissible and advisor-compatible on frontier, the local repair still is not enough to promote.
+
+## White Normal Residue Wave
+
+- No new runtime challenger survived this wave. The kept additions are a fresh retained `vs_shipping_normal` non-win trace on the cleaned promoted package and the new ignored `white_normal_ply11_search_only_split_probe`.
+- The useful result is that the discarded rerank fallback's rotated engine-disabled boards are not the live retained Normal surface on the clean tree.
+- Replaying `smart_automove_pro_reliability_nonwin_trace_probe` with `SMART_PRO_RELIABILITY_DUEL_FILTER=vs_shipping_normal` produced `total_nonwins=1`, and the sole drift was a sibling of the white search-order family: `0 0 w 1 0 1 0 0 3 n06a0xn04/...`, first diff at `ply=11`, frontier `l9,4;l8,3`, shipping `l9,4;l8,5`.
+- The new board-local probe shows the same structural shape as the earlier Fast probe. Frontier's shortlist is still just `l9,4;l8,3`; shipping still reaches `l9,4;l8,5` through `search_only_engine_allowed_head`; the shipping recovery root is still outside the frontier shortlist; and `shipping_vs_frontier=false` under frontier's own reply-risk comparator.
+- Durable outcome: until a future challenger changes the clean retained trace, treat current Normal residue as the white `l9,4;l8,3` vs `l9,4;l8,5` search-order family, not as the rotated early-white engine-disabled boards from the discarded rerank fallback.

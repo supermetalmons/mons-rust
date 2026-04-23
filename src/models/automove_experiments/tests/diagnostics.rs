@@ -1678,14 +1678,9 @@ fn white_ordering_rerank_semantics_probe() {
     }
 }
 
-#[test]
-#[ignore = "diagnostic: inspect white fast ply9 search-only split"]
-fn white_fast_ply9_search_only_split_probe() {
-    let game = MonsGame::from_fen(
-        "0 0 w 1 0 1 0 0 3 n05d0xn05/n05s0xa0xe0xn03/n03y0xn03xxmn03/n02xxmn01xxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn07/n04D0xS0xn01Y0xn03/n02E0xn01A0xn06",
-        false,
-    )
-    .expect("valid white fast ply9 fen");
+fn log_white_search_order_split_probe(probe_label: &'static str, board_fen: &'static str) {
+    let game = MonsGame::from_fen(board_fen, false)
+        .unwrap_or_else(|| panic!("valid white search-order split fen for {probe_label}"));
     let perspective = game.active_color;
     let frontier_probe = runtime_decision_probe(
         "frontier_pro_v2_guarded",
@@ -1800,7 +1795,8 @@ fn white_fast_ply9_search_only_split_probe() {
     );
 
     println!(
-        "WHITE_FAST_PLY9_SEARCH_ONLY_SPLIT context={} shortlist={:?} frontier_probe={:?} shipping_probe={:?} advisor={:?} frontier={} frontier_pre_accept={} shipping={} frontier_snapshot={} frontier_pre_accept_snapshot={} shipping_snapshot={} frontier_utility={} frontier_pre_accept_utility={} shipping_utility={} shipping_vs_frontier={} frontier_projection={:?} frontier_pre_accept_projection={:?} shipping_projection={:?}",
+        "{} context={} shortlist={:?} frontier_probe={:?} shipping_probe={:?} advisor={:?} frontier={} frontier_pre_accept={} shipping={} frontier_snapshot={} frontier_pre_accept_snapshot={} shipping_snapshot={} frontier_utility={} frontier_pre_accept_utility={} shipping_utility={} shipping_vs_frontier={} frontier_projection={:?} frontier_pre_accept_projection={:?} shipping_projection={:?}",
+        probe_label,
         exact_opportunity_context_probe(&game),
         shortlist
             .iter()
@@ -1858,6 +1854,24 @@ fn white_fast_ply9_search_only_split_probe() {
                 format_turn_engine_utility_probe(projection.plan.utility),
             )
         }),
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect white fast ply9 search-only split"]
+fn white_fast_ply9_search_only_split_probe() {
+    log_white_search_order_split_probe(
+        "WHITE_FAST_PLY9_SEARCH_ONLY_SPLIT",
+        "0 0 w 1 0 1 0 0 3 n05d0xn05/n05s0xa0xe0xn03/n03y0xn03xxmn03/n02xxmn01xxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn07/n04D0xS0xn01Y0xn03/n02E0xn01A0xn06",
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect retained normal white ply11 search-only split"]
+fn white_normal_ply11_search_only_split_probe() {
+    log_white_search_order_split_probe(
+        "WHITE_NORMAL_PLY11_SEARCH_ONLY_SPLIT",
+        "0 0 w 1 0 1 0 0 3 n06a0xn04/n03y0xn01d0xxxmn01e0xn02/n04s0xn06/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn02Y0xn04/n04D0xS0xn05/n03E0xA0xn06",
     );
 }
 
