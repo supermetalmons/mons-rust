@@ -18971,6 +18971,128 @@ impl MonsGameModel {
             })
     }
 
+    fn pro_v2_root_advisor_black_late_weak_window_safe_progress_setup_override(
+        game: &MonsGame,
+        scored_roots: &[RootEvaluation],
+        reply_risk_shortlist: &[usize],
+        approved_index: usize,
+        perspective: Color,
+        config: AutomoveSearchConfig,
+    ) -> Option<usize> {
+        if !matches!(config.turn_engine_mode, TurnEngineMode::ProV2)
+            || !Self::pro_v2_is_late_black_action_mana_turn_start(game)
+            || reply_risk_shortlist.is_empty()
+            || scored_roots.is_empty()
+        {
+            return None;
+        }
+
+        let exact_context =
+            crate::models::automove_exact::exact_opportunity_context(game, game.active_color);
+        let weak_window_context = exact_context.delta.same_turn_score_window_value <= 1
+            && exact_context.delta.opponent_window_deny_gain <= 1
+            && !exact_context.delta.drainer_attack_available
+            && (exact_context.delta.same_turn_score_window_value > 0
+                || exact_context.delta.opponent_window_deny_gain > 0);
+        if !weak_window_context {
+            return None;
+        }
+
+        let approved = scored_roots.get(approved_index)?;
+        let approved_family = Self::turn_engine_root_evaluation_family(approved);
+        if !matches!(
+            approved_family,
+            TurnPlanFamily::SafeSupermanaProgress | TurnPlanFamily::SafeOpponentManaProgress
+        ) || !Self::turn_engine_root_evaluation_has_progress_surface(approved)
+            || approved.spirit_development
+            || approved.spirit_same_turn_score_setup_now
+            || approved.spirit_own_mana_setup_now
+            || approved.wins_immediately
+            || approved.attacks_opponent_drainer
+            || approved.same_turn_score_window_value > 0
+            || approved.scores_supermana_this_turn
+            || approved.scores_opponent_mana_this_turn
+            || approved.safe_supermana_pickup_now
+            || approved.safe_opponent_mana_pickup_now
+            || approved.mana_handoff_to_opponent
+            || approved.has_roundtrip
+            || Self::turn_engine_root_evaluation_is_unsafe(approved)
+            || approved.own_drainer_vulnerable
+            || approved.own_drainer_walk_vulnerable
+        {
+            return None;
+        }
+
+        let approved_utility = Self::turn_engine_selected_override_utility(
+            game,
+            approved,
+            perspective,
+            config,
+            approved_family,
+        );
+
+        reply_risk_shortlist
+            .iter()
+            .copied()
+            .filter(|index| *index != approved_index)
+            .filter(|index| {
+                let challenger = &scored_roots[*index];
+                let challenger_utility = Self::turn_engine_selected_override_utility(
+                    game,
+                    challenger,
+                    perspective,
+                    config,
+                    TurnPlanFamily::SpiritImpact,
+                );
+
+                Self::turn_engine_root_evaluation_family(challenger) == TurnPlanFamily::SpiritImpact
+                    && challenger.spirit_own_mana_setup_now
+                    && !challenger.spirit_same_turn_score_setup_now
+                    && Self::turn_engine_root_evaluation_has_progress_surface(challenger)
+                    && !challenger.wins_immediately
+                    && !challenger.attacks_opponent_drainer
+                    && challenger.same_turn_score_window_value == 0
+                    && !challenger.scores_supermana_this_turn
+                    && !challenger.scores_opponent_mana_this_turn
+                    && !challenger.safe_supermana_pickup_now
+                    && !challenger.safe_opponent_mana_pickup_now
+                    && challenger.mana_handoff_to_opponent == approved.mana_handoff_to_opponent
+                    && challenger.has_roundtrip == approved.has_roundtrip
+                    && !Self::turn_engine_root_evaluation_is_unsafe(challenger)
+                    && challenger.own_drainer_vulnerable == approved.own_drainer_vulnerable
+                    && challenger.own_drainer_walk_vulnerable
+                        == approved.own_drainer_walk_vulnerable
+                    && challenger.supermana_progress == approved.supermana_progress
+                    && challenger.opponent_mana_progress == approved.opponent_mana_progress
+                    && Self::pro_v2_root_advisor_utility_competes(
+                        challenger_utility,
+                        approved_utility,
+                    )
+                    && approved.score.saturating_sub(challenger.score) <= 32
+                    && challenger.spirit_setup_gain
+                        >= approved.spirit_setup_gain.saturating_add(64)
+                    && challenger.root_rank <= approved.root_rank.saturating_add(4)
+            })
+            .max_by(|left, right| {
+                scored_roots[*left]
+                    .score
+                    .cmp(&scored_roots[*right].score)
+                    .then_with(|| {
+                        scored_roots[*left]
+                            .spirit_setup_gain
+                            .cmp(&scored_roots[*right].spirit_setup_gain)
+                    })
+                    .then_with(|| {
+                        scored_roots[*right]
+                            .root_rank
+                            .cmp(&scored_roots[*left].root_rank)
+                    })
+                    .then_with(|| {
+                        Self::compare_ranked_scored_root_indices(scored_roots, *right, *left)
+                    })
+            })
+    }
+
     fn pro_v2_root_advisor_priority_inputs(decision: &ProV2RootAdvisorDecision) -> Vec<Vec<Input>> {
         let mut inputs = Vec::new();
         if let Some(injected_root) = decision.injected_root.as_ref().filter(|root| root.admitted) {
@@ -20033,6 +20155,18 @@ impl MonsGameModel {
             approved_index.0,
             config,
         ) {
+            approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedFamilyCompetition);
+        }
+        if let Some(index) =
+            Self::pro_v2_root_advisor_black_late_weak_window_safe_progress_setup_override(
+                game,
+                scored_roots,
+                reply_risk_shortlist.as_slice(),
+                approved_index.0,
+                perspective,
+                config,
+            )
+        {
             approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedFamilyCompetition);
         }
 
@@ -30185,6 +30319,155 @@ mod opening_book_tests {
                 &scored_roots,
                 &[1],
                 0,
+                config,
+            ),
+            None,
+        );
+    }
+
+    #[test]
+    fn black_late_weak_window_safe_progress_setup_override_prefers_own_setup_progress_root() {
+        let game = MonsGame::from_fen(
+            "2 1 b 0 0 0 0 0 10 n05d0xn03xxmn01/n04a0xn02e0xn03/n05s0xn05/E0xn02xxmn03xxmn03/n05xxmn05/n05xxUn04xxQ/n05xxMn05/n03S0xn01Y0xxxMn04/n03y0xn04xxMn02/n03A0xn07/n05D1xn05",
+            false,
+        )
+        .expect("valid black confirm fast setup split fen");
+        let mut approved = root_evaluation_for_projection_test(
+            &game,
+            Location::new(0, 5),
+            -806_965,
+            false,
+            false,
+            false,
+        );
+        approved.root_rank = 1;
+        approved.inputs = vec![
+            Input::Location(Location::new(0, 5)),
+            Input::Location(Location::new(1, 5)),
+        ];
+        approved.supermana_progress = true;
+        approved.safe_supermana_progress_steps = 4;
+        approved.safe_opponent_mana_progress_steps = 5;
+        approved.score_path_best_steps = 33;
+        approved.spirit_setup_gain = 60;
+
+        let mut shortlisted_plain = root_evaluation_for_projection_test(
+            &game,
+            Location::new(2, 5),
+            -806_965,
+            true,
+            false,
+            false,
+        );
+        shortlisted_plain.root_rank = 0;
+        shortlisted_plain.inputs = vec![
+            Input::Location(Location::new(2, 5)),
+            Input::Location(Location::new(0, 5)),
+            Input::Location(Location::new(1, 5)),
+        ];
+        shortlisted_plain.supermana_progress = true;
+        shortlisted_plain.opponent_mana_progress = true;
+        shortlisted_plain.safe_supermana_progress_steps = 4;
+        shortlisted_plain.safe_opponent_mana_progress_steps = 5;
+        shortlisted_plain.score_path_best_steps = 33;
+        shortlisted_plain.spirit_setup_gain = 84;
+
+        let mut shipping = root_evaluation_for_projection_test(
+            &game,
+            Location::new(2, 5),
+            -806_965,
+            true,
+            false,
+            false,
+        );
+        shipping.root_rank = 5;
+        shipping.inputs = vec![
+            Input::Location(Location::new(2, 5)),
+            Input::Location(Location::new(3, 7)),
+            Input::Location(Location::new(2, 8)),
+        ];
+        shipping.spirit_own_mana_setup_now = true;
+        shipping.supermana_progress = true;
+        shipping.safe_supermana_progress_steps = 5;
+        shipping.safe_opponent_mana_progress_steps = 6;
+        shipping.score_path_best_steps = 33;
+        shipping.spirit_setup_gain = 124;
+
+        let scored_roots = [approved, shortlisted_plain, shipping];
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.turn_engine_mode = TurnEngineMode::ProV2;
+
+        assert_eq!(
+            MonsGameModel::pro_v2_root_advisor_black_late_weak_window_safe_progress_setup_override(
+                &game,
+                &scored_roots,
+                &[2, 1, 0],
+                0,
+                game.active_color,
+                config,
+            ),
+            Some(2),
+        );
+    }
+
+    #[test]
+    fn black_late_weak_window_safe_progress_setup_override_keeps_small_setup_gain_root() {
+        let game = MonsGame::from_fen(
+            "2 1 b 0 0 0 0 0 10 n05d0xn03xxmn01/n04a0xn02e0xn03/n05s0xn05/E0xn02xxmn03xxmn03/n05xxmn05/n05xxUn04xxQ/n05xxMn05/n03S0xn01Y0xxxMn04/n03y0xn04xxMn02/n03A0xn07/n05D1xn05",
+            false,
+        )
+        .expect("valid black confirm fast setup split fen");
+        let mut approved = root_evaluation_for_projection_test(
+            &game,
+            Location::new(0, 5),
+            -806_965,
+            false,
+            false,
+            false,
+        );
+        approved.root_rank = 1;
+        approved.inputs = vec![
+            Input::Location(Location::new(0, 5)),
+            Input::Location(Location::new(1, 5)),
+        ];
+        approved.supermana_progress = true;
+        approved.safe_supermana_progress_steps = 4;
+        approved.safe_opponent_mana_progress_steps = 5;
+        approved.score_path_best_steps = 33;
+        approved.spirit_setup_gain = 60;
+
+        let mut challenger = root_evaluation_for_projection_test(
+            &game,
+            Location::new(2, 5),
+            -806_965,
+            true,
+            false,
+            false,
+        );
+        challenger.root_rank = 5;
+        challenger.inputs = vec![
+            Input::Location(Location::new(2, 5)),
+            Input::Location(Location::new(3, 7)),
+            Input::Location(Location::new(2, 8)),
+        ];
+        challenger.spirit_own_mana_setup_now = true;
+        challenger.supermana_progress = true;
+        challenger.safe_supermana_progress_steps = 5;
+        challenger.safe_opponent_mana_progress_steps = 6;
+        challenger.score_path_best_steps = 33;
+        challenger.spirit_setup_gain = 120;
+
+        let scored_roots = [approved, challenger];
+        let mut config = AutomoveSearchConfig::from_preference(SmartAutomovePreference::Pro);
+        config.turn_engine_mode = TurnEngineMode::ProV2;
+
+        assert_eq!(
+            MonsGameModel::pro_v2_root_advisor_black_late_weak_window_safe_progress_setup_override(
+                &game,
+                &scored_roots,
+                &[1],
+                0,
+                game.active_color,
                 config,
             ),
             None,

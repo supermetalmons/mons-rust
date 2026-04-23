@@ -43,6 +43,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - The retained fix for that remaining early-white Normal seam is not another advisor or head tweak. On the exact turn-five white action+mana weak-window board class where frontier keeps engine selection enabled and settles on a vulnerable quiet `ManaTempo` root, a narrow wrapper fallback can safely mirror shipping's engine-disabled `SpiritImpact` progress line instead. Keep that fix wrapper-local and exact-context; broader white recovery widening was already disproved.
 - The analogous black turn-six residue board does not admit the same direct wrapper cure. Mirroring shipping on `l7,1;l9,3` vs `l1,5;l2,7;l1,8` fixes that local board and still fails `pro-reliability-confirm` at `0.9375 / 0.9062 / 0.8750`, because Fast rotates onto later black engine-disabled seams (`l0,0;l1,1` vs `l7,1;l8,0` and `l0,5;l1,5` vs `l2,5;l3,7;l2,8`) plus the old white search-only split. Do not keep that black wrapper fallback without a story for the downstream Fast pack.
 - On the black progress-vs-setup residue board itself, the actual shipping move is still `l1,5;l2,7;l1,8`, not the candidate-only ProV1 replay `l1,5;l3,7;l2,8`. Shipping reaches it with `engine_disabled`, while frontier stays on `frontier_execute` with the safe-progress incumbent `l7,1;l9,3`.
+- On late black action+mana weak-window boards (`window<=1`, `deny<=1`, no attack), a safe progress incumbent can still be the wrong retained answer even when it is already approved and locally safe. If the reply-risk shortlist already contains a competitive `SpiritImpact` own-setup progress root with the same progress flags, at least `+64` setup gain, and at most four root-rank slots of gap, the rescue belongs in advisor family competition rather than wrapper mirroring or head acceptance.
 - Fixing one early white confirm recovery board can leave the aggregate confirm gate completely unchanged; when that happens, the right read is that the seam rotated, not that the local fix was fake.
 - The same rotation rule applies on black late-fast seams. Fixing one retained black Fast wall can leave `pro-reliability-confirm` unchanged if the `4x4` pack simply rotates onto other white early head/order seams and separate black legacy/search seams.
 - The same logic distinguishes the remaining early white Fast seams: `l9,7;l8,6` vs `l9,7;l7,6;l7,7` was an advisor-layer safe-progress-vs-setup competition miss, while `l9,4;l8,3` vs `l9,4;l8,5` is a search-only rerank split where shipping changes the same pre-accept root through the search-only allowance path. Do not treat those as the same bug class.
@@ -67,6 +68,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow and `AUTOMOVE_IDEAS.md` for
 - `white_confirm_pro_ply11_reply_order_probe`
 - `black_recovery_branch_legacy_alignment_probe`
 - `black_progress_vs_setup_residue_probe`
+- `black_confirm_fast_lane_split_probe`
+- `black_confirm_fast_setup_split_probe`
 
 ## Kill Rules
 

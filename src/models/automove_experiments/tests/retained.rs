@@ -1420,6 +1420,15 @@ fn frontier_pro_v2_guarded_profile_prefers_shipping_black_late_setup_reply_risk_
 }
 
 #[test]
+fn frontier_pro_v2_guarded_profile_prefers_shipping_black_confirm_fast_setup_root() {
+    assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
+        "BLACK_CONFIRM_FAST_SETUP_SPLIT",
+        "2 1 b 0 0 0 0 0 10 n05d0xn03xxmn01/n04a0xn02e0xn03/n05s0xn05/E0xn02xxmn03xxmn03/n05xxmn05/n05xxUn04xxQ/n05xxMn05/n03S0xn01Y0xxxMn04/n03y0xn04xxMn02/n03A0xn07/n05D1xn05",
+        "l2,5;l3,7;l2,8",
+    );
+}
+
+#[test]
 fn frontier_pro_v2_guarded_profile_prefers_shipping_black_late_fast_trace_root() {
     assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
         "BLACK_LATE_FAST_TRACE",

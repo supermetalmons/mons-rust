@@ -667,6 +667,150 @@ fn black_progress_vs_setup_residue_probe() {
     );
 }
 
+fn log_black_confirm_fast_runtime_seam_probe(
+    label: &str,
+    board_fen: &str,
+    frontier_move: &str,
+    shipping_move: &str,
+) {
+    let game = MonsGame::from_fen(board_fen, false).expect("valid black confirm fast seam fen");
+    let perspective = game.active_color;
+    let frontier_probe = runtime_decision_probe(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let frontier_advisor = pro_v2_root_advisor_decision_snapshot();
+    let shipping_selected =
+        profile_decision_move_fen("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+    let shipping_runtime_probe =
+        runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+    let (config, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let candidate_indices = MonsGameModel::filtered_root_candidate_indices(
+        &game,
+        scored_roots.as_slice(),
+        perspective,
+        config,
+    );
+    let shortlist = MonsGameModel::reply_risk_guard_shortlist_indices(
+        scored_roots.as_slice(),
+        candidate_indices.as_slice(),
+        config,
+    );
+    let frontier_index = scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == frontier_move)
+        .expect("frontier move should exist");
+    let frontier_pre_accept_index = scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == frontier_probe.pre_accept_input_fen)
+        .expect("frontier pre-accept root should exist");
+    let shipping_index = scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == shipping_move)
+        .expect("shipping move should exist");
+    let (probe_legacy_selected, probe_legacy_full_pool_selected, _, _) =
+        pro_v2_legacy_selector_probe(&game, SmartAutomovePreference::Pro);
+    let frontier = &scored_roots[frontier_index];
+    let frontier_pre_accept = &scored_roots[frontier_pre_accept_index];
+    let shipping = &scored_roots[shipping_index];
+    let frontier_non_tactical = !frontier.wins_immediately
+        && !frontier.attacks_opponent_drainer
+        && !frontier.scores_supermana_this_turn
+        && !frontier.scores_opponent_mana_this_turn
+        && !frontier.safe_supermana_pickup_now
+        && !frontier.safe_opponent_mana_pickup_now
+        && !frontier.mana_handoff_to_opponent
+        && !frontier.has_roundtrip;
+    let frontier_pre_accept_non_tactical = !frontier_pre_accept.wins_immediately
+        && !frontier_pre_accept.attacks_opponent_drainer
+        && !frontier_pre_accept.scores_supermana_this_turn
+        && !frontier_pre_accept.scores_opponent_mana_this_turn
+        && !frontier_pre_accept.safe_supermana_pickup_now
+        && !frontier_pre_accept.safe_opponent_mana_pickup_now
+        && !frontier_pre_accept.mana_handoff_to_opponent
+        && !frontier_pre_accept.has_roundtrip;
+    let shipping_non_tactical = !shipping.wins_immediately
+        && !shipping.attacks_opponent_drainer
+        && !shipping.scores_supermana_this_turn
+        && !shipping.scores_opponent_mana_this_turn
+        && !shipping.safe_supermana_pickup_now
+        && !shipping.safe_opponent_mana_pickup_now
+        && !shipping.mana_handoff_to_opponent
+        && !shipping.has_roundtrip;
+    let shortlist_roots = shortlist
+        .iter()
+        .map(|index| {
+            format!(
+                "{} => {}",
+                Input::fen_from_array(&scored_roots[*index].inputs),
+                format_root_probe(scored_roots.get(*index)),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    println!(
+        "{} context={} frontier_move={} shipping_move={} shipping_selected={} frontier_probe={:?} shipping_runtime_probe={:?} advisor={:?} frontier={} frontier_pre_accept={} shipping={} frontier_family={:?} frontier_pre_accept_family={:?} shipping_family={:?} frontier_progress_surface={} frontier_pre_accept_progress_surface={} shipping_progress_surface={} frontier_plain_spirit={} frontier_pre_accept_plain_spirit={} shipping_plain_spirit={} frontier_non_tactical={} frontier_pre_accept_non_tactical={} shipping_non_tactical={} candidate_contains_shipping={} shortlist={:?} shortlist_roots={:?} legacy_candidate_selected={} legacy_full_pool_selected={}",
+        label,
+        exact_opportunity_context_probe(&game),
+        frontier_move,
+        shipping_move,
+        shipping_selected,
+        frontier_probe,
+        shipping_runtime_probe,
+        frontier_advisor,
+        format_root_probe(scored_roots.get(frontier_index)),
+        format_root_probe(scored_roots.get(frontier_pre_accept_index)),
+        format_root_probe(scored_roots.get(shipping_index)),
+        MonsGameModel::turn_engine_root_evaluation_family(frontier),
+        MonsGameModel::turn_engine_root_evaluation_family(frontier_pre_accept),
+        MonsGameModel::turn_engine_root_evaluation_family(shipping),
+        MonsGameModel::turn_engine_root_evaluation_has_progress_surface(frontier),
+        MonsGameModel::turn_engine_root_evaluation_has_progress_surface(frontier_pre_accept),
+        MonsGameModel::turn_engine_root_evaluation_has_progress_surface(shipping),
+        MonsGameModel::is_plain_spirit_development_root(frontier),
+        MonsGameModel::is_plain_spirit_development_root(frontier_pre_accept),
+        MonsGameModel::is_plain_spirit_development_root(shipping),
+        frontier_non_tactical,
+        frontier_pre_accept_non_tactical,
+        shipping_non_tactical,
+        candidate_indices.contains(&shipping_index),
+        shortlist
+            .iter()
+            .map(|index| Input::fen_from_array(&scored_roots[*index].inputs))
+            .collect::<Vec<_>>(),
+        shortlist_roots,
+        probe_legacy_selected,
+        probe_legacy_full_pool_selected,
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect remaining late black confirm fast lane split seam"]
+fn black_confirm_fast_lane_split_probe() {
+    log_black_confirm_fast_runtime_seam_probe(
+        "BLACK_CONFIRM_FAST_LANE_SPLIT",
+        "1 1 b 1 0 0 0 0 8 d0xn10/n05s0xa0xe0xn03/n05xxmn06/n05xxmn01xxmn02/n05xxmn05/n05xxUn04xxQ/n02S0xn01xxMn06/n01y0xn04xxMxxMn03/n01E0xA0xn08/n01D0Mn09/n08Y0xn02",
+        "l0,0;l1,1",
+        "l7,1;l8,0",
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect remaining late black confirm fast setup seam"]
+fn black_confirm_fast_setup_split_probe() {
+    log_black_confirm_fast_runtime_seam_probe(
+        "BLACK_CONFIRM_FAST_SETUP_SPLIT",
+        "2 1 b 0 0 0 0 0 10 n05d0xn03xxmn01/n04a0xn02e0xn03/n05s0xn05/E0xn02xxmn03xxmn03/n05xxmn05/n05xxUn04xxQ/n05xxMn05/n03S0xn01Y0xxxMn04/n03y0xn04xxMn02/n03A0xn07/n05D1xn05",
+        "l0,5;l1,5",
+        "l2,5;l3,7;l2,8",
+    );
+}
+
 #[test]
 #[ignore = "diagnostic: inspect white fast ply10 reply-order utility and floor"]
 fn white_fast_ply10_reply_order_probe() {
