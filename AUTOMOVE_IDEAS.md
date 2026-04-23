@@ -98,6 +98,13 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - advisory stage-1 CPU stayed in the same band at `1.555 / 1.526 / 1.363`.
   - retained `pro-reliability` passed at `0.9167 / 1.0000 / 1.0000`.
   - `pro-reliability-confirm` passed at `0.9375 / 0.9688 / 0.9688` with confidence `1.0000`.
+- This iteration did not keep runtime code. A Pro-only confirm-size non-win trace on the current promoted package showed exactly the two already-classified residual Pro losses:
+  - `black_recovery_branch`: frontier keeps `l1,5;l3,3;l2,3` while shipping disables engine selection to `l6,0;l6,1`.
+  - `white_confirm_pro_ply11`: frontier keeps `l10,4;l9,3` while shipping disables engine selection to `l7,8;l6,9`.
+- The refreshed targeted probes still kill the obvious local follow-ups:
+  - `black_recovery_branch_legacy_alignment_probe` still shows the local legacy override can name shipping `l6,0;l6,1`, but the candidate-only ProV1 replay resolves to a different spirit root `l1,5;l2,7;l1,8`.
+  - `white_confirm_pro_ply11_reply_order_probe` still shows frontier's approved root beats shipping under frontier metrics (`floor=431` vs `338`, `shipping_vs_approved=false`).
+- Treat the residual Pro gap as a deeper selector/scoring problem, not as a board-local head, shortlist, or wrapper-mirroring target.
 - The refreshed canonical loop for the new white turn-five same-window head guard stayed clean:
   - `guardrails` passed.
   - `pro-triage` stayed at `target_changed=5 / off_target_changed=0`.
@@ -191,8 +198,11 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 
 ## Next Hypothesis
 
-- The current package is promotable. The next spend is no longer about confirm rescue.
+- The current package is promotable and there is no live runtime challenger after this iteration.
+- The next spend should explain one of the two residual Pro-only losses below the existing local guard layer, not reopen simple wrapper/head/shortlist fixes.
 - Keep the new white turn-three no-action recovery guard, the black late-fast safe-mana override, the white early setup repair, the black late reply-risk setup rescue, the exact white early engine-disabled wrapper fallback, the black late weak-window safe-progress setup rescue, the white nonnegative-deny and negative-deny search-only fallbacks, and the white turn-five same-window plus mid-turn head guards together; they now form the promoted retained package.
+- For `black_recovery_branch`, do not reapply the shortlist-local legacy fallback unless a new probe first explains why the shipping engine-disabled root `l6,0;l6,1` should beat both the current approved preserved-spirit root and the candidate-only ProV1 spirit replay.
+- For `white_confirm_pro_ply11`, do not add a shipping mirror or advisor override unless a new probe first finds a frontier-side metric below reply floor/selected utility that prefers `l7,8;l6,9` over `l10,4;l9,3`.
 - Do not reopen the resolved black confirm seam `l6,2;l5,3` vs `l1,5;l3,7;l2,8`; that board is now covered by the retained suite and confirm passed with it in place.
 - Do not reopen the direct runtime-variant white search-only recovery fallback on `l9,4;l8,3` vs `l9,4;l8,5`. Both the shipping-assisted and frontier-local versions still fail retained `pro-reliability` at `0.9167 / 0.8333 / 0.9167`.
 - Do not reopen the resolved engine-disabled early-white Normal seam `l8,5;l7,6` vs shipping `l9,5;l8,3;l7,4` unless a future challenger regresses it. The kept fix is the exact runtime wrapper fallback, not another broader white recovery override.
