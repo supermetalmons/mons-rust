@@ -1484,6 +1484,14 @@ fn white_normal_turn_five_head_acceptance_probe() {
             label: "repeat1_opening2_ply22",
             fen: "0 1 w 0 0 0 0 0 5 n06a0xn03d0x/n08e0xn02/n02y0xn01s0xn06/n04xxmn03xxmn02/n03xxmn01xxmn05/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n03E0xA0xD0xn05/n05S0xn01Y0xn03/n11",
         },
+        ProbeCase {
+            label: "repeat1_opening2_ply24_head_over_pre_accept",
+            fen: "0 1 w 1 0 1 0 0 5 n06a0xn03d0x/n08e0xn02/n02y0xn01s0xn06/n04xxmn03xxmn02/n03xxmn01xxmn05/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n03D0Mn02xxMn04/n03E0xA0xn06/n05S0xn01Y0xn03/n11",
+        },
+        ProbeCase {
+            label: "fast_repeat1_opening1_ply24_head_over_pre_accept",
+            fen: "0 0 w 0 0 2 0 0 5 n05d0xn05/n06a0xn04/n03xxmn01s0xn05/n02xxmn03e0xn01xxmn02/n03y0xn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n11/n02xxMn03S0xD0MY0xn02/n04A0xn06/n02E0xn08",
+        },
     ];
 
     for case in cases {

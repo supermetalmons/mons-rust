@@ -1187,6 +1187,66 @@ fn frontier_pro_v2_guarded_rejects_white_turn_five_same_window_mana_head_action_
 }
 
 #[test]
+fn frontier_pro_v2_guarded_rejects_white_turn_five_mid_turn_window_mana_head_normal_root() {
+    let game = MonsGame::from_fen(
+        "0 1 w 1 0 1 0 0 5 n06a0xn03d0x/n08e0xn02/n02y0xn01s0xn06/n04xxmn03xxmn02/n03xxmn01xxmn05/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n03D0Mn02xxMn04/n03E0xA0xn06/n05S0xn01Y0xn03/n11",
+        false,
+    )
+    .expect("white mid-turn window mana head normal fen should be valid");
+
+    clear_turn_engine_selector_diagnostics();
+    let probe = runtime_decision_probe(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let shipping_selected =
+        profile_decision_move_fen("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+
+    println!(
+        "WHITE_TURN_FIVE_MID_TURN_WINDOW_MANA_HEAD shipping_selected={} context={} probe={:?}",
+        shipping_selected,
+        exact_opportunity_context_probe(&game),
+        probe,
+    );
+    assert_eq!(shipping_selected, "l8,3;l7,4");
+    assert_eq!(probe.selected_input_fen, "l8,3;l7,4");
+    assert_eq!(probe.pre_accept_input_fen, "l8,3;l7,4");
+    assert_eq!(probe.head_input_fen.as_deref(), Some("l7,3;l8,2"));
+    assert!(!probe.head_accepted);
+}
+
+#[test]
+fn frontier_pro_v2_guarded_rejects_white_turn_five_spirit_setup_pre_accept_fast_root() {
+    let game = MonsGame::from_fen(
+        "0 0 w 0 0 2 0 0 5 n05d0xn05/n06a0xn04/n03xxmn01s0xn05/n02xxmn03e0xn01xxmn02/n03y0xn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n11/n02xxMn03S0xD0MY0xn02/n04A0xn06/n02E0xn08",
+        false,
+    )
+    .expect("white turn-five spirit setup pre-accept fast fen should be valid");
+
+    clear_turn_engine_selector_diagnostics();
+    let probe = runtime_decision_probe(
+        "frontier_pro_v2_guarded",
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+    let shipping_selected =
+        profile_decision_move_fen("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+
+    println!(
+        "WHITE_TURN_FIVE_SPIRIT_SETUP_PRE_ACCEPT_FAST shipping_selected={} context={} probe={:?}",
+        shipping_selected,
+        exact_opportunity_context_probe(&game),
+        probe,
+    );
+    assert_eq!(shipping_selected, "l8,6;l6,5;l6,4");
+    assert_eq!(probe.selected_input_fen, "l8,6;l6,5;l6,4");
+    assert_eq!(probe.pre_accept_input_fen, "l8,6;l6,5;l6,4");
+    assert_eq!(probe.head_input_fen.as_deref(), Some("l8,7;l9,8"));
+    assert!(!probe.head_accepted);
+}
+
+#[test]
 fn frontier_pro_v2_guarded_profile_prefers_shipping_black_post_search_duel_normal_root() {
     let game = MonsGame::from_fen(
         "0 1 b 0 0 0 0 0 8 n10d0x/n06a0xn04/n05s0xn01e0xn03/n02xxmxxmy0xn06/E0xn10/n04xxmxxUxxmn03xxQ/n03xxMY0xn01S0xxxMn03/n04D0Mn06/n04xxMA0xn05/n09xxMn01/n11",
