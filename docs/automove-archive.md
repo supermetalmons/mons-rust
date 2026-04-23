@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Pro-Only Blocker Replay Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave widened the Pro-only replay over the active blocker set instead of probing one seam at a time: `SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows,alternating_mana_rows,forward_bridge_mana_rows` with `smart_automove_pro_reliability_nonwin_trace_probe`, `duel_filter=vs_shipping_pro`, `repeats=6`, and `games=3`.
+- The replay logged `11` Pro nonwins across `36` games. It did not promote the new white seams: `l9,7;l8,8` vs `l9,7;l8,7` and `l6,7;l7,6` vs `l6,7;l7,7` each appeared once.
+- Instead, the Pro surface broadened into mixed black residue. Black `l2,7;l1,6` vs `l2,7;l1,8` repeated twice, black `l1,6;l2,7` vs shipping `l1,5;l2,3;l1,2` repeated twice, and the rest stayed singleton across both colors and across `engine_post_search` plus `engine_disabled` surfaces.
+- Durable outcome: do not reopen the new white Pro seams as standalone spends. The widened Pro-only blocker surface is still mixed, and the repeated recurrence is on the black side rather than the white side.
+
 ## White Late Mana Sibling Surface Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
