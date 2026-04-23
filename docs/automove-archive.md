@@ -4,6 +4,15 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## White Forward-Bridge Structure Probe Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave targeted the only plausible shared white runtime angle left after the isolated Fast traces: whether the repeated `forward_bridge_mana_rows` white seam and its sibling white misses were really one late spirit/setup mechanism.
+- They were not. On the repeated seam, shipping `l9,6;l7,6;l7,7` was both legacy-selected and advisor-approved as `SpiritImpact`, and frontier only lost later by accepting head `l9,6;l7,4;l7,3`.
+- The `l9,6;l8,7` seam was different. Shipping `l9,6;l7,7;l8,8` stayed in the shortlist, but frontier approved `SafeSupermanaProgress l9,6;l8,7` through `ApprovedReplyRiskGuard`.
+- The `l9,7;l8,6` seam was different again. It routed through `score_window_tactical_fallback`, preserved a safe-progress representative, and did not even stay on the same runtime path as the repeated head-accept seam.
+- Durable outcome: do not reopen a shared white `forward_bridge_mana_rows` spend. The white seams look related from the move list, but they split across head acceptance, reply-risk approval, and runtime fallback layers, so there is still no common runtime mechanism.
+
 ## Black Late-Mana Structure Probe Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
