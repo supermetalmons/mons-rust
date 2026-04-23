@@ -442,3 +442,15 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - On the retained guard board, frontier still keeps a singleton vulnerable `ManaTempo` shortlist and shipping still only wins through `search_only_engine_allowed_head` on an outside-shortlist rank-0 `DrainerSafetyRecovery` root, just like the unresolved sibling boards.
 - `shipping_vs_frontier` is still `false` there too, and there is still no projection or advisor reentry signal that would justify a simple wrapper-local split between the guard board and the unresolved siblings.
 - Durable outcome: do not reopen the white search-order family with another wrapper-level gate based on the current reply-risk/shortlist surface. Any future white spend has to distinguish boards below that surface or change the root scoring that makes both boards disagree in the same way.
+
+## White Negative-Deny Rank Surface Wave
+
+- No new runtime challenger survived this wave. Two narrow negative-deny white wrapper cuts were tried and both died in the focused retained slice before any canonical gate spend.
+- The first cut replayed the remaining Normal sibling through raw `search-only + shipping own caps + ProV2` and tried to keep it only when that replayed move was `root_rank=0`.
+- The second cut used direct shipping fallback on the same board and tried to keep it only when the shipping move was `root_rank=0` in the shipping search.
+- Both cuts still reopened the retained vulnerable guard `l8,4;l7,3` to shipping `l8,4;l8,5`, so both runtime changes were discarded.
+- The kept diagnostic is `white_search_order_rank_surface_probe`.
+- Its useful result is that the current rank surfaces are fake separation for the negative-deny white seam.
+- On the unresolved Normal sibling, shipping `l9,4;l8,5` is both `selected_rank=0` and `root_rank=0`.
+- On the retained vulnerable guard, shipping `l8,4;l8,5` still shows `selected_rank=4` under the shipping runtime, but its underlying `root_rank` is already `0`; the raw shipping-own-caps replay also gives that same guard move `root_rank=0`.
+- Durable outcome: do not reopen the negative-deny white search-order family with another runtime gate based on current selected-rank or root-rank surfaces. Any future white spend there has to distinguish a deeper ranking layer than “shipping root becomes top-ranked.”

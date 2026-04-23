@@ -3312,6 +3312,114 @@ fn white_search_order_shipping_caps_scope_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: compare selected-rank vs root-rank on white negative-deny search-order boards"]
+fn white_search_order_rank_surface_probe() {
+    struct ProbeCase {
+        label: &'static str,
+        board_fen: &'static str,
+    }
+
+    fn raw_search_only_shipping_own_caps_snapshot(
+        game: &MonsGame,
+    ) -> (String, usize, &'static str, &'static str) {
+        let selector = profile_selector_from_name("shipping_pro_search")
+            .expect("shipping profile selector should exist");
+        let mut config =
+            calibration_runtime_config("frontier_pro_v2_guarded", game, SmartAutomovePreference::Pro);
+        config.enable_turn_engine_selector = false;
+        config.enable_turn_head_rerank = true;
+        let shipping =
+            calibration_runtime_config("shipping_pro_search", game, SmartAutomovePreference::Pro);
+        config.turn_engine_seed_cap = shipping.turn_engine_seed_cap;
+        config.turn_engine_beam_width = shipping.turn_engine_beam_width;
+        config.turn_engine_per_node_family_cap = shipping.turn_engine_per_node_family_cap;
+        config.turn_engine_step_cap = shipping.turn_engine_step_cap;
+
+        clear_exact_state_analysis_cache();
+        clear_exact_query_diagnostics();
+        clear_turn_engine_plan_cache();
+        clear_turn_engine_diagnostics();
+        clear_turn_engine_selector_diagnostics();
+
+        let inputs = select_inputs_with_runtime_fallback(selector, game, config);
+        let input_fen = Input::fen_from_array(&inputs);
+        let roots = MonsGameModel::ranked_root_moves(game, game.active_color, config);
+        let root_rank = roots
+            .iter()
+            .find(|root| root.inputs.as_slice() == inputs.as_slice())
+            .map(|root| root.root_rank)
+            .expect("raw shipping-own-caps move should exist in ranked roots");
+        let selector_diag = turn_engine_selector_diagnostics_snapshot();
+        (
+            input_fen,
+            root_rank,
+            selector_diag.last_return_stage,
+            selector_diag.selector_disable_reason,
+        )
+    }
+
+    let cases = [
+        ProbeCase {
+            label: "target_white_fast_ply9_search_ordering",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n05d0xn05/n05s0xa0xe0xn03/n03y0xn03xxmn03/n02xxmn01xxmn06/n05xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn07/n04D0xS0xn01Y0xn03/n02E0xn01A0xn06",
+        },
+        ProbeCase {
+            label: "target_white_normal_ply11_search_ordering",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n06a0xn04/n03y0xn01d0xxxmn01e0xn02/n04s0xn06/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n06xxMn04/n03xxMn02Y0xn04/n04D0xS0xn05/n03E0xA0xn06",
+        },
+        ProbeCase {
+            label: "guard_white_turn_three_mana_only_vulnerable",
+            board_fen:
+                "0 0 w 1 0 1 0 0 3 n06a0xn04/n03y0xn01d0xxxmn01e0xn02/n04s0xn06/n04xxmn06/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n03xxMn02xxMn04/n04D0xn06/n04E0xn01S0xn04/n04A0xn02Y0xn03",
+        },
+    ];
+
+    for case in cases {
+        let game = MonsGame::from_fen(case.board_fen, false)
+            .unwrap_or_else(|| panic!("{}: valid board fen", case.label));
+        let frontier_probe = runtime_decision_probe(
+            "frontier_pro_v2_guarded",
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+        let shipping_probe =
+            runtime_decision_probe("shipping_pro_search", SmartAutomovePreference::Pro, &game);
+        let shipping_runtime =
+            calibration_runtime_config("shipping_pro_search", &game, SmartAutomovePreference::Pro);
+        let shipping_inputs = automove_runtime_variants::select_shipping_search_inputs(
+            &game,
+            shipping_runtime,
+        );
+        let shipping_roots =
+            MonsGameModel::ranked_root_moves(&game, game.active_color, shipping_runtime);
+        let shipping_root_rank = shipping_roots
+            .iter()
+            .find(|root| root.inputs.as_slice() == shipping_inputs.as_slice())
+            .map(|root| root.root_rank)
+            .expect("shipping selected move should exist in ranked roots");
+        let (raw_caps_move, raw_caps_root_rank, raw_caps_stage, raw_caps_disable_reason) =
+            raw_search_only_shipping_own_caps_snapshot(&game);
+
+        println!(
+            "WHITE_SEARCH_ORDER_RANK_SURFACE label={} context={} frontier(selected={} stage={}) shipping(selected={} selected_rank={:?} root_rank={}) raw_shipping_caps(move={} root_rank={} stage={} disable_reason={})",
+            case.label,
+            exact_opportunity_context_probe(&game),
+            frontier_probe.selected_input_fen,
+            frontier_probe.selector_last_stage,
+            shipping_probe.selected_input_fen,
+            shipping_probe.selected_rank,
+            shipping_root_rank,
+            raw_caps_move,
+            raw_caps_root_rank,
+            raw_caps_stage,
+            raw_caps_disable_reason,
+        );
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: inspect retained normal white ply11 search-only split"]
 fn white_normal_ply11_search_only_split_probe() {
     log_white_search_order_split_probe(
