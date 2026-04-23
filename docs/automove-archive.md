@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## White-Black Safe-Progress Structure Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave tested the only plausible cross-color follow-up left after the black safe-progress split: whether the white `forward_bridge` safe-progress seam `l9,6;l8,7` vs shipping `l9,6;l7,7;l8,8` and the Pro black setup-lane seam `l1,6;l2,7` vs shipping `l1,5;l2,3;l1,2` were really the same `SafeSupermanaProgress`-over-`SpiritImpact` mechanism.
+- They matched only at the approved family. On both boards, frontier still approved `SafeSupermanaProgress` through `ApprovedReplyRiskGuard`.
+- Under that, they split again. On the white seam, shipping `SpiritImpact l9,6;l7,7;l8,8` stayed candidate-live and shortlist-live, and several other spirit siblings stayed live with it. On the Pro black seam, the entire `SpiritImpact` family was filtered out before shortlist, and shipping `l1,5;l2,3;l1,2` survived only as a preserved outside-candidate representative.
+- Durable outcome: do not reopen a shared cross-color safe-progress-vs-spirit runtime spend across these two seams. Shared `ApprovedReplyRiskGuard` approval was a false lead; the candidate-set failure modes are different.
+
 ## Black Safe-Progress Setup Structure Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
