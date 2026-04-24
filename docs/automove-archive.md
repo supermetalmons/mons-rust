@@ -4,6 +4,15 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Outer-Edge Normal Refresh Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave reran `SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows` on `smart_automove_pro_reliability_nonwin_trace_probe` with `duel_filter=vs_shipping_normal`, `repeats=6`, and `games=3`.
+- The refreshed replay again logged `10` Normal nonwins. The distribution still matched the archived mixed bucket instead of collapsing to one local patch target.
+- The only repeated move pair was still black `l2,7;l3,8` vs shipping `l1,5;l0,3;l1,3` (`3x`). The rest remained singleton drift across late black same-family mana, early white post-search mana, early black copied-board recovery, and white `search_only_forced_prepass`.
+- The head-accept source review did not reveal a clean general rule worth cutting: blocking the repeated black miss would require another special-case head guard, while the sampled blocker set still includes unrelated pre-accept and forced-prepass surfaces.
+- Durable outcome: do not reopen `outer_edge_mana_rows` from the refreshed Normal trace alone. It is still mixed residue with one repeated accepted-head pair, not a promotable Pro automove hypothesis.
+
 ## Alternating Singleton Copied Board Replay Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
