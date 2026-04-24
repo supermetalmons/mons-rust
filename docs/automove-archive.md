@@ -1089,3 +1089,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - A narrow outer-edge context-shipping repair did not make the line promotable. It improved active Normal to `4-2`, but active Pro stayed `3-3` and Fast stayed `5-1`.
 - Decision-record follow-up showed no single repair surface: active Pro nonwins split across `outer_edge_mana_rows` flat, `alternating_mana_rows` flat, and a `forward_bridge_mana_rows` early-white-fallback regression.
 - Durable outcome: do not spend another iteration on the sampled-pass iterative-deepening row composite or outer-edge context-shipping repair. The next challenger needs a new ProV3 utility feature or structural selector that clears sampled Pro and active Pro together rather than rotating the active blocker rows across opponent modes.
+
+## Exact Evidence And Portfolio Scout No-Go
+
+- No runtime challenger survived this wave. Temporary test-only sweep candidates were removed before commit.
+- Full exact static evaluation and root exact tactics were stopped as cost failures before producing useful active-panel evidence.
+- Broad exact-lite checks did finish the active Pro row but failed immediately: `4-2` overall, with `outer_edge_mana_rows` and `forward_bridge_mana_rows` both split `1-1`.
+- Guarded/raw/shipping portfolio majority was too expensive and still failed active Pro: `3-3` overall, `outer_edge_mana_rows` `0-2`, average candidate move time `356.18ms`.
+- Raw-on-divergence was also killed on active Pro: `2-4` overall, `outer_edge_mana_rows` `0-2`, average candidate move time `255.32ms`.
+- Durable outcome: do not continue exact-evidence toggles or multi-search guarded/raw/shipping agreement portfolios as the next challenger. They either hit cost before strength or reproduce the active Pro `outer_edge_mana_rows` failure before sampled validation is worth running.
