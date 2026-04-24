@@ -990,3 +990,10 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Every regression move pair was singleton: black `l1,4;l2,5` vs `l1,4;l1,6;l2,7`, black `l1,5;l0,3;l1,3` vs `l1,6;l2,7`, and white `l9,4;l8,3` vs `l9,6;l9,8;l8,8`.
 - The printed regressions split across white safe-progress over spirit setup, black spirit head-accept over mana, and early black mana-vs-spirit setup ordering. There was no repeated board worth hotspotting and no runtime code was changed.
 - Durable outcome: do not spend on the alt-v5 focused Normal singleton pairs. This seed again argues that `outer_edge_mana_rows` is not currently exposing a promotable standalone repair.
+
+## Sampled Gate Refresh After Alt-V5 Focused Traces
+
+- No runtime challenger was attempted in this wave. A clean `runtime-preflight` passed, then sampled `pro-reliability` was rerun for retained `frontier_pro_v2_guarded` against `shipping_pro_search`.
+- Promotion failed. Pro passed at win rate `1.0000`, confidence `0.9998`, and frontier average `154.74ms`; Normal was below the confidence target at `0.9167`, `0.9968`, `192.00ms`; Fast failed at `0.8333`, `0.9807`, `172.51ms`.
+- The weak variant rows were the same as before: Normal `outer_edge_mana_rows` at `0.5000`, Fast `alternating_mana_rows` at `0.5000`, and Fast `forward_bridge_mana_rows` at `0.5000`.
+- Durable outcome: the focused alt-v5 singleton-only traces did not make the retained frontier promotable. Keep runtime code untouched until a focused probe exposes a repeated mechanism under one of those three weak rows.
