@@ -1107,3 +1107,10 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - `frontier_pro_v3_ranked_reply_guard` only changed roots when the advisor approved guarded through `ApprovedReplyRiskGuard` and a safer, better-ranked shortlist root had comparable utility. It improved active Pro to `4-2`, removed candidate regressions against shipping on that slice, and moved `outer_edge_mana_rows` from `0-2` to `1-1`.
 - The ranked reply-guard line still failed the full active dashboard: Pro `4-2`, Normal `5-1`, Fast `2-4`. Fast `outer_edge_mana_rows` remained `0-2`, while Pro still had flat losses on `outer_edge_mana_rows` and `alternating_mana_rows` where shipping also lost.
 - Durable outcome: do not retry reply-floor-only switching or generic ranked `ApprovedReplyRiskGuard` deference. Rank deference is a useful diagnostic signal for the active Pro `outer_edge` regression, but by itself it rotates the active panel and does not supply the missing winning policy for flat Pro/Fast losses.
+
+## ProV3 Pressure And Dirty Reply-Risk No-Go
+
+- No runtime challenger survived this wave. Temporary test-only sweep candidates were removed before commit.
+- `frontier_pro_v3_pressure_blend` treated advisor ordered and preserved roots as one pool, then tried to override `ApprovedReplyRiskGuard` selections when a safe root had stronger concrete pressure features: scoring windows, mana progress, pickups, or spirit setup. The active Pro dashboard killed it at `3-3`, with `outer_edge_mana_rows` still `0-2`, `alternating_mana_rows` `1-1`, and `forward_bridge_mana_rows` `2-0`.
+- `frontier_pro_v3_dirty_reply_roots` disabled `prefer_clean_reply_risk_roots` under the guarded ProV2 config. It made the active Pro panel worse: `2-4` overall, `outer_edge_mana_rows` `0-2`, `alternating_mana_rows` `1-1`, and `forward_bridge_mana_rows` `1-1`.
+- Durable outcome: do not retry pressure-blend scoring over advisor ordered/preserved roots or dirty reply-risk root preference toggles. They fail before sampled validation and do not address the active Pro `outer_edge_mana_rows` blocker.
