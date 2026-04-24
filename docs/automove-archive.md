@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Decision-Record Aggregation Wave
+
+- A diagnostic-only decision-record aggregator was added and kept. It replays Pro, Normal, and Fast shipping duels and classifies each first divergence by runtime branch, selector stage, pre-accept/head family, head acceptance, approved advisor root, exact context, and baseline-root status.
+- Delta-scope records showed that many promotion misses are not frontier-worse-than-shipping deltas. On the active blockers, Pro had `0` regressions / `2` improvements / `4` flat, Normal had `1` / `2` / `3`, and Fast had `2` / `2` / `2`; canonical sampled Pro had no regressions.
+- Nonwin-scope records exposed why a simple shipping-root selector is unsafe. Active nonwins split across alternating black recovery-vs-mana flat loss, forward-bridge white SpiritImpact-vs-ManaTempo regression, outer-edge white SpiritImpact-vs-DrainerSafetyRecovery regression, and forward-bridge white safe-progress-vs-spirit regression. Canonical sampled nonwins added outer-edge black same-family ManaTempo flat loss plus the archived forward-bridge white accepted-head spirit regression.
+- A temporary test-only live-root shipping meta-selector was cut and removed in the same session. Routing to shipping when the shipping root was candidate-live at rank `0` failed the active Pro panel at `1-5`; broader top-2 and advisor-live variants also failed at `2-4`, with `outer_edge_mana_rows` and `forward_bridge_mana_rows` both `0-2`.
+- Durable outcome: do not use candidate-live, top-ranked, or advisor-live shipping status as the next meta-selector by itself. The status is useful evidence for records, but the mechanisms are still split; the next runtime spend needs a true ProV3 utility change or another aggregate that collapses the split below advisor/head/final-selection status.
+
 ## Attribution-Informed Context Gate Wave
 
 - A test-only context-gated sweep candidate was cut and killed in this wave, then removed before ending the session.

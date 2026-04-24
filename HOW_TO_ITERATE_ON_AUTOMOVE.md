@@ -105,6 +105,7 @@ Use diagnostics only after the canonical loop shows what is still missing.
 - `smart_automove_pro_reliability_hotspot_probe`
 - `smart_automove_pro_profile_sweep_probe`
 - `smart_automove_pro_profile_attribution_probe`
+- `smart_automove_pro_decision_record_aggregation_probe`
 - `smart_automove_pro_triage_retained_churn_probe`
 - `smart_automove_pro_forced_turn_engine_retained_churn_probe`
 - `smart_automove_pro_root_advisor_trace_probe`
@@ -160,6 +161,15 @@ The attribution wrapper sets the left candidate from the stage argument and read
 SMART_PRO_SWEEP_ATTRIBUTION_RIGHT=frontier_pro_v2_raw \
 SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows,alternating_mana_rows,forward_bridge_mana_rows \
 ./scripts/run-automove-experiment.sh pro-profile-attribution frontier_pro_v2_no_late_black_fallback
+```
+
+`smart_automove_pro_decision_record_aggregation_probe` aggregates first-divergence records against `shipping_pro_search` and reports whether the shipping root was selected, pre-accepted, head-selected, legacy-selected, candidate-live, advisor-approved, ordered, preserved, injected, or omitted. Use `SMART_PRO_DECISION_RECORD_SCOPE=nonwins` when the promotion miss is flat losses rather than frontier-worse-than-shipping deltas.
+
+```sh
+SMART_PRO_DECISION_RECORD_SCOPE=nonwins \
+SMART_PRO_DECISION_RECORD_DUEL_FILTER=vs_shipping_fast \
+SMART_AUTOMOVE_VARIANTS=alternating_mana_rows,forward_bridge_mana_rows \
+cargo test --release --lib smart_automove_pro_decision_record_aggregation_probe -- --ignored --nocapture
 ```
 
 All diagnostics run through the ignored test harness:

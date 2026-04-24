@@ -1198,6 +1198,417 @@ fn smart_automove_pro_profile_sweep_probe() {
     }
 }
 
+fn decision_record_root_advisor_entry_status(
+    entries: &[crate::models::mons_game_model::ProV2RootAdvisorEntry],
+    root_fen: &str,
+) -> Option<String> {
+    entries.iter().find_map(|entry| {
+        (Input::fen_from_array(&entry.inputs) == root_fen).then(|| {
+            format!(
+                "{:?}:{:?}:rank{}",
+                entry.reason, entry.family, entry.root_rank
+            )
+        })
+    })
+}
+
+fn decision_record_baseline_status(
+    profile_name: &str,
+    mode: SmartAutomovePreference,
+    game: &MonsGame,
+    probe: &RuntimeDecisionProbe,
+    advisor: Option<&crate::models::mons_game_model::ProV2RootAdvisorDecision>,
+    baseline_move_fen: &str,
+) -> String {
+    let (_, scored_roots, _, _) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(profile_name, mode, game);
+    let mut parts = Vec::<String>::new();
+
+    if baseline_move_fen == probe.selected_input_fen {
+        parts.push("selected".to_string());
+    }
+    if baseline_move_fen == probe.pre_accept_input_fen {
+        parts.push("pre_accept".to_string());
+    }
+    if probe
+        .head_input_fen
+        .as_ref()
+        .is_some_and(|head| head == baseline_move_fen)
+    {
+        parts.push("head".to_string());
+    }
+    if baseline_move_fen == probe.legacy_selected_input_fen {
+        parts.push("legacy_selected".to_string());
+    }
+    if baseline_move_fen == probe.legacy_full_pool_selected_input_fen {
+        parts.push("legacy_full_pool_selected".to_string());
+    }
+
+    if let Some((index, root)) = scored_roots
+        .iter()
+        .enumerate()
+        .find(|(_, root)| Input::fen_from_array(&root.inputs) == baseline_move_fen)
+    {
+        parts.push(format!(
+            "candidate_live:index{}:rank{}:{:?}",
+            index,
+            root.root_rank,
+            MonsGameModel::turn_engine_root_evaluation_family(root)
+        ));
+    } else {
+        parts.push("candidate_omitted".to_string());
+    }
+
+    if let Some(advisor) = advisor {
+        if advisor
+            .approved_root
+            .as_ref()
+            .is_some_and(|entry| Input::fen_from_array(&entry.inputs) == baseline_move_fen)
+        {
+            parts.push("advisor_approved".to_string());
+        }
+        if let Some(status) =
+            decision_record_root_advisor_entry_status(&advisor.ordered_shortlist, baseline_move_fen)
+        {
+            parts.push(format!("advisor_ordered:{status}"));
+        }
+        if let Some(status) = decision_record_root_advisor_entry_status(
+            &advisor.preserved_family_representatives,
+            baseline_move_fen,
+        ) {
+            parts.push(format!("advisor_preserved:{status}"));
+        }
+        if advisor.injected_root.as_ref().is_some_and(|root| {
+            Input::fen_from_array(&root.inputs) == baseline_move_fen && root.admitted
+        }) {
+            parts.push("advisor_injected_admitted".to_string());
+        }
+        if advisor.injected_root.as_ref().is_some_and(|root| {
+            Input::fen_from_array(&root.inputs) == baseline_move_fen && !root.admitted
+        }) {
+            parts.push("advisor_injected_rejected".to_string());
+        }
+    } else {
+        parts.push("advisor_none".to_string());
+    }
+
+    parts.join("|")
+}
+
+fn decision_record_approved_status(
+    advisor: Option<&crate::models::mons_game_model::ProV2RootAdvisorDecision>,
+) -> String {
+    advisor
+        .and_then(|advisor| advisor.approved_root.as_ref())
+        .map(format_root_advisor_entry_probe)
+        .unwrap_or_else(|| "none".to_string())
+}
+
+#[test]
+#[ignore = "diagnostic: aggregate first-divergence decision records for Pro reliability duels"]
+fn smart_automove_pro_decision_record_aggregation_probe() {
+    #[derive(Clone)]
+    struct DecisionRecordDuelSpec {
+        label: &'static str,
+        opponent_mode: SmartAutomovePreference,
+        seed_tag: String,
+    }
+
+    let frontier_profile = reliability_frontier_profile_id();
+    let shipping_profile = reliability_shipping_profile_id();
+    let repeats = env_usize("SMART_PRO_DECISION_RECORD_REPEATS")
+        .unwrap_or(3)
+        .max(1);
+    let games = env_usize("SMART_PRO_DECISION_RECORD_GAMES")
+        .unwrap_or(2)
+        .max(1);
+    let max_plies = env_usize("SMART_PRO_DECISION_RECORD_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let trace_limit = env_usize("SMART_PRO_DECISION_RECORD_TRACE_LIMIT")
+        .unwrap_or(24)
+        .max(1);
+    let aggregate_limit = env_usize("SMART_PRO_DECISION_RECORD_AGGREGATE_LIMIT")
+        .unwrap_or(64)
+        .max(1);
+    let seed_tag = env_string_value("SMART_PRO_DECISION_RECORD_SEED_TAG")
+        .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
+    let duel_filter = pro_sweep_filter_tokens("SMART_PRO_DECISION_RECORD_DUEL_FILTER", "all");
+    let outcome_filter = pro_sweep_filter_tokens("SMART_PRO_DECISION_RECORD_OUTCOME", "all");
+    let scope =
+        env_string_value("SMART_PRO_DECISION_RECORD_SCOPE").unwrap_or_else(|| "delta".to_string());
+    let duel_specs = vec![
+        DecisionRecordDuelSpec {
+            label: "vs_shipping_pro",
+            opponent_mode: SmartAutomovePreference::Pro,
+            seed_tag: seed_tag.clone(),
+        },
+        DecisionRecordDuelSpec {
+            label: "vs_shipping_normal",
+            opponent_mode: SmartAutomovePreference::Normal,
+            seed_tag: format!("{}_vs_normal", seed_tag),
+        },
+        DecisionRecordDuelSpec {
+            label: "vs_shipping_fast",
+            opponent_mode: SmartAutomovePreference::Fast,
+            seed_tag: format!("{}_vs_fast", seed_tag),
+        },
+    ];
+
+    println!(
+        "pro decision record aggregation: frontier={} shipping={} repeats={} games={} max_plies={} duels={} outcome_filter={} variants={}",
+        frontier_profile,
+        shipping_profile,
+        repeats,
+        games,
+        max_plies,
+        duel_specs
+            .iter()
+            .filter(|duel| pro_sweep_filter_allows(&duel_filter, duel.label))
+            .map(|duel| duel.label)
+            .collect::<Vec<_>>()
+            .join(","),
+        format!("{} scope={}", outcome_filter.join(","), scope),
+        env::var("SMART_AUTOMOVE_VARIANTS").unwrap_or_else(|_| "<default>".to_string())
+    );
+
+    for duel in duel_specs
+        .iter()
+        .filter(|duel| pro_sweep_filter_allows(&duel_filter, duel.label))
+    {
+        let opponent_budget = SearchBudget::from_preference(duel.opponent_mode);
+        let mut total_games = 0usize;
+        let mut regressions = 0usize;
+        let mut improvements = 0usize;
+        let mut flat = 0usize;
+        let mut nonwins = 0usize;
+        let mut recorded = 0usize;
+        let mut missing_first_diff = 0usize;
+        let mut printed = 0usize;
+        let mut mechanism_counts = BTreeMap::<String, usize>::new();
+        let mut baseline_counts = BTreeMap::<String, usize>::new();
+        let mut stage_counts = BTreeMap::<String, usize>::new();
+
+        for repeat_index in 0..repeats {
+            let seed = seed_for_budget_duel_repeat_and_tag(
+                pro_budget(),
+                opponent_budget,
+                repeat_index,
+                duel.seed_tag.as_str(),
+            );
+            let opening_fens = generate_opening_fens_cached(seed, games);
+            for (game_index, opening_fen) in opening_fens.iter().enumerate() {
+                let variant = MonsGame::from_fen(opening_fen.as_str(), false)
+                    .expect("valid opening fen")
+                    .variant();
+                for frontier_is_white in [true, false] {
+                    total_games += 1;
+                    let frontier_trace = play_profile_duel_trace(
+                        frontier_profile.as_str(),
+                        shipping_profile.as_str(),
+                        duel.opponent_mode,
+                        opening_fen.as_str(),
+                        frontier_is_white,
+                        max_plies,
+                    );
+                    let shipping_trace = play_profile_duel_trace(
+                        shipping_profile.as_str(),
+                        shipping_profile.as_str(),
+                        duel.opponent_mode,
+                        opening_fen.as_str(),
+                        frontier_is_white,
+                        max_plies,
+                    );
+                    let delta = match_result_points(frontier_trace.result)
+                        - match_result_points(shipping_trace.result);
+                    let frontier_won = matches!(frontier_trace.result, MatchResult::ProfileAWin);
+                    if !frontier_won {
+                        nonwins += 1;
+                    }
+                    if delta < 0 {
+                        regressions += 1;
+                    } else if delta > 0 {
+                        improvements += 1;
+                    } else {
+                        flat += 1;
+                    }
+                    let outcome = if scope == "nonwins" && !frontier_won {
+                        match delta.cmp(&0) {
+                            std::cmp::Ordering::Less => "nonwin_regression",
+                            std::cmp::Ordering::Greater => "nonwin_improvement",
+                            std::cmp::Ordering::Equal => "nonwin_flat",
+                        }
+                    } else if delta < 0 {
+                        "regression"
+                    } else if delta > 0 {
+                        "improvement"
+                    } else {
+                        "flat"
+                    };
+                    let should_record = if scope == "nonwins" {
+                        !frontier_won
+                    } else {
+                        delta != 0
+                    };
+                    if !should_record || !pro_sweep_filter_allows(&outcome_filter, outcome) {
+                        continue;
+                    }
+                    recorded += 1;
+
+                    let Some(divergence) =
+                        first_duel_trace_divergence(&frontier_trace, &shipping_trace)
+                    else {
+                        missing_first_diff += 1;
+                        continue;
+                    };
+                    let board = MonsGame::from_fen(divergence.board_fen.as_str(), false)
+                        .expect("trace board fen should be valid");
+                    let frontier_probe = runtime_decision_probe(
+                        frontier_profile.as_str(),
+                        SmartAutomovePreference::Pro,
+                        &board,
+                    );
+                    let frontier_advisor = pro_v2_root_advisor_decision_snapshot();
+                    let shipping_probe = runtime_decision_probe(
+                        shipping_profile.as_str(),
+                        SmartAutomovePreference::Pro,
+                        &board,
+                    );
+                    let baseline_status = decision_record_baseline_status(
+                        frontier_profile.as_str(),
+                        SmartAutomovePreference::Pro,
+                        &board,
+                        &frontier_probe,
+                        frontier_advisor.as_ref(),
+                        divergence.profile_b_move_fen.as_str(),
+                    );
+                    let approved_status =
+                        decision_record_approved_status(frontier_advisor.as_ref());
+                    let mechanism_key = format!(
+                        "outcome={} duel={} variant={} color={} turn={} mons_moves={} branch={} stage={} selected_rank={:?} pre_family={:?} head_family={:?} head_accepted={} baseline_status={} approved={}",
+                        outcome,
+                        duel.label,
+                        automove_variant_label(variant),
+                        pro_profile_sweep_color_label(board.active_color),
+                        board.turn_number,
+                        board.mons_moves_count,
+                        frontier_probe.runtime_variant_branch,
+                        frontier_probe.selector_last_stage,
+                        frontier_probe.selected_rank,
+                        frontier_probe.pre_accept_family,
+                        frontier_probe.head_family,
+                        frontier_probe.head_accepted,
+                        baseline_status,
+                        approved_status,
+                    );
+                    let baseline_key = format!(
+                        "outcome={} duel={} baseline_status={}",
+                        outcome, duel.label, baseline_status
+                    );
+                    let stage_key = format!(
+                        "outcome={} duel={} branch={} stage={} pre_family={:?} head_family={:?} head_accepted={}",
+                        outcome,
+                        duel.label,
+                        frontier_probe.runtime_variant_branch,
+                        frontier_probe.selector_last_stage,
+                        frontier_probe.pre_accept_family,
+                        frontier_probe.head_family,
+                        frontier_probe.head_accepted,
+                    );
+                    *mechanism_counts.entry(mechanism_key.clone()).or_default() += 1;
+                    *baseline_counts.entry(baseline_key).or_default() += 1;
+                    *stage_counts.entry(stage_key).or_default() += 1;
+
+                    if printed < trace_limit {
+                        println!(
+                            "PRO_DECISION_RECORD {{\"frontier\":\"{}\",\"shipping\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"frontier_is_white\":{},\"outcome\":\"{}\",\"delta\":{},\"frontier_result\":\"{}\",\"shipping_result\":\"{}\",\"first_diff_ply\":{},\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"frontier_move\":\"{}\",\"shipping_move\":\"{}\",\"frontier_selected\":\"{}\",\"frontier_pre_accept\":\"{}\",\"frontier_head\":{:?},\"frontier_stage\":\"{}\",\"frontier_branch\":\"{}\",\"frontier_pre_family\":\"{:?}\",\"frontier_head_family\":\"{:?}\",\"frontier_head_accepted\":{},\"baseline_status\":\"{}\",\"approved_status\":\"{}\",\"shipping_stage\":\"{}\",\"shipping_selected\":\"{}\",\"exact_context\":\"{}\",\"board\":\"{}\"}}",
+                            json_escape(&frontier_profile),
+                            json_escape(&shipping_profile),
+                            json_escape(duel.label),
+                            repeat_index,
+                            game_index,
+                            automove_variant_label(variant),
+                            frontier_is_white,
+                            outcome,
+                            delta,
+                            format_match_result(frontier_trace.result),
+                            format_match_result(shipping_trace.result),
+                            divergence.ply,
+                            pro_profile_sweep_color_label(board.active_color),
+                            board.turn_number,
+                            board.mons_moves_count,
+                            board.player_can_use_action(),
+                            board.player_can_move_mana(),
+                            json_escape(&divergence.profile_a_move_fen),
+                            json_escape(&divergence.profile_b_move_fen),
+                            json_escape(&frontier_probe.selected_input_fen),
+                            json_escape(&frontier_probe.pre_accept_input_fen),
+                            frontier_probe.head_input_fen.as_ref().map(|head| json_escape(head)),
+                            json_escape(frontier_probe.selector_last_stage),
+                            json_escape(frontier_probe.runtime_variant_branch),
+                            frontier_probe.pre_accept_family,
+                            frontier_probe.head_family,
+                            frontier_probe.head_accepted,
+                            json_escape(&baseline_status),
+                            json_escape(&approved_status),
+                            json_escape(shipping_probe.selector_last_stage),
+                            json_escape(&shipping_probe.selected_input_fen),
+                            json_escape(&frontier_probe.exact_context),
+                            json_escape(&divergence.board_fen),
+                        );
+                        printed += 1;
+                    }
+                }
+            }
+        }
+
+        println!(
+            "PRO_DECISION_RECORD_SUMMARY {{\"frontier\":\"{}\",\"shipping\":\"{}\",\"duel\":\"{}\",\"scope\":\"{}\",\"total_games\":{},\"regressions\":{},\"improvements\":{},\"flat\":{},\"nonwins\":{},\"recorded\":{},\"missing_first_diff\":{}}}",
+            json_escape(&frontier_profile),
+            json_escape(&shipping_profile),
+            json_escape(duel.label),
+            json_escape(&scope),
+            total_games,
+            regressions,
+            improvements,
+            flat,
+            nonwins,
+            recorded,
+            missing_first_diff,
+        );
+        for (key, games) in stage_counts.iter().take(aggregate_limit) {
+            println!(
+                "PRO_DECISION_RECORD_STAGE {{\"frontier\":\"{}\",\"shipping\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                json_escape(&frontier_profile),
+                json_escape(&shipping_profile),
+                json_escape(duel.label),
+                json_escape(key),
+                games,
+            );
+        }
+        for (key, games) in baseline_counts.iter().take(aggregate_limit) {
+            println!(
+                "PRO_DECISION_RECORD_BASELINE {{\"frontier\":\"{}\",\"shipping\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                json_escape(&frontier_profile),
+                json_escape(&shipping_profile),
+                json_escape(duel.label),
+                json_escape(key),
+                games,
+            );
+        }
+        for (key, games) in mechanism_counts.iter().take(aggregate_limit) {
+            println!(
+                "PRO_DECISION_RECORD_MECHANISM {{\"frontier\":\"{}\",\"shipping\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                json_escape(&frontier_profile),
+                json_escape(&shipping_profile),
+                json_escape(duel.label),
+                json_escape(key),
+                games,
+            );
+        }
+    }
+}
+
 #[test]
 #[ignore = "diagnostic: replay exact pro-reliability duel seeds against shipping_pro_search and log first regression divergence"]
 fn smart_automove_pro_reliability_duel_trace_probe() {
