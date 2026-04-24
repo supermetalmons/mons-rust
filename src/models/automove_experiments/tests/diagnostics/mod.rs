@@ -2,6 +2,7 @@ use super::*;
 use crate::models::mons_game_model::automove_runtime_variants::{
     apply_frontier_pro_v2_guarded_config, clear_frontier_runtime_variant_branch,
     frontier_runtime_variant_branch_snapshot, select_frontier_pro_v2_guarded_inputs,
+    select_frontier_pro_v2_guarded_without_late_black_fallback_inputs,
     select_shipping_search_inputs,
 };
 use crate::models::scoring::{
@@ -442,6 +443,13 @@ fn select_sweep_frontier_pro_v2_raw_inputs(
     select_sweep_frontier_config_inputs(game, apply_frontier_pro_v2_guarded_config(config))
 }
 
+fn select_sweep_frontier_pro_v2_no_late_black_fallback_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> Vec<Input> {
+    select_frontier_pro_v2_guarded_without_late_black_fallback_inputs(game, config)
+}
+
 fn select_sweep_frontier_pro_v2_head_rerank_inputs(
     game: &MonsGame,
     config: AutomoveSearchConfig,
@@ -500,6 +508,10 @@ fn pro_profile_sweep_candidates() -> Vec<ProProfileSweepCandidate> {
         ProProfileSweepCandidate {
             id: "frontier_pro_v2_raw",
             selector: select_sweep_frontier_pro_v2_raw_inputs,
+        },
+        ProProfileSweepCandidate {
+            id: "frontier_pro_v2_no_late_black_fallback",
+            selector: select_sweep_frontier_pro_v2_no_late_black_fallback_inputs,
         },
         ProProfileSweepCandidate {
             id: "frontier_pro_v2_head_rerank",
@@ -629,6 +641,373 @@ fn print_profile_sweep_summary(
             variant_stats.timing.profile_a_avg_ms(),
             variant_stats.timing.profile_b_avg_ms(),
         );
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProProfileSweepAttributionTurn {
+    ply: usize,
+    board_fen: String,
+    move_fen: String,
+    guarded_branch: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProProfileSweepAttributionTrace {
+    result: MatchResult,
+    final_fen: String,
+    candidate_turns: Vec<ProProfileSweepAttributionTurn>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProProfileSweepFirstDivergence {
+    ply: usize,
+    board_fen: String,
+    guarded_move_fen: String,
+    raw_move_fen: String,
+    guarded_branch: &'static str,
+}
+
+fn select_profile_sweep_candidate_inputs_with_branch(
+    candidate: ProProfileSweepCandidate,
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> (Vec<Input>, &'static str) {
+    clear_frontier_runtime_variant_branch();
+    let inputs = select_inputs_with_runtime_fallback(candidate.selector, game, config);
+    let branch = if candidate.id == "frontier_pro_v2_guarded" {
+        frontier_runtime_variant_branch_snapshot()
+    } else {
+        "candidate_execute"
+    };
+    (inputs, branch)
+}
+
+fn play_profile_sweep_attribution_trace(
+    candidate: ProProfileSweepCandidate,
+    opponent_selector: AutomoveSelector,
+    opponent_budget: SearchBudget,
+    opening_fen: &str,
+    candidate_is_white: bool,
+    max_plies: usize,
+) -> ProProfileSweepAttributionTrace {
+    let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
+    clear_exact_state_analysis_cache();
+    clear_exact_query_diagnostics();
+    clear_turn_engine_plan_cache();
+    clear_turn_engine_diagnostics();
+    clear_turn_engine_selector_diagnostics();
+
+    let mut candidate_turns = Vec::new();
+    for ply in 0..max_plies {
+        if let Some(winner_color) = game.winner_color() {
+            return ProProfileSweepAttributionTrace {
+                result: match_result_from_winner(winner_color, candidate_is_white),
+                final_fen: game.fen(),
+                candidate_turns,
+            };
+        }
+
+        let board_fen = game.fen();
+        let candidate_to_move = if candidate_is_white {
+            game.active_color == Color::White
+        } else {
+            game.active_color == Color::Black
+        };
+        let (inputs, guarded_branch) = if candidate_to_move {
+            select_profile_sweep_candidate_inputs_with_branch(
+                candidate,
+                &game,
+                pro_budget().runtime_config_for_game(&game),
+            )
+        } else {
+            (
+                select_inputs_with_runtime_fallback(
+                    opponent_selector,
+                    &game,
+                    opponent_budget.runtime_config_for_game(&game),
+                ),
+                "opponent_execute",
+            )
+        };
+
+        if candidate_to_move {
+            candidate_turns.push(ProProfileSweepAttributionTurn {
+                ply,
+                board_fen,
+                move_fen: Input::fen_from_array(&inputs),
+                guarded_branch,
+            });
+        }
+
+        if inputs.is_empty() {
+            return ProProfileSweepAttributionTrace {
+                result: if candidate_to_move {
+                    MatchResult::ProfileBWin
+                } else {
+                    MatchResult::ProfileAWin
+                },
+                final_fen: game.fen(),
+                candidate_turns,
+            };
+        }
+        if !matches!(game.process_input(inputs, false, false), Output::Events(_)) {
+            return ProProfileSweepAttributionTrace {
+                result: if candidate_to_move {
+                    MatchResult::ProfileBWin
+                } else {
+                    MatchResult::ProfileAWin
+                },
+                final_fen: game.fen(),
+                candidate_turns,
+            };
+        }
+    }
+
+    ProProfileSweepAttributionTrace {
+        result: match adjudicate_non_terminal_game(&game) {
+            Some(winner_color) => match_result_from_winner(winner_color, candidate_is_white),
+            None => MatchResult::Draw,
+        },
+        final_fen: game.fen(),
+        candidate_turns,
+    }
+}
+
+fn first_profile_sweep_guarded_raw_divergence(
+    guarded: &ProProfileSweepAttributionTrace,
+    raw: &ProProfileSweepAttributionTrace,
+) -> Option<ProProfileSweepFirstDivergence> {
+    guarded
+        .candidate_turns
+        .iter()
+        .zip(raw.candidate_turns.iter())
+        .find_map(|(guarded_turn, raw_turn)| {
+            if guarded_turn.board_fen != raw_turn.board_fen {
+                return None;
+            }
+            if guarded_turn.move_fen == raw_turn.move_fen {
+                return None;
+            }
+            Some(ProProfileSweepFirstDivergence {
+                ply: guarded_turn.ply,
+                board_fen: guarded_turn.board_fen.clone(),
+                guarded_move_fen: guarded_turn.move_fen.clone(),
+                raw_move_fen: raw_turn.move_fen.clone(),
+                guarded_branch: guarded_turn.guarded_branch,
+            })
+        })
+}
+
+fn pro_profile_sweep_outcome_label(delta: i32) -> &'static str {
+    if delta > 0 {
+        "raw_better"
+    } else if delta < 0 {
+        "guarded_better"
+    } else {
+        "same_outcome"
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: attribute guarded-vs-raw ProV2 outcome changes to first guarded branch divergence"]
+fn smart_automove_pro_profile_attribution_probe() {
+    #[derive(Clone)]
+    struct AttributionDuelSpec {
+        label: &'static str,
+        opponent_mode: SmartAutomovePreference,
+        seed_tag: String,
+    }
+
+    let shipping_profile = reliability_shipping_profile_id();
+    let shipping_selector = profile_selector_from_name(shipping_profile.as_str())
+        .unwrap_or_else(|| panic!("shipping '{}' not found", shipping_profile));
+    let repeats = env_usize("SMART_PRO_SWEEP_REPEATS").unwrap_or(1).max(1);
+    let games = env_usize("SMART_PRO_SWEEP_GAMES").unwrap_or(3).max(1);
+    let max_plies = env_usize("SMART_PRO_SWEEP_MAX_PLIES").unwrap_or(96).max(56);
+    let trace_limit = env_usize("SMART_PRO_SWEEP_TRACE_LIMIT")
+        .unwrap_or(16)
+        .max(1);
+    let pair_limit = env_usize("SMART_PRO_SWEEP_PAIR_LIMIT").unwrap_or(12).max(1);
+    let seed_tag = env_string_value("SMART_PRO_SWEEP_SEED_TAG")
+        .unwrap_or_else(|| "pro_profile_sweep_v1".to_string());
+    let duel_filter = pro_sweep_filter_tokens("SMART_PRO_SWEEP_DUEL_FILTER", "all");
+    let duel_specs = vec![
+        AttributionDuelSpec {
+            label: "vs_shipping_pro",
+            opponent_mode: SmartAutomovePreference::Pro,
+            seed_tag: seed_tag.clone(),
+        },
+        AttributionDuelSpec {
+            label: "vs_shipping_normal",
+            opponent_mode: SmartAutomovePreference::Normal,
+            seed_tag: format!("{}_vs_normal", seed_tag),
+        },
+        AttributionDuelSpec {
+            label: "vs_shipping_fast",
+            opponent_mode: SmartAutomovePreference::Fast,
+            seed_tag: format!("{}_vs_fast", seed_tag),
+        },
+    ];
+    let guarded = pro_profile_sweep_candidates()
+        .into_iter()
+        .find(|candidate| candidate.id == "frontier_pro_v2_guarded")
+        .expect("guarded candidate should exist");
+    let raw = pro_profile_sweep_candidates()
+        .into_iter()
+        .find(|candidate| candidate.id == "frontier_pro_v2_raw")
+        .expect("raw candidate should exist");
+
+    println!(
+        "pro profile attribution: guarded={} raw={} shipping={} duels={} repeats={} games={} max_plies={} variants={}",
+        guarded.id,
+        raw.id,
+        shipping_profile,
+        duel_specs
+            .iter()
+            .filter(|duel| pro_sweep_filter_allows(&duel_filter, duel.label))
+            .map(|duel| duel.label)
+            .collect::<Vec<_>>()
+            .join(","),
+        repeats,
+        games,
+        max_plies,
+        env::var("SMART_AUTOMOVE_VARIANTS").unwrap_or_else(|_| "<default>".to_string())
+    );
+
+    for duel in duel_specs
+        .iter()
+        .filter(|duel| pro_sweep_filter_allows(&duel_filter, duel.label))
+    {
+        let opponent_budget = SearchBudget::from_preference(duel.opponent_mode);
+        let mut total_games = 0usize;
+        let mut raw_better = 0usize;
+        let mut guarded_better = 0usize;
+        let mut same_outcome = 0usize;
+        let mut missing_first_diff = 0usize;
+        let mut printed = 0usize;
+        let mut branch_counts = BTreeMap::<(&'static str, &'static str), usize>::new();
+        let mut pair_counts =
+            BTreeMap::<(&'static str, &'static str, String, String), usize>::new();
+
+        for repeat_index in 0..repeats {
+            let seed = seed_for_budget_duel_repeat_and_tag(
+                pro_budget(),
+                opponent_budget,
+                repeat_index,
+                duel.seed_tag.as_str(),
+            );
+            let opening_fens = generate_opening_fens_cached(seed, games);
+            for (game_index, opening_fen) in opening_fens.iter().enumerate() {
+                let variant = MonsGame::from_fen(opening_fen.as_str(), false)
+                    .expect("valid opening fen")
+                    .variant();
+                for candidate_is_white in [true, false] {
+                    total_games += 1;
+                    let guarded_trace = play_profile_sweep_attribution_trace(
+                        guarded,
+                        shipping_selector,
+                        opponent_budget,
+                        opening_fen.as_str(),
+                        candidate_is_white,
+                        max_plies,
+                    );
+                    let raw_trace = play_profile_sweep_attribution_trace(
+                        raw,
+                        shipping_selector,
+                        opponent_budget,
+                        opening_fen.as_str(),
+                        candidate_is_white,
+                        max_plies,
+                    );
+                    let delta = match_result_points(raw_trace.result)
+                        - match_result_points(guarded_trace.result);
+                    let outcome = pro_profile_sweep_outcome_label(delta);
+                    match delta.cmp(&0) {
+                        std::cmp::Ordering::Greater => raw_better += 1,
+                        std::cmp::Ordering::Less => guarded_better += 1,
+                        std::cmp::Ordering::Equal => same_outcome += 1,
+                    }
+
+                    if delta == 0 {
+                        continue;
+                    }
+
+                    let first_divergence =
+                        first_profile_sweep_guarded_raw_divergence(&guarded_trace, &raw_trace);
+                    let Some(divergence) = first_divergence else {
+                        missing_first_diff += 1;
+                        continue;
+                    };
+                    *branch_counts
+                        .entry((outcome, divergence.guarded_branch))
+                        .or_default() += 1;
+                    *pair_counts
+                        .entry((
+                            outcome,
+                            divergence.guarded_branch,
+                            divergence.guarded_move_fen.clone(),
+                            divergence.raw_move_fen.clone(),
+                        ))
+                        .or_default() += 1;
+
+                    if printed < trace_limit {
+                        println!(
+                            "PRO_PROFILE_SWEEP_ATTRIBUTION {{\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"outcome\":\"{}\",\"raw_delta\":{},\"guarded_result\":\"{}\",\"raw_result\":\"{}\",\"first_diff_ply\":{},\"branch\":\"{}\",\"board\":\"{}\",\"guarded_move\":\"{}\",\"raw_move\":\"{}\",\"guarded_final\":\"{}\",\"raw_final\":\"{}\"}}",
+                            json_escape(duel.label),
+                            repeat_index,
+                            game_index,
+                            automove_variant_label(variant),
+                            candidate_is_white,
+                            outcome,
+                            delta,
+                            format_match_result(guarded_trace.result),
+                            format_match_result(raw_trace.result),
+                            divergence.ply,
+                            json_escape(divergence.guarded_branch),
+                            json_escape(&divergence.board_fen),
+                            json_escape(&divergence.guarded_move_fen),
+                            json_escape(&divergence.raw_move_fen),
+                            json_escape(&guarded_trace.final_fen),
+                            json_escape(&raw_trace.final_fen)
+                        );
+                        printed += 1;
+                    }
+                }
+            }
+        }
+
+        println!(
+            "PRO_PROFILE_SWEEP_ATTRIBUTION_SUMMARY {{\"duel\":\"{}\",\"total_games\":{},\"raw_better\":{},\"guarded_better\":{},\"same_outcome\":{},\"missing_first_diff\":{}}}",
+            json_escape(duel.label),
+            total_games,
+            raw_better,
+            guarded_better,
+            same_outcome,
+            missing_first_diff
+        );
+        for ((outcome, branch), games) in branch_counts.iter() {
+            println!(
+                "PRO_PROFILE_SWEEP_ATTRIBUTION_BRANCH {{\"duel\":\"{}\",\"outcome\":\"{}\",\"branch\":\"{}\",\"games\":{}}}",
+                json_escape(duel.label),
+                json_escape(outcome),
+                json_escape(branch),
+                games
+            );
+        }
+        for ((outcome, branch, guarded_move, raw_move), games) in
+            pair_counts.iter().take(pair_limit)
+        {
+            println!(
+                "PRO_PROFILE_SWEEP_ATTRIBUTION_PAIR {{\"duel\":\"{}\",\"outcome\":\"{}\",\"branch\":\"{}\",\"guarded_move\":\"{}\",\"raw_move\":\"{}\",\"games\":{}}}",
+                json_escape(duel.label),
+                json_escape(outcome),
+                json_escape(branch),
+                json_escape(guarded_move),
+                json_escape(raw_move),
+                games
+            );
+        }
     }
 }
 

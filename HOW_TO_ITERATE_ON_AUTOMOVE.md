@@ -87,6 +87,7 @@ Use diagnostics only after the canonical loop shows what is still missing.
 - `smart_automove_pro_reliability_nonwin_trace_probe`
 - `smart_automove_pro_reliability_hotspot_probe`
 - `smart_automove_pro_profile_sweep_probe`
+- `smart_automove_pro_profile_attribution_probe`
 - `smart_automove_pro_triage_retained_churn_probe`
 - `smart_automove_pro_forced_turn_engine_retained_churn_probe`
 - `smart_automove_pro_root_advisor_trace_probe`
@@ -116,6 +117,14 @@ SMART_PRO_SWEEP_CANDIDATES=frontier_pro_v2_guarded,frontier_pro_v2_raw \
 SMART_PRO_SWEEP_DUEL_FILTER=vs_shipping_fast \
 SMART_AUTOMOVE_VARIANTS=alternating_mana_rows,forward_bridge_mana_rows \
 cargo test --release --lib smart_automove_pro_profile_sweep_probe -- --ignored --nocapture
+```
+
+`smart_automove_pro_profile_attribution_probe` replays the same opening seeds with guarded and raw ProV2 against the same shipping opponent, then prints outcome-changing first divergences as `PRO_PROFILE_SWEEP_ATTRIBUTION`, `PRO_PROFILE_SWEEP_ATTRIBUTION_SUMMARY`, `PRO_PROFILE_SWEEP_ATTRIBUTION_BRANCH`, and `PRO_PROFILE_SWEEP_ATTRIBUTION_PAIR` lines.
+
+```sh
+SMART_PRO_SWEEP_DUEL_FILTER=all \
+SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows,alternating_mana_rows,forward_bridge_mana_rows \
+cargo test --release --lib smart_automove_pro_profile_attribution_probe -- --ignored --nocapture
 ```
 
 All diagnostics run through the ignored test harness:
