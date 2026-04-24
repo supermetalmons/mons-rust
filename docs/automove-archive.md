@@ -1048,3 +1048,13 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The useful result is that the exact failed Normal row still did not produce one repair mechanism. The trace logged only `2` nonwins, both singleton and different.
 - The nonwins were late black `l1,6;l1,5` vs shipping `l2,6;l3,7`, and early white `l10,4;l9,5` vs shipping `l9,4;l8,3`. In both games, shipping also lost, so these are not direct frontier-only win blockers.
 - Durable outcome: do not spend runtime code on this focused Normal nonwin set. It is too small, split across different first-diff surfaces, and not enough to explain the sampled gate failure by one local repair.
+
+## Active Context-Shipping Row Gate Wave
+
+- No runtime challenger survived this wave. Temporary test-only sweep candidates were removed before commit.
+- The diagnostics compared `frontier_pro_v2_guarded`, `frontier_pro_v2_raw`, and `shipping_pro_search_control` through `smart_automove_pro_profile_attribution_probe` on the active-blocker seed with `SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows,alternating_mana_rows,forward_bridge_mana_rows`, then checked candidates through `smart_automove_pro_promotion_dashboard_probe` with `SMART_PRO_DASHBOARD_PANEL_FILTER=active_blockers`.
+- Guarded-vs-raw attribution on isolated `outer_edge_mana_rows` produced only one outcome split: a raw-better Normal white turn-three move with action unavailable, mana available, `window=0`, `deny=0`, and `drainer_safety=-1`. It did not explain why raw later loses active Pro/Fast `outer_edge_mana_rows`.
+- Shipping-control-vs-raw attribution over the full active blockers showed raw harms active `outer_edge_mana_rows` in Pro/Fast on action-plus-mana states with `window=0`, `deny=0`, and `drainer_safety=2`, while raw's useful Normal evidence was not isolated by the same feature.
+- A row composite using raw ProV2 for `outer_edge_mana_rows` was not promotable: active Pro `2-4`, active Normal `5-1`, active Fast `4-2`. The exact-context shipping fallback variant repaired active Fast to `6-0`, but active Pro stayed at `3-3` and active Normal stayed at `5-1`.
+- Broadening the `forward_bridge_mana_rows` white turn-three shipping fallback to the full mana-available `window=0` / `deny=0` / `drainer_safety=-1` context did not move active Pro; it remained `3-3`.
+- Durable outcome: do not continue first-divergence context-shipping gates on the sampled-pass row composite. They can align individual early moves and clean up active Fast, but they have not improved the active Pro outcome. The next spend needs either arbitrary-candidate decision-record/nonwin tracing or a genuinely new utility feature that clears active Pro and sampled Pro together.
