@@ -101,6 +101,13 @@ SMART_PRO_RELIABILITY_HOTSPOT_FEN='<fen>' \
 cargo test --release --lib smart_automove_pro_reliability_hotspot_probe -- --ignored --nocapture
 ```
 
+`smart_automove_pro_reliability_duel_trace_probe` and `smart_automove_pro_reliability_nonwin_trace_probe` can focus on one duel bucket:
+
+```sh
+SMART_PRO_RELIABILITY_DUEL_FILTER=vs_shipping_fast \
+cargo test --release --lib smart_automove_pro_reliability_duel_trace_probe -- --ignored --nocapture
+```
+
 All diagnostics run through the ignored test harness:
 
 ```sh

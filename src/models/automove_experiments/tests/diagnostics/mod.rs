@@ -419,6 +419,7 @@ fn smart_automove_pro_reliability_duel_trace_probe() {
         .max(1);
     let seed_tag = env_string_value("SMART_PRO_RELIABILITY_SEED_TAG")
         .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
+    let duel_filter = env::var("SMART_PRO_RELIABILITY_DUEL_FILTER").ok();
     let duel_specs = vec![
         DuelSpec {
             label: "vs_shipping_pro",
@@ -438,16 +439,24 @@ fn smart_automove_pro_reliability_duel_trace_probe() {
     ];
 
     println!(
-        "pro reliability duel trace probe: frontier={} shipping={} repeats={} games_per_repeat={} max_plies={} trace_limit={}",
+        "pro reliability duel trace probe: frontier={} shipping={} repeats={} games_per_repeat={} max_plies={} trace_limit={} duel_filter={:?}",
         frontier_profile,
         shipping_profile,
         repeats,
         games,
         max_plies,
         trace_limit,
+        duel_filter,
     );
 
     for duel in duel_specs {
+        if duel_filter
+            .as_deref()
+            .is_some_and(|filter| filter != duel.label)
+        {
+            continue;
+        }
+
         let opponent_budget = SearchBudget::from_preference(duel.opponent_mode);
         let mut regressions = 0usize;
         let mut improvements = 0usize;

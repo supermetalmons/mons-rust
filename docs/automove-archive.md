@@ -963,3 +963,14 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - `smart_automove_pro_reliability_hotspot_probe` now accepts one extra ad-hoc board through `SMART_PRO_RELIABILITY_HOTSPOT_FEN`, with optional `SMART_PRO_RELIABILITY_HOTSPOT_LABEL` and `SMART_PRO_RELIABILITY_HOTSPOT_MODE`.
 - The hook was validated by rerunning the alt-v3 Normal black board without a temporary source case. It reproduced the previous no-go: frontier `l2,3;l3,3`, shipping `l2,3;l3,2`, identical `10,941` selector children, and frontier-only extra `engine_post_search`/exact work.
 - Durable outcome: use the env hook for future one-off hotspot inspections instead of adding and later removing ad-hoc probe cases.
+
+## Alt-V4 All-Blocker Trace Wave
+
+- No runtime challenger was attempted in this wave. The diagnostic was `smart_automove_pro_reliability_duel_trace_probe` with `SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows,alternating_mana_rows,forward_bridge_mana_rows`, `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_alt_v4`, `SMART_PRO_RELIABILITY_REPEATS=3`, and `SMART_PRO_RELIABILITY_GAMES=3`.
+- The useful result is that another fresh deterministic seed still did not collapse the active blockers into one promotable mechanism.
+- Pro produced `3` regressions, `3` improvements, and `12` flat results. One pair repeated, black `l2,7;l3,8` vs shipping `l1,5;l0,3;l1,3` (`2x`), while white `l8,7;l7,7` vs shipping `l5,10;l4,10` stayed singleton.
+- Normal produced `5` regressions, `2` improvements, and `11` flat results. One pair repeated, the already-archived black `l2,7;l1,6` vs shipping `l2,7;l1,8` recovery jump (`2x`), while `l0,5;l1,4` vs `l1,6;l0,6`, `l2,3;l3,3` vs `l2,3;l3,2`, and `l9,4;l9,3` vs `l9,4;l8,3` stayed singleton.
+- Fast produced `4` regressions, `3` improvements, and `11` flat results. Every Fast regression pair was singleton.
+- The env-driven hotspot hook was used on the repeated Pro black pair. Frontier selected `l2,7;l3,8` through `engine_post_search`, shipping stayed engine-disabled on `l1,5;l0,3;l1,3`, frontier accepted `23` engine heads vs shipping `0`, and frontier expanded more selector children (`12,473` vs `11,612`). That is extra frontier search/selector work inside a balanced mixed trace, not a clean root-pool or shortlist repair.
+- Kept code outcome: `smart_automove_pro_reliability_duel_trace_probe` now accepts `SMART_PRO_RELIABILITY_DUEL_FILTER`, matching the existing nonwin trace filter and avoiding full three-bucket runs when only one duel bucket needs recurrence evidence.
+- Durable outcome: do not reopen either alt-v4 repeated pair as a standalone patch. Use filtered duel traces for future focused recurrence checks, then hotspot only the repeated board if the surrounding bucket is also promotable-looking.
