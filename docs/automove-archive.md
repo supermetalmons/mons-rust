@@ -4,6 +4,15 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Black Alternating Retained Recovery Search-Only Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave recovered the singleton Fast `alternating_mana_rows` seam `l1,6;l1,7` vs shipping `l1,6;l0,5` and compared it directly against the nearby retained `BLACK_RECOVERY_DUEL_FAST` control.
+- The coarse lane looked close: both boards touch the same black recovery move `l1,6;l0,5`, and both are black weak-window Fast surfaces.
+- The selector/advisor path still diverged. On the live seam, frontier keeps approved `ManaTempo l1,6;l1,7` through `ApprovedReplyRiskGuard`, shipping only wins through `search_only_engine_allowed_head`, and there is no accepted recovery head.
+- Retained `BLACK_RECOVERY_DUEL_FAST` is different: it approves `DrainerSafetyRecovery l1,6;l0,5`, accepts that head, and then both frontier and shipping collapse to engine-disabled mana `l4,1;l5,0;mb`.
+- Durable outcome: do not extend `BLACK_RECOVERY_DUEL_FAST` into the singleton `alternating` search-only seam. Shared recovery geometry was a false lead; the approved family, shipping win path, and final runtime stage are different.
+
 ## Black Alternating Retained Fast Spirit Structure Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
