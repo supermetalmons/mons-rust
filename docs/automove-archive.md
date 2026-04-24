@@ -4,6 +4,15 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Black Alternating Retained Fast-Recovery Structure Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave compared the repeated Fast `alternating` seam directly against the retained `BLACK_RECOVERY_DUEL_FAST` control.
+- The overlap was only at frontier pre-accept/head family. On the retained control, frontier pre-accept and head both land on `DrainerSafetyRecovery l1,6;l0,5`, but final selected and shipping both collapse to engine-disabled mana `l4,1;l5,0;mb`.
+- The retained control is therefore a different surface: `window=0/deny=0`, singleton shortlist, and accepted head into an engine-disabled mana finish.
+- The repeated `alternating` seam is different. It is a turn-four black `window=1/deny=1` board where frontier approves `DrainerSafetyRecovery l2,7;l1,6` through `ApprovedFamilyCompetition`, shipping stays on `ManaTempo l2,7;l1,8`, and the shortlist contains only the two `ManaTempo` siblings beneath rejected head `l2,7;l2,8`.
+- Durable outcome: do not extend `BLACK_RECOVERY_DUEL_FAST` into the repeated `alternating` seam. Shared `DrainerSafetyRecovery` at pre-accept was a false lead; the runtime stage, final selected root, shortlist shape, and exact-opportunity context are different.
+
 ## Black Alternating Retained Branch Structure Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
