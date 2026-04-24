@@ -18,6 +18,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
   - Normal `outer_edge_mana_rows`
   - Fast `alternating_mana_rows`
   - Fast `forward_bridge_mana_rows`
+- This iteration stayed diagnostic-only. The canonical sampled `pro-reliability` gate was refreshed after a clean `runtime-preflight` pass, and `frontier_pro_v2_guarded` is still not promotable: Pro `1.0000`, Normal `0.9167`, Fast `0.8333`; confidence `0.9998 / 0.9968 / 0.9807`; frontier average move times `143.82ms / 179.83ms / 159.07ms`. Variant blockers matched the targeted refreshes: Normal `outer_edge_mana_rows` at `0.5000`, Fast `alternating_mana_rows` at `0.5000`, and Fast `forward_bridge_mana_rows` at `0.5000`.
 - This iteration stayed diagnostic-only. A refreshed combined Fast replay on `alternating_mana_rows,forward_bridge_mana_rows` with `duel_filter=vs_shipping_fast`, `repeats=4`, and `games=3` logged `9` nonwins and did not collapse to a runtime spend. The only repeated pair was still the archived white `forward_bridge` accepted-head miss `l9,6;l7,4;l7,3` vs shipping `l9,6;l7,6;l7,7` (`2x`); every other miss stayed singleton and mostly matched copied-board or retained-extension no-go classes already killed in prior waves.
 - This iteration stayed diagnostic-only. A refreshed Normal `outer_edge_mana_rows` replay with `duel_filter=vs_shipping_normal`, `repeats=6`, and `games=3` still logged `10` nonwins and did not collapse to one runtime hypothesis. The only repeated pair remained black `l2,7;l3,8` vs shipping `l1,5;l0,3;l1,3` (`3x`), while the rest stayed mixed across late black mana drift, early white post-search drift, early black copied-board recovery, and white `search_only_forced_prepass`. Source review showed that blocking the repeated accepted-head miss would be another special-case guard, not a shared promotable mechanism.
 - This iteration stayed diagnostic-only. The copied Fast `forward_bridge` white setup singleton `l9,5;l9,6` vs shipping `l7,3;l6,2` did not survive a clean direct probe. Both frontier and shipping collapsed to shared engine-disabled `l7,3;l6,2`, so the board is not a stable local seam and there is nothing left to compare against the nearby retained white setup controls.
@@ -61,12 +62,12 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 
 ## Latest Gate Snapshot
 
-- Date: `2026-04-23`
+- Date: `2026-04-24`
 - Shipping decision: public Pro remains on `frontier_pro_v2_guarded`.
 - Release verification passed under the previous Classic-era gate shape: `cargo fmt --check`, host and wasm `cargo build --release --lib`, `git diff --check`, `cargo test --release --lib smart_automove_tactical_selected_profile -- --ignored --nocapture`, and `./scripts/run-automove-canonical-loop.sh --confirm frontier_pro_v2_guarded`.
 - Previous confirm duel metrics: Pro `0.9688`, Normal `1.0000`, Fast `0.9688`, each with confidence `1.0000`; frontier average move times stayed below `200ms`.
 - Release containment: public `Pro` dispatch still routes through `select_frontier_pro_v2_guarded_inputs`; `automove_experiments` remains under `#[cfg(test)]`, so diagnostics and experiment harness code are not production selection code.
-- Latest sampled `pro-reliability` gate for the kept local package still failed promotion: Pro `1.0000`, Normal `0.9167`, Fast `0.8333`; confidence `0.9998 / 0.9968 / 0.9807`; frontier average move times `151.76ms / 190.31ms / 170.39ms`.
+- Latest sampled `pro-reliability` gate for the kept local package still failed promotion: Pro `1.0000`, Normal `0.9167`, Fast `0.8333`; confidence `0.9998 / 0.9968 / 0.9807`; frontier average move times `143.82ms / 179.83ms / 159.07ms`.
 - This iteration widened the Pro-only replay instead of touching runtime code. `SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows,alternating_mana_rows,forward_bridge_mana_rows` with `smart_automove_pro_reliability_nonwin_trace_probe`, `duel_filter=vs_shipping_pro`, `repeats=6`, and `games=3` logged `11` Pro nonwins across `36` games.
 - That replay did not promote the new white seams. The Pro white `l9,7;l8,8` vs `l9,7;l8,7` seam and the Pro white `l6,7;l7,6` vs `l6,7;l7,7` seam each appeared once, while the replay broadened into repeated black `l2,7;l1,6` vs `l2,7;l1,8` and black `l1,6;l2,7` vs shipping `l1,5;l2,3;l1,2` plus several other singleton Pro seams.
 - That keeps the Pro-only blocker surface mixed. There is still no defensible white spend, and the black side is not yet clean enough to justify code without another direct structure probe.

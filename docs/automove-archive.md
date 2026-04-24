@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Canonical Sampled Gate Refresh Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave ran the canonical `runtime-preflight` stage for `frontier_pro_v2_guarded`; both stage-1 CPU advisory and exact-lite diagnostics passed, and the runtime-preflight stamp was written.
+- The follow-up canonical sampled `pro-reliability` gate still failed promotion. Pro passed at `1.0000` with confidence `0.9998` and `143.82ms` frontier average move time, but Normal stayed at `0.9167` with confidence `0.9968`, and Fast stayed at `0.8333` with confidence `0.9807`; both failed the `0.90` win-rate / `0.99` confidence requirement.
+- The variant failures matched the targeted refreshes rather than revealing a new mechanism: Normal `outer_edge_mana_rows` was `0.5000`, Fast `alternating_mana_rows` was `0.5000`, and Fast `forward_bridge_mana_rows` was `0.5000`; sampled `classic`, `corner_chain_mana_rows`, `offset_arc_mana_rows`, `outer_wedge_mana_rows`, `split_flank_mana_rows`, `swapped_mana_rows`, and `center_spoke_mana_rows` were clean in this gate sample.
+- Durable outcome: public Pro remains on `frontier_pro_v2_guarded`, but there is no promotable automove candidate from this wave. The next spend still needs a focused mechanism below the mixed `outer_edge` Normal plus `alternating`/`forward_bridge` Fast residue.
+
 ## Fast Blocker Refresh Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
