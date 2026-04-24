@@ -1060,6 +1060,27 @@ fn pro_profile_sweep_candidate_by_id(candidate_id: &str) -> ProProfileSweepCandi
         .unwrap_or_else(|| panic!("unknown sweep candidate '{}'", candidate_id))
 }
 
+fn pro_sweep_candidate_record_context_key(
+    duel_label: &str,
+    variant: GameVariant,
+    outcome: &str,
+    divergence: &ProProfileSweepFirstDivergence,
+) -> String {
+    format!(
+        "outcome={} duel={} variant={} color={} branch={} turn={} mons_moves={} can_action={} can_mana={} {}",
+        outcome,
+        duel_label,
+        automove_variant_label(variant),
+        pro_profile_sweep_color_label(divergence.active_color),
+        divergence.left_branch,
+        divergence.turn_number,
+        divergence.mons_moves_count,
+        divergence.can_use_action,
+        divergence.can_move_mana,
+        divergence.exact_context,
+    )
+}
+
 #[test]
 #[ignore = "diagnostic: attribute ProV2 candidate outcome changes to first left-candidate branch divergence"]
 fn smart_automove_pro_profile_attribution_probe() {
@@ -1288,6 +1309,271 @@ fn smart_automove_pro_profile_attribution_probe() {
                 json_escape(left_move),
                 json_escape(right_move),
                 games
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: aggregate arbitrary Pro sweep-candidate nonwins and deltas against shipping control"]
+fn smart_automove_pro_sweep_decision_record_probe() {
+    #[derive(Clone)]
+    struct SweepDecisionRecordDuelSpec {
+        label: &'static str,
+        opponent_mode: SmartAutomovePreference,
+        seed_tag: String,
+    }
+
+    let shipping_profile = reliability_shipping_profile_id();
+    let shipping_selector = profile_selector_from_name(shipping_profile.as_str())
+        .unwrap_or_else(|| panic!("shipping '{}' not found", shipping_profile));
+    let candidate_id = env_string_value("SMART_PRO_SWEEP_DECISION_RECORD_CANDIDATE")
+        .or_else(|| env_string_value("SMART_PRO_SWEEP_CANDIDATE"))
+        .unwrap_or_else(|| "frontier_pro_v2_guarded".to_string());
+    let candidate = pro_profile_sweep_candidate_by_id(candidate_id.as_str());
+    let shipping_control = pro_profile_sweep_candidate_by_id("shipping_pro_search_control");
+    let repeats = env_usize("SMART_PRO_SWEEP_DECISION_RECORD_REPEATS")
+        .unwrap_or(3)
+        .max(1);
+    let games = env_usize("SMART_PRO_SWEEP_DECISION_RECORD_GAMES")
+        .unwrap_or(2)
+        .max(1);
+    let max_plies = env_usize("SMART_PRO_SWEEP_DECISION_RECORD_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let trace_limit = env_usize("SMART_PRO_SWEEP_DECISION_RECORD_TRACE_LIMIT")
+        .unwrap_or(24)
+        .max(1);
+    let aggregate_limit = env_usize("SMART_PRO_SWEEP_DECISION_RECORD_AGGREGATE_LIMIT")
+        .unwrap_or(64)
+        .max(1);
+    let seed_tag = env_string_value("SMART_PRO_SWEEP_DECISION_RECORD_SEED_TAG")
+        .unwrap_or_else(|| "pro_profile_sweep_v1".to_string());
+    let duel_filter = pro_sweep_filter_tokens("SMART_PRO_SWEEP_DECISION_RECORD_DUEL_FILTER", "all");
+    let outcome_filter = pro_sweep_filter_tokens("SMART_PRO_SWEEP_DECISION_RECORD_OUTCOME", "all");
+    let scope = env_string_value("SMART_PRO_SWEEP_DECISION_RECORD_SCOPE")
+        .unwrap_or_else(|| "nonwins".to_string());
+    let duel_specs = vec![
+        SweepDecisionRecordDuelSpec {
+            label: "vs_shipping_pro",
+            opponent_mode: SmartAutomovePreference::Pro,
+            seed_tag: seed_tag.clone(),
+        },
+        SweepDecisionRecordDuelSpec {
+            label: "vs_shipping_normal",
+            opponent_mode: SmartAutomovePreference::Normal,
+            seed_tag: format!("{}_vs_normal", seed_tag),
+        },
+        SweepDecisionRecordDuelSpec {
+            label: "vs_shipping_fast",
+            opponent_mode: SmartAutomovePreference::Fast,
+            seed_tag: format!("{}_vs_fast", seed_tag),
+        },
+    ];
+
+    println!(
+        "pro sweep decision record: candidate={} shipping={} repeats={} games={} max_plies={} duels={} outcome_filter={} variants={}",
+        candidate.id,
+        shipping_profile,
+        repeats,
+        games,
+        max_plies,
+        duel_specs
+            .iter()
+            .filter(|duel| pro_sweep_filter_allows(&duel_filter, duel.label))
+            .map(|duel| duel.label)
+            .collect::<Vec<_>>()
+            .join(","),
+        format!("{} scope={}", outcome_filter.join(","), scope),
+        env::var("SMART_AUTOMOVE_VARIANTS").unwrap_or_else(|_| "<default>".to_string())
+    );
+
+    for duel in duel_specs
+        .iter()
+        .filter(|duel| pro_sweep_filter_allows(&duel_filter, duel.label))
+    {
+        let opponent_budget = SearchBudget::from_preference(duel.opponent_mode);
+        let mut total_games = 0usize;
+        let mut regressions = 0usize;
+        let mut improvements = 0usize;
+        let mut flat = 0usize;
+        let mut nonwins = 0usize;
+        let mut recorded = 0usize;
+        let mut missing_first_diff = 0usize;
+        let mut printed = 0usize;
+        let mut branch_counts = BTreeMap::<String, usize>::new();
+        let mut context_counts = BTreeMap::<String, usize>::new();
+        let mut pair_counts = BTreeMap::<String, usize>::new();
+
+        for repeat_index in 0..repeats {
+            let seed = seed_for_budget_duel_repeat_and_tag(
+                pro_budget(),
+                opponent_budget,
+                repeat_index,
+                duel.seed_tag.as_str(),
+            );
+            let opening_fens = generate_opening_fens_cached(seed, games);
+            for (game_index, opening_fen) in opening_fens.iter().enumerate() {
+                let variant = MonsGame::from_fen(opening_fen.as_str(), false)
+                    .expect("valid opening fen")
+                    .variant();
+                for candidate_is_white in [true, false] {
+                    total_games += 1;
+                    let candidate_trace = play_profile_sweep_attribution_trace(
+                        candidate,
+                        shipping_selector,
+                        opponent_budget,
+                        opening_fen.as_str(),
+                        candidate_is_white,
+                        max_plies,
+                    );
+                    let shipping_trace = play_profile_sweep_attribution_trace(
+                        shipping_control,
+                        shipping_selector,
+                        opponent_budget,
+                        opening_fen.as_str(),
+                        candidate_is_white,
+                        max_plies,
+                    );
+                    let delta = match_result_points(candidate_trace.result)
+                        - match_result_points(shipping_trace.result);
+                    let candidate_won = matches!(candidate_trace.result, MatchResult::ProfileAWin);
+                    if !candidate_won {
+                        nonwins += 1;
+                    }
+                    if delta < 0 {
+                        regressions += 1;
+                    } else if delta > 0 {
+                        improvements += 1;
+                    } else {
+                        flat += 1;
+                    }
+                    let outcome = if scope == "nonwins" && !candidate_won {
+                        match delta.cmp(&0) {
+                            std::cmp::Ordering::Less => "nonwin_regression",
+                            std::cmp::Ordering::Greater => "nonwin_improvement",
+                            std::cmp::Ordering::Equal => "nonwin_flat",
+                        }
+                    } else if delta < 0 {
+                        "regression"
+                    } else if delta > 0 {
+                        "improvement"
+                    } else {
+                        "flat"
+                    };
+                    let should_record = if scope == "nonwins" {
+                        !candidate_won
+                    } else {
+                        delta != 0
+                    };
+                    if !should_record || !pro_sweep_filter_allows(&outcome_filter, outcome) {
+                        continue;
+                    }
+                    recorded += 1;
+
+                    let Some(divergence) =
+                        first_profile_sweep_candidate_divergence(&candidate_trace, &shipping_trace)
+                    else {
+                        missing_first_diff += 1;
+                        continue;
+                    };
+                    let context_key = pro_sweep_candidate_record_context_key(
+                        duel.label,
+                        variant,
+                        outcome,
+                        &divergence,
+                    );
+                    let pair_key = format!(
+                        "outcome={} duel={} variant={} branch={} candidate_move={} shipping_move={}",
+                        outcome,
+                        duel.label,
+                        automove_variant_label(variant),
+                        divergence.left_branch,
+                        divergence.left_move_fen,
+                        divergence.right_move_fen,
+                    );
+                    let branch_key = format!(
+                        "outcome={} duel={} variant={} branch={}",
+                        outcome,
+                        duel.label,
+                        automove_variant_label(variant),
+                        divergence.left_branch,
+                    );
+                    *context_counts.entry(context_key).or_default() += 1;
+                    *pair_counts.entry(pair_key).or_default() += 1;
+                    *branch_counts.entry(branch_key).or_default() += 1;
+
+                    if printed < trace_limit {
+                        println!(
+                            "PRO_SWEEP_DECISION_RECORD {{\"candidate\":\"{}\",\"shipping\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"outcome\":\"{}\",\"delta\":{},\"candidate_result\":\"{}\",\"shipping_control_result\":\"{}\",\"first_diff_ply\":{},\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"candidate_move\":\"{}\",\"shipping_control_move\":\"{}\",\"exact_context\":\"{}\",\"board\":\"{}\"}}",
+                            json_escape(candidate.id),
+                            json_escape(&shipping_profile),
+                            json_escape(duel.label),
+                            repeat_index,
+                            game_index,
+                            automove_variant_label(variant),
+                            candidate_is_white,
+                            outcome,
+                            delta,
+                            format_match_result(candidate_trace.result),
+                            format_match_result(shipping_trace.result),
+                            divergence.ply,
+                            json_escape(divergence.left_branch),
+                            pro_profile_sweep_color_label(divergence.active_color),
+                            divergence.turn_number,
+                            divergence.mons_moves_count,
+                            divergence.can_use_action,
+                            divergence.can_move_mana,
+                            json_escape(&divergence.left_move_fen),
+                            json_escape(&divergence.right_move_fen),
+                            json_escape(&divergence.exact_context),
+                            json_escape(&divergence.board_fen),
+                        );
+                        printed += 1;
+                    }
+                }
+            }
+        }
+
+        println!(
+            "PRO_SWEEP_DECISION_RECORD_SUMMARY {{\"candidate\":\"{}\",\"shipping\":\"{}\",\"duel\":\"{}\",\"scope\":\"{}\",\"total_games\":{},\"regressions\":{},\"improvements\":{},\"flat\":{},\"nonwins\":{},\"recorded\":{},\"missing_first_diff\":{}}}",
+            json_escape(candidate.id),
+            json_escape(&shipping_profile),
+            json_escape(duel.label),
+            json_escape(&scope),
+            total_games,
+            regressions,
+            improvements,
+            flat,
+            nonwins,
+            recorded,
+            missing_first_diff,
+        );
+        for (key, games) in branch_counts.iter().take(aggregate_limit) {
+            println!(
+                "PRO_SWEEP_DECISION_RECORD_BRANCH {{\"candidate\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                json_escape(candidate.id),
+                json_escape(duel.label),
+                json_escape(key),
+                games,
+            );
+        }
+        for (key, games) in context_counts.iter().take(aggregate_limit) {
+            println!(
+                "PRO_SWEEP_DECISION_RECORD_CONTEXT {{\"candidate\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                json_escape(candidate.id),
+                json_escape(duel.label),
+                json_escape(key),
+                games,
+            );
+        }
+        for (key, games) in pair_counts.iter().take(aggregate_limit) {
+            println!(
+                "PRO_SWEEP_DECISION_RECORD_PAIR {{\"candidate\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                json_escape(candidate.id),
+                json_escape(duel.label),
+                json_escape(key),
+                games,
             );
         }
     }
