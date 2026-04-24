@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Alternating Singleton Copied Board Replay Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave reran `SMART_AUTOMOVE_VARIANTS=alternating_mana_rows` on `smart_automove_pro_reliability_nonwin_trace_probe` with `duel_filter=vs_shipping_fast`, `repeats=4`, and `games=3`.
+- The replay again logged `7` Fast nonwins and recovered the two previously unverified singleton pairs: white `l8,5;l10,5;l9,4` vs shipping `l8,5;l6,3;l7,2`, and black `l2,4;l1,5` vs shipping `l2,4;l1,3`.
+- The follow-up direct replay killed both as stable local targets. The white copied board collapsed to shared engine-disabled `l8,5;l6,3;l7,3` for both profiles, which was neither traced side. The black copied board collapsed to shared `search_only_forced_prepass` `l2,4;l1,5`.
+- Durable outcome: do not spend runtime code or retained coverage on those copied `alternating` singleton boards until they reproduce cleanly. They are trace artifacts, not stable local seams.
+
 ## Black Forward-Bridge Followup Spirit Repro Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
