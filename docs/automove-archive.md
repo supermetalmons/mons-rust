@@ -1004,3 +1004,10 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The useful result is that targeting the exact failed Fast rows by frontier nonwins still did not collapse to one mechanism. The trace logged `5` nonwins and all printed move pairs were singleton.
 - The nonwins were black `l0,10;l0,9` vs shipping `l4,0;l5,0;mb`, white `l9,6;l8,7` vs shipping `l9,6;l7,7;l8,8`, black `l0,6;l1,6` vs shipping `l2,3;l3,4`, black `l2,5;l0,5;l1,6` vs shipping `l2,5;l4,7;l3,8`, and white `l9,6;l7,4;l7,3` vs shipping `l9,6;l7,6;l7,7`.
 - Durable outcome: do not spend runtime code on this focused Fast nonwin set. It spans already-known singleton black bridge/mana, black setup, black late recovery, white safe-progress, and white head-accept surfaces.
+
+## Focused Normal Nonwin Trace Wave
+
+- No runtime challenger was attempted in this wave. The diagnostic was `smart_automove_pro_reliability_nonwin_trace_probe` with `SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows`, `SMART_PRO_RELIABILITY_DUEL_FILTER=vs_shipping_normal`, `SMART_PRO_RELIABILITY_REPEATS=3`, and `SMART_PRO_RELIABILITY_GAMES=2`.
+- The useful result is that the exact failed Normal row still did not produce one repair mechanism. The trace logged only `2` nonwins, both singleton and different.
+- The nonwins were late black `l1,6;l1,5` vs shipping `l2,6;l3,7`, and early white `l10,4;l9,5` vs shipping `l9,4;l8,3`. In both games, shipping also lost, so these are not direct frontier-only win blockers.
+- Durable outcome: do not spend runtime code on this focused Normal nonwin set. It is too small, split across different first-diff surfaces, and not enough to explain the sampled gate failure by one local repair.
