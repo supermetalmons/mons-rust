@@ -940,3 +940,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The trace logged `9` nonwins. Two black pairs repeated: late black `l1,6;l1,5` vs shipping `l2,6;l3,7`, and early black accepted-spirit `l1,5;l0,3;l1,3` vs shipping `l1,6;l2,7`.
 - The same run also logged singleton white post-search drift, black accepted-head drift, white accepted-head drift, early black engine-disabled drift, and a white safe-progress ordering seam.
 - Durable outcome: do not spend on either repeated `outer_edge` black pair as a standalone patch. Repetition inside a trace that still spans colors and selector stages is not promotable evidence.
+
+## Alt-V3 All-Blocker Trace Wave
+
+- No runtime challenger was attempted in this wave. The diagnostic was `smart_automove_pro_reliability_duel_trace_probe` with `SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows,alternating_mana_rows,forward_bridge_mana_rows`, `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_alt_v3`, `SMART_PRO_RELIABILITY_REPEATS=3`, and `SMART_PRO_RELIABILITY_GAMES=3`.
+- The useful result is that raising the alternate-seed sample to `18` games per duel bucket still did not collapse the active blockers into a shared runtime mechanism.
+- Pro produced `5` regressions, `5` improvements, and `8` flat results. Every Pro regression pair was singleton: `l2,5;l3,5` vs `l1,6;l1,5`, `l9,2;l8,2` vs `l9,2;l8,1`, `l9,4;l8,3` vs `l7,5;l6,4`, `l9,3;l8,2` vs `l7,2;l6,1`, and `l0,5;l1,4` vs `l0,5;l1,5`.
+- Normal produced `4` regressions, `3` improvements, and `11` flat results. Only one pair repeated, black `l2,3;l3,3` vs shipping `l2,3;l3,2` (`2x`), while `l8,5;l7,3;l6,4` vs `l8,5;l6,5;l6,4` and `l1,6;l2,5` vs `l1,6;l2,6` stayed singleton.
+- Fast produced `2` regressions, `4` improvements, and `12` flat results. Both Fast regression pairs were singleton: white `l10,4;l9,3` vs shipping `l9,5;l7,6;l8,7` and black `l2,4;l4,5;l3,6` vs shipping `l2,4;l3,2;l2,2`.
+- Durable outcome: do not spend on the Normal black `l2,3;l3,3` pair as a standalone patch. The broader trace still balances regressions with improvements and keeps Pro/Fast singleton-only, so the blocker set remains mixed rather than promotable.
