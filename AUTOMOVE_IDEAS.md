@@ -255,6 +255,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Do not reopen a shared white `forward_bridge` patch; the repeated head-accept seam, the safe-progress approval seam, and the score-window fallback seam are different mechanisms.
 - Do not reopen the direct white turn-three mana-only legacy-progress override; it only removed the clean white half of `outer_edge_mana_rows` and left the sampled gate blocked by late black `outer_edge` plus Fast `alternating_mana_rows` and `forward_bridge_mana_rows`.
 - Do not spend a direct late-black same-family legacy-alignment override on `l2,6;l3,7` vs `l1,6;l1,5` yet; the probe shows a real local advisor seam, but it is still only one remaining Normal board while Fast `alternating_mana_rows` and `forward_bridge_mana_rows` stay mixed.
+- This iteration killed two temporary active-scout candidates. A black turn-two action+mana shipping fallback repaired the known active Pro `outer_edge` regression enough to reach Pro `4-2`, but the remaining Pro losses were flat losses where shipping also lost. Adding scoped rejected-head recovery on the two white flat-loss shapes improved active Pro and Normal to `5-1` each, but collapsed active Fast to `1-5`; the source was discarded.
+- The useful signal is narrow: the black turn-two repair and scoped white head recovery can move active Pro, but neither creates the winning policy needed for active Fast. Do not spend runtime code on these context gates unless a later candidate also explains Fast `outer_edge_mana_rows` and `alternating_mana_rows` without rotating Pro/Normal.
 
 ## Active No-Go Notes
 
@@ -272,3 +274,5 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - Do not reopen black progress-vs-setup with the combined scoped material dampening plus higher-scoring setup-rank exception; it fixes the board locally and still fails sampled retained reliability.
 - Do not broaden white turn-three no-action recovery from turn-start to `mons_moves_count == 1`; that line already failed retained reliability.
 - Do not broaden white search-order fallback into raw `search-only + ProV1`, shipping own caps, root-rank checks, or wrapper config toggles; each has a documented retained-control failure or inert wrapper path.
+- Do not retry black turn-two action+mana shipping fallback by itself. It removes the sharp active Pro `outer_edge` regression but stops at `4-2` and leaves only flat losses.
+- Do not retry broad scoped white rejected-head acceptance on `window=1/deny=1` turn-five or `window=0/deny=0` turn-three white shapes. It can lift active Pro/Normal to `5-1`, but it rotates active Fast down to `1-5`.
