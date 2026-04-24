@@ -793,3 +793,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
   - extra white setup drift `l9,5;l9,6` vs shipping `l7,3;l6,2`
   - black setup drift `l7,1;l9,3` vs shipping `l1,5;l3,4;l2,3`
 - Durable outcome: do not reopen a shared `outer_edge` plus `forward_bridge` head-accept patch. One repeated accepted-head pair still exists inside `forward_bridge`, but the widened `outer_edge` replay no longer supports a single shared head surface.
+
+## White Outer Edge Harvest Structure Wave
+
+- No new runtime challenger survived this wave. The kept diagnostic is `white_outer_edge_forced_prepass_vs_retained_harvest_structure_probe`.
+- The useful result is that retained `primary_white_harvest_loss_c_ply24` is not an extension candidate for the white `outer_edge_mana_rows` forced-prepass seam.
+- The traced live board had looked adjacent because the trace logged shipping `l7,2;l6,1`. On a clean direct probe, that exact move only survived at `pre_accept`: both frontier and shipping collapsed to `search_only_forced_prepass` with final selected `l9,3;l8,3`, no head, and no advisor decision.
+- The retained harvest board is a different surface entirely: Pro mode, `window=2/deny=2`, attack-enabled, shortlist-live `SafeSupermanaProgress l7,2;l6,1` approved through `ApprovedReplyRiskGuard`, with frontier rejecting non-progress head `l8,5;l7,4`.
+- Durable outcome: do not spend on the white `outer_edge` forced-prepass seam by extending the retained harvest control. The exact move overlap was only a `pre_accept` coincidence, not a stable shared selector surface.
