@@ -649,7 +649,7 @@ struct ProProfileSweepAttributionTurn {
     ply: usize,
     board_fen: String,
     move_fen: String,
-    guarded_branch: &'static str,
+    candidate_branch: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -663,9 +663,9 @@ struct ProProfileSweepAttributionTrace {
 struct ProProfileSweepFirstDivergence {
     ply: usize,
     board_fen: String,
-    guarded_move_fen: String,
-    raw_move_fen: String,
-    guarded_branch: &'static str,
+    left_move_fen: String,
+    right_move_fen: String,
+    left_branch: &'static str,
 }
 
 fn select_profile_sweep_candidate_inputs_with_branch(
@@ -675,10 +675,14 @@ fn select_profile_sweep_candidate_inputs_with_branch(
 ) -> (Vec<Input>, &'static str) {
     clear_frontier_runtime_variant_branch();
     let inputs = select_inputs_with_runtime_fallback(candidate.selector, game, config);
-    let branch = if candidate.id == "frontier_pro_v2_guarded" {
-        frontier_runtime_variant_branch_snapshot()
-    } else {
+    let branch = match frontier_runtime_variant_branch_snapshot() {
+        "unset" => "candidate_execute",
+        branch => branch,
+    };
+    let branch = if inputs.is_empty() {
         "candidate_execute"
+    } else {
+        branch
     };
     (inputs, branch)
 }
@@ -736,7 +740,7 @@ fn play_profile_sweep_attribution_trace(
                 ply,
                 board_fen,
                 move_fen: Input::fen_from_array(&inputs),
-                guarded_branch,
+                candidate_branch: guarded_branch,
             });
         }
 
@@ -774,43 +778,49 @@ fn play_profile_sweep_attribution_trace(
     }
 }
 
-fn first_profile_sweep_guarded_raw_divergence(
-    guarded: &ProProfileSweepAttributionTrace,
-    raw: &ProProfileSweepAttributionTrace,
+fn first_profile_sweep_candidate_divergence(
+    left: &ProProfileSweepAttributionTrace,
+    right: &ProProfileSweepAttributionTrace,
 ) -> Option<ProProfileSweepFirstDivergence> {
-    guarded
-        .candidate_turns
+    left.candidate_turns
         .iter()
-        .zip(raw.candidate_turns.iter())
-        .find_map(|(guarded_turn, raw_turn)| {
-            if guarded_turn.board_fen != raw_turn.board_fen {
+        .zip(right.candidate_turns.iter())
+        .find_map(|(left_turn, right_turn)| {
+            if left_turn.board_fen != right_turn.board_fen {
                 return None;
             }
-            if guarded_turn.move_fen == raw_turn.move_fen {
+            if left_turn.move_fen == right_turn.move_fen {
                 return None;
             }
             Some(ProProfileSweepFirstDivergence {
-                ply: guarded_turn.ply,
-                board_fen: guarded_turn.board_fen.clone(),
-                guarded_move_fen: guarded_turn.move_fen.clone(),
-                raw_move_fen: raw_turn.move_fen.clone(),
-                guarded_branch: guarded_turn.guarded_branch,
+                ply: left_turn.ply,
+                board_fen: left_turn.board_fen.clone(),
+                left_move_fen: left_turn.move_fen.clone(),
+                right_move_fen: right_turn.move_fen.clone(),
+                left_branch: left_turn.candidate_branch,
             })
         })
 }
 
 fn pro_profile_sweep_outcome_label(delta: i32) -> &'static str {
     if delta > 0 {
-        "raw_better"
+        "right_better"
     } else if delta < 0 {
-        "guarded_better"
+        "left_better"
     } else {
         "same_outcome"
     }
 }
 
+fn pro_profile_sweep_candidate_by_id(candidate_id: &str) -> ProProfileSweepCandidate {
+    pro_profile_sweep_candidates()
+        .into_iter()
+        .find(|candidate| candidate.id == candidate_id)
+        .unwrap_or_else(|| panic!("unknown sweep candidate '{}'", candidate_id))
+}
+
 #[test]
-#[ignore = "diagnostic: attribute guarded-vs-raw ProV2 outcome changes to first guarded branch divergence"]
+#[ignore = "diagnostic: attribute ProV2 candidate outcome changes to first left-candidate branch divergence"]
 fn smart_automove_pro_profile_attribution_probe() {
     #[derive(Clone)]
     struct AttributionDuelSpec {
@@ -832,6 +842,10 @@ fn smart_automove_pro_profile_attribution_probe() {
     let seed_tag = env_string_value("SMART_PRO_SWEEP_SEED_TAG")
         .unwrap_or_else(|| "pro_profile_sweep_v1".to_string());
     let duel_filter = pro_sweep_filter_tokens("SMART_PRO_SWEEP_DUEL_FILTER", "all");
+    let left_id = env_string_value("SMART_PRO_SWEEP_ATTRIBUTION_LEFT")
+        .unwrap_or_else(|| "frontier_pro_v2_guarded".to_string());
+    let right_id = env_string_value("SMART_PRO_SWEEP_ATTRIBUTION_RIGHT")
+        .unwrap_or_else(|| "frontier_pro_v2_raw".to_string());
     let duel_specs = vec![
         AttributionDuelSpec {
             label: "vs_shipping_pro",
@@ -849,19 +863,13 @@ fn smart_automove_pro_profile_attribution_probe() {
             seed_tag: format!("{}_vs_fast", seed_tag),
         },
     ];
-    let guarded = pro_profile_sweep_candidates()
-        .into_iter()
-        .find(|candidate| candidate.id == "frontier_pro_v2_guarded")
-        .expect("guarded candidate should exist");
-    let raw = pro_profile_sweep_candidates()
-        .into_iter()
-        .find(|candidate| candidate.id == "frontier_pro_v2_raw")
-        .expect("raw candidate should exist");
+    let left = pro_profile_sweep_candidate_by_id(left_id.as_str());
+    let right = pro_profile_sweep_candidate_by_id(right_id.as_str());
 
     println!(
-        "pro profile attribution: guarded={} raw={} shipping={} duels={} repeats={} games={} max_plies={} variants={}",
-        guarded.id,
-        raw.id,
+        "pro profile attribution: left={} right={} shipping={} duels={} repeats={} games={} max_plies={} variants={}",
+        left.id,
+        right.id,
         shipping_profile,
         duel_specs
             .iter()
@@ -881,8 +889,8 @@ fn smart_automove_pro_profile_attribution_probe() {
     {
         let opponent_budget = SearchBudget::from_preference(duel.opponent_mode);
         let mut total_games = 0usize;
-        let mut raw_better = 0usize;
-        let mut guarded_better = 0usize;
+        let mut right_better = 0usize;
+        let mut left_better = 0usize;
         let mut same_outcome = 0usize;
         let mut missing_first_diff = 0usize;
         let mut printed = 0usize;
@@ -904,28 +912,28 @@ fn smart_automove_pro_profile_attribution_probe() {
                     .variant();
                 for candidate_is_white in [true, false] {
                     total_games += 1;
-                    let guarded_trace = play_profile_sweep_attribution_trace(
-                        guarded,
+                    let left_trace = play_profile_sweep_attribution_trace(
+                        left,
                         shipping_selector,
                         opponent_budget,
                         opening_fen.as_str(),
                         candidate_is_white,
                         max_plies,
                     );
-                    let raw_trace = play_profile_sweep_attribution_trace(
-                        raw,
+                    let right_trace = play_profile_sweep_attribution_trace(
+                        right,
                         shipping_selector,
                         opponent_budget,
                         opening_fen.as_str(),
                         candidate_is_white,
                         max_plies,
                     );
-                    let delta = match_result_points(raw_trace.result)
-                        - match_result_points(guarded_trace.result);
+                    let delta = match_result_points(right_trace.result)
+                        - match_result_points(left_trace.result);
                     let outcome = pro_profile_sweep_outcome_label(delta);
                     match delta.cmp(&0) {
-                        std::cmp::Ordering::Greater => raw_better += 1,
-                        std::cmp::Ordering::Less => guarded_better += 1,
+                        std::cmp::Ordering::Greater => right_better += 1,
+                        std::cmp::Ordering::Less => left_better += 1,
                         std::cmp::Ordering::Equal => same_outcome += 1,
                     }
 
@@ -934,26 +942,28 @@ fn smart_automove_pro_profile_attribution_probe() {
                     }
 
                     let first_divergence =
-                        first_profile_sweep_guarded_raw_divergence(&guarded_trace, &raw_trace);
+                        first_profile_sweep_candidate_divergence(&left_trace, &right_trace);
                     let Some(divergence) = first_divergence else {
                         missing_first_diff += 1;
                         continue;
                     };
                     *branch_counts
-                        .entry((outcome, divergence.guarded_branch))
+                        .entry((outcome, divergence.left_branch))
                         .or_default() += 1;
                     *pair_counts
                         .entry((
                             outcome,
-                            divergence.guarded_branch,
-                            divergence.guarded_move_fen.clone(),
-                            divergence.raw_move_fen.clone(),
+                            divergence.left_branch,
+                            divergence.left_move_fen.clone(),
+                            divergence.right_move_fen.clone(),
                         ))
                         .or_default() += 1;
 
                     if printed < trace_limit {
                         println!(
-                            "PRO_PROFILE_SWEEP_ATTRIBUTION {{\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"outcome\":\"{}\",\"raw_delta\":{},\"guarded_result\":\"{}\",\"raw_result\":\"{}\",\"first_diff_ply\":{},\"branch\":\"{}\",\"board\":\"{}\",\"guarded_move\":\"{}\",\"raw_move\":\"{}\",\"guarded_final\":\"{}\",\"raw_final\":\"{}\"}}",
+                            "PRO_PROFILE_SWEEP_ATTRIBUTION {{\"left\":\"{}\",\"right\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"outcome\":\"{}\",\"right_delta\":{},\"left_result\":\"{}\",\"right_result\":\"{}\",\"first_diff_ply\":{},\"left_branch\":\"{}\",\"board\":\"{}\",\"left_move\":\"{}\",\"right_move\":\"{}\",\"left_final\":\"{}\",\"right_final\":\"{}\"}}",
+                            json_escape(left.id),
+                            json_escape(right.id),
                             json_escape(duel.label),
                             repeat_index,
                             game_index,
@@ -961,15 +971,15 @@ fn smart_automove_pro_profile_attribution_probe() {
                             candidate_is_white,
                             outcome,
                             delta,
-                            format_match_result(guarded_trace.result),
-                            format_match_result(raw_trace.result),
+                            format_match_result(left_trace.result),
+                            format_match_result(right_trace.result),
                             divergence.ply,
-                            json_escape(divergence.guarded_branch),
+                            json_escape(divergence.left_branch),
                             json_escape(&divergence.board_fen),
-                            json_escape(&divergence.guarded_move_fen),
-                            json_escape(&divergence.raw_move_fen),
-                            json_escape(&guarded_trace.final_fen),
-                            json_escape(&raw_trace.final_fen)
+                            json_escape(&divergence.left_move_fen),
+                            json_escape(&divergence.right_move_fen),
+                            json_escape(&left_trace.final_fen),
+                            json_escape(&right_trace.final_fen)
                         );
                         printed += 1;
                     }
@@ -978,33 +988,38 @@ fn smart_automove_pro_profile_attribution_probe() {
         }
 
         println!(
-            "PRO_PROFILE_SWEEP_ATTRIBUTION_SUMMARY {{\"duel\":\"{}\",\"total_games\":{},\"raw_better\":{},\"guarded_better\":{},\"same_outcome\":{},\"missing_first_diff\":{}}}",
+            "PRO_PROFILE_SWEEP_ATTRIBUTION_SUMMARY {{\"left\":\"{}\",\"right\":\"{}\",\"duel\":\"{}\",\"total_games\":{},\"right_better\":{},\"left_better\":{},\"same_outcome\":{},\"missing_first_diff\":{}}}",
+            json_escape(left.id),
+            json_escape(right.id),
             json_escape(duel.label),
             total_games,
-            raw_better,
-            guarded_better,
+            right_better,
+            left_better,
             same_outcome,
             missing_first_diff
         );
         for ((outcome, branch), games) in branch_counts.iter() {
             println!(
-                "PRO_PROFILE_SWEEP_ATTRIBUTION_BRANCH {{\"duel\":\"{}\",\"outcome\":\"{}\",\"branch\":\"{}\",\"games\":{}}}",
+                "PRO_PROFILE_SWEEP_ATTRIBUTION_BRANCH {{\"left\":\"{}\",\"right\":\"{}\",\"duel\":\"{}\",\"outcome\":\"{}\",\"left_branch\":\"{}\",\"games\":{}}}",
+                json_escape(left.id),
+                json_escape(right.id),
                 json_escape(duel.label),
                 json_escape(outcome),
                 json_escape(branch),
                 games
             );
         }
-        for ((outcome, branch, guarded_move, raw_move), games) in
-            pair_counts.iter().take(pair_limit)
+        for ((outcome, branch, left_move, right_move), games) in pair_counts.iter().take(pair_limit)
         {
             println!(
-                "PRO_PROFILE_SWEEP_ATTRIBUTION_PAIR {{\"duel\":\"{}\",\"outcome\":\"{}\",\"branch\":\"{}\",\"guarded_move\":\"{}\",\"raw_move\":\"{}\",\"games\":{}}}",
+                "PRO_PROFILE_SWEEP_ATTRIBUTION_PAIR {{\"left\":\"{}\",\"right\":\"{}\",\"duel\":\"{}\",\"outcome\":\"{}\",\"left_branch\":\"{}\",\"left_move\":\"{}\",\"right_move\":\"{}\",\"games\":{}}}",
+                json_escape(left.id),
+                json_escape(right.id),
                 json_escape(duel.label),
                 json_escape(outcome),
                 json_escape(branch),
-                json_escape(guarded_move),
-                json_escape(raw_move),
+                json_escape(left_move),
+                json_escape(right_move),
                 games
             );
         }

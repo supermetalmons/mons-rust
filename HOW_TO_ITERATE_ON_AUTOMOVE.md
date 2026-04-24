@@ -119,9 +119,11 @@ SMART_AUTOMOVE_VARIANTS=alternating_mana_rows,forward_bridge_mana_rows \
 cargo test --release --lib smart_automove_pro_profile_sweep_probe -- --ignored --nocapture
 ```
 
-`smart_automove_pro_profile_attribution_probe` replays the same opening seeds with guarded and raw ProV2 against the same shipping opponent, then prints outcome-changing first divergences as `PRO_PROFILE_SWEEP_ATTRIBUTION`, `PRO_PROFILE_SWEEP_ATTRIBUTION_SUMMARY`, `PRO_PROFILE_SWEEP_ATTRIBUTION_BRANCH`, and `PRO_PROFILE_SWEEP_ATTRIBUTION_PAIR` lines.
+`smart_automove_pro_profile_attribution_probe` replays the same opening seeds with two sweep candidates against the same shipping opponent, then prints outcome-changing first divergences as `PRO_PROFILE_SWEEP_ATTRIBUTION`, `PRO_PROFILE_SWEEP_ATTRIBUTION_SUMMARY`, `PRO_PROFILE_SWEEP_ATTRIBUTION_BRANCH`, and `PRO_PROFILE_SWEEP_ATTRIBUTION_PAIR` lines. It defaults to `frontier_pro_v2_guarded` vs `frontier_pro_v2_raw`; override with `SMART_PRO_SWEEP_ATTRIBUTION_LEFT` and `SMART_PRO_SWEEP_ATTRIBUTION_RIGHT`.
 
 ```sh
+SMART_PRO_SWEEP_ATTRIBUTION_LEFT=frontier_pro_v2_no_late_black_fallback \
+SMART_PRO_SWEEP_ATTRIBUTION_RIGHT=frontier_pro_v2_raw \
 SMART_PRO_SWEEP_DUEL_FILTER=all \
 SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows,alternating_mana_rows,forward_bridge_mana_rows \
 cargo test --release --lib smart_automove_pro_profile_attribution_probe -- --ignored --nocapture
