@@ -982,3 +982,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Every regression move pair was singleton: white `l10,3;l9,2` vs `l10,3;l9,3`, white `l10,4;l9,4` vs `l9,3;l8,2`, black `l2,5;l4,3;l3,2` vs `l2,5;l4,3;l3,3`, and white `l9,4;l8,4` vs `l9,4;l8,3`.
 - The printed regressions split across white safe-progress/mana ordering and black spirit/setup surfaces. There was no repeated board worth sending to the hotspot probe and no runtime code was changed.
 - Durable outcome: do not spend on the alt-v5 focused Fast singleton pairs. The filtered trace path is useful for cheap recurrence checks, but this seed gives no promotable Fast repair.
+
+## Alt-V5 Focused Normal Outer-Edge Trace Wave
+
+- No runtime challenger was attempted in this wave. The diagnostic used `smart_automove_pro_reliability_duel_trace_probe` with `SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows`, `SMART_PRO_RELIABILITY_DUEL_FILTER=vs_shipping_normal`, `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_alt_v5_normal_focus`, `SMART_PRO_RELIABILITY_REPEATS=4`, and `SMART_PRO_RELIABILITY_GAMES=3`.
+- The useful result is that the focused Normal `outer_edge_mana_rows` bucket still did not produce one repeated mechanism. Across `24` Normal games, the trace produced `3` regressions, `5` improvements, and `16` flat results.
+- Every regression move pair was singleton: black `l1,4;l2,5` vs `l1,4;l1,6;l2,7`, black `l1,5;l0,3;l1,3` vs `l1,6;l2,7`, and white `l9,4;l8,3` vs `l9,6;l9,8;l8,8`.
+- The printed regressions split across white safe-progress over spirit setup, black spirit head-accept over mana, and early black mana-vs-spirit setup ordering. There was no repeated board worth hotspotting and no runtime code was changed.
+- Durable outcome: do not spend on the alt-v5 focused Normal singleton pairs. This seed again argues that `outer_edge_mana_rows` is not currently exposing a promotable standalone repair.
