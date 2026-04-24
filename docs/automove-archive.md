@@ -4,6 +4,15 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Black Alternating Retained Fast Spirit Structure Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave compared the repeated Fast `alternating_mana_rows` seam `l2,7;l1,6` vs shipping `l2,7;l1,8` directly against the last nearby retained black Fast spirit controls: `BLACK_FAST_FLAT_NONWIN` and `BLACK_SPIRIT_BRIDGE_DUEL_FAST`.
+- `BLACK_FAST_FLAT_NONWIN` did not match. It is `window=0/deny=0`, pure `SpiritImpact`, and frontier already matches shipping through `ApprovedReplyRiskGuard`.
+- `BLACK_SPIRIT_BRIDGE_DUEL_FAST` also did not match. It accepts a `SpiritImpact` head through `ApprovedLegacySelector` and still collapses to engine-disabled mana `l4,9;l5,10;mb`.
+- The live repeated seam is different. It is a turn-four black `window=1/deny=1` board where frontier approves outside-shortlist `DrainerSafetyRecovery l2,7;l1,6` through `ApprovedFamilyCompetition`, shipping stays on `ManaTempo l2,7;l1,8`, and the shortlist contains only the two `ManaTempo` siblings beneath rejected head `l2,7;l2,8`.
+- Durable outcome: do not extend the nearby retained black Fast spirit package into the repeated `alternating` seam. Shared Fast/black proximity was a false lead; the family, approval path, shortlist shape, and final runtime stage still diverge.
+
 ## White Forward-Bridge Retained Fast-Ply10 Structure Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
