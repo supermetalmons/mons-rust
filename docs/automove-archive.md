@@ -949,3 +949,10 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Normal produced `4` regressions, `3` improvements, and `11` flat results. Only one pair repeated, black `l2,3;l3,3` vs shipping `l2,3;l3,2` (`2x`), while `l8,5;l7,3;l6,4` vs `l8,5;l6,5;l6,4` and `l1,6;l2,5` vs `l1,6;l2,6` stayed singleton.
 - Fast produced `2` regressions, `4` improvements, and `12` flat results. Both Fast regression pairs were singleton: white `l10,4;l9,3` vs shipping `l9,5;l7,6;l8,7` and black `l2,4;l4,5;l3,6` vs shipping `l2,4;l3,2;l2,2`.
 - Durable outcome: do not spend on the Normal black `l2,3;l3,3` pair as a standalone patch. The broader trace still balances regressions with improvements and keeps Pro/Fast singleton-only, so the blocker set remains mixed rather than promotable.
+
+## Alt-V3 Normal Hotspot Follow-Up
+
+- No runtime challenger survived this wave. A temporary diagnostic case was added to `smart_automove_pro_reliability_hotspot_probe` for the repeated Normal black board from the alt-v3 trace, then removed before commit.
+- The useful result is that the repeated pair `l2,3;l3,3` vs shipping `l2,3;l3,2` is not a root-pool availability seam. Frontier and shipping both enumerated `10,941` selector children with identical shortlist/full-pass counts.
+- The actual split was the known frontier-extra-work shape: frontier selected `l2,3;l3,3` through `engine_post_search`, shipping selected `l2,3;l3,2` through `engine_disabled`, and frontier paid extra exact/engine work (`payload_calls +163,990`, `pickup_calls +6,177`, `secure_mana_calls +1,784`, `tactical_spirit_calls +2,914`, engine accepted `6` vs `1`).
+- Durable outcome: do not reopen the alt-v3 Normal black pair through root-pool widening, shortlist widening, or generic exact-cost reduction. The board reproduces a known hotspot false lead inside an already mixed all-blocker trace.
