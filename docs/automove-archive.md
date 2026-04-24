@@ -974,3 +974,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The env-driven hotspot hook was used on the repeated Pro black pair. Frontier selected `l2,7;l3,8` through `engine_post_search`, shipping stayed engine-disabled on `l1,5;l0,3;l1,3`, frontier accepted `23` engine heads vs shipping `0`, and frontier expanded more selector children (`12,473` vs `11,612`). That is extra frontier search/selector work inside a balanced mixed trace, not a clean root-pool or shortlist repair.
 - Kept code outcome: `smart_automove_pro_reliability_duel_trace_probe` now accepts `SMART_PRO_RELIABILITY_DUEL_FILTER`, matching the existing nonwin trace filter and avoiding full three-bucket runs when only one duel bucket needs recurrence evidence.
 - Durable outcome: do not reopen either alt-v4 repeated pair as a standalone patch. Use filtered duel traces for future focused recurrence checks, then hotspot only the repeated board if the surrounding bucket is also promotable-looking.
+
+## Alt-V5 Focused Fast-Blocker Trace Wave
+
+- No runtime challenger was attempted in this wave. The diagnostic used the filtered duel trace path: `smart_automove_pro_reliability_duel_trace_probe` with `SMART_AUTOMOVE_VARIANTS=alternating_mana_rows,forward_bridge_mana_rows`, `SMART_PRO_RELIABILITY_DUEL_FILTER=vs_shipping_fast`, `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_alt_v5_fast_focus`, `SMART_PRO_RELIABILITY_REPEATS=4`, and `SMART_PRO_RELIABILITY_GAMES=3`.
+- The useful result is that the focused Fast blocker bucket still did not produce one repeated mechanism. Across `24` Fast games, the trace produced `4` regressions, `6` improvements, and `14` flat results.
+- Every regression move pair was singleton: white `l10,3;l9,2` vs `l10,3;l9,3`, white `l10,4;l9,4` vs `l9,3;l8,2`, black `l2,5;l4,3;l3,2` vs `l2,5;l4,3;l3,3`, and white `l9,4;l8,4` vs `l9,4;l8,3`.
+- The printed regressions split across white safe-progress/mana ordering and black spirit/setup surfaces. There was no repeated board worth sending to the hotspot probe and no runtime code was changed.
+- Durable outcome: do not spend on the alt-v5 focused Fast singleton pairs. The filtered trace path is useful for cheap recurrence checks, but this seed gives no promotable Fast repair.
