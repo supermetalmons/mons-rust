@@ -773,3 +773,23 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - `BLACK_BRIDGE_NONWIN_DUEL_FAST` only matches at the coarse `window=0/deny=0` singleton-shortlist `ManaTempo` surface. On that retained board, frontier accepts `l1,6;l2,7` and still collapses to engine-disabled mana `l4,1;l5,0;mb`, matching shipping in the final selector.
 - `BLACK_ENGINE_DISABLED_DUEL_FAST` is different again: it is a dense-shortlist `SpiritImpact` preserved-representative board where frontier and shipping both keep `l1,5;l2,3;l1,2` and no accepted head survives.
 - Durable outcome: do not extend the retained black bridge or engine-disabled Fast controls into `alternating_mana_rows` just because they share `window=0/deny=0` or an engine-disabled shipping finish. The live seam is a pure `ManaTempo` `ApprovedReplyRiskGuard` board where frontier never collapses off the approved root.
+
+## Outer Edge Forward Bridge Shared Head Surface Wave
+
+- No new runtime challenger survived this wave. The kept diagnostics are the direct widened replays:
+  - `SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows` with `smart_automove_pro_reliability_nonwin_trace_probe`, `duel_filter=vs_shipping_normal`, `repeats=6`, `games=3`
+  - `SMART_AUTOMOVE_VARIANTS=forward_bridge_mana_rows` with `smart_automove_pro_reliability_nonwin_trace_probe`, `duel_filter=vs_shipping_fast`, `repeats=4`, `games=3`
+- The useful result is that the remaining Normal `outer_edge` and Fast `forward_bridge` residue do not share one head-accept mechanism.
+- `outer_edge` widened back to `10` Normal nonwins and split across several surfaces:
+  - rejected-head post-search drift: late black `l1,6;l1,5` vs shipping `l2,6;l3,7`
+  - rejected-head post-search drift: early white `l10,4;l9,5` vs shipping `l9,4;l8,3`
+  - rejected-head post-search drift: early black `l1,4;l2,5` vs shipping `l1,4;l1,6;l2,7`
+  - accepted-head post-search drift: repeated black `l2,7;l3,8` vs shipping `l1,5;l0,3;l1,3`
+  - accepted-head `search_only_forced_prepass`: white `l9,3;l8,3` vs shipping `l7,2;l6,1`
+- `forward_bridge` also logged `10` Fast nonwins, but it stayed a different mixed spirit/setup bucket:
+  - repeated white accepted-head pair `l9,6;l7,4;l7,3` vs shipping `l9,6;l7,6;l7,7`
+  - safe-progress approval seam `l9,6;l8,7` vs shipping `l9,6;l7,7;l8,8`
+  - fallback/setup seam `l9,7;l8,6` vs shipping `l9,7;l7,6;l7,7`
+  - extra white setup drift `l9,5;l9,6` vs shipping `l7,3;l6,2`
+  - black setup drift `l7,1;l9,3` vs shipping `l1,5;l3,4;l2,3`
+- Durable outcome: do not reopen a shared `outer_edge` plus `forward_bridge` head-accept patch. One repeated accepted-head pair still exists inside `forward_bridge`, but the widened `outer_edge` replay no longer supports a single shared head surface.
