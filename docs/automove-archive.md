@@ -4,6 +4,15 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Black Forward-Bridge Followup Spirit Repro Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave continued the Fast `forward_bridge_mana_rows` replay after the copied post-search board failed clean reproduction.
+- The current replay recovered a black spirit/setup copied seam where frontier drifted to `l0,3;l1,3` while shipping stayed on `l1,5;l3,4;l3,3`.
+- The follow-up direct structure probe compared that copied board against the nearby retained black followup-spirit control.
+- The copied board did not replay the traced drift. On a clean direct probe, both frontier and shipping collapsed to shared engine-disabled `l0,3;l1,3`, with no head or advisor residue left as a stable target.
+- Durable outcome: do not extend retained black followup-spirit controls from that copied board. Shared spirit/setup geometry is not enough when the copied board does not reproduce the shipping-selected root.
+
 ## Black Forward-Bridge Post-Search Repro Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
