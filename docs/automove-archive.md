@@ -923,3 +923,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Normal produced `2` regressions, `5` improvements, and `5` flat results; both regression pairs were singletons: `l10,7;l9,8` vs `l9,6;l10,4;l9,5`, and `l9,6;l8,7` vs `l9,6;l10,5`.
 - Fast produced `4` regressions, `3` improvements, and `5` flat results; all four regression pairs were singletons, including the known `forward_bridge` head-accept pair `l9,6;l7,4;l7,3` vs `l9,6;l7,6;l7,7`.
 - Durable outcome: do not spend runtime code on alternate-seed singleton pairs from the current blocker variants. Use alternate seeds to prove recurrence, not to chase one-off seams.
+
+## Focused Fast-Blocker Alternate-Seed Trace Wave
+
+- No runtime challenger was attempted in this wave. The diagnostic was `smart_automove_pro_reliability_duel_trace_probe` with `SMART_AUTOMOVE_VARIANTS=alternating_mana_rows,forward_bridge_mana_rows`, `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_alt_v2`, `SMART_PRO_RELIABILITY_REPEATS=2`, and `SMART_PRO_RELIABILITY_GAMES=3`.
+- The useful result is that narrowing the alternate seed to the two sampled Fast blocker variants still did not recover one stable Fast mechanism.
+- Pro produced `3` regressions, `1` improvement, and `8` flat results; all three regression pairs were singletons, including the known `alternating` black `l2,7;l1,6` vs `l2,7;l1,8` pair.
+- Normal produced `5` regressions, `3` improvements, and `4` flat results; all five regression pairs were singleton and split across black and white, head-accepted and engine-disabled surfaces.
+- Fast produced only `1` regression, `5` improvements, and `6` flat results; its single regression was `l10,5;l9,5` vs `l8,1;l7,0`.
+- Durable outcome: do not reopen the sampled Fast blockers from this alternate seed. The focused run argues against a stable `alternating_mana_rows` or `forward_bridge_mana_rows` runtime spend.
