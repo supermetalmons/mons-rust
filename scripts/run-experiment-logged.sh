@@ -24,6 +24,23 @@ sanitize() {
   printf '%s' "$1" | tr '[:space:]/:,' '_' | tr -cd '[:alnum:]_.-'
 }
 
+shorten_component() {
+  local value="$1"
+  local max_length="${2:-96}"
+  if [ -z "${value}" ]; then
+    value="run"
+  fi
+  if [ "${#value}" -le "${max_length}" ]; then
+    printf '%s' "${value}"
+    return
+  fi
+  local hash
+  hash="$(printf '%s' "${value}" | cksum | awk '{print $1}')"
+  local suffix="_${hash}"
+  local prefix_length=$((max_length - ${#suffix}))
+  printf '%s%s' "${value:0:${prefix_length}}" "${suffix}"
+}
+
 frontier="${SMART_EXPERIMENT_FRONTIER:-}"
 stage="${SMART_EXPERIMENT_STAGE:-}"
 shipping="${SMART_EXPERIMENT_SHIPPING:-}"
@@ -32,14 +49,14 @@ variant_policy="${SMART_EXPERIMENT_VARIANT_POLICY:-${SMART_AUTOMOVE_VARIANT_POLI
 variant_list="${SMART_EXPERIMENT_VARIANTS:-${SMART_AUTOMOVE_VARIANTS:-}}"
 
 timestamp="$(date +%Y%m%d-%H%M%S)"
-safe_name="$(sanitize "$run_name")"
+safe_name="$(shorten_component "$(sanitize "$run_name")" 96)"
 if [ -n "${SMART_EXPERIMENT_LOG_DIR:-}" ]; then
   log_dir="${SMART_EXPERIMENT_LOG_DIR}"
   profile_scope="$(basename "${log_dir}")"
 else
   log_root="${SMART_EXPERIMENT_LOG_ROOT:-target/experiment-runs}"
   if [ -n "${frontier}" ]; then
-    profile_scope="$(sanitize "${frontier}")"
+    profile_scope="$(shorten_component "$(sanitize "${frontier}")" 96)"
   else
     profile_scope="misc"
   fi
