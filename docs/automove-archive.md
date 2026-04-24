@@ -906,3 +906,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The archived singleton had looked like a plausible retained-extension candidate because the widened Fast trace logged `l9,5;l9,6` vs shipping `l7,3;l6,2` and the nearby retained white setup controls live on similar spirit/setup territory.
 - On a clean direct probe, that copied board did not replay the traced drift. Both frontier and shipping collapsed to shared engine-disabled `l7,3;l6,2`, with no head or advisor residue left to compare against `WHITE_TURN_FIVE_SPIRIT_SETUP_PRE_ACCEPT_FAST` or `WHITE_LATE_CLUSTER_NONWIN`.
 - Durable outcome: do not extend the retained white setup controls into the copied `forward_bridge` singleton and do not spend runtime code on that board until it reproduces cleanly.
+
+## Forward Bridge Low-Budget Guard Scope Wave
+
+- No new runtime challenger survived this wave. The attempted cut disabled `enable_turn_engine_low_budget_guard` only when `game.variant() == GameVariant::ForwardBridgeManaRows`.
+- The useful result is that the low-budget guard can be a sampled Fast forward-bridge lever without being a promotable strength lever.
+- The candidate passed focused checks and canonical sampled `pro-reliability`: Pro `1.0000`, Normal `0.9167`, Fast `0.9167`; sampled Fast `forward_bridge_mana_rows` moved to `1.0000`, while Normal `outer_edge_mana_rows` and Fast `alternating_mana_rows` remained the sampled weak rows.
+- All-variant `pro-reliability-confirm` failed broadly: Pro `0.6458`, Normal `0.7083`, Fast `0.6667`; average move times stayed well below the `700ms` cap, so the failure was strength rather than cost.
+- Durable outcome: do not reopen a variant-scoped low-budget guard disable for `ForwardBridgeManaRows`. It overfits sampled forward-bridge and broadens all-variant losses.
