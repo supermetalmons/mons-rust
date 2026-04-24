@@ -819,3 +819,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The replay still logged the seam `l2,5;l0,5;l1,6` vs shipping `l2,5;l4,7;l3,8` on the current Fast corpus.
 - The copied board did not replay that seam on a clean direct probe. Both frontier and shipping instead collapsed to shared engine-disabled `l2,5;l4,5;l3,4`, with no head or advisor residue left to compare against retained `BLACK_LATE_FAST_RECOVERY_TRACE`.
 - Durable outcome: do not extend the retained late-fast recovery trace into the Fast `alternating` singleton and do not spend runtime code on that copied board until it reproduces cleanly.
+
+## White Forward Bridge Setup Repro Wave
+
+- No new runtime challenger survived this wave. The kept diagnostic is `white_forward_bridge_setup_structure_probe`.
+- The useful result is that the copied Fast `forward_bridge` white setup singleton is not a stable local seam.
+- The archived singleton had looked like a plausible retained-extension candidate because the widened Fast trace logged `l9,5;l9,6` vs shipping `l7,3;l6,2` and the nearby retained white setup controls live on similar spirit/setup territory.
+- On a clean direct probe, that copied board did not replay the traced drift. Both frontier and shipping collapsed to shared engine-disabled `l7,3;l6,2`, with no head or advisor residue left to compare against `WHITE_TURN_FIVE_SPIRIT_SETUP_PRE_ACCEPT_FAST` or `WHITE_LATE_CLUSTER_NONWIN`.
+- Durable outcome: do not extend the retained white setup controls into the copied `forward_bridge` singleton and do not spend runtime code on that board until it reproduces cleanly.
