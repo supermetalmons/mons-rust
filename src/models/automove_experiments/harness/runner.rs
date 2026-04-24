@@ -78,6 +78,19 @@ pub(in super::super) struct CrossBudgetDuelConfig<'a> {
     pub max_plies: usize,
 }
 
+pub(in super::super) struct CrossModelDuelConfig<'a> {
+    pub label_a: &'a str,
+    pub model_a: AutomoveModel,
+    pub budget_a: SearchBudget,
+    pub label_b: &'a str,
+    pub model_b: AutomoveModel,
+    pub budget_b: SearchBudget,
+    pub seed_tag: &'a str,
+    pub repeats: usize,
+    pub games_per_repeat: usize,
+    pub max_plies: usize,
+}
+
 pub(in super::super) fn automove_experiment_variants() -> &'static [GameVariant] {
     &AUTOMOVE_EXPERIMENT_VARIANTS
 }
@@ -666,21 +679,42 @@ pub(in super::super) fn run_cross_budget_duel_with_timing(
     let budget_a = SearchBudget::from_preference(config.mode_a);
     let budget_b = SearchBudget::from_preference(config.mode_b);
 
+    run_cross_model_duel_with_timing(CrossModelDuelConfig {
+        label_a: config.profile_a,
+        model_a,
+        budget_a,
+        label_b: config.profile_b,
+        model_b,
+        budget_b,
+        seed_tag: config.seed_tag,
+        repeats: config.repeats,
+        games_per_repeat: config.games_per_repeat,
+        max_plies: config.max_plies,
+    })
+}
+
+pub(in super::super) fn run_cross_model_duel_with_timing(
+    config: CrossModelDuelConfig<'_>,
+) -> TimedMatchupStats {
     let original_max_plies = env::var("SMART_POOL_MAX_PLIES").ok();
     env::set_var("SMART_POOL_MAX_PLIES", config.max_plies.to_string());
 
     let mut aggregate = TimedMatchupStats::default();
     let progress = env_bool("SMART_DUEL_PROGRESS").unwrap_or(false);
     for repeat_index in 0..config.repeats.max(1) {
-        let seed =
-            seed_for_budget_duel_repeat_and_tag(budget_a, budget_b, repeat_index, config.seed_tag);
+        let seed = seed_for_budget_duel_repeat_and_tag(
+            config.budget_a,
+            config.budget_b,
+            repeat_index,
+            config.seed_tag,
+        );
         let variant_plan = automove_variant_plan_for_openings(seed, config.games_per_repeat.max(1));
         println!(
             "cross-budget variants: {}({}) vs {}({}) seed={} repeat={}/{} policy={} sample_size={} variants={}",
-            config.profile_a,
-            config.mode_a.as_api_value(),
-            config.profile_b,
-            config.mode_b.as_api_value(),
+            config.label_a,
+            config.budget_a.key(),
+            config.label_b,
+            config.budget_b.key(),
             config.seed_tag,
             repeat_index + 1,
             config.repeats.max(1),
@@ -689,19 +723,19 @@ pub(in super::super) fn run_cross_budget_duel_with_timing(
             variant_plan.variant_label_csv()
         );
         let ab = run_budget_duel_series_with_timing(
-            model_a,
-            budget_a,
-            model_b,
-            budget_b,
+            config.model_a,
+            config.budget_a,
+            config.model_b,
+            config.budget_b,
             config.games_per_repeat.max(1),
             seed,
             config.max_plies,
         );
         let ba = run_budget_duel_series_with_timing(
-            model_b,
-            budget_b,
-            model_a,
-            budget_a,
+            config.model_b,
+            config.budget_b,
+            config.model_a,
+            config.budget_a,
             config.games_per_repeat.max(1),
             seed,
             config.max_plies,
@@ -711,10 +745,10 @@ pub(in super::super) fn run_cross_budget_duel_with_timing(
             let (delta, confidence) = stats_delta_confidence(aggregate.matchup);
             println!(
                 "cross-budget progress: {}({}) vs {}({}) seed={} repeat={}/{} games={} delta={:.4} confidence={:.3} profile_a_avg_ms={:.2} profile_b_avg_ms={:.2}",
-                config.profile_a,
-                config.mode_a.as_api_value(),
-                config.profile_b,
-                config.mode_b.as_api_value(),
+                config.label_a,
+                config.budget_a.key(),
+                config.label_b,
+                config.budget_b.key(),
                 config.seed_tag,
                 repeat_index + 1,
                 config.repeats.max(1),

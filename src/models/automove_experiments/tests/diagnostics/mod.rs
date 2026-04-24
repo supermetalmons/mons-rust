@@ -1,4 +1,8 @@
 use super::*;
+use crate::models::mons_game_model::automove_runtime_variants::{
+    apply_frontier_pro_v2_guarded_config, select_frontier_pro_v2_guarded_inputs,
+    select_shipping_search_inputs,
+};
 use crate::models::scoring::{
     evaluate_preferability_breakdown_with_weights, evaluate_preferability_with_context,
     evaluate_preferability_with_weights_and_exact_policy, ScoringEvalContext, ScoringWeights,
@@ -391,6 +395,294 @@ fn attribution_worst_reply_state(
             events: format!("{:?}", reply.events),
             game: reply.game,
         })
+}
+
+#[derive(Clone, Copy)]
+struct ProProfileSweepCandidate {
+    id: &'static str,
+    selector: AutomoveSelector,
+}
+
+fn select_sweep_frontier_config_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> Vec<Input> {
+    if config.enable_turn_engine_selector {
+        clear_turn_engine_plan_cache();
+        clear_turn_engine_diagnostics();
+    }
+    clear_turn_engine_selector_diagnostics();
+    select_shipping_search_inputs(game, config)
+}
+
+fn select_sweep_shipping_pro_search_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> Vec<Input> {
+    select_shipping_search_inputs(game, config)
+}
+
+fn select_sweep_frontier_pro_v2_raw_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> Vec<Input> {
+    select_sweep_frontier_config_inputs(game, apply_frontier_pro_v2_guarded_config(config))
+}
+
+fn select_sweep_frontier_pro_v2_head_rerank_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = apply_frontier_pro_v2_guarded_config(config);
+    runtime.enable_turn_head_rerank = true;
+    select_sweep_frontier_config_inputs(game, runtime)
+}
+
+fn select_sweep_frontier_pro_v2_no_spirit_family_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = apply_frontier_pro_v2_guarded_config(config);
+    runtime.turn_engine_enable_spirit_family = false;
+    select_sweep_frontier_config_inputs(game, runtime)
+}
+
+fn select_sweep_frontier_pro_v2_no_mid_tactical_guard_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = apply_frontier_pro_v2_guarded_config(config);
+    runtime.enable_turn_engine_mid_turn_tactical_guard = false;
+    select_sweep_frontier_config_inputs(game, runtime)
+}
+
+fn select_sweep_frontier_pro_v2_expansion_224_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = apply_frontier_pro_v2_guarded_config(config);
+    runtime.turn_engine_expansion_cap = 224;
+    select_sweep_frontier_config_inputs(game, runtime)
+}
+
+fn select_sweep_frontier_pro_v2_no_low_budget_guard_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = apply_frontier_pro_v2_guarded_config(config);
+    runtime.enable_turn_engine_low_budget_guard = false;
+    select_sweep_frontier_config_inputs(game, runtime)
+}
+
+fn pro_profile_sweep_candidates() -> Vec<ProProfileSweepCandidate> {
+    vec![
+        ProProfileSweepCandidate {
+            id: "shipping_pro_search_control",
+            selector: select_sweep_shipping_pro_search_inputs,
+        },
+        ProProfileSweepCandidate {
+            id: "frontier_pro_v2_guarded",
+            selector: select_frontier_pro_v2_guarded_inputs,
+        },
+        ProProfileSweepCandidate {
+            id: "frontier_pro_v2_raw",
+            selector: select_sweep_frontier_pro_v2_raw_inputs,
+        },
+        ProProfileSweepCandidate {
+            id: "frontier_pro_v2_head_rerank",
+            selector: select_sweep_frontier_pro_v2_head_rerank_inputs,
+        },
+        ProProfileSweepCandidate {
+            id: "frontier_pro_v2_no_spirit_family",
+            selector: select_sweep_frontier_pro_v2_no_spirit_family_inputs,
+        },
+        ProProfileSweepCandidate {
+            id: "frontier_pro_v2_no_mid_tactical_guard",
+            selector: select_sweep_frontier_pro_v2_no_mid_tactical_guard_inputs,
+        },
+        ProProfileSweepCandidate {
+            id: "frontier_pro_v2_expansion_224",
+            selector: select_sweep_frontier_pro_v2_expansion_224_inputs,
+        },
+        ProProfileSweepCandidate {
+            id: "frontier_pro_v2_no_low_budget_guard",
+            selector: select_sweep_frontier_pro_v2_no_low_budget_guard_inputs,
+        },
+    ]
+}
+
+fn pro_sweep_filter_tokens(name: &str, default: &str) -> Vec<String> {
+    env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| default.to_string())
+        .split(',')
+        .map(|token| token.trim().to_ascii_lowercase())
+        .filter(|token| !token.is_empty())
+        .collect()
+}
+
+fn pro_sweep_filter_allows(tokens: &[String], id: &str) -> bool {
+    tokens.iter().any(|token| token == "all" || token == id)
+}
+
+fn json_escape(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
+}
+
+fn print_profile_sweep_summary(
+    candidate_id: &str,
+    opponent_profile: &str,
+    duel_label: &str,
+    opponent_mode: SmartAutomovePreference,
+    stats: &TimedMatchupStats,
+) {
+    let metrics = pro_reliability_metrics(stats);
+    println!(
+        "PRO_PROFILE_SWEEP_RESULT {{\"candidate\":\"{}\",\"opponent_profile\":\"{}\",\"duel\":\"{}\",\"opponent_mode\":\"{}\",\"total_games\":{},\"wins\":{},\"losses\":{},\"draws\":{},\"win_rate\":{:.4},\"confidence\":{:.4},\"candidate_avg_ms\":{:.2},\"opponent_avg_ms\":{:.2},\"candidate_turns\":{},\"opponent_turns\":{},\"duel_passes\":{}}}",
+        json_escape(candidate_id),
+        json_escape(opponent_profile),
+        json_escape(duel_label),
+        opponent_mode.as_api_value(),
+        stats.matchup.total_games(),
+        stats.matchup.wins,
+        stats.matchup.losses,
+        stats.matchup.draws,
+        metrics.win_rate,
+        metrics.confidence,
+        metrics.frontier_avg_ms,
+        stats.timing.profile_b_avg_ms(),
+        stats.timing.profile_a_turns,
+        stats.timing.profile_b_turns,
+        pro_reliability_duel_passes(metrics)
+    );
+    for variant_stats in stats.per_variant_stats() {
+        println!(
+            "PRO_PROFILE_SWEEP_VARIANT {{\"candidate\":\"{}\",\"duel\":\"{}\",\"variant\":\"{}\",\"total_games\":{},\"wins\":{},\"losses\":{},\"draws\":{},\"win_rate\":{:.4},\"confidence\":{:.4},\"candidate_avg_ms\":{:.2},\"opponent_avg_ms\":{:.2}}}",
+            json_escape(candidate_id),
+            json_escape(duel_label),
+            automove_variant_label(variant_stats.variant),
+            variant_stats.matchup.total_games(),
+            variant_stats.matchup.wins,
+            variant_stats.matchup.losses,
+            variant_stats.matchup.draws,
+            variant_stats.matchup.win_rate_points(),
+            variant_stats.matchup.confidence_better_than_even(),
+            variant_stats.timing.profile_a_avg_ms(),
+            variant_stats.timing.profile_b_avg_ms(),
+        );
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: broad Pro profile sweep with structured per-duel and per-variant summaries"]
+fn smart_automove_pro_profile_sweep_probe() {
+    #[derive(Clone)]
+    struct SweepDuelSpec {
+        label: &'static str,
+        opponent_mode: SmartAutomovePreference,
+        seed_tag: String,
+    }
+
+    let shipping_profile = reliability_shipping_profile_id();
+    let shipping_selector = profile_selector_from_name(shipping_profile.as_str())
+        .unwrap_or_else(|| panic!("shipping '{}' not found", shipping_profile));
+    let candidate_filter = pro_sweep_filter_tokens(
+        "SMART_PRO_SWEEP_CANDIDATES",
+        "frontier_pro_v2_guarded,frontier_pro_v2_raw",
+    );
+    let duel_filter = pro_sweep_filter_tokens("SMART_PRO_SWEEP_DUEL_FILTER", "all");
+    let repeats = env_usize("SMART_PRO_SWEEP_REPEATS").unwrap_or(2).max(1);
+    let games = env_usize("SMART_PRO_SWEEP_GAMES").unwrap_or(2).max(1);
+    let max_plies = env_usize("SMART_PRO_SWEEP_MAX_PLIES").unwrap_or(96).max(56);
+    let seed_tag = env_string_value("SMART_PRO_SWEEP_SEED_TAG")
+        .unwrap_or_else(|| "pro_profile_sweep_v1".to_string());
+    let duel_specs = vec![
+        SweepDuelSpec {
+            label: "vs_shipping_pro",
+            opponent_mode: SmartAutomovePreference::Pro,
+            seed_tag: seed_tag.clone(),
+        },
+        SweepDuelSpec {
+            label: "vs_shipping_normal",
+            opponent_mode: SmartAutomovePreference::Normal,
+            seed_tag: format!("{}_vs_normal", seed_tag),
+        },
+        SweepDuelSpec {
+            label: "vs_shipping_fast",
+            opponent_mode: SmartAutomovePreference::Fast,
+            seed_tag: format!("{}_vs_fast", seed_tag),
+        },
+    ];
+    let candidates = pro_profile_sweep_candidates()
+        .into_iter()
+        .filter(|candidate| pro_sweep_filter_allows(&candidate_filter, candidate.id))
+        .collect::<Vec<_>>();
+    assert!(
+        !candidates.is_empty(),
+        "SMART_PRO_SWEEP_CANDIDATES did not match any sweep candidates"
+    );
+
+    println!(
+        "pro profile sweep: candidates={} duels={} repeats={} games={} max_plies={} variants={}",
+        candidates
+            .iter()
+            .map(|candidate| candidate.id)
+            .collect::<Vec<_>>()
+            .join(","),
+        duel_specs
+            .iter()
+            .filter(|duel| pro_sweep_filter_allows(&duel_filter, duel.label))
+            .map(|duel| duel.label)
+            .collect::<Vec<_>>()
+            .join(","),
+        repeats,
+        games,
+        max_plies,
+        env::var("SMART_AUTOMOVE_VARIANTS").unwrap_or_else(|_| "<default>".to_string())
+    );
+
+    for candidate in candidates {
+        for duel in duel_specs
+            .iter()
+            .filter(|duel| pro_sweep_filter_allows(&duel_filter, duel.label))
+        {
+            let stats = run_cross_model_duel_with_timing(CrossModelDuelConfig {
+                label_a: candidate.id,
+                model_a: AutomoveModel {
+                    select_inputs: candidate.selector,
+                },
+                budget_a: pro_budget(),
+                label_b: shipping_profile.as_str(),
+                model_b: AutomoveModel {
+                    select_inputs: shipping_selector,
+                },
+                budget_b: SearchBudget::from_preference(duel.opponent_mode),
+                seed_tag: duel.seed_tag.as_str(),
+                repeats,
+                games_per_repeat: games,
+                max_plies,
+            });
+            print_profile_sweep_summary(
+                candidate.id,
+                shipping_profile.as_str(),
+                duel.label,
+                duel.opponent_mode,
+                &stats,
+            );
+        }
+    }
 }
 
 #[test]

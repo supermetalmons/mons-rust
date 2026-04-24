@@ -24,6 +24,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow, `AUTOMOVE_IDEAS.md` for th
 - A seam can move while the duel gate still fails; local seam coverage is not duel strength.
 - Use `SMART_PRO_RELIABILITY_HOTSPOT_FEN` on `smart_automove_pro_reliability_hotspot_probe` for one-off board inspection. Do not add temporary source cases just to inspect a copied trace board.
 - Use `SMART_PRO_RELIABILITY_DUEL_FILTER` on `smart_automove_pro_reliability_duel_trace_probe` or `smart_automove_pro_reliability_nonwin_trace_probe` when only one duel bucket needs recurrence evidence.
+- Use `smart_automove_pro_profile_sweep_probe` when the live surface is too mixed for another seam patch. The probe compares test-only Pro candidates without adding them to the retained profile registry; its output is discovery evidence, not promotion evidence.
 - Passing the small `pro-reliability` gate does not guarantee confirm readiness.
 - Passing sampled variants does not guarantee all-variant readiness.
 - Stacked narrow late-ply head/advisor overrides are especially suspect. One direct line cleared sampled `pro-reliability` at `1.0000 / 0.9167 / 0.9167` and then collapsed in all-variant confirm at `0.6667 / 0.7292 / 0.6667`.
@@ -89,6 +90,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow, `AUTOMOVE_IDEAS.md` for th
 - A matching recovery lane is still not enough to extend `BLACK_RECOVERY_DUEL_FAST` into the singleton `alternating` search-only seam. Both boards involve `l1,6;l0,5`, but the live seam keeps frontier on approved `ManaTempo l1,6;l1,7` through `ApprovedReplyRiskGuard` and shipping only wins through `search_only_engine_allowed_head`, while retained `BLACK_RECOVERY_DUEL_FAST` approves `DrainerSafetyRecovery l1,6;l0,5`, accepts that head, and then collapses to engine-disabled mana.
 - A direct white turn-three mana-only legacy-progress override on a positive-safety `window=0/deny=0` surface is still only a local repair. One cut aligned the clean `outer_edge_mana_rows` white board and reduced the explicit outer-edge Normal trace from `2` nonwins to `1`, but the sampled gate stayed at Pro `1.0000`, Normal `0.9167`, Fast `0.8333`.
 - A remaining late-black outer-edge board can still be too local to spend on. The clean probe showed shipping `l2,6;l3,7` was already the legacy-selected, reply-risk-shortlisted `ManaTempo` root while frontier approved lower-ranked `l1,6;l1,5`, but the sampled Fast residue was still mixed across black/white and across `engine_post_search` plus head-accepted surfaces, so the wave stayed diagnostic-only.
+- A tiny profile sweep can identify a structural direction without justifying promotion. On a `vs_shipping_fast` sweep over `alternating_mana_rows,forward_bridge_mana_rows` with `repeats=1` and `games=2`, `frontier_pro_v2_guarded` scored `0.2500` while `frontier_pro_v2_raw` scored `0.7500`; that suggests the wrapper/fallback chain may be hurting this blocker slice, but the sample is too small for runtime code or promotion.
 
 ## Retained Package Lessons
 
@@ -110,6 +112,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow, `AUTOMOVE_IDEAS.md` for th
 - `smart_automove_pro_reliability_duel_trace_probe`
 - `smart_automove_pro_reliability_nonwin_trace_probe`
 - `smart_automove_pro_reliability_hotspot_probe`
+- `smart_automove_pro_profile_sweep_probe`
 - `smart_automove_pro_triage_retained_churn_probe`
 - `smart_automove_pro_forced_turn_engine_retained_churn_probe`
 - `smart_automove_pro_root_advisor_trace_probe`

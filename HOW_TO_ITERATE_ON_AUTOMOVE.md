@@ -86,6 +86,7 @@ Use diagnostics only after the canonical loop shows what is still missing.
 - `smart_automove_pro_reliability_duel_trace_probe`
 - `smart_automove_pro_reliability_nonwin_trace_probe`
 - `smart_automove_pro_reliability_hotspot_probe`
+- `smart_automove_pro_profile_sweep_probe`
 - `smart_automove_pro_triage_retained_churn_probe`
 - `smart_automove_pro_forced_turn_engine_retained_churn_probe`
 - `smart_automove_pro_root_advisor_trace_probe`
@@ -106,6 +107,15 @@ cargo test --release --lib smart_automove_pro_reliability_hotspot_probe -- --ign
 ```sh
 SMART_PRO_RELIABILITY_DUEL_FILTER=vs_shipping_fast \
 cargo test --release --lib smart_automove_pro_reliability_duel_trace_probe -- --ignored --nocapture
+```
+
+`smart_automove_pro_profile_sweep_probe` compares test-only Pro candidates against the retained shipping baseline without adding them to the retained profile registry. It prints structured `PRO_PROFILE_SWEEP_RESULT` and `PRO_PROFILE_SWEEP_VARIANT` lines.
+
+```sh
+SMART_PRO_SWEEP_CANDIDATES=frontier_pro_v2_guarded,frontier_pro_v2_raw \
+SMART_PRO_SWEEP_DUEL_FILTER=vs_shipping_fast \
+SMART_AUTOMOVE_VARIANTS=alternating_mana_rows,forward_bridge_mana_rows \
+cargo test --release --lib smart_automove_pro_profile_sweep_probe -- --ignored --nocapture
 ```
 
 All diagnostics run through the ignored test harness:
