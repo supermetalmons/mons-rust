@@ -109,7 +109,7 @@ SMART_PRO_RELIABILITY_DUEL_FILTER=vs_shipping_fast \
 cargo test --release --lib smart_automove_pro_reliability_duel_trace_probe -- --ignored --nocapture
 ```
 
-`smart_automove_pro_profile_sweep_probe` compares test-only Pro candidates against the retained shipping baseline without adding them to the retained profile registry. It prints structured `PRO_PROFILE_SWEEP_RESULT` and `PRO_PROFILE_SWEEP_VARIANT` lines.
+`smart_automove_pro_profile_sweep_probe` compares test-only Pro candidates against the retained shipping baseline without adding them to the retained profile registry. It prints structured `PRO_PROFILE_SWEEP_RESULT`, `PRO_PROFILE_SWEEP_VARIANT`, and guarded-branch `PRO_PROFILE_SWEEP_BRANCH` lines.
 
 ```sh
 SMART_PRO_SWEEP_CANDIDATES=frontier_pro_v2_guarded,frontier_pro_v2_raw \

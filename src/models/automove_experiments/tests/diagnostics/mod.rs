@@ -1,12 +1,15 @@
 use super::*;
 use crate::models::mons_game_model::automove_runtime_variants::{
-    apply_frontier_pro_v2_guarded_config, select_frontier_pro_v2_guarded_inputs,
+    apply_frontier_pro_v2_guarded_config, clear_frontier_runtime_variant_branch,
+    frontier_runtime_variant_branch_snapshot, select_frontier_pro_v2_guarded_inputs,
     select_shipping_search_inputs,
 };
 use crate::models::scoring::{
     evaluate_preferability_breakdown_with_weights, evaluate_preferability_with_context,
     evaluate_preferability_with_weights_and_exact_policy, ScoringEvalContext, ScoringWeights,
 };
+use std::collections::BTreeMap;
+use std::sync::{Mutex, OnceLock};
 
 struct AttributionWorstReply {
     input_fen: String,
@@ -422,6 +425,16 @@ fn select_sweep_shipping_pro_search_inputs(
     select_shipping_search_inputs(game, config)
 }
 
+fn select_sweep_frontier_pro_v2_guarded_counted_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> Vec<Input> {
+    clear_frontier_runtime_variant_branch();
+    let inputs = select_frontier_pro_v2_guarded_inputs(game, config);
+    record_profile_sweep_branch(frontier_runtime_variant_branch_snapshot());
+    inputs
+}
+
 fn select_sweep_frontier_pro_v2_raw_inputs(
     game: &MonsGame,
     config: AutomoveSearchConfig,
@@ -482,7 +495,7 @@ fn pro_profile_sweep_candidates() -> Vec<ProProfileSweepCandidate> {
         },
         ProProfileSweepCandidate {
             id: "frontier_pro_v2_guarded",
-            selector: select_frontier_pro_v2_guarded_inputs,
+            selector: select_sweep_frontier_pro_v2_guarded_counted_inputs,
         },
         ProProfileSweepCandidate {
             id: "frontier_pro_v2_raw",
@@ -539,6 +552,40 @@ fn json_escape(value: &str) -> String {
         }
     }
     escaped
+}
+
+fn profile_sweep_branch_counts() -> &'static Mutex<BTreeMap<&'static str, usize>> {
+    static COUNTS: OnceLock<Mutex<BTreeMap<&'static str, usize>>> = OnceLock::new();
+    COUNTS.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+fn clear_profile_sweep_branch_counts() {
+    profile_sweep_branch_counts()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clear();
+}
+
+fn record_profile_sweep_branch(branch: &'static str) {
+    let mut counts = profile_sweep_branch_counts()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *counts.entry(branch).or_default() += 1;
+}
+
+fn print_profile_sweep_branch_counts(candidate_id: &str, duel_label: &str) {
+    let counts = profile_sweep_branch_counts()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    for (branch, turns) in counts.iter() {
+        println!(
+            "PRO_PROFILE_SWEEP_BRANCH {{\"candidate\":\"{}\",\"duel\":\"{}\",\"branch\":\"{}\",\"turns\":{}}}",
+            json_escape(candidate_id),
+            json_escape(duel_label),
+            json_escape(branch),
+            turns
+        );
+    }
 }
 
 fn print_profile_sweep_summary(
@@ -658,6 +705,7 @@ fn smart_automove_pro_profile_sweep_probe() {
             .iter()
             .filter(|duel| pro_sweep_filter_allows(&duel_filter, duel.label))
         {
+            clear_profile_sweep_branch_counts();
             let stats = run_cross_model_duel_with_timing(CrossModelDuelConfig {
                 label_a: candidate.id,
                 model_a: AutomoveModel {
@@ -674,6 +722,7 @@ fn smart_automove_pro_profile_sweep_probe() {
                 games_per_repeat: games,
                 max_plies,
             });
+            print_profile_sweep_branch_counts(candidate.id, duel.label);
             print_profile_sweep_summary(
                 candidate.id,
                 shipping_profile.as_str(),
