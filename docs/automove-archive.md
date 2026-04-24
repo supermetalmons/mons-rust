@@ -4,6 +4,16 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Reply-Risk Recovery Scope Wave
+
+- A runtime challenger was cut and killed in this wave.
+- The candidate restricted `pro_v2_root_advisor_black_turn_four_weak_window_recovery_override` so it could only promote `DrainerSafetyRecovery` roots that were already present in the reply-risk shortlist.
+- Focused retained Fast controls still passed: `frontier_pro_v2_guarded_profile_prefers_shipping_black_recovery_duel_fast_root` and `frontier_pro_v2_guarded_profile_prefers_shipping_black_branch_duel_sampled_fast_root`.
+- The local signal moved but did not promote. The full isolated `alternating_mana_rows` Fast trace improved from the archived `7` nonwins to `6`, and the repeated `l2,7;l1,6` vs `l2,7;l1,8` pair disappeared, but mixed singleton residue remained.
+- Canonical sampled `pro-reliability` then failed: Pro `1.0000` / confidence `0.9998` / `143.32ms`, Normal `0.8333` / `0.9807` / `186.18ms`, Fast `0.8333` / `0.9807` / `165.40ms`.
+- The failure rotated Normal down to `center_spoke_mana_rows` and `outer_edge_mana_rows` at `0.5000` each, while Fast still had `alternating_mana_rows` and `forward_bridge_mana_rows` at `0.5000` each.
+- Durable outcome: do not keep or retry reply-risk-shortlist scoping for the black turn-four weak-window recovery override by itself. It can remove one repeated `alternating` seam, but it is not a promotable multi-variant strength mechanism.
+
 ## Root Advisor Trace Refresh Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
