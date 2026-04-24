@@ -650,6 +650,12 @@ struct ProProfileSweepAttributionTurn {
     board_fen: String,
     move_fen: String,
     candidate_branch: &'static str,
+    active_color: Color,
+    turn_number: i32,
+    mons_moves_count: i32,
+    can_use_action: bool,
+    can_move_mana: bool,
+    exact_context: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -666,6 +672,32 @@ struct ProProfileSweepFirstDivergence {
     left_move_fen: String,
     right_move_fen: String,
     left_branch: &'static str,
+    active_color: Color,
+    turn_number: i32,
+    mons_moves_count: i32,
+    can_use_action: bool,
+    can_move_mana: bool,
+    exact_context: String,
+}
+
+fn pro_profile_sweep_color_label(color: Color) -> &'static str {
+    match color {
+        Color::White => "white",
+        Color::Black => "black",
+    }
+}
+
+fn pro_profile_sweep_divergence_context_key(divergence: &ProProfileSweepFirstDivergence) -> String {
+    format!(
+        "{} branch={} turn={} mons_moves={} can_action={} can_mana={} {}",
+        pro_profile_sweep_color_label(divergence.active_color),
+        divergence.left_branch,
+        divergence.turn_number,
+        divergence.mons_moves_count,
+        divergence.can_use_action,
+        divergence.can_move_mana,
+        divergence.exact_context,
+    )
 }
 
 fn select_profile_sweep_candidate_inputs_with_branch(
@@ -741,6 +773,12 @@ fn play_profile_sweep_attribution_trace(
                 board_fen,
                 move_fen: Input::fen_from_array(&inputs),
                 candidate_branch: guarded_branch,
+                active_color: game.active_color,
+                turn_number: game.turn_number,
+                mons_moves_count: game.mons_moves_count,
+                can_use_action: game.player_can_use_action(),
+                can_move_mana: game.player_can_move_mana(),
+                exact_context: exact_opportunity_context_probe(&game),
             });
         }
 
@@ -798,6 +836,12 @@ fn first_profile_sweep_candidate_divergence(
                 left_move_fen: left_turn.move_fen.clone(),
                 right_move_fen: right_turn.move_fen.clone(),
                 left_branch: left_turn.candidate_branch,
+                active_color: left_turn.active_color,
+                turn_number: left_turn.turn_number,
+                mons_moves_count: left_turn.mons_moves_count,
+                can_use_action: left_turn.can_use_action,
+                can_move_mana: left_turn.can_move_mana,
+                exact_context: left_turn.exact_context.clone(),
             })
         })
 }
@@ -895,6 +939,7 @@ fn smart_automove_pro_profile_attribution_probe() {
         let mut missing_first_diff = 0usize;
         let mut printed = 0usize;
         let mut branch_counts = BTreeMap::<(&'static str, &'static str), usize>::new();
+        let mut context_counts = BTreeMap::<(&'static str, String), usize>::new();
         let mut pair_counts =
             BTreeMap::<(&'static str, &'static str, String, String), usize>::new();
 
@@ -950,6 +995,14 @@ fn smart_automove_pro_profile_attribution_probe() {
                     *branch_counts
                         .entry((outcome, divergence.left_branch))
                         .or_default() += 1;
+                    let context_key = format!(
+                        "variant={} {}",
+                        automove_variant_label(variant),
+                        pro_profile_sweep_divergence_context_key(&divergence)
+                    );
+                    *context_counts
+                        .entry((outcome, context_key.clone()))
+                        .or_default() += 1;
                     *pair_counts
                         .entry((
                             outcome,
@@ -961,7 +1014,7 @@ fn smart_automove_pro_profile_attribution_probe() {
 
                     if printed < trace_limit {
                         println!(
-                            "PRO_PROFILE_SWEEP_ATTRIBUTION {{\"left\":\"{}\",\"right\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"outcome\":\"{}\",\"right_delta\":{},\"left_result\":\"{}\",\"right_result\":\"{}\",\"first_diff_ply\":{},\"left_branch\":\"{}\",\"board\":\"{}\",\"left_move\":\"{}\",\"right_move\":\"{}\",\"left_final\":\"{}\",\"right_final\":\"{}\"}}",
+                            "PRO_PROFILE_SWEEP_ATTRIBUTION {{\"left\":\"{}\",\"right\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"outcome\":\"{}\",\"right_delta\":{},\"left_result\":\"{}\",\"right_result\":\"{}\",\"first_diff_ply\":{},\"left_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"board\":\"{}\",\"left_move\":\"{}\",\"right_move\":\"{}\",\"left_final\":\"{}\",\"right_final\":\"{}\"}}",
                             json_escape(left.id),
                             json_escape(right.id),
                             json_escape(duel.label),
@@ -975,6 +1028,12 @@ fn smart_automove_pro_profile_attribution_probe() {
                             format_match_result(right_trace.result),
                             divergence.ply,
                             json_escape(divergence.left_branch),
+                            pro_profile_sweep_color_label(divergence.active_color),
+                            divergence.turn_number,
+                            divergence.mons_moves_count,
+                            divergence.can_use_action,
+                            divergence.can_move_mana,
+                            json_escape(&divergence.exact_context),
                             json_escape(&divergence.board_fen),
                             json_escape(&divergence.left_move_fen),
                             json_escape(&divergence.right_move_fen),
@@ -1006,6 +1065,17 @@ fn smart_automove_pro_profile_attribution_probe() {
                 json_escape(duel.label),
                 json_escape(outcome),
                 json_escape(branch),
+                games
+            );
+        }
+        for ((outcome, context), games) in context_counts.iter() {
+            println!(
+                "PRO_PROFILE_SWEEP_ATTRIBUTION_CONTEXT {{\"left\":\"{}\",\"right\":\"{}\",\"duel\":\"{}\",\"outcome\":\"{}\",\"context\":\"{}\",\"games\":{}}}",
+                json_escape(left.id),
+                json_escape(right.id),
+                json_escape(duel.label),
+                json_escape(outcome),
+                json_escape(context),
                 games
             );
         }
