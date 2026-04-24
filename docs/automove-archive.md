@@ -4,6 +4,18 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Black Alternating Retained Branch Structure Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave first reran `smart_automove_pro_reliability_nonwin_trace_probe` on `SMART_AUTOMOVE_VARIANTS=alternating_mana_rows` with `duel_filter=vs_shipping_fast` to recover the exact repeated black board on the current corpus.
+- The repeated seam still reproduced cleanly: on the recovered turn-four board, frontier played `l2,7;l1,6` while shipping stayed on `l2,7;l1,8`.
+- The follow-up structure probe compared that board against the nearby retained black fast/pro controls: `BLACK_BRANCH_DUEL_SAMPLED_FAST`, `BLACK_SIBLING_DUEL_SAMPLED_PRO`, and `BLACK_FOLLOWUP_DUEL_SAMPLED_NORMAL`.
+- None of them matched. The live repeated seam is a `window=1/deny=1` board where frontier approves `DrainerSafetyRecovery l2,7;l1,6` through `ApprovedFamilyCompetition`, shipping stays on `ManaTempo l2,7;l1,8`, and the reply-risk shortlist contains only the two `ManaTempo` siblings beneath a rejected head `l2,7;l2,8`.
+- `BLACK_BRANCH_DUEL_SAMPLED_FAST` is different: it is a wide-shortlist `SpiritImpact` own-setup board approved through `ApprovedLegacySelector`.
+- `BLACK_SIBLING_DUEL_SAMPLED_PRO` is different again: it is `SpiritImpact` through `ApprovedFamilyCompetition` with one preserved `ManaTempo` representative.
+- `BLACK_FOLLOWUP_DUEL_SAMPLED_NORMAL` is also different: it is a `window=0/deny=0` `ManaTempo` family-competition board that still keeps shipping.
+- Durable outcome: do not extend the retained black branch/followup package into the repeated `alternating` seam. Shared black-early labels were not enough; the family, context, shortlist density, and approval path still diverge.
+
 ## Black Outer-Edge Retained Late Structure Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
