@@ -997,3 +997,10 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Promotion failed. Pro passed at win rate `1.0000`, confidence `0.9998`, and frontier average `154.74ms`; Normal was below the confidence target at `0.9167`, `0.9968`, `192.00ms`; Fast failed at `0.8333`, `0.9807`, `172.51ms`.
 - The weak variant rows were the same as before: Normal `outer_edge_mana_rows` at `0.5000`, Fast `alternating_mana_rows` at `0.5000`, and Fast `forward_bridge_mana_rows` at `0.5000`.
 - Durable outcome: the focused alt-v5 singleton-only traces did not make the retained frontier promotable. Keep runtime code untouched until a focused probe exposes a repeated mechanism under one of those three weak rows.
+
+## Focused Fast Nonwin Trace Wave
+
+- No runtime challenger was attempted in this wave. The diagnostic was `smart_automove_pro_reliability_nonwin_trace_probe` with `SMART_AUTOMOVE_VARIANTS=alternating_mana_rows,forward_bridge_mana_rows`, `SMART_PRO_RELIABILITY_DUEL_FILTER=vs_shipping_fast`, `SMART_PRO_RELIABILITY_REPEATS=3`, and `SMART_PRO_RELIABILITY_GAMES=2`.
+- The useful result is that targeting the exact failed Fast rows by frontier nonwins still did not collapse to one mechanism. The trace logged `5` nonwins and all printed move pairs were singleton.
+- The nonwins were black `l0,10;l0,9` vs shipping `l4,0;l5,0;mb`, white `l9,6;l8,7` vs shipping `l9,6;l7,7;l8,8`, black `l0,6;l1,6` vs shipping `l2,3;l3,4`, black `l2,5;l0,5;l1,6` vs shipping `l2,5;l4,7;l3,8`, and white `l9,6;l7,4;l7,3` vs shipping `l9,6;l7,6;l7,7`.
+- Durable outcome: do not spend runtime code on this focused Fast nonwin set. It spans already-known singleton black bridge/mana, black setup, black late recovery, white safe-progress, and white head-accept surfaces.
