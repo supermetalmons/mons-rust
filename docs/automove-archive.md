@@ -765,3 +765,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
   - Fast white branch head-accept board: frontier accepted `l9,6;l7,4;l7,3` over the advisor-approved shipping root `l9,6;l7,6;l7,7`.
 - One traced Fast black nonwin was not safe to keep as retained coverage. The copied board snapshot did not reproduce the live shipping-selected root on a clean retained replay and collapsed back to frontier instead.
 - Durable outcome: when sampled losses rotate into late-ply boards, keep only the stable retained repairs and archive the reproducibility rule. Do not retain copied `first_diff_ply` boards unless the retained harness reproduces the same final shipping-selected root.
+
+## Black Alternating Retained Engine-Disabled Structure Wave
+
+- No new runtime challenger survived this wave. The kept diagnostic is `black_alternating_vs_retained_engine_disabled_fast_structure_probe`.
+- The useful result is that the singleton Fast `alternating_mana_rows` seam `l0,10;l0,9` vs shipping `l4,0;l5,0;mb` is not covered by the nearby retained black engine-disabled package.
+- `BLACK_BRIDGE_NONWIN_DUEL_FAST` only matches at the coarse `window=0/deny=0` singleton-shortlist `ManaTempo` surface. On that retained board, frontier accepts `l1,6;l2,7` and still collapses to engine-disabled mana `l4,1;l5,0;mb`, matching shipping in the final selector.
+- `BLACK_ENGINE_DISABLED_DUEL_FAST` is different again: it is a dense-shortlist `SpiritImpact` preserved-representative board where frontier and shipping both keep `l1,5;l2,3;l1,2` and no accepted head survives.
+- Durable outcome: do not extend the retained black bridge or engine-disabled Fast controls into `alternating_mana_rows` just because they share `window=0/deny=0` or an engine-disabled shipping finish. The live seam is a pure `ManaTempo` `ApprovedReplyRiskGuard` board where frontier never collapses off the approved root.
