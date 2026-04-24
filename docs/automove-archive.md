@@ -809,3 +809,13 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The copied `l1,4;l2,4` vs `l0,5;l1,6` board did not replay the traced drift. On a clean direct probe, both frontier and shipping collapsed to engine-disabled `l0,5;l1,6`.
 - The copied `l1,4;l2,5` vs `l1,4;l1,6;l2,7` board also failed reproduction. On a clean direct probe, both frontier and shipping instead collapsed to engine-disabled `l1,5;l2,7;l3,8`, so even the traced shipping final did not survive.
 - Durable outcome: do not spend on copied singleton early-black `outer_edge` seams until they reproduce cleanly. If the copied board collapses to shared shipping or to a different shared final, it is not a defensible local runtime target and it is not a good retained-extension anchor.
+
+## Black Alternating Late Fast Recovery Repro Wave
+
+- No new runtime challenger survived this wave. The kept diagnostics were:
+  - `SMART_AUTOMOVE_VARIANTS=alternating_mana_rows` with `smart_automove_pro_reliability_nonwin_trace_probe`, `duel_filter=vs_shipping_fast`, `repeats=4`, `games=3`
+  - `black_alternating_late_fast_recovery_structure_probe`
+- The useful result is that the old Fast `alternating` late-fast recovery singleton still exists in the live trace, but its copied board is not stable enough to spend on.
+- The replay still logged the seam `l2,5;l0,5;l1,6` vs shipping `l2,5;l4,7;l3,8` on the current Fast corpus.
+- The copied board did not replay that seam on a clean direct probe. Both frontier and shipping instead collapsed to shared engine-disabled `l2,5;l4,5;l3,4`, with no head or advisor residue left to compare against retained `BLACK_LATE_FAST_RECOVERY_TRACE`.
+- Durable outcome: do not extend the retained late-fast recovery trace into the Fast `alternating` singleton and do not spend runtime code on that copied board until it reproduces cleanly.
