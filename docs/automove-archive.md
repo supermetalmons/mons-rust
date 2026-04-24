@@ -4,6 +4,15 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Black Forward-Bridge Post-Search Repro Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave first widened `SMART_AUTOMOVE_VARIANTS=forward_bridge_mana_rows` on `smart_automove_pro_reliability_nonwin_trace_probe` with `duel_filter=vs_shipping_fast`, `repeats=4`, and `games=3`.
+- That replay still logged `10` Fast nonwins and recovered a black copied seam where frontier drifted to `l0,6;l1,6` while shipping stayed on `l2,3;l3,4`.
+- The follow-up direct structure probe compared that copied board against the nearby retained `BLACK_POST_SEARCH_DUEL_PRO` control.
+- The copied board did not replay the traced seam. On a clean direct probe, both frontier and shipping collapsed to shared engine-disabled `l2,3;l3,4`, with no head or advisor residue left to compare against the retained post-search control.
+- Durable outcome: do not extend `BLACK_POST_SEARCH_DUEL_PRO` or any other retained black post-search control from that copied board. Shared frontier move shape was a false lead; the copied board is another nonreproducible local artifact.
+
 ## Black Alternating Retained Recovery Search-Only Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
