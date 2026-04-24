@@ -18,6 +18,7 @@ stages:
   pro-reliability-confirm all-variant confirmation gate with the same three Pro matchups
   pro-profile-sweep       diagnostic: sweep one or more test-only Pro profile candidates
   pro-profile-attribution diagnostic: attribute outcome deltas between two sweep candidates
+  pro-promotion-dashboard diagnostic: summarize sampled + active-blocker promotion shape
 
 defaults:
   shipping = shipping_pro_search for Pro stages
@@ -32,6 +33,7 @@ examples:
   ./scripts/run-automove-experiment.sh pro-reliability-confirm frontier_pro_v2_guarded
   ./scripts/run-automove-experiment.sh pro-profile-sweep frontier_pro_v2_raw
   SMART_PRO_SWEEP_ATTRIBUTION_RIGHT=frontier_pro_v2_raw ./scripts/run-automove-experiment.sh pro-profile-attribution frontier_pro_v2_no_late_black_fallback
+  ./scripts/run-automove-experiment.sh pro-promotion-dashboard frontier_pro_v2_raw
 EOF_HELP
 }
 
@@ -263,6 +265,9 @@ case "${stage}" in
   pro-profile-sweep)
     require_supported_sweep_filter "frontier" "${frontier}"
     ;;
+  pro-promotion-dashboard)
+    require_supported_sweep_filter "frontier" "${frontier}"
+    ;;
   pro-profile-attribution)
     require_supported_sweep_candidate "frontier" "${frontier}"
     if [ -n "${SMART_PRO_SWEEP_ATTRIBUTION_RIGHT:-}" ]; then
@@ -334,6 +339,14 @@ case "${stage}" in
       "SMART_PRO_RELIABILITY_SHIPPING_PROFILE=${shipping}" \
       "SMART_PRO_SWEEP_ATTRIBUTION_LEFT=${frontier}" \
       "${attribution_right_env[@]}"
+    ;;
+  pro-promotion-dashboard)
+    run_cargo_logged \
+      "pro_promotion_dashboard_$(sanitize "${frontier}")" \
+      "smart_automove_pro_promotion_dashboard_probe" \
+      "SMART_SHIPPING_PROFILE=${shipping}" \
+      "SMART_PRO_RELIABILITY_SHIPPING_PROFILE=${shipping}" \
+      "SMART_PRO_DASHBOARD_CANDIDATES=${frontier}"
     ;;
   *)
     echo "unknown stage: ${stage}" >&2

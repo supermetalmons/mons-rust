@@ -644,6 +644,203 @@ fn print_profile_sweep_summary(
     }
 }
 
+#[derive(Clone, Copy)]
+struct ProPromotionDashboardPanelSpec {
+    label: &'static str,
+    variant_policy: &'static str,
+    variants: &'static str,
+    default_repeats: usize,
+    default_games: usize,
+    seed_tag: &'static str,
+}
+
+#[derive(Debug, Clone)]
+struct ProPromotionDashboardPanelSummary {
+    panel: &'static str,
+    shipping_duels: usize,
+    shipping_strict_passes: usize,
+    shipping_directional_passes: usize,
+    min_shipping_win_rate: f64,
+    min_shipping_confidence: f64,
+    max_candidate_avg_ms: f64,
+    weak_variant_rows: usize,
+    guarded_win_rate: f64,
+    guarded_confidence: f64,
+}
+
+impl ProPromotionDashboardPanelSummary {
+    fn new(panel: &'static str) -> Self {
+        Self {
+            panel,
+            shipping_duels: 0,
+            shipping_strict_passes: 0,
+            shipping_directional_passes: 0,
+            min_shipping_win_rate: 1.0,
+            min_shipping_confidence: 1.0,
+            max_candidate_avg_ms: 0.0,
+            weak_variant_rows: 0,
+            guarded_win_rate: 0.5,
+            guarded_confidence: 0.0,
+        }
+    }
+
+    fn record_shipping_duel(&mut self, stats: &TimedMatchupStats) {
+        let metrics = pro_reliability_metrics(stats);
+        self.shipping_duels += 1;
+        if pro_reliability_duel_passes(metrics) {
+            self.shipping_strict_passes += 1;
+        }
+        if metrics.win_rate >= 0.90 && metrics.frontier_avg_ms <= 700.0 {
+            self.shipping_directional_passes += 1;
+        }
+        self.min_shipping_win_rate = self.min_shipping_win_rate.min(metrics.win_rate);
+        self.min_shipping_confidence = self.min_shipping_confidence.min(metrics.confidence);
+        self.max_candidate_avg_ms = self.max_candidate_avg_ms.max(metrics.frontier_avg_ms);
+        self.weak_variant_rows += stats
+            .per_variant_stats()
+            .into_iter()
+            .filter(|variant_stats| variant_stats.matchup.win_rate_points() < 0.50)
+            .count();
+    }
+
+    fn record_guarded_duel(&mut self, stats: &TimedMatchupStats) {
+        self.guarded_win_rate = stats.matchup.win_rate_points();
+        self.guarded_confidence = stats.matchup.confidence_better_than_even();
+        self.max_candidate_avg_ms = self
+            .max_candidate_avg_ms
+            .max(stats.timing.profile_a_avg_ms());
+    }
+
+    fn shipping_strict_passes_all(&self) -> bool {
+        self.shipping_duels > 0 && self.shipping_strict_passes == self.shipping_duels
+    }
+
+    fn shipping_directional_passes_all(&self) -> bool {
+        self.shipping_duels > 0 && self.shipping_directional_passes == self.shipping_duels
+    }
+}
+
+fn pro_promotion_dashboard_panel_specs() -> Vec<ProPromotionDashboardPanelSpec> {
+    vec![
+        ProPromotionDashboardPanelSpec {
+            label: "sampled",
+            variant_policy: "sampled",
+            variants: "",
+            default_repeats: 3,
+            default_games: 2,
+            seed_tag: "pro_profile_sweep_v1",
+        },
+        ProPromotionDashboardPanelSpec {
+            label: "active_blockers",
+            variant_policy: "sampled",
+            variants: "outer_edge_mana_rows,alternating_mana_rows,forward_bridge_mana_rows",
+            default_repeats: 1,
+            default_games: 3,
+            seed_tag: "pro_profile_active_blockers_v1",
+        },
+    ]
+}
+
+fn with_pro_promotion_dashboard_panel<T>(
+    panel: ProPromotionDashboardPanelSpec,
+    f: impl FnOnce() -> T,
+) -> T {
+    with_env_override("SMART_AUTOMOVE_VARIANTS", panel.variants, || {
+        with_env_override("SMART_AUTOMOVE_VARIANT_POLICY", panel.variant_policy, f)
+    })
+}
+
+fn pro_promotion_dashboard_directional_label(
+    sampled: &ProPromotionDashboardPanelSummary,
+    active: &ProPromotionDashboardPanelSummary,
+) -> &'static str {
+    if sampled.shipping_strict_passes_all()
+        && active.shipping_directional_passes_all()
+        && sampled.weak_variant_rows == 0
+        && active.weak_variant_rows == 0
+    {
+        "promotable_scout"
+    } else if sampled.shipping_directional_passes_all() && active.shipping_directional_passes_all()
+    {
+        "directional_both_panels"
+    } else if active.shipping_directional_passes_all() {
+        "active_blocker_only"
+    } else if sampled.shipping_directional_passes_all() {
+        "sampled_only"
+    } else {
+        "not_promising"
+    }
+}
+
+fn print_pro_promotion_dashboard_result(
+    panel: &str,
+    candidate_id: &str,
+    comparison: &str,
+    duel_label: &str,
+    opponent_profile: &str,
+    opponent_mode: SmartAutomovePreference,
+    stats: &TimedMatchupStats,
+) {
+    let metrics = pro_reliability_metrics(stats);
+    println!(
+        "PRO_PROMOTION_DASHBOARD_RESULT {{\"panel\":\"{}\",\"candidate\":\"{}\",\"comparison\":\"{}\",\"duel\":\"{}\",\"opponent_profile\":\"{}\",\"opponent_mode\":\"{}\",\"total_games\":{},\"wins\":{},\"losses\":{},\"draws\":{},\"win_rate\":{:.4},\"confidence\":{:.4},\"candidate_avg_ms\":{:.2},\"opponent_avg_ms\":{:.2},\"candidate_turns\":{},\"opponent_turns\":{},\"strict_passes\":{},\"directional_passes\":{}}}",
+        json_escape(panel),
+        json_escape(candidate_id),
+        json_escape(comparison),
+        json_escape(duel_label),
+        json_escape(opponent_profile),
+        opponent_mode.as_api_value(),
+        stats.matchup.total_games(),
+        stats.matchup.wins,
+        stats.matchup.losses,
+        stats.matchup.draws,
+        metrics.win_rate,
+        metrics.confidence,
+        metrics.frontier_avg_ms,
+        stats.timing.profile_b_avg_ms(),
+        stats.timing.profile_a_turns,
+        stats.timing.profile_b_turns,
+        pro_reliability_duel_passes(metrics),
+        metrics.win_rate >= 0.90 && metrics.frontier_avg_ms <= 700.0,
+    );
+}
+
+fn print_pro_promotion_dashboard_variants(
+    panel: &str,
+    candidate_id: &str,
+    comparison: &str,
+    duel_label: &str,
+    stats: &TimedMatchupStats,
+) {
+    let mut variant_stats = stats.per_variant_stats();
+    variant_stats.sort_by(|left, right| {
+        left.matchup
+            .win_rate_points()
+            .partial_cmp(&right.matchup.win_rate_points())
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| left.variant.id().cmp(&right.variant.id()))
+    });
+    for (rank, variant_stats) in variant_stats.into_iter().enumerate() {
+        println!(
+            "PRO_PROMOTION_DASHBOARD_VARIANT {{\"panel\":\"{}\",\"candidate\":\"{}\",\"comparison\":\"{}\",\"duel\":\"{}\",\"weakness_rank\":{},\"variant\":\"{}\",\"total_games\":{},\"wins\":{},\"losses\":{},\"draws\":{},\"win_rate\":{:.4},\"confidence\":{:.4},\"candidate_avg_ms\":{:.2},\"opponent_avg_ms\":{:.2}}}",
+            json_escape(panel),
+            json_escape(candidate_id),
+            json_escape(comparison),
+            json_escape(duel_label),
+            rank + 1,
+            automove_variant_label(variant_stats.variant),
+            variant_stats.matchup.total_games(),
+            variant_stats.matchup.wins,
+            variant_stats.matchup.losses,
+            variant_stats.matchup.draws,
+            variant_stats.matchup.win_rate_points(),
+            variant_stats.matchup.confidence_better_than_even(),
+            variant_stats.timing.profile_a_avg_ms(),
+            variant_stats.timing.profile_b_avg_ms(),
+        );
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ProProfileSweepAttributionTurn {
     ply: usize,
@@ -1195,6 +1392,213 @@ fn smart_automove_pro_profile_sweep_probe() {
                 &stats,
             );
         }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: one-stop Pro promotion dashboard over sampled and active-blocker panels"]
+fn smart_automove_pro_promotion_dashboard_probe() {
+    #[derive(Clone)]
+    struct DashboardDuelSpec {
+        label: &'static str,
+        opponent_mode: SmartAutomovePreference,
+        seed_suffix: &'static str,
+    }
+
+    let shipping_profile = reliability_shipping_profile_id();
+    let shipping_selector = profile_selector_from_name(shipping_profile.as_str())
+        .unwrap_or_else(|| panic!("shipping '{}' not found", shipping_profile));
+    let guarded_candidate = pro_profile_sweep_candidate_by_id("frontier_pro_v2_guarded");
+    let candidate_filter =
+        pro_sweep_filter_tokens("SMART_PRO_DASHBOARD_CANDIDATES", "frontier_pro_v2_raw");
+    let panel_filter = pro_sweep_filter_tokens("SMART_PRO_DASHBOARD_PANEL_FILTER", "all");
+    let duel_filter = pro_sweep_filter_tokens("SMART_PRO_DASHBOARD_DUEL_FILTER", "all");
+    let include_guarded_delta = env_bool("SMART_PRO_DASHBOARD_INCLUDE_GUARDED").unwrap_or(true);
+    let max_plies = env_usize("SMART_PRO_DASHBOARD_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let duel_specs = vec![
+        DashboardDuelSpec {
+            label: "vs_shipping_pro",
+            opponent_mode: SmartAutomovePreference::Pro,
+            seed_suffix: "",
+        },
+        DashboardDuelSpec {
+            label: "vs_shipping_normal",
+            opponent_mode: SmartAutomovePreference::Normal,
+            seed_suffix: "_vs_normal",
+        },
+        DashboardDuelSpec {
+            label: "vs_shipping_fast",
+            opponent_mode: SmartAutomovePreference::Fast,
+            seed_suffix: "_vs_fast",
+        },
+    ];
+    let candidates = pro_profile_sweep_candidates()
+        .into_iter()
+        .filter(|candidate| pro_sweep_filter_allows(&candidate_filter, candidate.id))
+        .collect::<Vec<_>>();
+    assert!(
+        !candidates.is_empty(),
+        "SMART_PRO_DASHBOARD_CANDIDATES did not match any sweep candidates"
+    );
+
+    println!(
+        "pro promotion dashboard: candidates={} panels={} duels={} max_plies={} include_guarded_delta={}",
+        candidates
+            .iter()
+            .map(|candidate| candidate.id)
+            .collect::<Vec<_>>()
+            .join(","),
+        pro_promotion_dashboard_panel_specs()
+            .into_iter()
+            .filter(|panel| pro_sweep_filter_allows(&panel_filter, panel.label))
+            .map(|panel| panel.label)
+            .collect::<Vec<_>>()
+            .join(","),
+        duel_specs
+            .iter()
+            .filter(|duel| pro_sweep_filter_allows(&duel_filter, duel.label))
+            .map(|duel| duel.label)
+            .collect::<Vec<_>>()
+            .join(","),
+        max_plies,
+        include_guarded_delta,
+    );
+
+    for candidate in candidates {
+        let mut panel_summaries = Vec::<ProPromotionDashboardPanelSummary>::new();
+        for panel in pro_promotion_dashboard_panel_specs()
+            .into_iter()
+            .filter(|panel| pro_sweep_filter_allows(&panel_filter, panel.label))
+        {
+            let repeats = env_usize("SMART_PRO_DASHBOARD_REPEATS")
+                .unwrap_or(panel.default_repeats)
+                .max(1);
+            let games = env_usize("SMART_PRO_DASHBOARD_GAMES")
+                .unwrap_or(panel.default_games)
+                .max(1);
+            let panel_seed_tag = env_string_value("SMART_PRO_DASHBOARD_SEED_TAG")
+                .unwrap_or_else(|| panel.seed_tag.to_string());
+            let mut summary = ProPromotionDashboardPanelSummary::new(panel.label);
+
+            with_pro_promotion_dashboard_panel(panel, || {
+                for duel in duel_specs
+                    .iter()
+                    .filter(|duel| pro_sweep_filter_allows(&duel_filter, duel.label))
+                {
+                    let duel_seed_tag = format!("{}{}", panel_seed_tag, duel.seed_suffix);
+                    clear_profile_sweep_branch_counts();
+                    let stats = run_cross_model_duel_with_timing(CrossModelDuelConfig {
+                        label_a: candidate.id,
+                        model_a: AutomoveModel {
+                            select_inputs: candidate.selector,
+                        },
+                        budget_a: pro_budget(),
+                        label_b: shipping_profile.as_str(),
+                        model_b: AutomoveModel {
+                            select_inputs: shipping_selector,
+                        },
+                        budget_b: SearchBudget::from_preference(duel.opponent_mode),
+                        seed_tag: duel_seed_tag.as_str(),
+                        repeats,
+                        games_per_repeat: games,
+                        max_plies,
+                    });
+                    print_profile_sweep_branch_counts(candidate.id, duel.label);
+                    print_pro_promotion_dashboard_result(
+                        panel.label,
+                        candidate.id,
+                        "shipping",
+                        duel.label,
+                        shipping_profile.as_str(),
+                        duel.opponent_mode,
+                        &stats,
+                    );
+                    print_pro_promotion_dashboard_variants(
+                        panel.label,
+                        candidate.id,
+                        "shipping",
+                        duel.label,
+                        &stats,
+                    );
+                    summary.record_shipping_duel(&stats);
+                }
+
+                if include_guarded_delta {
+                    let guarded_seed_tag = format!("{}_vs_guarded", panel_seed_tag);
+                    let stats = run_cross_model_duel_with_timing(CrossModelDuelConfig {
+                        label_a: candidate.id,
+                        model_a: AutomoveModel {
+                            select_inputs: candidate.selector,
+                        },
+                        budget_a: pro_budget(),
+                        label_b: guarded_candidate.id,
+                        model_b: AutomoveModel {
+                            select_inputs: guarded_candidate.selector,
+                        },
+                        budget_b: pro_budget(),
+                        seed_tag: guarded_seed_tag.as_str(),
+                        repeats,
+                        games_per_repeat: games,
+                        max_plies,
+                    });
+                    print_pro_promotion_dashboard_result(
+                        panel.label,
+                        candidate.id,
+                        "guarded",
+                        "vs_frontier_pro_v2_guarded",
+                        guarded_candidate.id,
+                        SmartAutomovePreference::Pro,
+                        &stats,
+                    );
+                    print_pro_promotion_dashboard_variants(
+                        panel.label,
+                        candidate.id,
+                        "guarded",
+                        "vs_frontier_pro_v2_guarded",
+                        &stats,
+                    );
+                    summary.record_guarded_duel(&stats);
+                }
+            });
+
+            println!(
+                "PRO_PROMOTION_DASHBOARD_PANEL {{\"candidate\":\"{}\",\"panel\":\"{}\",\"shipping_duels\":{},\"shipping_strict_passes\":{},\"shipping_directional_passes\":{},\"min_shipping_win_rate\":{:.4},\"min_shipping_confidence\":{:.4},\"max_candidate_avg_ms\":{:.2},\"weak_variant_rows\":{},\"guarded_win_rate\":{:.4},\"guarded_confidence\":{:.4}}}",
+                json_escape(candidate.id),
+                json_escape(summary.panel),
+                summary.shipping_duels,
+                summary.shipping_strict_passes,
+                summary.shipping_directional_passes,
+                summary.min_shipping_win_rate,
+                summary.min_shipping_confidence,
+                summary.max_candidate_avg_ms,
+                summary.weak_variant_rows,
+                summary.guarded_win_rate,
+                summary.guarded_confidence,
+            );
+            panel_summaries.push(summary);
+        }
+
+        let classification = match (
+            panel_summaries
+                .iter()
+                .find(|summary| summary.panel == "sampled"),
+            panel_summaries
+                .iter()
+                .find(|summary| summary.panel == "active_blockers"),
+        ) {
+            (Some(sampled), Some(active)) => {
+                pro_promotion_dashboard_directional_label(sampled, active)
+            }
+            _ => "partial_dashboard",
+        };
+        println!(
+            "PRO_PROMOTION_DASHBOARD_CANDIDATE {{\"candidate\":\"{}\",\"classification\":\"{}\",\"panels\":{}}}",
+            json_escape(candidate.id),
+            json_escape(classification),
+            panel_summaries.len(),
+        );
     }
 }
 

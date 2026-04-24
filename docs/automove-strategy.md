@@ -104,15 +104,20 @@ Promotion shape:
 
 ### 5. Harness-Level Promotion Dashboard
 
-The harness should eventually produce one promotion dashboard instead of scattered logs. The dashboard should summarize:
+The harness now has a diagnostic promotion dashboard:
+
+```sh
+./scripts/run-automove-experiment.sh pro-promotion-dashboard <sweep-candidate[,candidate...]>
+```
+
+The dashboard summarizes:
 
 - Pro/Normal/Fast win rate, confidence, and average move time
 - per-variant rows sorted by weakest result
 - candidate-vs-guarded and candidate-vs-shipping deltas
-- branch/context classes responsible for outcome-changing divergences
 - whether the candidate is active-blocker-only, sampled-only, or broadly promising
 
-Until that dashboard exists, the structural scout plus profile attribution is the minimum replacement.
+Use profile attribution after the dashboard identifies a globally promising candidate with one explainable panel failure.
 
 ## Stop Conditions
 

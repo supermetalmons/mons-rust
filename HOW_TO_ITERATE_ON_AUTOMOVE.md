@@ -60,6 +60,7 @@ Use `./scripts/run-automove-experiment.sh` when you need one stage at a time or 
 ./scripts/run-automove-experiment.sh pro-reliability frontier_pro_v2_guarded
 ./scripts/run-automove-experiment.sh pro-reliability-confirm frontier_pro_v2_guarded
 ./scripts/run-automove-experiment.sh pro-profile-sweep frontier_pro_v2_raw
+./scripts/run-automove-experiment.sh pro-promotion-dashboard frontier_pro_v2_raw
 ```
 
 ## Structural Reset
@@ -105,6 +106,7 @@ Use diagnostics only after the canonical loop shows what is still missing.
 - `smart_automove_pro_reliability_hotspot_probe`
 - `smart_automove_pro_profile_sweep_probe`
 - `smart_automove_pro_profile_attribution_probe`
+- `smart_automove_pro_promotion_dashboard_probe`
 - `smart_automove_pro_decision_record_aggregation_probe`
 - `smart_automove_pro_triage_retained_churn_probe`
 - `smart_automove_pro_forced_turn_engine_retained_churn_probe`
@@ -143,6 +145,12 @@ The same sweep is available through the experiment runner:
 SMART_PRO_SWEEP_DUEL_FILTER=vs_shipping_fast \
 SMART_AUTOMOVE_VARIANTS=alternating_mana_rows,forward_bridge_mana_rows \
 ./scripts/run-automove-experiment.sh pro-profile-sweep frontier_pro_v2_raw
+```
+
+`smart_automove_pro_promotion_dashboard_probe` summarizes a sweep candidate on both canonical sampled and active-blocker panels. It prints `PRO_PROMOTION_DASHBOARD_RESULT`, weakness-sorted `PRO_PROMOTION_DASHBOARD_VARIANT`, per-panel `PRO_PROMOTION_DASHBOARD_PANEL`, and final `PRO_PROMOTION_DASHBOARD_CANDIDATE` lines. Use it before cutting runtime code when a candidate might be active-blocker-only, sampled-only, or broadly promising.
+
+```sh
+./scripts/run-automove-experiment.sh pro-promotion-dashboard frontier_pro_v2_raw
 ```
 
 `smart_automove_pro_profile_attribution_probe` replays the same opening seeds with two sweep candidates against the same shipping opponent, then prints outcome-changing first divergences as `PRO_PROFILE_SWEEP_ATTRIBUTION`, `PRO_PROFILE_SWEEP_ATTRIBUTION_SUMMARY`, `PRO_PROFILE_SWEEP_ATTRIBUTION_BRANCH`, and `PRO_PROFILE_SWEEP_ATTRIBUTION_PAIR` lines. It defaults to `frontier_pro_v2_guarded` vs `frontier_pro_v2_raw`; override with `SMART_PRO_SWEEP_ATTRIBUTION_LEFT` and `SMART_PRO_SWEEP_ATTRIBUTION_RIGHT`.
