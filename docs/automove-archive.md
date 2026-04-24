@@ -4,6 +4,16 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## White Forward-Bridge Retained Spirit Head Structure Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave reran the narrow Fast nonwin trace on `SMART_AUTOMOVE_VARIANTS=forward_bridge_mana_rows` only far enough to recover the exact repeated white head-accept board.
+- On that live board, frontier keeps shipped `SpiritImpact l9,6;l7,6;l7,7` as pre-accept, then accepts same-family head `l9,6;l7,4;l7,3` out of `engine_post_search`; shipping stays on `l9,6;l7,6;l7,7`.
+- The follow-up structure probe compared that live board against the nearby retained white head/spirit controls `WHITE_HEAD_FLAT_NONWIN` and `WHITE_TURN_FIVE_SPIRIT_SETUP_PRE_ACCEPT_FAST`.
+- `WHITE_HEAD_FLAT_NONWIN` still did not match. It is also a spirit accepted-head surface, but it runs on `window=1/deny=1`, the advisor path is `ApprovedReplyRiskGuard`, and shipping already matches the accepted head.
+- `WHITE_TURN_FIVE_SPIRIT_SETUP_PRE_ACCEPT_FAST` also did not match. It is another `window=1/deny=1` spirit setup surface, but frontier keeps shipping and rejects a `ManaTempo` head instead of accepting a same-family spirit head.
+- Durable outcome: do not extend the nearby retained white head/spirit package into the repeated Fast `forward_bridge` seam. Shared white spirit setup shape was a false lead; the live board is a different accepted-head mechanism.
+
 ## Outer-Edge Widened Normal Replay Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
