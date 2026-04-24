@@ -956,3 +956,10 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The useful result is that the repeated pair `l2,3;l3,3` vs shipping `l2,3;l3,2` is not a root-pool availability seam. Frontier and shipping both enumerated `10,941` selector children with identical shortlist/full-pass counts.
 - The actual split was the known frontier-extra-work shape: frontier selected `l2,3;l3,3` through `engine_post_search`, shipping selected `l2,3;l3,2` through `engine_disabled`, and frontier paid extra exact/engine work (`payload_calls +163,990`, `pickup_calls +6,177`, `secure_mana_calls +1,784`, `tactical_spirit_calls +2,914`, engine accepted `6` vs `1`).
 - Durable outcome: do not reopen the alt-v3 Normal black pair through root-pool widening, shortlist widening, or generic exact-cost reduction. The board reproduces a known hotspot false lead inside an already mixed all-blocker trace.
+
+## Env-Driven Hotspot Probe Hook
+
+- No runtime challenger was attempted in this wave. The kept code is diagnostic-only under the ignored test harness.
+- `smart_automove_pro_reliability_hotspot_probe` now accepts one extra ad-hoc board through `SMART_PRO_RELIABILITY_HOTSPOT_FEN`, with optional `SMART_PRO_RELIABILITY_HOTSPOT_LABEL` and `SMART_PRO_RELIABILITY_HOTSPOT_MODE`.
+- The hook was validated by rerunning the alt-v3 Normal black board without a temporary source case. It reproduced the previous no-go: frontier `l2,3;l3,3`, shipping `l2,3;l3,2`, identical `10,941` selector children, and frontier-only extra `engine_post_search`/exact work.
+- Durable outcome: use the env hook for future one-off hotspot inspections instead of adding and later removing ad-hoc probe cases.

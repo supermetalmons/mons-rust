@@ -22,6 +22,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow, `AUTOMOVE_IDEAS.md` for th
 - Use seeded sampled variants for quick kill/pass evidence, then all-variant confirmation for promotion.
 - Separate `pre_accept` search choice from final `engine_post_search` output before changing shared heuristics.
 - A seam can move while the duel gate still fails; local seam coverage is not duel strength.
+- Use `SMART_PRO_RELIABILITY_HOTSPOT_FEN` on `smart_automove_pro_reliability_hotspot_probe` for one-off board inspection. Do not add temporary source cases just to inspect a copied trace board.
 - Passing the small `pro-reliability` gate does not guarantee confirm readiness.
 - Passing sampled variants does not guarantee all-variant readiness.
 - Stacked narrow late-ply head/advisor overrides are especially suspect. One direct line cleared sampled `pro-reliability` at `1.0000 / 0.9167 / 0.9167` and then collapsed in all-variant confirm at `0.6667 / 0.7292 / 0.6667`.

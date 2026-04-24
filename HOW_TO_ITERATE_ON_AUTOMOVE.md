@@ -92,6 +92,15 @@ Use diagnostics only after the canonical loop shows what is still missing.
 - `black_recovery_branch_reply_floor_attribution_probe`
 - `black_progress_residual_weight_attribution_probe`
 
+`smart_automove_pro_reliability_hotspot_probe` can take one extra ad-hoc board without a source edit:
+
+```sh
+SMART_PRO_RELIABILITY_HOTSPOT_LABEL=<label> \
+SMART_PRO_RELIABILITY_HOTSPOT_MODE=pro \
+SMART_PRO_RELIABILITY_HOTSPOT_FEN='<fen>' \
+cargo test --release --lib smart_automove_pro_reliability_hotspot_probe -- --ignored --nocapture
+```
+
 All diagnostics run through the ignored test harness:
 
 ```sh

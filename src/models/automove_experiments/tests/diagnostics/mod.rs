@@ -1606,7 +1606,7 @@ fn smart_automove_pro_reliability_hotspot_probe() {
 
     #[derive(Clone)]
     struct ProbeCase {
-        label: &'static str,
+        label: String,
         game: MonsGame,
         mode: SmartAutomovePreference,
         config_tweak: Option<fn(AutomoveSearchConfig) -> AutomoveSearchConfig>,
@@ -1614,11 +1614,36 @@ fn smart_automove_pro_reliability_hotspot_probe() {
 
     fn probe_case_from_fixture(label: &'static str, fixture: TriageFixture) -> ProbeCase {
         ProbeCase {
-            label,
+            label: label.to_string(),
             game: fixture.game,
             mode: fixture.mode,
             config_tweak: fixture.config_tweak,
         }
+    }
+
+    fn hotspot_mode_from_env() -> SmartAutomovePreference {
+        env::var("SMART_PRO_RELIABILITY_HOTSPOT_MODE")
+            .ok()
+            .and_then(|value| {
+                SmartAutomovePreference::from_api_value(value.trim().to_lowercase().as_str())
+            })
+            .unwrap_or(SmartAutomovePreference::Pro)
+    }
+
+    fn hotspot_case_from_env() -> Option<ProbeCase> {
+        let fen = env::var("SMART_PRO_RELIABILITY_HOTSPOT_FEN").ok()?;
+        let label = env::var("SMART_PRO_RELIABILITY_HOTSPOT_LABEL")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "env_hotspot".to_string());
+
+        Some(ProbeCase {
+            label,
+            game: MonsGame::from_fen(fen.trim(), false)
+                .expect("SMART_PRO_RELIABILITY_HOTSPOT_FEN should be a valid MonsGame FEN"),
+            mode: hotspot_mode_from_env(),
+            config_tweak: None,
+        })
     }
 
     fn game_with_items(items: Vec<(Location, Item)>, active_color: Color) -> MonsGame {
@@ -1808,14 +1833,14 @@ fn smart_automove_pro_reliability_hotspot_probe() {
     let frontier_profile = probe_frontier_profile_id();
     let shipping_profile = probe_shipping_profile_id();
 
-    let cases = vec![
+    let mut cases = vec![
         probe_case_from_fixture(
             "primary_black_loss_opening_a_ply19",
             primary_pro_fixture_by_id("primary_black_loss_opening_a_ply19"),
         ),
         probe_case_from_fixture("human_win_pro_a", primary_pro_fixture_by_id("human_win_pro_a")),
         ProbeCase {
-            label: "loss_opening_a",
+            label: "loss_opening_a".to_string(),
             game: MonsGame::from_fen(
                 "0 0 w 0 0 1 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n02E0xn01A0xD0xS0xY0xn03",
                 false,
@@ -1825,7 +1850,7 @@ fn smart_automove_pro_reliability_hotspot_probe() {
             config_tweak: None,
         },
         ProbeCase {
-            label: "loss_opening_b",
+            label: "loss_opening_b".to_string(),
             game: MonsGame::from_fen(
                 "0 0 w 0 0 0 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n04xxmn01xxmn04/n03xxmn01xxmn01xxmn03/xxQn04xxUn04xxQ/n03xxMn01xxMn01xxMn03/n04xxMn01xxMn04/n11/n11/n03E0xA0xD0xS0xY0xn03",
                 false,
@@ -1835,7 +1860,7 @@ fn smart_automove_pro_reliability_hotspot_probe() {
             config_tweak: None,
         },
         ProbeCase {
-            label: "quiet_positional",
+            label: "quiet_positional".to_string(),
             game: game_with_items(
                 vec![
                     (
@@ -1863,6 +1888,9 @@ fn smart_automove_pro_reliability_hotspot_probe() {
             config_tweak: None,
         },
     ];
+    if let Some(case) = hotspot_case_from_env() {
+        cases.push(case);
+    }
 
     println!(
         "pro reliability hotspot probe: frontier={} shipping={} positions={}",
