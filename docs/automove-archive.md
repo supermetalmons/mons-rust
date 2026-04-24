@@ -4,6 +4,15 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Attribution-Informed Context Gate Wave
+
+- A test-only context-gated sweep candidate was cut and killed in this wave, then removed before ending the session.
+- The wave first refreshed canonical sampled guarded-vs-raw attribution. Guarded still had sampled Pro saves and regressions under the same coarse fallback branches: Pro raw-better `2`, guarded-better `4`, same `6`; Normal raw-better `3`, guarded-better `0`, same `9`; Fast raw-better `4`, guarded-better `0`, same `8`.
+- The active-blocker attribution and direct profile refresh confirmed there was no hidden raw challenger on the current harness. On `outer_edge_mana_rows,alternating_mana_rows,forward_bridge_mana_rows`, retained guarded scored Pro `3-3`, Normal `5-1`, Fast `2-4`, while raw scored Pro `2-4`, Normal `6-0`, Fast `4-2`.
+- The broader exact-context gate switched to raw on observed raw-better white opening and black unsafe-context surfaces. It failed structural scout: canonical sampled Pro `9-3`, Normal `8-4`, Fast `6-6`; active blockers Pro `3-3`, Normal `5-1`, Fast `3-3`.
+- The narrowed gate removed the riskiest white forward-bridge and inner-wedge opening switches. It also failed structural scout: canonical sampled Pro `8-4`, Normal `8-4`, Fast `6-6`; active blockers Pro `3-3`, Normal `5-1`, Fast `3-3`.
+- Durable outcome: do not retry context gates built only from variant/color/turn/resource/exact-opportunity fields. The next useful spend needs a decision record below the context label, including candidate-live/shortlist-live status, advisor reason, head acceptance, final selector stage, and baseline-root position.
+
 ## Profile-Level ProV2 Ablation Wave
 
 - Runtime challengers were cut and killed in this wave; each was reverted before ending the session.
