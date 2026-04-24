@@ -4,6 +4,15 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## White Forward-Bridge Retained Fast-Ply10 Structure Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave compared the singleton Fast `forward_bridge_mana_rows` fallback seam `l9,7;l8,6` vs shipping `l9,7;l7,6;l7,7` directly against the nearby retained `WHITE_FAST_PLY10` control, which already ships the same spirit root.
+- The coarse surface looked close: both boards are white turn-three `window=1/deny=1` positions, shipping selects `SpiritImpact l9,7;l7,6;l7,7`, and frontier considers the same rejected head `l8,5;l7,6`.
+- The approval layer still diverged. On the live seam, frontier approves `SafeSupermanaProgress l9,7;l8,6` through `ApprovedReplyRiskGuard` and keeps the spirit root only shortlist-live, with a preserved safe-progress representative.
+- On retained `WHITE_FAST_PLY10`, frontier keeps shipping `SpiritImpact l9,7;l7,6;l7,7` through `ApprovedFamilyCompetition` and preserves the safe-progress root only as a representative.
+- Durable outcome: do not extend `WHITE_FAST_PLY10` into the singleton `forward_bridge` fallback seam. Shared shipping root and rejected head were not enough; the live board is a different safe-progress-vs-spirit approval surface.
+
 ## White Forward-Bridge Retained Spirit Head Structure Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
