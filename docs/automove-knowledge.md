@@ -25,6 +25,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow, `AUTOMOVE_IDEAS.md` for th
 - Use `SMART_PRO_RELIABILITY_HOTSPOT_FEN` on `smart_automove_pro_reliability_hotspot_probe` for one-off board inspection. Do not add temporary source cases just to inspect a copied trace board.
 - Use `SMART_PRO_RELIABILITY_DUEL_FILTER` on `smart_automove_pro_reliability_duel_trace_probe` or `smart_automove_pro_reliability_nonwin_trace_probe` when only one duel bucket needs recurrence evidence.
 - Use `smart_automove_pro_profile_sweep_probe` when the live surface is too mixed for another seam patch. The probe compares test-only Pro candidates without adding them to the retained profile registry; its output is discovery evidence, not promotion evidence.
+- Prefer the `run-automove-experiment.sh` diagnostic stages for repeatable profile comparisons: `pro-profile-sweep` wraps `smart_automove_pro_profile_sweep_probe`, and `pro-profile-attribution` wraps `smart_automove_pro_profile_attribution_probe`. These stages are diagnostics only; retained-profile restrictions still apply to canonical promotion stages.
 - Passing the small `pro-reliability` gate does not guarantee confirm readiness.
 - Passing sampled variants does not guarantee all-variant readiness.
 - Stacked narrow late-ply head/advisor overrides are especially suspect. One direct line cleared sampled `pro-reliability` at `1.0000 / 0.9167 / 0.9167` and then collapsed in all-variant confirm at `0.6667 / 0.7292 / 0.6667`.

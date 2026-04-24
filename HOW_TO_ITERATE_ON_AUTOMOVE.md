@@ -58,6 +58,7 @@ Use `./scripts/run-automove-experiment.sh` when you need one stage at a time or 
 ./scripts/run-automove-experiment.sh runtime-preflight frontier_pro_v2_guarded
 ./scripts/run-automove-experiment.sh pro-reliability frontier_pro_v2_guarded
 ./scripts/run-automove-experiment.sh pro-reliability-confirm frontier_pro_v2_guarded
+./scripts/run-automove-experiment.sh pro-profile-sweep frontier_pro_v2_raw
 ```
 
 ## Gate Rules
@@ -68,6 +69,7 @@ Use `./scripts/run-automove-experiment.sh` when you need one stage at a time or 
 - `runtime-preflight`: required before duel stages unless you are doing diagnostics only; exact-lite is hard, stage-1 CPU is advisory for Pro, and openings use sampled variants.
 - `pro-reliability`: sampled-variant frontier-vs-`shipping_pro_search` duels in Pro, Normal, and Fast; pass only with `win_rate >= 0.90`, `confidence >= 0.99`, and frontier average move time `<= 700ms` in all three matchups.
 - `pro-reliability-confirm`: all-variant confirmation. Run only after the sampled duel gate earns the spend; it also enforces a per-variant non-regression floor.
+- `pro-profile-sweep` and `pro-profile-attribution`: diagnostic-only stages for test-only Pro candidates. They do not add retained profiles and are not promotion stages.
 
 ## Iteration Lifecycle
 
@@ -119,6 +121,14 @@ SMART_AUTOMOVE_VARIANTS=alternating_mana_rows,forward_bridge_mana_rows \
 cargo test --release --lib smart_automove_pro_profile_sweep_probe -- --ignored --nocapture
 ```
 
+The same sweep is available through the experiment runner:
+
+```sh
+SMART_PRO_SWEEP_DUEL_FILTER=vs_shipping_fast \
+SMART_AUTOMOVE_VARIANTS=alternating_mana_rows,forward_bridge_mana_rows \
+./scripts/run-automove-experiment.sh pro-profile-sweep frontier_pro_v2_raw
+```
+
 `smart_automove_pro_profile_attribution_probe` replays the same opening seeds with two sweep candidates against the same shipping opponent, then prints outcome-changing first divergences as `PRO_PROFILE_SWEEP_ATTRIBUTION`, `PRO_PROFILE_SWEEP_ATTRIBUTION_SUMMARY`, `PRO_PROFILE_SWEEP_ATTRIBUTION_BRANCH`, and `PRO_PROFILE_SWEEP_ATTRIBUTION_PAIR` lines. It defaults to `frontier_pro_v2_guarded` vs `frontier_pro_v2_raw`; override with `SMART_PRO_SWEEP_ATTRIBUTION_LEFT` and `SMART_PRO_SWEEP_ATTRIBUTION_RIGHT`.
 
 ```sh
@@ -127,6 +137,14 @@ SMART_PRO_SWEEP_ATTRIBUTION_RIGHT=frontier_pro_v2_raw \
 SMART_PRO_SWEEP_DUEL_FILTER=all \
 SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows,alternating_mana_rows,forward_bridge_mana_rows \
 cargo test --release --lib smart_automove_pro_profile_attribution_probe -- --ignored --nocapture
+```
+
+The attribution wrapper sets the left candidate from the stage argument and reads the right candidate from `SMART_PRO_SWEEP_ATTRIBUTION_RIGHT`:
+
+```sh
+SMART_PRO_SWEEP_ATTRIBUTION_RIGHT=frontier_pro_v2_raw \
+SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows,alternating_mana_rows,forward_bridge_mana_rows \
+./scripts/run-automove-experiment.sh pro-profile-attribution frontier_pro_v2_no_late_black_fallback
 ```
 
 All diagnostics run through the ignored test harness:

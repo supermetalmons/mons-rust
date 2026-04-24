@@ -17,7 +17,7 @@ EOF
 }
 
 sanitize() {
-  printf '%s' "$1" | tr '[:space:]/:' '_' | tr -cd '[:alnum:]_.-'
+  printf '%s' "$1" | tr '[:space:]/:,' '_' | tr -cd '[:alnum:]_.-'
 }
 
 remove_path() {

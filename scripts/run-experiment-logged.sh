@@ -21,7 +21,7 @@ if [ "$#" -eq 0 ]; then
 fi
 
 sanitize() {
-  printf '%s' "$1" | tr '[:space:]/:' '_' | tr -cd '[:alnum:]_.-'
+  printf '%s' "$1" | tr '[:space:]/:,' '_' | tr -cd '[:alnum:]_.-'
 }
 
 frontier="${SMART_EXPERIMENT_FRONTIER:-}"

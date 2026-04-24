@@ -16,6 +16,8 @@ stages:
   pro-triage              deterministic retained Classic primary_pro triage
   pro-reliability         sampled-variant Pro-vs-Pro, Pro-vs-Normal, and Pro-vs-Fast reliability gate
   pro-reliability-confirm all-variant confirmation gate with the same three Pro matchups
+  pro-profile-sweep       diagnostic: sweep one or more test-only Pro profile candidates
+  pro-profile-attribution diagnostic: attribute outcome deltas between two sweep candidates
 
 defaults:
   shipping = shipping_pro_search for Pro stages
@@ -28,12 +30,26 @@ examples:
   ./scripts/run-automove-experiment.sh pro-triage frontier_pro_v2_guarded
   ./scripts/run-automove-experiment.sh pro-reliability frontier_pro_v2_guarded
   ./scripts/run-automove-experiment.sh pro-reliability-confirm frontier_pro_v2_guarded
+  ./scripts/run-automove-experiment.sh pro-profile-sweep frontier_pro_v2_raw
+  SMART_PRO_SWEEP_ATTRIBUTION_RIGHT=frontier_pro_v2_raw ./scripts/run-automove-experiment.sh pro-profile-attribution frontier_pro_v2_no_late_black_fallback
 EOF_HELP
 }
 
 retained_profiles=(
   shipping_pro_search
   frontier_pro_v2_guarded
+)
+
+sweep_candidates=(
+  shipping_pro_search_control
+  frontier_pro_v2_guarded
+  frontier_pro_v2_raw
+  frontier_pro_v2_no_late_black_fallback
+  frontier_pro_v2_head_rerank
+  frontier_pro_v2_no_spirit_family
+  frontier_pro_v2_no_mid_tactical_guard
+  frontier_pro_v2_expansion_224
+  frontier_pro_v2_no_low_budget_guard
 )
 
 profile_is_supported() {
@@ -56,6 +72,46 @@ require_supported_profile() {
   echo "unsupported ${role} profile: '${profile}'" >&2
   echo "supported profiles: ${retained_profiles[*]}" >&2
   exit 2
+}
+
+profile_is_sweep_candidate() {
+  local profile="$1"
+  local supported
+  for supported in "${sweep_candidates[@]}"; do
+    if [ "${supported}" = "${profile}" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+require_supported_sweep_candidate() {
+  local role="$1"
+  local profile="$2"
+  if profile_is_sweep_candidate "${profile}"; then
+    return 0
+  fi
+  echo "unsupported ${role} sweep candidate: '${profile}'" >&2
+  echo "supported sweep candidates: all ${sweep_candidates[*]}" >&2
+  exit 2
+}
+
+require_supported_sweep_filter() {
+  local role="$1"
+  local value="$2"
+  local old_ifs="${IFS}"
+  local token
+  IFS=','
+  for token in ${value}; do
+    IFS="${old_ifs}"
+    token="$(printf '%s' "${token}" | xargs)"
+    IFS=','
+    if [ -z "${token}" ] || [ "${token}" = "all" ]; then
+      continue
+    fi
+    require_supported_sweep_candidate "${role}" "${token}"
+  done
+  IFS="${old_ifs}"
 }
 
 default_shipping_profile_for_stage() {
@@ -84,7 +140,7 @@ run_logged() {
 }
 
 sanitize() {
-  printf '%s' "$1" | tr '[:space:]/:' '_' | tr -cd '[:alnum:]_.-'
+  printf '%s' "$1" | tr '[:space:]/:,' '_' | tr -cd '[:alnum:]_.-'
 }
 
 experiment_stamp_dir() {
@@ -201,8 +257,22 @@ fi
 frontier="$2"
 shipping="${3:-$(default_shipping_profile_for_stage "${stage}")}"
 
-require_supported_profile "frontier" "${frontier}"
 require_supported_profile "shipping" "${shipping}"
+
+case "${stage}" in
+  pro-profile-sweep)
+    require_supported_sweep_filter "frontier" "${frontier}"
+    ;;
+  pro-profile-attribution)
+    require_supported_sweep_candidate "frontier" "${frontier}"
+    if [ -n "${SMART_PRO_SWEEP_ATTRIBUTION_RIGHT:-}" ]; then
+      require_supported_sweep_candidate "attribution right" "${SMART_PRO_SWEEP_ATTRIBUTION_RIGHT}"
+    fi
+    ;;
+  *)
+    require_supported_profile "frontier" "${frontier}"
+    ;;
+esac
 
 case "${stage}" in
   guardrails)
@@ -243,6 +313,27 @@ case "${stage}" in
       "SMART_PRO_RELIABILITY_GAMES=12" \
       "SMART_PRO_RELIABILITY_MAX_PLIES=96" \
       "SMART_SKIP_RUNTIME_PREFLIGHT=true"
+    ;;
+  pro-profile-sweep)
+    run_cargo_logged \
+      "pro_profile_sweep_$(sanitize "${frontier}")" \
+      "smart_automove_pro_profile_sweep_probe" \
+      "SMART_SHIPPING_PROFILE=${shipping}" \
+      "SMART_PRO_RELIABILITY_SHIPPING_PROFILE=${shipping}" \
+      "SMART_PRO_SWEEP_CANDIDATES=${frontier}"
+    ;;
+  pro-profile-attribution)
+    attribution_right_env=()
+    if [ -n "${SMART_PRO_SWEEP_ATTRIBUTION_RIGHT:-}" ]; then
+      attribution_right_env=("SMART_PRO_SWEEP_ATTRIBUTION_RIGHT=${SMART_PRO_SWEEP_ATTRIBUTION_RIGHT}")
+    fi
+    run_cargo_logged \
+      "pro_profile_attribution_$(sanitize "${frontier}")" \
+      "smart_automove_pro_profile_attribution_probe" \
+      "SMART_SHIPPING_PROFILE=${shipping}" \
+      "SMART_PRO_RELIABILITY_SHIPPING_PROFILE=${shipping}" \
+      "SMART_PRO_SWEEP_ATTRIBUTION_LEFT=${frontier}" \
+      "${attribution_right_env[@]}"
     ;;
   *)
     echo "unknown stage: ${stage}" >&2

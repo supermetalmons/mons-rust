@@ -25,6 +25,7 @@ Quickstart:
 - `./scripts/run-automove-canonical-loop.sh frontier_pro_v2_guarded`
 - `./scripts/run-automove-canonical-loop.sh --confirm frontier_pro_v2_guarded`
 - `./scripts/run-automove-experiment.sh <stage> frontier_pro_v2_guarded`
+- `./scripts/run-automove-experiment.sh pro-profile-sweep frontier_pro_v2_raw`
 - `./scripts/clean-experiment-artifacts.sh --dry-run`
 - `./scripts/clean-experiment-artifacts.sh --dry-run --all-target`
 
