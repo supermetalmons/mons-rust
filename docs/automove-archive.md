@@ -4,6 +4,16 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## ProV3 Utility Selector/Switch Wave
+
+- A temporary test-only ProV3 utility wave was cut and removed in the same session. It tried selecting roots by `TurnEngineUtility` order and switching away from retained guarded only when a utility candidate was not worse on primary axes.
+- Pure utility root selection failed the active blocker panel. Candidate-set utility scored Pro `3-3`, Normal `3-3`, Fast `4-2`; full-pool utility scored Pro `3-3`, Normal `4-2`, Fast `4-2`.
+- Full-pool utility switches were not promotable. The dominant-primary switch failed Pro at `1-5`; the nonstrict switch reached Pro `5-1`, but Normal and Fast only reached `4-2`.
+- Candidate-set nonstrict utility switching was the best shape on active blockers: Pro `5-1`, Normal `5-1`, Fast `5-1`. Attribution versus retained guarded showed candidate saves in several black/full-turn and mana-only contexts, one Pro candidate regression on an early white quiet turn, and shared Normal/Fast misses that guarding back to retained would not solve.
+- Follow-up tuning did not rescue it. Score tolerance `64` fell to Pro `3-3`; score tolerance `128` fell to Pro `4-2`; utility eval tolerance `64` fell to Pro `3-3`; an early-white quiet-turn guard fell to Pro `4-2` and introduced an `alternating_mana_rows` split.
+- Canonical sampled Pro killed the line before Normal/Fast spend: `5-7`, with `alternating_mana_rows` `0-2`, `inner_wedge_mana_rows` `0-2`, and `forward_bridge_mana_rows` `3-1`.
+- Durable outcome: do not retry shallow root-level utility ordering or guarded utility switching as the next ProV3 spend. A viable ProV3 candidate needs new utility features or a dashboard-driven mechanism that is strong on both sampled variants and active blockers.
+
 ## Decision-Record Aggregation Wave
 
 - A diagnostic-only decision-record aggregator was added and kept. It replays Pro, Normal, and Fast shipping duels and classifies each first divergence by runtime branch, selector stage, pre-accept/head family, head acceptance, approved advisor root, exact context, and baseline-root status.
