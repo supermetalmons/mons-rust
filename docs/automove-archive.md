@@ -1074,3 +1074,10 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The same active panel against current guarded scored only `2-4`. It improved `outer_edge_mana_rows` to `2-0`, but lost `alternating_mana_rows` and `forward_bridge_mana_rows` at `0-2` each.
 - The tighter guard variants (`no_alt_inner`, stable-openings) were not run because the base failure already showed the tradeoff: the score-window switch helps active `outer_edge` against guarded, still loses active `outer_edge` against shipping, and harms the two other active Fast rows against guarded.
 - Durable outcome: do not retry score-window utility switches, surface-gain tie breakers, or guarded-wrapper-preserved utility overrides as the next Pro challenger. The next utility feature must explain this row tradeoff before any runtime edit is worth keeping.
+
+## No-Late-Black Fallback Active Dashboard Refresh
+
+- No runtime challenger survived this wave. The existing test-only `frontier_pro_v2_no_late_black_fallback` candidate was rerun through `smart_automove_pro_promotion_dashboard_probe` with `SMART_PRO_DASHBOARD_PANEL_FILTER=active_blockers`.
+- The refreshed active shipping panel failed broadly: Pro `3-3`, Normal `5-1`, Fast `3-3`. Pro and Fast both had `outer_edge_mana_rows` at `0-2`; Normal split `alternating_mana_rows` at `1-1`.
+- Candidate-vs-guarded was also only a mixed tradeoff: `4-2` overall, with `outer_edge_mana_rows` and `forward_bridge_mana_rows` both split `1-1`, and only `alternating_mana_rows` at `2-0`.
+- Durable outcome: do not use no-late-black fallback as a current structural baseline or near-promotion scaffold. It no longer has an active panel shape worth tracing further unless a new decision-record aggregate exposes a repeated mechanism under the active `outer_edge` losses.
