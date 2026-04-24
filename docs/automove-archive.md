@@ -914,3 +914,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The candidate passed focused checks and canonical sampled `pro-reliability`: Pro `1.0000`, Normal `0.9167`, Fast `0.9167`; sampled Fast `forward_bridge_mana_rows` moved to `1.0000`, while Normal `outer_edge_mana_rows` and Fast `alternating_mana_rows` remained the sampled weak rows.
 - All-variant `pro-reliability-confirm` failed broadly: Pro `0.6458`, Normal `0.7083`, Fast `0.6667`; average move times stayed well below the `700ms` cap, so the failure was strength rather than cost.
 - Durable outcome: do not reopen a variant-scoped low-budget guard disable for `ForwardBridgeManaRows`. It overfits sampled forward-bridge and broadens all-variant losses.
+
+## Alternate-Seed All-Blocker Trace Wave
+
+- No runtime challenger was attempted in this wave. The diagnostic was `smart_automove_pro_reliability_duel_trace_probe` with `SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows,alternating_mana_rows,forward_bridge_mana_rows`, `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_alt_v1`, `SMART_PRO_RELIABILITY_REPEATS=2`, and `SMART_PRO_RELIABILITY_GAMES=3`.
+- The useful result is that the active blocker set still does not hide one repeated move-pair mechanism under a different deterministic seed.
+- Pro produced `1` regression, `2` improvements, and `9` flat results; the only regression pair was `l8,8;l7,7` vs `l9,4;l8,3`.
+- Normal produced `2` regressions, `5` improvements, and `5` flat results; both regression pairs were singletons: `l10,7;l9,8` vs `l9,6;l10,4;l9,5`, and `l9,6;l8,7` vs `l9,6;l10,5`.
+- Fast produced `4` regressions, `3` improvements, and `5` flat results; all four regression pairs were singletons, including the known `forward_bridge` head-accept pair `l9,6;l7,4;l7,3` vs `l9,6;l7,6;l7,7`.
+- Durable outcome: do not spend runtime code on alternate-seed singleton pairs from the current blocker variants. Use alternate seeds to prove recurrence, not to chase one-off seams.
