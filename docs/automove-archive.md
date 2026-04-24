@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Fast Blocker Refresh Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave reran `SMART_AUTOMOVE_VARIANTS=alternating_mana_rows,forward_bridge_mana_rows` on `smart_automove_pro_reliability_nonwin_trace_probe` with `duel_filter=vs_shipping_fast`, `repeats=4`, and `games=3`.
+- The refreshed Fast replay logged `9` nonwins. It did not improve on the archived shape: the only repeated pair was still the white `forward_bridge` accepted-head miss `l9,6;l7,4;l7,3` vs shipping `l9,6;l7,6;l7,7` (`2x`).
+- Every other Fast miss stayed singleton, including archived copied-board classes: black `l0,10;l0,9` vs `l4,0;l5,0;mb`, white `l9,6;l8,7` vs `l9,6;l7,7;l8,8`, black `l0,6;l1,6` vs `l2,3;l3,4`, black `l2,5;l0,5;l1,6` vs `l2,5;l4,7;l3,8`, white `l8,5;l10,5;l9,4` vs `l8,5;l6,3;l7,2`, black `l2,7;l1,6` vs `l2,7;l1,8`, and black `l2,4;l1,5` vs `l2,4;l1,3`.
+- Durable outcome: do not reopen the isolated Fast head-accept or alternating mana-sibling patches from this refresh. The trace is still mixed and mostly replays already-killed copied-board or retained-extension no-go surfaces.
+
 ## Outer-Edge Normal Refresh Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
