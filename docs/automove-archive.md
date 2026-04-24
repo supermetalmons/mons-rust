@@ -4,6 +4,16 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Profile-Level ProV2 Ablation Wave
+
+- Runtime challengers were cut and killed in this wave; each was reverted before ending the session.
+- Enabling `enable_turn_head_rerank` inside `frontier_pro_v2_guarded` passed guardrails, variant-smoke, triage, and runtime-preflight, then failed sampled `pro-reliability`: Pro `1.0000`, Normal `0.8333`, Fast `0.7500`. It added Normal `outer_wedge_mana_rows` and Fast `corner_chain_mana_rows` blockers.
+- Disabling `turn_engine_enable_spirit_family` passed early gates, then failed sampled `pro-reliability`: Pro `0.6667`, Normal `0.8333`, Fast `0.7500`. It broadened Pro losses across `outer_edge_mana_rows`, `outer_wedge_mana_rows`, and `corner_chain_mana_rows`.
+- Disabling `enable_turn_engine_mid_turn_tactical_guard` passed early gates, then failed sampled `pro-reliability` at the baseline-shaped Pro `1.0000`, Normal `0.9167`, Fast `0.8333`; it cleaned sampled Fast `corner_chain_mana_rows` but left Normal `outer_edge_mana_rows` and Fast `alternating_mana_rows` / `forward_bridge_mana_rows`.
+- Raising only `turn_engine_expansion_cap` from `176` to `224` passed early gates, then failed sampled `pro-reliability` at Pro `1.0000`, Normal `0.9167`, Fast `0.8333`; the extra capacity was strength-inert on the live blockers.
+- Disabling `enable_turn_engine_low_budget_guard` passed early gates, then failed sampled `pro-reliability`: Pro `0.7500`, Normal `0.9167`, Fast `0.8333`. It improved sampled Fast `forward_bridge_mana_rows` but broadened Pro losses across `outer_wedge_mana_rows`, `outer_edge_mana_rows`, and `corner_chain_mana_rows`, and Fast `alternating_mana_rows` fell to `0.0000`.
+- Durable outcome: do not reopen broad ProV2 profile toggles without a new trace tying the toggle to the live blocker mechanism. The sampled blockers did not respond as one guard/capacity problem, and guard removals can broaden variant losses while staying under the time budget.
+
 ## Reply-Risk Recovery Scope Wave
 
 - A runtime challenger was cut and killed in this wave.
