@@ -1124,3 +1124,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - `frontier_pro_v3_black_t2_plus_white_head` kept the black turn-two fallback and returned the retained ProV2 rejected head on those two white flat-loss shapes. It improved active Pro to `5-1` and active Normal to `5-1`, with active Pro `outer_edge_mana_rows` fixed to `2-0`.
 - The same head scout collapsed active Fast to `1-5`: `outer_edge_mana_rows` `0-2`, `alternating_mana_rows` `0-2`, and `forward_bridge_mana_rows` `1-1`. Fast decision records split across white and black `frontier_execute` contexts, including regressions where shipping control won and flat losses where shipping also lost.
 - Durable outcome: black turn-two shipping fallback and scoped white rejected-head acceptance are useful diagnostic signals but not promotable mechanisms. They rotate the active panel across opponent modes and still lack a winning policy for active Fast flats, so do not spend runtime code on these gates without a broader selector feature that clears Fast at the same time.
+
+## Variant-Scoped White Head Scout No-Go
+
+- No runtime challenger survived this wave. Temporary test-only sweep candidates were removed before commit.
+- The rerun first measured `frontier_pro_v3_black_t2_action_mana_fallback` across the full active dashboard instead of only Pro. It failed at Pro `4-2`, Normal `5-1`, and Fast `2-4`; Fast `outer_edge_mana_rows` was still `0-2`.
+- `frontier_pro_v3_black_t2_plus_outer_edge_head` added only the outer-edge white turn-five rejected-head case. It was behaviorally identical on the active dashboard: Pro `4-2`, Normal `5-1`, Fast `2-4`.
+- `frontier_pro_v3_black_t2_plus_alternating_head` added only the alternating white turn-three mana-only rejected-head case. It was also behaviorally identical: Pro `4-2`, Normal `5-1`, Fast `2-4`.
+- Durable outcome: narrowing the white-head layer by variant does not recover the previous broad-head Pro/Normal improvement and does not help active Fast. Do not keep spending on variant-scoped rejected-head gates in this family.
