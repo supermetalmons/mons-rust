@@ -1081,3 +1081,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The refreshed active shipping panel failed broadly: Pro `3-3`, Normal `5-1`, Fast `3-3`. Pro and Fast both had `outer_edge_mana_rows` at `0-2`; Normal split `alternating_mana_rows` at `1-1`.
 - Candidate-vs-guarded was also only a mixed tradeoff: `4-2` overall, with `outer_edge_mana_rows` and `forward_bridge_mana_rows` both split `1-1`, and only `alternating_mana_rows` at `2-0`.
 - Durable outcome: do not use no-late-black fallback as a current structural baseline or near-promotion scaffold. It no longer has an active panel shape worth tracing further unless a new decision-record aggregate exposes a repeated mechanism under the active `outer_edge` losses.
+
+## Iterdeep Row Composite Active Refresh
+
+- No runtime challenger survived this refresh. The sampled-pass guarded iterative-deepening row composite was recreated only as a test-only diagnostic scaffold: guarded iterative deepening by default, raw ProV2 for `offset_arc_mana_rows`, alpha-window iterative deepening plus `1.25x` nodes for `inner_wedge_mana_rows`, and offset-1 plus `1.25x` nodes for `outer_edge_mana_rows`, `forward_bridge_mana_rows`, and `corner_chain_mana_rows`.
+- The active-blocker dashboard killed the recreated composite again: vs shipping Pro `3-3`, Normal `3-3`, Fast `5-1`; vs guarded `5-1`. All active Pro variants split `1-1`, active Normal `outer_edge_mana_rows` stayed `0-2`, and active Fast still split `outer_edge_mana_rows`.
+- A narrow outer-edge context-shipping repair did not make the line promotable. It improved active Normal to `4-2`, but active Pro stayed `3-3` and Fast stayed `5-1`.
+- Decision-record follow-up showed no single repair surface: active Pro nonwins split across `outer_edge_mana_rows` flat, `alternating_mana_rows` flat, and a `forward_bridge_mana_rows` early-white-fallback regression.
+- Durable outcome: do not spend another iteration on the sampled-pass iterative-deepening row composite or outer-edge context-shipping repair. The next challenger needs a new ProV3 utility feature or structural selector that clears sampled Pro and active Pro together rather than rotating the active blocker rows across opponent modes.
