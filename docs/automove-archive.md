@@ -801,3 +801,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The traced live board had looked adjacent because the trace logged shipping `l7,2;l6,1`. On a clean direct probe, that exact move only survived at `pre_accept`: both frontier and shipping collapsed to `search_only_forced_prepass` with final selected `l9,3;l8,3`, no head, and no advisor decision.
 - The retained harvest board is a different surface entirely: Pro mode, `window=2/deny=2`, attack-enabled, shortlist-live `SafeSupermanaProgress l7,2;l6,1` approved through `ApprovedReplyRiskGuard`, with frontier rejecting non-progress head `l8,5;l7,4`.
 - Durable outcome: do not spend on the white `outer_edge` forced-prepass seam by extending the retained harvest control. The exact move overlap was only a `pre_accept` coincidence, not a stable shared selector surface.
+
+## Black Outer Edge Early Recovery Repro Wave
+
+- No new runtime challenger survived this wave. The kept diagnostic is `black_outer_edge_early_recovery_structure_probe`.
+- The useful result is that the copied singleton early-black `outer_edge` boards are not stable local seams.
+- The copied `l1,4;l2,4` vs `l0,5;l1,6` board did not replay the traced drift. On a clean direct probe, both frontier and shipping collapsed to engine-disabled `l0,5;l1,6`.
+- The copied `l1,4;l2,5` vs `l1,4;l1,6;l2,7` board also failed reproduction. On a clean direct probe, both frontier and shipping instead collapsed to engine-disabled `l1,5;l2,7;l3,8`, so even the traced shipping final did not survive.
+- Durable outcome: do not spend on copied singleton early-black `outer_edge` seams until they reproduce cleanly. If the copied board collapses to shared shipping or to a different shared final, it is not a defensible local runtime target and it is not a good retained-extension anchor.
