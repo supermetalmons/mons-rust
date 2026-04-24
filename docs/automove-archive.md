@@ -4,6 +4,17 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Outer-Edge Widened Normal Replay Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave widened `SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows` on `smart_automove_pro_reliability_nonwin_trace_probe` with `duel_filter=vs_shipping_normal`, `repeats=6`, and `games=3`.
+- That replay logged `10` Normal nonwins, so `outer_edge` is no longer just the old late-black plus early-white pair.
+- The only repeated pair was black `l2,7;l3,8` vs shipping `l1,5;l0,3;l1,3` (`3x`). The other nonwins stayed singleton, including late black `l1,6;l1,5` vs `l2,6;l3,7`, early white `l10,4;l9,5` vs `l9,4;l8,3`, white `l7,4;l6,4` vs `l9,4;l8,3`, black `l1,4;l2,5` vs `l1,4;l1,6;l2,7`, black `l1,4;l2,4` vs `l0,5;l1,6`, and white `l9,3;l8,3` vs `l7,2;l6,1`.
+- The follow-up structure probe compared that repeated black seam directly against the nearby retained `BLACK_HEAD_DUEL_SAMPLED_NORMAL` control, which already ships `l1,5;l0,3;l1,3`.
+- The retained control still did not match. It is also `window=0/deny=0`, but it keeps the shipped `SpiritImpact` root and rejects head `l0,5;l1,6`; its advisor approves the shipped root through `ApprovedFamilyCompetition`.
+- The live repeated seam is different. It already has the shipped `SpiritImpact l1,5;l0,3;l1,3` approved through `ApprovedReplyRiskGuard`, then later accepts head `ManaTempo l2,7;l3,8` out of `engine_post_search`.
+- Durable outcome: do not reopen `outer_edge_mana_rows` as a late-black-only spend, and do not extend `BLACK_HEAD_DUEL_SAMPLED_NORMAL` into the new repeated black seam. The widened Normal replay is still mixed, and the only repeated black seam has a different head-accept mechanism from the retained control.
+
 ## Black Alternating Retained Fast-Recovery Structure Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
