@@ -1098,3 +1098,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Guarded/raw/shipping portfolio majority was too expensive and still failed active Pro: `3-3` overall, `outer_edge_mana_rows` `0-2`, average candidate move time `356.18ms`.
 - Raw-on-divergence was also killed on active Pro: `2-4` overall, `outer_edge_mana_rows` `0-2`, average candidate move time `255.32ms`.
 - Durable outcome: do not continue exact-evidence toggles or multi-search guarded/raw/shipping agreement portfolios as the next challenger. They either hit cost before strength or reproduce the active Pro `outer_edge_mana_rows` failure before sampled validation is worth running.
+
+## ProV3 Reply-Risk Selector Scout No-Go
+
+- No runtime challenger survived this wave. Temporary test-only sweep candidates were removed before commit.
+- `frontier_pro_v3_reply_floor_utility` preserved guarded wrapper branches and only reconsidered `frontier_execute` roots with better reply-floor safety plus comparable `TurnEngineUtility`. The active Pro dashboard killed it immediately: `3-3` overall, `outer_edge_mana_rows` `0-2`, `alternating_mana_rows` `1-1`, `forward_bridge_mana_rows` `2-0`, average `212.86ms`.
+- The active Pro decision record showed the reply-floor scout did not address the sharp opening regression. The remaining `outer_edge_mana_rows` loss still diverged on black turn two through `frontier_execute` / `engine_post_search`, `l0,5;l1,6` vs shipping `l0,4;l1,5`.
+- `frontier_pro_v3_ranked_reply_guard` only changed roots when the advisor approved guarded through `ApprovedReplyRiskGuard` and a safer, better-ranked shortlist root had comparable utility. It improved active Pro to `4-2`, removed candidate regressions against shipping on that slice, and moved `outer_edge_mana_rows` from `0-2` to `1-1`.
+- The ranked reply-guard line still failed the full active dashboard: Pro `4-2`, Normal `5-1`, Fast `2-4`. Fast `outer_edge_mana_rows` remained `0-2`, while Pro still had flat losses on `outer_edge_mana_rows` and `alternating_mana_rows` where shipping also lost.
+- Durable outcome: do not retry reply-floor-only switching or generic ranked `ApprovedReplyRiskGuard` deference. Rank deference is a useful diagnostic signal for the active Pro `outer_edge` regression, but by itself it rotates the active panel and does not supply the missing winning policy for flat Pro/Fast losses.
