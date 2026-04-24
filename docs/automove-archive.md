@@ -4,6 +4,16 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Iterative-Deepening Row-Composite Wave
+
+- Temporary test-only sweep candidates were cut and removed in the same session. The wave tested guarded ProV2 with iterative deepening, alpha-window variants, node compensation, lazy-oracle projection, and row composites across the promotion dashboard.
+- Plain iterative deepening was directionally useful but not broad enough: sampled Pro passed at `11-1`, while sampled Normal failed at `9-3`. Offset-1 plus `1.25x` nodes inverted that shape, passing sampled Normal at `11-1` while failing sampled Pro at `8-4`.
+- Search-order tuning did not solve sampled Fast by itself. The best standalone Fast tuning was iterative deepening with alpha margin `320` and `1.25x` nodes, which reached `10-2` but still split `offset_arc_mana_rows` and `corner_chain_mana_rows`; other node and offset variants stayed at `7-5` to `9-3`.
+- The best sampled-only row composite used guarded iterative deepening by default, raw ProV2 only for `offset_arc_mana_rows`, alpha-window iterative deepening plus `1.25x` nodes only for `inner_wedge_mana_rows`, and offset-1 plus `1.25x` nodes for `outer_edge_mana_rows`, `forward_bridge_mana_rows`, and `corner_chain_mana_rows`. It passed the sampled dashboard in all three duels: Pro `11-1`, Normal `11-1`, Fast `11-1`; max average move time was `183.71ms`.
+- The active-blocker dashboard killed the composite before promotion: Pro `3-3`, Normal `3-3`, Fast `5-1`. Active Normal `outer_edge_mana_rows` fell to `0-2`, active Pro split `outer_edge_mana_rows`, `alternating_mana_rows`, and `forward_bridge_mana_rows`, and active Fast still split `outer_edge_mana_rows`.
+- Follow-up active checks on older profiles exposed the underlying conflict. Raw ProV2 fixes active Normal `outer_edge_mana_rows` at `2-0`, but loses active Pro and Fast `outer_edge_mana_rows` at `0-2`; no-late-black fallback also loses active Pro/Fast `outer_edge_mana_rows` while improving Normal.
+- Durable outcome: do not promote sampled-only row composites or variant-only raw fallbacks. A viable next candidate needs a below-variant `outer_edge_mana_rows` feature that distinguishes the active Normal contexts from the active Pro/Fast contexts without relying on opponent mode.
+
 ## ProV3 Utility Selector/Switch Wave
 
 - A temporary test-only ProV3 utility wave was cut and removed in the same session. It tried selecting roots by `TurnEngineUtility` order and switching away from retained guarded only when a utility candidate was not worse on primary axes.
