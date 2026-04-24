@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Root Advisor Trace Refresh Wave
+
+- No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
+- The wave ran `smart_automove_pro_root_advisor_trace_probe` against retained footholds and duel-trace boards near the current sampled blocker families.
+- The trace did not expose one shared advisor-layer failure. Blocker-adjacent boards split across `ApprovedReplyRiskGuard`, `ApprovedFamilyCompetition`, omitted-root reentry, preserved representatives, and rejected injected macro roots.
+- Several cases also showed injected macro roots being admitted on unrelated retained controls while nearby blocker boards rejected injection or selected through preserved/reentry paths, so a broad metadata or injection change would be another speculative churn source.
+- Durable outcome: do not spend on a shared advisor-label, preserved-representative, omitted-root reentry, or injected-root admission patch from this trace. The remaining sampled blockers still require a narrower mechanism than "advisor trace differs from shipping."
+
 ## Canonical Sampled Gate Refresh Wave
 
 - No runtime challenger was cut in this wave. The spend stayed diagnostic-only.
