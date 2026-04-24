@@ -932,3 +932,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Normal produced `5` regressions, `3` improvements, and `4` flat results; all five regression pairs were singleton and split across black and white, head-accepted and engine-disabled surfaces.
 - Fast produced only `1` regression, `5` improvements, and `6` flat results; its single regression was `l10,5;l9,5` vs `l8,1;l7,0`.
 - Durable outcome: do not reopen the sampled Fast blockers from this alternate seed. The focused run argues against a stable `alternating_mana_rows` or `forward_bridge_mana_rows` runtime spend.
+
+## Outer Edge Alt-V2 Normal Trace Wave
+
+- No runtime challenger was attempted in this wave. The diagnostic was `smart_automove_pro_reliability_nonwin_trace_probe` with `SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows`, `SMART_PRO_RELIABILITY_DUEL_FILTER=vs_shipping_normal`, `SMART_PRO_RELIABILITY_SEED_TAG=pro_turn_planner_reliability_alt_v2`, `SMART_PRO_RELIABILITY_REPEATS=4`, and `SMART_PRO_RELIABILITY_GAMES=3`.
+- The useful result is that the Normal `outer_edge_mana_rows` blocker still does not collapse to one mechanism under a different seed.
+- The trace logged `9` nonwins. Two black pairs repeated: late black `l1,6;l1,5` vs shipping `l2,6;l3,7`, and early black accepted-spirit `l1,5;l0,3;l1,3` vs shipping `l1,6;l2,7`.
+- The same run also logged singleton white post-search drift, black accepted-head drift, white accepted-head drift, early black engine-disabled drift, and a white safe-progress ordering seam.
+- Durable outcome: do not spend on either repeated `outer_edge` black pair as a standalone patch. Repetition inside a trace that still spans colors and selector stages is not promotable evidence.
