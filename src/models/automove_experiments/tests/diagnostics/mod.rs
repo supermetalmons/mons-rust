@@ -1617,6 +1617,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                 let mut branch_counts = BTreeMap::<String, usize>::new();
                 let mut context_counts = BTreeMap::<String, usize>::new();
                 let mut pair_counts = BTreeMap::<String, usize>::new();
+                let mut portfolio_class_counts = BTreeMap::<String, usize>::new();
                 let mut portfolio_stats = PolicyMatrixPortfolioStats::default();
                 let mut printed = 0usize;
 
@@ -1672,6 +1673,21 @@ fn smart_automove_pro_policy_matrix_probe() {
                                 (false, true) => portfolio_stats.candidate_only_wins += 1,
                                 (false, false) => portfolio_stats.no_policy_wins += 1,
                             }
+                            let portfolio_class = match (baseline_won, candidate_any_won) {
+                                (true, true) => "shared_win",
+                                (true, false) => "baseline_only_win",
+                                (false, true) => "candidate_only_win",
+                                (false, false) => "no_policy_win",
+                            };
+                            let portfolio_class_key = format!(
+                                "class={} variant={} candidate_is_white={}",
+                                portfolio_class,
+                                automove_variant_label(variant),
+                                candidate_is_white,
+                            );
+                            *portfolio_class_counts
+                                .entry(portfolio_class_key)
+                                .or_default() += 1;
 
                             for trace_index in 1..traces.len() {
                                 let (candidate, candidate_trace) = &traces[trace_index];
@@ -1845,6 +1861,17 @@ fn smart_automove_pro_policy_matrix_probe() {
                     portfolio_stats.candidate_only_wins,
                     portfolio_stats.no_policy_wins,
                 );
+                for (key, games) in
+                    pro_policy_matrix_sorted_counts(&portfolio_class_counts, aggregate_limit)
+                {
+                    println!(
+                        "PRO_POLICY_MATRIX_PORTFOLIO_CLASS {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                        json_escape(panel.label),
+                        json_escape(duel.label),
+                        json_escape(key),
+                        games,
+                    );
+                }
                 for (key, games) in pro_policy_matrix_sorted_counts(&branch_counts, aggregate_limit)
                 {
                     println!(
