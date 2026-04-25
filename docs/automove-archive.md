@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Forced-Root FEN and Policy-Portfolio Selector Refresh
+
+- This diagnostic wave fixed a harness bug and kept the fix: `SMART_PRO_FORCED_ROOT_ORACLE_FEN` now uses a raw env string helper so case-sensitive FEN payloads are not lowercased.
+- The fix invalidated the earlier sampled Fast `corner_chain_mana_rows` white zero-root no-go. With case preserved, the forced-root oracle found `16` scored roots and `13` winning first roots; `frontier_pro_v3_white_opening_utility_mana` was kept as a test-only policy component that selects `l10,5;l9,4` over the shipped losing `l10,3;l9,4` on that board.
+- The expanded policy portfolio reached oracle coverage on the checked sampled and active panels, but a context selector over those labels was discarded. Its best dashboard shape was sampled `11-1 / 11-1 / 11-1` and active Pro/Normal/Fast `6-0 / 6-0 / 5-1`, so active Fast remained below directional promotion shape.
+- A wider `outer_edge_mana_rows` delta check killed the selector line rather than just the single dashboard miss: the same white turn-three `window=0/deny=0/drainer_safety=2` context was a Pro improvement in one opening and a Fast regression in another, and the wider Pro slice exposed a separate black regression.
+- Durable outcome: keep the FEN raw-env harness fix and the narrow white-opening policy component for future matrices, but do not retain the `frontier_pro_v3_context_policy_portfolio` selector or replace it with guarded-selected-move/FEN gates.
+
 ## Iterative-Deepening Row-Composite Wave
 
 - Temporary test-only sweep candidates were cut and removed in the same session. The wave tested guarded ProV2 with iterative deepening, alpha-window variants, node compensation, lazy-oracle projection, and row composites across the promotion dashboard.

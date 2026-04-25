@@ -560,6 +560,84 @@ fn select_sweep_frontier_pro_v3_alternating_white_edge_mana_inputs(
     select_sweep_frontier_pro_v2_guarded_counted_inputs(game, config)
 }
 
+fn select_sweep_frontier_pro_v3_white_opening_utility_mana_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> Vec<Input> {
+    let white_turn_one_mana_followup = game.active_color == Color::White
+        && game.turn_number == 1
+        && game.is_first_turn()
+        && game.mons_moves_count == 1
+        && !game.player_can_use_action()
+        && !game.player_can_move_mana();
+    if !white_turn_one_mana_followup {
+        return select_sweep_frontier_pro_v2_guarded_counted_inputs(game, config);
+    }
+
+    let runtime = apply_frontier_pro_v2_guarded_config(config);
+    let (_, scored_roots, _, _) = runtime_scored_roots_with_config(game, runtime);
+    let best_score = scored_roots
+        .iter()
+        .map(|root| root.score)
+        .max()
+        .unwrap_or(i32::MIN);
+    let selected = scored_roots
+        .iter()
+        .filter(|root| {
+            !root.wins_immediately
+                && !root.attacks_opponent_drainer
+                && !root.own_drainer_vulnerable
+                && !root.own_drainer_walk_vulnerable
+                && !root.spirit_development
+                && !root.spirit_same_turn_score_setup_now
+                && !root.spirit_own_mana_setup_now
+                && !root.mana_handoff_to_opponent
+                && !root.has_roundtrip
+                && !root.scores_supermana_this_turn
+                && !root.scores_opponent_mana_this_turn
+                && !root.safe_supermana_pickup_now
+                && !root.safe_opponent_mana_pickup_now
+                && root.same_turn_score_window_value == 0
+                && !root.supermana_progress
+                && !root.opponent_mana_progress
+                && matches!(
+                    MonsGameModel::turn_engine_root_evaluation_family(root),
+                    TurnPlanFamily::ManaTempo
+                )
+                && root.score.saturating_add(96) >= best_score
+        })
+        .max_by(|left, right| {
+            let left_family = MonsGameModel::turn_engine_root_evaluation_family(left);
+            let right_family = MonsGameModel::turn_engine_root_evaluation_family(right);
+            let left_utility = MonsGameModel::turn_engine_selected_override_utility(
+                game,
+                left,
+                game.active_color,
+                runtime,
+                left_family,
+            );
+            let right_utility = MonsGameModel::turn_engine_selected_override_utility(
+                game,
+                right,
+                game.active_color,
+                runtime,
+                right_family,
+            );
+            left_utility
+                .cmp(&right_utility)
+                .then_with(|| left.score.cmp(&right.score))
+                .then_with(|| right.root_rank.cmp(&left.root_rank))
+        });
+
+    if let Some(root) = selected {
+        #[cfg(test)]
+        record_profile_sweep_branch("white_opening_utility_mana");
+        return root.inputs.clone();
+    }
+
+    select_sweep_frontier_pro_v2_guarded_counted_inputs(game, config)
+}
+
 fn pro_profile_sweep_candidates() -> Vec<ProProfileSweepCandidate> {
     vec![
         ProProfileSweepCandidate {
@@ -609,6 +687,10 @@ fn pro_profile_sweep_candidates() -> Vec<ProProfileSweepCandidate> {
         ProProfileSweepCandidate {
             id: "frontier_pro_v3_alternating_white_edge_mana",
             selector: select_sweep_frontier_pro_v3_alternating_white_edge_mana_inputs,
+        },
+        ProProfileSweepCandidate {
+            id: "frontier_pro_v3_white_opening_utility_mana",
+            selector: select_sweep_frontier_pro_v3_white_opening_utility_mana_inputs,
         },
     ]
 }
@@ -1397,7 +1479,7 @@ fn smart_automove_pro_forced_root_oracle_probe() {
     const DEFAULT_ALTERNATING_WHITE_NO_POLICY_FEN: &str =
         "0 0 w 0 0 3 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n11/n01xxmn01xxmn01xxmn01xxmn01xxmn01/xxQn04xxUn04xxQ/n01xxMn01xxMn01xxMn01xxMn01xxMn01/n11/n11/n04A0xn01S0xY0xn03/n03E0xn01D0xn05 4";
 
-    let board_fen = env_string_value("SMART_PRO_FORCED_ROOT_ORACLE_FEN")
+    let board_fen = env_raw_string_value("SMART_PRO_FORCED_ROOT_ORACLE_FEN")
         .unwrap_or_else(|| DEFAULT_ALTERNATING_WHITE_NO_POLICY_FEN.to_string());
     let label = env_string_value("SMART_PRO_FORCED_ROOT_ORACLE_LABEL")
         .unwrap_or_else(|| "sampled_alternating_white_no_policy".to_string());

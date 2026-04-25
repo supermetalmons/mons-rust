@@ -92,6 +92,13 @@ pub(super) fn env_string_value(name: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+pub(super) fn env_raw_string_value(name: &str) -> Option<String> {
+    env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
 pub(super) fn selected_profile_id_from_env() -> String {
     env_profile_name_from_aliases(&["SMART_SELECTED_PROFILE", "SMART_FRONTIER_PROFILE"])
         .unwrap_or_else(|| SHIPPING_PRO_SEARCH_PROFILE_ID.to_string())

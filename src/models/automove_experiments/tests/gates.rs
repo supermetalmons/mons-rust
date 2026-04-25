@@ -364,6 +364,17 @@ fn raw_env_string_value_does_not_canonicalize_seed_tags() {
 }
 
 #[test]
+fn env_raw_string_value_preserves_case_sensitive_payloads() {
+    let fen = "0 0 w 0 0 1 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/xxQn02xxMn01xxUn01xxmn02xxQ 11";
+    with_env_override("SMART_PRO_FORCED_ROOT_ORACLE_FEN", fen, || {
+        assert_eq!(
+            env_raw_string_value("SMART_PRO_FORCED_ROOT_ORACLE_FEN"),
+            Some(fen.to_string())
+        );
+    });
+}
+
+#[test]
 #[ignore = "tactical guardrail suite for the selected profile"]
 fn smart_automove_tactical_selected_profile() {
     let profile_id = selected_profile_id().as_str().to_string();
