@@ -132,4 +132,8 @@ Stop the iteration and update docs instead of patching runtime code when any of 
 
 ## Next Concrete Step
 
-The next useful implementation is a test-only ProV3 selector policy that scores head plans, reply-risk approval, preserved representatives, and omitted roots through one utility contract. The latest active scouts show that broad selected-followup disable can repair Fast `outer_edge_mana_rows`, but it rotates Pro and Fast `alternating_mana_rows` / `forward_bridge_mana_rows`; direct SpiritImpact anchoring has the same rotation failure. Do not cut another runtime seam patch, wrapper toggle, or family-anchor exception until the unified-policy scout clears both active blockers and the sampled dashboard.
+The first unified-policy scout has now been killed. Direct root replacement, conservative post-advisor override, full-selection reply-risk approval, selected-followup composites, reply-floor portfolios, and active-context portfolio gates all moved one active row while rotating another; the strongest active-only result still stopped at `5-1 / 5-1 / 5-1` and exceeded the CPU ceiling.
+
+The next useful implementation is harness-first: record alternative-policy choices and outcome labels across both canonical sampled and active panels without selecting them as runtime behavior. At minimum, compare retained guarded, no-selected followup, full-selection reply-risk, and any new ProV3 utility candidate at each first divergence, then aggregate by variant, color, turn, resource state, exact-opportunity context, advisor reason, selected family, head family, and reply-risk status.
+
+Only after that aggregate shows a one-sided mechanism should runtime code change. The change should be a cheap `TurnEngineUtility` or root-evaluation feature that explains the repeated mechanism across panels, not another wrapper toggle, variant gate, local portfolio reranker, or active-context selector.
