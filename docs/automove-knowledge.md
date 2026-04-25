@@ -199,6 +199,8 @@ cargo test --release --lib <test_name> -- --ignored --nocapture
 - Kill any line that only changes advisor labels or `pre_accept` metadata while the final selected root stays unchanged.
 - Kill any line that widens shortlist or injection coverage without moving the approved root on the live walls.
 - Kill any line that aligns live walls but still fails retained duel strength or canonical cost.
+- Kill vulnerable-root safe-utility overrides when they only add small policy-matrix wins but fail sampled shipping strength. The no-action strict version was one-sided versus guarded on small sampled/active panels, but still died at sampled Pro `9-3` in structural scout.
+- Kill selected-followup projection gates even when scoped to no-action mana turns unless a new sampled-Fast discriminator appears. The no-action gate still rotated sampled Fast `split_flank_mana_rows` into `baseline_better`.
 - Kill any retained-board addition whose copied board state does not replay the same shipping-selected root on a clean retained harness run.
 - Kill any `black_recovery_branch` line that only forces shipping `l6,0;l6,1` above the current reply-risk and no-guard selector ordering.
 - Kill any `black_recovery_branch` line that reopens broad scoped static exact or reply-floor-only static exact without a new direct duel-strength mechanism.
