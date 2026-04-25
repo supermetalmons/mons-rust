@@ -58,6 +58,7 @@ sweep_candidates=(
   frontier_pro_v2_no_mid_tactical_guard
   frontier_pro_v2_expansion_224
   frontier_pro_v2_no_low_budget_guard
+  frontier_pro_v3_alternating_white_edge_mana
 )
 
 profile_is_supported() {

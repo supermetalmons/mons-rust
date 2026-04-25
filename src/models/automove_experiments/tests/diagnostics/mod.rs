@@ -528,6 +528,38 @@ fn select_sweep_frontier_pro_v2_no_low_budget_guard_inputs(
     select_sweep_frontier_config_inputs(game, runtime)
 }
 
+fn select_sweep_frontier_pro_v3_alternating_white_edge_mana_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> Vec<Input> {
+    if game.variant() == GameVariant::AlternatingManaRows
+        && game.active_color == Color::White
+        && game.turn_number == 1
+        && game.mons_moves_count == 3
+        && !game.player_can_use_action()
+        && !game.player_can_move_mana()
+    {
+        let runtime = apply_frontier_pro_v2_guarded_config(config);
+        let (_, scored_roots, _, _) = runtime_scored_roots_with_config(game, runtime);
+        for preferred in [
+            "l9,7;l9,8",
+            "l10,3;l9,3",
+            "l9,7;l8,6",
+            "l9,7;l8,7",
+            "l9,4;l10,4",
+        ] {
+            if let Some(root) = scored_roots
+                .iter()
+                .find(|root| Input::fen_from_array(&root.inputs) == preferred)
+            {
+                return root.inputs.clone();
+            }
+        }
+    }
+
+    select_sweep_frontier_pro_v2_guarded_counted_inputs(game, config)
+}
+
 fn pro_profile_sweep_candidates() -> Vec<ProProfileSweepCandidate> {
     vec![
         ProProfileSweepCandidate {
@@ -573,6 +605,10 @@ fn pro_profile_sweep_candidates() -> Vec<ProProfileSweepCandidate> {
         ProProfileSweepCandidate {
             id: "frontier_pro_v2_no_low_budget_guard",
             selector: select_sweep_frontier_pro_v2_no_low_budget_guard_inputs,
+        },
+        ProProfileSweepCandidate {
+            id: "frontier_pro_v3_alternating_white_edge_mana",
+            selector: select_sweep_frontier_pro_v3_alternating_white_edge_mana_inputs,
         },
     ]
 }
@@ -1055,6 +1091,108 @@ fn play_profile_sweep_attribution_trace(
     }
 }
 
+fn play_profile_sweep_forced_first_candidate_turn(
+    candidate: ProProfileSweepCandidate,
+    opponent_selector: AutomoveSelector,
+    opponent_budget: SearchBudget,
+    opening_fen: &str,
+    candidate_is_white: bool,
+    max_plies: usize,
+    forced_inputs: &[Input],
+) -> ProProfileSweepAttributionTrace {
+    let mut game = MonsGame::from_fen(opening_fen, false).expect("valid opening fen");
+    clear_exact_state_analysis_cache();
+    clear_exact_query_diagnostics();
+    clear_turn_engine_plan_cache();
+    clear_turn_engine_diagnostics();
+    clear_turn_engine_selector_diagnostics();
+
+    let mut candidate_turns = Vec::new();
+    let mut forced_turn_spent = false;
+    for ply in 0..max_plies {
+        if let Some(winner_color) = game.winner_color() {
+            return ProProfileSweepAttributionTrace {
+                result: match_result_from_winner(winner_color, candidate_is_white),
+                final_fen: game.fen(),
+                candidate_turns,
+            };
+        }
+
+        let board_fen = game.fen();
+        let candidate_to_move = if candidate_is_white {
+            game.active_color == Color::White
+        } else {
+            game.active_color == Color::Black
+        };
+        let (inputs, guarded_branch) = if candidate_to_move && !forced_turn_spent {
+            forced_turn_spent = true;
+            (forced_inputs.to_vec(), "forced_root")
+        } else if candidate_to_move {
+            select_profile_sweep_candidate_inputs_with_branch(
+                candidate,
+                &game,
+                pro_budget().runtime_config_for_game(&game),
+            )
+        } else {
+            (
+                select_inputs_with_runtime_fallback(
+                    opponent_selector,
+                    &game,
+                    opponent_budget.runtime_config_for_game(&game),
+                ),
+                "opponent_execute",
+            )
+        };
+
+        if candidate_to_move {
+            candidate_turns.push(ProProfileSweepAttributionTurn {
+                ply,
+                board_fen,
+                move_fen: Input::fen_from_array(&inputs),
+                candidate_branch: guarded_branch,
+                active_color: game.active_color,
+                turn_number: game.turn_number,
+                mons_moves_count: game.mons_moves_count,
+                can_use_action: game.player_can_use_action(),
+                can_move_mana: game.player_can_move_mana(),
+                exact_context: exact_opportunity_context_probe(&game),
+            });
+        }
+
+        if inputs.is_empty() {
+            return ProProfileSweepAttributionTrace {
+                result: if candidate_to_move {
+                    MatchResult::ProfileBWin
+                } else {
+                    MatchResult::ProfileAWin
+                },
+                final_fen: game.fen(),
+                candidate_turns,
+            };
+        }
+        if !matches!(game.process_input(inputs, false, false), Output::Events(_)) {
+            return ProProfileSweepAttributionTrace {
+                result: if candidate_to_move {
+                    MatchResult::ProfileBWin
+                } else {
+                    MatchResult::ProfileAWin
+                },
+                final_fen: game.fen(),
+                candidate_turns,
+            };
+        }
+    }
+
+    ProProfileSweepAttributionTrace {
+        result: match adjudicate_non_terminal_game(&game) {
+            Some(winner_color) => match_result_from_winner(winner_color, candidate_is_white),
+            None => MatchResult::Draw,
+        },
+        final_fen: game.fen(),
+        candidate_turns,
+    }
+}
+
 fn first_profile_sweep_candidate_divergence(
     left: &ProProfileSweepAttributionTrace,
     right: &ProProfileSweepAttributionTrace,
@@ -1251,6 +1389,169 @@ fn pro_sweep_candidate_record_context_key(
         divergence.can_move_mana,
         divergence.exact_context,
     )
+}
+
+#[test]
+#[ignore = "diagnostic: force each root once on a blocker board and continue with Pro policy"]
+fn smart_automove_pro_forced_root_oracle_probe() {
+    const DEFAULT_ALTERNATING_WHITE_NO_POLICY_FEN: &str =
+        "0 0 w 0 0 3 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n11/n01xxmn01xxmn01xxmn01xxmn01xxmn01/xxQn04xxUn04xxQ/n01xxMn01xxMn01xxMn01xxMn01xxMn01/n11/n11/n04A0xn01S0xY0xn03/n03E0xn01D0xn05 4";
+
+    let board_fen = env_string_value("SMART_PRO_FORCED_ROOT_ORACLE_FEN")
+        .unwrap_or_else(|| DEFAULT_ALTERNATING_WHITE_NO_POLICY_FEN.to_string());
+    let label = env_string_value("SMART_PRO_FORCED_ROOT_ORACLE_LABEL")
+        .unwrap_or_else(|| "sampled_alternating_white_no_policy".to_string());
+    let continuation_id = env_string_value("SMART_PRO_FORCED_ROOT_ORACLE_CONTINUATION")
+        .unwrap_or_else(|| "frontier_pro_v2_guarded".to_string());
+    let root_limit = env_usize("SMART_PRO_FORCED_ROOT_ORACLE_ROOT_LIMIT")
+        .unwrap_or(32)
+        .max(1);
+    let max_plies = env_usize("SMART_PRO_FORCED_ROOT_ORACLE_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let print_limit = env_usize("SMART_PRO_FORCED_ROOT_ORACLE_PRINT_LIMIT")
+        .unwrap_or(32)
+        .max(1);
+
+    let game = MonsGame::from_fen(board_fen.as_str(), false).expect("valid oracle board fen");
+    let candidate_is_white = game.active_color == Color::White;
+    let continuation = pro_profile_sweep_candidate_by_id(continuation_id.as_str());
+    let shipping_profile = reliability_shipping_profile_id();
+    let shipping_selector = profile_selector_from_name(shipping_profile.as_str())
+        .unwrap_or_else(|| panic!("shipping '{}' not found", shipping_profile));
+    let opponent_budget = pro_budget();
+    let (runtime, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
+        continuation.id,
+        SmartAutomovePreference::Pro,
+        &game,
+    );
+
+    println!(
+        "forced root oracle: label={} continuation={} shipping={} variant={} active_color={} roots={} root_limit={} max_plies={} fen={}",
+        label,
+        continuation.id,
+        shipping_profile,
+        automove_variant_label(game.variant()),
+        pro_profile_sweep_color_label(game.active_color),
+        scored_roots.len(),
+        root_limit,
+        max_plies,
+        game.fen(),
+    );
+
+    let mut rows = scored_roots
+        .iter()
+        .take(root_limit)
+        .map(|root| {
+            let trace = play_profile_sweep_forced_first_candidate_turn(
+                continuation,
+                shipping_selector,
+                opponent_budget,
+                board_fen.as_str(),
+                candidate_is_white,
+                max_plies,
+                root.inputs.as_slice(),
+            );
+            let family = MonsGameModel::turn_engine_root_evaluation_family(root);
+            let utility = MonsGameModel::turn_engine_selected_override_utility(
+                &game,
+                root,
+                game.active_color,
+                runtime,
+                family,
+            );
+            (
+                trace.result,
+                root.root_rank,
+                root.score,
+                Input::fen_from_array(&root.inputs),
+                family,
+                root.wins_immediately,
+                root.attacks_opponent_drainer,
+                root.own_drainer_vulnerable,
+                root.spirit_development,
+                root.spirit_same_turn_score_setup_now || root.spirit_own_mana_setup_now,
+                root.supermana_progress,
+                root.opponent_mana_progress,
+                root.safe_supermana_progress_steps,
+                root.safe_opponent_mana_progress_steps,
+                root.same_turn_score_window_value,
+                utility,
+                trace.final_fen,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    rows.sort_by(|left, right| {
+        match_result_points(right.0)
+            .cmp(&match_result_points(left.0))
+            .then_with(|| left.1.cmp(&right.1))
+            .then_with(|| right.2.cmp(&left.2))
+            .then_with(|| left.3.cmp(&right.3))
+    });
+
+    let wins = rows
+        .iter()
+        .filter(|row| matches!(row.0, MatchResult::ProfileAWin))
+        .count();
+    let draws = rows
+        .iter()
+        .filter(|row| matches!(row.0, MatchResult::Draw))
+        .count();
+    println!(
+        "FORCED_ROOT_ORACLE_SUMMARY {{\"label\":\"{}\",\"continuation\":\"{}\",\"variant\":\"{}\",\"active_color\":\"{}\",\"tested_roots\":{},\"wins\":{},\"draws\":{},\"losses\":{}}}",
+        json_escape(&label),
+        json_escape(continuation.id),
+        automove_variant_label(game.variant()),
+        pro_profile_sweep_color_label(game.active_color),
+        rows.len(),
+        wins,
+        draws,
+        rows.len().saturating_sub(wins + draws),
+    );
+
+    for (
+        result,
+        root_rank,
+        score,
+        inputs,
+        family,
+        wins_immediately,
+        attacks,
+        vulnerable,
+        spirit_development,
+        spirit_setup,
+        supermana_progress,
+        opponent_mana_progress,
+        safe_super_steps,
+        safe_opp_steps,
+        same_turn_window,
+        utility,
+        final_fen,
+    ) in rows.into_iter().take(print_limit)
+    {
+        println!(
+            "FORCED_ROOT_ORACLE_ROOT {{\"label\":\"{}\",\"result\":\"{}\",\"root_rank\":{},\"score\":{},\"inputs\":\"{}\",\"family\":\"{:?}\",\"wins_immediately\":{},\"attacks\":{},\"vulnerable\":{},\"spirit_development\":{},\"spirit_setup\":{},\"supermana_progress\":{},\"opponent_mana_progress\":{},\"safe_super_steps\":{},\"safe_opp_steps\":{},\"same_turn_window\":{},\"utility\":\"{:?}\",\"final\":\"{}\"}}",
+            json_escape(&label),
+            format_match_result(result),
+            root_rank,
+            score,
+            json_escape(&inputs),
+            family,
+            wins_immediately,
+            attacks,
+            vulnerable,
+            spirit_development,
+            spirit_setup,
+            supermana_progress,
+            opponent_mana_progress,
+            safe_super_steps,
+            safe_opp_steps,
+            same_turn_window,
+            utility,
+            json_escape(&final_fen),
+        );
+    }
 }
 
 #[test]

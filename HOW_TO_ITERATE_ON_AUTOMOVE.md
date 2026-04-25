@@ -112,6 +112,7 @@ Use diagnostics only after the canonical loop shows what is still missing.
 - `smart_automove_pro_policy_matrix_probe`
 - `smart_automove_pro_promotion_dashboard_probe`
 - `smart_automove_pro_decision_record_aggregation_probe`
+- `smart_automove_pro_forced_root_oracle_probe`
 - `smart_automove_pro_triage_retained_churn_probe`
 - `smart_automove_pro_forced_turn_engine_retained_churn_probe`
 - `smart_automove_pro_root_advisor_trace_probe`
@@ -196,6 +197,14 @@ SMART_PRO_POLICY_MATRIX_REPEATS=1 \
 SMART_PRO_POLICY_MATRIX_GAMES=1 \
 SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE=true \
 ./scripts/run-automove-experiment.sh pro-policy-matrix frontier_pro_v2_guarded,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard
+```
+
+`smart_automove_pro_forced_root_oracle_probe` forces each scored root once from one blocker board, then continues with a registered sweep candidate against retained shipping Pro. Use it when the policy matrix reports `no_policy_wins` for a specific context and you need to know whether the root set already contains winning moves before creating another policy. Override `SMART_PRO_FORCED_ROOT_ORACLE_FEN`, `SMART_PRO_FORCED_ROOT_ORACLE_CONTINUATION`, and `SMART_PRO_FORCED_ROOT_ORACLE_ROOT_LIMIT` for focused boards.
+
+```sh
+SMART_PRO_FORCED_ROOT_ORACLE_FEN='<fen>' \
+SMART_PRO_FORCED_ROOT_ORACLE_CONTINUATION=frontier_pro_v2_guarded \
+cargo test --release --lib smart_automove_pro_forced_root_oracle_probe -- --ignored --nocapture
 ```
 
 `smart_automove_pro_decision_record_aggregation_probe` aggregates first-divergence records against `shipping_pro_search` and reports whether the shipping root was selected, pre-accepted, head-selected, legacy-selected, candidate-live, advisor-approved, ordered, preserved, injected, or omitted. Use `SMART_PRO_DECISION_RECORD_SCOPE=nonwins` when the promotion miss is flat losses rather than frontier-worse-than-shipping deltas.
