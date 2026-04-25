@@ -1503,6 +1503,8 @@ fn smart_automove_pro_forced_root_oracle_probe() {
     let max_plies = env_usize("SMART_PRO_FORCED_ROOT_ORACLE_MAX_PLIES")
         .unwrap_or(96)
         .max(56);
+    let start_ply = env_usize("SMART_PRO_FORCED_ROOT_ORACLE_START_PLY").unwrap_or(0);
+    let rollout_max_plies = max_plies.saturating_sub(start_ply).max(1);
     let print_limit = env_usize("SMART_PRO_FORCED_ROOT_ORACLE_PRINT_LIMIT")
         .unwrap_or(32)
         .max(1);
@@ -1521,7 +1523,7 @@ fn smart_automove_pro_forced_root_oracle_probe() {
     );
 
     println!(
-        "forced root oracle: label={} continuation={} shipping={} opponent_mode={:?} variant={} active_color={} roots={} root_limit={} max_plies={} fen={}",
+        "forced root oracle: label={} continuation={} shipping={} opponent_mode={:?} variant={} active_color={} roots={} root_limit={} max_plies={} start_ply={} rollout_max_plies={} fen={}",
         label,
         continuation.id,
         shipping_profile,
@@ -1531,6 +1533,8 @@ fn smart_automove_pro_forced_root_oracle_probe() {
         scored_roots.len(),
         root_limit,
         max_plies,
+        start_ply,
+        rollout_max_plies,
         game.fen(),
     );
 
@@ -1557,7 +1561,7 @@ fn smart_automove_pro_forced_root_oracle_probe() {
                     opponent_budget,
                     board_fen.as_str(),
                     candidate_is_white,
-                    max_plies,
+                    rollout_max_plies,
                     transition.inputs.as_slice(),
                 );
                 (
@@ -1583,12 +1587,15 @@ fn smart_automove_pro_forced_root_oracle_probe() {
             .filter(|row| matches!(row.0, MatchResult::Draw))
             .count();
         println!(
-            "FORCED_ROOT_ORACLE_SUMMARY {{\"label\":\"{}\",\"continuation\":\"{}\",\"opponent_mode\":\"{:?}\",\"variant\":\"{}\",\"active_color\":\"{}\",\"source\":\"legal_transitions\",\"tested_roots\":{},\"wins\":{},\"draws\":{},\"losses\":{}}}",
+            "FORCED_ROOT_ORACLE_SUMMARY {{\"label\":\"{}\",\"continuation\":\"{}\",\"opponent_mode\":\"{:?}\",\"variant\":\"{}\",\"active_color\":\"{}\",\"source\":\"legal_transitions\",\"max_plies\":{},\"start_ply\":{},\"rollout_max_plies\":{},\"tested_roots\":{},\"wins\":{},\"draws\":{},\"losses\":{}}}",
             json_escape(&label),
             json_escape(continuation.id),
             opponent_mode,
             automove_variant_label(game.variant()),
             pro_profile_sweep_color_label(game.active_color),
+            max_plies,
+            start_ply,
+            rollout_max_plies,
             rows.len(),
             wins,
             draws,
@@ -1618,7 +1625,7 @@ fn smart_automove_pro_forced_root_oracle_probe() {
                 opponent_budget,
                 board_fen.as_str(),
                 candidate_is_white,
-                max_plies,
+                rollout_max_plies,
                 root.inputs.as_slice(),
             );
             let family = MonsGameModel::turn_engine_root_evaluation_family(root);
@@ -1668,12 +1675,15 @@ fn smart_automove_pro_forced_root_oracle_probe() {
         .filter(|row| matches!(row.0, MatchResult::Draw))
         .count();
     println!(
-        "FORCED_ROOT_ORACLE_SUMMARY {{\"label\":\"{}\",\"continuation\":\"{}\",\"opponent_mode\":\"{:?}\",\"variant\":\"{}\",\"active_color\":\"{}\",\"tested_roots\":{},\"wins\":{},\"draws\":{},\"losses\":{}}}",
+        "FORCED_ROOT_ORACLE_SUMMARY {{\"label\":\"{}\",\"continuation\":\"{}\",\"opponent_mode\":\"{:?}\",\"variant\":\"{}\",\"active_color\":\"{}\",\"max_plies\":{},\"start_ply\":{},\"rollout_max_plies\":{},\"tested_roots\":{},\"wins\":{},\"draws\":{},\"losses\":{}}}",
         json_escape(&label),
         json_escape(continuation.id),
         opponent_mode,
         automove_variant_label(game.variant()),
         pro_profile_sweep_color_label(game.active_color),
+        max_plies,
+        start_ply,
+        rollout_max_plies,
         rows.len(),
         wins,
         draws,

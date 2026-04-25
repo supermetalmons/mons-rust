@@ -209,11 +209,12 @@ SMART_PRO_POLICY_WINNER_DUEL_FILTER=vs_shipping_pro \
 ./scripts/run-automove-experiment.sh pro-policy-winner frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard
 ```
 
-`smart_automove_pro_forced_root_oracle_probe` forces each scored root once from one blocker board, then continues with a registered sweep candidate against retained shipping Pro. Use it when the policy matrix reports `no_policy_wins` for a specific context and you need to know whether the root set already contains winning moves before creating another policy. Override `SMART_PRO_FORCED_ROOT_ORACLE_FEN`, `SMART_PRO_FORCED_ROOT_ORACLE_CONTINUATION`, and `SMART_PRO_FORCED_ROOT_ORACLE_ROOT_LIMIT` for focused boards.
+`smart_automove_pro_forced_root_oracle_probe` forces each scored root once from one blocker board, then continues with a registered sweep candidate against retained shipping Pro. Use it when the policy matrix reports `no_policy_wins` for a specific context and you need to know whether the root set already contains winning moves before creating another policy. Override `SMART_PRO_FORCED_ROOT_ORACLE_FEN`, `SMART_PRO_FORCED_ROOT_ORACLE_CONTINUATION`, and `SMART_PRO_FORCED_ROOT_ORACLE_ROOT_LIMIT` for focused boards. When the board comes from a full-opening first divergence, set `SMART_PRO_FORCED_ROOT_ORACLE_START_PLY` to that `first_diff_ply`; otherwise the oracle grants extra rollout horizon and can turn full-opening losses into false local wins.
 
 ```sh
 SMART_PRO_FORCED_ROOT_ORACLE_FEN='<fen>' \
 SMART_PRO_FORCED_ROOT_ORACLE_CONTINUATION=frontier_pro_v2_guarded \
+SMART_PRO_FORCED_ROOT_ORACLE_START_PLY=<first_diff_ply> \
 cargo test --release --lib smart_automove_pro_forced_root_oracle_probe -- --ignored --nocapture
 ```
 
