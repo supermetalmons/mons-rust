@@ -132,4 +132,4 @@ Stop the iteration and update docs instead of patching runtime code when any of 
 
 ## Next Concrete Step
 
-The next useful implementation is a test-only context-gated meta-selector candidate or a decision-record aggregation diagnostic. Do not cut another runtime seam patch until one of those produces a scout-pass candidate.
+The next useful implementation is a test-only ProV3 selector policy that scores head plans, reply-risk approval, preserved representatives, and omitted roots through one utility contract. The latest active scouts show that broad selected-followup disable can repair Fast `outer_edge_mana_rows`, but it rotates Pro and Fast `alternating_mana_rows` / `forward_bridge_mana_rows`; direct SpiritImpact anchoring has the same rotation failure. Do not cut another runtime seam patch, wrapper toggle, or family-anchor exception until the unified-policy scout clears both active blockers and the sampled dashboard.
