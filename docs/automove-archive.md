@@ -1155,3 +1155,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The active-blocker panel still showed oracle coverage but not selector shape: Pro had `3` guarded baseline wins and `3` policy wins, Normal `5` / `1`, and Fast `2` / `4`, with `no_policy_wins=0` in all three duels.
 - The policy wins conflict by opponent mode. Active Pro wants full-scored reply guard for white `outer_edge_mana_rows` turn three under action+mana, `window=0`, `deny=0`, and `drainer_safety=2`; active Fast wants shipping-control on a matching white `outer_edge_mana_rows` context. Fast also needs shipping-control for black outer-edge and white forward-bridge, plus raw ProV2 only for a black alternating late-fallback row.
 - Durable outcome: the expanded policy portfolio is an oracle diagnostic, not a promotable selector. Do not build another static active policy-winner selector over these labels; add a new utility/root-evaluation feature first, then use panel-filtered policy-winner runs to check whether the new policy separates Pro/Normal/Fast instead of memorizing row openings.
+
+## Dual-Progress Spirit Feature No-Go
+
+- No runtime challenger survived this wave. Temporary test-only candidates were removed before commit.
+- Forced-root oracles on the active white `outer_edge_mana_rows` Pro/Fast conflict showed the local first-root problem is weak evidence: the Pro board had `12/16` winning forced roots and the Fast board had `15/16`, including roots that the policy-winner trace had treated as losing in full continuation.
+- A direct dual-progress SpiritImpact preference selected safe `SpiritImpact` roots with both `supermana_progress` and `opponent_mana_progress` plus short safe paths. It failed the active dashboard at Pro `3-3`, Normal `5-1`, Fast `3-3`; Pro `outer_edge_mana_rows` stayed `0-2`, while Fast split every blocker variant at `1-1`.
+- A dual-progress-triggered shipping fallback was worse on Pro and still not promotable: active Pro `2-4`, Normal `5-1`, Fast `3-3`. It improved the guarded delta on `outer_edge_mana_rows`, but not the shipping-strength gate.
+- Durable outcome: do not use dual-progress SpiritImpact as the next shared utility feature or as a shipping-fallback trigger. It is another active Normal/guarded-delta repair that leaves active Pro and Fast blocker strength unresolved.
