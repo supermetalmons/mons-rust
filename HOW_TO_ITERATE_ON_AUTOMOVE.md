@@ -62,6 +62,7 @@ Use `./scripts/run-automove-experiment.sh` when you need one stage at a time or 
 ./scripts/run-automove-experiment.sh pro-profile-sweep frontier_pro_v2_raw
 ./scripts/run-automove-experiment.sh pro-promotion-dashboard frontier_pro_v2_raw
 ./scripts/run-automove-experiment.sh pro-sweep-decision-record frontier_pro_v2_guarded
+./scripts/run-automove-experiment.sh pro-policy-matrix frontier_pro_v2_guarded,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard
 ```
 
 ## Structural Reset
@@ -108,6 +109,7 @@ Use diagnostics only after the canonical loop shows what is still missing.
 - `smart_automove_pro_profile_sweep_probe`
 - `smart_automove_pro_profile_attribution_probe`
 - `smart_automove_pro_sweep_decision_record_probe`
+- `smart_automove_pro_policy_matrix_probe`
 - `smart_automove_pro_promotion_dashboard_probe`
 - `smart_automove_pro_decision_record_aggregation_probe`
 - `smart_automove_pro_triage_retained_churn_probe`
@@ -179,6 +181,16 @@ SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows,alternating_mana_rows,forward_bridg
 SMART_PRO_SWEEP_DECISION_RECORD_SCOPE=nonwins \
 SMART_PRO_SWEEP_DECISION_RECORD_DUEL_FILTER=vs_shipping_pro \
 ./scripts/run-automove-experiment.sh pro-sweep-decision-record frontier_pro_v2_raw
+```
+
+`smart_automove_pro_policy_matrix_probe` compares multiple registered sweep policies on identical openings across the sampled and active-blocker panels. The first candidate is the baseline. Use it before writing another policy selector when two ablations each fix one active row but rotate sampled or Fast/Normal losses elsewhere; it prints per-candidate outcome summaries plus first-divergence branch, context, and move-pair aggregates.
+
+```sh
+SMART_PRO_POLICY_MATRIX_PANEL_FILTER=active_blockers \
+SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_fast \
+SMART_PRO_POLICY_MATRIX_REPEATS=1 \
+SMART_PRO_POLICY_MATRIX_GAMES=1 \
+./scripts/run-automove-experiment.sh pro-policy-matrix frontier_pro_v2_guarded,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard
 ```
 
 `smart_automove_pro_decision_record_aggregation_probe` aggregates first-divergence records against `shipping_pro_search` and reports whether the shipping root was selected, pre-accepted, head-selected, legacy-selected, candidate-live, advisor-approved, ordered, preserved, injected, or omitted. Use `SMART_PRO_DECISION_RECORD_SCOPE=nonwins` when the promotion miss is flat losses rather than frontier-worse-than-shipping deltas.

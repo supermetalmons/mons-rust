@@ -450,6 +450,39 @@ fn select_sweep_frontier_pro_v2_no_late_black_fallback_inputs(
     select_frontier_pro_v2_guarded_without_late_black_fallback_inputs(game, config)
 }
 
+fn select_sweep_frontier_pro_v2_no_selected_followup_projection_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> Vec<Input> {
+    let mut runtime = apply_frontier_pro_v2_guarded_config(config);
+    runtime.enable_turn_engine_selected_followup_projection = false;
+    select_sweep_frontier_config_inputs(game, runtime)
+}
+
+fn select_sweep_frontier_pro_v3_full_scored_reply_guard_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+) -> Vec<Input> {
+    let runtime = apply_frontier_pro_v2_guarded_config(config);
+    let (runtime, scored_roots, _, _) = runtime_scored_roots_with_config(game, runtime);
+    let candidate_indices = (0..scored_roots.len()).collect::<Vec<_>>();
+    if candidate_indices.is_empty() {
+        return select_sweep_frontier_pro_v2_guarded_counted_inputs(game, config);
+    }
+
+    MonsGameModel::pick_root_move_with_reply_risk_guard_from_shortlist(
+        game,
+        &scored_roots,
+        candidate_indices.as_slice(),
+        Some(candidate_indices.as_slice()),
+        game.active_color,
+        runtime,
+    )
+    .and_then(|index| scored_roots.get(index))
+    .map(|root| root.inputs.clone())
+    .unwrap_or_else(|| select_sweep_frontier_pro_v2_guarded_counted_inputs(game, config))
+}
+
 fn select_sweep_frontier_pro_v2_head_rerank_inputs(
     game: &MonsGame,
     config: AutomoveSearchConfig,
@@ -512,6 +545,14 @@ fn pro_profile_sweep_candidates() -> Vec<ProProfileSweepCandidate> {
         ProProfileSweepCandidate {
             id: "frontier_pro_v2_no_late_black_fallback",
             selector: select_sweep_frontier_pro_v2_no_late_black_fallback_inputs,
+        },
+        ProProfileSweepCandidate {
+            id: "frontier_pro_v2_no_selected_followup_projection",
+            selector: select_sweep_frontier_pro_v2_no_selected_followup_projection_inputs,
+        },
+        ProProfileSweepCandidate {
+            id: "frontier_pro_v3_full_scored_reply_guard",
+            selector: select_sweep_frontier_pro_v3_full_scored_reply_guard_inputs,
         },
         ProProfileSweepCandidate {
             id: "frontier_pro_v2_head_rerank",
@@ -869,6 +910,7 @@ struct ProProfileSweepFirstDivergence {
     left_move_fen: String,
     right_move_fen: String,
     left_branch: &'static str,
+    right_branch: &'static str,
     active_color: Color,
     turn_number: i32,
     mons_moves_count: i32,
@@ -1033,6 +1075,7 @@ fn first_profile_sweep_candidate_divergence(
                 left_move_fen: left_turn.move_fen.clone(),
                 right_move_fen: right_turn.move_fen.clone(),
                 left_branch: left_turn.candidate_branch,
+                right_branch: right_turn.candidate_branch,
                 active_color: left_turn.active_color,
                 turn_number: left_turn.turn_number,
                 mons_moves_count: left_turn.mons_moves_count,
@@ -1058,6 +1101,39 @@ fn pro_profile_sweep_candidate_by_id(candidate_id: &str) -> ProProfileSweepCandi
         .into_iter()
         .find(|candidate| candidate.id == candidate_id)
         .unwrap_or_else(|| panic!("unknown sweep candidate '{}'", candidate_id))
+}
+
+fn pro_profile_sweep_candidate_list_from_env(
+    name: &str,
+    default: &str,
+) -> Vec<ProProfileSweepCandidate> {
+    let tokens = pro_sweep_filter_tokens(name, default);
+    if tokens.iter().any(|token| token == "all") {
+        return pro_profile_sweep_candidates();
+    }
+    tokens
+        .iter()
+        .map(|candidate_id| pro_profile_sweep_candidate_by_id(candidate_id))
+        .collect()
+}
+
+fn pro_policy_matrix_outcome_label(delta: i32) -> &'static str {
+    if delta > 0 {
+        "candidate_better"
+    } else if delta < 0 {
+        "baseline_better"
+    } else {
+        "same_outcome"
+    }
+}
+
+fn pro_policy_matrix_sorted_counts<'a>(
+    counts: &'a BTreeMap<String, usize>,
+    limit: usize,
+) -> Vec<(&'a String, &'a usize)> {
+    let mut entries = counts.iter().collect::<Vec<_>>();
+    entries.sort_by(|left, right| right.1.cmp(left.1).then_with(|| left.0.cmp(right.0)));
+    entries.into_iter().take(limit).collect()
 }
 
 fn pro_sweep_candidate_record_context_key(
@@ -1311,6 +1387,324 @@ fn smart_automove_pro_profile_attribution_probe() {
                 games
             );
         }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: compare multiple Pro sweep policies on identical sampled and active panels"]
+fn smart_automove_pro_policy_matrix_probe() {
+    #[derive(Clone)]
+    struct PolicyMatrixDuelSpec {
+        label: &'static str,
+        opponent_mode: SmartAutomovePreference,
+        seed_suffix: &'static str,
+    }
+
+    #[derive(Default)]
+    struct PolicyMatrixCandidateStats {
+        total_games: usize,
+        candidate_better: usize,
+        baseline_better: usize,
+        same_outcome: usize,
+        candidate_nonwins: usize,
+        baseline_nonwins: usize,
+        first_move_diffs: usize,
+        recorded: usize,
+        missing_first_diff: usize,
+    }
+
+    let shipping_profile = reliability_shipping_profile_id();
+    let shipping_selector = profile_selector_from_name(shipping_profile.as_str())
+        .unwrap_or_else(|| panic!("shipping '{}' not found", shipping_profile));
+    let candidates = pro_profile_sweep_candidate_list_from_env(
+        "SMART_PRO_POLICY_MATRIX_CANDIDATES",
+        "frontier_pro_v2_guarded,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard",
+    );
+    assert!(
+        candidates.len() >= 2,
+        "SMART_PRO_POLICY_MATRIX_CANDIDATES must name at least a baseline and one candidate"
+    );
+    let baseline = candidates[0];
+    let panel_filter = pro_sweep_filter_tokens("SMART_PRO_POLICY_MATRIX_PANEL_FILTER", "all");
+    let duel_filter = pro_sweep_filter_tokens("SMART_PRO_POLICY_MATRIX_DUEL_FILTER", "all");
+    let max_plies = env_usize("SMART_PRO_POLICY_MATRIX_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let trace_limit = env_usize("SMART_PRO_POLICY_MATRIX_TRACE_LIMIT")
+        .unwrap_or(24)
+        .max(1);
+    let aggregate_limit = env_usize("SMART_PRO_POLICY_MATRIX_AGGREGATE_LIMIT")
+        .unwrap_or(64)
+        .max(1);
+    let duel_specs = vec![
+        PolicyMatrixDuelSpec {
+            label: "vs_shipping_pro",
+            opponent_mode: SmartAutomovePreference::Pro,
+            seed_suffix: "",
+        },
+        PolicyMatrixDuelSpec {
+            label: "vs_shipping_normal",
+            opponent_mode: SmartAutomovePreference::Normal,
+            seed_suffix: "_vs_normal",
+        },
+        PolicyMatrixDuelSpec {
+            label: "vs_shipping_fast",
+            opponent_mode: SmartAutomovePreference::Fast,
+            seed_suffix: "_vs_fast",
+        },
+    ];
+
+    println!(
+        "pro policy matrix: baseline={} candidates={} panels={} duels={} max_plies={}",
+        baseline.id,
+        candidates
+            .iter()
+            .skip(1)
+            .map(|candidate| candidate.id)
+            .collect::<Vec<_>>()
+            .join(","),
+        pro_promotion_dashboard_panel_specs()
+            .into_iter()
+            .filter(|panel| pro_sweep_filter_allows(&panel_filter, panel.label))
+            .map(|panel| panel.label)
+            .collect::<Vec<_>>()
+            .join(","),
+        duel_specs
+            .iter()
+            .filter(|duel| pro_sweep_filter_allows(&duel_filter, duel.label))
+            .map(|duel| duel.label)
+            .collect::<Vec<_>>()
+            .join(","),
+        max_plies,
+    );
+
+    for panel in pro_promotion_dashboard_panel_specs()
+        .into_iter()
+        .filter(|panel| pro_sweep_filter_allows(&panel_filter, panel.label))
+    {
+        let repeats = env_usize("SMART_PRO_POLICY_MATRIX_REPEATS")
+            .unwrap_or(panel.default_repeats)
+            .max(1);
+        let games = env_usize("SMART_PRO_POLICY_MATRIX_GAMES")
+            .unwrap_or(panel.default_games)
+            .max(1);
+        let panel_seed_tag = env_string_value("SMART_PRO_POLICY_MATRIX_SEED_TAG")
+            .unwrap_or_else(|| panel.seed_tag.to_string());
+
+        with_pro_promotion_dashboard_panel(panel, || {
+            for duel in duel_specs
+                .iter()
+                .filter(|duel| pro_sweep_filter_allows(&duel_filter, duel.label))
+            {
+                let opponent_budget = SearchBudget::from_preference(duel.opponent_mode);
+                let duel_seed_tag = format!("{}{}", panel_seed_tag, duel.seed_suffix);
+                let mut stats_by_candidate = candidates
+                    .iter()
+                    .skip(1)
+                    .map(|candidate| (*candidate, PolicyMatrixCandidateStats::default()))
+                    .collect::<Vec<_>>();
+                let mut branch_counts = BTreeMap::<String, usize>::new();
+                let mut context_counts = BTreeMap::<String, usize>::new();
+                let mut pair_counts = BTreeMap::<String, usize>::new();
+                let mut printed = 0usize;
+
+                for repeat_index in 0..repeats {
+                    let seed = seed_for_budget_duel_repeat_and_tag(
+                        pro_budget(),
+                        opponent_budget,
+                        repeat_index,
+                        duel_seed_tag.as_str(),
+                    );
+                    let opening_fens = generate_opening_fens_cached(seed, games);
+                    for (game_index, opening_fen) in opening_fens.iter().enumerate() {
+                        let variant = MonsGame::from_fen(opening_fen.as_str(), false)
+                            .expect("valid opening fen")
+                            .variant();
+                        for candidate_is_white in [true, false] {
+                            let traces = candidates
+                                .iter()
+                                .map(|candidate| {
+                                    (
+                                        *candidate,
+                                        play_profile_sweep_attribution_trace(
+                                            *candidate,
+                                            shipping_selector,
+                                            opponent_budget,
+                                            opening_fen.as_str(),
+                                            candidate_is_white,
+                                            max_plies,
+                                        ),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            let baseline_trace = &traces[0].1;
+                            let baseline_won =
+                                matches!(baseline_trace.result, MatchResult::ProfileAWin);
+
+                            for trace_index in 1..traces.len() {
+                                let (candidate, candidate_trace) = &traces[trace_index];
+                                let (_, stats) = &mut stats_by_candidate[trace_index - 1];
+                                stats.total_games += 1;
+                                let candidate_won =
+                                    matches!(candidate_trace.result, MatchResult::ProfileAWin);
+                                if !candidate_won {
+                                    stats.candidate_nonwins += 1;
+                                }
+                                if !baseline_won {
+                                    stats.baseline_nonwins += 1;
+                                }
+                                let delta = match_result_points(candidate_trace.result)
+                                    - match_result_points(baseline_trace.result);
+                                if delta > 0 {
+                                    stats.candidate_better += 1;
+                                } else if delta < 0 {
+                                    stats.baseline_better += 1;
+                                } else {
+                                    stats.same_outcome += 1;
+                                }
+
+                                let first_divergence = first_profile_sweep_candidate_divergence(
+                                    baseline_trace,
+                                    candidate_trace,
+                                );
+                                if first_divergence.is_some() {
+                                    stats.first_move_diffs += 1;
+                                }
+                                if delta == 0 && first_divergence.is_none() {
+                                    continue;
+                                }
+                                stats.recorded += 1;
+
+                                let outcome = pro_policy_matrix_outcome_label(delta);
+                                let Some(divergence) = first_divergence else {
+                                    stats.missing_first_diff += 1;
+                                    continue;
+                                };
+
+                                let branch_key = format!(
+                                    "candidate={} outcome={} duel={} variant={} baseline_branch={} candidate_branch={}",
+                                    candidate.id,
+                                    outcome,
+                                    duel.label,
+                                    automove_variant_label(variant),
+                                    divergence.left_branch,
+                                    divergence.right_branch,
+                                );
+                                let context_key = format!(
+                                    "candidate={} outcome={} duel={} variant={} color={} baseline_branch={} candidate_branch={} turn={} mons_moves={} can_action={} can_mana={} {}",
+                                    candidate.id,
+                                    outcome,
+                                    duel.label,
+                                    automove_variant_label(variant),
+                                    pro_profile_sweep_color_label(divergence.active_color),
+                                    divergence.left_branch,
+                                    divergence.right_branch,
+                                    divergence.turn_number,
+                                    divergence.mons_moves_count,
+                                    divergence.can_use_action,
+                                    divergence.can_move_mana,
+                                    divergence.exact_context,
+                                );
+                                let pair_key = format!(
+                                    "candidate={} outcome={} duel={} variant={} baseline_move={} candidate_move={}",
+                                    candidate.id,
+                                    outcome,
+                                    duel.label,
+                                    automove_variant_label(variant),
+                                    divergence.left_move_fen,
+                                    divergence.right_move_fen,
+                                );
+                                *branch_counts.entry(branch_key).or_default() += 1;
+                                *context_counts.entry(context_key).or_default() += 1;
+                                *pair_counts.entry(pair_key).or_default() += 1;
+
+                                if printed < trace_limit {
+                                    println!(
+                                        "PRO_POLICY_MATRIX_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
+                                        json_escape(panel.label),
+                                        json_escape(baseline.id),
+                                        json_escape(candidate.id),
+                                        json_escape(duel.label),
+                                        repeat_index,
+                                        game_index,
+                                        automove_variant_label(variant),
+                                        candidate_is_white,
+                                        outcome,
+                                        delta,
+                                        format_match_result(baseline_trace.result),
+                                        format_match_result(candidate_trace.result),
+                                        divergence.ply,
+                                        json_escape(divergence.left_branch),
+                                        json_escape(divergence.right_branch),
+                                        pro_profile_sweep_color_label(divergence.active_color),
+                                        divergence.turn_number,
+                                        divergence.mons_moves_count,
+                                        divergence.can_use_action,
+                                        divergence.can_move_mana,
+                                        json_escape(&divergence.exact_context),
+                                        json_escape(&divergence.board_fen),
+                                        json_escape(&divergence.left_move_fen),
+                                        json_escape(&divergence.right_move_fen),
+                                        json_escape(&baseline_trace.final_fen),
+                                        json_escape(&candidate_trace.final_fen),
+                                    );
+                                    printed += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                for (candidate, stats) in stats_by_candidate.iter() {
+                    println!(
+                        "PRO_POLICY_MATRIX_SUMMARY {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"total_games\":{},\"candidate_better\":{},\"baseline_better\":{},\"same_outcome\":{},\"candidate_nonwins\":{},\"baseline_nonwins\":{},\"first_move_diffs\":{},\"recorded\":{},\"missing_first_diff\":{}}}",
+                        json_escape(panel.label),
+                        json_escape(baseline.id),
+                        json_escape(candidate.id),
+                        json_escape(duel.label),
+                        stats.total_games,
+                        stats.candidate_better,
+                        stats.baseline_better,
+                        stats.same_outcome,
+                        stats.candidate_nonwins,
+                        stats.baseline_nonwins,
+                        stats.first_move_diffs,
+                        stats.recorded,
+                        stats.missing_first_diff,
+                    );
+                }
+                for (key, games) in pro_policy_matrix_sorted_counts(&branch_counts, aggregate_limit)
+                {
+                    println!(
+                        "PRO_POLICY_MATRIX_BRANCH {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                        json_escape(panel.label),
+                        json_escape(duel.label),
+                        json_escape(key),
+                        games,
+                    );
+                }
+                for (key, games) in
+                    pro_policy_matrix_sorted_counts(&context_counts, aggregate_limit)
+                {
+                    println!(
+                        "PRO_POLICY_MATRIX_CONTEXT {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                        json_escape(panel.label),
+                        json_escape(duel.label),
+                        json_escape(key),
+                        games,
+                    );
+                }
+                for (key, games) in pro_policy_matrix_sorted_counts(&pair_counts, aggregate_limit) {
+                    println!(
+                        "PRO_POLICY_MATRIX_PAIR {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                        json_escape(panel.label),
+                        json_escape(duel.label),
+                        json_escape(key),
+                        games,
+                    );
+                }
+            }
+        });
     }
 }
 

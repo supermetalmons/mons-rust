@@ -20,6 +20,7 @@ stages:
   pro-profile-attribution diagnostic: attribute outcome deltas between two sweep candidates
   pro-promotion-dashboard diagnostic: summarize sampled + active-blocker promotion shape
   pro-sweep-decision-record diagnostic: aggregate nonwins/deltas for one sweep candidate
+  pro-policy-matrix      diagnostic: compare multiple sweep policies on identical openings
 
 defaults:
   shipping = shipping_pro_search for Pro stages
@@ -36,6 +37,7 @@ examples:
   SMART_PRO_SWEEP_ATTRIBUTION_RIGHT=frontier_pro_v2_raw ./scripts/run-automove-experiment.sh pro-profile-attribution frontier_pro_v2_no_late_black_fallback
   ./scripts/run-automove-experiment.sh pro-promotion-dashboard frontier_pro_v2_raw
   ./scripts/run-automove-experiment.sh pro-sweep-decision-record frontier_pro_v2_guarded
+  ./scripts/run-automove-experiment.sh pro-policy-matrix frontier_pro_v2_guarded,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard
 EOF_HELP
 }
 
@@ -49,6 +51,8 @@ sweep_candidates=(
   frontier_pro_v2_guarded
   frontier_pro_v2_raw
   frontier_pro_v2_no_late_black_fallback
+  frontier_pro_v2_no_selected_followup_projection
+  frontier_pro_v3_full_scored_reply_guard
   frontier_pro_v2_head_rerank
   frontier_pro_v2_no_spirit_family
   frontier_pro_v2_no_mid_tactical_guard
@@ -273,6 +277,9 @@ case "${stage}" in
   pro-sweep-decision-record)
     require_supported_sweep_candidate "frontier" "${frontier}"
     ;;
+  pro-policy-matrix)
+    require_supported_sweep_filter "frontier" "${frontier}"
+    ;;
   pro-profile-attribution)
     require_supported_sweep_candidate "frontier" "${frontier}"
     if [ -n "${SMART_PRO_SWEEP_ATTRIBUTION_RIGHT:-}" ]; then
@@ -360,6 +367,14 @@ case "${stage}" in
       "SMART_SHIPPING_PROFILE=${shipping}" \
       "SMART_PRO_RELIABILITY_SHIPPING_PROFILE=${shipping}" \
       "SMART_PRO_SWEEP_DECISION_RECORD_CANDIDATE=${frontier}"
+    ;;
+  pro-policy-matrix)
+    run_cargo_logged \
+      "pro_policy_matrix_$(sanitize "${frontier}")" \
+      "smart_automove_pro_policy_matrix_probe" \
+      "SMART_SHIPPING_PROFILE=${shipping}" \
+      "SMART_PRO_RELIABILITY_SHIPPING_PROFILE=${shipping}" \
+      "SMART_PRO_POLICY_MATRIX_CANDIDATES=${frontier}"
     ;;
   *)
     echo "unknown stage: ${stage}" >&2
