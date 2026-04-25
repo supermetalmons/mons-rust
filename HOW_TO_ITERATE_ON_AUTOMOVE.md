@@ -185,11 +185,14 @@ SMART_PRO_SWEEP_DECISION_RECORD_DUEL_FILTER=vs_shipping_pro \
 
 `smart_automove_pro_policy_matrix_probe` compares multiple registered sweep policies on identical openings across the sampled and active-blocker panels. The first candidate is the baseline. Use it before writing another policy selector when two ablations each fix one active row but rotate sampled or Fast/Normal losses elsewhere; it prints per-candidate outcome summaries plus first-divergence branch, context, and move-pair aggregates.
 
+Set `SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE=true` on a narrow run when a first divergence needs deeper root evidence. This adds guarded root rank, family, score, selected/advisor status, and full-vs-no-selected-followup utility for both divergent moves. Keep this off for broad matrix runs because it reruns root scoring for printed records.
+
 ```sh
 SMART_PRO_POLICY_MATRIX_PANEL_FILTER=active_blockers \
 SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_fast \
 SMART_PRO_POLICY_MATRIX_REPEATS=1 \
 SMART_PRO_POLICY_MATRIX_GAMES=1 \
+SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE=true \
 ./scripts/run-automove-experiment.sh pro-policy-matrix frontier_pro_v2_guarded,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard
 ```
 

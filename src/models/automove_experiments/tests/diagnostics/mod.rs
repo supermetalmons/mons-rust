@@ -1136,6 +1136,102 @@ fn pro_policy_matrix_sorted_counts<'a>(
     entries.into_iter().take(limit).collect()
 }
 
+fn pro_policy_matrix_move_decision_probe(board_fen: &str, move_fen: &str) -> String {
+    let game = MonsGame::from_fen(board_fen, false).expect("valid policy matrix board fen");
+    let config = apply_frontier_pro_v2_guarded_config(pro_budget().runtime_config_for_game(&game));
+
+    clear_exact_state_analysis_cache();
+    clear_exact_query_diagnostics();
+    clear_turn_engine_plan_cache();
+    clear_turn_engine_diagnostics();
+    clear_turn_engine_selector_diagnostics();
+    let selected = select_sweep_frontier_config_inputs(&game, config);
+    let selected_fen = Input::fen_from_array(&selected);
+    let advisor = pro_v2_root_advisor_decision_snapshot();
+    let (_, scored_roots, _, _) = runtime_scored_roots_with_config(&game, config);
+    let root_index = scored_roots
+        .iter()
+        .position(|root| Input::fen_from_array(&root.inputs) == move_fen);
+    let advisor_ordered = advisor
+        .as_ref()
+        .and_then(|decision| {
+            decision_record_root_advisor_entry_status(&decision.ordered_shortlist, move_fen)
+        })
+        .unwrap_or_else(|| "none".to_string());
+    let advisor_preserved = advisor
+        .as_ref()
+        .and_then(|decision| {
+            decision_record_root_advisor_entry_status(
+                &decision.preserved_family_representatives,
+                move_fen,
+            )
+        })
+        .unwrap_or_else(|| "none".to_string());
+    let advisor_approved = advisor
+        .as_ref()
+        .and_then(|decision| decision.approved_root.as_ref())
+        .filter(|entry| Input::fen_from_array(&entry.inputs) == move_fen)
+        .map(format_root_advisor_entry_probe)
+        .unwrap_or_else(|| "none".to_string());
+
+    let Some(root_index) = root_index else {
+        return format!(
+            "selected={} root=omitted advisor_ordered={} advisor_preserved={} advisor_approved={}",
+            selected_fen, advisor_ordered, advisor_preserved, advisor_approved
+        );
+    };
+
+    let root = &scored_roots[root_index];
+    let family = MonsGameModel::turn_engine_root_evaluation_family(root);
+    let full_utility = MonsGameModel::turn_engine_selected_override_utility(
+        &game,
+        root,
+        game.active_color,
+        config,
+        family,
+    );
+    let mut no_followup_config = config;
+    no_followup_config.enable_turn_engine_selected_followup_projection = false;
+    let no_followup_utility = MonsGameModel::turn_engine_selected_override_utility(
+        &game,
+        root,
+        game.active_color,
+        no_followup_config,
+        family,
+    );
+    let followup_primary_order = crate::models::automove_turn_engine::compare_utility_primary_axes(
+        full_utility,
+        no_followup_utility,
+    );
+
+    format!(
+        "selected={} root_index={} root_rank={} score={} family={:?} wins={} attack={} vulnerable={} walk_vulnerable={} spirit_setup={} spirit_dev={} super_progress={} opp_progress={} safe_super_steps={} safe_opp_steps={} score_path_steps={} same_turn_window={} full_utility={:?} no_followup_utility={:?} full_vs_no_followup_primary={:?} advisor_ordered={} advisor_preserved={} advisor_approved={}",
+        selected_fen,
+        root_index,
+        root.root_rank,
+        root.score,
+        family,
+        root.wins_immediately,
+        root.attacks_opponent_drainer,
+        root.own_drainer_vulnerable,
+        root.own_drainer_walk_vulnerable,
+        root.spirit_same_turn_score_setup_now || root.spirit_own_mana_setup_now,
+        root.spirit_development,
+        root.supermana_progress,
+        root.opponent_mana_progress,
+        root.safe_supermana_progress_steps,
+        root.safe_opponent_mana_progress_steps,
+        root.score_path_best_steps,
+        root.same_turn_score_window_value,
+        full_utility,
+        no_followup_utility,
+        followup_primary_order,
+        advisor_ordered,
+        advisor_preserved,
+        advisor_approved,
+    )
+}
+
 fn pro_sweep_candidate_record_context_key(
     duel_label: &str,
     variant: GameVariant,
@@ -1436,6 +1532,8 @@ fn smart_automove_pro_policy_matrix_probe() {
     let aggregate_limit = env_usize("SMART_PRO_POLICY_MATRIX_AGGREGATE_LIMIT")
         .unwrap_or(64)
         .max(1);
+    let include_decision_probe =
+        env_bool("SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE").unwrap_or(false);
     let duel_specs = vec![
         PolicyMatrixDuelSpec {
             label: "vs_shipping_pro",
@@ -1455,7 +1553,7 @@ fn smart_automove_pro_policy_matrix_probe() {
     ];
 
     println!(
-        "pro policy matrix: baseline={} candidates={} panels={} duels={} max_plies={}",
+        "pro policy matrix: baseline={} candidates={} panels={} duels={} max_plies={} include_decision_probe={}",
         baseline.id,
         candidates
             .iter()
@@ -1476,6 +1574,7 @@ fn smart_automove_pro_policy_matrix_probe() {
             .collect::<Vec<_>>()
             .join(","),
         max_plies,
+        include_decision_probe,
     );
 
     for panel in pro_promotion_dashboard_panel_specs()
@@ -1619,8 +1718,24 @@ fn smart_automove_pro_policy_matrix_probe() {
                                 *pair_counts.entry(pair_key).or_default() += 1;
 
                                 if printed < trace_limit {
+                                    let baseline_decision = if include_decision_probe {
+                                        pro_policy_matrix_move_decision_probe(
+                                            &divergence.board_fen,
+                                            &divergence.left_move_fen,
+                                        )
+                                    } else {
+                                        "disabled".to_string()
+                                    };
+                                    let candidate_decision = if include_decision_probe {
+                                        pro_policy_matrix_move_decision_probe(
+                                            &divergence.board_fen,
+                                            &divergence.right_move_fen,
+                                        )
+                                    } else {
+                                        "disabled".to_string()
+                                    };
                                     println!(
-                                        "PRO_POLICY_MATRIX_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
+                                        "PRO_POLICY_MATRIX_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_decision\":\"{}\",\"candidate_decision\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
                                         json_escape(panel.label),
                                         json_escape(baseline.id),
                                         json_escape(candidate.id),
@@ -1645,6 +1760,8 @@ fn smart_automove_pro_policy_matrix_probe() {
                                         json_escape(&divergence.board_fen),
                                         json_escape(&divergence.left_move_fen),
                                         json_escape(&divergence.right_move_fen),
+                                        json_escape(&baseline_decision),
+                                        json_escape(&candidate_decision),
                                         json_escape(&baseline_trace.final_fen),
                                         json_escape(&candidate_trace.final_fen),
                                     );
