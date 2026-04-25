@@ -1140,3 +1140,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - `frontier_pro_v3_black_t2_plus_outer_edge_head` added only the outer-edge white turn-five rejected-head case. It was behaviorally identical on the active dashboard: Pro `4-2`, Normal `5-1`, Fast `2-4`.
 - `frontier_pro_v3_black_t2_plus_alternating_head` added only the alternating white turn-three mana-only rejected-head case. It was also behaviorally identical: Pro `4-2`, Normal `5-1`, Fast `2-4`.
 - Durable outcome: narrowing the white-head layer by variant does not recover the previous broad-head Pro/Normal improvement and does not help active Fast. Do not keep spending on variant-scoped rejected-head gates in this family.
+
+## Guarded Preaccept Utility Floor No-Go
+
+- No runtime challenger survived this wave. A temporary test-only sweep candidate preserved guarded wrapper branches, then only on `frontier_execute` replaced an accepted head with the preaccept root when that preaccept root was legacy-selected or legacy-full-pool-selected, non-vulnerable, and not worse on primary `TurnEngineUtility` axes.
+- The retained decision-record aggregate before the candidate stayed mixed. Sampled retained decisions had no Pro regressions but still showed a Normal nonwin and Fast regressions split across `outer_edge_mana_rows`, `alternating_mana_rows`, and `forward_bridge_mana_rows`. The active-blocker aggregate split across rejected-head, accepted-head, advisor-approved, legacy, and candidate-live statuses, so there was no single preaccept mechanism.
+- The active dashboard killed the candidate before sampled validation: vs shipping Pro `3-3`, Normal `5-1`, Fast `2-4`; vs guarded `3-3`. Pro and Fast both left `outer_edge_mana_rows` at `0-2`, while active Fast also split `alternating_mana_rows` and `forward_bridge_mana_rows` at `1-1`.
+- Average move time rose to roughly `217ms` Pro, `295ms` Normal, and `282ms` Fast on the active dashboard, so the candidate added cost without creating a promotable row.
+- Durable outcome: do not retry generic head/root utility-floor or legacy preaccept vetoes. The remaining blocker requires a new utility feature that explains when head acceptance, reply-risk approval, and preaccept preservation are one-sided across sampled and active Pro/Normal/Fast; replaying legacy preaccept roots is not that feature.
