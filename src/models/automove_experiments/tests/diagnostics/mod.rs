@@ -1509,6 +1509,18 @@ fn smart_automove_pro_policy_matrix_probe() {
         missing_first_diff: usize,
     }
 
+    #[derive(Default)]
+    struct PolicyMatrixPortfolioStats {
+        total_games: usize,
+        baseline_wins: usize,
+        candidate_any_wins: usize,
+        any_policy_wins: usize,
+        shared_wins: usize,
+        baseline_only_wins: usize,
+        candidate_only_wins: usize,
+        no_policy_wins: usize,
+    }
+
     let shipping_profile = reliability_shipping_profile_id();
     let shipping_selector = profile_selector_from_name(shipping_profile.as_str())
         .unwrap_or_else(|| panic!("shipping '{}' not found", shipping_profile));
@@ -1605,6 +1617,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                 let mut branch_counts = BTreeMap::<String, usize>::new();
                 let mut context_counts = BTreeMap::<String, usize>::new();
                 let mut pair_counts = BTreeMap::<String, usize>::new();
+                let mut portfolio_stats = PolicyMatrixPortfolioStats::default();
                 let mut printed = 0usize;
 
                 for repeat_index in 0..repeats {
@@ -1639,6 +1652,26 @@ fn smart_automove_pro_policy_matrix_probe() {
                             let baseline_trace = &traces[0].1;
                             let baseline_won =
                                 matches!(baseline_trace.result, MatchResult::ProfileAWin);
+                            let candidate_any_won = traces
+                                .iter()
+                                .skip(1)
+                                .any(|(_, trace)| matches!(trace.result, MatchResult::ProfileAWin));
+                            portfolio_stats.total_games += 1;
+                            if baseline_won {
+                                portfolio_stats.baseline_wins += 1;
+                            }
+                            if candidate_any_won {
+                                portfolio_stats.candidate_any_wins += 1;
+                            }
+                            if baseline_won || candidate_any_won {
+                                portfolio_stats.any_policy_wins += 1;
+                            }
+                            match (baseline_won, candidate_any_won) {
+                                (true, true) => portfolio_stats.shared_wins += 1,
+                                (true, false) => portfolio_stats.baseline_only_wins += 1,
+                                (false, true) => portfolio_stats.candidate_only_wins += 1,
+                                (false, false) => portfolio_stats.no_policy_wins += 1,
+                            }
 
                             for trace_index in 1..traces.len() {
                                 let (candidate, candidate_trace) = &traces[trace_index];
@@ -1790,6 +1823,28 @@ fn smart_automove_pro_policy_matrix_probe() {
                         stats.missing_first_diff,
                     );
                 }
+                println!(
+                    "PRO_POLICY_MATRIX_PORTFOLIO {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"total_games\":{},\"baseline_wins\":{},\"candidate_any_wins\":{},\"any_policy_wins\":{},\"shared_wins\":{},\"baseline_only_wins\":{},\"candidate_only_wins\":{},\"no_policy_wins\":{}}}",
+                    json_escape(panel.label),
+                    json_escape(baseline.id),
+                    json_escape(
+                        &candidates
+                            .iter()
+                            .skip(1)
+                            .map(|candidate| candidate.id)
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    ),
+                    json_escape(duel.label),
+                    portfolio_stats.total_games,
+                    portfolio_stats.baseline_wins,
+                    portfolio_stats.candidate_any_wins,
+                    portfolio_stats.any_policy_wins,
+                    portfolio_stats.shared_wins,
+                    portfolio_stats.baseline_only_wins,
+                    portfolio_stats.candidate_only_wins,
+                    portfolio_stats.no_policy_wins,
+                );
                 for (key, games) in pro_policy_matrix_sorted_counts(&branch_counts, aggregate_limit)
                 {
                     println!(
