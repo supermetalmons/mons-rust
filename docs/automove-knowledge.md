@@ -180,6 +180,7 @@ cargo test --release --lib <test_name> -- --ignored --nocapture
 - Kill any line that does not move direct duel evidence on the candidate-vs-baseline matchup.
 - Kill any line that fails sampled-variant reliability unless the failure exposes a clearly scoped harness issue.
 - Kill Pro-only context gates that pass sampled Pro by raw/opening or variant-local utility routing but fail sampled Normal/Fast. The runtime has no opponent-profile signal, so a first move that is only safe against `shipping_pro_search` in Pro is not promotable.
+- Kill early safe-`SpiritImpact` opening admissions and weak-window path-alignment overrides when they only clear sampled Pro. The temporary `frontier_pro_v3_early_safe_spirit_opening` scout reached sampled Pro `11-1`, but sampled Normal fell to `7-5` and sampled Fast stayed `6-6`; matrix against guarded showed a Normal `outer_edge_mana_rows` early-opening regression offsetting the alternating gain.
 - Kill any line that passes Classic fixtures but fails all-variant confirmation.
 - Kill any sampled-pass line that only moved through stacked narrow late-ply head/advisor overrides and then broadens all-variant nonwins; the direct white late spirit-setup head block plus black weak-window mana-lane package did exactly that.
 - Kill any late black shipping-fallback expansion that only fixes the traced sampled black boards and rotates Fast losses elsewhere; the direct weak-window extension did exactly that.
