@@ -1403,6 +1403,18 @@ fn smart_automove_pro_forced_root_oracle_probe() {
         .unwrap_or_else(|| "sampled_alternating_white_no_policy".to_string());
     let continuation_id = env_string_value("SMART_PRO_FORCED_ROOT_ORACLE_CONTINUATION")
         .unwrap_or_else(|| "frontier_pro_v2_guarded".to_string());
+    let opponent_mode = env_string_value("SMART_PRO_FORCED_ROOT_ORACLE_OPPONENT_MODE")
+        .map(|mode| mode.to_ascii_lowercase())
+        .map(|mode| match mode.as_str() {
+            "pro" => SmartAutomovePreference::Pro,
+            "normal" => SmartAutomovePreference::Normal,
+            "fast" => SmartAutomovePreference::Fast,
+            _ => panic!(
+                "unknown SMART_PRO_FORCED_ROOT_ORACLE_OPPONENT_MODE '{}'",
+                mode
+            ),
+        })
+        .unwrap_or(SmartAutomovePreference::Pro);
     let root_limit = env_usize("SMART_PRO_FORCED_ROOT_ORACLE_ROOT_LIMIT")
         .unwrap_or(32)
         .max(1);
@@ -1419,7 +1431,7 @@ fn smart_automove_pro_forced_root_oracle_probe() {
     let shipping_profile = reliability_shipping_profile_id();
     let shipping_selector = profile_selector_from_name(shipping_profile.as_str())
         .unwrap_or_else(|| panic!("shipping '{}' not found", shipping_profile));
-    let opponent_budget = pro_budget();
+    let opponent_budget = SearchBudget::from_preference(opponent_mode);
     let (runtime, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
         continuation.id,
         SmartAutomovePreference::Pro,
@@ -1427,10 +1439,11 @@ fn smart_automove_pro_forced_root_oracle_probe() {
     );
 
     println!(
-        "forced root oracle: label={} continuation={} shipping={} variant={} active_color={} roots={} root_limit={} max_plies={} fen={}",
+        "forced root oracle: label={} continuation={} shipping={} opponent_mode={:?} variant={} active_color={} roots={} root_limit={} max_plies={} fen={}",
         label,
         continuation.id,
         shipping_profile,
+        opponent_mode,
         automove_variant_label(game.variant()),
         pro_profile_sweep_color_label(game.active_color),
         scored_roots.len(),
@@ -1438,6 +1451,80 @@ fn smart_automove_pro_forced_root_oracle_probe() {
         max_plies,
         game.fen(),
     );
+
+    if scored_roots.is_empty() {
+        let mut legal_transitions = MonsGameModel::enumerate_legal_transitions(
+            &game,
+            root_limit,
+            MonsGameModel::automove_start_input_options(runtime),
+        );
+        if legal_transitions.is_empty() {
+            legal_transitions = MonsGameModel::enumerate_legal_transitions(
+                &game,
+                root_limit,
+                SuggestedStartInputOptions::for_automove(),
+            );
+        }
+        let mut rows = legal_transitions
+            .into_iter()
+            .map(|transition| {
+                let inputs = Input::fen_from_array(&transition.inputs);
+                let trace = play_profile_sweep_forced_first_candidate_turn(
+                    continuation,
+                    shipping_selector,
+                    opponent_budget,
+                    board_fen.as_str(),
+                    candidate_is_white,
+                    max_plies,
+                    transition.inputs.as_slice(),
+                );
+                (
+                    trace.result,
+                    inputs,
+                    format!("{:?}", transition.events),
+                    trace.final_fen,
+                )
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            match_result_points(right.0)
+                .cmp(&match_result_points(left.0))
+                .then_with(|| left.1.cmp(&right.1))
+        });
+
+        let wins = rows
+            .iter()
+            .filter(|row| matches!(row.0, MatchResult::ProfileAWin))
+            .count();
+        let draws = rows
+            .iter()
+            .filter(|row| matches!(row.0, MatchResult::Draw))
+            .count();
+        println!(
+            "FORCED_ROOT_ORACLE_SUMMARY {{\"label\":\"{}\",\"continuation\":\"{}\",\"opponent_mode\":\"{:?}\",\"variant\":\"{}\",\"active_color\":\"{}\",\"source\":\"legal_transitions\",\"tested_roots\":{},\"wins\":{},\"draws\":{},\"losses\":{}}}",
+            json_escape(&label),
+            json_escape(continuation.id),
+            opponent_mode,
+            automove_variant_label(game.variant()),
+            pro_profile_sweep_color_label(game.active_color),
+            rows.len(),
+            wins,
+            draws,
+            rows.len().saturating_sub(wins + draws),
+        );
+
+        for (result, inputs, events, final_fen) in rows.into_iter().take(print_limit) {
+            println!(
+                "FORCED_ROOT_ORACLE_LEGAL_ROOT {{\"label\":\"{}\",\"result\":\"{}\",\"inputs\":\"{}\",\"events\":\"{}\",\"final\":\"{}\"}}",
+                json_escape(&label),
+                format_match_result(result),
+                json_escape(&inputs),
+                json_escape(&events),
+                json_escape(&final_fen),
+            );
+        }
+        return;
+    }
 
     let mut rows = scored_roots
         .iter()
@@ -1499,9 +1586,10 @@ fn smart_automove_pro_forced_root_oracle_probe() {
         .filter(|row| matches!(row.0, MatchResult::Draw))
         .count();
     println!(
-        "FORCED_ROOT_ORACLE_SUMMARY {{\"label\":\"{}\",\"continuation\":\"{}\",\"variant\":\"{}\",\"active_color\":\"{}\",\"tested_roots\":{},\"wins\":{},\"draws\":{},\"losses\":{}}}",
+        "FORCED_ROOT_ORACLE_SUMMARY {{\"label\":\"{}\",\"continuation\":\"{}\",\"opponent_mode\":\"{:?}\",\"variant\":\"{}\",\"active_color\":\"{}\",\"tested_roots\":{},\"wins\":{},\"draws\":{},\"losses\":{}}}",
         json_escape(&label),
         json_escape(continuation.id),
+        opponent_mode,
         automove_variant_label(game.variant()),
         pro_profile_sweep_color_label(game.active_color),
         rows.len(),
@@ -1919,6 +2007,9 @@ fn smart_automove_pro_policy_matrix_probe() {
                 let mut context_counts = BTreeMap::<String, usize>::new();
                 let mut pair_counts = BTreeMap::<String, usize>::new();
                 let mut portfolio_class_counts = BTreeMap::<String, usize>::new();
+                let mut portfolio_winner_counts = BTreeMap::<String, usize>::new();
+                let mut portfolio_winner_context_counts = BTreeMap::<String, usize>::new();
+                let mut portfolio_winner_pair_counts = BTreeMap::<String, usize>::new();
                 let mut portfolio_stats = PolicyMatrixPortfolioStats::default();
                 let mut printed = 0usize;
 
@@ -1989,6 +2080,72 @@ fn smart_automove_pro_policy_matrix_probe() {
                             *portfolio_class_counts
                                 .entry(portfolio_class_key)
                                 .or_default() += 1;
+
+                            for (winner, winner_trace) in traces.iter().filter(|(_, trace)| {
+                                matches!(trace.result, MatchResult::ProfileAWin)
+                            }) {
+                                let winner_key = format!(
+                                    "class={} policy={} variant={} candidate_is_white={}",
+                                    portfolio_class,
+                                    winner.id,
+                                    automove_variant_label(variant),
+                                    candidate_is_white,
+                                );
+                                *portfolio_winner_counts.entry(winner_key).or_default() += 1;
+
+                                if winner.id == baseline.id {
+                                    continue;
+                                }
+
+                                let Some(divergence) = first_profile_sweep_candidate_divergence(
+                                    baseline_trace,
+                                    winner_trace,
+                                ) else {
+                                    let missing_key = format!(
+                                        "class={} policy={} duel={} variant={} candidate_is_white={} no_first_divergence",
+                                        portfolio_class,
+                                        winner.id,
+                                        duel.label,
+                                        automove_variant_label(variant),
+                                        candidate_is_white,
+                                    );
+                                    *portfolio_winner_context_counts
+                                        .entry(missing_key)
+                                        .or_default() += 1;
+                                    continue;
+                                };
+
+                                let context_key = format!(
+                                    "class={} policy={} duel={} variant={} candidate_is_white={} color={} baseline_branch={} policy_branch={} turn={} mons_moves={} can_action={} can_mana={} {}",
+                                    portfolio_class,
+                                    winner.id,
+                                    duel.label,
+                                    automove_variant_label(variant),
+                                    candidate_is_white,
+                                    pro_profile_sweep_color_label(divergence.active_color),
+                                    divergence.left_branch,
+                                    divergence.right_branch,
+                                    divergence.turn_number,
+                                    divergence.mons_moves_count,
+                                    divergence.can_use_action,
+                                    divergence.can_move_mana,
+                                    divergence.exact_context,
+                                );
+                                let pair_key = format!(
+                                    "class={} policy={} duel={} variant={} candidate_is_white={} baseline_move={} policy_move={}",
+                                    portfolio_class,
+                                    winner.id,
+                                    duel.label,
+                                    automove_variant_label(variant),
+                                    candidate_is_white,
+                                    divergence.left_move_fen,
+                                    divergence.right_move_fen,
+                                );
+                                *portfolio_winner_context_counts
+                                    .entry(context_key)
+                                    .or_default() += 1;
+                                *portfolio_winner_pair_counts.entry(pair_key).or_default() += 1;
+                            }
 
                             for trace_index in 1..traces.len() {
                                 let (candidate, candidate_trace) = &traces[trace_index];
@@ -2173,6 +2330,40 @@ fn smart_automove_pro_policy_matrix_probe() {
                         games,
                     );
                 }
+                for (key, games) in
+                    pro_policy_matrix_sorted_counts(&portfolio_winner_counts, aggregate_limit)
+                {
+                    println!(
+                        "PRO_POLICY_MATRIX_PORTFOLIO_WINNER {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                        json_escape(panel.label),
+                        json_escape(duel.label),
+                        json_escape(key),
+                        games,
+                    );
+                }
+                for (key, games) in pro_policy_matrix_sorted_counts(
+                    &portfolio_winner_context_counts,
+                    aggregate_limit,
+                ) {
+                    println!(
+                        "PRO_POLICY_MATRIX_PORTFOLIO_WINNER_CONTEXT {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                        json_escape(panel.label),
+                        json_escape(duel.label),
+                        json_escape(key),
+                        games,
+                    );
+                }
+                for (key, games) in
+                    pro_policy_matrix_sorted_counts(&portfolio_winner_pair_counts, aggregate_limit)
+                {
+                    println!(
+                        "PRO_POLICY_MATRIX_PORTFOLIO_WINNER_PAIR {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                        json_escape(panel.label),
+                        json_escape(duel.label),
+                        json_escape(key),
+                        games,
+                    );
+                }
                 for (key, games) in pro_policy_matrix_sorted_counts(&branch_counts, aggregate_limit)
                 {
                     println!(
@@ -2197,6 +2388,349 @@ fn smart_automove_pro_policy_matrix_probe() {
                 for (key, games) in pro_policy_matrix_sorted_counts(&pair_counts, aggregate_limit) {
                     println!(
                         "PRO_POLICY_MATRIX_PAIR {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                        json_escape(panel.label),
+                        json_escape(duel.label),
+                        json_escape(key),
+                        games,
+                    );
+                }
+            }
+        });
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: short-circuit policy winner contexts for selector design"]
+fn smart_automove_pro_policy_winner_probe() {
+    #[derive(Clone)]
+    struct PolicyWinnerDuelSpec {
+        label: &'static str,
+        opponent_mode: SmartAutomovePreference,
+        seed_suffix: &'static str,
+    }
+
+    #[derive(Default)]
+    struct PolicyWinnerStats {
+        total_games: usize,
+        baseline_wins: usize,
+        policy_wins: usize,
+        no_policy_wins: usize,
+        candidate_traces: usize,
+        missing_first_diff: usize,
+    }
+
+    let shipping_profile = reliability_shipping_profile_id();
+    let shipping_selector = profile_selector_from_name(shipping_profile.as_str())
+        .unwrap_or_else(|| panic!("shipping '{}' not found", shipping_profile));
+    let candidates = pro_profile_sweep_candidate_list_from_env(
+        "SMART_PRO_POLICY_WINNER_CANDIDATES",
+        "frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard",
+    );
+    assert!(
+        candidates.len() >= 2,
+        "SMART_PRO_POLICY_WINNER_CANDIDATES must name at least a baseline and one candidate"
+    );
+    let baseline = candidates[0];
+    let panel_filter = pro_sweep_filter_tokens("SMART_PRO_POLICY_WINNER_PANEL_FILTER", "all");
+    let duel_filter = pro_sweep_filter_tokens("SMART_PRO_POLICY_WINNER_DUEL_FILTER", "all");
+    let max_plies = env_usize("SMART_PRO_POLICY_WINNER_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let trace_limit = env_usize("SMART_PRO_POLICY_WINNER_TRACE_LIMIT")
+        .unwrap_or(24)
+        .max(1);
+    let aggregate_limit = env_usize("SMART_PRO_POLICY_WINNER_AGGREGATE_LIMIT")
+        .unwrap_or(96)
+        .max(1);
+    let duel_specs = vec![
+        PolicyWinnerDuelSpec {
+            label: "vs_shipping_pro",
+            opponent_mode: SmartAutomovePreference::Pro,
+            seed_suffix: "",
+        },
+        PolicyWinnerDuelSpec {
+            label: "vs_shipping_normal",
+            opponent_mode: SmartAutomovePreference::Normal,
+            seed_suffix: "_vs_normal",
+        },
+        PolicyWinnerDuelSpec {
+            label: "vs_shipping_fast",
+            opponent_mode: SmartAutomovePreference::Fast,
+            seed_suffix: "_vs_fast",
+        },
+    ];
+
+    println!(
+        "pro policy winner: baseline={} candidates={} panels={} duels={} max_plies={}",
+        baseline.id,
+        candidates
+            .iter()
+            .skip(1)
+            .map(|candidate| candidate.id)
+            .collect::<Vec<_>>()
+            .join(","),
+        pro_promotion_dashboard_panel_specs()
+            .into_iter()
+            .filter(|panel| pro_sweep_filter_allows(&panel_filter, panel.label))
+            .map(|panel| panel.label)
+            .collect::<Vec<_>>()
+            .join(","),
+        duel_specs
+            .iter()
+            .filter(|duel| pro_sweep_filter_allows(&duel_filter, duel.label))
+            .map(|duel| duel.label)
+            .collect::<Vec<_>>()
+            .join(","),
+        max_plies,
+    );
+
+    for panel in pro_promotion_dashboard_panel_specs()
+        .into_iter()
+        .filter(|panel| pro_sweep_filter_allows(&panel_filter, panel.label))
+    {
+        let repeats = env_usize("SMART_PRO_POLICY_WINNER_REPEATS")
+            .unwrap_or(panel.default_repeats)
+            .max(1);
+        let games = env_usize("SMART_PRO_POLICY_WINNER_GAMES")
+            .unwrap_or(panel.default_games)
+            .max(1);
+        let panel_seed_tag = env_string_value("SMART_PRO_POLICY_WINNER_SEED_TAG")
+            .unwrap_or_else(|| panel.seed_tag.to_string());
+
+        with_pro_promotion_dashboard_panel(panel, || {
+            for duel in duel_specs
+                .iter()
+                .filter(|duel| pro_sweep_filter_allows(&duel_filter, duel.label))
+            {
+                let opponent_budget = SearchBudget::from_preference(duel.opponent_mode);
+                let duel_seed_tag = format!("{}{}", panel_seed_tag, duel.seed_suffix);
+                let mut stats = PolicyWinnerStats::default();
+                let mut class_counts = BTreeMap::<String, usize>::new();
+                let mut winner_counts = BTreeMap::<String, usize>::new();
+                let mut winner_context_counts = BTreeMap::<String, usize>::new();
+                let mut winner_pair_counts = BTreeMap::<String, usize>::new();
+                let mut printed = 0usize;
+
+                for repeat_index in 0..repeats {
+                    let seed = seed_for_budget_duel_repeat_and_tag(
+                        pro_budget(),
+                        opponent_budget,
+                        repeat_index,
+                        duel_seed_tag.as_str(),
+                    );
+                    let opening_fens = generate_opening_fens_cached(seed, games);
+                    for (game_index, opening_fen) in opening_fens.iter().enumerate() {
+                        let variant = MonsGame::from_fen(opening_fen.as_str(), false)
+                            .expect("valid opening fen")
+                            .variant();
+                        for candidate_is_white in [true, false] {
+                            stats.total_games += 1;
+                            let baseline_trace = play_profile_sweep_attribution_trace(
+                                baseline,
+                                shipping_selector,
+                                opponent_budget,
+                                opening_fen.as_str(),
+                                candidate_is_white,
+                                max_plies,
+                            );
+                            if matches!(baseline_trace.result, MatchResult::ProfileAWin) {
+                                stats.baseline_wins += 1;
+                                let key = format!(
+                                    "class=baseline_win policy={} variant={} candidate_is_white={}",
+                                    baseline.id,
+                                    automove_variant_label(variant),
+                                    candidate_is_white,
+                                );
+                                *class_counts.entry(key).or_default() += 1;
+                                continue;
+                            }
+
+                            let mut winning_trace = None;
+                            for candidate in candidates.iter().skip(1) {
+                                stats.candidate_traces += 1;
+                                let candidate_trace = play_profile_sweep_attribution_trace(
+                                    *candidate,
+                                    shipping_selector,
+                                    opponent_budget,
+                                    opening_fen.as_str(),
+                                    candidate_is_white,
+                                    max_plies,
+                                );
+                                if matches!(candidate_trace.result, MatchResult::ProfileAWin) {
+                                    winning_trace = Some((*candidate, candidate_trace));
+                                    break;
+                                }
+                            }
+
+                            let Some((winner, winner_trace)) = winning_trace else {
+                                stats.no_policy_wins += 1;
+                                let key = format!(
+                                    "class=no_policy_win variant={} candidate_is_white={}",
+                                    automove_variant_label(variant),
+                                    candidate_is_white,
+                                );
+                                *class_counts.entry(key).or_default() += 1;
+                                if printed < trace_limit {
+                                    println!(
+                                        "PRO_POLICY_WINNER_NO_POLICY_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"baseline_result\":\"{}\",\"opening\":\"{}\",\"baseline_final\":\"{}\"}}",
+                                        json_escape(panel.label),
+                                        json_escape(baseline.id),
+                                        json_escape(duel.label),
+                                        repeat_index,
+                                        game_index,
+                                        automove_variant_label(variant),
+                                        candidate_is_white,
+                                        format_match_result(baseline_trace.result),
+                                        json_escape(opening_fen),
+                                        json_escape(&baseline_trace.final_fen),
+                                    );
+                                    printed += 1;
+                                }
+                                continue;
+                            };
+
+                            stats.policy_wins += 1;
+                            let winner_key = format!(
+                                "class=policy_win policy={} variant={} candidate_is_white={}",
+                                winner.id,
+                                automove_variant_label(variant),
+                                candidate_is_white,
+                            );
+                            *winner_counts.entry(winner_key).or_default() += 1;
+
+                            let Some(divergence) = first_profile_sweep_candidate_divergence(
+                                &baseline_trace,
+                                &winner_trace,
+                            ) else {
+                                stats.missing_first_diff += 1;
+                                let key = format!(
+                                    "class=policy_win policy={} duel={} variant={} candidate_is_white={} no_first_divergence",
+                                    winner.id,
+                                    duel.label,
+                                    automove_variant_label(variant),
+                                    candidate_is_white,
+                                );
+                                *winner_context_counts.entry(key).or_default() += 1;
+                                continue;
+                            };
+
+                            let context_key = format!(
+                                "class=policy_win policy={} duel={} variant={} candidate_is_white={} color={} baseline_branch={} policy_branch={} turn={} mons_moves={} can_action={} can_mana={} {}",
+                                winner.id,
+                                duel.label,
+                                automove_variant_label(variant),
+                                candidate_is_white,
+                                pro_profile_sweep_color_label(divergence.active_color),
+                                divergence.left_branch,
+                                divergence.right_branch,
+                                divergence.turn_number,
+                                divergence.mons_moves_count,
+                                divergence.can_use_action,
+                                divergence.can_move_mana,
+                                divergence.exact_context,
+                            );
+                            let pair_key = format!(
+                                "class=policy_win policy={} duel={} variant={} candidate_is_white={} baseline_move={} policy_move={}",
+                                winner.id,
+                                duel.label,
+                                automove_variant_label(variant),
+                                candidate_is_white,
+                                divergence.left_move_fen,
+                                divergence.right_move_fen,
+                            );
+                            *winner_context_counts.entry(context_key).or_default() += 1;
+                            *winner_pair_counts.entry(pair_key).or_default() += 1;
+
+                            if printed < trace_limit {
+                                println!(
+                                    "PRO_POLICY_WINNER_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"winner\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"baseline_result\":\"{}\",\"winner_result\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"winner_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"board\":\"{}\",\"baseline_move\":\"{}\",\"winner_move\":\"{}\",\"baseline_final\":\"{}\",\"winner_final\":\"{}\"}}",
+                                    json_escape(panel.label),
+                                    json_escape(baseline.id),
+                                    json_escape(winner.id),
+                                    json_escape(duel.label),
+                                    repeat_index,
+                                    game_index,
+                                    automove_variant_label(variant),
+                                    candidate_is_white,
+                                    format_match_result(baseline_trace.result),
+                                    format_match_result(winner_trace.result),
+                                    divergence.ply,
+                                    json_escape(divergence.left_branch),
+                                    json_escape(divergence.right_branch),
+                                    pro_profile_sweep_color_label(divergence.active_color),
+                                    divergence.turn_number,
+                                    divergence.mons_moves_count,
+                                    divergence.can_use_action,
+                                    divergence.can_move_mana,
+                                    json_escape(&divergence.exact_context),
+                                    json_escape(&divergence.board_fen),
+                                    json_escape(&divergence.left_move_fen),
+                                    json_escape(&divergence.right_move_fen),
+                                    json_escape(&baseline_trace.final_fen),
+                                    json_escape(&winner_trace.final_fen),
+                                );
+                                printed += 1;
+                            }
+                        }
+                    }
+                }
+
+                println!(
+                    "PRO_POLICY_WINNER_SUMMARY {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"total_games\":{},\"baseline_wins\":{},\"policy_wins\":{},\"no_policy_wins\":{},\"candidate_traces\":{},\"missing_first_diff\":{}}}",
+                    json_escape(panel.label),
+                    json_escape(baseline.id),
+                    json_escape(
+                        &candidates
+                            .iter()
+                            .skip(1)
+                            .map(|candidate| candidate.id)
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    ),
+                    json_escape(duel.label),
+                    stats.total_games,
+                    stats.baseline_wins,
+                    stats.policy_wins,
+                    stats.no_policy_wins,
+                    stats.candidate_traces,
+                    stats.missing_first_diff,
+                );
+                for (key, games) in pro_policy_matrix_sorted_counts(&class_counts, aggregate_limit)
+                {
+                    println!(
+                        "PRO_POLICY_WINNER_CLASS {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                        json_escape(panel.label),
+                        json_escape(duel.label),
+                        json_escape(key),
+                        games,
+                    );
+                }
+                for (key, games) in pro_policy_matrix_sorted_counts(&winner_counts, aggregate_limit)
+                {
+                    println!(
+                        "PRO_POLICY_WINNER_POLICY {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                        json_escape(panel.label),
+                        json_escape(duel.label),
+                        json_escape(key),
+                        games,
+                    );
+                }
+                for (key, games) in
+                    pro_policy_matrix_sorted_counts(&winner_context_counts, aggregate_limit)
+                {
+                    println!(
+                        "PRO_POLICY_WINNER_CONTEXT {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                        json_escape(panel.label),
+                        json_escape(duel.label),
+                        json_escape(key),
+                        games,
+                    );
+                }
+                for (key, games) in
+                    pro_policy_matrix_sorted_counts(&winner_pair_counts, aggregate_limit)
+                {
+                    println!(
+                        "PRO_POLICY_WINNER_PAIR {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
                         json_escape(panel.label),
                         json_escape(duel.label),
                         json_escape(key),

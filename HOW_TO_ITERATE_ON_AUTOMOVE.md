@@ -63,6 +63,7 @@ Use `./scripts/run-automove-experiment.sh` when you need one stage at a time or 
 ./scripts/run-automove-experiment.sh pro-promotion-dashboard frontier_pro_v2_raw
 ./scripts/run-automove-experiment.sh pro-sweep-decision-record frontier_pro_v2_guarded
 ./scripts/run-automove-experiment.sh pro-policy-matrix frontier_pro_v2_guarded,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard
+./scripts/run-automove-experiment.sh pro-policy-winner frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,shipping_pro_search_control
 ```
 
 ## Structural Reset
@@ -110,6 +111,7 @@ Use diagnostics only after the canonical loop shows what is still missing.
 - `smart_automove_pro_profile_attribution_probe`
 - `smart_automove_pro_sweep_decision_record_probe`
 - `smart_automove_pro_policy_matrix_probe`
+- `smart_automove_pro_policy_winner_probe`
 - `smart_automove_pro_promotion_dashboard_probe`
 - `smart_automove_pro_decision_record_aggregation_probe`
 - `smart_automove_pro_forced_root_oracle_probe`
@@ -197,6 +199,14 @@ SMART_PRO_POLICY_MATRIX_REPEATS=1 \
 SMART_PRO_POLICY_MATRIX_GAMES=1 \
 SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE=true \
 ./scripts/run-automove-experiment.sh pro-policy-matrix frontier_pro_v2_guarded,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard
+```
+
+`smart_automove_pro_policy_winner_probe` is the faster selector-design companion for a policy matrix with good oracle coverage. It plays the baseline first; when the baseline loses, it tries candidate policies in the provided order until one wins, then prints `PRO_POLICY_WINNER_POLICY`, `PRO_POLICY_WINNER_CONTEXT`, and `PRO_POLICY_WINNER_PAIR`. Use it before writing a selector over an already-viable policy set, but validate the resulting selector with `pro-promotion-dashboard`; first-winning context alone can hide policy-entry timing conflicts.
+
+```sh
+SMART_PRO_POLICY_WINNER_PANEL_FILTER=sampled \
+SMART_PRO_POLICY_WINNER_DUEL_FILTER=vs_shipping_pro \
+./scripts/run-automove-experiment.sh pro-policy-winner frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard
 ```
 
 `smart_automove_pro_forced_root_oracle_probe` forces each scored root once from one blocker board, then continues with a registered sweep candidate against retained shipping Pro. Use it when the policy matrix reports `no_policy_wins` for a specific context and you need to know whether the root set already contains winning moves before creating another policy. Override `SMART_PRO_FORCED_ROOT_ORACLE_FEN`, `SMART_PRO_FORCED_ROOT_ORACLE_CONTINUATION`, and `SMART_PRO_FORCED_ROOT_ORACLE_ROOT_LIMIT` for focused boards.
