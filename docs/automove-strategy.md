@@ -146,4 +146,6 @@ The latest `pro-policy-winner` refresh found oracle coverage on sampled Pro and 
 
 The broad utility-admission variant is also killed. Admitting projected-utility roots into the reply-risk guard before final selection failed sampled Pro at `7-5`, so the next root-evaluation attempt needs a new cross-budget stability signal rather than another utility gate around reply-risk shortlist membership.
 
+The simple cross-budget score-floor signal is killed too. A test-only candidate that preserved guarded wrapper branches and only overrode `frontier_execute` roots when their Pro/Normal/Fast guarded score floor beat the guarded root still failed sampled Pro at `7-5` after enough overrides to change behavior. Future stability work needs a feature below raw search score agreement, not another internal budget floor.
+
 The next useful implementation should be a shared utility or root-evaluation feature that explains why the winning policy sometimes must enter earlier or later than the printed first divergence. Use `pro-policy-matrix` and `pro-policy-winner` to evaluate new policy components, but runtime code should change only after a candidate passes the promotion dashboard on both sampled and active panels.
