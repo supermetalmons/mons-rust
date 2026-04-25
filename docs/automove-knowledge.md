@@ -196,6 +196,7 @@ cargo test --release --lib <test_name> -- --ignored --nocapture
 - Kill any proposed shared white `forward_bridge` spend when the candidate seams split across head acceptance, reply-risk approval, and runtime fallback stages. One repeated pair is still not enough when the supporting seams disagree structurally.
 - Kill any white turn-three mana-only legacy-progress override that only removes the clean white half of `outer_edge_mana_rows`; the direct positive-safety `window=0/deny=0` cut did that and still left the sampled gate blocked by late black `outer_edge` plus Fast `alternating_mana_rows` and `forward_bridge_mana_rows`.
 - Kill any proposed late-black same-family legacy-alignment spend if the remaining sampled Fast blockers are still mixed across colors or stages. A clean local `ApprovedReplyRiskGuard` seam is not enough by itself.
+- Kill no-low-budget guard context gates when the gains require variant-positive lists or broad black mana-only screens. The latest policy-matrix refresh showed broad no-low-budget can help Normal/Fast but stays mixed on sampled Pro, while a scoped screen rotated Pro black mana-only rows and a positive-list version was inert on active Pro/Fast.
 - Kill any line that stays inert at `target_changed=0 off_target_changed=0` against active `frontier_pro_v2_guarded`.
 - Kill any line that only changes advisor labels or `pre_accept` metadata while the final selected root stays unchanged.
 - Kill any line that widens shortlist or injection coverage without moving the approved root on the live walls.
