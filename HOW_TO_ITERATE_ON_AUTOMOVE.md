@@ -160,6 +160,14 @@ SMART_AUTOMOVE_VARIANTS=alternating_mana_rows,forward_bridge_mana_rows \
 ./scripts/run-automove-experiment.sh pro-promotion-dashboard frontier_pro_v2_raw
 ```
 
+For expensive or high-risk scouts, kill quickly on the sampled panel before spending guarded deltas or active blockers:
+
+```sh
+SMART_PRO_DASHBOARD_PANEL_FILTER=sampled \
+SMART_PRO_DASHBOARD_INCLUDE_GUARDED=false \
+./scripts/run-automove-experiment.sh pro-promotion-dashboard <candidate>
+```
+
 `smart_automove_pro_profile_attribution_probe` replays the same opening seeds with two sweep candidates against the same shipping opponent, then prints outcome-changing first divergences as `PRO_PROFILE_SWEEP_ATTRIBUTION`, `PRO_PROFILE_SWEEP_ATTRIBUTION_SUMMARY`, `PRO_PROFILE_SWEEP_ATTRIBUTION_BRANCH`, and `PRO_PROFILE_SWEEP_ATTRIBUTION_PAIR` lines. It defaults to `frontier_pro_v2_guarded` vs `frontier_pro_v2_raw`; override with `SMART_PRO_SWEEP_ATTRIBUTION_LEFT` and `SMART_PRO_SWEEP_ATTRIBUTION_RIGHT`.
 
 ```sh
