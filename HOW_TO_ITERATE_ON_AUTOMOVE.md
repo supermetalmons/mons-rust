@@ -63,6 +63,7 @@ Use `./scripts/run-automove-experiment.sh` when you need one stage at a time or 
 ./scripts/run-automove-experiment.sh pro-promotion-dashboard frontier_pro_v2_raw
 ./scripts/run-automove-experiment.sh pro-sweep-decision-record frontier_pro_v2_guarded
 ./scripts/run-automove-experiment.sh pro-policy-matrix frontier_pro_v2_guarded,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard
+./scripts/run-automove-experiment.sh pro-policy-cross-budget frontier_pro_v2_guarded,shipping_pro_search_control,frontier_pro_v2_raw
 ./scripts/run-automove-experiment.sh pro-policy-winner frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,shipping_pro_search_control
 ```
 
@@ -217,6 +218,17 @@ For broad portfolios, keep it filtered or cap exploratory cost with `SMART_PRO_P
 SMART_PRO_POLICY_WINNER_PANEL_FILTER=sampled \
 SMART_PRO_POLICY_WINNER_DUEL_FILTER=vs_shipping_pro \
 ./scripts/run-automove-experiment.sh pro-policy-winner frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard
+```
+
+`smart_automove_pro_policy_cross_budget_probe` checks whether one policy choice is stable for the same opening side against Pro, Normal, and Fast shipping opponents. It defaults to the sampled panel with one repeat and one opening, then prints `PRO_POLICY_CROSS_BUDGET_SUMMARY`, `PRO_POLICY_CROSS_BUDGET_CLASS`, and policy lists for all-budget wins and non-regressing repairs. Use it before building a selector from policy-winner data; a `budget_conflict` class means a policy helps one opponent budget while regressing another on the same board family, so the next spend needs a shared utility feature rather than another static gate.
+
+Keep cross-budget runs narrow. Start with the smallest policy set that explains the conflict, then widen only if the summary shows clean repairs:
+
+```sh
+SMART_PRO_POLICY_CROSS_BUDGET_PANEL_FILTER=sampled \
+SMART_PRO_POLICY_CROSS_BUDGET_REPEATS=1 \
+SMART_PRO_POLICY_CROSS_BUDGET_GAMES=1 \
+./scripts/run-automove-experiment.sh pro-policy-cross-budget frontier_pro_v2_guarded,shipping_pro_search_control,frontier_pro_v2_raw
 ```
 
 `smart_automove_pro_forced_root_oracle_probe` forces each scored root once from one blocker board, then continues with a registered sweep candidate against retained shipping Pro. Use it when the policy matrix reports `no_policy_wins` for a specific context and you need to know whether the root set already contains winning moves before creating another policy. Override `SMART_PRO_FORCED_ROOT_ORACLE_FEN`, `SMART_PRO_FORCED_ROOT_ORACLE_CONTINUATION`, and `SMART_PRO_FORCED_ROOT_ORACLE_ROOT_LIMIT` for focused boards. When the board comes from a full-opening first divergence, set `SMART_PRO_FORCED_ROOT_ORACLE_START_PLY` to that `first_diff_ply`; otherwise the oracle grants extra rollout horizon and can turn full-opening losses into false local wins.

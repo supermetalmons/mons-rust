@@ -2492,6 +2492,360 @@ fn smart_automove_pro_policy_matrix_probe() {
 }
 
 #[test]
+#[ignore = "diagnostic: compare one policy choice across Pro, Normal, and Fast opponents on the same openings"]
+fn smart_automove_pro_policy_cross_budget_probe() {
+    #[derive(Clone)]
+    struct CrossBudgetDuelSpec {
+        label: &'static str,
+        opponent_mode: SmartAutomovePreference,
+    }
+
+    struct CrossBudgetPolicyOutcome {
+        candidate: ProProfileSweepCandidate,
+        results: Vec<MatchResult>,
+    }
+
+    #[derive(Default)]
+    struct CrossBudgetStats {
+        total_states: usize,
+        baseline_all_budget_wins: usize,
+        candidate_any_all_budget_wins: usize,
+        clean_repair_states: usize,
+        nonregressing_repair_states: usize,
+        budget_conflict_states: usize,
+        no_policy_help_states: usize,
+    }
+
+    fn labelled_results(duels: &[CrossBudgetDuelSpec], results: &[MatchResult]) -> String {
+        duels
+            .iter()
+            .zip(results.iter())
+            .map(|(duel, result)| format!("{}={}", duel.label, format_match_result(*result)))
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    fn policy_list(policies: &[&str]) -> String {
+        if policies.is_empty() {
+            "none".to_string()
+        } else {
+            policies.join(",")
+        }
+    }
+
+    let shipping_profile = reliability_shipping_profile_id();
+    let shipping_selector = profile_selector_from_name(shipping_profile.as_str())
+        .unwrap_or_else(|| panic!("shipping '{}' not found", shipping_profile));
+    let candidates = pro_profile_sweep_candidate_list_from_env(
+        "SMART_PRO_POLICY_CROSS_BUDGET_CANDIDATES",
+        "frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard",
+    );
+    assert!(
+        candidates.len() >= 2,
+        "SMART_PRO_POLICY_CROSS_BUDGET_CANDIDATES must name at least a baseline and one candidate"
+    );
+    let baseline = candidates[0];
+    let panel_filter =
+        pro_sweep_filter_tokens("SMART_PRO_POLICY_CROSS_BUDGET_PANEL_FILTER", "sampled");
+    let max_plies = env_usize("SMART_PRO_POLICY_CROSS_BUDGET_MAX_PLIES")
+        .unwrap_or(96)
+        .max(56);
+    let trace_limit = env_usize("SMART_PRO_POLICY_CROSS_BUDGET_TRACE_LIMIT")
+        .unwrap_or(24)
+        .max(1);
+    let aggregate_limit = env_usize("SMART_PRO_POLICY_CROSS_BUDGET_AGGREGATE_LIMIT")
+        .unwrap_or(96)
+        .max(1);
+    let duel_specs = vec![
+        CrossBudgetDuelSpec {
+            label: "vs_shipping_pro",
+            opponent_mode: SmartAutomovePreference::Pro,
+        },
+        CrossBudgetDuelSpec {
+            label: "vs_shipping_normal",
+            opponent_mode: SmartAutomovePreference::Normal,
+        },
+        CrossBudgetDuelSpec {
+            label: "vs_shipping_fast",
+            opponent_mode: SmartAutomovePreference::Fast,
+        },
+    ];
+
+    println!(
+        "pro policy cross budget: baseline={} candidates={} panels={} max_plies={} duels={}",
+        baseline.id,
+        candidates
+            .iter()
+            .skip(1)
+            .map(|candidate| candidate.id)
+            .collect::<Vec<_>>()
+            .join(","),
+        pro_promotion_dashboard_panel_specs()
+            .into_iter()
+            .filter(|panel| pro_sweep_filter_allows(&panel_filter, panel.label))
+            .map(|panel| panel.label)
+            .collect::<Vec<_>>()
+            .join(","),
+        max_plies,
+        duel_specs
+            .iter()
+            .map(|duel| duel.label)
+            .collect::<Vec<_>>()
+            .join(","),
+    );
+
+    for panel in pro_promotion_dashboard_panel_specs()
+        .into_iter()
+        .filter(|panel| pro_sweep_filter_allows(&panel_filter, panel.label))
+    {
+        let repeats = env_usize("SMART_PRO_POLICY_CROSS_BUDGET_REPEATS")
+            .unwrap_or(1)
+            .max(1);
+        let games = env_usize("SMART_PRO_POLICY_CROSS_BUDGET_GAMES")
+            .unwrap_or(1)
+            .max(1);
+        let panel_seed_tag = env_string_value("SMART_PRO_POLICY_CROSS_BUDGET_SEED_TAG")
+            .unwrap_or_else(|| panel.seed_tag.to_string());
+
+        with_pro_promotion_dashboard_panel(panel, || {
+            let mut stats = CrossBudgetStats::default();
+            let mut class_counts = BTreeMap::<String, usize>::new();
+            let mut all_win_policy_counts = BTreeMap::<String, usize>::new();
+            let mut nonregressing_policy_counts = BTreeMap::<String, usize>::new();
+            let mut printed = 0usize;
+
+            for repeat_index in 0..repeats {
+                let seed = seed_for_budget_duel_repeat_and_tag(
+                    pro_budget(),
+                    SearchBudget::from_preference(SmartAutomovePreference::Pro),
+                    repeat_index,
+                    panel_seed_tag.as_str(),
+                );
+                let opening_fens = generate_opening_fens_cached(seed, games);
+                for (game_index, opening_fen) in opening_fens.iter().enumerate() {
+                    let variant = MonsGame::from_fen(opening_fen.as_str(), false)
+                        .expect("valid opening fen")
+                        .variant();
+                    for candidate_is_white in [true, false] {
+                        stats.total_states += 1;
+                        let outcomes = candidates
+                            .iter()
+                            .map(|candidate| {
+                                let results = duel_specs
+                                    .iter()
+                                    .map(|duel| {
+                                        let trace = play_profile_sweep_attribution_trace(
+                                            *candidate,
+                                            shipping_selector,
+                                            SearchBudget::from_preference(duel.opponent_mode),
+                                            opening_fen.as_str(),
+                                            candidate_is_white,
+                                            max_plies,
+                                        );
+                                        trace.result
+                                    })
+                                    .collect::<Vec<_>>();
+                                CrossBudgetPolicyOutcome {
+                                    candidate: *candidate,
+                                    results,
+                                }
+                            })
+                            .collect::<Vec<_>>();
+                        let baseline_results = &outcomes[0].results;
+                        let baseline_points = baseline_results
+                            .iter()
+                            .map(|result| match_result_points(*result))
+                            .collect::<Vec<_>>();
+                        let baseline_all_wins = baseline_results
+                            .iter()
+                            .all(|result| matches!(result, MatchResult::ProfileAWin));
+                        let all_win_policies = outcomes
+                            .iter()
+                            .skip(1)
+                            .filter(|outcome| {
+                                outcome
+                                    .results
+                                    .iter()
+                                    .all(|result| matches!(result, MatchResult::ProfileAWin))
+                            })
+                            .map(|outcome| outcome.candidate.id)
+                            .collect::<Vec<_>>();
+                        let nonregressing_policies = outcomes
+                            .iter()
+                            .skip(1)
+                            .filter(|outcome| {
+                                let candidate_points = outcome
+                                    .results
+                                    .iter()
+                                    .map(|result| match_result_points(*result))
+                                    .collect::<Vec<_>>();
+                                candidate_points
+                                    .iter()
+                                    .zip(baseline_points.iter())
+                                    .all(|(candidate, baseline)| candidate >= baseline)
+                                    && candidate_points
+                                        .iter()
+                                        .zip(baseline_points.iter())
+                                        .any(|(candidate, baseline)| candidate > baseline)
+                            })
+                            .map(|outcome| outcome.candidate.id)
+                            .collect::<Vec<_>>();
+                        let improving_policies = outcomes
+                            .iter()
+                            .skip(1)
+                            .filter(|outcome| {
+                                outcome.results.iter().zip(baseline_results.iter()).any(
+                                    |(candidate, baseline)| {
+                                        match_result_points(*candidate)
+                                            > match_result_points(*baseline)
+                                    },
+                                )
+                            })
+                            .map(|outcome| outcome.candidate.id)
+                            .collect::<Vec<_>>();
+
+                        if baseline_all_wins {
+                            stats.baseline_all_budget_wins += 1;
+                        }
+                        if !all_win_policies.is_empty() {
+                            stats.candidate_any_all_budget_wins += 1;
+                        }
+                        let class = if baseline_all_wins && !all_win_policies.is_empty() {
+                            "shared_all_budget_win"
+                        } else if baseline_all_wins {
+                            "baseline_only_all_budget_win"
+                        } else if !all_win_policies.is_empty() {
+                            stats.clean_repair_states += 1;
+                            "candidate_clean_all_budget_repair"
+                        } else if !nonregressing_policies.is_empty() {
+                            stats.nonregressing_repair_states += 1;
+                            "candidate_nonregressing_repair"
+                        } else if !improving_policies.is_empty() {
+                            stats.budget_conflict_states += 1;
+                            "budget_conflict"
+                        } else {
+                            stats.no_policy_help_states += 1;
+                            "no_policy_help"
+                        };
+
+                        let class_key = format!(
+                            "class={} variant={} candidate_is_white={}",
+                            class,
+                            automove_variant_label(variant),
+                            candidate_is_white,
+                        );
+                        *class_counts.entry(class_key).or_default() += 1;
+                        for policy in all_win_policies.iter() {
+                            let key = format!(
+                                "class={} policy={} variant={} candidate_is_white={}",
+                                class,
+                                policy,
+                                automove_variant_label(variant),
+                                candidate_is_white,
+                            );
+                            *all_win_policy_counts.entry(key).or_default() += 1;
+                        }
+                        for policy in nonregressing_policies.iter() {
+                            let key = format!(
+                                "class={} policy={} variant={} candidate_is_white={}",
+                                class,
+                                policy,
+                                automove_variant_label(variant),
+                                candidate_is_white,
+                            );
+                            *nonregressing_policy_counts.entry(key).or_default() += 1;
+                        }
+
+                        if printed < trace_limit
+                            && (!baseline_all_wins || all_win_policies.is_empty())
+                        {
+                            let policy_results = outcomes
+                                .iter()
+                                .skip(1)
+                                .map(|outcome| {
+                                    format!(
+                                        "{}:{}",
+                                        outcome.candidate.id,
+                                        labelled_results(&duel_specs, &outcome.results)
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join("|");
+                            println!(
+                                "PRO_POLICY_CROSS_BUDGET_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"class\":\"{}\",\"baseline_results\":\"{}\",\"all_win_policies\":\"{}\",\"nonregressing_policies\":\"{}\",\"improving_policies\":\"{}\",\"policy_results\":\"{}\",\"opening\":\"{}\"}}",
+                                json_escape(panel.label),
+                                json_escape(baseline.id),
+                                repeat_index,
+                                game_index,
+                                automove_variant_label(variant),
+                                candidate_is_white,
+                                class,
+                                json_escape(&labelled_results(&duel_specs, baseline_results)),
+                                json_escape(&policy_list(&all_win_policies)),
+                                json_escape(&policy_list(&nonregressing_policies)),
+                                json_escape(&policy_list(&improving_policies)),
+                                json_escape(&policy_results),
+                                json_escape(opening_fen),
+                            );
+                            printed += 1;
+                        }
+                    }
+                }
+            }
+
+            println!(
+                "PRO_POLICY_CROSS_BUDGET_SUMMARY {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"total_states\":{},\"baseline_all_budget_wins\":{},\"candidate_any_all_budget_wins\":{},\"clean_repair_states\":{},\"nonregressing_repair_states\":{},\"budget_conflict_states\":{},\"no_policy_help_states\":{}}}",
+                json_escape(panel.label),
+                json_escape(baseline.id),
+                json_escape(
+                    &candidates
+                        .iter()
+                        .skip(1)
+                        .map(|candidate| candidate.id)
+                        .collect::<Vec<_>>()
+                        .join(",")
+                ),
+                stats.total_states,
+                stats.baseline_all_budget_wins,
+                stats.candidate_any_all_budget_wins,
+                stats.clean_repair_states,
+                stats.nonregressing_repair_states,
+                stats.budget_conflict_states,
+                stats.no_policy_help_states,
+            );
+            for (key, states) in pro_policy_matrix_sorted_counts(&class_counts, aggregate_limit) {
+                println!(
+                    "PRO_POLICY_CROSS_BUDGET_CLASS {{\"panel\":\"{}\",\"key\":\"{}\",\"states\":{}}}",
+                    json_escape(panel.label),
+                    json_escape(key),
+                    states,
+                );
+            }
+            for (key, states) in
+                pro_policy_matrix_sorted_counts(&all_win_policy_counts, aggregate_limit)
+            {
+                println!(
+                    "PRO_POLICY_CROSS_BUDGET_ALL_WIN_POLICY {{\"panel\":\"{}\",\"key\":\"{}\",\"states\":{}}}",
+                    json_escape(panel.label),
+                    json_escape(key),
+                    states,
+                );
+            }
+            for (key, states) in
+                pro_policy_matrix_sorted_counts(&nonregressing_policy_counts, aggregate_limit)
+            {
+                println!(
+                    "PRO_POLICY_CROSS_BUDGET_NONREGRESSING_POLICY {{\"panel\":\"{}\",\"key\":\"{}\",\"states\":{}}}",
+                    json_escape(panel.label),
+                    json_escape(key),
+                    states,
+                );
+            }
+        });
+    }
+}
+
+#[test]
 #[ignore = "diagnostic: short-circuit policy winner contexts for selector design"]
 fn smart_automove_pro_policy_winner_probe() {
     #[derive(Clone)]

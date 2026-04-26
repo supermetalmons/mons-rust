@@ -21,6 +21,7 @@ stages:
   pro-promotion-dashboard diagnostic: summarize sampled + active-blocker promotion shape
   pro-sweep-decision-record diagnostic: aggregate nonwins/deltas for one sweep candidate
   pro-policy-matrix      diagnostic: compare multiple sweep policies on identical openings
+  pro-policy-cross-budget diagnostic: compare one policy choice across Pro/Normal/Fast opponents on identical openings
   pro-policy-winner      diagnostic: short-circuit first winning policy contexts
 
 defaults:
@@ -39,6 +40,7 @@ examples:
   ./scripts/run-automove-experiment.sh pro-promotion-dashboard frontier_pro_v2_raw
   ./scripts/run-automove-experiment.sh pro-sweep-decision-record frontier_pro_v2_guarded
   ./scripts/run-automove-experiment.sh pro-policy-matrix frontier_pro_v2_guarded,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard
+  ./scripts/run-automove-experiment.sh pro-policy-cross-budget frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,shipping_pro_search_control
   ./scripts/run-automove-experiment.sh pro-policy-winner frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,shipping_pro_search_control
 EOF_HELP
 }
@@ -284,6 +286,9 @@ case "${stage}" in
   pro-policy-matrix)
     require_supported_sweep_filter "frontier" "${frontier}"
     ;;
+  pro-policy-cross-budget)
+    require_supported_sweep_filter "frontier" "${frontier}"
+    ;;
   pro-policy-winner)
     require_supported_sweep_filter "frontier" "${frontier}"
     ;;
@@ -382,6 +387,14 @@ case "${stage}" in
       "SMART_SHIPPING_PROFILE=${shipping}" \
       "SMART_PRO_RELIABILITY_SHIPPING_PROFILE=${shipping}" \
       "SMART_PRO_POLICY_MATRIX_CANDIDATES=${frontier}"
+    ;;
+  pro-policy-cross-budget)
+    run_cargo_logged \
+      "pro_policy_cross_budget_$(sanitize "${frontier}")" \
+      "smart_automove_pro_policy_cross_budget_probe" \
+      "SMART_SHIPPING_PROFILE=${shipping}" \
+      "SMART_PRO_RELIABILITY_SHIPPING_PROFILE=${shipping}" \
+      "SMART_PRO_POLICY_CROSS_BUDGET_CANDIDATES=${frontier}"
     ;;
   pro-policy-winner)
     run_cargo_logged \
