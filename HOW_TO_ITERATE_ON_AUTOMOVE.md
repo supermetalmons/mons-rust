@@ -13,7 +13,7 @@ Archived profiles, archived seams, and archived stages are not valid experiment 
 5. Use `./scripts/run-automove-canonical-loop.sh` for the default loop.
 6. Pick exactly one live hypothesis before editing runtime code.
 7. Probe first when the mechanism is unclear.
-8. When there is no live hypothesis, switch to the structural reset in `docs/automove-strategy.md` instead of running another seam loop.
+8. When there is no live hypothesis, read `docs/automove-reset-review.md` and switch to the structural reset instead of running another seam loop.
 9. Archive or kill the line before starting another.
 10. Clean logs and stamps before ending the session.
 
@@ -76,7 +76,8 @@ Use this path when `AUTOMOVE_IDEAS.md` says there is no live challenger or when 
 ```
 
 - Read `docs/automove-strategy.md` first.
-- The scout is diagnostic-only and runs both canonical sampled and active-blocker panels.
+- Read `docs/automove-reset-review.md` when the work feels stuck or when no single runtime hypothesis is live.
+- The scout is diagnostic-only and starts with `pro-promotion-dashboard` across canonical sampled and active-blocker panels.
 - Do not edit runtime code for a broad Pro change unless the candidate is strong on both panels.
 - Add `--confirm` only after the default scout panels look promotable.
 
@@ -93,7 +94,7 @@ Use this path when `AUTOMOVE_IDEAS.md` says there is no live challenger or when 
 ## Iteration Lifecycle
 
 1. Read `AUTOMOVE_IDEAS.md` and select the single current hypothesis.
-2. If there is no current hypothesis, run the structural reset path and create a test-only candidate or diagnostic before touching runtime code.
+2. If there is no current hypothesis, use `docs/automove-reset-review.md` to choose a major path before touching runtime code.
 3. If the mechanism is not already proven, run one targeted diagnostic before editing runtime code.
 4. Make the narrowest runtime or test-only change that can falsify the hypothesis.
 5. Run the canonical stages in order; stop immediately on a failed hard gate.

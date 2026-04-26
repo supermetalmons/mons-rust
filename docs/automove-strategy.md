@@ -1,6 +1,6 @@
 # Automove Structural Strategy
 
-This document is the reset point when local automove iteration stalls. Use it before cutting another Pro runtime patch.
+This document is the operational reset point when local automove iteration stalls. Use it before cutting another Pro runtime patch. For the larger architectural review and current strategic paths, read `docs/automove-reset-review.md`.
 
 ## Diagnosis
 
@@ -178,3 +178,5 @@ The portfolio allowed-head continuation scout is killed as well. Feeding the cur
 The latest retained guarded sampled decision-record refresh did not expose a code path to spend on. Pro, Normal, and Fast nonwins all reached `frontier_execute`, but they were singleton-heavy below that branch and split across variants, colors, turns, resource states, families, accepted-head/advisor state, and exact move pairs. Future runtime work should start from a new shared utility/root-evaluation feature or a candidate that already passes the promotion dashboard, not from another `frontier_execute` selector.
 
 The next useful implementation should be a shared utility or root-evaluation feature that explains why the winning policy sometimes must enter earlier or later than the printed first divergence. Use `pro-policy-matrix`, `pro-policy-winner`, and `pro-policy-cross-budget` to evaluate new policy components, but runtime code should change only after a candidate passes the promotion dashboard on both sampled and active panels.
+
+The broader reset position is captured in `docs/automove-reset-review.md`: future work should either build an outcome-corpus diagnostic that ranks repeated mechanisms before runtime code is written, or create a test-only ProV4 unified root policy that ranks guarded, raw, preserved, omitted, head, fallback, and shipping-control roots in one calibrated comparator. Do not continue by adding another static selector over the existing policy portfolio.
