@@ -1492,14 +1492,12 @@ fn pro_policy_mechanism_profile_for_baseline(baseline_id: &str) -> &str {
     }
 }
 
-fn pro_policy_target_root_utility_status(
-    profile_name: &str,
-    mode: SmartAutomovePreference,
+fn pro_policy_target_root_utility_status_from_scored_roots(
     game: &MonsGame,
+    config: AutomoveSearchConfig,
+    scored_roots: &[RootEvaluation],
     move_fen: &str,
 ) -> String {
-    let (config, scored_roots, _, _) =
-        profile_runtime_scored_roots_with_forced_engine_inputs(profile_name, mode, game);
     let Some((index, root)) = scored_roots
         .iter()
         .enumerate()
@@ -1754,10 +1752,30 @@ fn pro_policy_mechanism_class_keys(
 ) -> Vec<String> {
     let (config, scored_roots, _, _) =
         profile_runtime_scored_roots_with_forced_engine_inputs(mechanism_profile, mode, game);
-    let baseline = pro_policy_mechanism_root_class(
+    pro_policy_mechanism_class_keys_from_scored_roots(
         game,
         config,
         scored_roots.as_slice(),
+        probe,
+        advisor,
+        baseline_move_fen,
+        winner_move_fen,
+    )
+}
+
+fn pro_policy_mechanism_class_keys_from_scored_roots(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+    scored_roots: &[RootEvaluation],
+    probe: &RuntimeDecisionProbe,
+    advisor: Option<&crate::models::mons_game_model::ProV2RootAdvisorDecision>,
+    baseline_move_fen: &str,
+    winner_move_fen: &str,
+) -> Vec<String> {
+    let baseline = pro_policy_mechanism_root_class(
+        game,
+        config,
+        scored_roots,
         probe,
         advisor,
         baseline_move_fen,
@@ -1765,7 +1783,7 @@ fn pro_policy_mechanism_class_keys(
     let winner = pro_policy_mechanism_root_class(
         game,
         config,
-        scored_roots.as_slice(),
+        scored_roots,
         probe,
         advisor,
         winner_move_fen,
@@ -3332,6 +3350,7 @@ fn pro_policy_winner_stoplight_label(
     stats: &PolicyWinnerStats,
     winner_counts: &BTreeMap<String, usize>,
     winner_mechanism_counts: &BTreeMap<String, usize>,
+    winner_mechanism_class_counts: &BTreeMap<String, usize>,
     include_mechanism: bool,
 ) -> &'static str {
     if stats.candidate_trace_limit_hit {
@@ -3342,6 +3361,8 @@ fn pro_policy_winner_stoplight_label(
         "baseline_only"
     } else if include_mechanism && max_count(winner_mechanism_counts) > 1 {
         "repeated_mechanism"
+    } else if include_mechanism && max_count(winner_mechanism_class_counts) > 2 {
+        "repeated_mechanism_class"
     } else if max_count(winner_counts) > 1 {
         "repeated_policy"
     } else {
@@ -3454,6 +3475,14 @@ fn smart_automove_pro_policy_winner_probe() {
         max_plies,
         include_mechanism,
     );
+
+    let mut global_stats = PolicyWinnerStats::default();
+    let mut global_class_counts = BTreeMap::<String, usize>::new();
+    let mut global_winner_counts = BTreeMap::<String, usize>::new();
+    let mut global_winner_context_counts = BTreeMap::<String, usize>::new();
+    let mut global_winner_pair_counts = BTreeMap::<String, usize>::new();
+    let mut global_winner_mechanism_counts = BTreeMap::<String, usize>::new();
+    let mut global_winner_mechanism_class_counts = BTreeMap::<String, usize>::new();
 
     for panel in pro_promotion_dashboard_panel_specs()
         .into_iter()
@@ -3641,36 +3670,42 @@ fn smart_automove_pro_policy_winner_probe() {
                                     &board,
                                 );
                                 let baseline_advisor = pro_v2_root_advisor_decision_snapshot();
-                                let baseline_status = decision_record_baseline_status(
-                                    mechanism_profile,
-                                    SmartAutomovePreference::Pro,
-                                    &board,
-                                    &baseline_probe,
-                                    baseline_advisor.as_ref(),
-                                    divergence.left_move_fen.as_str(),
-                                );
-                                let winner_status = decision_record_baseline_status(
-                                    mechanism_profile,
-                                    SmartAutomovePreference::Pro,
-                                    &board,
-                                    &baseline_probe,
-                                    baseline_advisor.as_ref(),
-                                    divergence.right_move_fen.as_str(),
-                                );
+                                let (mechanism_config, mechanism_scored_roots, _, _) =
+                                    profile_runtime_scored_roots_with_forced_engine_inputs(
+                                        mechanism_profile,
+                                        SmartAutomovePreference::Pro,
+                                        &board,
+                                    );
+                                let baseline_status =
+                                    decision_record_baseline_status_from_scored_roots(
+                                        mechanism_scored_roots.as_slice(),
+                                        &baseline_probe,
+                                        baseline_advisor.as_ref(),
+                                        divergence.left_move_fen.as_str(),
+                                    );
+                                let winner_status =
+                                    decision_record_baseline_status_from_scored_roots(
+                                        mechanism_scored_roots.as_slice(),
+                                        &baseline_probe,
+                                        baseline_advisor.as_ref(),
+                                        divergence.right_move_fen.as_str(),
+                                    );
                                 let approved_status =
                                     decision_record_approved_status(baseline_advisor.as_ref());
-                                let baseline_root = pro_policy_target_root_utility_status(
-                                    mechanism_profile,
-                                    SmartAutomovePreference::Pro,
-                                    &board,
-                                    divergence.left_move_fen.as_str(),
-                                );
-                                let winner_root = pro_policy_target_root_utility_status(
-                                    mechanism_profile,
-                                    SmartAutomovePreference::Pro,
-                                    &board,
-                                    divergence.right_move_fen.as_str(),
-                                );
+                                let baseline_root =
+                                    pro_policy_target_root_utility_status_from_scored_roots(
+                                        &board,
+                                        mechanism_config,
+                                        mechanism_scored_roots.as_slice(),
+                                        divergence.left_move_fen.as_str(),
+                                    );
+                                let winner_root =
+                                    pro_policy_target_root_utility_status_from_scored_roots(
+                                        &board,
+                                        mechanism_config,
+                                        mechanism_scored_roots.as_slice(),
+                                        divergence.right_move_fen.as_str(),
+                                    );
                                 let mechanism_key = format!(
                                     "class=policy_win mechanism_profile={} policy={} variant={} candidate_is_white={} color={} baseline_branch={} policy_branch={} baseline_stage={} turn={} mons_moves={} can_action={} can_mana={} selected_rank={:?} pre_family={:?} head_family={:?} head_accepted={} head_primary={:?} baseline_status={} winner_status={} approved={} baseline_root=[{}] winner_root=[{}] {}",
                                     mechanism_profile,
@@ -3698,10 +3733,10 @@ fn smart_automove_pro_policy_winner_probe() {
                                     baseline_probe.exact_context,
                                 );
                                 *winner_mechanism_counts.entry(mechanism_key).or_default() += 1;
-                                for class_key in pro_policy_mechanism_class_keys(
-                                    mechanism_profile,
-                                    SmartAutomovePreference::Pro,
+                                for class_key in pro_policy_mechanism_class_keys_from_scored_roots(
                                     &board,
+                                    mechanism_config,
+                                    mechanism_scored_roots.as_slice(),
                                     &baseline_probe,
                                     baseline_advisor.as_ref(),
                                     divergence.left_move_fen.as_str(),
@@ -3775,6 +3810,7 @@ fn smart_automove_pro_policy_winner_probe() {
                         &stats,
                         &winner_counts,
                         &winner_mechanism_counts,
+                        &winner_mechanism_class_counts,
                         include_mechanism,
                     ),
                     stats.policy_wins,
@@ -3851,8 +3887,127 @@ fn smart_automove_pro_policy_winner_probe() {
                         );
                     }
                 }
+
+                global_stats.total_games += stats.total_games;
+                global_stats.baseline_wins += stats.baseline_wins;
+                global_stats.policy_wins += stats.policy_wins;
+                global_stats.no_policy_wins += stats.no_policy_wins;
+                global_stats.candidate_traces += stats.candidate_traces;
+                global_stats.missing_first_diff += stats.missing_first_diff;
+                global_stats.candidate_trace_limit_hit |= stats.candidate_trace_limit_hit;
+                for (key, games) in &class_counts {
+                    *global_class_counts.entry(key.clone()).or_default() += *games;
+                }
+                for (key, games) in &winner_counts {
+                    *global_winner_counts.entry(key.clone()).or_default() += *games;
+                }
+                for (key, games) in &winner_context_counts {
+                    *global_winner_context_counts.entry(key.clone()).or_default() += *games;
+                }
+                for (key, games) in &winner_pair_counts {
+                    *global_winner_pair_counts.entry(key.clone()).or_default() += *games;
+                }
+                for (key, games) in &winner_mechanism_counts {
+                    *global_winner_mechanism_counts
+                        .entry(key.clone())
+                        .or_default() += *games;
+                }
+                for (key, games) in &winner_mechanism_class_counts {
+                    *global_winner_mechanism_class_counts
+                        .entry(key.clone())
+                        .or_default() += *games;
+                }
             }
         });
+    }
+
+    println!(
+        "PRO_POLICY_WINNER_GLOBAL_SUMMARY {{\"baseline\":\"{}\",\"candidates\":\"{}\",\"total_games\":{},\"baseline_wins\":{},\"policy_wins\":{},\"no_policy_wins\":{},\"candidate_traces\":{},\"candidate_trace_limit_hit\":{},\"missing_first_diff\":{}}}",
+        json_escape(baseline.id),
+        json_escape(
+            &candidates
+                .iter()
+                .skip(1)
+                .map(|candidate| candidate.id)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        global_stats.total_games,
+        global_stats.baseline_wins,
+        global_stats.policy_wins,
+        global_stats.no_policy_wins,
+        global_stats.candidate_traces,
+        global_stats.candidate_trace_limit_hit,
+        global_stats.missing_first_diff,
+    );
+    println!(
+        "PRO_POLICY_WINNER_GLOBAL_STOPLIGHT {{\"label\":\"{}\",\"policy_wins\":{},\"no_policy_wins\":{},\"max_policy_games\":{},\"max_context_games\":{},\"max_pair_games\":{},\"max_mechanism_games\":{},\"max_mechanism_class_games\":{},\"candidate_trace_limit_hit\":{}}}",
+        pro_policy_winner_stoplight_label(
+            &global_stats,
+            &global_winner_counts,
+            &global_winner_mechanism_counts,
+            &global_winner_mechanism_class_counts,
+            include_mechanism,
+        ),
+        global_stats.policy_wins,
+        global_stats.no_policy_wins,
+        max_count(&global_winner_counts),
+        max_count(&global_winner_context_counts),
+        max_count(&global_winner_pair_counts),
+        max_count(&global_winner_mechanism_counts),
+        max_count(&global_winner_mechanism_class_counts),
+        global_stats.candidate_trace_limit_hit,
+    );
+    for (key, games) in pro_policy_matrix_sorted_counts(&global_class_counts, aggregate_limit) {
+        println!(
+            "PRO_POLICY_WINNER_GLOBAL_CLASS {{\"key\":\"{}\",\"games\":{}}}",
+            json_escape(key),
+            games,
+        );
+    }
+    for (key, games) in pro_policy_matrix_sorted_counts(&global_winner_counts, aggregate_limit) {
+        println!(
+            "PRO_POLICY_WINNER_GLOBAL_POLICY {{\"key\":\"{}\",\"games\":{}}}",
+            json_escape(key),
+            games,
+        );
+    }
+    for (key, games) in
+        pro_policy_matrix_sorted_counts(&global_winner_context_counts, aggregate_limit)
+    {
+        println!(
+            "PRO_POLICY_WINNER_GLOBAL_CONTEXT {{\"key\":\"{}\",\"games\":{}}}",
+            json_escape(key),
+            games,
+        );
+    }
+    for (key, games) in pro_policy_matrix_sorted_counts(&global_winner_pair_counts, aggregate_limit)
+    {
+        println!(
+            "PRO_POLICY_WINNER_GLOBAL_PAIR {{\"key\":\"{}\",\"games\":{}}}",
+            json_escape(key),
+            games,
+        );
+    }
+    if include_mechanism {
+        for (key, games) in
+            pro_policy_matrix_sorted_counts(&global_winner_mechanism_class_counts, aggregate_limit)
+        {
+            println!(
+                "PRO_POLICY_WINNER_GLOBAL_MECHANISM_CLASS {{\"key\":\"{}\",\"games\":{}}}",
+                json_escape(key),
+                games,
+            );
+        }
+        for (key, games) in
+            pro_policy_matrix_sorted_counts(&global_winner_mechanism_counts, aggregate_limit)
+        {
+            println!(
+                "PRO_POLICY_WINNER_GLOBAL_MECHANISM {{\"key\":\"{}\",\"games\":{}}}",
+                json_escape(key),
+                games,
+            );
+        }
     }
 }
 
@@ -4487,6 +4642,20 @@ fn decision_record_baseline_status(
 ) -> String {
     let (_, scored_roots, _, _) =
         profile_runtime_scored_roots_with_forced_engine_inputs(profile_name, mode, game);
+    decision_record_baseline_status_from_scored_roots(
+        scored_roots.as_slice(),
+        probe,
+        advisor,
+        baseline_move_fen,
+    )
+}
+
+fn decision_record_baseline_status_from_scored_roots(
+    scored_roots: &[RootEvaluation],
+    probe: &RuntimeDecisionProbe,
+    advisor: Option<&crate::models::mons_game_model::ProV2RootAdvisorDecision>,
+    baseline_move_fen: &str,
+) -> String {
     let mut parts = Vec::<String>::new();
 
     if baseline_move_fen == probe.selected_input_fen {

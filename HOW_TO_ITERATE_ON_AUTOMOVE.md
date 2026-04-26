@@ -244,11 +244,11 @@ SMART_PRO_POLICY_MATRIX_INCLUDE_MECHANISM_CLASS=true \
 
 Set `SMART_PRO_POLICY_WINNER_INCLUDE_MECHANISM=true`, or use the `pro-policy-corpus` wrapper, when the reset path needs mechanism evidence. This adds exact `PRO_POLICY_WINNER_MECHANISM` aggregates keyed by guarded root status, advisor ordered/preserved/approved state, head acceptance, exact context, and utility/root-evaluation axes for the baseline and winning policy moves. It also emits coarser `PRO_POLICY_WINNER_MECHANISM_CLASS` records over stage/head state, baseline-vs-winner role, family, advisor status, rank, safety/progress, and winner-root shape. Use repeated classes to choose the next focused probe; do not treat a class repeat alone as promotion evidence.
 
-For broad portfolios, keep it filtered or cap exploratory cost with `SMART_PRO_POLICY_WINNER_CANDIDATE_TRACE_LIMIT`; summaries then include `candidate_trace_limit_hit=true` when the duel was intentionally partial.
+Read `PRO_POLICY_WINNER_GLOBAL_STOPLIGHT` and `PRO_POLICY_WINNER_GLOBAL_MECHANISM_CLASS` before long per-duel output. For broad portfolios, keep mechanism-enabled runs filtered by panel, duel, repeats, and games, or cap exploratory cost with `SMART_PRO_POLICY_WINNER_CANDIDATE_TRACE_LIMIT`; summaries then include `candidate_trace_limit_hit=true` when the duel was intentionally partial.
 
 A complete policy-winner corpus with `no_policy_wins=0` is still selector evidence, not promotion evidence. If `PRO_POLICY_WINNER_POLICY` and `PRO_POLICY_WINNER_MECHANISM` aggregates remain singleton-heavy, do not write a static policy-label selector; move to outcome-corpus stoplight work, ProV4 unified root policy, or a new measured utility feature.
 
-`pro-policy-corpus` now emits `PRO_POLICY_WINNER_STOPLIGHT` per panel and duel. Treat `singleton_residue` as a kill for selectors over the current policy labels; `coverage_gap` means add a policy/root feature first; `repeated_mechanism` is the only corpus label that earns deeper runtime design work.
+`pro-policy-corpus` now emits `PRO_POLICY_WINNER_STOPLIGHT` per panel and duel. Treat `singleton_residue` as a kill for selectors over the current policy labels; `coverage_gap` means add a policy/root feature first; `repeated_mechanism` is the corpus label that earns deeper runtime design work; `repeated_mechanism_class` is weaker routing evidence that must be narrowed before source work.
 
 ```sh
 SMART_PRO_POLICY_WINNER_PANEL_FILTER=sampled \
