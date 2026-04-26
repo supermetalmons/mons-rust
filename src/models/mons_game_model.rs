@@ -1747,7 +1747,8 @@ struct ScoredRootMove {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-struct RootEvaluation {
+#[derive(Clone)]
+pub(crate) struct RootEvaluation {
     root_rank: usize,
     score: i32,
     efficiency: i32,
@@ -1861,12 +1862,26 @@ pub(crate) struct ProV2RootAdvisorDecision {
 }
 
 #[cfg(test)]
+#[derive(Clone)]
+#[allow(dead_code)]
+pub(crate) struct TurnEngineRootSelectionSnapshot {
+    pub(crate) config: AutomoveSearchConfig,
+    pub(crate) scored_roots: Vec<RootEvaluation>,
+    pub(crate) selected_inputs: Vec<Input>,
+}
+
+#[cfg(test)]
 thread_local! {
     static TURN_ENGINE_SELECTOR_DIAGNOSTICS: std::cell::RefCell<TurnEngineSelectorDiagnostics> =
         std::cell::RefCell::new(TurnEngineSelectorDiagnostics::default());
     static TURN_ENGINE_LAST_PRO_V2_ROOT_ADVISOR_DECISION: std::cell::RefCell<
         Option<ProV2RootAdvisorDecision>
     > = const { std::cell::RefCell::new(None) };
+    static TURN_ENGINE_LAST_ROOT_SELECTION: std::cell::RefCell<
+        Option<TurnEngineRootSelectionSnapshot>
+    > = const { std::cell::RefCell::new(None) };
+    static TURN_ENGINE_CAPTURE_ROOT_SELECTION: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
     static TURN_ENGINE_SELECTOR_RUNTIME_DEPTH: std::cell::Cell<usize> =
         const { std::cell::Cell::new(0) };
 }
@@ -1939,6 +1954,9 @@ pub(crate) fn clear_turn_engine_selector_diagnostics() {
     TURN_ENGINE_LAST_PRO_V2_ROOT_ADVISOR_DECISION.with(|decision| {
         *decision.borrow_mut() = None;
     });
+    TURN_ENGINE_LAST_ROOT_SELECTION.with(|selection| {
+        *selection.borrow_mut() = None;
+    });
     clear_turn_engine_selector_followup_floor_cache();
 }
 
@@ -1950,6 +1968,21 @@ pub(crate) fn turn_engine_selector_diagnostics_snapshot() -> TurnEngineSelectorD
 #[cfg(test)]
 pub(crate) fn pro_v2_root_advisor_decision_snapshot() -> Option<ProV2RootAdvisorDecision> {
     TURN_ENGINE_LAST_PRO_V2_ROOT_ADVISOR_DECISION.with(|decision| decision.borrow().clone())
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+pub(crate) fn turn_engine_root_selection_snapshot() -> Option<TurnEngineRootSelectionSnapshot> {
+    TURN_ENGINE_LAST_ROOT_SELECTION.with(|selection| selection.borrow().clone())
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+pub(crate) fn request_turn_engine_root_selection_snapshot() {
+    TURN_ENGINE_LAST_ROOT_SELECTION.with(|selection| {
+        *selection.borrow_mut() = None;
+    });
+    TURN_ENGINE_CAPTURE_ROOT_SELECTION.with(|capture| capture.set(true));
 }
 
 #[cfg(test)]
@@ -2016,6 +2049,29 @@ fn update_top_level_turn_engine_selector_last_return_stage(stage: &'static str) 
 fn set_pro_v2_root_advisor_decision(decision: Option<ProV2RootAdvisorDecision>) {
     TURN_ENGINE_LAST_PRO_V2_ROOT_ADVISOR_DECISION.with(|slot| {
         *slot.borrow_mut() = decision;
+    });
+}
+
+#[cfg(test)]
+fn set_turn_engine_root_selection_snapshot(
+    config: AutomoveSearchConfig,
+    scored_roots: &[RootEvaluation],
+    selected_inputs: &[Input],
+) {
+    let should_capture = TURN_ENGINE_CAPTURE_ROOT_SELECTION.with(|capture| {
+        let should_capture = capture.get();
+        capture.set(false);
+        should_capture
+    });
+    if !should_capture {
+        return;
+    }
+    TURN_ENGINE_LAST_ROOT_SELECTION.with(|slot| {
+        *slot.borrow_mut() = Some(TurnEngineRootSelectionSnapshot {
+            config,
+            scored_roots: scored_roots.to_vec(),
+            selected_inputs: selected_inputs.to_vec(),
+        });
     });
 }
 
@@ -10773,6 +10829,12 @@ impl MonsGameModel {
                     }
                 }
             }
+            #[cfg(test)]
+            set_turn_engine_root_selection_snapshot(
+                config,
+                scored_roots.as_slice(),
+                selected_inputs.as_slice(),
+            );
             if cached_inputs.as_ref() == Some(&selected_inputs) {
                 #[cfg(test)]
                 update_turn_engine_selector_diagnostics(|diagnostics| {
@@ -11037,7 +11099,15 @@ impl MonsGameModel {
         if scored_roots.is_empty() {
             Vec::new()
         } else {
-            Self::pick_root_move_with_exploration(game, &scored_roots, perspective, config)
+            let selected_inputs =
+                Self::pick_root_move_with_exploration(game, &scored_roots, perspective, config);
+            #[cfg(test)]
+            set_turn_engine_root_selection_snapshot(
+                config,
+                scored_roots.as_slice(),
+                selected_inputs.as_slice(),
+            );
+            selected_inputs
         }
     }
 
