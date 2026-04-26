@@ -214,6 +214,8 @@ SMART_PRO_SWEEP_DECISION_RECORD_DUEL_FILTER=vs_shipping_pro \
 
 The matrix also prints `PRO_POLICY_MATRIX_PORTFOLIO` for each panel/duel, followed by weakness buckets as `PRO_POLICY_MATRIX_PORTFOLIO_CLASS`. Read these before designing a context selector: `candidate_only_wins` is the selector opportunity, `baseline_only_wins` is the regression risk, and `no_policy_wins` means the current candidate set cannot solve those openings by selection alone.
 
+It also emits `PRO_POLICY_MATRIX_CANDIDATE_STOPLIGHT` and `PRO_POLICY_MATRIX_PORTFOLIO_STOPLIGHT`. Treat `coverage_gap`, `baseline_save_risk`, `mixed_delta`, and `regression_only` as kills for static selector work; `singleton_selector_pressure` means the portfolio has oracle coverage but no repeated selector mechanism; `repeated_winner_policy` is still too coarse by itself; `repeated_winner_context` or `repeated_winner_pair` is the only matrix label that earns deeper attribution.
+
 Set `SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE=true` on a narrow run when a first divergence needs deeper root evidence. This adds guarded root rank, family, score, selected/advisor status, and full-vs-no-selected-followup utility for both divergent moves. Keep this off for broad matrix runs because it reruns root scoring for printed records.
 
 ```sh

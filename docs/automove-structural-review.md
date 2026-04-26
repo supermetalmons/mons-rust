@@ -119,6 +119,10 @@ The diagnostics now emit compact dashboard, corpus, and sweep-decision-record st
 - `singleton_residue`: records do not repeat below branch/context labels;
 - `singleton_regression_pressure`: regressions exist, but no exact context or move pair repeats;
 - `branch_only_with_regressions`: branch-only repetition exists while regressions are present;
+- `coverage_gap`: the compared policy set does not contain winning lines for every checked opening;
+- `baseline_save_risk`: some openings are saved only by the baseline, so selector gates are regression-prone;
+- `singleton_selector_pressure`: the policy matrix has oracle coverage but no repeated winner context;
+- `repeated_winner_policy`: one policy repeats, but context evidence is still needed before attribution;
 - `cost_blocked`: average move time approaches or exceeds the ceiling.
 
 Treat these labels as routing instructions. `promotable_shape` earns confirm spend, `sampled_only` and `active_only` send the candidate to decision records, `cost_blocked` kills or narrows the line, and singleton or branch-only labels kill selectors over the current policy labels.

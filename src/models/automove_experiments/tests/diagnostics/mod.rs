@@ -2447,6 +2447,17 @@ fn smart_automove_pro_policy_matrix_probe() {
                 }
 
                 for (candidate, stats) in stats_by_candidate.iter() {
+                    let candidate_stoplight = if stats.candidate_better == 0
+                        && stats.baseline_better == 0
+                    {
+                        "no_delta"
+                    } else if stats.candidate_better > 0 && stats.baseline_better == 0 {
+                        "nonregressing_delta"
+                    } else if stats.candidate_better > 0 && stats.baseline_better > 0 {
+                        "mixed_delta"
+                    } else {
+                        "regression_only"
+                    };
                     println!(
                         "PRO_POLICY_MATRIX_SUMMARY {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"total_games\":{},\"candidate_better\":{},\"baseline_better\":{},\"same_outcome\":{},\"candidate_nonwins\":{},\"baseline_nonwins\":{},\"first_move_diffs\":{},\"recorded\":{},\"missing_first_diff\":{}}}",
                         json_escape(panel.label),
@@ -2463,7 +2474,36 @@ fn smart_automove_pro_policy_matrix_probe() {
                         stats.recorded,
                         stats.missing_first_diff,
                     );
+                    println!(
+                        "PRO_POLICY_MATRIX_CANDIDATE_STOPLIGHT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"label\":\"{}\",\"candidate_better\":{},\"baseline_better\":{},\"candidate_nonwins\":{},\"baseline_nonwins\":{},\"recorded\":{},\"missing_first_diff\":{}}}",
+                        json_escape(panel.label),
+                        json_escape(baseline.id),
+                        json_escape(candidate.id),
+                        json_escape(duel.label),
+                        candidate_stoplight,
+                        stats.candidate_better,
+                        stats.baseline_better,
+                        stats.candidate_nonwins,
+                        stats.baseline_nonwins,
+                        stats.recorded,
+                        stats.missing_first_diff,
+                    );
                 }
+                let portfolio_stoplight = if portfolio_stats.no_policy_wins > 0 {
+                    "coverage_gap"
+                } else if portfolio_stats.baseline_only_wins > 0 {
+                    "baseline_save_risk"
+                } else if portfolio_stats.candidate_only_wins == 0 {
+                    "shared_only"
+                } else if max_count(&portfolio_winner_pair_counts) > 1 {
+                    "repeated_winner_pair"
+                } else if max_count(&portfolio_winner_context_counts) > 1 {
+                    "repeated_winner_context"
+                } else if max_count(&portfolio_winner_counts) > 1 {
+                    "repeated_winner_policy"
+                } else {
+                    "singleton_selector_pressure"
+                };
                 println!(
                     "PRO_POLICY_MATRIX_PORTFOLIO {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"total_games\":{},\"baseline_wins\":{},\"candidate_any_wins\":{},\"any_policy_wins\":{},\"shared_wins\":{},\"baseline_only_wins\":{},\"candidate_only_wins\":{},\"no_policy_wins\":{}}}",
                     json_escape(panel.label),
@@ -2485,6 +2525,19 @@ fn smart_automove_pro_policy_matrix_probe() {
                     portfolio_stats.baseline_only_wins,
                     portfolio_stats.candidate_only_wins,
                     portfolio_stats.no_policy_wins,
+                );
+                println!(
+                    "PRO_POLICY_MATRIX_PORTFOLIO_STOPLIGHT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"duel\":\"{}\",\"label\":\"{}\",\"baseline_only_wins\":{},\"candidate_only_wins\":{},\"no_policy_wins\":{},\"max_winner_policy_games\":{},\"max_winner_context_games\":{},\"max_winner_pair_games\":{}}}",
+                    json_escape(panel.label),
+                    json_escape(baseline.id),
+                    json_escape(duel.label),
+                    portfolio_stoplight,
+                    portfolio_stats.baseline_only_wins,
+                    portfolio_stats.candidate_only_wins,
+                    portfolio_stats.no_policy_wins,
+                    max_count(&portfolio_winner_counts),
+                    max_count(&portfolio_winner_context_counts),
+                    max_count(&portfolio_winner_pair_counts),
                 );
                 for (key, games) in
                     pro_policy_matrix_sorted_counts(&portfolio_class_counts, aggregate_limit)
