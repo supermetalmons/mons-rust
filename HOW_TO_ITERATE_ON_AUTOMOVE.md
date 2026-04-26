@@ -229,7 +229,7 @@ It also emits `PRO_POLICY_MATRIX_CANDIDATE_STOPLIGHT` and `PRO_POLICY_MATRIX_POR
 
 Set `SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE=true` on a narrow run when a first divergence needs deeper root evidence. This adds guarded root rank, family, score, selected/advisor status, and full-vs-no-selected-followup utility for both divergent moves. Keep this off for broad matrix runs because it reruns root scoring for printed records.
 
-Set `SMART_PRO_POLICY_MATRIX_INCLUDE_MECHANISM_CLASS=true` only on narrow matrix runs when the stoplights show a policy delta worth classifying. This adds `PRO_POLICY_MATRIX_MECHANISM_CLASS` records keyed by candidate, outcome, and coarse guarded mechanism class, so candidate wins can be compared against baseline saves/regressions without reading every exact divergence. It reruns root/advisor probes for every nonzero first divergence, so do not enable it for a broad reset portfolio until a filtered run finishes cheaply.
+Set `SMART_PRO_POLICY_MATRIX_INCLUDE_MECHANISM_CLASS=true` only on narrow matrix runs when the stoplights show a policy delta worth classifying. This adds `PRO_POLICY_MATRIX_MECHANISM_CLASS` records keyed by candidate, outcome, and coarse guarded mechanism class, and the portfolio stoplight reports `max_mechanism_class_games`, so candidate wins can be compared against baseline saves/regressions without reading every exact divergence. It reruns root/advisor probes for every nonzero first divergence, so do not enable it for a broad reset portfolio until a filtered run finishes cheaply.
 
 ```sh
 SMART_PRO_POLICY_MATRIX_PANEL_FILTER=active_blockers \

@@ -2853,7 +2853,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                     portfolio_stats.no_policy_wins,
                 );
                 println!(
-                    "PRO_POLICY_MATRIX_PORTFOLIO_STOPLIGHT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"duel\":\"{}\",\"label\":\"{}\",\"baseline_only_wins\":{},\"candidate_only_wins\":{},\"no_policy_wins\":{},\"max_winner_policy_games\":{},\"max_winner_context_games\":{},\"max_winner_pair_games\":{}}}",
+                    "PRO_POLICY_MATRIX_PORTFOLIO_STOPLIGHT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"duel\":\"{}\",\"label\":\"{}\",\"baseline_only_wins\":{},\"candidate_only_wins\":{},\"no_policy_wins\":{},\"max_winner_policy_games\":{},\"max_winner_context_games\":{},\"max_winner_pair_games\":{},\"max_mechanism_class_games\":{}}}",
                     json_escape(panel.label),
                     json_escape(baseline.id),
                     json_escape(duel.label),
@@ -2864,6 +2864,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                     max_count(&portfolio_winner_counts),
                     max_count(&portfolio_winner_context_counts),
                     max_count(&portfolio_winner_pair_counts),
+                    max_count(&mechanism_class_counts),
                 );
                 for (key, games) in
                     pro_policy_matrix_sorted_counts(&portfolio_class_counts, aggregate_limit)
