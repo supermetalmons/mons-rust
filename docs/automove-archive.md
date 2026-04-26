@@ -4,6 +4,15 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Shallow ProV4 Unified Root-Value Comparator
+
+- Temporary test-only candidate source was cut and removed in the same session.
+- The structural scout reconfirmed retained guarded as non-promotable: sampled Pro/Normal/Fast `7-5 / 7-5 / 6-6`, active blockers `3-3 / 5-1 / 2-4`, and `PRO_PROMOTION_DASHBOARD_STOPLIGHT` `not_promising`.
+- The policy corpus again had oracle coverage without selector evidence: every sampled and active Pro/Normal/Fast duel had `no_policy_wins=0`, `max_policy_games=1`, `max_mechanism_games=1`, and `PRO_POLICY_WINNER_STOPLIGHT` `singleton_residue`.
+- A test-only shallow ProV4 comparator ranked scored roots by existing tactical value, `TurnEngineUtility`, safety, progress, family priority, score, and root rank while preserving guarded as the incumbent. The loose version improved sampled Pro to `9-3`, fixed `inner_wedge_mana_rows` and `forward_bridge_mana_rows`, but rotated losses into `center_spoke_mana_rows`, `alternating_mana_rows`, and `split_flank_mana_rows`.
+- A score-drop-tightened version reduced overrides from `139` to `116` and fixed `split_flank_mana_rows`, but still failed sampled Pro at `9-3`; `center_spoke_mana_rows` fell to `0-2`, `alternating_mana_rows` stayed split, and the sampled Pro nonwin probe emitted `singleton_regression_pressure` with max branch/context/pair counts of `1`.
+- Durable outcome: do not retry a single shallow root-value tuple over existing root fields. The next ProV4 attempt needs a new corpus-trained feature, preserved/omitted/root-timing evidence, or a harness change that finds repeated mechanisms below the current singleton records.
+
 ## Policy-Rollout and Dormant-Toggle Quick Kill
 
 - Temporary test-only candidates were cut and removed in the same session.
