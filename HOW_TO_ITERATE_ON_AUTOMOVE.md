@@ -211,6 +211,8 @@ SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE=true \
 
 `smart_automove_pro_policy_winner_probe` is the faster selector-design companion for a policy matrix with good oracle coverage. It plays the baseline first; when the baseline loses, it tries candidate policies in the provided order until one wins, then prints `PRO_POLICY_WINNER_POLICY`, `PRO_POLICY_WINNER_CONTEXT`, and `PRO_POLICY_WINNER_PAIR`. Use it before writing a selector over an already-viable policy set, but validate the resulting selector with `pro-promotion-dashboard`; first-winning context alone can hide policy-entry timing conflicts.
 
+For broad portfolios, keep it filtered or cap exploratory cost with `SMART_PRO_POLICY_WINNER_CANDIDATE_TRACE_LIMIT`; summaries then include `candidate_trace_limit_hit=true` when the duel was intentionally partial.
+
 ```sh
 SMART_PRO_POLICY_WINNER_PANEL_FILTER=sampled \
 SMART_PRO_POLICY_WINNER_DUEL_FILTER=vs_shipping_pro \

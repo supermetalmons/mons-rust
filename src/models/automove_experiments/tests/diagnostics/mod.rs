@@ -2509,6 +2509,7 @@ fn smart_automove_pro_policy_winner_probe() {
         no_policy_wins: usize,
         candidate_traces: usize,
         missing_first_diff: usize,
+        candidate_trace_limit_hit: bool,
     }
 
     let shipping_profile = reliability_shipping_profile_id();
@@ -2534,6 +2535,7 @@ fn smart_automove_pro_policy_winner_probe() {
     let aggregate_limit = env_usize("SMART_PRO_POLICY_WINNER_AGGREGATE_LIMIT")
         .unwrap_or(96)
         .max(1);
+    let candidate_trace_limit = env_usize("SMART_PRO_POLICY_WINNER_CANDIDATE_TRACE_LIMIT");
     let duel_specs = vec![
         PolicyWinnerDuelSpec {
             label: "vs_shipping_pro",
@@ -2603,7 +2605,7 @@ fn smart_automove_pro_policy_winner_probe() {
                 let mut winner_pair_counts = BTreeMap::<String, usize>::new();
                 let mut printed = 0usize;
 
-                for repeat_index in 0..repeats {
+                'duel_samples: for repeat_index in 0..repeats {
                     let seed = seed_for_budget_duel_repeat_and_tag(
                         pro_budget(),
                         opponent_budget,
@@ -2616,6 +2618,12 @@ fn smart_automove_pro_policy_winner_probe() {
                             .expect("valid opening fen")
                             .variant();
                         for candidate_is_white in [true, false] {
+                            if candidate_trace_limit
+                                .is_some_and(|limit| stats.candidate_traces >= limit)
+                            {
+                                stats.candidate_trace_limit_hit = true;
+                                break 'duel_samples;
+                            }
                             stats.total_games += 1;
                             let baseline_trace = play_profile_sweep_attribution_trace(
                                 baseline,
@@ -2639,6 +2647,12 @@ fn smart_automove_pro_policy_winner_probe() {
 
                             let mut winning_trace = None;
                             for candidate in candidates.iter().skip(1) {
+                                if candidate_trace_limit
+                                    .is_some_and(|limit| stats.candidate_traces >= limit)
+                                {
+                                    stats.candidate_trace_limit_hit = true;
+                                    break;
+                                }
                                 stats.candidate_traces += 1;
                                 let candidate_trace = play_profile_sweep_attribution_trace(
                                     *candidate,
@@ -2652,6 +2666,9 @@ fn smart_automove_pro_policy_winner_probe() {
                                     winning_trace = Some((*candidate, candidate_trace));
                                     break;
                                 }
+                            }
+                            if stats.candidate_trace_limit_hit && winning_trace.is_none() {
+                                break 'duel_samples;
                             }
 
                             let Some((winner, winner_trace)) = winning_trace else {
@@ -2768,7 +2785,7 @@ fn smart_automove_pro_policy_winner_probe() {
                 }
 
                 println!(
-                    "PRO_POLICY_WINNER_SUMMARY {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"total_games\":{},\"baseline_wins\":{},\"policy_wins\":{},\"no_policy_wins\":{},\"candidate_traces\":{},\"missing_first_diff\":{}}}",
+                    "PRO_POLICY_WINNER_SUMMARY {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"total_games\":{},\"baseline_wins\":{},\"policy_wins\":{},\"no_policy_wins\":{},\"candidate_traces\":{},\"candidate_trace_limit_hit\":{},\"missing_first_diff\":{}}}",
                     json_escape(panel.label),
                     json_escape(baseline.id),
                     json_escape(
@@ -2785,6 +2802,7 @@ fn smart_automove_pro_policy_winner_probe() {
                     stats.policy_wins,
                     stats.no_policy_wins,
                     stats.candidate_traces,
+                    stats.candidate_trace_limit_hit,
                     stats.missing_first_diff,
                 );
                 for (key, games) in pro_policy_matrix_sorted_counts(&class_counts, aggregate_limit)
