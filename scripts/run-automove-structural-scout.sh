@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 usage:
-  ./scripts/run-automove-structural-scout.sh [--confirm] <sweep-candidate[,candidate...]> [shipping]
+  ./scripts/run-automove-structural-scout.sh [--corpus] [--confirm] <sweep-candidate[,candidate...]> [shipping]
 
 Runs the promotion-dashboard panels that should precede any major Pro automove
 runtime change. This is diagnostic-only: it does not promote profiles.
@@ -14,8 +14,12 @@ Default scout:
   2. pro-promotion-dashboard over active blocker variants
   3. candidate-vs-guarded delta inside each dashboard panel
 
+With --corpus:
+  4. pro-policy-corpus over the default structural portfolio, unless
+     SMART_PRO_POLICY_CORPUS_PORTFOLIO is set
+
 With --confirm:
-  4. all variants profile sweep, repeats=1, games=12
+  5. all variants profile sweep, repeats=1, games=12
 
 The candidate list must be supported by the pro-promotion-dashboard diagnostic in
 ./scripts/run-automove-experiment.sh.
@@ -23,9 +27,15 @@ EOF
 }
 
 confirm=false
+corpus=false
+default_policy_corpus_portfolio="frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --corpus)
+      corpus=true
+      shift
+      ;;
     --confirm)
       confirm=true
       shift
@@ -55,6 +65,14 @@ run_dashboard() {
     ./scripts/run-automove-experiment.sh pro-promotion-dashboard "${candidate}" "${shipping}"
 }
 
+run_policy_corpus() {
+  local portfolio="${SMART_PRO_POLICY_CORPUS_PORTFOLIO:-${default_policy_corpus_portfolio}}"
+  echo "== automove structural scout: policy-corpus =="
+  SMART_PRO_POLICY_WINNER_PANEL_FILTER="${SMART_PRO_POLICY_WINNER_PANEL_FILTER:-all}" \
+  SMART_PRO_POLICY_WINNER_DUEL_FILTER="${SMART_PRO_POLICY_WINNER_DUEL_FILTER:-all}" \
+    ./scripts/run-automove-experiment.sh pro-policy-corpus "${portfolio}" "${shipping}"
+}
+
 run_profile_sweep_panel() {
   local panel="$1"
   shift
@@ -63,6 +81,10 @@ run_profile_sweep_panel() {
 }
 
 run_dashboard
+
+if [ "${corpus}" = true ]; then
+  run_policy_corpus
+fi
 
 if [ "${confirm}" = true ]; then
   run_profile_sweep_panel \

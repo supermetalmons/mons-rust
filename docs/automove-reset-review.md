@@ -1,6 +1,6 @@
 # Automove Reset Review
 
-This is the current reset document for escaping the failed seam-iteration loop.
+This is the current reset document for escaping the failed seam-iteration loop. For the latest whole-project architecture and harness review, read `docs/automove-structural-review.md` first.
 
 Use it when `AUTOMOVE_IDEAS.md` says there is no live challenger, when recent work keeps producing sampled-only false positives, or when a candidate clears one variant row by rotating another row down.
 
@@ -165,7 +165,11 @@ A candidate is worth broad runtime work only if all of these are true:
 
 ## Suggested Next Iteration
 
-Do not create another runtime patch first.
+Do not create another runtime patch first. In reset mode, start with:
+
+```sh
+./scripts/run-automove-structural-scout.sh --corpus frontier_pro_v2_guarded
+```
 
 Implement or extend a corpus-style diagnostic that can compare the existing policy portfolio and emit one aggregate table keyed by mechanism:
 

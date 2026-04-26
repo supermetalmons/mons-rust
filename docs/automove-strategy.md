@@ -1,6 +1,6 @@
 # Automove Structural Strategy
 
-This document is the operational reset point when local automove iteration stalls. Use it before cutting another Pro runtime patch. For the larger architectural review and current strategic paths, read `docs/automove-reset-review.md`.
+This document is the operational reset point when local automove iteration stalls. Use it before cutting another Pro runtime patch. For the larger architectural review and current strategic paths, read `docs/automove-structural-review.md` and `docs/automove-reset-review.md`.
 
 ## Diagnosis
 
@@ -23,6 +23,12 @@ Before editing runtime code for a broad Pro change, run:
 
 ```sh
 ./scripts/run-automove-structural-scout.sh <sweep-candidate[,candidate...]>
+```
+
+When there is no live runtime hypothesis, include the policy corpus pass:
+
+```sh
+./scripts/run-automove-structural-scout.sh --corpus frontier_pro_v2_guarded
 ```
 
 This runs two diagnostic panels:
@@ -118,6 +124,8 @@ The dashboard summarizes:
 - whether the candidate is active-blocker-only, sampled-only, or broadly promising
 
 Use profile attribution after the dashboard identifies a globally promising candidate with one explainable panel failure.
+
+Use `--corpus` when the dashboard is not globally promising. It runs the default policy portfolio through `pro-policy-corpus` so the next decision is based on repeated root/advisor/head/utility mechanisms rather than another policy-label selector.
 
 ## Stop Conditions
 

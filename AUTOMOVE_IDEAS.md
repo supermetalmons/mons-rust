@@ -11,7 +11,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-knowle
 - The live experiment surface is Pro-only and multi-variant: 2 retained profiles and 6 canonical stages.
 - The default operator entrypoint is `./scripts/run-automove-canonical-loop.sh`.
 - The current work is in structural-reset mode. Read `docs/automove-strategy.md` and run `./scripts/run-automove-structural-scout.sh <candidate>` before spending runtime code on another broad Pro change.
-- A broader reset review now lives in `docs/automove-reset-review.md`. The next major path should be either an outcome-corpus diagnostic that ranks repeated mechanisms before runtime work, or a test-only ProV4 unified root policy that ranks guarded, raw, preserved, omitted, head, fallback, and shipping-control roots in one comparator.
+- A broader reset review now lives in `docs/automove-reset-review.md`, and the current whole-project review lives in `docs/automove-structural-review.md`. The next major path should be either an outcome-corpus diagnostic that ranks repeated mechanisms before runtime work, or a test-only ProV4 unified root policy that ranks guarded, raw, preserved, omitted, head, fallback, and shipping-control roots in one comparator.
+- In reset mode, use `./scripts/run-automove-structural-scout.sh --corpus frontier_pro_v2_guarded` as the default no-live-hypothesis command before writing runtime code.
 - This iteration stayed harness-first and did not produce a runtime challenger. `./scripts/run-automove-experiment.sh pro-policy-corpus <portfolio>` now runs policy-winner with `PRO_POLICY_WINNER_MECHANISM` aggregates tying first winning policies back to guarded root/advisor/head/utility status. Use it before spending on another selector from policy labels.
 - Quick automove iteration uses seeded sampled game variants; final promotion confirmation uses all current variants.
 - There is no second live challenger today.

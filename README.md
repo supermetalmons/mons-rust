@@ -12,6 +12,7 @@ Docs:
 
 - runbook: `HOW_TO_ITERATE_ON_AUTOMOVE.md`
 - live board: `AUTOMOVE_IDEAS.md`
+- structural review: `docs/automove-structural-review.md`
 - durable rules: `docs/automove-knowledge.md`
 - archive: `docs/automove-archive.md`
 

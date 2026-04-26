@@ -78,10 +78,17 @@ Use this path when `AUTOMOVE_IDEAS.md` says there is no live challenger or when 
 ```
 
 - Read `docs/automove-strategy.md` first.
+- Read `docs/automove-structural-review.md` when deciding whether the next move is corpus work, ProV4 unified policy work, or utility calibration.
 - Read `docs/automove-reset-review.md` when the work feels stuck or when no single runtime hypothesis is live.
 - The scout is diagnostic-only and starts with `pro-promotion-dashboard` across canonical sampled and active-blocker panels.
 - Do not edit runtime code for a broad Pro change unless the candidate is strong on both panels.
 - If no candidate is strong on both panels, use `pro-policy-corpus` to look for repeated root/advisor/head/utility mechanisms across the existing policy portfolio before designing another selector.
+- Use `--corpus` on the structural scout when the repo is in reset mode:
+
+```sh
+./scripts/run-automove-structural-scout.sh --corpus frontier_pro_v2_guarded
+```
+
 - Add `--confirm` only after the default scout panels look promotable.
 
 ## Gate Rules
