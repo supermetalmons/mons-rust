@@ -14,6 +14,10 @@ Default scout:
   2. pro-promotion-dashboard over active blocker variants
   3. candidate-vs-guarded delta inside each dashboard panel
 
+When the candidate is exactly frontier_pro_v2_guarded, the guarded delta is
+skipped by default because it is a redundant self-comparison. Set
+SMART_PRO_DASHBOARD_INCLUDE_GUARDED=true to force it.
+
 With --corpus:
   4. pro-policy-corpus over the default structural portfolio, unless
      SMART_PRO_POLICY_CORPUS_PORTFOLIO is set
@@ -58,10 +62,20 @@ fi
 candidate="$1"
 shipping="${2:-shipping_pro_search}"
 
+default_dashboard_include_guarded() {
+  if [ "${candidate}" = "frontier_pro_v2_guarded" ]; then
+    echo "false"
+  else
+    echo "true"
+  fi
+}
+
 run_dashboard() {
+  local include_guarded
+  include_guarded="${SMART_PRO_DASHBOARD_INCLUDE_GUARDED:-$(default_dashboard_include_guarded)}"
   echo "== automove structural scout: promotion-dashboard =="
   SMART_PRO_DASHBOARD_PANEL_FILTER="${SMART_PRO_DASHBOARD_PANEL_FILTER:-all}" \
-  SMART_PRO_DASHBOARD_INCLUDE_GUARDED="${SMART_PRO_DASHBOARD_INCLUDE_GUARDED:-true}" \
+  SMART_PRO_DASHBOARD_INCLUDE_GUARDED="${include_guarded}" \
     ./scripts/run-automove-experiment.sh pro-promotion-dashboard "${candidate}" "${shipping}"
 }
 
