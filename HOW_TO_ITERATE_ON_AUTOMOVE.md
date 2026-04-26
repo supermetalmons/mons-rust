@@ -202,6 +202,8 @@ SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows,alternating_mana_rows,forward_bridg
 
 `smart_automove_pro_sweep_decision_record_probe` aggregates nonwins or outcome deltas for any registered sweep candidate against a same-seed `shipping_pro_search_control` replay. Use it when a test-only candidate is not a retained profile and the retained-profile decision recorder cannot inspect it.
 
+It emits `PRO_SWEEP_DECISION_RECORD_STOPLIGHT` after each duel summary. Treat `repeated_pair` or `repeated_context` as attribution-worthy, `branch_only` or `branch_only_with_regressions` as too coarse for runtime code, and `singleton_residue` or `singleton_regression_pressure` as a kill for static selectors. `missing_first_diff` means rerun narrower or inspect trace capture before making a source decision.
+
 ```sh
 SMART_PRO_SWEEP_DECISION_RECORD_SCOPE=nonwins \
 SMART_PRO_SWEEP_DECISION_RECORD_DUEL_FILTER=vs_shipping_pro \

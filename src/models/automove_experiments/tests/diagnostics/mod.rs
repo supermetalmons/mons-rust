@@ -2956,6 +2956,34 @@ fn pro_policy_winner_stoplight_label(
     }
 }
 
+fn pro_sweep_decision_record_stoplight_label(
+    regressions: usize,
+    nonwins: usize,
+    recorded: usize,
+    missing_first_diff: usize,
+    branch_counts: &BTreeMap<String, usize>,
+    context_counts: &BTreeMap<String, usize>,
+    pair_counts: &BTreeMap<String, usize>,
+) -> &'static str {
+    if recorded > 0 && recorded == missing_first_diff {
+        "missing_first_diff"
+    } else if nonwins == 0 && regressions == 0 {
+        "clean"
+    } else if max_count(pair_counts) > 1 {
+        "repeated_pair"
+    } else if max_count(context_counts) > 1 {
+        "repeated_context"
+    } else if max_count(branch_counts) > 1 && regressions > 0 {
+        "branch_only_with_regressions"
+    } else if max_count(branch_counts) > 1 {
+        "branch_only"
+    } else if regressions > 0 {
+        "singleton_regression_pressure"
+    } else {
+        "singleton_residue"
+    }
+}
+
 #[test]
 #[ignore = "diagnostic: short-circuit policy winner contexts for selector design"]
 fn smart_automove_pro_policy_winner_probe() {
@@ -3643,6 +3671,28 @@ fn smart_automove_pro_sweep_decision_record_probe() {
             nonwins,
             recorded,
             missing_first_diff,
+        );
+        println!(
+            "PRO_SWEEP_DECISION_RECORD_STOPLIGHT {{\"candidate\":\"{}\",\"duel\":\"{}\",\"scope\":\"{}\",\"label\":\"{}\",\"nonwins\":{},\"regressions\":{},\"recorded\":{},\"missing_first_diff\":{},\"max_branch_games\":{},\"max_context_games\":{},\"max_pair_games\":{}}}",
+            json_escape(candidate.id),
+            json_escape(duel.label),
+            json_escape(&scope),
+            pro_sweep_decision_record_stoplight_label(
+                regressions,
+                nonwins,
+                recorded,
+                missing_first_diff,
+                &branch_counts,
+                &context_counts,
+                &pair_counts,
+            ),
+            nonwins,
+            regressions,
+            recorded,
+            missing_first_diff,
+            max_count(&branch_counts),
+            max_count(&context_counts),
+            max_count(&pair_counts),
         );
         for (key, games) in branch_counts.iter().take(aggregate_limit) {
             println!(

@@ -110,16 +110,18 @@ Do not add another shallow `TurnEngineUtility` gate unless it introduces a new m
 
 ### Path D: Harness Stoplight
 
-The diagnostics now emit compact dashboard and corpus stoplights:
+The diagnostics now emit compact dashboard, corpus, and sweep-decision-record stoplights:
 
 - `promotable_shape`: every sampled and active Pro/Normal/Fast row is directionally strong;
 - `sampled_only`: sampled passes but active fails;
 - `active_only`: active passes but sampled fails;
 - `budget_conflict`: one policy helps one opponent budget and regresses another;
 - `singleton_residue`: records do not repeat below branch/context labels;
+- `singleton_regression_pressure`: regressions exist, but no exact context or move pair repeats;
+- `branch_only_with_regressions`: branch-only repetition exists while regressions are present;
 - `cost_blocked`: average move time approaches or exceeds the ceiling.
 
-Treat these labels as routing instructions. `promotable_shape` earns confirm spend, `sampled_only` and `active_only` send the candidate to decision records, `cost_blocked` kills or narrows the line, and `singleton_residue` kills selectors over the current policy labels.
+Treat these labels as routing instructions. `promotable_shape` earns confirm spend, `sampled_only` and `active_only` send the candidate to decision records, `cost_blocked` kills or narrows the line, and singleton or branch-only labels kill selectors over the current policy labels.
 
 ### Path E: Live Board Reduction
 
