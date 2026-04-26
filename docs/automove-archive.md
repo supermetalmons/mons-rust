@@ -4,6 +4,13 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Policy-Rollout and Dormant-Toggle Quick Kill
+
+- Temporary test-only candidates were cut and removed in the same session.
+- The online policy-rollout scout preserved guarded fallbacks, gathered guarded, shipping-control, raw, no-selected-followup, and full-scored reply-guard outputs on early `frontier_execute` turns, and tried short continuation rollouts before switching. It was killed on cost: the broad version did not complete sampled Pro-only validation after several minutes, and the tightened two-ply Pro/Fast version remained too slow for a practical quick gate.
+- Two wrapper-preserving dormant toggle checks were also killed on sampled Pro-only promotion dashboard. Enabling `enable_turn_engine_mid_turn_progress_guard` reproduced `7-5`, `inner_wedge_mana_rows` `0-2`, candidate average `141.61ms`; enabling `enable_turn_engine_late_black_setup_progress_rescue` reproduced `7-5`, `inner_wedge_mana_rows` `0-2`, candidate average `142.20ms`.
+- Durable outcome: do not use online rollout over the current policy portfolio without a cheaper precomputed feature, and do not reopen mid-turn progress guard or late-black setup-progress rescue as direct Pro challengers.
+
 ## Forced-Root FEN and Policy-Portfolio Selector Refresh
 
 - This diagnostic wave fixed a harness bug and kept the fix: `SMART_PRO_FORCED_ROOT_ORACLE_FEN` now uses a raw env string helper so case-sensitive FEN payloads are not lowercased.
