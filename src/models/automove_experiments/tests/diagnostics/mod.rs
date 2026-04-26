@@ -1539,6 +1539,289 @@ fn pro_policy_target_root_utility_status(
     )
 }
 
+#[derive(Clone)]
+struct ProPolicyMechanismRootClass {
+    role: String,
+    live: &'static str,
+    family: String,
+    advisor: String,
+    safety: &'static str,
+    progress: &'static str,
+    rank: Option<usize>,
+    score: Option<i32>,
+    utility: Option<TurnEngineUtility>,
+}
+
+fn pro_policy_mechanism_rank_bucket(rank: Option<usize>) -> &'static str {
+    match rank {
+        Some(0) => "rank0",
+        Some(1 | 2) => "rank1_2",
+        Some(3..=5) => "rank3_5",
+        Some(_) => "rank6_plus",
+        None => "omitted",
+    }
+}
+
+fn pro_policy_mechanism_score_order(left: Option<i32>, right: Option<i32>) -> &'static str {
+    match (left, right) {
+        (Some(left), Some(right)) => format_ordering_probe(left.cmp(&right)),
+        (Some(_), None) => "left_live",
+        (None, Some(_)) => "right_live",
+        (None, None) => "both_omitted",
+    }
+}
+
+fn pro_policy_mechanism_utility_primary_order(
+    left: Option<TurnEngineUtility>,
+    right: Option<TurnEngineUtility>,
+) -> &'static str {
+    match (left, right) {
+        (Some(left), Some(right)) => format_ordering_probe(
+            crate::models::automove_turn_engine::compare_utility_primary_axes(left, right),
+        ),
+        (Some(_), None) => "left_live",
+        (None, Some(_)) => "right_live",
+        (None, None) => "both_omitted",
+    }
+}
+
+fn pro_policy_mechanism_advisor_class(
+    advisor: Option<&crate::models::mons_game_model::ProV2RootAdvisorDecision>,
+    move_fen: &str,
+) -> String {
+    let Some(advisor) = advisor else {
+        return "advisor_none".to_string();
+    };
+
+    if let Some(entry) = advisor
+        .approved_root
+        .as_ref()
+        .filter(|entry| Input::fen_from_array(&entry.inputs) == move_fen)
+    {
+        return format!("approved:{:?}:{:?}", entry.reason, entry.family);
+    }
+    if let Some(entry) = advisor
+        .ordered_shortlist
+        .iter()
+        .find(|entry| Input::fen_from_array(&entry.inputs) == move_fen)
+    {
+        return format!("ordered:{:?}:{:?}", entry.reason, entry.family);
+    }
+    if let Some(entry) = advisor
+        .preserved_family_representatives
+        .iter()
+        .find(|entry| Input::fen_from_array(&entry.inputs) == move_fen)
+    {
+        return format!("preserved:{:?}:{:?}", entry.reason, entry.family);
+    }
+    if let Some(injected) = advisor
+        .injected_root
+        .as_ref()
+        .filter(|root| Input::fen_from_array(&root.inputs) == move_fen)
+    {
+        return format!(
+            "injected_{}:{:?}:{:?}",
+            if injected.admitted {
+                "admitted"
+            } else {
+                "rejected"
+            },
+            injected.reason,
+            injected.family,
+        );
+    }
+
+    "advisor_unlisted".to_string()
+}
+
+fn pro_policy_mechanism_root_class(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+    scored_roots: &[RootEvaluation],
+    probe: &RuntimeDecisionProbe,
+    advisor: Option<&crate::models::mons_game_model::ProV2RootAdvisorDecision>,
+    move_fen: &str,
+) -> ProPolicyMechanismRootClass {
+    let mut role_parts = Vec::new();
+    if move_fen == probe.selected_input_fen {
+        role_parts.push("selected");
+    }
+    if move_fen == probe.pre_accept_input_fen {
+        role_parts.push("pre_accept");
+    }
+    if probe
+        .head_input_fen
+        .as_ref()
+        .is_some_and(|head| head == move_fen)
+    {
+        role_parts.push("head");
+    }
+    if move_fen == probe.legacy_selected_input_fen {
+        role_parts.push("legacy");
+    }
+    if move_fen == probe.legacy_full_pool_selected_input_fen {
+        role_parts.push("legacy_full_pool");
+    }
+    if role_parts.is_empty() {
+        role_parts.push("other");
+    }
+
+    let advisor_class = pro_policy_mechanism_advisor_class(advisor, move_fen);
+    let Some((index, root)) = scored_roots
+        .iter()
+        .enumerate()
+        .find(|(_, root)| Input::fen_from_array(&root.inputs) == move_fen)
+    else {
+        return ProPolicyMechanismRootClass {
+            role: role_parts.join("+"),
+            live: "candidate_omitted",
+            family: "omitted".to_string(),
+            advisor: advisor_class,
+            safety: "omitted",
+            progress: "omitted",
+            rank: None,
+            score: None,
+            utility: None,
+        };
+    };
+
+    let family = MonsGameModel::turn_engine_root_evaluation_family(root);
+    let utility = MonsGameModel::turn_engine_selected_override_utility(
+        game,
+        root,
+        game.active_color,
+        config,
+        family,
+    );
+    let safety = if root.mana_handoff_to_opponent || root.has_roundtrip {
+        "handoff_or_roundtrip"
+    } else if root.own_drainer_walk_vulnerable {
+        "walk_vulnerable"
+    } else if root.own_drainer_vulnerable {
+        "vulnerable"
+    } else {
+        "safe"
+    };
+    let progress = if root.wins_immediately {
+        "wins"
+    } else if root.attacks_opponent_drainer {
+        "attacks_drainer"
+    } else if root.spirit_same_turn_score_setup_now || root.spirit_own_mana_setup_now {
+        "spirit_setup"
+    } else if root.spirit_development {
+        "spirit_development"
+    } else if root.supermana_progress && root.opponent_mana_progress {
+        "both_mana_progress"
+    } else if root.supermana_progress {
+        "supermana_progress"
+    } else if root.opponent_mana_progress {
+        "opponent_mana_progress"
+    } else if root.safe_supermana_progress_steps > 0 || root.safe_opponent_mana_progress_steps > 0 {
+        "safe_step_progress"
+    } else if root.same_turn_score_window_value > 0 {
+        "score_window"
+    } else if root.score_path_best_steps > 0 {
+        "score_path"
+    } else {
+        "quiet"
+    };
+
+    ProPolicyMechanismRootClass {
+        role: role_parts.join("+"),
+        live: if index <= 2 {
+            "top3_live"
+        } else {
+            "lower_live"
+        },
+        family: format!("{family:?}"),
+        advisor: advisor_class,
+        safety,
+        progress,
+        rank: Some(root.root_rank),
+        score: Some(root.score),
+        utility: Some(utility),
+    }
+}
+
+fn pro_policy_mechanism_class_keys(
+    mechanism_profile: &str,
+    mode: SmartAutomovePreference,
+    game: &MonsGame,
+    probe: &RuntimeDecisionProbe,
+    advisor: Option<&crate::models::mons_game_model::ProV2RootAdvisorDecision>,
+    baseline_move_fen: &str,
+    winner_move_fen: &str,
+) -> Vec<String> {
+    let (config, scored_roots, _, _) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(mechanism_profile, mode, game);
+    let baseline = pro_policy_mechanism_root_class(
+        game,
+        config,
+        scored_roots.as_slice(),
+        probe,
+        advisor,
+        baseline_move_fen,
+    );
+    let winner = pro_policy_mechanism_root_class(
+        game,
+        config,
+        scored_roots.as_slice(),
+        probe,
+        advisor,
+        winner_move_fen,
+    );
+    let winner_vs_baseline_utility =
+        pro_policy_mechanism_utility_primary_order(winner.utility, baseline.utility);
+    let winner_vs_baseline_score = pro_policy_mechanism_score_order(winner.score, baseline.score);
+
+    vec![
+        format!(
+            "axis=stage baseline_stage={} head_accepted={} head_primary={:?} pre_family={:?} head_family={:?}",
+            probe.selector_last_stage,
+            probe.head_accepted,
+            probe.head_plan_primary_axes_vs_pre_accept,
+            probe.pre_accept_family,
+            probe.head_family,
+        ),
+        format!(
+            "axis=role baseline_role={} baseline_live={} winner_role={} winner_live={}",
+            baseline.role, baseline.live, winner.role, winner.live,
+        ),
+        format!(
+            "axis=family baseline_family={} winner_family={} winner_vs_baseline_primary={} winner_vs_baseline_score={}",
+            baseline.family,
+            winner.family,
+            winner_vs_baseline_utility,
+            winner_vs_baseline_score,
+        ),
+        format!(
+            "axis=advisor baseline_advisor={} winner_advisor={}",
+            baseline.advisor, winner.advisor,
+        ),
+        format!(
+            "axis=rank baseline_rank={} winner_rank={} winner_vs_baseline_primary={} winner_vs_baseline_score={}",
+            pro_policy_mechanism_rank_bucket(baseline.rank),
+            pro_policy_mechanism_rank_bucket(winner.rank),
+            winner_vs_baseline_utility,
+            winner_vs_baseline_score,
+        ),
+        format!(
+            "axis=safety_progress baseline_safety={} baseline_progress={} winner_safety={} winner_progress={}",
+            baseline.safety, baseline.progress, winner.safety, winner.progress,
+        ),
+        format!(
+            "axis=winner_root role={} live={} family={} advisor={} safety={} progress={} rank={}",
+            winner.role,
+            winner.live,
+            winner.family,
+            winner.advisor,
+            winner.safety,
+            winner.progress,
+            pro_policy_mechanism_rank_bucket(winner.rank),
+        ),
+    ]
+}
+
 fn pro_sweep_candidate_record_context_key(
     duel_label: &str,
     variant: GameVariant,
@@ -3152,6 +3435,7 @@ fn smart_automove_pro_policy_winner_probe() {
                 let mut winner_context_counts = BTreeMap::<String, usize>::new();
                 let mut winner_pair_counts = BTreeMap::<String, usize>::new();
                 let mut winner_mechanism_counts = BTreeMap::<String, usize>::new();
+                let mut winner_mechanism_class_counts = BTreeMap::<String, usize>::new();
                 let mut printed = 0usize;
 
                 'duel_samples: for repeat_index in 0..repeats {
@@ -3368,6 +3652,18 @@ fn smart_automove_pro_policy_winner_probe() {
                                     baseline_probe.exact_context,
                                 );
                                 *winner_mechanism_counts.entry(mechanism_key).or_default() += 1;
+                                for class_key in pro_policy_mechanism_class_keys(
+                                    mechanism_profile,
+                                    SmartAutomovePreference::Pro,
+                                    &board,
+                                    &baseline_probe,
+                                    baseline_advisor.as_ref(),
+                                    divergence.left_move_fen.as_str(),
+                                    divergence.right_move_fen.as_str(),
+                                ) {
+                                    *winner_mechanism_class_counts.entry(class_key).or_default() +=
+                                        1;
+                                }
                             }
 
                             if printed < trace_limit {
@@ -3426,7 +3722,7 @@ fn smart_automove_pro_policy_winner_probe() {
                     stats.missing_first_diff,
                 );
                 println!(
-                    "PRO_POLICY_WINNER_STOPLIGHT {{\"panel\":\"{}\",\"duel\":\"{}\",\"label\":\"{}\",\"policy_wins\":{},\"no_policy_wins\":{},\"max_policy_games\":{},\"max_mechanism_games\":{},\"candidate_trace_limit_hit\":{}}}",
+                    "PRO_POLICY_WINNER_STOPLIGHT {{\"panel\":\"{}\",\"duel\":\"{}\",\"label\":\"{}\",\"policy_wins\":{},\"no_policy_wins\":{},\"max_policy_games\":{},\"max_mechanism_games\":{},\"max_mechanism_class_games\":{},\"candidate_trace_limit_hit\":{}}}",
                     json_escape(panel.label),
                     json_escape(duel.label),
                     pro_policy_winner_stoplight_label(
@@ -3439,6 +3735,7 @@ fn smart_automove_pro_policy_winner_probe() {
                     stats.no_policy_wins,
                     max_count(&winner_counts),
                     max_count(&winner_mechanism_counts),
+                    max_count(&winner_mechanism_class_counts),
                     stats.candidate_trace_limit_hit,
                 );
                 for (key, games) in pro_policy_matrix_sorted_counts(&class_counts, aggregate_limit)
@@ -3484,6 +3781,18 @@ fn smart_automove_pro_policy_winner_probe() {
                     );
                 }
                 if include_mechanism {
+                    for (key, games) in pro_policy_matrix_sorted_counts(
+                        &winner_mechanism_class_counts,
+                        aggregate_limit,
+                    ) {
+                        println!(
+                            "PRO_POLICY_WINNER_MECHANISM_CLASS {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                            json_escape(panel.label),
+                            json_escape(duel.label),
+                            json_escape(key),
+                            games,
+                        );
+                    }
                     for (key, games) in
                         pro_policy_matrix_sorted_counts(&winner_mechanism_counts, aggregate_limit)
                     {

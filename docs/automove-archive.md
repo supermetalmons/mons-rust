@@ -4,6 +4,15 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Policy-Winner Mechanism-Class and Legacy-Preaccept Head Veto
+
+- This wave kept a harness improvement and removed the test-only runtime scout before ending.
+- `pro-policy-corpus` / `smart_automove_pro_policy_winner_probe` now emits `PRO_POLICY_WINNER_MECHANISM_CLASS` when mechanism tracing is enabled. These are coarse axes over stage/head state, baseline-vs-winner role, family, advisor status, rank, safety/progress, and winner-root shape, printed next to exact `PRO_POLICY_WINNER_MECHANISM` records.
+- The first sampled Pro mechanism-class corpus over the full reset portfolio still had exact singleton mechanisms: baseline wins `7`, policy wins `5`, no-policy wins `0`, `max_mechanism_games=1`, `max_mechanism_class_games=2`. The only repeated class was a broad safe-step-progress shape, which is not enough for runtime code.
+- The active Fast corpus also stayed exact-singleton with oracle coverage: baseline wins `2`, policy wins `4`, no-policy wins `0`, `max_mechanism_games=1`, `max_mechanism_class_games=2`. Its repeated class was selected accepted-head baseline roots losing to pre-accept/legacy winner roots.
+- A temporary test-only `frontier_pro_v4_legacy_preaccept_head_veto` candidate vetoed an accepted head only when the guarded selected move was exactly the head and the pre-accept root matched the legacy or legacy-full-pool selection. It fired `26` times in sampled Pro and failed the quick dashboard at `8-4` (`0.6667`, confidence `0.8062`, avg `195.76ms`), with weak rows in `center_spoke_mana_rows`, `alternating_mana_rows`, `inner_wedge_mana_rows`, and `forward_bridge_mana_rows`.
+- Durable outcome: coarse mechanism classes are useful routing evidence, but a repeated selected-head/pre-accept class is still not a promotable head-veto feature by itself. Future head work needs a new discriminator below pre-accept/legacy status and must pass sampled plus active panels before runtime source is retained.
+
 ## Shallow ProV4 Unified Root-Value Comparator
 
 - Temporary test-only candidate source was cut and removed in the same session.
