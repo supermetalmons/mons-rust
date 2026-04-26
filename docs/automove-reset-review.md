@@ -177,5 +177,10 @@ Implement or extend a corpus-style diagnostic that can compare the existing poli
 - utility axes;
 - outcome class across sampled and active panels.
 
-Then use that aggregate to choose between ProV4 unified root policy work and utility calibration work. If the aggregate remains singleton-heavy, the correct next move is more harness design, not a runtime selector.
+The current first runner entrypoint for this is the policy-winner corpus subset:
 
+```sh
+./scripts/run-automove-experiment.sh pro-policy-corpus frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard
+```
+
+It records the first winning policy for baseline losses and ties that win back to guarded root/advisor/head/utility status. Then use that aggregate to choose between ProV4 unified root policy work and utility calibration work. If the aggregate remains singleton-heavy, the correct next move is extending the full matrix/corpus harness, not a runtime selector.

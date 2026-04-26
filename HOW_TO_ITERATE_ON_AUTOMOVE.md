@@ -14,8 +14,9 @@ Archived profiles, archived seams, and archived stages are not valid experiment 
 6. Pick exactly one live hypothesis before editing runtime code.
 7. Probe first when the mechanism is unclear.
 8. When there is no live hypothesis, read `docs/automove-reset-review.md` and switch to the structural reset instead of running another seam loop.
-9. Archive or kill the line before starting another.
-10. Clean logs and stamps before ending the session.
+9. In structural reset mode, run `pro-policy-corpus` before writing a selector from policy labels.
+10. Archive or kill the line before starting another.
+11. Clean logs and stamps before ending the session.
 
 ## Variant Policy
 
@@ -65,6 +66,7 @@ Use `./scripts/run-automove-experiment.sh` when you need one stage at a time or 
 ./scripts/run-automove-experiment.sh pro-policy-matrix frontier_pro_v2_guarded,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard
 ./scripts/run-automove-experiment.sh pro-policy-cross-budget frontier_pro_v2_guarded,shipping_pro_search_control,frontier_pro_v2_raw
 ./scripts/run-automove-experiment.sh pro-policy-winner frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,shipping_pro_search_control
+./scripts/run-automove-experiment.sh pro-policy-corpus frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard
 ```
 
 ## Structural Reset
@@ -79,6 +81,7 @@ Use this path when `AUTOMOVE_IDEAS.md` says there is no live challenger or when 
 - Read `docs/automove-reset-review.md` when the work feels stuck or when no single runtime hypothesis is live.
 - The scout is diagnostic-only and starts with `pro-promotion-dashboard` across canonical sampled and active-blocker panels.
 - Do not edit runtime code for a broad Pro change unless the candidate is strong on both panels.
+- If no candidate is strong on both panels, use `pro-policy-corpus` to look for repeated root/advisor/head/utility mechanisms across the existing policy portfolio before designing another selector.
 - Add `--confirm` only after the default scout panels look promotable.
 
 ## Gate Rules
@@ -213,12 +216,22 @@ SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE=true \
 
 `smart_automove_pro_policy_winner_probe` is the faster selector-design companion for a policy matrix with good oracle coverage. It plays the baseline first; when the baseline loses, it tries candidate policies in the provided order until one wins, then prints `PRO_POLICY_WINNER_POLICY`, `PRO_POLICY_WINNER_CONTEXT`, and `PRO_POLICY_WINNER_PAIR`. Use it before writing a selector over an already-viable policy set, but validate the resulting selector with `pro-promotion-dashboard`; first-winning context alone can hide policy-entry timing conflicts.
 
+Set `SMART_PRO_POLICY_WINNER_INCLUDE_MECHANISM=true`, or use the `pro-policy-corpus` wrapper, when the reset path needs mechanism evidence. This adds `PRO_POLICY_WINNER_MECHANISM` aggregates keyed by guarded root status, advisor ordered/preserved/approved state, head acceptance, exact context, and utility/root-evaluation axes for the baseline and winning policy moves.
+
 For broad portfolios, keep it filtered or cap exploratory cost with `SMART_PRO_POLICY_WINNER_CANDIDATE_TRACE_LIMIT`; summaries then include `candidate_trace_limit_hit=true` when the duel was intentionally partial.
 
 ```sh
 SMART_PRO_POLICY_WINNER_PANEL_FILTER=sampled \
 SMART_PRO_POLICY_WINNER_DUEL_FILTER=vs_shipping_pro \
 ./scripts/run-automove-experiment.sh pro-policy-winner frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard
+```
+
+Structural reset corpus run:
+
+```sh
+SMART_PRO_POLICY_WINNER_PANEL_FILTER=all \
+SMART_PRO_POLICY_WINNER_DUEL_FILTER=all \
+./scripts/run-automove-experiment.sh pro-policy-corpus frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard
 ```
 
 `smart_automove_pro_policy_cross_budget_probe` checks whether one policy choice is stable for the same opening side against Pro, Normal, and Fast shipping opponents. It defaults to the sampled panel with one repeat and one opening, then prints `PRO_POLICY_CROSS_BUDGET_SUMMARY`, `PRO_POLICY_CROSS_BUDGET_CLASS`, and policy lists for all-budget wins and non-regressing repairs. Use it before building a selector from policy-winner data; a `budget_conflict` class means a policy helps one opponent budget while regressing another on the same board family, so the next spend needs a shared utility feature rather than another static gate.

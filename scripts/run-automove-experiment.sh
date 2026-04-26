@@ -23,6 +23,7 @@ stages:
   pro-policy-matrix      diagnostic: compare multiple sweep policies on identical openings
   pro-policy-cross-budget diagnostic: compare one policy choice across Pro/Normal/Fast opponents on identical openings
   pro-policy-winner      diagnostic: short-circuit first winning policy contexts
+  pro-policy-corpus      diagnostic: policy-winner plus guarded mechanism aggregates
 
 defaults:
   shipping = shipping_pro_search for Pro stages
@@ -42,6 +43,7 @@ examples:
   ./scripts/run-automove-experiment.sh pro-policy-matrix frontier_pro_v2_guarded,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard
   ./scripts/run-automove-experiment.sh pro-policy-cross-budget frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,shipping_pro_search_control
   ./scripts/run-automove-experiment.sh pro-policy-winner frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,shipping_pro_search_control
+  ./scripts/run-automove-experiment.sh pro-policy-corpus frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard
 EOF_HELP
 }
 
@@ -292,6 +294,9 @@ case "${stage}" in
   pro-policy-winner)
     require_supported_sweep_filter "frontier" "${frontier}"
     ;;
+  pro-policy-corpus)
+    require_supported_sweep_filter "frontier" "${frontier}"
+    ;;
   pro-profile-attribution)
     require_supported_sweep_candidate "frontier" "${frontier}"
     if [ -n "${SMART_PRO_SWEEP_ATTRIBUTION_RIGHT:-}" ]; then
@@ -403,6 +408,15 @@ case "${stage}" in
       "SMART_SHIPPING_PROFILE=${shipping}" \
       "SMART_PRO_RELIABILITY_SHIPPING_PROFILE=${shipping}" \
       "SMART_PRO_POLICY_WINNER_CANDIDATES=${frontier}"
+    ;;
+  pro-policy-corpus)
+    run_cargo_logged \
+      "pro_policy_corpus_$(sanitize "${frontier}")" \
+      "smart_automove_pro_policy_winner_probe" \
+      "SMART_SHIPPING_PROFILE=${shipping}" \
+      "SMART_PRO_RELIABILITY_SHIPPING_PROFILE=${shipping}" \
+      "SMART_PRO_POLICY_WINNER_CANDIDATES=${frontier}" \
+      "SMART_PRO_POLICY_WINNER_INCLUDE_MECHANISM=true"
     ;;
   *)
     echo "unknown stage: ${stage}" >&2

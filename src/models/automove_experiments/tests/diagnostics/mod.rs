@@ -1452,6 +1452,61 @@ fn pro_policy_matrix_move_decision_probe(board_fen: &str, move_fen: &str) -> Str
     )
 }
 
+fn pro_policy_mechanism_profile_for_baseline(baseline_id: &str) -> &str {
+    if profile_selector_from_name(baseline_id).is_some() {
+        baseline_id
+    } else {
+        "frontier_pro_v2_guarded"
+    }
+}
+
+fn pro_policy_target_root_utility_status(
+    profile_name: &str,
+    mode: SmartAutomovePreference,
+    game: &MonsGame,
+    move_fen: &str,
+) -> String {
+    let (config, scored_roots, _, _) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(profile_name, mode, game);
+    let Some((index, root)) = scored_roots
+        .iter()
+        .enumerate()
+        .find(|(_, root)| Input::fen_from_array(&root.inputs) == move_fen)
+    else {
+        return "root=omitted".to_string();
+    };
+
+    let family = MonsGameModel::turn_engine_root_evaluation_family(root);
+    let utility = MonsGameModel::turn_engine_selected_override_utility(
+        game,
+        root,
+        game.active_color,
+        config,
+        family,
+    );
+
+    format!(
+        "root_index={} root_rank={} score={} family={:?} wins={} attack={} vulnerable={} walk_vulnerable={} spirit_setup={} spirit_dev={} super_progress={} opp_progress={} safe_super_steps={} safe_opp_steps={} score_path_steps={} same_turn_window={} utility={:?}",
+        index,
+        root.root_rank,
+        root.score,
+        family,
+        root.wins_immediately,
+        root.attacks_opponent_drainer,
+        root.own_drainer_vulnerable,
+        root.own_drainer_walk_vulnerable,
+        root.spirit_same_turn_score_setup_now || root.spirit_own_mana_setup_now,
+        root.spirit_development,
+        root.supermana_progress,
+        root.opponent_mana_progress,
+        root.safe_supermana_progress_steps,
+        root.safe_opponent_mana_progress_steps,
+        root.score_path_best_steps,
+        root.same_turn_score_window_value,
+        utility,
+    )
+}
+
 fn pro_sweep_candidate_record_context_key(
     duel_label: &str,
     variant: GameVariant,
@@ -2890,6 +2945,7 @@ fn smart_automove_pro_policy_winner_probe() {
         .unwrap_or(96)
         .max(1);
     let candidate_trace_limit = env_usize("SMART_PRO_POLICY_WINNER_CANDIDATE_TRACE_LIMIT");
+    let include_mechanism = env_bool("SMART_PRO_POLICY_WINNER_INCLUDE_MECHANISM").unwrap_or(false);
     let duel_specs = vec![
         PolicyWinnerDuelSpec {
             label: "vs_shipping_pro",
@@ -2909,7 +2965,7 @@ fn smart_automove_pro_policy_winner_probe() {
     ];
 
     println!(
-        "pro policy winner: baseline={} candidates={} panels={} duels={} max_plies={}",
+        "pro policy winner: baseline={} candidates={} panels={} duels={} max_plies={} include_mechanism={}",
         baseline.id,
         candidates
             .iter()
@@ -2930,6 +2986,7 @@ fn smart_automove_pro_policy_winner_probe() {
             .collect::<Vec<_>>()
             .join(","),
         max_plies,
+        include_mechanism,
     );
 
     for panel in pro_promotion_dashboard_panel_specs()
@@ -2957,6 +3014,7 @@ fn smart_automove_pro_policy_winner_probe() {
                 let mut winner_counts = BTreeMap::<String, usize>::new();
                 let mut winner_context_counts = BTreeMap::<String, usize>::new();
                 let mut winner_pair_counts = BTreeMap::<String, usize>::new();
+                let mut winner_mechanism_counts = BTreeMap::<String, usize>::new();
                 let mut printed = 0usize;
 
                 'duel_samples: for repeat_index in 0..repeats {
@@ -3104,6 +3162,77 @@ fn smart_automove_pro_policy_winner_probe() {
                             *winner_context_counts.entry(context_key).or_default() += 1;
                             *winner_pair_counts.entry(pair_key).or_default() += 1;
 
+                            if include_mechanism {
+                                let board =
+                                    MonsGame::from_fen(divergence.board_fen.as_str(), false)
+                                        .expect("policy winner board fen should be valid");
+                                let mechanism_profile =
+                                    pro_policy_mechanism_profile_for_baseline(baseline.id);
+                                let baseline_probe = runtime_decision_probe(
+                                    mechanism_profile,
+                                    SmartAutomovePreference::Pro,
+                                    &board,
+                                );
+                                let baseline_advisor = pro_v2_root_advisor_decision_snapshot();
+                                let baseline_status = decision_record_baseline_status(
+                                    mechanism_profile,
+                                    SmartAutomovePreference::Pro,
+                                    &board,
+                                    &baseline_probe,
+                                    baseline_advisor.as_ref(),
+                                    divergence.left_move_fen.as_str(),
+                                );
+                                let winner_status = decision_record_baseline_status(
+                                    mechanism_profile,
+                                    SmartAutomovePreference::Pro,
+                                    &board,
+                                    &baseline_probe,
+                                    baseline_advisor.as_ref(),
+                                    divergence.right_move_fen.as_str(),
+                                );
+                                let approved_status =
+                                    decision_record_approved_status(baseline_advisor.as_ref());
+                                let baseline_root = pro_policy_target_root_utility_status(
+                                    mechanism_profile,
+                                    SmartAutomovePreference::Pro,
+                                    &board,
+                                    divergence.left_move_fen.as_str(),
+                                );
+                                let winner_root = pro_policy_target_root_utility_status(
+                                    mechanism_profile,
+                                    SmartAutomovePreference::Pro,
+                                    &board,
+                                    divergence.right_move_fen.as_str(),
+                                );
+                                let mechanism_key = format!(
+                                    "class=policy_win mechanism_profile={} policy={} variant={} candidate_is_white={} color={} baseline_branch={} policy_branch={} baseline_stage={} turn={} mons_moves={} can_action={} can_mana={} selected_rank={:?} pre_family={:?} head_family={:?} head_accepted={} head_primary={:?} baseline_status={} winner_status={} approved={} baseline_root=[{}] winner_root=[{}] {}",
+                                    mechanism_profile,
+                                    winner.id,
+                                    automove_variant_label(variant),
+                                    candidate_is_white,
+                                    pro_profile_sweep_color_label(board.active_color),
+                                    divergence.left_branch,
+                                    divergence.right_branch,
+                                    baseline_probe.selector_last_stage,
+                                    board.turn_number,
+                                    board.mons_moves_count,
+                                    board.player_can_use_action(),
+                                    board.player_can_move_mana(),
+                                    baseline_probe.selected_rank,
+                                    baseline_probe.pre_accept_family,
+                                    baseline_probe.head_family,
+                                    baseline_probe.head_accepted,
+                                    baseline_probe.head_plan_primary_axes_vs_pre_accept,
+                                    baseline_status,
+                                    winner_status,
+                                    approved_status,
+                                    baseline_root,
+                                    winner_root,
+                                    baseline_probe.exact_context,
+                                );
+                                *winner_mechanism_counts.entry(mechanism_key).or_default() += 1;
+                            }
+
                             if printed < trace_limit {
                                 println!(
                                     "PRO_POLICY_WINNER_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"winner\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"baseline_result\":\"{}\",\"winner_result\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"winner_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"board\":\"{}\",\"baseline_move\":\"{}\",\"winner_move\":\"{}\",\"baseline_final\":\"{}\",\"winner_final\":\"{}\"}}",
@@ -3200,6 +3329,19 @@ fn smart_automove_pro_policy_winner_probe() {
                         json_escape(key),
                         games,
                     );
+                }
+                if include_mechanism {
+                    for (key, games) in
+                        pro_policy_matrix_sorted_counts(&winner_mechanism_counts, aggregate_limit)
+                    {
+                        println!(
+                            "PRO_POLICY_WINNER_MECHANISM {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                            json_escape(panel.label),
+                            json_escape(duel.label),
+                            json_escape(key),
+                            games,
+                        );
+                    }
                 }
             }
         });
