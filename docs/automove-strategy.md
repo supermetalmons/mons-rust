@@ -129,6 +129,7 @@ Stop the iteration and update docs instead of patching runtime code when any of 
 - a copied trace board does not reproduce cleanly
 - a sampled-pass change fails all-variant confirm with broad Pro/Normal/Fast loss
 - the proposed change is another board-local fallback, shortlist widening, branch toggle, or variant mirror without a decision-record mechanism
+- retained guarded decision records are singleton-heavy below `frontier_execute`; branch-level concentration alone is not a spendable mechanism
 
 ## Next Concrete Step
 
@@ -169,5 +170,7 @@ The latest sampled shipping/no-low-budget scout is killed. Exact sampled shippin
 The sticky policy-continuation follow-up is killed too. Letting those sampled shipping/no-low-budget policy choices continue for four follow-up turns only reached sampled Pro `10-2` when the fallthrough stayed on guarded; adding the non-promotable alternating-white policy component got Pro back to `11-1` but failed sampled Normal `8-4` and Fast `6-6`. Do not retry thread-local/profile-continuation selectors over existing policy labels unless a new utility feature first passes both sampled and active panels.
 
 The portfolio allowed-head continuation scout is killed as well. Feeding the current policy portfolio's first moves into the turn engine as allowed heads was too expensive when broad; the narrowed early-conflict version still failed sampled Pro `8-4` with `33` overrides, `311.91ms` average move time, and `alternating_mana_rows` at `0-2`. Existing policy outputs plus turn-engine continuation planning still rotate rows instead of creating a shared cross-budget utility signal.
+
+The latest retained guarded sampled decision-record refresh did not expose a code path to spend on. Pro, Normal, and Fast nonwins all reached `frontier_execute`, but they were singleton-heavy below that branch and split across variants, colors, turns, resource states, families, accepted-head/advisor state, and exact move pairs. Future runtime work should start from a new shared utility/root-evaluation feature or a candidate that already passes the promotion dashboard, not from another `frontier_execute` selector.
 
 The next useful implementation should be a shared utility or root-evaluation feature that explains why the winning policy sometimes must enter earlier or later than the printed first divergence. Use `pro-policy-matrix`, `pro-policy-winner`, and `pro-policy-cross-budget` to evaluate new policy components, but runtime code should change only after a candidate passes the promotion dashboard on both sampled and active panels.
