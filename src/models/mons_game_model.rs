@@ -1901,6 +1901,10 @@ struct SearchPreferabilityCacheKey {
     perspective: Color,
     scoring_weights_key: u64,
     allow_exact_static_evaluation: bool,
+    enable_local_scoring_eval_ctx: bool,
+    enable_scoring_attack_reach_summary: bool,
+    enable_scoring_attack_reach_target_narrowing: bool,
+    enable_scoring_drainer_attack_reach_target_narrowing: bool,
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
@@ -16170,11 +16174,7 @@ impl MonsGameModel {
                 scored_roots[*left]
                     .root_rank
                     .cmp(&scored_roots[*right].root_rank)
-                    .then_with(|| {
-                        scored_roots[*right]
-                            .score
-                            .cmp(&scored_roots[*left].score)
-                    })
+                    .then_with(|| scored_roots[*right].score.cmp(&scored_roots[*left].score))
                     .then_with(|| {
                         Self::compare_ranked_scored_root_indices(scored_roots, *left, *right)
                     })
@@ -16252,8 +16252,7 @@ impl MonsGameModel {
                     && challenger.root_rank > approved.root_rank
                     && challenger.root_rank <= approved.root_rank.saturating_add(4)
                     && challenger.score >= approved.score.saturating_sub(32)
-                    && challenger.spirit_setup_gain
-                        >= approved.spirit_setup_gain.saturating_add(16)
+                    && challenger.spirit_setup_gain >= approved.spirit_setup_gain.saturating_add(16)
                     && challenger.score_path_best_steps >= approved.score_path_best_steps
                     && challenger.own_drainer_vulnerable == approved.own_drainer_vulnerable
                     && challenger.own_drainer_walk_vulnerable
@@ -16352,11 +16351,7 @@ impl MonsGameModel {
                 scored_roots[*left]
                     .root_rank
                     .cmp(&scored_roots[*right].root_rank)
-                    .then_with(|| {
-                        scored_roots[*right]
-                            .score
-                            .cmp(&scored_roots[*left].score)
-                    })
+                    .then_with(|| scored_roots[*right].score.cmp(&scored_roots[*left].score))
                     .then_with(|| {
                         Self::compare_ranked_scored_root_indices(scored_roots, *left, *right)
                     })
@@ -19050,9 +19045,7 @@ impl MonsGameModel {
                             )
                     })
                     .then_with(|| left_root.score.cmp(&right_root.score))
-                    .then_with(|| {
-                        right_root.root_rank.cmp(&left_root.root_rank)
-                    })
+                    .then_with(|| right_root.root_rank.cmp(&left_root.root_rank))
                     .then_with(|| {
                         Self::compare_ranked_scored_root_indices(scored_roots, *right, *left)
                     })
@@ -19440,8 +19433,7 @@ impl MonsGameModel {
                     && !root.mana_handoff_to_opponent
                     && !root.has_roundtrip
                     && root.inputs.first() == approved.inputs.first()
-                    && root.safe_supermana_progress_steps
-                        == approved.safe_supermana_progress_steps
+                    && root.safe_supermana_progress_steps == approved.safe_supermana_progress_steps
                     && root.safe_opponent_mana_progress_steps
                         == approved.safe_opponent_mana_progress_steps
                     && root.root_rank <= approved.root_rank
@@ -20853,8 +20845,17 @@ impl MonsGameModel {
         ) {
             approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedFamilyCompetition);
         }
+        if let Some(index) = Self::pro_v2_root_advisor_black_early_plain_spirit_followup_override(
+            game,
+            scored_roots,
+            selection_indices.as_slice(),
+            approved_index.0,
+            config,
+        ) {
+            approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedFamilyCompetition);
+        }
         if let Some(index) =
-            Self::pro_v2_root_advisor_black_early_plain_spirit_followup_override(
+            Self::pro_v2_root_advisor_black_turn_four_vulnerable_progress_mana_override(
                 game,
                 scored_roots,
                 selection_indices.as_slice(),
@@ -20862,15 +20863,6 @@ impl MonsGameModel {
                 config,
             )
         {
-            approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedFamilyCompetition);
-        }
-        if let Some(index) = Self::pro_v2_root_advisor_black_turn_four_vulnerable_progress_mana_override(
-            game,
-            scored_roots,
-            selection_indices.as_slice(),
-            approved_index.0,
-            config,
-        ) {
             approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedFamilyCompetition);
         }
         if let Some(index) =
@@ -21084,15 +21076,13 @@ impl MonsGameModel {
         ) {
             approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedFamilyCompetition);
         }
-        if let Some(index) =
-            Self::pro_v2_root_advisor_white_early_setup_sibling_progress_override(
-                game,
-                scored_roots,
-                selection_indices.as_slice(),
-                approved_index.0,
-                config,
-            )
-        {
+        if let Some(index) = Self::pro_v2_root_advisor_white_early_setup_sibling_progress_override(
+            game,
+            scored_roots,
+            selection_indices.as_slice(),
+            approved_index.0,
+            config,
+        ) {
             approved_index = (index, ProV2RootAdvisorReasonCode::ApprovedFamilyCompetition);
         }
         if let Some(index) =
@@ -26693,6 +26683,10 @@ impl MonsGameModel {
             perspective,
             scoring_weights_key: scoring_weights as *const ScoringWeights as usize as u64,
             allow_exact_static_evaluation,
+            enable_local_scoring_eval_ctx,
+            enable_scoring_attack_reach_summary,
+            enable_scoring_attack_reach_target_narrowing,
+            enable_scoring_drainer_attack_reach_target_narrowing,
         };
         if let Some(cached) =
             SEARCH_PREFERABILITY_CACHE.with(|cache| cache.borrow().get(&cache_key).copied())
@@ -26930,6 +26924,41 @@ mod evaluation_cache_tests {
             MonsGameModel::evaluate_search_preferability(&game, Color::White, config);
 
         assert_eq!(without_context, with_context);
+    }
+
+    #[test]
+    fn search_preferability_cache_keys_scoring_context_flags() {
+        clear_turn_engine_selector_followup_floor_cache();
+        let game = game_with_items(
+            vec![
+                (
+                    Location::new(6, 5),
+                    Item::Mon {
+                        mon: Mon::new(MonKind::Drainer, Color::White, 0),
+                    },
+                ),
+                (
+                    Location::new(7, 5),
+                    Item::MonWithConsumable {
+                        mon: Mon::new(MonKind::Demon, Color::Black, 0),
+                        consumable: Consumable::Bomb,
+                    },
+                ),
+            ],
+            Color::White,
+        );
+        let mut config =
+            MonsGameModel::shipping_search_config_for_game(&game, SmartAutomovePreference::Pro);
+        config.enable_local_scoring_eval_ctx = false;
+        let _ = MonsGameModel::evaluate_search_preferability(&game, Color::White, config);
+
+        config.enable_local_scoring_eval_ctx = true;
+        config.enable_scoring_attack_reach_summary = true;
+        config.enable_scoring_attack_reach_target_narrowing = true;
+        config.enable_scoring_drainer_attack_reach_target_narrowing = true;
+        let _ = MonsGameModel::evaluate_search_preferability(&game, Color::White, config);
+
+        assert_eq!(search_preferability_cache_len(), 2);
     }
 
     #[test]

@@ -1949,7 +1949,8 @@ fn frontier_pro_v2_guarded_profile_prefers_shipping_black_cluster_duel_sampled_n
 }
 
 #[test]
-fn frontier_pro_v2_guarded_profile_prefers_shipping_black_head_accept_search_only_duel_sampled_normal_root() {
+fn frontier_pro_v2_guarded_profile_prefers_shipping_black_head_accept_search_only_duel_sampled_normal_root(
+) {
     assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
         "BLACK_HEAD_ACCEPT_SEARCH_ONLY_DUEL_SAMPLED_NORMAL",
         "0 0 b 1 0 1 0 0 4 n06a0xn04/n03y0xd0mn01e0xn04/n04s0xn06/n01xxmn09/n04xxmn01xxmn01xxmn02/xxQn04xxUn04Y0x/n02xxMn05xxMn02/n03xxMn03xxMn03/n04xxMS0xn05/n03E0xn01D0xn05/n04A0xn06 3",
@@ -1967,7 +1968,8 @@ fn frontier_pro_v2_guarded_profile_prefers_shipping_black_late_mana_duel_sampled
 }
 
 #[test]
-fn frontier_pro_v2_guarded_profile_prefers_shipping_black_late_head_accept_duel_sampled_normal_root() {
+fn frontier_pro_v2_guarded_profile_prefers_shipping_black_late_head_accept_duel_sampled_normal_root(
+) {
     assert_frontier_pro_v2_guarded_prefers_shipping_root_on_board(
         "BLACK_LATE_HEAD_ACCEPT_DUEL_SAMPLED_NORMAL",
         "0 0 b 1 0 0 0 0 6 n05d0xn05/n01xxmn03s0xa0xe0xn03/n03y0xn07/n03xxmn03xxmn03/n04xxmn01xxmn04/E0xn04xxUn05/n06xxMn04/n03xxMxxMS0xn02Y0xn02/n06xxMn04/n05A0xD0xn02xxMn01/n11 1",

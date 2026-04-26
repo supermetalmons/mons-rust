@@ -2,6 +2,7 @@ use super::*;
 use crate::models::mons_game_model::automove_runtime_variants::{
     apply_frontier_pro_v2_guarded_config, clear_frontier_runtime_variant_branch,
     frontier_runtime_variant_branch_snapshot, select_frontier_pro_v2_guarded_inputs,
+    select_frontier_pro_v2_guarded_inputs_with_frontier_runtime,
     select_frontier_pro_v2_guarded_without_late_black_fallback_inputs,
     select_shipping_search_inputs,
 };
@@ -443,6 +444,17 @@ fn select_sweep_frontier_pro_v2_raw_inputs(
     select_sweep_frontier_config_inputs(game, apply_frontier_pro_v2_guarded_config(config))
 }
 
+fn select_sweep_frontier_guarded_with_runtime_inputs(
+    game: &MonsGame,
+    config: AutomoveSearchConfig,
+    runtime: AutomoveSearchConfig,
+) -> Vec<Input> {
+    clear_frontier_runtime_variant_branch();
+    let inputs = select_frontier_pro_v2_guarded_inputs_with_frontier_runtime(game, config, runtime);
+    record_profile_sweep_branch(frontier_runtime_variant_branch_snapshot());
+    inputs
+}
+
 fn select_sweep_frontier_pro_v2_no_late_black_fallback_inputs(
     game: &MonsGame,
     config: AutomoveSearchConfig,
@@ -456,7 +468,7 @@ fn select_sweep_frontier_pro_v2_no_selected_followup_projection_inputs(
 ) -> Vec<Input> {
     let mut runtime = apply_frontier_pro_v2_guarded_config(config);
     runtime.enable_turn_engine_selected_followup_projection = false;
-    select_sweep_frontier_config_inputs(game, runtime)
+    select_sweep_frontier_guarded_with_runtime_inputs(game, config, runtime)
 }
 
 fn select_sweep_frontier_pro_v3_full_scored_reply_guard_inputs(
@@ -489,7 +501,7 @@ fn select_sweep_frontier_pro_v2_head_rerank_inputs(
 ) -> Vec<Input> {
     let mut runtime = apply_frontier_pro_v2_guarded_config(config);
     runtime.enable_turn_head_rerank = true;
-    select_sweep_frontier_config_inputs(game, runtime)
+    select_sweep_frontier_guarded_with_runtime_inputs(game, config, runtime)
 }
 
 fn select_sweep_frontier_pro_v2_no_spirit_family_inputs(
@@ -498,7 +510,7 @@ fn select_sweep_frontier_pro_v2_no_spirit_family_inputs(
 ) -> Vec<Input> {
     let mut runtime = apply_frontier_pro_v2_guarded_config(config);
     runtime.turn_engine_enable_spirit_family = false;
-    select_sweep_frontier_config_inputs(game, runtime)
+    select_sweep_frontier_guarded_with_runtime_inputs(game, config, runtime)
 }
 
 fn select_sweep_frontier_pro_v2_no_mid_tactical_guard_inputs(
@@ -507,7 +519,7 @@ fn select_sweep_frontier_pro_v2_no_mid_tactical_guard_inputs(
 ) -> Vec<Input> {
     let mut runtime = apply_frontier_pro_v2_guarded_config(config);
     runtime.enable_turn_engine_mid_turn_tactical_guard = false;
-    select_sweep_frontier_config_inputs(game, runtime)
+    select_sweep_frontier_guarded_with_runtime_inputs(game, config, runtime)
 }
 
 fn select_sweep_frontier_pro_v2_expansion_224_inputs(
@@ -516,7 +528,7 @@ fn select_sweep_frontier_pro_v2_expansion_224_inputs(
 ) -> Vec<Input> {
     let mut runtime = apply_frontier_pro_v2_guarded_config(config);
     runtime.turn_engine_expansion_cap = 224;
-    select_sweep_frontier_config_inputs(game, runtime)
+    select_sweep_frontier_guarded_with_runtime_inputs(game, config, runtime)
 }
 
 fn select_sweep_frontier_pro_v2_no_low_budget_guard_inputs(
@@ -525,7 +537,7 @@ fn select_sweep_frontier_pro_v2_no_low_budget_guard_inputs(
 ) -> Vec<Input> {
     let mut runtime = apply_frontier_pro_v2_guarded_config(config);
     runtime.enable_turn_engine_low_budget_guard = false;
-    select_sweep_frontier_config_inputs(game, runtime)
+    select_sweep_frontier_guarded_with_runtime_inputs(game, config, runtime)
 }
 
 fn select_sweep_frontier_pro_v3_alternating_white_edge_mana_inputs(
@@ -2447,17 +2459,16 @@ fn smart_automove_pro_policy_matrix_probe() {
                 }
 
                 for (candidate, stats) in stats_by_candidate.iter() {
-                    let candidate_stoplight = if stats.candidate_better == 0
-                        && stats.baseline_better == 0
-                    {
-                        "no_delta"
-                    } else if stats.candidate_better > 0 && stats.baseline_better == 0 {
-                        "nonregressing_delta"
-                    } else if stats.candidate_better > 0 && stats.baseline_better > 0 {
-                        "mixed_delta"
-                    } else {
-                        "regression_only"
-                    };
+                    let candidate_stoplight =
+                        if stats.candidate_better == 0 && stats.baseline_better == 0 {
+                            "no_delta"
+                        } else if stats.candidate_better > 0 && stats.baseline_better == 0 {
+                            "nonregressing_delta"
+                        } else if stats.candidate_better > 0 && stats.baseline_better > 0 {
+                            "mixed_delta"
+                        } else {
+                            "regression_only"
+                        };
                     println!(
                         "PRO_POLICY_MATRIX_SUMMARY {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"total_games\":{},\"candidate_better\":{},\"baseline_better\":{},\"same_outcome\":{},\"candidate_nonwins\":{},\"baseline_nonwins\":{},\"first_move_diffs\":{},\"recorded\":{},\"missing_first_diff\":{}}}",
                         json_escape(panel.label),
