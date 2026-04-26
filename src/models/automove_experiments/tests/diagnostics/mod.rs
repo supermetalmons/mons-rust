@@ -1560,11 +1560,53 @@ fn pro_policy_mechanism_rank_bucket(rank: Option<usize>) -> &'static str {
     }
 }
 
+fn pro_policy_mechanism_rank_delta_bucket(
+    winner_rank: Option<usize>,
+    baseline_rank: Option<usize>,
+) -> &'static str {
+    match (winner_rank, baseline_rank) {
+        (Some(winner), Some(baseline)) if winner == baseline => "same_rank",
+        (Some(winner), Some(baseline)) if winner < baseline && baseline - winner <= 2 => {
+            "winner_rank_better_1_2"
+        }
+        (Some(winner), Some(baseline)) if winner < baseline => "winner_rank_better_3_plus",
+        (Some(winner), Some(baseline)) if winner > baseline && winner - baseline <= 2 => {
+            "winner_rank_worse_1_2"
+        }
+        (Some(_), Some(_)) => "winner_rank_worse_3_plus",
+        (Some(_), None) => "winner_live_baseline_omitted",
+        (None, Some(_)) => "winner_omitted_baseline_live",
+        (None, None) => "both_omitted",
+    }
+}
+
 fn pro_policy_mechanism_score_order(left: Option<i32>, right: Option<i32>) -> &'static str {
     match (left, right) {
         (Some(left), Some(right)) => format_ordering_probe(left.cmp(&right)),
         (Some(_), None) => "left_live",
         (None, Some(_)) => "right_live",
+        (None, None) => "both_omitted",
+    }
+}
+
+fn pro_policy_mechanism_score_delta_bucket(
+    winner_score: Option<i32>,
+    baseline_score: Option<i32>,
+) -> &'static str {
+    match (winner_score, baseline_score) {
+        (Some(winner), Some(baseline)) => {
+            let delta = winner.saturating_sub(baseline);
+            match delta {
+                512.. => "winner_score_better_512_plus",
+                96..=511 => "winner_score_better_96_511",
+                0..=95 => "winner_score_same_or_close_better",
+                -95..=-1 => "winner_score_worse_1_95",
+                -511..=-96 => "winner_score_worse_96_511",
+                _ => "winner_score_worse_512_plus",
+            }
+        }
+        (Some(_), None) => "winner_live_baseline_omitted",
+        (None, Some(_)) => "winner_omitted_baseline_live",
         (None, None) => "both_omitted",
     }
 }
@@ -1791,6 +1833,8 @@ fn pro_policy_mechanism_class_keys_from_scored_roots(
     let winner_vs_baseline_utility =
         pro_policy_mechanism_utility_primary_order(winner.utility, baseline.utility);
     let winner_vs_baseline_score = pro_policy_mechanism_score_order(winner.score, baseline.score);
+    let winner_rank_delta = pro_policy_mechanism_rank_delta_bucket(winner.rank, baseline.rank);
+    let winner_score_delta = pro_policy_mechanism_score_delta_bucket(winner.score, baseline.score);
 
     vec![
         format!(
@@ -1822,6 +1866,10 @@ fn pro_policy_mechanism_class_keys_from_scored_roots(
             pro_policy_mechanism_rank_bucket(winner.rank),
             winner_vs_baseline_utility,
             winner_vs_baseline_score,
+        ),
+        format!(
+            "axis=rank_score_delta winner_rank_delta={} winner_score_delta={} winner_vs_baseline_primary={}",
+            winner_rank_delta, winner_score_delta, winner_vs_baseline_utility,
         ),
         format!(
             "axis=safety_progress baseline_safety={} baseline_progress={} winner_safety={} winner_progress={}",
