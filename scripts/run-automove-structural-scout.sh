@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 usage:
-  ./scripts/run-automove-structural-scout.sh [--corpus] [--confirm] <sweep-candidate[,candidate...]> [shipping]
+  ./scripts/run-automove-structural-scout.sh [--corpus] [--outcome-corpus] [--confirm] <sweep-candidate[,candidate...]> [shipping]
 
 Runs the promotion-dashboard panels that should precede any major Pro automove
 runtime change. This is diagnostic-only: it does not promote profiles.
@@ -22,6 +22,10 @@ With --corpus:
   4. pro-policy-corpus over the default structural portfolio, unless
      SMART_PRO_POLICY_CORPUS_PORTFOLIO is set
 
+With --outcome-corpus:
+  4. pro-policy-outcome-corpus over the default structural portfolio, unless
+     SMART_PRO_POLICY_OUTCOME_CORPUS_PORTFOLIO is set
+
 With --confirm:
   5. all variants profile sweep, repeats=1, games=12
 
@@ -32,12 +36,17 @@ EOF
 
 confirm=false
 corpus=false
+outcome_corpus=false
 default_policy_corpus_portfolio="frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --corpus)
       corpus=true
+      shift
+      ;;
+    --outcome-corpus)
+      outcome_corpus=true
       shift
       ;;
     --confirm)
@@ -87,6 +96,14 @@ run_policy_corpus() {
     ./scripts/run-automove-experiment.sh pro-policy-corpus "${portfolio}" "${shipping}"
 }
 
+run_policy_outcome_corpus() {
+  local portfolio="${SMART_PRO_POLICY_OUTCOME_CORPUS_PORTFOLIO:-${default_policy_corpus_portfolio}}"
+  echo "== automove structural scout: policy-outcome-corpus =="
+  SMART_PRO_POLICY_MATRIX_PANEL_FILTER="${SMART_PRO_POLICY_MATRIX_PANEL_FILTER:-all}" \
+  SMART_PRO_POLICY_MATRIX_DUEL_FILTER="${SMART_PRO_POLICY_MATRIX_DUEL_FILTER:-all}" \
+    ./scripts/run-automove-experiment.sh pro-policy-outcome-corpus "${portfolio}" "${shipping}"
+}
+
 run_profile_sweep_panel() {
   local panel="$1"
   shift
@@ -98,6 +115,10 @@ run_dashboard
 
 if [ "${corpus}" = true ]; then
   run_policy_corpus
+fi
+
+if [ "${outcome_corpus}" = true ]; then
+  run_policy_outcome_corpus
 fi
 
 if [ "${confirm}" = true ]; then

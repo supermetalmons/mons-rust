@@ -21,6 +21,7 @@ stages:
   pro-promotion-dashboard diagnostic: summarize sampled + active-blocker promotion shape
   pro-sweep-decision-record diagnostic: aggregate nonwins/deltas for one sweep candidate
   pro-policy-matrix      diagnostic: compare multiple sweep policies on identical openings
+  pro-policy-outcome-corpus diagnostic: policy-matrix outcome corpus plus stoplights
   pro-policy-cross-budget diagnostic: compare one policy choice across Pro/Normal/Fast opponents on identical openings
   pro-policy-winner      diagnostic: short-circuit first winning policy contexts
   pro-policy-corpus      diagnostic: policy-winner plus guarded mechanism aggregates
@@ -41,6 +42,7 @@ examples:
   ./scripts/run-automove-experiment.sh pro-promotion-dashboard frontier_pro_v2_raw
   ./scripts/run-automove-experiment.sh pro-sweep-decision-record frontier_pro_v2_guarded
   ./scripts/run-automove-experiment.sh pro-policy-matrix frontier_pro_v2_guarded,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard
+  ./scripts/run-automove-experiment.sh pro-policy-outcome-corpus frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard
   ./scripts/run-automove-experiment.sh pro-policy-cross-budget frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,shipping_pro_search_control
   ./scripts/run-automove-experiment.sh pro-policy-winner frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,shipping_pro_search_control
   ./scripts/run-automove-experiment.sh pro-policy-corpus frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard
@@ -288,6 +290,9 @@ case "${stage}" in
   pro-policy-matrix)
     require_supported_sweep_filter "frontier" "${frontier}"
     ;;
+  pro-policy-outcome-corpus)
+    require_supported_sweep_filter "frontier" "${frontier}"
+    ;;
   pro-policy-cross-budget)
     require_supported_sweep_filter "frontier" "${frontier}"
     ;;
@@ -388,6 +393,14 @@ case "${stage}" in
   pro-policy-matrix)
     run_cargo_logged \
       "pro_policy_matrix_$(sanitize "${frontier}")" \
+      "smart_automove_pro_policy_matrix_probe" \
+      "SMART_SHIPPING_PROFILE=${shipping}" \
+      "SMART_PRO_RELIABILITY_SHIPPING_PROFILE=${shipping}" \
+      "SMART_PRO_POLICY_MATRIX_CANDIDATES=${frontier}"
+    ;;
+  pro-policy-outcome-corpus)
+    run_cargo_logged \
+      "pro_policy_outcome_corpus_$(sanitize "${frontier}")" \
       "smart_automove_pro_policy_matrix_probe" \
       "SMART_SHIPPING_PROFILE=${shipping}" \
       "SMART_PRO_RELIABILITY_SHIPPING_PROFILE=${shipping}" \

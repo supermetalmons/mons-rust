@@ -188,3 +188,13 @@ The current first runner entrypoint for this is the policy-winner corpus subset:
 ```
 
 It records the first winning policy for baseline losses and ties that win back to guarded root/advisor/head/utility status. Then use that aggregate to choose between ProV4 unified root policy work and utility calibration work. If the aggregate remains singleton-heavy, the correct next move is extending the full matrix/corpus harness, not a runtime selector.
+
+When the first-winning corpus has oracle coverage but singleton-heavy winners, use the outcome-corpus wrapper before source edits:
+
+```sh
+SMART_PRO_POLICY_MATRIX_PANEL_FILTER=active_blockers \
+SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_fast \
+./scripts/run-automove-experiment.sh pro-policy-outcome-corpus frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard
+```
+
+This emits `PRO_POLICY_MATRIX_CANDIDATE_STOPLIGHT` and `PRO_POLICY_MATRIX_PORTFOLIO_STOPLIGHT`. A `singleton_selector_pressure` label is a kill for static selectors over the current portfolio; only repeated winner context or pair labels justify expensive decision probes or attribution.

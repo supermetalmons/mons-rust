@@ -77,6 +77,8 @@ Required fields:
 - root rank, family, score, reply-risk summary, exact context, and utility axes;
 - baseline save, policy win, policy regression, no-policy win, and both-lose labels.
 
+The first retained entrypoint is `pro-policy-outcome-corpus`, which reuses the policy-matrix probe to emit candidate and portfolio stoplights. Run it with panel/duel filters first; enable expensive decision probes only after the stoplight reports a repeated winner context or pair.
+
 Spend runtime code only after this table shows a repeated mechanism across more than one panel or budget. If it stays singleton-heavy, improve the corpus instead of writing runtime code.
 
 ### Path B: Test-Only ProV4 Unified Root Policy

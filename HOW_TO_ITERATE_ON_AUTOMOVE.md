@@ -64,6 +64,7 @@ Use `./scripts/run-automove-experiment.sh` when you need one stage at a time or 
 ./scripts/run-automove-experiment.sh pro-promotion-dashboard frontier_pro_v2_raw
 ./scripts/run-automove-experiment.sh pro-sweep-decision-record frontier_pro_v2_guarded
 ./scripts/run-automove-experiment.sh pro-policy-matrix frontier_pro_v2_guarded,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard
+./scripts/run-automove-experiment.sh pro-policy-outcome-corpus frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard
 ./scripts/run-automove-experiment.sh pro-policy-cross-budget frontier_pro_v2_guarded,shipping_pro_search_control,frontier_pro_v2_raw
 ./scripts/run-automove-experiment.sh pro-policy-winner frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,shipping_pro_search_control
 ./scripts/run-automove-experiment.sh pro-policy-corpus frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard
@@ -89,6 +90,14 @@ Use this path when `AUTOMOVE_IDEAS.md` says there is no live challenger or when 
 
 ```sh
 ./scripts/run-automove-structural-scout.sh --corpus frontier_pro_v2_guarded
+```
+
+- Use `--outcome-corpus` when policy-winner coverage is complete but singleton-heavy and you need matrix stoplights before source work. Keep it filtered first because the full portfolio is intentionally more expensive:
+
+```sh
+SMART_PRO_POLICY_MATRIX_PANEL_FILTER=active_blockers \
+SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_fast \
+./scripts/run-automove-structural-scout.sh --outcome-corpus frontier_pro_v2_guarded
 ```
 
 - Add `--confirm` only after the default scout panels look promotable.
@@ -211,6 +220,8 @@ SMART_PRO_SWEEP_DECISION_RECORD_DUEL_FILTER=vs_shipping_pro \
 ```
 
 `smart_automove_pro_policy_matrix_probe` compares multiple registered sweep policies on identical openings across the sampled and active-blocker panels. The first candidate is the baseline. Use it before writing another policy selector when two ablations each fix one active row but rotate sampled or Fast/Normal losses elsewhere; it prints per-candidate outcome summaries plus first-divergence branch, context, and move-pair aggregates.
+
+`pro-policy-outcome-corpus` is the same policy-matrix diagnostic with a reset-mode name. Use it when the next decision is whether the existing policy portfolio has coverage, baseline save risk, mixed deltas, or a repeated winner context. It is diagnostic-only and does not promote profiles.
 
 The matrix also prints `PRO_POLICY_MATRIX_PORTFOLIO` for each panel/duel, followed by weakness buckets as `PRO_POLICY_MATRIX_PORTFOLIO_CLASS`. Read these before designing a context selector: `candidate_only_wins` is the selector opportunity, `baseline_only_wins` is the regression risk, and `no_policy_wins` means the current candidate set cannot solve those openings by selection alone.
 
