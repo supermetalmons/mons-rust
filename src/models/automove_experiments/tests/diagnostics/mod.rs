@@ -3326,8 +3326,9 @@ fn smart_automove_pro_policy_cross_budget_probe() {
                                 .collect::<Vec<_>>()
                                 .join("|");
                             println!(
-                                "PRO_POLICY_CROSS_BUDGET_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"class\":\"{}\",\"baseline_results\":\"{}\",\"all_win_policies\":\"{}\",\"nonregressing_policies\":\"{}\",\"improving_policies\":\"{}\",\"policy_results\":\"{}\",\"opening\":\"{}\"}}",
+                                "PRO_POLICY_CROSS_BUDGET_RECORD {{\"panel\":\"{}\",\"seed_tag\":\"{}\",\"baseline\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"class\":\"{}\",\"baseline_results\":\"{}\",\"all_win_policies\":\"{}\",\"nonregressing_policies\":\"{}\",\"improving_policies\":\"{}\",\"policy_results\":\"{}\",\"opening\":\"{}\"}}",
                                 json_escape(panel.label),
+                                json_escape(panel_seed_tag.as_str()),
                                 json_escape(baseline.id),
                                 repeat_index,
                                 game_index,
@@ -3348,8 +3349,9 @@ fn smart_automove_pro_policy_cross_budget_probe() {
             }
 
             println!(
-                "PRO_POLICY_CROSS_BUDGET_SUMMARY {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"seed_opponent_mode\":\"{}\",\"total_states\":{},\"baseline_all_budget_wins\":{},\"candidate_any_all_budget_wins\":{},\"clean_repair_states\":{},\"nonregressing_repair_states\":{},\"budget_conflict_states\":{},\"no_policy_help_states\":{},\"state_limit_hit\":{}}}",
+                "PRO_POLICY_CROSS_BUDGET_SUMMARY {{\"panel\":\"{}\",\"seed_tag\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"seed_opponent_mode\":\"{}\",\"total_states\":{},\"baseline_all_budget_wins\":{},\"candidate_any_all_budget_wins\":{},\"clean_repair_states\":{},\"nonregressing_repair_states\":{},\"budget_conflict_states\":{},\"no_policy_help_states\":{},\"state_limit_hit\":{}}}",
                 json_escape(panel.label),
+                json_escape(panel_seed_tag.as_str()),
                 json_escape(baseline.id),
                 json_escape(
                     &candidates
@@ -3858,8 +3860,10 @@ fn smart_automove_pro_policy_winner_probe() {
                 }
 
                 println!(
-                    "PRO_POLICY_WINNER_SUMMARY {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"total_games\":{},\"baseline_wins\":{},\"policy_wins\":{},\"no_policy_wins\":{},\"candidate_traces\":{},\"candidate_trace_limit_hit\":{},\"state_limit_hit\":{},\"missing_first_diff\":{}}}",
+                    "PRO_POLICY_WINNER_SUMMARY {{\"panel\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"total_games\":{},\"baseline_wins\":{},\"policy_wins\":{},\"no_policy_wins\":{},\"candidate_traces\":{},\"candidate_trace_limit_hit\":{},\"state_limit_hit\":{},\"missing_first_diff\":{}}}",
                     json_escape(panel.label),
+                    json_escape(duel.label),
+                    json_escape(duel_seed_tag.as_str()),
                     json_escape(baseline.id),
                     json_escape(
                         &candidates
@@ -3869,7 +3873,6 @@ fn smart_automove_pro_policy_winner_probe() {
                             .collect::<Vec<_>>()
                             .join(",")
                     ),
-                    json_escape(duel.label),
                     stats.total_games,
                     stats.baseline_wins,
                     stats.policy_wins,
@@ -3880,9 +3883,10 @@ fn smart_automove_pro_policy_winner_probe() {
                     stats.missing_first_diff,
                 );
                 println!(
-                    "PRO_POLICY_WINNER_STOPLIGHT {{\"panel\":\"{}\",\"duel\":\"{}\",\"label\":\"{}\",\"policy_wins\":{},\"no_policy_wins\":{},\"max_policy_games\":{},\"max_mechanism_games\":{},\"max_mechanism_class_games\":{},\"candidate_trace_limit_hit\":{},\"state_limit_hit\":{}}}",
+                    "PRO_POLICY_WINNER_STOPLIGHT {{\"panel\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"label\":\"{}\",\"policy_wins\":{},\"no_policy_wins\":{},\"max_policy_games\":{},\"max_mechanism_games\":{},\"max_mechanism_class_games\":{},\"candidate_trace_limit_hit\":{},\"state_limit_hit\":{}}}",
                     json_escape(panel.label),
                     json_escape(duel.label),
+                    json_escape(duel_seed_tag.as_str()),
                     pro_policy_winner_stoplight_label(
                         &stats,
                         &winner_counts,

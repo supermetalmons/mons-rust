@@ -268,6 +268,7 @@ SMART_PRO_POLICY_WINNER_STATE_LIMIT=2 \
 `smart_automove_pro_policy_cross_budget_probe` checks whether one policy choice is stable for the same opening side against Pro, Normal, and Fast shipping opponents. It defaults to the sampled panel with one repeat and one opening, then prints `PRO_POLICY_CROSS_BUDGET_SUMMARY`, `PRO_POLICY_CROSS_BUDGET_CLASS`, and policy lists for all-budget wins and non-regressing repairs. Use it before building a selector from policy-winner data; a `budget_conflict` class means a policy helps one opponent budget while regressing another on the same board family, so the next spend needs a shared utility feature rather than another static gate.
 
 Keep cross-budget runs narrow. Start with the smallest policy set that explains the conflict, then widen only if the summary shows clean repairs. To replay openings from a specific policy-winner duel, set `SMART_PRO_POLICY_CROSS_BUDGET_SEED_OPPONENT_MODE=pro|normal|fast` and the matching `SMART_PRO_POLICY_CROSS_BUDGET_SEED_TAG`; use `SMART_PRO_POLICY_CROSS_BUDGET_STATE_LIMIT=<n>` for small exact follow-ups.
+`PRO_POLICY_WINNER_SUMMARY`, `PRO_POLICY_WINNER_STOPLIGHT`, `PRO_POLICY_CROSS_BUDGET_RECORD`, and `PRO_POLICY_CROSS_BUDGET_SUMMARY` print the effective `seed_tag`; copy that value directly into `SMART_PRO_POLICY_CROSS_BUDGET_SEED_TAG` for exact seed-aligned follow-ups.
 
 ```sh
 SMART_PRO_POLICY_CROSS_BUDGET_PANEL_FILTER=sampled \
