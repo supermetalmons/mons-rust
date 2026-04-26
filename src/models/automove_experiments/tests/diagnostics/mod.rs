@@ -931,6 +931,26 @@ fn pro_promotion_dashboard_directional_label(
     }
 }
 
+fn pro_promotion_dashboard_stoplight_label(
+    classification: &str,
+    panel_summaries: &[ProPromotionDashboardPanelSummary],
+) -> &'static str {
+    let cost_blocked = panel_summaries
+        .iter()
+        .any(|summary| summary.max_candidate_avg_ms >= 650.0);
+    if cost_blocked {
+        "cost_blocked"
+    } else {
+        match classification {
+            "promotable_scout" => "promotable_shape",
+            "sampled_only" => "sampled_only",
+            "active_blocker_only" => "active_only",
+            "directional_both_panels" => "broad_pressure",
+            _ => "not_promising",
+        }
+    }
+}
+
 fn print_pro_promotion_dashboard_result(
     panel: &str,
     candidate_id: &str,
@@ -2900,6 +2920,42 @@ fn smart_automove_pro_policy_cross_budget_probe() {
     }
 }
 
+fn max_count(counts: &BTreeMap<String, usize>) -> usize {
+    counts.values().copied().max().unwrap_or(0)
+}
+
+#[derive(Default)]
+struct PolicyWinnerStats {
+    total_games: usize,
+    baseline_wins: usize,
+    policy_wins: usize,
+    no_policy_wins: usize,
+    candidate_traces: usize,
+    missing_first_diff: usize,
+    candidate_trace_limit_hit: bool,
+}
+
+fn pro_policy_winner_stoplight_label(
+    stats: &PolicyWinnerStats,
+    winner_counts: &BTreeMap<String, usize>,
+    winner_mechanism_counts: &BTreeMap<String, usize>,
+    include_mechanism: bool,
+) -> &'static str {
+    if stats.candidate_trace_limit_hit {
+        "partial_corpus"
+    } else if stats.no_policy_wins > 0 {
+        "coverage_gap"
+    } else if stats.policy_wins == 0 {
+        "baseline_only"
+    } else if include_mechanism && max_count(winner_mechanism_counts) > 1 {
+        "repeated_mechanism"
+    } else if max_count(winner_counts) > 1 {
+        "repeated_policy"
+    } else {
+        "singleton_residue"
+    }
+}
+
 #[test]
 #[ignore = "diagnostic: short-circuit policy winner contexts for selector design"]
 fn smart_automove_pro_policy_winner_probe() {
@@ -2908,17 +2964,6 @@ fn smart_automove_pro_policy_winner_probe() {
         label: &'static str,
         opponent_mode: SmartAutomovePreference,
         seed_suffix: &'static str,
-    }
-
-    #[derive(Default)]
-    struct PolicyWinnerStats {
-        total_games: usize,
-        baseline_wins: usize,
-        policy_wins: usize,
-        no_policy_wins: usize,
-        candidate_traces: usize,
-        missing_first_diff: usize,
-        candidate_trace_limit_hit: bool,
     }
 
     let shipping_profile = reliability_shipping_profile_id();
@@ -3287,6 +3332,22 @@ fn smart_automove_pro_policy_winner_probe() {
                     stats.candidate_traces,
                     stats.candidate_trace_limit_hit,
                     stats.missing_first_diff,
+                );
+                println!(
+                    "PRO_POLICY_WINNER_STOPLIGHT {{\"panel\":\"{}\",\"duel\":\"{}\",\"label\":\"{}\",\"policy_wins\":{},\"no_policy_wins\":{},\"max_policy_games\":{},\"max_mechanism_games\":{},\"candidate_trace_limit_hit\":{}}}",
+                    json_escape(panel.label),
+                    json_escape(duel.label),
+                    pro_policy_winner_stoplight_label(
+                        &stats,
+                        &winner_counts,
+                        &winner_mechanism_counts,
+                        include_mechanism,
+                    ),
+                    stats.policy_wins,
+                    stats.no_policy_wins,
+                    max_count(&winner_counts),
+                    max_count(&winner_mechanism_counts),
+                    stats.candidate_trace_limit_hit,
                 );
                 for (key, games) in pro_policy_matrix_sorted_counts(&class_counts, aggregate_limit)
                 {
@@ -3918,6 +3979,17 @@ fn smart_automove_pro_promotion_dashboard_probe() {
             json_escape(candidate.id),
             json_escape(classification),
             panel_summaries.len(),
+        );
+        println!(
+            "PRO_PROMOTION_DASHBOARD_STOPLIGHT {{\"candidate\":\"{}\",\"label\":\"{}\",\"classification\":\"{}\",\"panels\":{},\"max_candidate_avg_ms\":{:.2}}}",
+            json_escape(candidate.id),
+            pro_promotion_dashboard_stoplight_label(classification, &panel_summaries),
+            json_escape(classification),
+            panel_summaries.len(),
+            panel_summaries
+                .iter()
+                .map(|summary| summary.max_candidate_avg_ms)
+                .fold(0.0, f64::max),
         );
     }
 }

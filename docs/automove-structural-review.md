@@ -41,7 +41,7 @@ The harness is strong at killing candidates but weak at forcing the next decisio
 - Promotion gates are clear: sampled Pro/Normal/Fast must hit `win_rate >= 0.90`, confidence near `0.99`, and candidate average move time below the ceiling.
 - The promotion dashboard correctly exposes sampled-vs-active false positives.
 - Policy matrix, policy winner, cross-budget, decision-record, and forced-root probes cover most of the needed evidence.
-- The missing operator affordance is a stoplight: after a dashboard failure, the harness should push future agents toward mechanism corpus or architecture work, not toward another local selector.
+- The stoplight operator affordance now exists in the diagnostics: after a dashboard or corpus run, the harness prints compact labels that should push future agents toward mechanism corpus or architecture work instead of another local selector.
 
 `scripts/run-automove-structural-scout.sh --corpus <candidate>` is now the preferred stuck-mode entrypoint. It runs the dashboard, then runs the default policy corpus portfolio unless `SMART_PRO_POLICY_CORPUS_PORTFOLIO` overrides it.
 
@@ -110,7 +110,7 @@ Do not add another shallow `TurnEngineUtility` gate unless it introduces a new m
 
 ### Path D: Harness Stoplight
 
-The next harness improvement should parse dashboard and corpus logs into a compact stoplight:
+The diagnostics now emit compact dashboard and corpus stoplights:
 
 - `promotable_shape`: every sampled and active Pro/Normal/Fast row is directionally strong;
 - `sampled_only`: sampled passes but active fails;
@@ -119,7 +119,7 @@ The next harness improvement should parse dashboard and corpus logs into a compa
 - `singleton_residue`: records do not repeat below branch/context labels;
 - `cost_blocked`: average move time approaches or exceeds the ceiling.
 
-That summary should be generated from logs, not inferred manually from long output.
+Treat these labels as routing instructions. `promotable_shape` earns confirm spend, `sampled_only` and `active_only` send the candidate to decision records, `cost_blocked` kills or narrows the line, and `singleton_residue` kills selectors over the current policy labels.
 
 ### Path E: Live Board Reduction
 

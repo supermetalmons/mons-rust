@@ -82,6 +82,7 @@ Use this path when `AUTOMOVE_IDEAS.md` says there is no live challenger or when 
 - Read `docs/automove-reset-review.md` when the work feels stuck or when no single runtime hypothesis is live.
 - The scout is diagnostic-only and starts with `pro-promotion-dashboard` across canonical sampled and active-blocker panels.
 - When the candidate is exactly `frontier_pro_v2_guarded`, the structural scout skips the guarded-delta self-comparison by default. Set `SMART_PRO_DASHBOARD_INCLUDE_GUARDED=true` only if you explicitly need the redundant self-delta.
+- `pro-promotion-dashboard` now emits `PRO_PROMOTION_DASHBOARD_STOPLIGHT` with labels such as `promotable_shape`, `sampled_only`, `active_only`, `broad_pressure`, `cost_blocked`, and `not_promising`.
 - Do not edit runtime code for a broad Pro change unless the candidate is strong on both panels.
 - If no candidate is strong on both panels, use `pro-policy-corpus` to look for repeated root/advisor/head/utility mechanisms across the existing policy portfolio before designing another selector.
 - Use `--corpus` on the structural scout when the repo is in reset mode:
@@ -229,6 +230,8 @@ Set `SMART_PRO_POLICY_WINNER_INCLUDE_MECHANISM=true`, or use the `pro-policy-cor
 For broad portfolios, keep it filtered or cap exploratory cost with `SMART_PRO_POLICY_WINNER_CANDIDATE_TRACE_LIMIT`; summaries then include `candidate_trace_limit_hit=true` when the duel was intentionally partial.
 
 A complete policy-winner corpus with `no_policy_wins=0` is still selector evidence, not promotion evidence. If `PRO_POLICY_WINNER_POLICY` and `PRO_POLICY_WINNER_MECHANISM` aggregates remain singleton-heavy, do not write a static policy-label selector; move to outcome-corpus stoplight work, ProV4 unified root policy, or a new measured utility feature.
+
+`pro-policy-corpus` now emits `PRO_POLICY_WINNER_STOPLIGHT` per panel and duel. Treat `singleton_residue` as a kill for selectors over the current policy labels; `coverage_gap` means add a policy/root feature first; `repeated_mechanism` is the only corpus label that earns deeper runtime design work.
 
 ```sh
 SMART_PRO_POLICY_WINNER_PANEL_FILTER=sampled \
