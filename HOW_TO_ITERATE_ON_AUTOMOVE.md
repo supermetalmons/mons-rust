@@ -14,7 +14,7 @@ Archived profiles, archived seams, and archived stages are not valid experiment 
 6. Pick exactly one live hypothesis before editing runtime code.
 7. Probe first when the mechanism is unclear.
 8. When there is no live hypothesis, read `docs/automove-reset-review.md` and switch to the structural reset instead of running another seam loop.
-9. In structural reset mode, run `pro-policy-corpus` before writing a selector from policy labels.
+9. In structural reset mode, run `pro-policy-corpus` or a filtered `pro-policy-outcome-corpus` before writing a selector from policy labels.
 10. Archive or kill the line before starting another.
 11. Clean logs and stamps before ending the session.
 
@@ -229,12 +229,14 @@ It also emits `PRO_POLICY_MATRIX_CANDIDATE_STOPLIGHT` and `PRO_POLICY_MATRIX_POR
 
 Set `SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE=true` on a narrow run when a first divergence needs deeper root evidence. This adds guarded root rank, family, score, selected/advisor status, and full-vs-no-selected-followup utility for both divergent moves. Keep this off for broad matrix runs because it reruns root scoring for printed records.
 
+Set `SMART_PRO_POLICY_MATRIX_INCLUDE_MECHANISM_CLASS=true` only on narrow matrix runs when the stoplights show a policy delta worth classifying. This adds `PRO_POLICY_MATRIX_MECHANISM_CLASS` records keyed by candidate, outcome, and coarse guarded mechanism class, so candidate wins can be compared against baseline saves/regressions without reading every exact divergence. It reruns root/advisor probes for every nonzero first divergence, so do not enable it for a broad reset portfolio until a filtered run finishes cheaply.
+
 ```sh
 SMART_PRO_POLICY_MATRIX_PANEL_FILTER=active_blockers \
 SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_fast \
 SMART_PRO_POLICY_MATRIX_REPEATS=1 \
 SMART_PRO_POLICY_MATRIX_GAMES=1 \
-SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE=true \
+SMART_PRO_POLICY_MATRIX_INCLUDE_MECHANISM_CLASS=true \
 ./scripts/run-automove-experiment.sh pro-policy-matrix frontier_pro_v2_guarded,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard
 ```
 

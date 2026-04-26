@@ -2397,6 +2397,8 @@ fn smart_automove_pro_policy_matrix_probe() {
         .max(1);
     let include_decision_probe =
         env_bool("SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE").unwrap_or(false);
+    let include_mechanism_class =
+        env_bool("SMART_PRO_POLICY_MATRIX_INCLUDE_MECHANISM_CLASS").unwrap_or(false);
     let duel_specs = vec![
         PolicyMatrixDuelSpec {
             label: "vs_shipping_pro",
@@ -2416,7 +2418,7 @@ fn smart_automove_pro_policy_matrix_probe() {
     ];
 
     println!(
-        "pro policy matrix: baseline={} candidates={} panels={} duels={} max_plies={} include_decision_probe={}",
+        "pro policy matrix: baseline={} candidates={} panels={} duels={} max_plies={} include_decision_probe={} include_mechanism_class={}",
         baseline.id,
         candidates
             .iter()
@@ -2438,6 +2440,7 @@ fn smart_automove_pro_policy_matrix_probe() {
             .join(","),
         max_plies,
         include_decision_probe,
+        include_mechanism_class,
     );
 
     for panel in pro_promotion_dashboard_panel_specs()
@@ -2468,6 +2471,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                 let mut branch_counts = BTreeMap::<String, usize>::new();
                 let mut context_counts = BTreeMap::<String, usize>::new();
                 let mut pair_counts = BTreeMap::<String, usize>::new();
+                let mut mechanism_class_counts = BTreeMap::<String, usize>::new();
                 let mut portfolio_class_counts = BTreeMap::<String, usize>::new();
                 let mut portfolio_winner_counts = BTreeMap::<String, usize>::new();
                 let mut portfolio_winner_context_counts = BTreeMap::<String, usize>::new();
@@ -2685,6 +2689,34 @@ fn smart_automove_pro_policy_matrix_probe() {
                                 *branch_counts.entry(branch_key).or_default() += 1;
                                 *context_counts.entry(context_key).or_default() += 1;
                                 *pair_counts.entry(pair_key).or_default() += 1;
+                                if include_mechanism_class {
+                                    let board =
+                                        MonsGame::from_fen(divergence.board_fen.as_str(), false)
+                                            .expect("policy matrix board fen should be valid");
+                                    let mechanism_profile =
+                                        pro_policy_mechanism_profile_for_baseline(baseline.id);
+                                    let baseline_probe = runtime_decision_probe(
+                                        mechanism_profile,
+                                        SmartAutomovePreference::Pro,
+                                        &board,
+                                    );
+                                    let baseline_advisor = pro_v2_root_advisor_decision_snapshot();
+                                    for class_key in pro_policy_mechanism_class_keys(
+                                        mechanism_profile,
+                                        SmartAutomovePreference::Pro,
+                                        &board,
+                                        &baseline_probe,
+                                        baseline_advisor.as_ref(),
+                                        divergence.left_move_fen.as_str(),
+                                        divergence.right_move_fen.as_str(),
+                                    ) {
+                                        let key = format!(
+                                            "candidate={} outcome={} {}",
+                                            candidate.id, outcome, class_key,
+                                        );
+                                        *mechanism_class_counts.entry(key).or_default() += 1;
+                                    }
+                                }
 
                                 if printed < trace_limit {
                                     let baseline_decision = if include_decision_probe {
@@ -2887,6 +2919,19 @@ fn smart_automove_pro_policy_matrix_probe() {
                         json_escape(key),
                         games,
                     );
+                }
+                if include_mechanism_class {
+                    for (key, games) in
+                        pro_policy_matrix_sorted_counts(&mechanism_class_counts, aggregate_limit)
+                    {
+                        println!(
+                            "PRO_POLICY_MATRIX_MECHANISM_CLASS {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                            json_escape(panel.label),
+                            json_escape(duel.label),
+                            json_escape(key),
+                            games,
+                        );
+                    }
                 }
                 for (key, games) in
                     pro_policy_matrix_sorted_counts(&context_counts, aggregate_limit)
