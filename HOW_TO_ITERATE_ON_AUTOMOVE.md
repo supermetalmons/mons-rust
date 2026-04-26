@@ -244,7 +244,7 @@ SMART_PRO_POLICY_MATRIX_INCLUDE_MECHANISM_CLASS=true \
 
 Set `SMART_PRO_POLICY_WINNER_INCLUDE_MECHANISM=true`, or use the `pro-policy-corpus` wrapper, when the reset path needs mechanism evidence. This adds exact `PRO_POLICY_WINNER_MECHANISM` aggregates keyed by guarded root status, advisor ordered/preserved/approved state, head acceptance, exact context, and utility/root-evaluation axes for the baseline and winning policy moves. It also emits coarser `PRO_POLICY_WINNER_MECHANISM_CLASS` records over stage/head state, baseline-vs-winner role, family, advisor status, rank, safety/progress, and winner-root shape. Use repeated classes to choose the next focused probe; do not treat a class repeat alone as promotion evidence.
 
-Read `PRO_POLICY_WINNER_GLOBAL_STOPLIGHT` and `PRO_POLICY_WINNER_GLOBAL_MECHANISM_CLASS` before long per-duel output. For broad portfolios, keep mechanism-enabled runs filtered by panel, duel, repeats, and games, or cap exploratory cost with `SMART_PRO_POLICY_WINNER_CANDIDATE_TRACE_LIMIT`; summaries then include `candidate_trace_limit_hit=true` when the duel was intentionally partial.
+Read `PRO_POLICY_WINNER_GLOBAL_STOPLIGHT` and `PRO_POLICY_WINNER_GLOBAL_MECHANISM_CLASS` before long per-duel output. For broad portfolios, keep mechanism-enabled runs filtered by panel, duel, repeats, games, and candidate set. Use `SMART_PRO_POLICY_WINNER_STATE_LIMIT=<n>` to sample each selected panel/duel and `SMART_PRO_POLICY_WINNER_CANDIDATE_TRACE_LIMIT` to cap candidate replay. Summaries include `state_limit_hit=true` or `candidate_trace_limit_hit=true` when the duel was intentionally partial.
 
 A complete policy-winner corpus with `no_policy_wins=0` is still selector evidence, not promotion evidence. If `PRO_POLICY_WINNER_POLICY` and `PRO_POLICY_WINNER_MECHANISM` aggregates remain singleton-heavy, do not write a static policy-label selector; move to outcome-corpus stoplight work, ProV4 unified root policy, or a new measured utility feature.
 
@@ -261,17 +261,19 @@ Structural reset corpus run:
 ```sh
 SMART_PRO_POLICY_WINNER_PANEL_FILTER=all \
 SMART_PRO_POLICY_WINNER_DUEL_FILTER=all \
+SMART_PRO_POLICY_WINNER_STATE_LIMIT=2 \
 ./scripts/run-automove-experiment.sh pro-policy-corpus frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard
 ```
 
 `smart_automove_pro_policy_cross_budget_probe` checks whether one policy choice is stable for the same opening side against Pro, Normal, and Fast shipping opponents. It defaults to the sampled panel with one repeat and one opening, then prints `PRO_POLICY_CROSS_BUDGET_SUMMARY`, `PRO_POLICY_CROSS_BUDGET_CLASS`, and policy lists for all-budget wins and non-regressing repairs. Use it before building a selector from policy-winner data; a `budget_conflict` class means a policy helps one opponent budget while regressing another on the same board family, so the next spend needs a shared utility feature rather than another static gate.
 
-Keep cross-budget runs narrow. Start with the smallest policy set that explains the conflict, then widen only if the summary shows clean repairs:
+Keep cross-budget runs narrow. Start with the smallest policy set that explains the conflict, then widen only if the summary shows clean repairs. To replay openings from a specific policy-winner duel, set `SMART_PRO_POLICY_CROSS_BUDGET_SEED_OPPONENT_MODE=pro|normal|fast` and the matching `SMART_PRO_POLICY_CROSS_BUDGET_SEED_TAG`; use `SMART_PRO_POLICY_CROSS_BUDGET_STATE_LIMIT=<n>` for small exact follow-ups.
 
 ```sh
 SMART_PRO_POLICY_CROSS_BUDGET_PANEL_FILTER=sampled \
 SMART_PRO_POLICY_CROSS_BUDGET_REPEATS=1 \
 SMART_PRO_POLICY_CROSS_BUDGET_GAMES=1 \
+SMART_PRO_POLICY_CROSS_BUDGET_STATE_LIMIT=2 \
 ./scripts/run-automove-experiment.sh pro-policy-cross-budget frontier_pro_v2_guarded,shipping_pro_search_control,frontier_pro_v2_raw
 ```
 

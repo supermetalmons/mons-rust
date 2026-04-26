@@ -3000,6 +3000,7 @@ fn smart_automove_pro_policy_cross_budget_probe() {
         nonregressing_repair_states: usize,
         budget_conflict_states: usize,
         no_policy_help_states: usize,
+        state_limit_hit: bool,
     }
 
     fn labelled_results(duels: &[CrossBudgetDuelSpec], results: &[MatchResult]) -> String {
@@ -3042,6 +3043,20 @@ fn smart_automove_pro_policy_cross_budget_probe() {
     let aggregate_limit = env_usize("SMART_PRO_POLICY_CROSS_BUDGET_AGGREGATE_LIMIT")
         .unwrap_or(96)
         .max(1);
+    let state_limit =
+        env_usize("SMART_PRO_POLICY_CROSS_BUDGET_STATE_LIMIT").map(|limit| limit.max(1));
+    let seed_opponent_mode = env_string_value("SMART_PRO_POLICY_CROSS_BUDGET_SEED_OPPONENT_MODE")
+        .map(|mode| mode.to_ascii_lowercase())
+        .map(|mode| match mode.as_str() {
+            "pro" => SmartAutomovePreference::Pro,
+            "normal" => SmartAutomovePreference::Normal,
+            "fast" => SmartAutomovePreference::Fast,
+            _ => panic!(
+                "unknown SMART_PRO_POLICY_CROSS_BUDGET_SEED_OPPONENT_MODE '{}'",
+                mode
+            ),
+        })
+        .unwrap_or(SmartAutomovePreference::Pro);
     let duel_specs = vec![
         CrossBudgetDuelSpec {
             label: "vs_shipping_pro",
@@ -3058,7 +3073,7 @@ fn smart_automove_pro_policy_cross_budget_probe() {
     ];
 
     println!(
-        "pro policy cross budget: baseline={} candidates={} panels={} max_plies={} duels={}",
+        "pro policy cross budget: baseline={} candidates={} panels={} max_plies={} seed_opponent_mode={} duels={}",
         baseline.id,
         candidates
             .iter()
@@ -3073,6 +3088,7 @@ fn smart_automove_pro_policy_cross_budget_probe() {
             .collect::<Vec<_>>()
             .join(","),
         max_plies,
+        seed_opponent_mode.as_api_value(),
         duel_specs
             .iter()
             .map(|duel| duel.label)
@@ -3100,10 +3116,10 @@ fn smart_automove_pro_policy_cross_budget_probe() {
             let mut nonregressing_policy_counts = BTreeMap::<String, usize>::new();
             let mut printed = 0usize;
 
-            for repeat_index in 0..repeats {
+            'cross_budget_samples: for repeat_index in 0..repeats {
                 let seed = seed_for_budget_duel_repeat_and_tag(
                     pro_budget(),
-                    SearchBudget::from_preference(SmartAutomovePreference::Pro),
+                    SearchBudget::from_preference(seed_opponent_mode),
                     repeat_index,
                     panel_seed_tag.as_str(),
                 );
@@ -3113,6 +3129,10 @@ fn smart_automove_pro_policy_cross_budget_probe() {
                         .expect("valid opening fen")
                         .variant();
                     for candidate_is_white in [true, false] {
+                        if state_limit.is_some_and(|limit| stats.total_states >= limit) {
+                            stats.state_limit_hit = true;
+                            break 'cross_budget_samples;
+                        }
                         stats.total_states += 1;
                         let outcomes = candidates
                             .iter()
@@ -3280,7 +3300,7 @@ fn smart_automove_pro_policy_cross_budget_probe() {
             }
 
             println!(
-                "PRO_POLICY_CROSS_BUDGET_SUMMARY {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"total_states\":{},\"baseline_all_budget_wins\":{},\"candidate_any_all_budget_wins\":{},\"clean_repair_states\":{},\"nonregressing_repair_states\":{},\"budget_conflict_states\":{},\"no_policy_help_states\":{}}}",
+                "PRO_POLICY_CROSS_BUDGET_SUMMARY {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"seed_opponent_mode\":\"{}\",\"total_states\":{},\"baseline_all_budget_wins\":{},\"candidate_any_all_budget_wins\":{},\"clean_repair_states\":{},\"nonregressing_repair_states\":{},\"budget_conflict_states\":{},\"no_policy_help_states\":{},\"state_limit_hit\":{}}}",
                 json_escape(panel.label),
                 json_escape(baseline.id),
                 json_escape(
@@ -3291,6 +3311,7 @@ fn smart_automove_pro_policy_cross_budget_probe() {
                         .collect::<Vec<_>>()
                         .join(",")
                 ),
+                seed_opponent_mode.as_api_value(),
                 stats.total_states,
                 stats.baseline_all_budget_wins,
                 stats.candidate_any_all_budget_wins,
@@ -3298,6 +3319,7 @@ fn smart_automove_pro_policy_cross_budget_probe() {
                 stats.nonregressing_repair_states,
                 stats.budget_conflict_states,
                 stats.no_policy_help_states,
+                stats.state_limit_hit,
             );
             for (key, states) in pro_policy_matrix_sorted_counts(&class_counts, aggregate_limit) {
                 println!(
@@ -3344,6 +3366,7 @@ struct PolicyWinnerStats {
     candidate_traces: usize,
     missing_first_diff: usize,
     candidate_trace_limit_hit: bool,
+    state_limit_hit: bool,
 }
 
 fn pro_policy_winner_stoplight_label(
@@ -3353,7 +3376,7 @@ fn pro_policy_winner_stoplight_label(
     winner_mechanism_class_counts: &BTreeMap<String, usize>,
     include_mechanism: bool,
 ) -> &'static str {
-    if stats.candidate_trace_limit_hit {
+    if stats.candidate_trace_limit_hit || stats.state_limit_hit {
         "partial_corpus"
     } else if stats.no_policy_wins > 0 {
         "coverage_gap"
@@ -3432,6 +3455,7 @@ fn smart_automove_pro_policy_winner_probe() {
         .unwrap_or(96)
         .max(1);
     let candidate_trace_limit = env_usize("SMART_PRO_POLICY_WINNER_CANDIDATE_TRACE_LIMIT");
+    let state_limit = env_usize("SMART_PRO_POLICY_WINNER_STATE_LIMIT").map(|limit| limit.max(1));
     let include_mechanism = env_bool("SMART_PRO_POLICY_WINNER_INCLUDE_MECHANISM").unwrap_or(false);
     let duel_specs = vec![
         PolicyWinnerDuelSpec {
@@ -3526,6 +3550,10 @@ fn smart_automove_pro_policy_winner_probe() {
                             .expect("valid opening fen")
                             .variant();
                         for candidate_is_white in [true, false] {
+                            if state_limit.is_some_and(|limit| stats.total_games >= limit) {
+                                stats.state_limit_hit = true;
+                                break 'duel_samples;
+                            }
                             if candidate_trace_limit
                                 .is_some_and(|limit| stats.candidate_traces >= limit)
                             {
@@ -3782,7 +3810,7 @@ fn smart_automove_pro_policy_winner_probe() {
                 }
 
                 println!(
-                    "PRO_POLICY_WINNER_SUMMARY {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"total_games\":{},\"baseline_wins\":{},\"policy_wins\":{},\"no_policy_wins\":{},\"candidate_traces\":{},\"candidate_trace_limit_hit\":{},\"missing_first_diff\":{}}}",
+                    "PRO_POLICY_WINNER_SUMMARY {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"total_games\":{},\"baseline_wins\":{},\"policy_wins\":{},\"no_policy_wins\":{},\"candidate_traces\":{},\"candidate_trace_limit_hit\":{},\"state_limit_hit\":{},\"missing_first_diff\":{}}}",
                     json_escape(panel.label),
                     json_escape(baseline.id),
                     json_escape(
@@ -3800,10 +3828,11 @@ fn smart_automove_pro_policy_winner_probe() {
                     stats.no_policy_wins,
                     stats.candidate_traces,
                     stats.candidate_trace_limit_hit,
+                    stats.state_limit_hit,
                     stats.missing_first_diff,
                 );
                 println!(
-                    "PRO_POLICY_WINNER_STOPLIGHT {{\"panel\":\"{}\",\"duel\":\"{}\",\"label\":\"{}\",\"policy_wins\":{},\"no_policy_wins\":{},\"max_policy_games\":{},\"max_mechanism_games\":{},\"max_mechanism_class_games\":{},\"candidate_trace_limit_hit\":{}}}",
+                    "PRO_POLICY_WINNER_STOPLIGHT {{\"panel\":\"{}\",\"duel\":\"{}\",\"label\":\"{}\",\"policy_wins\":{},\"no_policy_wins\":{},\"max_policy_games\":{},\"max_mechanism_games\":{},\"max_mechanism_class_games\":{},\"candidate_trace_limit_hit\":{},\"state_limit_hit\":{}}}",
                     json_escape(panel.label),
                     json_escape(duel.label),
                     pro_policy_winner_stoplight_label(
@@ -3819,6 +3848,7 @@ fn smart_automove_pro_policy_winner_probe() {
                     max_count(&winner_mechanism_counts),
                     max_count(&winner_mechanism_class_counts),
                     stats.candidate_trace_limit_hit,
+                    stats.state_limit_hit,
                 );
                 for (key, games) in pro_policy_matrix_sorted_counts(&class_counts, aggregate_limit)
                 {
@@ -3895,6 +3925,7 @@ fn smart_automove_pro_policy_winner_probe() {
                 global_stats.candidate_traces += stats.candidate_traces;
                 global_stats.missing_first_diff += stats.missing_first_diff;
                 global_stats.candidate_trace_limit_hit |= stats.candidate_trace_limit_hit;
+                global_stats.state_limit_hit |= stats.state_limit_hit;
                 for (key, games) in &class_counts {
                     *global_class_counts.entry(key.clone()).or_default() += *games;
                 }
@@ -3922,7 +3953,7 @@ fn smart_automove_pro_policy_winner_probe() {
     }
 
     println!(
-        "PRO_POLICY_WINNER_GLOBAL_SUMMARY {{\"baseline\":\"{}\",\"candidates\":\"{}\",\"total_games\":{},\"baseline_wins\":{},\"policy_wins\":{},\"no_policy_wins\":{},\"candidate_traces\":{},\"candidate_trace_limit_hit\":{},\"missing_first_diff\":{}}}",
+        "PRO_POLICY_WINNER_GLOBAL_SUMMARY {{\"baseline\":\"{}\",\"candidates\":\"{}\",\"total_games\":{},\"baseline_wins\":{},\"policy_wins\":{},\"no_policy_wins\":{},\"candidate_traces\":{},\"candidate_trace_limit_hit\":{},\"state_limit_hit\":{},\"missing_first_diff\":{}}}",
         json_escape(baseline.id),
         json_escape(
             &candidates
@@ -3938,10 +3969,11 @@ fn smart_automove_pro_policy_winner_probe() {
         global_stats.no_policy_wins,
         global_stats.candidate_traces,
         global_stats.candidate_trace_limit_hit,
+        global_stats.state_limit_hit,
         global_stats.missing_first_diff,
     );
     println!(
-        "PRO_POLICY_WINNER_GLOBAL_STOPLIGHT {{\"label\":\"{}\",\"policy_wins\":{},\"no_policy_wins\":{},\"max_policy_games\":{},\"max_context_games\":{},\"max_pair_games\":{},\"max_mechanism_games\":{},\"max_mechanism_class_games\":{},\"candidate_trace_limit_hit\":{}}}",
+        "PRO_POLICY_WINNER_GLOBAL_STOPLIGHT {{\"label\":\"{}\",\"policy_wins\":{},\"no_policy_wins\":{},\"max_policy_games\":{},\"max_context_games\":{},\"max_pair_games\":{},\"max_mechanism_games\":{},\"max_mechanism_class_games\":{},\"candidate_trace_limit_hit\":{},\"state_limit_hit\":{}}}",
         pro_policy_winner_stoplight_label(
             &global_stats,
             &global_winner_counts,
@@ -3957,6 +3989,7 @@ fn smart_automove_pro_policy_winner_probe() {
         max_count(&global_winner_mechanism_counts),
         max_count(&global_winner_mechanism_class_counts),
         global_stats.candidate_trace_limit_hit,
+        global_stats.state_limit_hit,
     );
     for (key, games) in pro_policy_matrix_sorted_counts(&global_class_counts, aggregate_limit) {
         println!(
