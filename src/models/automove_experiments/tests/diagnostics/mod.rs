@@ -5044,6 +5044,7 @@ fn smart_automove_pro_promotion_dashboard_probe() {
     let include_guarded_delta = env_bool("SMART_PRO_DASHBOARD_INCLUDE_GUARDED").unwrap_or(true);
     let skip_guarded_after_shipping_fail =
         env_bool("SMART_PRO_DASHBOARD_SKIP_GUARDED_AFTER_SHIPPING_FAIL").unwrap_or(true);
+    let promotion_fast_fail = env_bool("SMART_PRO_DASHBOARD_PROMOTION_FAST_FAIL").unwrap_or(false);
     let max_plies = env_usize("SMART_PRO_DASHBOARD_MAX_PLIES")
         .unwrap_or(96)
         .max(56);
@@ -5074,7 +5075,7 @@ fn smart_automove_pro_promotion_dashboard_probe() {
     );
 
     println!(
-        "pro promotion dashboard: candidates={} panels={} duels={} max_plies={} include_guarded_delta={} skip_guarded_after_shipping_fail={}",
+        "pro promotion dashboard: candidates={} panels={} duels={} max_plies={} include_guarded_delta={} skip_guarded_after_shipping_fail={} promotion_fast_fail={}",
         candidates
             .iter()
             .map(|candidate| candidate.id)
@@ -5095,11 +5096,12 @@ fn smart_automove_pro_promotion_dashboard_probe() {
         max_plies,
         include_guarded_delta,
         skip_guarded_after_shipping_fail,
+        promotion_fast_fail,
     );
 
     for candidate in candidates {
         let mut panel_summaries = Vec::<ProPromotionDashboardPanelSummary>::new();
-        for panel in pro_promotion_dashboard_panel_specs()
+        'panels: for panel in pro_promotion_dashboard_panel_specs()
             .into_iter()
             .filter(|panel| pro_sweep_filter_allows(&panel_filter, panel.label))
         {
@@ -5153,7 +5155,27 @@ fn smart_automove_pro_promotion_dashboard_probe() {
                         duel.label,
                         &stats,
                     );
+                    let metrics = pro_reliability_metrics(&stats);
                     summary.record_shipping_duel(&stats);
+                    let shipping_gate_failed = match panel.label {
+                        "sampled" => !pro_reliability_duel_passes(metrics),
+                        "active_blockers" => {
+                            metrics.win_rate < 0.90 || metrics.frontier_avg_ms > 700.0
+                        }
+                        _ => false,
+                    };
+                    if promotion_fast_fail && shipping_gate_failed {
+                        println!(
+                            "PRO_PROMOTION_DASHBOARD_FAST_FAIL {{\"panel\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"reason\":\"shipping_gate_failed\",\"shipping_duels\":{},\"shipping_strict_passes\":{},\"shipping_directional_passes\":{}}}",
+                            json_escape(panel.label),
+                            json_escape(candidate.id),
+                            json_escape(duel.label),
+                            summary.shipping_duels,
+                            summary.shipping_strict_passes,
+                            summary.shipping_directional_passes,
+                        );
+                        break;
+                    }
                 }
 
                 let run_guarded_delta = include_guarded_delta
@@ -5220,6 +5242,17 @@ fn smart_automove_pro_promotion_dashboard_probe() {
                 summary.guarded_confidence,
             );
             panel_summaries.push(summary);
+            if promotion_fast_fail
+                && panel_summaries
+                    .last()
+                    .is_some_and(|summary| match summary.panel {
+                        "sampled" => !summary.shipping_strict_passes_all(),
+                        "active_blockers" => !summary.shipping_directional_passes_all(),
+                        _ => false,
+                    })
+            {
+                break 'panels;
+            }
         }
 
         let classification = match (

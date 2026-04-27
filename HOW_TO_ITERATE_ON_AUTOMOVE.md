@@ -89,6 +89,7 @@ Use this path when `AUTOMOVE_IDEAS.md` says there is no live challenger or when 
 - When the candidate is exactly `frontier_pro_v2_guarded`, the structural scout skips the guarded-delta self-comparison by default. Set `SMART_PRO_DASHBOARD_INCLUDE_GUARDED=true` only if you explicitly need the redundant self-delta.
 - `pro-promotion-dashboard` now emits `PRO_PROMOTION_DASHBOARD_STOPLIGHT` with labels such as `promotable_shape`, `sampled_only`, `active_only`, `broad_pressure`, `cost_blocked`, and `not_promising`.
 - `pro-promotion-dashboard` skips the guarded-delta comparison by default after a panel fails all shipping-direction gates, and emits `PRO_PROMOTION_DASHBOARD_GUARDED_SKIPPED`. Set `SMART_PRO_DASHBOARD_SKIP_GUARDED_AFTER_SHIPPING_FAIL=false` only when the guarded delta is the explicit diagnostic target.
+- Use `SMART_PRO_DASHBOARD_PROMOTION_FAST_FAIL=true` for broad candidate scans. It emits `PRO_PROMOTION_DASHBOARD_FAST_FAIL` and stops the candidate after the first sampled strict gate or active directional gate failure, so a known-bad candidate does not spend on later duels or panels.
 - Do not edit runtime code for a broad Pro change unless the candidate is strong on both panels.
 - If no candidate is strong on both panels, use `pro-policy-corpus` to look for repeated root/advisor/head/utility mechanisms across the existing policy portfolio before designing another selector.
 - Use `--corpus` on the structural scout when the repo is in reset mode:
