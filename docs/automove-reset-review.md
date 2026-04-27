@@ -1,6 +1,6 @@
 # Automove Reset Review
 
-This is the current reset document for escaping the failed seam-iteration loop. For the latest whole-project architecture and harness review, read `docs/automove-structural-review.md` first.
+This is the reset document for escaping the failed seam-iteration loop. For the current actionable major-reset plan, read `docs/automove-major-reset-plan.md` first; for the broader architecture map, read `docs/automove-structural-review.md`.
 
 Use it when `AUTOMOVE_IDEAS.md` says there is no live challenger, when recent work keeps producing sampled-only false positives, or when a candidate clears one variant row by rotating another row down.
 

@@ -1,6 +1,6 @@
 # Automove Structural Strategy
 
-This document is the operational reset point when local automove iteration stalls. Use it before cutting another Pro runtime patch. For the larger architectural review and current strategic paths, read `docs/automove-structural-review.md` and `docs/automove-reset-review.md`.
+This document is the older operational reset point when local automove iteration stalls. Before cutting another Pro runtime patch, read the current major reset handoff in `docs/automove-major-reset-plan.md`, then use this file for historical strategy context.
 
 ## Diagnosis
 

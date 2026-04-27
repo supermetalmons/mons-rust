@@ -19,6 +19,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the workflow, `AUTOMOVE_IDEAS.md` for th
 - Pick one hypothesis before editing runtime code.
 - Probe first when the mechanism is unclear. Do not spend canonical gates on a guess.
 - When the live board has no challenger, use the structural reset in `docs/automove-strategy.md`; do not continue the seam-fix loop by default.
+- For reset-mode work after 2026-04-27, read `docs/automove-major-reset-plan.md` first. The next source-bearing implementation should be outcome-corpus V2, a test-only ProV4 unified root policy, or a corpus-calibrated utility feature; another selector over policy labels, exact contexts, branches, or first moves is not a valid default.
 - Run `./scripts/run-automove-structural-scout.sh <candidate>` before retaining any broad Pro runtime change. A candidate must look strong on both canonical sampled and active-blocker panels, not just one.
 - Treat retained Classic fixtures as regression controls, not proof that a candidate is stronger across variants.
 - Use seeded sampled variants for quick kill/pass evidence, then all-variant confirmation for promotion.

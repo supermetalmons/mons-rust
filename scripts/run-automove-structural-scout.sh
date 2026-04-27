@@ -9,6 +9,11 @@ usage:
 Runs the promotion-dashboard panels that should precede any major Pro automove
 runtime change. This is diagnostic-only: it does not promote profiles.
 
+When there is no live runtime hypothesis, read docs/automove-major-reset-plan.md
+first. In that mode, prefer --outcome-corpus for corpus work or a test-only
+ProV4 sweep candidate for architecture work; do not use this scout to justify
+another static selector over existing policy labels.
+
 Default scout:
   1. pro-promotion-dashboard over canonical sampled variants
   2. pro-promotion-dashboard over active blocker variants

@@ -13,8 +13,8 @@ Archived profiles, archived seams, and archived stages are not valid experiment 
 5. Use `./scripts/run-automove-canonical-loop.sh` for the default loop.
 6. Pick exactly one live hypothesis before editing runtime code.
 7. Probe first when the mechanism is unclear.
-8. When there is no live hypothesis, read `docs/automove-reset-review.md` and switch to the structural reset instead of running another seam loop.
-9. In structural reset mode, run `pro-policy-corpus` or a filtered `pro-policy-outcome-corpus` before writing a selector from policy labels.
+8. When there is no live hypothesis, read `docs/automove-major-reset-plan.md` and switch to the structural reset instead of running another seam loop.
+9. In structural reset mode, run a filtered `pro-policy-outcome-corpus` or build the test-only ProV4 root-policy path before writing any selector from policy labels.
 10. If decision-record output is singleton by context/pair but still tempting, rerun it with `SMART_PRO_SWEEP_DECISION_RECORD_INCLUDE_MECHANISM_CLASS=true`.
 11. Archive or kill the line before starting another.
 12. Clean logs and stamps before ending the session.
@@ -81,7 +81,8 @@ Use this path when `AUTOMOVE_IDEAS.md` says there is no live challenger or when 
 ./scripts/run-automove-structural-scout.sh <sweep-candidate[,candidate...]>
 ```
 
-- Read `docs/automove-strategy.md` first.
+- Read `docs/automove-major-reset-plan.md` first.
+- Read `docs/automove-strategy.md` for the older operational reset map.
 - Read `docs/automove-structural-review.md` when deciding whether the next move is corpus work, ProV4 unified policy work, or utility calibration.
 - Read `docs/automove-reset-review.md` when the work feels stuck or when no single runtime hypothesis is live.
 - The scout is diagnostic-only and starts with `pro-promotion-dashboard` across canonical sampled and active-blocker panels.

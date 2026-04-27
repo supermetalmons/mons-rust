@@ -2,7 +2,7 @@
 
 Review date: 2026-04-26.
 
-This review is the current map for breaking out of the automove dead end. It covers the project layout, harness shape, documentation state, and the larger paths that are still worth pursuing.
+This review is the architecture map for breaking out of the automove dead end. For the current actionable reset plan and handoff rules, read `docs/automove-major-reset-plan.md` first.
 
 ## Executive Position
 
