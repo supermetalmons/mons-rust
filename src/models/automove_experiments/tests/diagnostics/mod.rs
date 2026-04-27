@@ -2548,6 +2548,8 @@ fn smart_automove_pro_policy_matrix_probe() {
                 let mut portfolio_winner_context_counts = BTreeMap::<String, usize>::new();
                 let mut portfolio_winner_pair_counts = BTreeMap::<String, usize>::new();
                 let mut portfolio_winner_mechanism_class_counts = BTreeMap::<String, usize>::new();
+                let mut portfolio_baseline_better_mechanism_class_counts =
+                    BTreeMap::<String, usize>::new();
                 let mut portfolio_stats = PolicyMatrixPortfolioStats::default();
                 let mut printed = 0usize;
                 let mut state_limit_hit = false;
@@ -2826,6 +2828,36 @@ fn smart_automove_pro_policy_matrix_probe() {
                                         *mechanism_class_counts.entry(key).or_default() += 1;
                                     }
                                 }
+                                if include_portfolio_mechanism_class && delta < 0 {
+                                    let board =
+                                        MonsGame::from_fen(divergence.board_fen.as_str(), false)
+                                            .expect("policy matrix board fen should be valid");
+                                    let mechanism_profile =
+                                        pro_policy_mechanism_profile_for_baseline(baseline.id);
+                                    let baseline_probe = runtime_decision_probe(
+                                        mechanism_profile,
+                                        SmartAutomovePreference::Pro,
+                                        &board,
+                                    );
+                                    let baseline_advisor = pro_v2_root_advisor_decision_snapshot();
+                                    for class_key in pro_policy_mechanism_class_keys(
+                                        mechanism_profile,
+                                        SmartAutomovePreference::Pro,
+                                        &board,
+                                        &baseline_probe,
+                                        baseline_advisor.as_ref(),
+                                        divergence.right_move_fen.as_str(),
+                                        divergence.left_move_fen.as_str(),
+                                    ) {
+                                        let key = format!(
+                                            "candidate={} class=baseline_better {}",
+                                            candidate.id, class_key,
+                                        );
+                                        *portfolio_baseline_better_mechanism_class_counts
+                                            .entry(key)
+                                            .or_default() += 1;
+                                    }
+                                }
 
                                 if printed < trace_limit {
                                     let baseline_decision = if include_decision_probe {
@@ -2963,7 +2995,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                     state_limit_hit,
                 );
                 println!(
-                    "PRO_POLICY_MATRIX_PORTFOLIO_STOPLIGHT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"duel\":\"{}\",\"label\":\"{}\",\"baseline_only_wins\":{},\"candidate_only_wins\":{},\"no_policy_wins\":{},\"max_winner_policy_games\":{},\"max_winner_context_games\":{},\"max_winner_pair_games\":{},\"max_mechanism_class_games\":{},\"state_limit_hit\":{}}}",
+                    "PRO_POLICY_MATRIX_PORTFOLIO_STOPLIGHT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"duel\":\"{}\",\"label\":\"{}\",\"baseline_only_wins\":{},\"candidate_only_wins\":{},\"no_policy_wins\":{},\"max_winner_policy_games\":{},\"max_winner_context_games\":{},\"max_winner_pair_games\":{},\"max_mechanism_class_games\":{},\"max_baseline_better_mechanism_class_games\":{},\"state_limit_hit\":{}}}",
                     json_escape(panel.label),
                     json_escape(baseline.id),
                     json_escape(duel.label),
@@ -2976,6 +3008,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                     max_count(&portfolio_winner_pair_counts),
                     max_count(&mechanism_class_counts)
                         .max(max_count(&portfolio_winner_mechanism_class_counts)),
+                    max_count(&portfolio_baseline_better_mechanism_class_counts),
                     state_limit_hit,
                 );
                 for (key, games) in
@@ -3030,6 +3063,18 @@ fn smart_automove_pro_policy_matrix_probe() {
                     ) {
                         println!(
                             "PRO_POLICY_MATRIX_PORTFOLIO_WINNER_MECHANISM_CLASS {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                            json_escape(panel.label),
+                            json_escape(duel.label),
+                            json_escape(key),
+                            games,
+                        );
+                    }
+                    for (key, games) in pro_policy_matrix_sorted_counts(
+                        &portfolio_baseline_better_mechanism_class_counts,
+                        aggregate_limit,
+                    ) {
+                        println!(
+                            "PRO_POLICY_MATRIX_PORTFOLIO_BASELINE_BETTER_MECHANISM_CLASS {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
                             json_escape(panel.label),
                             json_escape(duel.label),
                             json_escape(key),
