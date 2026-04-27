@@ -3484,6 +3484,42 @@ fn smart_automove_pro_policy_matrix_probe() {
             }
         }
     }
+    if include_portfolio_mechanism_class {
+        let mut mechanism_separation = BTreeMap::<String, (usize, usize)>::new();
+        for (key, games) in &global_portfolio_winner_mechanism_class_counts {
+            let axis_key = pro_policy_matrix_mechanism_axis_key(key);
+            mechanism_separation
+                .entry(axis_key.to_string())
+                .or_default()
+                .0 += *games;
+        }
+        for (key, games) in &global_portfolio_baseline_better_mechanism_class_counts {
+            let axis_key = pro_policy_matrix_mechanism_axis_key(key);
+            mechanism_separation
+                .entry(axis_key.to_string())
+                .or_default()
+                .1 += *games;
+        }
+        let mut separation_entries = mechanism_separation.iter().collect::<Vec<_>>();
+        separation_entries.sort_by(|(left_key, left_counts), (right_key, right_counts)| {
+            right_counts
+                .0
+                .cmp(&left_counts.0)
+                .then_with(|| left_counts.1.cmp(&right_counts.1))
+                .then_with(|| left_key.cmp(right_key))
+        });
+        for (key, (candidate_only_games, baseline_better_games)) in
+            separation_entries.into_iter().take(aggregate_limit)
+        {
+            println!(
+                "PRO_POLICY_MATRIX_GLOBAL_MECHANISM_SEPARATION {{\"key\":\"{}\",\"candidate_only_games\":{},\"baseline_better_games\":{},\"net_candidate_games\":{}}}",
+                json_escape(key),
+                candidate_only_games,
+                baseline_better_games,
+                *candidate_only_games as isize - *baseline_better_games as isize,
+            );
+        }
+    }
 }
 
 #[test]
@@ -4092,6 +4128,10 @@ fn max_count_key(counts: &BTreeMap<String, usize>) -> &str {
         .max_by(|left, right| left.1.cmp(right.1).then_with(|| right.0.cmp(left.0)))
         .map(|(key, _)| key.as_str())
         .unwrap_or("none")
+}
+
+fn pro_policy_matrix_mechanism_axis_key(key: &str) -> &str {
+    key.find("axis=").map(|index| &key[index..]).unwrap_or(key)
 }
 
 #[derive(Default)]
