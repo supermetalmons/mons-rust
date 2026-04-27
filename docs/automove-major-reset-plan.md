@@ -62,6 +62,7 @@ Required record fields:
 Implementation shape:
 
 - Extend `smart_automove_pro_policy_matrix_probe` or add a sibling diagnostic that emits one normalized corpus record per candidate decision.
+- Current status: `pro-policy-outcome-corpus` now defaults `SMART_PRO_POLICY_MATRIX_INCLUDE_CORPUS_RECORDS=true`, which emits `PRO_POLICY_MATRIX_CORPUS_RECORD` for every baseline-vs-candidate decision with the full policy result vector, portfolio class, first-divergence board/moves when present, and baseline/candidate final states. Treat this as the raw Outcome Corpus V2 feed.
 - Add aggregate stoplights over mechanism keys that include both candidate-only wins and baseline saves.
 - The current policy-matrix corpus already emits exact-pressure and exact-timing mechanism axes; use those before trying another root-origin or continuation selector.
 - Make repeated classes count only when they repeat across at least two panels or opponent budgets.

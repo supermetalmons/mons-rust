@@ -2529,6 +2529,14 @@ fn smart_automove_pro_policy_matrix_probe() {
         env_bool("SMART_PRO_POLICY_MATRIX_INCLUDE_MECHANISM_CLASS").unwrap_or(false);
     let include_portfolio_mechanism_class =
         env_bool("SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS").unwrap_or(false);
+    let include_corpus_records =
+        env_bool("SMART_PRO_POLICY_MATRIX_INCLUDE_CORPUS_RECORDS").unwrap_or(false);
+    let candidate_ids = candidates
+        .iter()
+        .skip(1)
+        .map(|candidate| candidate.id)
+        .collect::<Vec<_>>()
+        .join(",");
     let duel_specs = vec![
         PolicyMatrixDuelSpec {
             label: "vs_shipping_pro",
@@ -2548,14 +2556,9 @@ fn smart_automove_pro_policy_matrix_probe() {
     ];
 
     println!(
-        "pro policy matrix: baseline={} candidates={} panels={} duels={} max_plies={} state_limit={:?} include_decision_probe={} include_mechanism_class={} include_portfolio_mechanism_class={}",
+        "pro policy matrix: baseline={} candidates={} panels={} duels={} max_plies={} state_limit={:?} include_decision_probe={} include_mechanism_class={} include_portfolio_mechanism_class={} include_corpus_records={}",
         baseline.id,
-        candidates
-            .iter()
-            .skip(1)
-            .map(|candidate| candidate.id)
-            .collect::<Vec<_>>()
-            .join(","),
+        candidate_ids,
         pro_promotion_dashboard_panel_specs()
             .into_iter()
             .filter(|panel| pro_sweep_filter_allows(&panel_filter, panel.label))
@@ -2573,6 +2576,7 @@ fn smart_automove_pro_policy_matrix_probe() {
         include_decision_probe,
         include_mechanism_class,
         include_portfolio_mechanism_class,
+        include_corpus_records,
     );
 
     for panel in pro_promotion_dashboard_panel_specs()
@@ -2687,6 +2691,25 @@ fn smart_automove_pro_policy_matrix_probe() {
                             *portfolio_class_counts
                                 .entry(portfolio_class_key)
                                 .or_default() += 1;
+                            let policy_results = traces
+                                .iter()
+                                .map(|(candidate, trace)| {
+                                    format!(
+                                        "{}={}",
+                                        candidate.id,
+                                        format_match_result(trace.result)
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join("|");
+                            let winning_policies = traces
+                                .iter()
+                                .filter(|(_, trace)| {
+                                    matches!(trace.result, MatchResult::ProfileAWin)
+                                })
+                                .map(|(candidate, _)| candidate.id)
+                                .collect::<Vec<_>>()
+                                .join(",");
 
                             for (winner, winner_trace) in traces.iter().filter(|(_, trace)| {
                                 matches!(trace.result, MatchResult::ProfileAWin)
@@ -2806,6 +2829,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                                 } else {
                                     stats.same_outcome += 1;
                                 }
+                                let outcome = pro_policy_matrix_outcome_label(delta);
 
                                 let first_divergence = first_profile_sweep_candidate_divergence(
                                     baseline_trace,
@@ -2814,12 +2838,96 @@ fn smart_automove_pro_policy_matrix_probe() {
                                 if first_divergence.is_some() {
                                     stats.first_move_diffs += 1;
                                 }
+                                if include_corpus_records {
+                                    let first_diff_ply = first_divergence
+                                        .as_ref()
+                                        .map(|divergence| divergence.ply as i32)
+                                        .unwrap_or(-1);
+                                    let baseline_branch = first_divergence
+                                        .as_ref()
+                                        .map(|divergence| divergence.left_branch)
+                                        .unwrap_or("none");
+                                    let candidate_branch = first_divergence
+                                        .as_ref()
+                                        .map(|divergence| divergence.right_branch)
+                                        .unwrap_or("none");
+                                    let active_color = first_divergence
+                                        .as_ref()
+                                        .map(|divergence| {
+                                            pro_profile_sweep_color_label(divergence.active_color)
+                                        })
+                                        .unwrap_or("none");
+                                    let turn_number = first_divergence
+                                        .as_ref()
+                                        .map(|divergence| divergence.turn_number)
+                                        .unwrap_or(-1);
+                                    let mons_moves_count = first_divergence
+                                        .as_ref()
+                                        .map(|divergence| divergence.mons_moves_count)
+                                        .unwrap_or(-1);
+                                    let can_use_action = first_divergence
+                                        .as_ref()
+                                        .is_some_and(|divergence| divergence.can_use_action);
+                                    let can_move_mana = first_divergence
+                                        .as_ref()
+                                        .is_some_and(|divergence| divergence.can_move_mana);
+                                    let exact_context = first_divergence
+                                        .as_ref()
+                                        .map(|divergence| divergence.exact_context.as_str())
+                                        .unwrap_or("none");
+                                    let board_fen = first_divergence
+                                        .as_ref()
+                                        .map(|divergence| divergence.board_fen.as_str())
+                                        .unwrap_or("none");
+                                    let baseline_move = first_divergence
+                                        .as_ref()
+                                        .map(|divergence| divergence.left_move_fen.as_str())
+                                        .unwrap_or("none");
+                                    let candidate_move = first_divergence
+                                        .as_ref()
+                                        .map(|divergence| divergence.right_move_fen.as_str())
+                                        .unwrap_or("none");
+                                    println!(
+                                        "PRO_POLICY_MATRIX_CORPUS_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"policy_results\":\"{}\",\"winning_policies\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"board\":\"{}\",\"opening\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
+                                        json_escape(panel.label),
+                                        json_escape(baseline.id),
+                                        json_escape(candidate.id),
+                                        json_escape(&candidate_ids),
+                                        json_escape(duel.label),
+                                        json_escape(&duel_seed_tag),
+                                        repeat_index,
+                                        game_index,
+                                        automove_variant_label(variant),
+                                        candidate_is_white,
+                                        portfolio_class,
+                                        outcome,
+                                        delta,
+                                        format_match_result(baseline_trace.result),
+                                        format_match_result(candidate_trace.result),
+                                        json_escape(&policy_results),
+                                        json_escape(&winning_policies),
+                                        first_diff_ply,
+                                        json_escape(baseline_branch),
+                                        json_escape(candidate_branch),
+                                        active_color,
+                                        turn_number,
+                                        mons_moves_count,
+                                        can_use_action,
+                                        can_move_mana,
+                                        json_escape(exact_context),
+                                        json_escape(board_fen),
+                                        json_escape(opening_fen),
+                                        json_escape(baseline_move),
+                                        json_escape(candidate_move),
+                                        json_escape(&baseline_trace.final_fen),
+                                        json_escape(&candidate_trace.final_fen),
+                                    );
+                                }
                                 if delta == 0 && first_divergence.is_none() {
                                     continue;
                                 }
                                 stats.recorded += 1;
 
-                                let outcome = pro_policy_matrix_outcome_label(delta);
                                 let Some(divergence) = first_divergence else {
                                     stats.missing_first_diff += 1;
                                     continue;
@@ -3042,14 +3150,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                     "PRO_POLICY_MATRIX_PORTFOLIO {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"total_games\":{},\"baseline_wins\":{},\"candidate_any_wins\":{},\"any_policy_wins\":{},\"shared_wins\":{},\"baseline_only_wins\":{},\"candidate_only_wins\":{},\"no_policy_wins\":{},\"state_limit_hit\":{}}}",
                     json_escape(panel.label),
                     json_escape(baseline.id),
-                    json_escape(
-                        &candidates
-                            .iter()
-                            .skip(1)
-                            .map(|candidate| candidate.id)
-                            .collect::<Vec<_>>()
-                            .join(",")
-                    ),
+                    json_escape(&candidate_ids),
                     json_escape(duel.label),
                     portfolio_stats.total_games,
                     portfolio_stats.baseline_wins,

@@ -229,6 +229,8 @@ SMART_PRO_SWEEP_DECISION_RECORD_DUEL_FILTER=vs_shipping_pro \
 
 `pro-policy-outcome-corpus` is the same policy-matrix diagnostic with a reset-mode name. Use it when the next decision is whether the existing policy portfolio has coverage, baseline save risk, mixed deltas, or a repeated winner context. It is diagnostic-only and does not promote profiles.
 
+`pro-policy-outcome-corpus` enables `SMART_PRO_POLICY_MATRIX_INCLUDE_CORPUS_RECORDS=true` by default. This adds `PRO_POLICY_MATRIX_CORPUS_RECORD` for every baseline-vs-candidate decision, including the full policy result vector, portfolio class, first-divergence board/moves when present, and baseline/candidate finals. Use these records as the starting point for outcome-corpus V2 feature work before enabling expensive decision probes or writing a selector.
+
 The matrix also prints `PRO_POLICY_MATRIX_PORTFOLIO` for each panel/duel, followed by weakness buckets as `PRO_POLICY_MATRIX_PORTFOLIO_CLASS`. Read these before designing a context selector: `candidate_only_wins` is the selector opportunity, `baseline_only_wins` is the regression risk, and `no_policy_wins` means the current candidate set cannot solve those openings by selection alone.
 
 It also emits `PRO_POLICY_MATRIX_CANDIDATE_STOPLIGHT` and `PRO_POLICY_MATRIX_PORTFOLIO_STOPLIGHT`. Treat `coverage_gap`, `baseline_save_risk`, `mixed_delta`, and `regression_only` as kills for static selector work; `singleton_selector_pressure` means the portfolio has oracle coverage but no repeated selector mechanism; `repeated_winner_policy` is still too coarse by itself; `repeated_winner_context` or `repeated_winner_pair` is the only matrix label that earns deeper attribution.

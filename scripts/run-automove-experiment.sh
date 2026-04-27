@@ -404,6 +404,7 @@ case "${stage}" in
       "smart_automove_pro_policy_matrix_probe" \
       "SMART_SHIPPING_PROFILE=${shipping}" \
       "SMART_PRO_RELIABILITY_SHIPPING_PROFILE=${shipping}" \
+      "SMART_PRO_POLICY_MATRIX_INCLUDE_CORPUS_RECORDS=${SMART_PRO_POLICY_MATRIX_INCLUDE_CORPUS_RECORDS:-true}" \
       "SMART_PRO_POLICY_MATRIX_CANDIDATES=${frontier}"
     ;;
   pro-policy-cross-budget)
