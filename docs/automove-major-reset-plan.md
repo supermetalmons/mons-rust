@@ -155,6 +155,7 @@ Do not run a long full matrix first. Use panel/duel/state filters until one boun
 - Active Fast lower-live `ManaTempo` evidence widened into `baseline_save_risk`.
 - Sampled outcome-corpus smoke on 2026-04-27 was stopped after the sampled Pro slice because it was too slow for a side diagnostic; the partial result was still `singleton_selector_pressure`, not promotion evidence.
 - Static policy selectors, exact context gates, row composites, broad wrapper deletion, shallow ProV4 comparators, online policy rollouts, and broad utility gates are all retired paths unless a new corpus feature changes the evidence.
+- Root-origin plus continuation-probe ProV4 selectors are also retired without a new discriminator: the sampled Pro smoke repaired inner-wedge while regressing center-spoke, stayed `2-2` overall, and was materially slower than guarded.
 
 ## Required Future Handoff
 
