@@ -3451,11 +3451,15 @@ fn pro_sweep_decision_record_stoplight_label(
     branch_counts: &BTreeMap<String, usize>,
     context_counts: &BTreeMap<String, usize>,
     pair_counts: &BTreeMap<String, usize>,
+    mechanism_class_counts: &BTreeMap<String, usize>,
+    include_mechanism_class: bool,
 ) -> &'static str {
     if recorded > 0 && recorded == missing_first_diff {
         "missing_first_diff"
     } else if nonwins == 0 && regressions == 0 {
         "clean"
+    } else if include_mechanism_class && max_count(mechanism_class_counts) > 2 {
+        "repeated_mechanism_class"
     } else if max_count(pair_counts) > 1 {
         "repeated_pair"
     } else if max_count(context_counts) > 1 {
@@ -4135,6 +4139,8 @@ fn smart_automove_pro_sweep_decision_record_probe() {
     let outcome_filter = pro_sweep_filter_tokens("SMART_PRO_SWEEP_DECISION_RECORD_OUTCOME", "all");
     let scope = env_string_value("SMART_PRO_SWEEP_DECISION_RECORD_SCOPE")
         .unwrap_or_else(|| "nonwins".to_string());
+    let include_mechanism_class =
+        env_bool("SMART_PRO_SWEEP_DECISION_RECORD_INCLUDE_MECHANISM_CLASS").unwrap_or(false);
     let duel_specs = vec![
         SweepDecisionRecordDuelSpec {
             label: "vs_shipping_pro",
@@ -4154,7 +4160,7 @@ fn smart_automove_pro_sweep_decision_record_probe() {
     ];
 
     println!(
-        "pro sweep decision record: candidate={} shipping={} repeats={} games={} max_plies={} duels={} outcome_filter={} variants={}",
+        "pro sweep decision record: candidate={} shipping={} repeats={} games={} max_plies={} duels={} outcome_filter={} variants={} include_mechanism_class={}",
         candidate.id,
         shipping_profile,
         repeats,
@@ -4167,7 +4173,8 @@ fn smart_automove_pro_sweep_decision_record_probe() {
             .collect::<Vec<_>>()
             .join(","),
         format!("{} scope={}", outcome_filter.join(","), scope),
-        env::var("SMART_AUTOMOVE_VARIANTS").unwrap_or_else(|_| "<default>".to_string())
+        env::var("SMART_AUTOMOVE_VARIANTS").unwrap_or_else(|_| "<default>".to_string()),
+        include_mechanism_class,
     );
 
     for duel in duel_specs
@@ -4186,6 +4193,7 @@ fn smart_automove_pro_sweep_decision_record_probe() {
         let mut branch_counts = BTreeMap::<String, usize>::new();
         let mut context_counts = BTreeMap::<String, usize>::new();
         let mut pair_counts = BTreeMap::<String, usize>::new();
+        let mut mechanism_class_counts = BTreeMap::<String, usize>::new();
 
         for repeat_index in 0..repeats {
             let seed = seed_for_budget_duel_repeat_and_tag(
@@ -4284,6 +4292,30 @@ fn smart_automove_pro_sweep_decision_record_probe() {
                     *context_counts.entry(context_key).or_default() += 1;
                     *pair_counts.entry(pair_key).or_default() += 1;
                     *branch_counts.entry(branch_key).or_default() += 1;
+                    if include_mechanism_class {
+                        let board = MonsGame::from_fen(divergence.board_fen.as_str(), false)
+                            .expect("decision-record board fen should be valid");
+                        let mechanism_profile =
+                            pro_policy_mechanism_profile_for_baseline(candidate.id);
+                        let candidate_probe = runtime_decision_probe(
+                            mechanism_profile,
+                            SmartAutomovePreference::Pro,
+                            &board,
+                        );
+                        let candidate_advisor = pro_v2_root_advisor_decision_snapshot();
+                        for class_key in pro_policy_mechanism_class_keys(
+                            mechanism_profile,
+                            SmartAutomovePreference::Pro,
+                            &board,
+                            &candidate_probe,
+                            candidate_advisor.as_ref(),
+                            divergence.left_move_fen.as_str(),
+                            divergence.right_move_fen.as_str(),
+                        ) {
+                            let key = format!("outcome={} {}", outcome, class_key);
+                            *mechanism_class_counts.entry(key).or_default() += 1;
+                        }
+                    }
 
                     if printed < trace_limit {
                         println!(
@@ -4332,7 +4364,7 @@ fn smart_automove_pro_sweep_decision_record_probe() {
             missing_first_diff,
         );
         println!(
-            "PRO_SWEEP_DECISION_RECORD_STOPLIGHT {{\"candidate\":\"{}\",\"duel\":\"{}\",\"scope\":\"{}\",\"label\":\"{}\",\"nonwins\":{},\"regressions\":{},\"recorded\":{},\"missing_first_diff\":{},\"max_branch_games\":{},\"max_context_games\":{},\"max_pair_games\":{}}}",
+            "PRO_SWEEP_DECISION_RECORD_STOPLIGHT {{\"candidate\":\"{}\",\"duel\":\"{}\",\"scope\":\"{}\",\"label\":\"{}\",\"nonwins\":{},\"regressions\":{},\"recorded\":{},\"missing_first_diff\":{},\"max_branch_games\":{},\"max_context_games\":{},\"max_pair_games\":{},\"max_mechanism_class_games\":{}}}",
             json_escape(candidate.id),
             json_escape(duel.label),
             json_escape(&scope),
@@ -4344,6 +4376,8 @@ fn smart_automove_pro_sweep_decision_record_probe() {
                 &branch_counts,
                 &context_counts,
                 &pair_counts,
+                &mechanism_class_counts,
+                include_mechanism_class,
             ),
             nonwins,
             regressions,
@@ -4352,6 +4386,7 @@ fn smart_automove_pro_sweep_decision_record_probe() {
             max_count(&branch_counts),
             max_count(&context_counts),
             max_count(&pair_counts),
+            max_count(&mechanism_class_counts),
         );
         for (key, games) in branch_counts.iter().take(aggregate_limit) {
             println!(
@@ -4379,6 +4414,19 @@ fn smart_automove_pro_sweep_decision_record_probe() {
                 json_escape(key),
                 games,
             );
+        }
+        if include_mechanism_class {
+            for (key, games) in
+                pro_policy_matrix_sorted_counts(&mechanism_class_counts, aggregate_limit)
+            {
+                println!(
+                    "PRO_SWEEP_DECISION_RECORD_MECHANISM_CLASS {{\"candidate\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                    json_escape(candidate.id),
+                    json_escape(duel.label),
+                    json_escape(&key),
+                    games,
+                );
+            }
         }
     }
 }

@@ -15,8 +15,9 @@ Archived profiles, archived seams, and archived stages are not valid experiment 
 7. Probe first when the mechanism is unclear.
 8. When there is no live hypothesis, read `docs/automove-reset-review.md` and switch to the structural reset instead of running another seam loop.
 9. In structural reset mode, run `pro-policy-corpus` or a filtered `pro-policy-outcome-corpus` before writing a selector from policy labels.
-10. Archive or kill the line before starting another.
-11. Clean logs and stamps before ending the session.
+10. If decision-record output is singleton by context/pair but still tempting, rerun it with `SMART_PRO_SWEEP_DECISION_RECORD_INCLUDE_MECHANISM_CLASS=true`.
+11. Archive or kill the line before starting another.
+12. Clean logs and stamps before ending the session.
 
 ## Variant Policy
 
@@ -69,6 +70,8 @@ Use `./scripts/run-automove-experiment.sh` when you need one stage at a time or 
 ./scripts/run-automove-experiment.sh pro-policy-winner frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,shipping_pro_search_control
 ./scripts/run-automove-experiment.sh pro-policy-corpus frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard
 ```
+
+Add `SMART_PRO_SWEEP_DECISION_RECORD_INCLUDE_MECHANISM_CLASS=true` to `pro-sweep-decision-record` when the broad branch label repeats but context and move-pair aggregates are singleton. The output adds `PRO_SWEEP_DECISION_RECORD_MECHANISM_CLASS` plus `max_mechanism_class_games`; treat count-2 repeats as routing evidence only, not runtime permission.
 
 ## Structural Reset
 
