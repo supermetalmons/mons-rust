@@ -3142,6 +3142,7 @@ fn smart_automove_pro_policy_cross_budget_probe() {
     struct CrossBudgetPolicyOutcome {
         candidate: ProProfileSweepCandidate,
         results: Vec<MatchResult>,
+        traces: Vec<ProProfileSweepAttributionTrace>,
     }
 
     #[derive(Default)]
@@ -3173,6 +3174,49 @@ fn smart_automove_pro_policy_cross_budget_probe() {
         }
     }
 
+    fn cross_budget_stoplight_label(
+        stats: &CrossBudgetStats,
+        stable_mechanism_class_counts: &BTreeMap<String, usize>,
+        include_mechanism_class: bool,
+        mechanism_class_limit_hit: bool,
+    ) -> &'static str {
+        if mechanism_class_limit_hit {
+            "partial_mechanism_corpus"
+        } else if (stats.clean_repair_states > 0 || stats.nonregressing_repair_states > 0)
+            && stats.budget_conflict_states > 0
+        {
+            "mixed_cross_budget"
+        } else if include_mechanism_class
+            && (stats.clean_repair_states > 0 || stats.nonregressing_repair_states > 0)
+            && max_count(stable_mechanism_class_counts) > 2
+        {
+            "repeated_cross_budget_mechanism_class"
+        } else if stats.clean_repair_states > 0 {
+            "clean_repair"
+        } else if stats.nonregressing_repair_states > 0 {
+            "nonregressing_repair"
+        } else if stats.budget_conflict_states > 0 {
+            "budget_conflict"
+        } else {
+            "no_policy_help"
+        }
+    }
+
+    fn cross_budget_mechanism_class_filter_allows(filter: &str, candidate_class: &str) -> bool {
+        match filter {
+            "all" => true,
+            "stable" => matches!(
+                candidate_class,
+                "candidate_clean_all_budget_repair" | "candidate_nonregressing_repair"
+            ),
+            "conflicts" => candidate_class == "budget_conflict",
+            _ => panic!(
+                "unknown SMART_PRO_POLICY_CROSS_BUDGET_MECHANISM_CLASS_FILTER '{}'",
+                filter
+            ),
+        }
+    }
+
     let shipping_profile = reliability_shipping_profile_id();
     let shipping_selector = profile_selector_from_name(shipping_profile.as_str())
         .unwrap_or_else(|| panic!("shipping '{}' not found", shipping_profile));
@@ -3198,6 +3242,15 @@ fn smart_automove_pro_policy_cross_budget_probe() {
         .max(1);
     let state_limit =
         env_usize("SMART_PRO_POLICY_CROSS_BUDGET_STATE_LIMIT").map(|limit| limit.max(1));
+    let include_mechanism_class =
+        env_bool("SMART_PRO_POLICY_CROSS_BUDGET_INCLUDE_MECHANISM_CLASS").unwrap_or(false);
+    let mechanism_class_filter =
+        env_string_value("SMART_PRO_POLICY_CROSS_BUDGET_MECHANISM_CLASS_FILTER")
+            .unwrap_or_else(|| "stable".to_string())
+            .to_ascii_lowercase();
+    let mechanism_class_limit = env_usize("SMART_PRO_POLICY_CROSS_BUDGET_MECHANISM_CLASS_LIMIT")
+        .unwrap_or(16)
+        .max(1);
     let seed_opponent_mode = env_string_value("SMART_PRO_POLICY_CROSS_BUDGET_SEED_OPPONENT_MODE")
         .map(|mode| mode.to_ascii_lowercase())
         .map(|mode| match mode.as_str() {
@@ -3226,7 +3279,7 @@ fn smart_automove_pro_policy_cross_budget_probe() {
     ];
 
     println!(
-        "pro policy cross budget: baseline={} candidates={} panels={} max_plies={} seed_opponent_mode={} duels={}",
+        "pro policy cross budget: baseline={} candidates={} panels={} max_plies={} seed_opponent_mode={} duels={} include_mechanism_class={} mechanism_class_filter={} mechanism_class_limit={}",
         baseline.id,
         candidates
             .iter()
@@ -3247,6 +3300,9 @@ fn smart_automove_pro_policy_cross_budget_probe() {
             .map(|duel| duel.label)
             .collect::<Vec<_>>()
             .join(","),
+        include_mechanism_class,
+        mechanism_class_filter,
+        mechanism_class_limit,
     );
 
     for panel in pro_promotion_dashboard_panel_specs()
@@ -3267,6 +3323,10 @@ fn smart_automove_pro_policy_cross_budget_probe() {
             let mut class_counts = BTreeMap::<String, usize>::new();
             let mut all_win_policy_counts = BTreeMap::<String, usize>::new();
             let mut nonregressing_policy_counts = BTreeMap::<String, usize>::new();
+            let mut mechanism_class_counts = BTreeMap::<String, usize>::new();
+            let mut stable_mechanism_class_counts = BTreeMap::<String, usize>::new();
+            let mut mechanism_class_traces = 0usize;
+            let mut mechanism_class_limit_hit = false;
             let mut printed = 0usize;
 
             'cross_budget_samples: for repeat_index in 0..repeats {
@@ -3290,27 +3350,30 @@ fn smart_automove_pro_policy_cross_budget_probe() {
                         let outcomes = candidates
                             .iter()
                             .map(|candidate| {
-                                let results = duel_specs
+                                let traces = duel_specs
                                     .iter()
                                     .map(|duel| {
-                                        let trace = play_profile_sweep_attribution_trace(
+                                        play_profile_sweep_attribution_trace(
                                             *candidate,
                                             shipping_selector,
                                             SearchBudget::from_preference(duel.opponent_mode),
                                             opening_fen.as_str(),
                                             candidate_is_white,
                                             max_plies,
-                                        );
-                                        trace.result
+                                        )
                                     })
                                     .collect::<Vec<_>>();
+                                let results =
+                                    traces.iter().map(|trace| trace.result).collect::<Vec<_>>();
                                 CrossBudgetPolicyOutcome {
                                     candidate: *candidate,
                                     results,
+                                    traces,
                                 }
                             })
                             .collect::<Vec<_>>();
                         let baseline_results = &outcomes[0].results;
+                        let baseline_traces = &outcomes[0].traces;
                         let baseline_points = baseline_results
                             .iter()
                             .map(|result| match_result_points(*result))
@@ -3386,6 +3449,108 @@ fn smart_automove_pro_policy_cross_budget_probe() {
                             stats.no_policy_help_states += 1;
                             "no_policy_help"
                         };
+
+                        if include_mechanism_class {
+                            let mechanism_profile =
+                                pro_policy_mechanism_profile_for_baseline(baseline.id);
+                            for outcome in outcomes.iter().skip(1) {
+                                let candidate_points = outcome
+                                    .results
+                                    .iter()
+                                    .map(|result| match_result_points(*result))
+                                    .collect::<Vec<_>>();
+                                let candidate_all_wins = outcome
+                                    .results
+                                    .iter()
+                                    .all(|result| matches!(result, MatchResult::ProfileAWin));
+                                let candidate_nonregressing = candidate_points
+                                    .iter()
+                                    .zip(baseline_points.iter())
+                                    .all(|(candidate, baseline)| candidate >= baseline)
+                                    && candidate_points
+                                        .iter()
+                                        .zip(baseline_points.iter())
+                                        .any(|(candidate, baseline)| candidate > baseline);
+                                let candidate_improves = candidate_points
+                                    .iter()
+                                    .zip(baseline_points.iter())
+                                    .any(|(candidate, baseline)| candidate > baseline);
+                                let candidate_class = if baseline_all_wins && candidate_all_wins {
+                                    "shared_all_budget_win"
+                                } else if !baseline_all_wins && candidate_all_wins {
+                                    "candidate_clean_all_budget_repair"
+                                } else if candidate_nonregressing {
+                                    "candidate_nonregressing_repair"
+                                } else if candidate_improves {
+                                    "budget_conflict"
+                                } else {
+                                    continue;
+                                };
+                                if !cross_budget_mechanism_class_filter_allows(
+                                    mechanism_class_filter.as_str(),
+                                    candidate_class,
+                                ) {
+                                    continue;
+                                }
+
+                                for (duel_index, duel) in duel_specs.iter().enumerate() {
+                                    let candidate_point = candidate_points[duel_index];
+                                    let baseline_point = baseline_points[duel_index];
+                                    if candidate_point <= baseline_point {
+                                        continue;
+                                    }
+                                    if mechanism_class_traces >= mechanism_class_limit {
+                                        mechanism_class_limit_hit = true;
+                                        break;
+                                    }
+                                    let Some(divergence) = first_profile_sweep_candidate_divergence(
+                                        &baseline_traces[duel_index],
+                                        &outcome.traces[duel_index],
+                                    ) else {
+                                        continue;
+                                    };
+                                    mechanism_class_traces += 1;
+                                    let board =
+                                        MonsGame::from_fen(divergence.board_fen.as_str(), false)
+                                            .expect(
+                                                "policy cross-budget board fen should be valid",
+                                            );
+                                    let baseline_probe = runtime_decision_probe(
+                                        mechanism_profile,
+                                        SmartAutomovePreference::Pro,
+                                        &board,
+                                    );
+                                    let baseline_advisor = pro_v2_root_advisor_decision_snapshot();
+                                    for class_key in pro_policy_mechanism_class_keys(
+                                        mechanism_profile,
+                                        SmartAutomovePreference::Pro,
+                                        &board,
+                                        &baseline_probe,
+                                        baseline_advisor.as_ref(),
+                                        divergence.left_move_fen.as_str(),
+                                        divergence.right_move_fen.as_str(),
+                                    ) {
+                                        let key = format!(
+                                            "class={} policy={} duel={} {}",
+                                            candidate_class,
+                                            outcome.candidate.id,
+                                            duel.label,
+                                            class_key
+                                        );
+                                        if matches!(
+                                            candidate_class,
+                                            "candidate_clean_all_budget_repair"
+                                                | "candidate_nonregressing_repair"
+                                        ) {
+                                            *stable_mechanism_class_counts
+                                                .entry(key.clone())
+                                                .or_default() += 1;
+                                        }
+                                        *mechanism_class_counts.entry(key).or_default() += 1;
+                                    }
+                                }
+                            }
+                        }
 
                         let class_key = format!(
                             "class={} variant={} candidate_is_white={}",
@@ -3476,6 +3641,27 @@ fn smart_automove_pro_policy_cross_budget_probe() {
                 stats.no_policy_help_states,
                 stats.state_limit_hit,
             );
+            println!(
+                "PRO_POLICY_CROSS_BUDGET_STOPLIGHT {{\"panel\":\"{}\",\"seed_tag\":\"{}\",\"baseline\":\"{}\",\"label\":\"{}\",\"clean_repair_states\":{},\"nonregressing_repair_states\":{},\"budget_conflict_states\":{},\"no_policy_help_states\":{},\"max_stable_mechanism_class_states\":{},\"max_mechanism_class_states\":{},\"mechanism_class_traces\":{},\"mechanism_class_limit_hit\":{},\"state_limit_hit\":{}}}",
+                json_escape(panel.label),
+                json_escape(panel_seed_tag.as_str()),
+                json_escape(baseline.id),
+                cross_budget_stoplight_label(
+                    &stats,
+                    &stable_mechanism_class_counts,
+                    include_mechanism_class,
+                    mechanism_class_limit_hit,
+                ),
+                stats.clean_repair_states,
+                stats.nonregressing_repair_states,
+                stats.budget_conflict_states,
+                stats.no_policy_help_states,
+                max_count(&stable_mechanism_class_counts),
+                max_count(&mechanism_class_counts),
+                mechanism_class_traces,
+                mechanism_class_limit_hit,
+                stats.state_limit_hit,
+            );
             for (key, states) in pro_policy_matrix_sorted_counts(&class_counts, aggregate_limit) {
                 println!(
                     "PRO_POLICY_CROSS_BUDGET_CLASS {{\"panel\":\"{}\",\"key\":\"{}\",\"states\":{}}}",
@@ -3503,6 +3689,18 @@ fn smart_automove_pro_policy_cross_budget_probe() {
                     json_escape(key),
                     states,
                 );
+            }
+            if include_mechanism_class {
+                for (key, states) in
+                    pro_policy_matrix_sorted_counts(&mechanism_class_counts, aggregate_limit)
+                {
+                    println!(
+                        "PRO_POLICY_CROSS_BUDGET_MECHANISM_CLASS {{\"panel\":\"{}\",\"key\":\"{}\",\"states\":{}}}",
+                        json_escape(panel.label),
+                        json_escape(key),
+                        states,
+                    );
+                }
             }
         });
     }
