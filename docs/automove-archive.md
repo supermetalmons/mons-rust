@@ -4,6 +4,15 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Iterative-Deepening Recheck And Advisor Reply-Floor Policy
+
+- Temporary test-only candidate source was cut and removed in the same session.
+- Recreating the sampled-pass guarded iterative-deepening row composite reconfirmed the old active-blocker failure: Pro `3-3`, Normal `3-3`, Fast `5-1`. Active Normal still had `outer_edge_mana_rows` at `0-2`, while active Pro split `outer_edge_mana_rows`, `alternating_mana_rows`, and `forward_bridge_mana_rows`.
+- Narrow outer-edge shipping fallbacks did not rescue it. The white-opening shipping branch was mostly inert, and the combined white-opening plus black weak-window shipping branch only moved the active dashboard to Pro `3-3`, Normal `4-2`, Fast `5-1`.
+- Active decision records for the repaired row composite stayed singleton-heavy: remaining Pro misses split across an `outer_edge` flat, an `alternating` flat, and a `forward_bridge` early-white fallback regression.
+- A test-only snapshot-based advisor reply-floor policy then preserved guarded selection, captured the already-computed root-selection snapshot, and reranked only advisor/top roots by primary utility, progress/setup value, and reply floor. It failed the sampled dashboard before active spend: Pro `5-7`, Normal `9-3`, Fast `8-4`, with override counts `104 / 127 / 162` and max average move time `190.26ms`.
+- Durable outcome: the root-selection snapshot is cheap enough for sampled-dashboard scouts, but advisor/top-root reply-floor plus progress reranking is still too broad. Do not retry this as another hand-tuned comparator; it needs a corpus-trained feature or a repeated mechanism below the current root fields.
+
 ## Policy-Winner Mechanism-Class and Legacy-Preaccept Head Veto
 
 - This wave kept a harness improvement and removed the test-only runtime scout before ending.
