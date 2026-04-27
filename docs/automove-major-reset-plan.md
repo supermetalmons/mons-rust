@@ -63,6 +63,7 @@ Implementation shape:
 
 - Extend `smart_automove_pro_policy_matrix_probe` or add a sibling diagnostic that emits one normalized corpus record per candidate decision.
 - Add aggregate stoplights over mechanism keys that include both candidate-only wins and baseline saves.
+- The current policy-matrix corpus already emits exact-pressure and exact-timing mechanism axes; use those before trying another root-origin or continuation selector.
 - Make repeated classes count only when they repeat across at least two panels or opponent budgets.
 - Keep state caps and aggregate limits as defaults; widen only after a bounded run reports a non-singleton mechanism.
 

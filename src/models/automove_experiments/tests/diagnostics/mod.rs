@@ -1625,6 +1625,65 @@ fn pro_policy_mechanism_utility_primary_order(
     }
 }
 
+fn pro_policy_mechanism_value_bucket(value: i32, zero: &'static str) -> &'static str {
+    match value {
+        0 => zero,
+        1 => "one",
+        _ => "two_plus",
+    }
+}
+
+fn pro_policy_mechanism_drainer_safety_bucket(value: i32) -> &'static str {
+    match value {
+        ..=-2 => "danger_2_plus",
+        -1 => "danger_1",
+        0 => "neutral",
+        1.. => "safe",
+    }
+}
+
+fn pro_policy_mechanism_turn_bucket(turn_number: i32) -> &'static str {
+    match turn_number {
+        0..=2 => "turn0_2",
+        3..=4 => "turn3_4",
+        5..=7 => "turn5_7",
+        _ => "turn8_plus",
+    }
+}
+
+fn pro_policy_mechanism_mons_moves_bucket(mons_moves_count: i32) -> &'static str {
+    match mons_moves_count {
+        0 => "mons0",
+        1 => "mons1",
+        2 => "mons2",
+        _ => "mons3_plus",
+    }
+}
+
+fn pro_policy_mechanism_exact_context_keys(game: &MonsGame) -> Vec<String> {
+    let context = crate::models::automove_exact::exact_opportunity_context(game, game.active_color);
+    let window =
+        pro_policy_mechanism_value_bucket(context.delta.same_turn_score_window_value, "window0");
+    let deny = pro_policy_mechanism_value_bucket(context.delta.opponent_window_deny_gain, "deny0");
+    let drainer_safety = pro_policy_mechanism_drainer_safety_bucket(context.delta.drainer_safety);
+
+    vec![
+        format!(
+            "axis=exact_pressure window={} deny={} attack={} drainer_safety={}",
+            window, deny, context.delta.drainer_attack_available, drainer_safety,
+        ),
+        format!(
+            "axis=exact_timing color={} turn_bucket={} mons_moves={} can_action={} can_mana={} opp_win={}",
+            pro_profile_sweep_color_label(game.active_color),
+            pro_policy_mechanism_turn_bucket(game.turn_number),
+            pro_policy_mechanism_mons_moves_bucket(game.mons_moves_count),
+            game.player_can_use_action(),
+            game.player_can_move_mana(),
+            context.opponent_can_win_immediately,
+        ),
+    ]
+}
+
 fn pro_policy_mechanism_advisor_class(
     advisor: Option<&crate::models::mons_game_model::ProV2RootAdvisorDecision>,
     move_fen: &str,
@@ -1836,7 +1895,7 @@ fn pro_policy_mechanism_class_keys_from_scored_roots(
     let winner_rank_delta = pro_policy_mechanism_rank_delta_bucket(winner.rank, baseline.rank);
     let winner_score_delta = pro_policy_mechanism_score_delta_bucket(winner.score, baseline.score);
 
-    vec![
+    let mut keys = vec![
         format!(
             "axis=stage baseline_stage={} head_accepted={} head_primary={:?} pre_family={:?} head_family={:?}",
             probe.selector_last_stage,
@@ -1885,7 +1944,9 @@ fn pro_policy_mechanism_class_keys_from_scored_roots(
             winner.progress,
             pro_policy_mechanism_rank_bucket(winner.rank),
         ),
-    ]
+    ];
+    keys.extend(pro_policy_mechanism_exact_context_keys(game));
+    keys
 }
 
 fn pro_sweep_candidate_record_context_key(
@@ -2956,6 +3017,8 @@ fn smart_automove_pro_policy_matrix_probe() {
                         stats.missing_first_diff,
                     );
                 }
+                let max_portfolio_mechanism_class_games = max_count(&mechanism_class_counts)
+                    .max(max_count(&portfolio_winner_mechanism_class_counts));
                 let portfolio_stoplight = if portfolio_stats.no_policy_wins > 0 {
                     "coverage_gap"
                 } else if portfolio_stats.baseline_only_wins > 0 {
@@ -2966,6 +3029,10 @@ fn smart_automove_pro_policy_matrix_probe() {
                     "repeated_winner_pair"
                 } else if max_count(&portfolio_winner_context_counts) > 1 {
                     "repeated_winner_context"
+                } else if include_portfolio_mechanism_class
+                    && max_portfolio_mechanism_class_games > 2
+                {
+                    "repeated_mechanism_class"
                 } else if max_count(&portfolio_winner_counts) > 1 {
                     "repeated_winner_policy"
                 } else {
@@ -3006,8 +3073,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                     max_count(&portfolio_winner_counts),
                     max_count(&portfolio_winner_context_counts),
                     max_count(&portfolio_winner_pair_counts),
-                    max_count(&mechanism_class_counts)
-                        .max(max_count(&portfolio_winner_mechanism_class_counts)),
+                    max_portfolio_mechanism_class_games,
                     max_count(&portfolio_baseline_better_mechanism_class_counts),
                     state_limit_hit,
                 );
