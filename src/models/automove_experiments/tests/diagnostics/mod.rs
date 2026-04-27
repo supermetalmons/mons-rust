@@ -3150,6 +3150,9 @@ fn smart_automove_pro_policy_cross_budget_probe() {
         total_states: usize,
         baseline_all_budget_wins: usize,
         candidate_any_all_budget_wins: usize,
+        shared_all_budget_win_states: usize,
+        baseline_only_all_budget_win_states: usize,
+        candidate_only_all_budget_win_states: usize,
         clean_repair_states: usize,
         nonregressing_repair_states: usize,
         budget_conflict_states: usize,
@@ -3182,6 +3185,14 @@ fn smart_automove_pro_policy_cross_budget_probe() {
     ) -> &'static str {
         if mechanism_class_limit_hit {
             "partial_mechanism_corpus"
+        } else if stats.baseline_only_all_budget_win_states > 0 {
+            "baseline_save_risk"
+        } else if stats.no_policy_help_states > 0
+            && (stats.clean_repair_states > 0 || stats.nonregressing_repair_states > 0)
+        {
+            "partial_repair_coverage_gap"
+        } else if stats.no_policy_help_states > 0 {
+            "coverage_gap"
         } else if (stats.clean_repair_states > 0 || stats.nonregressing_repair_states > 0)
             && stats.budget_conflict_states > 0
         {
@@ -3433,10 +3444,13 @@ fn smart_automove_pro_policy_cross_budget_probe() {
                             stats.candidate_any_all_budget_wins += 1;
                         }
                         let class = if baseline_all_wins && !all_win_policies.is_empty() {
+                            stats.shared_all_budget_win_states += 1;
                             "shared_all_budget_win"
                         } else if baseline_all_wins {
+                            stats.baseline_only_all_budget_win_states += 1;
                             "baseline_only_all_budget_win"
                         } else if !all_win_policies.is_empty() {
+                            stats.candidate_only_all_budget_win_states += 1;
                             stats.clean_repair_states += 1;
                             "candidate_clean_all_budget_repair"
                         } else if !nonregressing_policies.is_empty() {
@@ -3619,7 +3633,7 @@ fn smart_automove_pro_policy_cross_budget_probe() {
             }
 
             println!(
-                "PRO_POLICY_CROSS_BUDGET_SUMMARY {{\"panel\":\"{}\",\"seed_tag\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"seed_opponent_mode\":\"{}\",\"total_states\":{},\"baseline_all_budget_wins\":{},\"candidate_any_all_budget_wins\":{},\"clean_repair_states\":{},\"nonregressing_repair_states\":{},\"budget_conflict_states\":{},\"no_policy_help_states\":{},\"state_limit_hit\":{}}}",
+                "PRO_POLICY_CROSS_BUDGET_SUMMARY {{\"panel\":\"{}\",\"seed_tag\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"seed_opponent_mode\":\"{}\",\"total_states\":{},\"baseline_all_budget_wins\":{},\"candidate_any_all_budget_wins\":{},\"shared_all_budget_win_states\":{},\"baseline_only_all_budget_win_states\":{},\"candidate_only_all_budget_win_states\":{},\"clean_repair_states\":{},\"nonregressing_repair_states\":{},\"budget_conflict_states\":{},\"no_policy_help_states\":{},\"state_limit_hit\":{}}}",
                 json_escape(panel.label),
                 json_escape(panel_seed_tag.as_str()),
                 json_escape(baseline.id),
@@ -3635,6 +3649,9 @@ fn smart_automove_pro_policy_cross_budget_probe() {
                 stats.total_states,
                 stats.baseline_all_budget_wins,
                 stats.candidate_any_all_budget_wins,
+                stats.shared_all_budget_win_states,
+                stats.baseline_only_all_budget_win_states,
+                stats.candidate_only_all_budget_win_states,
                 stats.clean_repair_states,
                 stats.nonregressing_repair_states,
                 stats.budget_conflict_states,
@@ -3642,7 +3659,7 @@ fn smart_automove_pro_policy_cross_budget_probe() {
                 stats.state_limit_hit,
             );
             println!(
-                "PRO_POLICY_CROSS_BUDGET_STOPLIGHT {{\"panel\":\"{}\",\"seed_tag\":\"{}\",\"baseline\":\"{}\",\"label\":\"{}\",\"clean_repair_states\":{},\"nonregressing_repair_states\":{},\"budget_conflict_states\":{},\"no_policy_help_states\":{},\"max_stable_mechanism_class_states\":{},\"max_mechanism_class_states\":{},\"mechanism_class_traces\":{},\"mechanism_class_limit_hit\":{},\"state_limit_hit\":{}}}",
+                "PRO_POLICY_CROSS_BUDGET_STOPLIGHT {{\"panel\":\"{}\",\"seed_tag\":\"{}\",\"baseline\":\"{}\",\"label\":\"{}\",\"shared_all_budget_win_states\":{},\"baseline_only_all_budget_win_states\":{},\"candidate_only_all_budget_win_states\":{},\"clean_repair_states\":{},\"nonregressing_repair_states\":{},\"budget_conflict_states\":{},\"no_policy_help_states\":{},\"max_stable_mechanism_class_states\":{},\"max_mechanism_class_states\":{},\"mechanism_class_traces\":{},\"mechanism_class_limit_hit\":{},\"state_limit_hit\":{}}}",
                 json_escape(panel.label),
                 json_escape(panel_seed_tag.as_str()),
                 json_escape(baseline.id),
@@ -3652,6 +3669,9 @@ fn smart_automove_pro_policy_cross_budget_probe() {
                     include_mechanism_class,
                     mechanism_class_limit_hit,
                 ),
+                stats.shared_all_budget_win_states,
+                stats.baseline_only_all_budget_win_states,
+                stats.candidate_only_all_budget_win_states,
                 stats.clean_repair_states,
                 stats.nonregressing_repair_states,
                 stats.budget_conflict_states,
