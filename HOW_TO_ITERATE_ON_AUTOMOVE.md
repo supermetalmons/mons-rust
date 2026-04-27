@@ -104,6 +104,7 @@ SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_fast \
 ./scripts/run-automove-structural-scout.sh --outcome-corpus frontier_pro_v2_guarded
 ```
 
+- Structural-scout `--outcome-corpus` is bounded by default (`SMART_PRO_POLICY_MATRIX_STATE_LIMIT=2`) and emits candidate-only portfolio mechanism classes by default (`SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS=true`). Widen `SMART_PRO_POLICY_MATRIX_STATE_LIMIT` only after bounded stoplights show repeated winner context, winner pair, or portfolio mechanism-class evidence. Use the older `SMART_PRO_POLICY_MATRIX_INCLUDE_MECHANISM_CLASS=true` only for narrow follow-ups; it classifies every candidate delta and can be too slow for all active duels.
 - Add `--confirm` only after the default scout panels look promotable.
 
 ## Gate Rules

@@ -27,6 +27,9 @@ With --corpus:
 With --outcome-corpus:
   4. pro-policy-outcome-corpus over the default structural portfolio, unless
      SMART_PRO_POLICY_OUTCOME_CORPUS_PORTFOLIO is set
+     Defaults to SMART_PRO_POLICY_MATRIX_STATE_LIMIT=2 and
+     SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS=true unless
+     overridden.
 
 With --confirm:
   5. all variants profile sweep, repeats=1, games=12
@@ -105,6 +108,8 @@ run_policy_outcome_corpus() {
   echo "== automove structural scout: policy-outcome-corpus =="
   SMART_PRO_POLICY_MATRIX_PANEL_FILTER="${SMART_PRO_POLICY_MATRIX_PANEL_FILTER:-all}" \
   SMART_PRO_POLICY_MATRIX_DUEL_FILTER="${SMART_PRO_POLICY_MATRIX_DUEL_FILTER:-all}" \
+  SMART_PRO_POLICY_MATRIX_STATE_LIMIT="${SMART_PRO_POLICY_MATRIX_STATE_LIMIT:-2}" \
+  SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS="${SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS:-true}" \
     ./scripts/run-automove-experiment.sh pro-policy-outcome-corpus "${portfolio}" "${shipping}"
 }
 
