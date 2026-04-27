@@ -157,6 +157,7 @@ Do not run a long full matrix first. Use panel/duel/state filters until one boun
 - Sampled outcome-corpus smoke on 2026-04-27 was stopped after the sampled Pro slice because it was too slow for a side diagnostic; the partial result was still `singleton_selector_pressure`, not promotion evidence.
 - Static policy selectors, exact context gates, row composites, broad wrapper deletion, shallow ProV4 comparators, online policy rollouts, and broad utility gates are all retired paths unless a new corpus feature changes the evidence.
 - Root-origin plus continuation-probe ProV4 selectors are also retired without a new discriminator: the sampled Pro smoke repaired inner-wedge while regressing center-spoke, stayed `2-2` overall, and was materially slower than guarded.
+- Alternating-only full-scored reply guard is retired too: active cross-budget with all three active openings widened the apparent clean repair into `partial_repair_coverage_gap`, and the test-only alternating-scoped candidate stayed active Pro `3-3`.
 
 ## Required Future Handoff
 
