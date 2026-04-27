@@ -21,6 +21,8 @@ SMART_PRO_DASHBOARD_INCLUDE_GUARDED=true to force it.
 With --corpus:
   4. pro-policy-corpus over the default structural portfolio, unless
      SMART_PRO_POLICY_CORPUS_PORTFOLIO is set
+     Defaults to SMART_PRO_POLICY_WINNER_STATE_LIMIT=2 and
+     SMART_PRO_POLICY_WINNER_CANDIDATE_TRACE_LIMIT=64 unless overridden.
 
 With --outcome-corpus:
   4. pro-policy-outcome-corpus over the default structural portfolio, unless
@@ -93,6 +95,8 @@ run_policy_corpus() {
   echo "== automove structural scout: policy-corpus =="
   SMART_PRO_POLICY_WINNER_PANEL_FILTER="${SMART_PRO_POLICY_WINNER_PANEL_FILTER:-all}" \
   SMART_PRO_POLICY_WINNER_DUEL_FILTER="${SMART_PRO_POLICY_WINNER_DUEL_FILTER:-all}" \
+  SMART_PRO_POLICY_WINNER_STATE_LIMIT="${SMART_PRO_POLICY_WINNER_STATE_LIMIT:-2}" \
+  SMART_PRO_POLICY_WINNER_CANDIDATE_TRACE_LIMIT="${SMART_PRO_POLICY_WINNER_CANDIDATE_TRACE_LIMIT:-64}" \
     ./scripts/run-automove-experiment.sh pro-policy-corpus "${portfolio}" "${shipping}"
 }
 

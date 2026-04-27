@@ -92,6 +92,7 @@ Use this path when `AUTOMOVE_IDEAS.md` says there is no live challenger or when 
 ./scripts/run-automove-structural-scout.sh --corpus frontier_pro_v2_guarded
 ```
 
+- The scout corpus is bounded by default (`SMART_PRO_POLICY_WINNER_STATE_LIMIT=2`, `SMART_PRO_POLICY_WINNER_CANDIDATE_TRACE_LIMIT=64`) so reset-mode runs produce routing stoplights instead of spending on an uncapped mechanism corpus. Override those env vars only when the bounded corpus shows a repeated mechanism worth widening.
 - Use `--outcome-corpus` when policy-winner coverage is complete but singleton-heavy and you need matrix stoplights before source work. Keep it filtered first because the full portfolio is intentionally more expensive:
 
 ```sh
