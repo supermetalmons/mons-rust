@@ -158,6 +158,7 @@ Do not run a long full matrix first. Use panel/duel/state filters until one boun
 - Static policy selectors, exact context gates, row composites, broad wrapper deletion, shallow ProV4 comparators, online policy rollouts, and broad utility gates are all retired paths unless a new corpus feature changes the evidence.
 - Root-origin plus continuation-probe ProV4 selectors are also retired without a new discriminator: the sampled Pro smoke repaired inner-wedge while regressing center-spoke, stayed `2-2` overall, and was materially slower than guarded.
 - Alternating-only full-scored reply guard is retired too: active cross-budget with all three active openings widened the apparent clean repair into `partial_repair_coverage_gap`, and the test-only alternating-scoped candidate stayed active Pro `3-3`.
+- Active forward-bridge policy-portfolio reuse is retired as a direct source path: isolated `forward_bridge_mana_rows` made no-low-budget look best at only `4-2`, exact active cross-budget over guarded/no-low-budget was pure `coverage_gap` (`6` no-help states), and full-scored reply guard lost two guarded white zero-window safe boards while saving only one black board.
 
 ## Required Future Handoff
 
