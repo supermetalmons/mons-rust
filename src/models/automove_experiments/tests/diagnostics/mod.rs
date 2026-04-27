@@ -5042,6 +5042,8 @@ fn smart_automove_pro_promotion_dashboard_probe() {
     let panel_filter = pro_sweep_filter_tokens("SMART_PRO_DASHBOARD_PANEL_FILTER", "all");
     let duel_filter = pro_sweep_filter_tokens("SMART_PRO_DASHBOARD_DUEL_FILTER", "all");
     let include_guarded_delta = env_bool("SMART_PRO_DASHBOARD_INCLUDE_GUARDED").unwrap_or(true);
+    let skip_guarded_after_shipping_fail =
+        env_bool("SMART_PRO_DASHBOARD_SKIP_GUARDED_AFTER_SHIPPING_FAIL").unwrap_or(true);
     let max_plies = env_usize("SMART_PRO_DASHBOARD_MAX_PLIES")
         .unwrap_or(96)
         .max(56);
@@ -5072,7 +5074,7 @@ fn smart_automove_pro_promotion_dashboard_probe() {
     );
 
     println!(
-        "pro promotion dashboard: candidates={} panels={} duels={} max_plies={} include_guarded_delta={}",
+        "pro promotion dashboard: candidates={} panels={} duels={} max_plies={} include_guarded_delta={} skip_guarded_after_shipping_fail={}",
         candidates
             .iter()
             .map(|candidate| candidate.id)
@@ -5092,6 +5094,7 @@ fn smart_automove_pro_promotion_dashboard_probe() {
             .join(","),
         max_plies,
         include_guarded_delta,
+        skip_guarded_after_shipping_fail,
     );
 
     for candidate in candidates {
@@ -5153,7 +5156,10 @@ fn smart_automove_pro_promotion_dashboard_probe() {
                     summary.record_shipping_duel(&stats);
                 }
 
-                if include_guarded_delta {
+                let run_guarded_delta = include_guarded_delta
+                    && (!skip_guarded_after_shipping_fail
+                        || summary.shipping_directional_passes_all());
+                if run_guarded_delta {
                     let guarded_seed_tag = format!("{}_vs_guarded", panel_seed_tag);
                     let stats = run_cross_model_duel_with_timing(CrossModelDuelConfig {
                         label_a: candidate.id,
@@ -5188,6 +5194,14 @@ fn smart_automove_pro_promotion_dashboard_probe() {
                         &stats,
                     );
                     summary.record_guarded_duel(&stats);
+                } else if include_guarded_delta {
+                    println!(
+                        "PRO_PROMOTION_DASHBOARD_GUARDED_SKIPPED {{\"panel\":\"{}\",\"candidate\":\"{}\",\"reason\":\"shipping_direction_failed\",\"shipping_duels\":{},\"shipping_directional_passes\":{}}}",
+                        json_escape(panel.label),
+                        json_escape(candidate.id),
+                        summary.shipping_duels,
+                        summary.shipping_directional_passes,
+                    );
                 }
             });
 
