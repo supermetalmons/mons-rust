@@ -159,6 +159,7 @@ Do not run a long full matrix first. Use panel/duel/state filters until one boun
 - Root-origin plus continuation-probe ProV4 selectors are also retired without a new discriminator: the sampled Pro smoke repaired inner-wedge while regressing center-spoke, stayed `2-2` overall, and was materially slower than guarded.
 - Alternating-only full-scored reply guard is retired too: active cross-budget with all three active openings widened the apparent clean repair into `partial_repair_coverage_gap`, and the test-only alternating-scoped candidate stayed active Pro `3-3`.
 - Active forward-bridge policy-portfolio reuse is retired as a direct source path: isolated `forward_bridge_mana_rows` made no-low-budget look best at only `4-2`, exact active cross-budget over guarded/no-low-budget was pure `coverage_gap` (`6` no-help states), and full-scored reply guard lost two guarded white zero-window safe boards while saving only one black board.
+- Sampled Normal repeated-mechanism-class evidence is also retired as direct selector permission: exact cross-budget over the same Normal-seeded states produced `mixed_cross_budget`, with a clean no-selected inner-wedge repair paired with a corner-chain black budget conflict. Sampled Fast's corresponding bounded outcome slice was `shared_only` with guarded winning every checked state and existing policies only adding save risk.
 
 ## Required Future Handoff
 
