@@ -64,6 +64,7 @@ Implementation shape:
 - Extend `smart_automove_pro_policy_matrix_probe` or add a sibling diagnostic that emits one normalized corpus record per candidate decision.
 - Current status: `pro-policy-outcome-corpus` now defaults `SMART_PRO_POLICY_MATRIX_INCLUDE_CORPUS_RECORDS=true`, which emits `PRO_POLICY_MATRIX_CORPUS_RECORD` for every baseline-vs-candidate decision with the full policy result vector, portfolio class, first-divergence board/moves when present, and baseline/candidate final states. Treat this as the raw Outcome Corpus V2 feed.
 - Add aggregate stoplights over mechanism keys that include both candidate-only wins and baseline saves.
+- Current status: the matrix now emits corpus-wide `PRO_POLICY_MATRIX_GLOBAL_SUMMARY` and `PRO_POLICY_MATRIX_GLOBAL_STOPLIGHT`; set `SMART_PRO_POLICY_MATRIX_GLOBAL_ONLY=true` for broad reset scans that need only the global routing answer. The stoplight reports the max mechanism-class keys so broad `axis=exact_pressure` repeats are visible without printing every aggregate record.
 - The current policy-matrix corpus already emits exact-pressure and exact-timing mechanism axes; use those before trying another root-origin or continuation selector.
 - Make repeated classes count only when they repeat across at least two panels or opponent budgets.
 - Keep state caps and aggregate limits as defaults; widen only after a bounded run reports a non-singleton mechanism.
@@ -162,6 +163,7 @@ Do not run a long full matrix first. Use panel/duel/state filters until one boun
 - Active forward-bridge policy-portfolio reuse is retired as a direct source path: isolated `forward_bridge_mana_rows` made no-low-budget look best at only `4-2`, exact active cross-budget over guarded/no-low-budget was pure `coverage_gap` (`6` no-help states), and full-scored reply guard lost two guarded white zero-window safe boards while saving only one black board.
 - Sampled Normal repeated-mechanism-class evidence is also retired as direct selector permission: exact cross-budget over the same Normal-seeded states produced `mixed_cross_budget`, with a clean no-selected inner-wedge repair paired with a corner-chain black budget conflict. Sampled Fast's corresponding bounded outcome slice was `shared_only` with guarded winning every checked state and existing policies only adding save risk.
 - Sampled Pro's bounded outcome continuation is now retired for the same existing-policy route: the two-state cap was enough to show `shared_only` guarded wins on `inner_wedge_mana_rows`, while shipping-control, raw, no-selected, and full-scored were regression-only or no-delta.
+- The first global outcome-corpus stoplight over one state per sampled/active duel showed full current-portfolio oracle coverage but only broad pressure: `candidate_only_wins=4`, `baseline_only_wins=0`, `no_policy_wins=0`, `max_winner_context_games=1`, `max_winner_pair_games=1`, and max class `axis=exact_pressure window=window0 deny=deny0 attack=false drainer_safety=safe`. Do not implement a selector from that class; it needs a narrower corpus-calibrated feature.
 
 ## Required Future Handoff
 

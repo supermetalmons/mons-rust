@@ -2531,6 +2531,7 @@ fn smart_automove_pro_policy_matrix_probe() {
         env_bool("SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS").unwrap_or(false);
     let include_corpus_records =
         env_bool("SMART_PRO_POLICY_MATRIX_INCLUDE_CORPUS_RECORDS").unwrap_or(false);
+    let global_only = env_bool("SMART_PRO_POLICY_MATRIX_GLOBAL_ONLY").unwrap_or(false);
     let candidate_ids = candidates
         .iter()
         .skip(1)
@@ -2555,8 +2556,34 @@ fn smart_automove_pro_policy_matrix_probe() {
         },
     ];
 
+    let portfolio_stoplight_label = |stats: &PolicyMatrixPortfolioStats,
+                                     winner_counts: &BTreeMap<String, usize>,
+                                     winner_context_counts: &BTreeMap<String, usize>,
+                                     winner_pair_counts: &BTreeMap<String, usize>,
+                                     winner_mechanism_class_counts: &BTreeMap<String, usize>|
+     -> &'static str {
+        if stats.no_policy_wins > 0 {
+            "coverage_gap"
+        } else if stats.baseline_only_wins > 0 {
+            "baseline_save_risk"
+        } else if stats.candidate_only_wins == 0 {
+            "shared_only"
+        } else if max_count(winner_pair_counts) > 1 {
+            "repeated_winner_pair"
+        } else if max_count(winner_context_counts) > 1 {
+            "repeated_winner_context"
+        } else if include_portfolio_mechanism_class && max_count(winner_mechanism_class_counts) > 2
+        {
+            "repeated_mechanism_class"
+        } else if max_count(winner_counts) > 1 {
+            "repeated_winner_policy"
+        } else {
+            "singleton_selector_pressure"
+        }
+    };
+
     println!(
-        "pro policy matrix: baseline={} candidates={} panels={} duels={} max_plies={} state_limit={:?} include_decision_probe={} include_mechanism_class={} include_portfolio_mechanism_class={} include_corpus_records={}",
+        "pro policy matrix: baseline={} candidates={} panels={} duels={} max_plies={} state_limit={:?} include_decision_probe={} include_mechanism_class={} include_portfolio_mechanism_class={} include_corpus_records={} global_only={}",
         baseline.id,
         candidate_ids,
         pro_promotion_dashboard_panel_specs()
@@ -2577,7 +2604,18 @@ fn smart_automove_pro_policy_matrix_probe() {
         include_mechanism_class,
         include_portfolio_mechanism_class,
         include_corpus_records,
+        global_only,
     );
+
+    let mut global_portfolio_stats = PolicyMatrixPortfolioStats::default();
+    let mut global_portfolio_class_counts = BTreeMap::<String, usize>::new();
+    let mut global_portfolio_winner_counts = BTreeMap::<String, usize>::new();
+    let mut global_portfolio_winner_context_counts = BTreeMap::<String, usize>::new();
+    let mut global_portfolio_winner_pair_counts = BTreeMap::<String, usize>::new();
+    let mut global_portfolio_winner_mechanism_class_counts = BTreeMap::<String, usize>::new();
+    let mut global_portfolio_baseline_better_mechanism_class_counts =
+        BTreeMap::<String, usize>::new();
+    let mut global_state_limit_hit = false;
 
     for panel in pro_promotion_dashboard_panel_specs()
         .into_iter()
@@ -2838,7 +2876,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                                 if first_divergence.is_some() {
                                     stats.first_move_diffs += 1;
                                 }
-                                if include_corpus_records {
+                                if include_corpus_records && !global_only {
                                     let first_diff_ply = first_divergence
                                         .as_ref()
                                         .map(|divergence| divergence.ply as i32)
@@ -3028,7 +3066,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                                     }
                                 }
 
-                                if printed < trace_limit {
+                                if printed < trace_limit && !global_only {
                                     let baseline_decision = if include_decision_probe {
                                         pro_policy_matrix_move_decision_probe(
                                             &divergence.board_fen,
@@ -3083,188 +3121,216 @@ fn smart_automove_pro_policy_matrix_probe() {
                     }
                 }
 
-                for (candidate, stats) in stats_by_candidate.iter() {
-                    let candidate_stoplight =
-                        if stats.candidate_better == 0 && stats.baseline_better == 0 {
-                            "no_delta"
-                        } else if stats.candidate_better > 0 && stats.baseline_better == 0 {
-                            "nonregressing_delta"
-                        } else if stats.candidate_better > 0 && stats.baseline_better > 0 {
-                            "mixed_delta"
-                        } else {
-                            "regression_only"
-                        };
-                    println!(
-                        "PRO_POLICY_MATRIX_SUMMARY {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"total_games\":{},\"candidate_better\":{},\"baseline_better\":{},\"same_outcome\":{},\"candidate_nonwins\":{},\"baseline_nonwins\":{},\"first_move_diffs\":{},\"recorded\":{},\"missing_first_diff\":{}}}",
-                        json_escape(panel.label),
-                        json_escape(baseline.id),
-                        json_escape(candidate.id),
-                        json_escape(duel.label),
-                        stats.total_games,
-                        stats.candidate_better,
-                        stats.baseline_better,
-                        stats.same_outcome,
-                        stats.candidate_nonwins,
-                        stats.baseline_nonwins,
-                        stats.first_move_diffs,
-                        stats.recorded,
-                        stats.missing_first_diff,
-                    );
-                    println!(
-                        "PRO_POLICY_MATRIX_CANDIDATE_STOPLIGHT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"label\":\"{}\",\"candidate_better\":{},\"baseline_better\":{},\"candidate_nonwins\":{},\"baseline_nonwins\":{},\"recorded\":{},\"missing_first_diff\":{}}}",
-                        json_escape(panel.label),
-                        json_escape(baseline.id),
-                        json_escape(candidate.id),
-                        json_escape(duel.label),
-                        candidate_stoplight,
-                        stats.candidate_better,
-                        stats.baseline_better,
-                        stats.candidate_nonwins,
-                        stats.baseline_nonwins,
-                        stats.recorded,
-                        stats.missing_first_diff,
-                    );
+                if !global_only {
+                    for (candidate, stats) in stats_by_candidate.iter() {
+                        let candidate_stoplight =
+                            if stats.candidate_better == 0 && stats.baseline_better == 0 {
+                                "no_delta"
+                            } else if stats.candidate_better > 0 && stats.baseline_better == 0 {
+                                "nonregressing_delta"
+                            } else if stats.candidate_better > 0 && stats.baseline_better > 0 {
+                                "mixed_delta"
+                            } else {
+                                "regression_only"
+                            };
+                        println!(
+                            "PRO_POLICY_MATRIX_SUMMARY {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"total_games\":{},\"candidate_better\":{},\"baseline_better\":{},\"same_outcome\":{},\"candidate_nonwins\":{},\"baseline_nonwins\":{},\"first_move_diffs\":{},\"recorded\":{},\"missing_first_diff\":{}}}",
+                            json_escape(panel.label),
+                            json_escape(baseline.id),
+                            json_escape(candidate.id),
+                            json_escape(duel.label),
+                            stats.total_games,
+                            stats.candidate_better,
+                            stats.baseline_better,
+                            stats.same_outcome,
+                            stats.candidate_nonwins,
+                            stats.baseline_nonwins,
+                            stats.first_move_diffs,
+                            stats.recorded,
+                            stats.missing_first_diff,
+                        );
+                        println!(
+                            "PRO_POLICY_MATRIX_CANDIDATE_STOPLIGHT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"label\":\"{}\",\"candidate_better\":{},\"baseline_better\":{},\"candidate_nonwins\":{},\"baseline_nonwins\":{},\"recorded\":{},\"missing_first_diff\":{}}}",
+                            json_escape(panel.label),
+                            json_escape(baseline.id),
+                            json_escape(candidate.id),
+                            json_escape(duel.label),
+                            candidate_stoplight,
+                            stats.candidate_better,
+                            stats.baseline_better,
+                            stats.candidate_nonwins,
+                            stats.baseline_nonwins,
+                            stats.recorded,
+                            stats.missing_first_diff,
+                        );
+                    }
                 }
                 let max_portfolio_mechanism_class_games = max_count(&mechanism_class_counts)
                     .max(max_count(&portfolio_winner_mechanism_class_counts));
-                let portfolio_stoplight = if portfolio_stats.no_policy_wins > 0 {
-                    "coverage_gap"
-                } else if portfolio_stats.baseline_only_wins > 0 {
-                    "baseline_save_risk"
-                } else if portfolio_stats.candidate_only_wins == 0 {
-                    "shared_only"
-                } else if max_count(&portfolio_winner_pair_counts) > 1 {
-                    "repeated_winner_pair"
-                } else if max_count(&portfolio_winner_context_counts) > 1 {
-                    "repeated_winner_context"
-                } else if include_portfolio_mechanism_class
-                    && max_portfolio_mechanism_class_games > 2
+                let max_portfolio_mechanism_class_key = if max_count(&mechanism_class_counts)
+                    > max_count(&portfolio_winner_mechanism_class_counts)
                 {
-                    "repeated_mechanism_class"
-                } else if max_count(&portfolio_winner_counts) > 1 {
-                    "repeated_winner_policy"
+                    max_count_key(&mechanism_class_counts)
                 } else {
-                    "singleton_selector_pressure"
+                    max_count_key(&portfolio_winner_mechanism_class_counts)
                 };
-                println!(
-                    "PRO_POLICY_MATRIX_PORTFOLIO {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"total_games\":{},\"baseline_wins\":{},\"candidate_any_wins\":{},\"any_policy_wins\":{},\"shared_wins\":{},\"baseline_only_wins\":{},\"candidate_only_wins\":{},\"no_policy_wins\":{},\"state_limit_hit\":{}}}",
-                    json_escape(panel.label),
-                    json_escape(baseline.id),
-                    json_escape(&candidate_ids),
-                    json_escape(duel.label),
-                    portfolio_stats.total_games,
-                    portfolio_stats.baseline_wins,
-                    portfolio_stats.candidate_any_wins,
-                    portfolio_stats.any_policy_wins,
-                    portfolio_stats.shared_wins,
-                    portfolio_stats.baseline_only_wins,
-                    portfolio_stats.candidate_only_wins,
-                    portfolio_stats.no_policy_wins,
-                    state_limit_hit,
-                );
-                println!(
-                    "PRO_POLICY_MATRIX_PORTFOLIO_STOPLIGHT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"duel\":\"{}\",\"label\":\"{}\",\"baseline_only_wins\":{},\"candidate_only_wins\":{},\"no_policy_wins\":{},\"max_winner_policy_games\":{},\"max_winner_context_games\":{},\"max_winner_pair_games\":{},\"max_mechanism_class_games\":{},\"max_baseline_better_mechanism_class_games\":{},\"state_limit_hit\":{}}}",
-                    json_escape(panel.label),
-                    json_escape(baseline.id),
-                    json_escape(duel.label),
-                    portfolio_stoplight,
-                    portfolio_stats.baseline_only_wins,
-                    portfolio_stats.candidate_only_wins,
-                    portfolio_stats.no_policy_wins,
-                    max_count(&portfolio_winner_counts),
-                    max_count(&portfolio_winner_context_counts),
-                    max_count(&portfolio_winner_pair_counts),
-                    max_portfolio_mechanism_class_games,
-                    max_count(&portfolio_baseline_better_mechanism_class_counts),
-                    state_limit_hit,
-                );
-                for (key, games) in
-                    pro_policy_matrix_sorted_counts(&portfolio_class_counts, aggregate_limit)
-                {
-                    println!(
-                        "PRO_POLICY_MATRIX_PORTFOLIO_CLASS {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
-                        json_escape(panel.label),
-                        json_escape(duel.label),
-                        json_escape(key),
-                        games,
-                    );
-                }
-                for (key, games) in
-                    pro_policy_matrix_sorted_counts(&portfolio_winner_counts, aggregate_limit)
-                {
-                    println!(
-                        "PRO_POLICY_MATRIX_PORTFOLIO_WINNER {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
-                        json_escape(panel.label),
-                        json_escape(duel.label),
-                        json_escape(key),
-                        games,
-                    );
-                }
-                for (key, games) in pro_policy_matrix_sorted_counts(
+                let portfolio_stoplight = portfolio_stoplight_label(
+                    &portfolio_stats,
+                    &portfolio_winner_counts,
                     &portfolio_winner_context_counts,
-                    aggregate_limit,
-                ) {
+                    &portfolio_winner_pair_counts,
+                    &portfolio_winner_mechanism_class_counts,
+                );
+                if !global_only {
                     println!(
-                        "PRO_POLICY_MATRIX_PORTFOLIO_WINNER_CONTEXT {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                        "PRO_POLICY_MATRIX_PORTFOLIO {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"total_games\":{},\"baseline_wins\":{},\"candidate_any_wins\":{},\"any_policy_wins\":{},\"shared_wins\":{},\"baseline_only_wins\":{},\"candidate_only_wins\":{},\"no_policy_wins\":{},\"state_limit_hit\":{}}}",
                         json_escape(panel.label),
+                        json_escape(baseline.id),
+                        json_escape(&candidate_ids),
                         json_escape(duel.label),
-                        json_escape(key),
-                        games,
+                        portfolio_stats.total_games,
+                        portfolio_stats.baseline_wins,
+                        portfolio_stats.candidate_any_wins,
+                        portfolio_stats.any_policy_wins,
+                        portfolio_stats.shared_wins,
+                        portfolio_stats.baseline_only_wins,
+                        portfolio_stats.candidate_only_wins,
+                        portfolio_stats.no_policy_wins,
+                        state_limit_hit,
                     );
-                }
-                for (key, games) in
-                    pro_policy_matrix_sorted_counts(&portfolio_winner_pair_counts, aggregate_limit)
-                {
                     println!(
-                        "PRO_POLICY_MATRIX_PORTFOLIO_WINNER_PAIR {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                        "PRO_POLICY_MATRIX_PORTFOLIO_STOPLIGHT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"duel\":\"{}\",\"label\":\"{}\",\"baseline_only_wins\":{},\"candidate_only_wins\":{},\"no_policy_wins\":{},\"max_winner_policy_games\":{},\"max_winner_context_games\":{},\"max_winner_pair_games\":{},\"max_mechanism_class_games\":{},\"max_mechanism_class_key\":\"{}\",\"max_baseline_better_mechanism_class_games\":{},\"max_baseline_better_mechanism_class_key\":\"{}\",\"state_limit_hit\":{}}}",
                         json_escape(panel.label),
+                        json_escape(baseline.id),
                         json_escape(duel.label),
-                        json_escape(key),
-                        games,
+                        portfolio_stoplight,
+                        portfolio_stats.baseline_only_wins,
+                        portfolio_stats.candidate_only_wins,
+                        portfolio_stats.no_policy_wins,
+                        max_count(&portfolio_winner_counts),
+                        max_count(&portfolio_winner_context_counts),
+                        max_count(&portfolio_winner_pair_counts),
+                        max_portfolio_mechanism_class_games,
+                        json_escape(max_portfolio_mechanism_class_key),
+                        max_count(&portfolio_baseline_better_mechanism_class_counts),
+                        json_escape(max_count_key(
+                            &portfolio_baseline_better_mechanism_class_counts
+                        )),
+                        state_limit_hit,
                     );
-                }
-                if include_portfolio_mechanism_class {
-                    for (key, games) in pro_policy_matrix_sorted_counts(
-                        &portfolio_winner_mechanism_class_counts,
-                        aggregate_limit,
-                    ) {
-                        println!(
-                            "PRO_POLICY_MATRIX_PORTFOLIO_WINNER_MECHANISM_CLASS {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
-                            json_escape(panel.label),
-                            json_escape(duel.label),
-                            json_escape(key),
-                            games,
-                        );
-                    }
-                    for (key, games) in pro_policy_matrix_sorted_counts(
-                        &portfolio_baseline_better_mechanism_class_counts,
-                        aggregate_limit,
-                    ) {
-                        println!(
-                            "PRO_POLICY_MATRIX_PORTFOLIO_BASELINE_BETTER_MECHANISM_CLASS {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
-                            json_escape(panel.label),
-                            json_escape(duel.label),
-                            json_escape(key),
-                            games,
-                        );
-                    }
-                }
-                for (key, games) in pro_policy_matrix_sorted_counts(&branch_counts, aggregate_limit)
-                {
-                    println!(
-                        "PRO_POLICY_MATRIX_BRANCH {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
-                        json_escape(panel.label),
-                        json_escape(duel.label),
-                        json_escape(key),
-                        games,
-                    );
-                }
-                if include_mechanism_class {
                     for (key, games) in
-                        pro_policy_matrix_sorted_counts(&mechanism_class_counts, aggregate_limit)
+                        pro_policy_matrix_sorted_counts(&portfolio_class_counts, aggregate_limit)
                     {
                         println!(
-                            "PRO_POLICY_MATRIX_MECHANISM_CLASS {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                            "PRO_POLICY_MATRIX_PORTFOLIO_CLASS {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                            json_escape(panel.label),
+                            json_escape(duel.label),
+                            json_escape(key),
+                            games,
+                        );
+                    }
+                    for (key, games) in
+                        pro_policy_matrix_sorted_counts(&portfolio_winner_counts, aggregate_limit)
+                    {
+                        println!(
+                            "PRO_POLICY_MATRIX_PORTFOLIO_WINNER {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                            json_escape(panel.label),
+                            json_escape(duel.label),
+                            json_escape(key),
+                            games,
+                        );
+                    }
+                    for (key, games) in pro_policy_matrix_sorted_counts(
+                        &portfolio_winner_context_counts,
+                        aggregate_limit,
+                    ) {
+                        println!(
+                            "PRO_POLICY_MATRIX_PORTFOLIO_WINNER_CONTEXT {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                            json_escape(panel.label),
+                            json_escape(duel.label),
+                            json_escape(key),
+                            games,
+                        );
+                    }
+                    for (key, games) in pro_policy_matrix_sorted_counts(
+                        &portfolio_winner_pair_counts,
+                        aggregate_limit,
+                    ) {
+                        println!(
+                            "PRO_POLICY_MATRIX_PORTFOLIO_WINNER_PAIR {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                            json_escape(panel.label),
+                            json_escape(duel.label),
+                            json_escape(key),
+                            games,
+                        );
+                    }
+                    if include_portfolio_mechanism_class {
+                        for (key, games) in pro_policy_matrix_sorted_counts(
+                            &portfolio_winner_mechanism_class_counts,
+                            aggregate_limit,
+                        ) {
+                            println!(
+                                "PRO_POLICY_MATRIX_PORTFOLIO_WINNER_MECHANISM_CLASS {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                                json_escape(panel.label),
+                                json_escape(duel.label),
+                                json_escape(key),
+                                games,
+                            );
+                        }
+                        for (key, games) in pro_policy_matrix_sorted_counts(
+                            &portfolio_baseline_better_mechanism_class_counts,
+                            aggregate_limit,
+                        ) {
+                            println!(
+                                "PRO_POLICY_MATRIX_PORTFOLIO_BASELINE_BETTER_MECHANISM_CLASS {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                                json_escape(panel.label),
+                                json_escape(duel.label),
+                                json_escape(key),
+                                games,
+                            );
+                        }
+                    }
+                    for (key, games) in
+                        pro_policy_matrix_sorted_counts(&branch_counts, aggregate_limit)
+                    {
+                        println!(
+                            "PRO_POLICY_MATRIX_BRANCH {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                            json_escape(panel.label),
+                            json_escape(duel.label),
+                            json_escape(key),
+                            games,
+                        );
+                    }
+                    if include_mechanism_class {
+                        for (key, games) in pro_policy_matrix_sorted_counts(
+                            &mechanism_class_counts,
+                            aggregate_limit,
+                        ) {
+                            println!(
+                                "PRO_POLICY_MATRIX_MECHANISM_CLASS {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                                json_escape(panel.label),
+                                json_escape(duel.label),
+                                json_escape(key),
+                                games,
+                            );
+                        }
+                    }
+                    for (key, games) in
+                        pro_policy_matrix_sorted_counts(&context_counts, aggregate_limit)
+                    {
+                        println!(
+                            "PRO_POLICY_MATRIX_CONTEXT {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
+                            json_escape(panel.label),
+                            json_escape(duel.label),
+                            json_escape(key),
+                            games,
+                        );
+                    }
+                    for (key, games) in
+                        pro_policy_matrix_sorted_counts(&pair_counts, aggregate_limit)
+                    {
+                        println!(
+                            "PRO_POLICY_MATRIX_PAIR {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
                             json_escape(panel.label),
                             json_escape(duel.label),
                             json_escape(key),
@@ -3272,28 +3338,151 @@ fn smart_automove_pro_policy_matrix_probe() {
                         );
                     }
                 }
-                for (key, games) in
-                    pro_policy_matrix_sorted_counts(&context_counts, aggregate_limit)
-                {
-                    println!(
-                        "PRO_POLICY_MATRIX_CONTEXT {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
-                        json_escape(panel.label),
-                        json_escape(duel.label),
-                        json_escape(key),
-                        games,
-                    );
+
+                global_portfolio_stats.total_games += portfolio_stats.total_games;
+                global_portfolio_stats.baseline_wins += portfolio_stats.baseline_wins;
+                global_portfolio_stats.candidate_any_wins += portfolio_stats.candidate_any_wins;
+                global_portfolio_stats.any_policy_wins += portfolio_stats.any_policy_wins;
+                global_portfolio_stats.shared_wins += portfolio_stats.shared_wins;
+                global_portfolio_stats.baseline_only_wins += portfolio_stats.baseline_only_wins;
+                global_portfolio_stats.candidate_only_wins += portfolio_stats.candidate_only_wins;
+                global_portfolio_stats.no_policy_wins += portfolio_stats.no_policy_wins;
+                global_state_limit_hit |= state_limit_hit;
+                for (key, games) in &portfolio_class_counts {
+                    *global_portfolio_class_counts
+                        .entry(key.clone())
+                        .or_default() += *games;
                 }
-                for (key, games) in pro_policy_matrix_sorted_counts(&pair_counts, aggregate_limit) {
-                    println!(
-                        "PRO_POLICY_MATRIX_PAIR {{\"panel\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
-                        json_escape(panel.label),
-                        json_escape(duel.label),
-                        json_escape(key),
-                        games,
-                    );
+                for (key, games) in &portfolio_winner_counts {
+                    *global_portfolio_winner_counts
+                        .entry(key.clone())
+                        .or_default() += *games;
+                }
+                for (key, games) in &portfolio_winner_context_counts {
+                    *global_portfolio_winner_context_counts
+                        .entry(key.clone())
+                        .or_default() += *games;
+                }
+                for (key, games) in &portfolio_winner_pair_counts {
+                    *global_portfolio_winner_pair_counts
+                        .entry(key.clone())
+                        .or_default() += *games;
+                }
+                for (key, games) in &portfolio_winner_mechanism_class_counts {
+                    *global_portfolio_winner_mechanism_class_counts
+                        .entry(key.clone())
+                        .or_default() += *games;
+                }
+                for (key, games) in &portfolio_baseline_better_mechanism_class_counts {
+                    *global_portfolio_baseline_better_mechanism_class_counts
+                        .entry(key.clone())
+                        .or_default() += *games;
                 }
             }
         });
+    }
+
+    let global_max_portfolio_mechanism_class_games =
+        max_count(&global_portfolio_winner_mechanism_class_counts);
+    println!(
+        "PRO_POLICY_MATRIX_GLOBAL_SUMMARY {{\"baseline\":\"{}\",\"candidates\":\"{}\",\"total_games\":{},\"baseline_wins\":{},\"candidate_any_wins\":{},\"any_policy_wins\":{},\"shared_wins\":{},\"baseline_only_wins\":{},\"candidate_only_wins\":{},\"no_policy_wins\":{},\"state_limit_hit\":{}}}",
+        json_escape(baseline.id),
+        json_escape(&candidate_ids),
+        global_portfolio_stats.total_games,
+        global_portfolio_stats.baseline_wins,
+        global_portfolio_stats.candidate_any_wins,
+        global_portfolio_stats.any_policy_wins,
+        global_portfolio_stats.shared_wins,
+        global_portfolio_stats.baseline_only_wins,
+        global_portfolio_stats.candidate_only_wins,
+        global_portfolio_stats.no_policy_wins,
+        global_state_limit_hit,
+    );
+    println!(
+        "PRO_POLICY_MATRIX_GLOBAL_STOPLIGHT {{\"label\":\"{}\",\"baseline_only_wins\":{},\"candidate_only_wins\":{},\"no_policy_wins\":{},\"max_winner_policy_games\":{},\"max_winner_context_games\":{},\"max_winner_pair_games\":{},\"max_mechanism_class_games\":{},\"max_mechanism_class_key\":\"{}\",\"max_baseline_better_mechanism_class_games\":{},\"max_baseline_better_mechanism_class_key\":\"{}\",\"state_limit_hit\":{}}}",
+        portfolio_stoplight_label(
+            &global_portfolio_stats,
+            &global_portfolio_winner_counts,
+            &global_portfolio_winner_context_counts,
+            &global_portfolio_winner_pair_counts,
+            &global_portfolio_winner_mechanism_class_counts,
+        ),
+        global_portfolio_stats.baseline_only_wins,
+        global_portfolio_stats.candidate_only_wins,
+        global_portfolio_stats.no_policy_wins,
+        max_count(&global_portfolio_winner_counts),
+        max_count(&global_portfolio_winner_context_counts),
+        max_count(&global_portfolio_winner_pair_counts),
+        global_max_portfolio_mechanism_class_games,
+        json_escape(max_count_key(
+            &global_portfolio_winner_mechanism_class_counts
+        )),
+        max_count(&global_portfolio_baseline_better_mechanism_class_counts),
+        json_escape(max_count_key(
+            &global_portfolio_baseline_better_mechanism_class_counts
+        )),
+        global_state_limit_hit,
+    );
+    if !global_only {
+        for (key, games) in
+            pro_policy_matrix_sorted_counts(&global_portfolio_class_counts, aggregate_limit)
+        {
+            println!(
+                "PRO_POLICY_MATRIX_GLOBAL_CLASS {{\"key\":\"{}\",\"games\":{}}}",
+                json_escape(key),
+                games,
+            );
+        }
+        for (key, games) in
+            pro_policy_matrix_sorted_counts(&global_portfolio_winner_counts, aggregate_limit)
+        {
+            println!(
+                "PRO_POLICY_MATRIX_GLOBAL_WINNER {{\"key\":\"{}\",\"games\":{}}}",
+                json_escape(key),
+                games,
+            );
+        }
+        for (key, games) in pro_policy_matrix_sorted_counts(
+            &global_portfolio_winner_context_counts,
+            aggregate_limit,
+        ) {
+            println!(
+                "PRO_POLICY_MATRIX_GLOBAL_WINNER_CONTEXT {{\"key\":\"{}\",\"games\":{}}}",
+                json_escape(key),
+                games,
+            );
+        }
+        for (key, games) in
+            pro_policy_matrix_sorted_counts(&global_portfolio_winner_pair_counts, aggregate_limit)
+        {
+            println!(
+                "PRO_POLICY_MATRIX_GLOBAL_WINNER_PAIR {{\"key\":\"{}\",\"games\":{}}}",
+                json_escape(key),
+                games,
+            );
+        }
+        if include_portfolio_mechanism_class {
+            for (key, games) in pro_policy_matrix_sorted_counts(
+                &global_portfolio_winner_mechanism_class_counts,
+                aggregate_limit,
+            ) {
+                println!(
+                    "PRO_POLICY_MATRIX_GLOBAL_WINNER_MECHANISM_CLASS {{\"key\":\"{}\",\"games\":{}}}",
+                    json_escape(key),
+                    games,
+                );
+            }
+            for (key, games) in pro_policy_matrix_sorted_counts(
+                &global_portfolio_baseline_better_mechanism_class_counts,
+                aggregate_limit,
+            ) {
+                println!(
+                    "PRO_POLICY_MATRIX_GLOBAL_BASELINE_BETTER_MECHANISM_CLASS {{\"key\":\"{}\",\"games\":{}}}",
+                    json_escape(key),
+                    games,
+                );
+            }
+        }
     }
 }
 
@@ -3895,6 +4084,14 @@ fn smart_automove_pro_policy_cross_budget_probe() {
 
 fn max_count(counts: &BTreeMap<String, usize>) -> usize {
     counts.values().copied().max().unwrap_or(0)
+}
+
+fn max_count_key(counts: &BTreeMap<String, usize>) -> &str {
+    counts
+        .iter()
+        .max_by(|left, right| left.1.cmp(right.1).then_with(|| right.0.cmp(left.0)))
+        .map(|(key, _)| key.as_str())
+        .unwrap_or("none")
 }
 
 #[derive(Default)]
