@@ -12,7 +12,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-major-
 - Retained profiles are only `shipping_pro_search` and `frontier_pro_v2_guarded`.
 - The current mode is `structural-reset`.
 - There is no live runtime hypothesis and no promotable challenger.
-- Current diagnostic hypothesis: there is no source-level selector yet. The broad reset route scan found no clean low-fragmentation route; the filtered safety/progress and `engine_post_search` routes are retired as source evidence because their matching states split by policy, color, branch, first move, and advisor status. Outcome Corpus V2 now has a log summarizer; use it before reading raw matrix logs.
+- Current diagnostic hypothesis: there is no source-level selector yet. The broad reset route scan found no clean low-fragmentation route; the filtered safety/progress and `engine_post_search` routes are retired as source evidence because their matching states split by policy, color, branch, first move, and advisor status. Outcome Corpus V2 now has a log summarizer and a true total-state cap; use both before reading raw matrix logs.
 - Recent stagnation is from the loop where local selectors are cheap to invent, broad promotion proof is expensive, and singleton-heavy corpus evidence still leaves room to try "one more gate".
 - Do not reopen archived profiles, archived seams, archived stages, or pruned sweep candidates as direct experiment targets.
 
@@ -45,13 +45,17 @@ Their historical no-go evidence remains in `docs/automove-knowledge.md` and `doc
 
 ## Next Command Sequence
 
-Current next sequence: run a bounded global-only outcome-corpus digest through the retained log summarizer. This is Outcome Corpus V2/postprocess validation only, not runtime source permission.
+Current next sequence: run the next bounded active-slice outcome-corpus digest through the retained log summarizer. This is Outcome Corpus V2/postprocess validation only, not runtime source permission.
 
 ```sh
-SMART_PRO_POLICY_MATRIX_STATE_LIMIT=2 \
+SMART_PRO_POLICY_MATRIX_PANEL_FILTER=active_blockers \
+SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_pro \
+SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT=2 \
 SMART_PRO_POLICY_MATRIX_GLOBAL_ONLY=true \
+SMART_PRO_POLICY_MATRIX_INCLUDE_CORPUS_RECORDS=false \
 SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS=true \
 SMART_PRO_POLICY_MATRIX_ROUTE_BUCKET_LIMIT=5 \
+SMART_PRO_POLICY_MATRIX_MAX_PLIES=56 \
 ./scripts/run-automove-experiment.sh pro-policy-outcome-corpus frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard shipping_pro_search
 
 log=$(find target/experiment-runs -name '*pro_policy_outcome_corpus*.log' -print | sort | tail -1)
@@ -64,6 +68,7 @@ Read `PRO_POLICY_MATRIX_GLOBAL_ROUTE_BUCKET` next. Its bucketed shortlist should
 For focused record inspection, copy the bucket `key` into `SMART_PRO_POLICY_MATRIX_RECORD_AXIS_FILTER`. The filtered records are for grouping/postprocess design; they do not override route-fragmentation no-go rules.
 Read `PRO_POLICY_MATRIX_RECORD_FILTER_SUMMARY` and `PRO_POLICY_MATRIX_RECORD_FILTER_DETAIL` before raw records; if the detail rows still have multiple policies, branches, or first-move pairs, keep the work in postprocess/harness.
 When a log exists, read the summarizer's `route_permission` and per-filter `permission` fields first. `postprocess_only` or `fragmented_no_source` means update knowledge and keep runtime source untouched.
+Use `SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT` for global caps. `SMART_PRO_POLICY_MATRIX_STATE_LIMIT` is per panel/duel and can still fan out across the full panel/budget matrix.
 
 ## Major Idea Backlog
 
@@ -71,7 +76,7 @@ When a log exists, read the summarizer's `route_permission` and per-filter `perm
 
 Structural change: make corpus output a persistent, queryable artifact instead of stdout that humans manually scan. Emit normalized JSONL records for each policy decision, then add a postprocessor that ranks mechanisms by candidate-only wins, baseline-better saves, no-policy gaps, cross-budget stability, cost, and state-limit confidence.
 
-First proof: use the retained reset portfolio and current `pro-policy-outcome-corpus` feed. Add only harness/postprocess code until the report can answer "which mechanism is clean enough to become a feature?" without reading raw logs. Current progress: global outcome-corpus output now includes state-aware `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` labels, route fragmentation counts, `PRO_POLICY_MATRIX_GLOBAL_ROUTE_RECOMMENDATION`, and bucketed `PRO_POLICY_MATRIX_GLOBAL_ROUTE_BUCKET` shortlists; record output includes `mechanism_axes` / `baseline_better_mechanism_axes`, `SMART_PRO_POLICY_MATRIX_RECORD_AXIS_FILTER`, `PRO_POLICY_MATRIX_RECORD_FILTER_SUMMARY`, and capped `PRO_POLICY_MATRIX_RECORD_FILTER_DETAIL` rows so route lines can be matched back to divergences without dumping or manually counting the full corpus. `scripts/summarize-automove-policy-matrix-log.py` now turns logged policy-matrix JSON lines into one digest with route and filter permissions.
+First proof: use the retained reset portfolio and current `pro-policy-outcome-corpus` feed. Add only harness/postprocess code until the report can answer "which mechanism is clean enough to become a feature?" without reading raw logs. Current progress: global outcome-corpus output now includes state-aware `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` labels, route fragmentation counts, `PRO_POLICY_MATRIX_GLOBAL_ROUTE_RECOMMENDATION`, and bucketed `PRO_POLICY_MATRIX_GLOBAL_ROUTE_BUCKET` shortlists; record output includes `mechanism_axes` / `baseline_better_mechanism_axes`, `SMART_PRO_POLICY_MATRIX_RECORD_AXIS_FILTER`, `PRO_POLICY_MATRIX_RECORD_FILTER_SUMMARY`, and capped `PRO_POLICY_MATRIX_RECORD_FILTER_DETAIL` rows so route lines can be matched back to divergences without dumping or manually counting the full corpus. `scripts/summarize-automove-policy-matrix-log.py` now turns logged policy-matrix JSON lines into one digest with route and filter permissions, and `SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT` provides a true global cap.
 
 Promotion signal: one mechanism repeats across deduplicated states in at least two panels or opponent budgets, has positive state-level separation after baseline saves, and points to a feature below policy labels.
 
@@ -174,6 +179,8 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - The focused active Pro/Fast record-filter run for `engine_post_search` stayed no-source: `candidate_signal_routes=82`, `clean_low_fragmentation_routes=0`, `clean_fragmented_routes=9`, `baseline_risk_routes=6`. The selected stage route had four matching corpus records split across Pro/Fast, black/white, three policies, two branch transitions, and four first-move pairs; it remains a postprocess fixture only.
 - The focused active Pro/Fast record-filter run for the safety/progress route also stayed no-source: `candidate_signal_routes=82`, `clean_low_fragmentation_routes=0`, `clean_fragmented_routes=9`, `baseline_risk_routes=6`. Its best clean key had four matching candidate-only records across Pro/Fast, black/white, three policies, two branch transitions, four first-move pairs, and zero baseline-better saves, so it remains a postprocess fixture only.
 - The safety/progress detail rerun confirmed the no-source split in the retained summarizer: `route_permission=postprocess_only`, route recommendation `build_outcome_corpus_v2`, filter permission `fragmented_no_source`, and candidate/branch/pair counts `3 / 2 / 4`. Detail counts were shipping-control `2`, no-selected `1`, full-scored `1`; Pro/Fast `3 / 1`; outer-edge/alternating `3 / 1`; first-move pairs all singleton.
+- A broad all-panel/all-budget reset digest with only `SMART_PRO_POLICY_MATRIX_STATE_LIMIT=2` was stopped after about fourteen minutes because that cap is per panel/duel. The retained harness fix is `SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT`.
+- A total-capped active Fast digest over the full reset portfolio completed successfully with two total states and stayed no-source: `baseline_save_risk_only`, `candidate_signal_routes=19`, `clean_low_fragmentation_routes=0`, `clean_fragmented_routes=0`, `baseline_risk_routes=1`. The only baseline-risk route was broad zero-window safe exact pressure, with candidate-only states `1` and baseline-better states `1`.
 - Raw ProV2, no-selected-followup, full-scored reply guard, no-low-budget, alternating-white, and white-opening utility policies are diagnostic components, not retained challengers.
 - Root-origin and continuation-probe ProV4 attempts are retired unless they add a new discriminator below current score, rank, family, safety, progress, and `TurnEngineUtility` fields.
 - Future source-bearing work should be one of: Outcome Corpus V2, a test-only ProV4 unified root policy, or a corpus-calibrated utility feature.
@@ -185,7 +192,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - Shipping decision: public Pro remains on `frontier_pro_v2_guarded`.
 - Release containment: public `Pro` dispatch still routes through retained runtime code; `automove_experiments` remains under `#[cfg(test)]`.
 - Latest retained package direction: no runtime source retained from recent structural reset work.
-- Latest reset evidence: the focused route-filter scans have oracle coverage but no source permission. The safety/progress and `engine_post_search` routes remain fragmented across policy, branch, color, budget, and first-move pair. The retained source change is the Outcome Corpus V2 policy-matrix log summarizer.
+- Latest reset evidence: the focused route-filter scans have oracle coverage but no source permission. The safety/progress and `engine_post_search` routes remain fragmented across policy, branch, color, budget, and first-move pair; the latest total-capped active Fast digest was `baseline_save_risk_only`. The retained source change is the policy-matrix total-state cap.
 
 ## Session End Checklist
 

@@ -2500,6 +2500,8 @@ fn smart_automove_pro_policy_matrix_probe() {
         .unwrap_or(24)
         .max(1);
     let state_limit = env_usize("SMART_PRO_POLICY_MATRIX_STATE_LIMIT").map(|limit| limit.max(1));
+    let total_state_limit =
+        env_usize("SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT").map(|limit| limit.max(1));
     let aggregate_limit = env_usize("SMART_PRO_POLICY_MATRIX_AGGREGATE_LIMIT")
         .unwrap_or(64)
         .max(1);
@@ -2621,7 +2623,7 @@ fn smart_automove_pro_policy_matrix_probe() {
     };
 
     println!(
-        "pro policy matrix: baseline={} candidates={} panels={} duels={} max_plies={} state_limit={:?} include_decision_probe={} include_mechanism_class={} include_portfolio_mechanism_class={} include_corpus_records={} global_only={} record_axis_filter={}",
+        "pro policy matrix: baseline={} candidates={} panels={} duels={} max_plies={} state_limit={:?} total_state_limit={:?} include_decision_probe={} include_mechanism_class={} include_portfolio_mechanism_class={} include_corpus_records={} global_only={} record_axis_filter={}",
         baseline.id,
         candidate_ids,
         pro_promotion_dashboard_panel_specs()
@@ -2638,6 +2640,7 @@ fn smart_automove_pro_policy_matrix_probe() {
             .join(","),
         max_plies,
         state_limit,
+        total_state_limit,
         include_decision_probe,
         include_mechanism_class,
         include_portfolio_mechanism_class,
@@ -2658,11 +2661,16 @@ fn smart_automove_pro_policy_matrix_probe() {
         BTreeMap::<String, PolicyMatrixMechanismRouteCoverage>::new();
     let mut record_filter_stats = PolicyMatrixRecordFilterStats::default();
     let mut global_state_limit_hit = false;
+    let mut total_states_seen = 0usize;
 
-    for panel in pro_promotion_dashboard_panel_specs()
+    'panels: for panel in pro_promotion_dashboard_panel_specs()
         .into_iter()
         .filter(|panel| pro_sweep_filter_allows(&panel_filter, panel.label))
     {
+        if total_state_limit.is_some_and(|limit| total_states_seen >= limit) {
+            global_state_limit_hit = true;
+            break 'panels;
+        }
         let repeats = env_usize("SMART_PRO_POLICY_MATRIX_REPEATS")
             .unwrap_or(panel.default_repeats)
             .max(1);
@@ -2677,6 +2685,10 @@ fn smart_automove_pro_policy_matrix_probe() {
                 .iter()
                 .filter(|duel| pro_sweep_filter_allows(&duel_filter, duel.label))
             {
+                if total_state_limit.is_some_and(|limit| total_states_seen >= limit) {
+                    global_state_limit_hit = true;
+                    break;
+                }
                 let opponent_budget = SearchBudget::from_preference(duel.opponent_mode);
                 let duel_seed_tag = format!("{}{}", panel_seed_tag, duel.seed_suffix);
                 let mut stats_by_candidate = candidates
@@ -2717,6 +2729,11 @@ fn smart_automove_pro_policy_matrix_probe() {
                             if state_limit.is_some_and(|limit| portfolio_stats.total_games >= limit)
                             {
                                 state_limit_hit = true;
+                                break 'states;
+                            }
+                            if total_state_limit.is_some_and(|limit| total_states_seen >= limit) {
+                                state_limit_hit = true;
+                                global_state_limit_hit = true;
                                 break 'states;
                             }
                             let traces = candidates
@@ -2770,6 +2787,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                                 automove_variant_label(variant),
                                 candidate_is_white,
                             );
+                            total_states_seen += 1;
                             let portfolio_state_key = format!(
                                 "panel={} duel={} seed_tag={} repeat={} opening_index={} variant={} candidate_is_white={}",
                                 panel.label,
