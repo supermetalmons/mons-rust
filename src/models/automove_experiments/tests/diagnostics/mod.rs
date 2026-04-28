@@ -8,7 +8,7 @@ use crate::models::scoring::{
     evaluate_preferability_breakdown_with_weights, evaluate_preferability_with_context,
     evaluate_preferability_with_weights_and_exact_policy, ScoringEvalContext, ScoringWeights,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Mutex, OnceLock};
 
 struct AttributionWorstReply {
@@ -2434,6 +2434,16 @@ fn smart_automove_pro_policy_matrix_probe() {
         no_policy_wins: usize,
     }
 
+    #[derive(Default)]
+    struct PolicyMatrixMechanismRouteCoverage {
+        candidate_only_games: usize,
+        baseline_better_games: usize,
+        candidate_only_panels: BTreeSet<String>,
+        candidate_only_duels: BTreeSet<String>,
+        baseline_better_panels: BTreeSet<String>,
+        baseline_better_duels: BTreeSet<String>,
+    }
+
     let shipping_profile = reliability_shipping_profile_id();
     let shipping_selector = profile_selector_from_name(shipping_profile.as_str())
         .unwrap_or_else(|| panic!("shipping '{}' not found", shipping_profile));
@@ -2550,6 +2560,8 @@ fn smart_automove_pro_policy_matrix_probe() {
     let mut global_portfolio_winner_mechanism_class_counts = BTreeMap::<String, usize>::new();
     let mut global_portfolio_baseline_better_mechanism_class_counts =
         BTreeMap::<String, usize>::new();
+    let mut global_mechanism_axis_routes =
+        BTreeMap::<String, PolicyMatrixMechanismRouteCoverage>::new();
     let mut global_state_limit_hit = false;
 
     for panel in pro_promotion_dashboard_panel_specs()
@@ -3307,11 +3319,21 @@ fn smart_automove_pro_policy_matrix_probe() {
                     *global_portfolio_winner_mechanism_class_counts
                         .entry(key.clone())
                         .or_default() += *games;
+                    let axis_key = pro_policy_matrix_mechanism_axis_key(key).to_string();
+                    let route = global_mechanism_axis_routes.entry(axis_key).or_default();
+                    route.candidate_only_games += *games;
+                    route.candidate_only_panels.insert(panel.label.to_string());
+                    route.candidate_only_duels.insert(duel.label.to_string());
                 }
                 for (key, games) in &portfolio_baseline_better_mechanism_class_counts {
                     *global_portfolio_baseline_better_mechanism_class_counts
                         .entry(key.clone())
                         .or_default() += *games;
+                    let axis_key = pro_policy_matrix_mechanism_axis_key(key).to_string();
+                    let route = global_mechanism_axis_routes.entry(axis_key).or_default();
+                    route.baseline_better_games += *games;
+                    route.baseline_better_panels.insert(panel.label.to_string());
+                    route.baseline_better_duels.insert(duel.label.to_string());
                 }
             }
         });
@@ -3420,38 +3442,49 @@ fn smart_automove_pro_policy_matrix_probe() {
         }
     }
     if include_portfolio_mechanism_class {
-        let mut mechanism_separation = BTreeMap::<String, (usize, usize)>::new();
-        for (key, games) in &global_portfolio_winner_mechanism_class_counts {
-            let axis_key = pro_policy_matrix_mechanism_axis_key(key);
-            mechanism_separation
-                .entry(axis_key.to_string())
-                .or_default()
-                .0 += *games;
-        }
-        for (key, games) in &global_portfolio_baseline_better_mechanism_class_counts {
-            let axis_key = pro_policy_matrix_mechanism_axis_key(key);
-            mechanism_separation
-                .entry(axis_key.to_string())
-                .or_default()
-                .1 += *games;
-        }
-        let mut separation_entries = mechanism_separation.iter().collect::<Vec<_>>();
+        let mut separation_entries = global_mechanism_axis_routes.iter().collect::<Vec<_>>();
         separation_entries.sort_by(|(left_key, left_counts), (right_key, right_counts)| {
             right_counts
-                .0
-                .cmp(&left_counts.0)
-                .then_with(|| left_counts.1.cmp(&right_counts.1))
+                .candidate_only_games
+                .cmp(&left_counts.candidate_only_games)
+                .then_with(|| {
+                    left_counts
+                        .baseline_better_games
+                        .cmp(&right_counts.baseline_better_games)
+                })
                 .then_with(|| left_key.cmp(right_key))
         });
-        for (key, (candidate_only_games, baseline_better_games)) in
-            separation_entries.into_iter().take(aggregate_limit)
-        {
+        for (key, route) in separation_entries.into_iter().take(aggregate_limit) {
             println!(
                 "PRO_POLICY_MATRIX_GLOBAL_MECHANISM_SEPARATION {{\"key\":\"{}\",\"candidate_only_games\":{},\"baseline_better_games\":{},\"net_candidate_games\":{}}}",
                 json_escape(key),
-                candidate_only_games,
-                baseline_better_games,
-                *candidate_only_games as isize - *baseline_better_games as isize,
+                route.candidate_only_games,
+                route.baseline_better_games,
+                route.candidate_only_games as isize - route.baseline_better_games as isize,
+            );
+            let routing_label = if route.candidate_only_games == 0 {
+                "no_candidate_signal"
+            } else if route.baseline_better_games > 0 {
+                "baseline_save_risk"
+            } else if route.candidate_only_panels.len() > 1 {
+                "cross_panel_clean"
+            } else if route.candidate_only_duels.len() > 1 {
+                "cross_budget_clean"
+            } else if route.candidate_only_games > 2 {
+                "single_scope_repeat"
+            } else {
+                "singleton_or_pair"
+            };
+            println!(
+                "PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE {{\"key\":\"{}\",\"label\":\"{}\",\"candidate_only_games\":{},\"baseline_better_games\":{},\"candidate_only_panels\":\"{}\",\"candidate_only_duels\":\"{}\",\"baseline_better_panels\":\"{}\",\"baseline_better_duels\":\"{}\"}}",
+                json_escape(key),
+                routing_label,
+                route.candidate_only_games,
+                route.baseline_better_games,
+                json_escape(&route.candidate_only_panels.iter().cloned().collect::<Vec<_>>().join("|")),
+                json_escape(&route.candidate_only_duels.iter().cloned().collect::<Vec<_>>().join("|")),
+                json_escape(&route.baseline_better_panels.iter().cloned().collect::<Vec<_>>().join("|")),
+                json_escape(&route.baseline_better_duels.iter().cloned().collect::<Vec<_>>().join("|")),
             );
         }
     }

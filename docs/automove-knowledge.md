@@ -317,4 +317,5 @@ cargo test --release --lib <test_name> -- --ignored --nocapture
 - Kill any black progress-vs-setup line that only dampens `fainted_mon` / `fainted_cooldown_step`; that is local-score movement, not selection movement.
 - Kill any black progress-vs-setup line that patches final selection without moving the material-dampened `ApprovedReplyRiskGuard` advisor approval.
 - Kill any black progress-vs-setup line that combines scoped material dampening with a higher-rank setup advisor exception unless it brings new sampled duel-strength evidence; the direct version failed Pro `0.5000`, Normal `0.5000`, Fast `0.8333`.
+- Treat `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` `baseline_save_risk` as a kill for selector work on that mechanism axis, even when `net_candidate_games` is positive. `single_scope_repeat` is diagnostic routing only. `cross_panel_clean` or `cross_budget_clean` earns a narrow corpus-record plus decision-probe rerun, not runtime source by itself.
 - Do not reopen archived profiles, archived seams, or archived wave packages without a brand-new shared hypothesis.
