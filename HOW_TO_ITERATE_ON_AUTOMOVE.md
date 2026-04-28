@@ -231,7 +231,7 @@ SMART_PRO_SWEEP_DECISION_RECORD_DUEL_FILTER=vs_shipping_pro \
 
 `pro-policy-outcome-corpus` is the same policy-matrix diagnostic with a reset-mode name. Use it when the next decision is whether the existing policy portfolio has coverage, baseline save risk, mixed deltas, or a repeated winner context. It is diagnostic-only and does not promote profiles.
 
-`pro-policy-outcome-corpus` enables `SMART_PRO_POLICY_MATRIX_INCLUDE_CORPUS_RECORDS=true` by default. This adds `PRO_POLICY_MATRIX_CORPUS_RECORD` for every baseline-vs-candidate decision, including the full policy result vector, portfolio class, first-divergence board/moves when present, and baseline/candidate finals. Use these records as the starting point for outcome-corpus V2 feature work before enabling expensive decision probes or writing a selector.
+`pro-policy-outcome-corpus` enables `SMART_PRO_POLICY_MATRIX_INCLUDE_CORPUS_RECORDS=true` by default. This adds `PRO_POLICY_MATRIX_CORPUS_RECORD` for every baseline-vs-candidate decision, including the full policy result vector, portfolio class, first-divergence board/moves when present, and baseline/candidate finals. Use these records as the starting point for outcome-corpus V2 feature work before enabling expensive decision probes or writing a selector. Set `SMART_PRO_POLICY_MATRIX_RECORD_AXIS_FILTER` to a comma-separated list of mechanism-axis substrings from `PRO_POLICY_MATRIX_GLOBAL_ROUTE_BUCKET` when you need only records matching one route bucket.
 
 The matrix also prints `PRO_POLICY_MATRIX_PORTFOLIO` for each panel/duel, followed by weakness buckets as `PRO_POLICY_MATRIX_PORTFOLIO_CLASS`. Read these before designing a context selector: `candidate_only_wins` is the selector opportunity, `baseline_only_wins` is the regression risk, and `no_policy_wins` means the current candidate set cannot solve those openings by selection alone.
 
@@ -248,6 +248,8 @@ The matrix also emits `PRO_POLICY_MATRIX_GLOBAL_ROUTE_RECOMMENDATION` when portf
 The same mode emits `PRO_POLICY_MATRIX_GLOBAL_ROUTE_BUCKET` as a compact shortlist of the top routes in each bucket: `clean_low_fragmentation`, `clean_fragmented`, `baseline_risk`, and `singleton_candidate`. The default bucket limit is `3`; override with `SMART_PRO_POLICY_MATRIX_ROUTE_BUCKET_LIMIT` when you need a wider shortlist. Read the bucket lines before opening raw route output.
 
 When mechanism-class output is enabled, printed `PRO_POLICY_MATRIX_RECORD` and `PRO_POLICY_MATRIX_CORPUS_RECORD` lines include `mechanism_axes` for the baseline-to-candidate divergence and `baseline_better_mechanism_axes` for reversed baseline-save deltas. Use these fields to connect a clean route axis back to exact records before designing any source change.
+
+`SMART_PRO_POLICY_MATRIX_RECORD_AXIS_FILTER` also filters printed `PRO_POLICY_MATRIX_RECORD` trace lines. When a filter is set, mechanism axes are computed for records even if the broader mechanism-class aggregate flags are off; the filter is for printed record inspection only and does not change outcome counts or route aggregates.
 
 Set `SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE=true` on a narrow run when a first divergence needs deeper root evidence. This adds guarded root rank, family, score, selected/advisor status, and full-vs-no-selected-followup utility for both divergent moves. Keep this off for broad matrix runs because it reruns root scoring for printed records.
 

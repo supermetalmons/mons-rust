@@ -2492,6 +2492,10 @@ fn smart_automove_pro_policy_matrix_probe() {
     let include_corpus_records =
         env_bool("SMART_PRO_POLICY_MATRIX_INCLUDE_CORPUS_RECORDS").unwrap_or(false);
     let global_only = env_bool("SMART_PRO_POLICY_MATRIX_GLOBAL_ONLY").unwrap_or(false);
+    let record_axis_filter =
+        pro_sweep_filter_tokens("SMART_PRO_POLICY_MATRIX_RECORD_AXIS_FILTER", "all");
+    let record_axis_filter_all = record_axis_filter.iter().any(|token| token == "all");
+    let record_axis_filter_label = record_axis_filter.join(",");
     let candidate_ids = candidates
         .iter()
         .skip(1)
@@ -2541,9 +2545,21 @@ fn smart_automove_pro_policy_matrix_probe() {
             "singleton_selector_pressure"
         }
     };
+    let record_axis_filter_allows = |mechanism_axes: &str,
+                                     baseline_better_mechanism_axes: &str|
+     -> bool {
+        if record_axis_filter_all {
+            return true;
+        }
+        let mechanism_axes = mechanism_axes.to_ascii_lowercase();
+        let baseline_better_mechanism_axes = baseline_better_mechanism_axes.to_ascii_lowercase();
+        record_axis_filter.iter().any(|token| {
+            mechanism_axes.contains(token) || baseline_better_mechanism_axes.contains(token)
+        })
+    };
 
     println!(
-        "pro policy matrix: baseline={} candidates={} panels={} duels={} max_plies={} state_limit={:?} include_decision_probe={} include_mechanism_class={} include_portfolio_mechanism_class={} include_corpus_records={} global_only={}",
+        "pro policy matrix: baseline={} candidates={} panels={} duels={} max_plies={} state_limit={:?} include_decision_probe={} include_mechanism_class={} include_portfolio_mechanism_class={} include_corpus_records={} global_only={} record_axis_filter={}",
         baseline.id,
         candidate_ids,
         pro_promotion_dashboard_panel_specs()
@@ -2565,6 +2581,7 @@ fn smart_automove_pro_policy_matrix_probe() {
         include_portfolio_mechanism_class,
         include_corpus_records,
         global_only,
+        record_axis_filter_label,
     );
 
     let mut global_portfolio_stats = PolicyMatrixPortfolioStats::default();
@@ -2879,7 +2896,8 @@ fn smart_automove_pro_policy_matrix_probe() {
                                 }
                                 if include_corpus_records && !global_only {
                                     let include_record_mechanism_axes = include_mechanism_class
-                                        || include_portfolio_mechanism_class;
+                                        || include_portfolio_mechanism_class
+                                        || !record_axis_filter_all;
                                     let first_diff_ply = first_divergence
                                         .as_ref()
                                         .map(|divergence| divergence.ply as i32)
@@ -2964,43 +2982,48 @@ fn smart_automove_pro_policy_matrix_probe() {
                                                 "disabled".to_string()
                                             }
                                         });
-                                    println!(
-                                        "PRO_POLICY_MATRIX_CORPUS_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"policy_results\":\"{}\",\"winning_policies\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"mechanism_axes\":\"{}\",\"baseline_better_mechanism_axes\":\"{}\",\"board\":\"{}\",\"opening\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
-                                        json_escape(panel.label),
-                                        json_escape(baseline.id),
-                                        json_escape(candidate.id),
-                                        json_escape(&candidate_ids),
-                                        json_escape(duel.label),
-                                        json_escape(&duel_seed_tag),
-                                        repeat_index,
-                                        game_index,
-                                        automove_variant_label(variant),
-                                        candidate_is_white,
-                                        portfolio_class,
-                                        outcome,
-                                        delta,
-                                        format_match_result(baseline_trace.result),
-                                        format_match_result(candidate_trace.result),
-                                        json_escape(&policy_results),
-                                        json_escape(&winning_policies),
-                                        first_diff_ply,
-                                        json_escape(baseline_branch),
-                                        json_escape(candidate_branch),
-                                        active_color,
-                                        turn_number,
-                                        mons_moves_count,
-                                        can_use_action,
-                                        can_move_mana,
-                                        json_escape(exact_context),
-                                        json_escape(&mechanism_axes),
-                                        json_escape(&baseline_better_mechanism_axes),
-                                        json_escape(board_fen),
-                                        json_escape(opening_fen),
-                                        json_escape(baseline_move),
-                                        json_escape(candidate_move),
-                                        json_escape(&baseline_trace.final_fen),
-                                        json_escape(&candidate_trace.final_fen),
-                                    );
+                                    if record_axis_filter_allows(
+                                        &mechanism_axes,
+                                        &baseline_better_mechanism_axes,
+                                    ) {
+                                        println!(
+                                            "PRO_POLICY_MATRIX_CORPUS_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"policy_results\":\"{}\",\"winning_policies\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"mechanism_axes\":\"{}\",\"baseline_better_mechanism_axes\":\"{}\",\"board\":\"{}\",\"opening\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
+                                            json_escape(panel.label),
+                                            json_escape(baseline.id),
+                                            json_escape(candidate.id),
+                                            json_escape(&candidate_ids),
+                                            json_escape(duel.label),
+                                            json_escape(&duel_seed_tag),
+                                            repeat_index,
+                                            game_index,
+                                            automove_variant_label(variant),
+                                            candidate_is_white,
+                                            portfolio_class,
+                                            outcome,
+                                            delta,
+                                            format_match_result(baseline_trace.result),
+                                            format_match_result(candidate_trace.result),
+                                            json_escape(&policy_results),
+                                            json_escape(&winning_policies),
+                                            first_diff_ply,
+                                            json_escape(baseline_branch),
+                                            json_escape(candidate_branch),
+                                            active_color,
+                                            turn_number,
+                                            mons_moves_count,
+                                            can_use_action,
+                                            can_move_mana,
+                                            json_escape(exact_context),
+                                            json_escape(&mechanism_axes),
+                                            json_escape(&baseline_better_mechanism_axes),
+                                            json_escape(board_fen),
+                                            json_escape(opening_fen),
+                                            json_escape(baseline_move),
+                                            json_escape(candidate_move),
+                                            json_escape(&baseline_trace.final_fen),
+                                            json_escape(&candidate_trace.final_fen),
+                                        );
+                                    }
                                 }
                                 if delta == 0 && first_divergence.is_none() {
                                     continue;
@@ -3140,7 +3163,8 @@ fn smart_automove_pro_policy_matrix_probe() {
 
                                 if printed < trace_limit && !global_only {
                                     let include_record_mechanism_axes = include_mechanism_class
-                                        || include_portfolio_mechanism_class;
+                                        || include_portfolio_mechanism_class
+                                        || !record_axis_filter_all;
                                     let mechanism_axes = if include_record_mechanism_axes {
                                         pro_policy_matrix_mechanism_axes_for_moves(
                                             baseline.id,
@@ -3180,40 +3204,45 @@ fn smart_automove_pro_policy_matrix_probe() {
                                     } else {
                                         "disabled".to_string()
                                     };
-                                    println!(
-                                        "PRO_POLICY_MATRIX_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"mechanism_axes\":\"{}\",\"baseline_better_mechanism_axes\":\"{}\",\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_decision\":\"{}\",\"candidate_decision\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
-                                        json_escape(panel.label),
-                                        json_escape(baseline.id),
-                                        json_escape(candidate.id),
-                                        json_escape(duel.label),
-                                        repeat_index,
-                                        game_index,
-                                        automove_variant_label(variant),
-                                        candidate_is_white,
-                                        outcome,
-                                        delta,
-                                        format_match_result(baseline_trace.result),
-                                        format_match_result(candidate_trace.result),
-                                        divergence.ply,
-                                        json_escape(divergence.left_branch),
-                                        json_escape(divergence.right_branch),
-                                        pro_profile_sweep_color_label(divergence.active_color),
-                                        divergence.turn_number,
-                                        divergence.mons_moves_count,
-                                        divergence.can_use_action,
-                                        divergence.can_move_mana,
-                                        json_escape(&divergence.exact_context),
-                                        json_escape(&mechanism_axes),
-                                        json_escape(&baseline_better_mechanism_axes),
-                                        json_escape(&divergence.board_fen),
-                                        json_escape(&divergence.left_move_fen),
-                                        json_escape(&divergence.right_move_fen),
-                                        json_escape(&baseline_decision),
-                                        json_escape(&candidate_decision),
-                                        json_escape(&baseline_trace.final_fen),
-                                        json_escape(&candidate_trace.final_fen),
-                                    );
-                                    printed += 1;
+                                    if record_axis_filter_allows(
+                                        &mechanism_axes,
+                                        &baseline_better_mechanism_axes,
+                                    ) {
+                                        println!(
+                                            "PRO_POLICY_MATRIX_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"mechanism_axes\":\"{}\",\"baseline_better_mechanism_axes\":\"{}\",\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_decision\":\"{}\",\"candidate_decision\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
+                                            json_escape(panel.label),
+                                            json_escape(baseline.id),
+                                            json_escape(candidate.id),
+                                            json_escape(duel.label),
+                                            repeat_index,
+                                            game_index,
+                                            automove_variant_label(variant),
+                                            candidate_is_white,
+                                            outcome,
+                                            delta,
+                                            format_match_result(baseline_trace.result),
+                                            format_match_result(candidate_trace.result),
+                                            divergence.ply,
+                                            json_escape(divergence.left_branch),
+                                            json_escape(divergence.right_branch),
+                                            pro_profile_sweep_color_label(divergence.active_color),
+                                            divergence.turn_number,
+                                            divergence.mons_moves_count,
+                                            divergence.can_use_action,
+                                            divergence.can_move_mana,
+                                            json_escape(&divergence.exact_context),
+                                            json_escape(&mechanism_axes),
+                                            json_escape(&baseline_better_mechanism_axes),
+                                            json_escape(&divergence.board_fen),
+                                            json_escape(&divergence.left_move_fen),
+                                            json_escape(&divergence.right_move_fen),
+                                            json_escape(&baseline_decision),
+                                            json_escape(&candidate_decision),
+                                            json_escape(&baseline_trace.final_fen),
+                                            json_escape(&candidate_trace.final_fen),
+                                        );
+                                        printed += 1;
+                                    }
                                 }
                             }
                         }

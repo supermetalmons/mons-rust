@@ -1263,3 +1263,10 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The broad scan result that motivated the change was `build_outcome_corpus_v2`: `candidate_signal_routes=109`, `clean_low_fragmentation_routes=0`, `clean_fragmented_routes=8`, `baseline_risk_routes=14`, best clean route `axis=stage baseline_stage=engine_post_search head_accepted=false head_primary=Some("equal") pre_family=ManaTempo head_family=Some(SpiritImpact)`, and best baseline risk `axis=exact_pressure window=window0 deny=deny0 attack=false drainer_safety=safe`.
 - The bucket output was smoke-validated on a bounded active Fast global-only slice with `SMART_PRO_POLICY_MATRIX_ROUTE_BUCKET_LIMIT=2`; it emitted `singleton_candidate` bucket rows and preserved the global recommendation output.
 - Durable outcome: future broad route scans should read the recommendation line and bucket shortlist first. If the recommendation stays `build_outcome_corpus_v2`, preserve postprocessor/harness work and skip runtime source selection.
+
+## Outcome Corpus Record Axis Filter
+
+- No runtime challenger survived this iteration. The retained source change is harness-only: `smart_automove_pro_policy_matrix_probe` now accepts `SMART_PRO_POLICY_MATRIX_RECORD_AXIS_FILTER`, a comma-separated list of mechanism-axis substrings used to filter printed `PRO_POLICY_MATRIX_CORPUS_RECORD` and `PRO_POLICY_MATRIX_RECORD` lines.
+- The filter computes mechanism axes for printed records even when the aggregate mechanism-class flags are off, but it does not change outcome totals, route aggregation, or stoplight labels.
+- The filter was smoke-validated on the active Fast `engine_post_search` route with `SMART_PRO_POLICY_MATRIX_RECORD_AXIS_FILTER='axis=stage baseline_stage=engine_post_search'`. The run emitted only the matching `PRO_POLICY_MATRIX_CORPUS_RECORD` and `PRO_POLICY_MATRIX_RECORD` pair plus the normal summaries.
+- Durable outcome: use route bucket output to pick an axis, then use the record-axis filter for focused corpus inspection. The filtered records are Outcome Corpus V2 input, not runtime source permission.
