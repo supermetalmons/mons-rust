@@ -12,7 +12,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-major-
 - Retained profiles are only `shipping_pro_search` and `frontier_pro_v2_guarded`.
 - The current mode is `structural-reset`.
 - There is no live runtime hypothesis and no promotable challenger.
-- Current diagnostic hypothesis: there is no source-level selector yet. The broad reset route scan found no clean low-fragmentation route; the filtered safety/progress and `engine_post_search` routes are retired as source evidence because their matching states split by policy, color, branch, first move, and advisor status. Outcome Corpus V2 now has a log summarizer and a true total-state cap; use both before reading raw matrix logs.
+- Current diagnostic hypothesis: there is no source-level selector yet. The broad reset route scan found no clean low-fragmentation route; the filtered safety/progress and `engine_post_search` routes are retired as source evidence because their matching states split by policy, color, branch, first move, and advisor status. Outcome Corpus V2 now has a log summarizer with `corpus_decision` / `next_action` and a true total-state cap; use both before reading raw matrix logs.
 - Recent stagnation is from the loop where local selectors are cheap to invent, broad promotion proof is expensive, and singleton-heavy corpus evidence still leaves room to try "one more gate".
 - Do not reopen archived profiles, archived seams, archived stages, or pruned sweep candidates as direct experiment targets.
 
@@ -45,10 +45,10 @@ Their historical no-go evidence remains in `docs/automove-knowledge.md` and `doc
 
 ## Next Command Sequence
 
-Current next sequence: run the next bounded active-slice outcome-corpus digest through the retained log summarizer. This is Outcome Corpus V2/postprocess validation only, not runtime source permission.
+Current next sequence: run the next bounded sampled-slice outcome-corpus digest through the retained log summarizer. This is Outcome Corpus V2/postprocess validation only, not runtime source permission.
 
 ```sh
-SMART_PRO_POLICY_MATRIX_PANEL_FILTER=active_blockers \
+SMART_PRO_POLICY_MATRIX_PANEL_FILTER=sampled \
 SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_normal \
 SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT=2 \
 SMART_PRO_POLICY_MATRIX_GLOBAL_ONLY=true \
@@ -67,7 +67,7 @@ Read `PRO_POLICY_MATRIX_GLOBAL_ROUTE_RECOMMENDATION` before raw route lines. `bu
 Read `PRO_POLICY_MATRIX_GLOBAL_ROUTE_BUCKET` next. Its bucketed shortlist should replace manual grepping through all raw route lines.
 For focused record inspection, copy the bucket `key` into `SMART_PRO_POLICY_MATRIX_RECORD_AXIS_FILTER`. The filtered records are for grouping/postprocess design; they do not override route-fragmentation no-go rules.
 Read `PRO_POLICY_MATRIX_RECORD_FILTER_SUMMARY` and `PRO_POLICY_MATRIX_RECORD_FILTER_DETAIL` before raw records; if the detail rows still have multiple policies, branches, or first-move pairs, keep the work in postprocess/harness.
-When a log exists, read the summarizer's `corpus_decision`, `route_permission`, and per-filter `permission` fields first. `coverage_gap`, `baseline_save_risk`, `singleton_no_source`, `postprocess_only`, or `fragmented_no_source` means update knowledge and keep runtime source untouched.
+When a log exists, read the summarizer's `corpus_decision`, `next_action`, `route_permission`, and per-filter `permission` fields first. `coverage_gap`, `baseline_save_risk`, `singleton_no_source`, `no_candidate_route`, `postprocess_only`, or `fragmented_no_source` means update knowledge and keep runtime source untouched.
 Use `SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT` for global caps. `SMART_PRO_POLICY_MATRIX_STATE_LIMIT` is per panel/duel and can still fan out across the full panel/budget matrix.
 
 ## Major Idea Backlog
@@ -182,6 +182,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - A broad all-panel/all-budget reset digest with only `SMART_PRO_POLICY_MATRIX_STATE_LIMIT=2` was stopped after about fourteen minutes because that cap is per panel/duel. The retained harness fix is `SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT`.
 - A total-capped active Fast digest over the full reset portfolio completed successfully with two total states and stayed no-source: `baseline_save_risk_only`, `candidate_signal_routes=19`, `clean_low_fragmentation_routes=0`, `clean_fragmented_routes=0`, `baseline_risk_routes=1`. The only baseline-risk route was broad zero-window safe exact pressure, with candidate-only states `1` and baseline-better states `1`.
 - A total-capped active Pro digest over the full reset portfolio completed successfully with two total states and stayed no-source: summarizer `corpus_decision=coverage_gap`, route recommendation `singleton_candidate_routes`, `candidate_only_wins=1`, `no_policy_wins=1`, and zero clean routes. The only candidate route was zero-window safe exact pressure as singleton evidence split across two policies and two first-move pairs.
+- A total-capped active Normal digest over the full reset portfolio completed successfully with two total states and stayed no-source: summarizer `corpus_decision=no_candidate_route`, `next_action=try_next_slice`, route recommendation `no_candidate_route`, `candidate_only_wins=0`, `no_policy_wins=0`, and `candidate_signal_routes=0`. Guarded shared both checked wins, while full-scored reply guard only emitted baseline-better save-risk rows on one outer-edge white state.
 - Raw ProV2, no-selected-followup, full-scored reply guard, no-low-budget, alternating-white, and white-opening utility policies are diagnostic components, not retained challengers.
 - Root-origin and continuation-probe ProV4 attempts are retired unless they add a new discriminator below current score, rank, family, safety, progress, and `TurnEngineUtility` fields.
 - Future source-bearing work should be one of: Outcome Corpus V2, a test-only ProV4 unified root policy, or a corpus-calibrated utility feature.
@@ -193,7 +194,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - Shipping decision: public Pro remains on `frontier_pro_v2_guarded`.
 - Release containment: public `Pro` dispatch still routes through retained runtime code; `automove_experiments` remains under `#[cfg(test)]`.
 - Latest retained package direction: no runtime source retained from recent structural reset work.
-- Latest reset evidence: the focused route-filter scans have oracle coverage but no source permission. The safety/progress and `engine_post_search` routes remain fragmented across policy, branch, color, budget, and first-move pair; the latest total-capped active Fast digest was `baseline_save_risk_only`, and active Pro was `coverage_gap`. The retained source change is the summarizer `corpus_decision` field.
+- Latest reset evidence: the focused route-filter scans have oracle coverage but no source permission. The safety/progress and `engine_post_search` routes remain fragmented across policy, branch, color, budget, and first-move pair; the latest total-capped active Fast digest was `baseline_save_risk_only`, active Pro was `coverage_gap`, and active Normal was `no_candidate_route`. The retained source change is the summarizer `next_action` field.
 
 ## Session End Checklist
 

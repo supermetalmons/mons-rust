@@ -76,6 +76,22 @@ def corpus_decision(summary, stoplight, recommendation):
     return "no_source"
 
 
+def next_action_for_decision(decision):
+    if decision == "inspect_for_source":
+        return "inspect_filtered_records"
+    if decision == "coverage_gap":
+        return "add_policy_or_root_feature"
+    if decision == "baseline_save_risk":
+        return "avoid_selector"
+    if decision == "postprocess_only":
+        return "build_outcome_corpus_v2"
+    if decision == "singleton_no_source":
+        return "widen_or_archive_singleton"
+    if decision == "no_candidate_route":
+        return "try_next_slice"
+    return "keep_postprocess"
+
+
 def permission_from_filter_summary(summary):
     if not summary:
         return "missing_summary"
@@ -145,13 +161,16 @@ def summarize(events):
             }
         )
 
+    decision = corpus_decision(global_summary, stoplight, recommendation)
+
     return {
         "event_counts": dict(sorted(event_counts.items())),
         "global_summary": global_summary,
         "global_stoplight": stoplight,
         "route_recommendation": recommendation,
         "route_permission": permission_from_recommendation(recommendation),
-        "corpus_decision": corpus_decision(global_summary, stoplight, recommendation),
+        "corpus_decision": decision,
+        "next_action": next_action_for_decision(decision),
         "route_buckets": {
             bucket: sorted(rows, key=lambda row: int(row.get("rank", 0)))
             for bucket, rows in sorted(route_buckets.items())
