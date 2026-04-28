@@ -2438,6 +2438,8 @@ fn smart_automove_pro_policy_matrix_probe() {
     struct PolicyMatrixMechanismRouteCoverage {
         candidate_only_games: usize,
         baseline_better_games: usize,
+        candidate_only_states: BTreeSet<String>,
+        baseline_better_states: BTreeSet<String>,
         candidate_only_panels: BTreeSet<String>,
         candidate_only_duels: BTreeSet<String>,
         baseline_better_panels: BTreeSet<String>,
@@ -2600,6 +2602,8 @@ fn smart_automove_pro_policy_matrix_probe() {
                 let mut portfolio_winner_mechanism_class_counts = BTreeMap::<String, usize>::new();
                 let mut portfolio_baseline_better_mechanism_class_counts =
                     BTreeMap::<String, usize>::new();
+                let mut portfolio_mechanism_axis_routes =
+                    BTreeMap::<String, PolicyMatrixMechanismRouteCoverage>::new();
                 let mut portfolio_stats = PolicyMatrixPortfolioStats::default();
                 let mut printed = 0usize;
                 let mut state_limit_hit = false;
@@ -2670,6 +2674,16 @@ fn smart_automove_pro_policy_matrix_probe() {
                             let portfolio_class_key = format!(
                                 "class={} variant={} candidate_is_white={}",
                                 portfolio_class,
+                                automove_variant_label(variant),
+                                candidate_is_white,
+                            );
+                            let portfolio_state_key = format!(
+                                "panel={} duel={} seed_tag={} repeat={} opening_index={} variant={} candidate_is_white={}",
+                                panel.label,
+                                duel.label,
+                                duel_seed_tag,
+                                repeat_index,
+                                game_index,
                                 automove_variant_label(variant),
                                 candidate_is_white,
                             );
@@ -2786,9 +2800,20 @@ fn smart_automove_pro_policy_matrix_probe() {
                                     ) {
                                         let key =
                                             format!("class={} {}", portfolio_class, class_key);
+                                        let axis_key =
+                                            pro_policy_matrix_mechanism_axis_key(&key).to_string();
                                         *portfolio_winner_mechanism_class_counts
                                             .entry(key)
                                             .or_default() += 1;
+                                        let route = portfolio_mechanism_axis_routes
+                                            .entry(axis_key)
+                                            .or_default();
+                                        route.candidate_only_games += 1;
+                                        route
+                                            .candidate_only_states
+                                            .insert(portfolio_state_key.clone());
+                                        route.candidate_only_panels.insert(panel.label.to_string());
+                                        route.candidate_only_duels.insert(duel.label.to_string());
                                     }
                                 }
                             }
@@ -3007,9 +3032,22 @@ fn smart_automove_pro_policy_matrix_probe() {
                                             "candidate={} class=baseline_better {}",
                                             candidate.id, class_key,
                                         );
+                                        let axis_key =
+                                            pro_policy_matrix_mechanism_axis_key(&key).to_string();
                                         *portfolio_baseline_better_mechanism_class_counts
                                             .entry(key)
                                             .or_default() += 1;
+                                        let route = portfolio_mechanism_axis_routes
+                                            .entry(axis_key)
+                                            .or_default();
+                                        route.baseline_better_games += 1;
+                                        route
+                                            .baseline_better_states
+                                            .insert(portfolio_state_key.clone());
+                                        route
+                                            .baseline_better_panels
+                                            .insert(panel.label.to_string());
+                                        route.baseline_better_duels.insert(duel.label.to_string());
                                     }
                                 }
 
@@ -3319,21 +3357,34 @@ fn smart_automove_pro_policy_matrix_probe() {
                     *global_portfolio_winner_mechanism_class_counts
                         .entry(key.clone())
                         .or_default() += *games;
-                    let axis_key = pro_policy_matrix_mechanism_axis_key(key).to_string();
-                    let route = global_mechanism_axis_routes.entry(axis_key).or_default();
-                    route.candidate_only_games += *games;
-                    route.candidate_only_panels.insert(panel.label.to_string());
-                    route.candidate_only_duels.insert(duel.label.to_string());
                 }
                 for (key, games) in &portfolio_baseline_better_mechanism_class_counts {
                     *global_portfolio_baseline_better_mechanism_class_counts
                         .entry(key.clone())
                         .or_default() += *games;
-                    let axis_key = pro_policy_matrix_mechanism_axis_key(key).to_string();
-                    let route = global_mechanism_axis_routes.entry(axis_key).or_default();
-                    route.baseline_better_games += *games;
-                    route.baseline_better_panels.insert(panel.label.to_string());
-                    route.baseline_better_duels.insert(duel.label.to_string());
+                }
+                for (key, route) in portfolio_mechanism_axis_routes {
+                    let global_route = global_mechanism_axis_routes.entry(key).or_default();
+                    global_route.candidate_only_games += route.candidate_only_games;
+                    global_route.baseline_better_games += route.baseline_better_games;
+                    global_route
+                        .candidate_only_states
+                        .extend(route.candidate_only_states);
+                    global_route
+                        .baseline_better_states
+                        .extend(route.baseline_better_states);
+                    global_route
+                        .candidate_only_panels
+                        .extend(route.candidate_only_panels);
+                    global_route
+                        .candidate_only_duels
+                        .extend(route.candidate_only_duels);
+                    global_route
+                        .baseline_better_panels
+                        .extend(route.baseline_better_panels);
+                    global_route
+                        .baseline_better_duels
+                        .extend(route.baseline_better_duels);
                 }
             }
         });
@@ -3445,8 +3496,20 @@ fn smart_automove_pro_policy_matrix_probe() {
         let mut separation_entries = global_mechanism_axis_routes.iter().collect::<Vec<_>>();
         separation_entries.sort_by(|(left_key, left_counts), (right_key, right_counts)| {
             right_counts
-                .candidate_only_games
-                .cmp(&left_counts.candidate_only_games)
+                .candidate_only_states
+                .len()
+                .cmp(&left_counts.candidate_only_states.len())
+                .then_with(|| {
+                    right_counts
+                        .candidate_only_games
+                        .cmp(&left_counts.candidate_only_games)
+                })
+                .then_with(|| {
+                    left_counts
+                        .baseline_better_states
+                        .len()
+                        .cmp(&right_counts.baseline_better_states.len())
+                })
                 .then_with(|| {
                     left_counts
                         .baseline_better_games
@@ -3456,31 +3519,37 @@ fn smart_automove_pro_policy_matrix_probe() {
         });
         for (key, route) in separation_entries.into_iter().take(aggregate_limit) {
             println!(
-                "PRO_POLICY_MATRIX_GLOBAL_MECHANISM_SEPARATION {{\"key\":\"{}\",\"candidate_only_games\":{},\"baseline_better_games\":{},\"net_candidate_games\":{}}}",
+                "PRO_POLICY_MATRIX_GLOBAL_MECHANISM_SEPARATION {{\"key\":\"{}\",\"candidate_only_games\":{},\"baseline_better_games\":{},\"net_candidate_games\":{},\"candidate_only_states\":{},\"baseline_better_states\":{},\"net_candidate_states\":{}}}",
                 json_escape(key),
                 route.candidate_only_games,
                 route.baseline_better_games,
                 route.candidate_only_games as isize - route.baseline_better_games as isize,
+                route.candidate_only_states.len(),
+                route.baseline_better_states.len(),
+                route.candidate_only_states.len() as isize
+                    - route.baseline_better_states.len() as isize,
             );
-            let routing_label = if route.candidate_only_games == 0 {
+            let routing_label = if route.candidate_only_states.is_empty() {
                 "no_candidate_signal"
-            } else if route.baseline_better_games > 0 {
+            } else if !route.baseline_better_states.is_empty() {
                 "baseline_save_risk"
             } else if route.candidate_only_panels.len() > 1 {
                 "cross_panel_clean"
             } else if route.candidate_only_duels.len() > 1 {
                 "cross_budget_clean"
-            } else if route.candidate_only_games > 2 {
+            } else if route.candidate_only_states.len() > 2 {
                 "single_scope_repeat"
             } else {
                 "singleton_or_pair"
             };
             println!(
-                "PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE {{\"key\":\"{}\",\"label\":\"{}\",\"candidate_only_games\":{},\"baseline_better_games\":{},\"candidate_only_panels\":\"{}\",\"candidate_only_duels\":\"{}\",\"baseline_better_panels\":\"{}\",\"baseline_better_duels\":\"{}\"}}",
+                "PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE {{\"key\":\"{}\",\"label\":\"{}\",\"candidate_only_games\":{},\"baseline_better_games\":{},\"candidate_only_states\":{},\"baseline_better_states\":{},\"candidate_only_panels\":\"{}\",\"candidate_only_duels\":\"{}\",\"baseline_better_panels\":\"{}\",\"baseline_better_duels\":\"{}\"}}",
                 json_escape(key),
                 routing_label,
                 route.candidate_only_games,
                 route.baseline_better_games,
+                route.candidate_only_states.len(),
+                route.baseline_better_states.len(),
                 json_escape(&route.candidate_only_panels.iter().cloned().collect::<Vec<_>>().join("|")),
                 json_escape(&route.candidate_only_duels.iter().cloned().collect::<Vec<_>>().join("|")),
                 json_escape(&route.baseline_better_panels.iter().cloned().collect::<Vec<_>>().join("|")),

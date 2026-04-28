@@ -12,7 +12,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-major-
 - Retained profiles are only `shipping_pro_search` and `frontier_pro_v2_guarded`.
 - The current mode is `structural-reset`.
 - There is no live runtime hypothesis and no promotable challenger.
-- Current diagnostic hypothesis: the cleanest remaining corpus signal is decision timing/stage routing, especially white `turn3_4 mons0` and `engine_post_search` rejected-head timing classes that repeat across panel or budget without baseline-save hits in the bounded route summary.
+- Current diagnostic hypothesis: there is no source-level selector yet. State-aware route coverage killed broad exact-pressure and reduced the remaining timing/stage signals to diagnostic pairs, with white `turn3_4 mons0` still the cleanest but mixed by variant, pressure window, first move, and winning policy.
 - Recent stagnation is from the loop where local selectors are cheap to invent, broad promotion proof is expensive, and singleton-heavy corpus evidence still leaves room to try "one more gate".
 - Do not reopen archived profiles, archived seams, archived stages, or pruned sweep candidates as direct experiment targets.
 
@@ -45,19 +45,16 @@ Their historical no-go evidence remains in `docs/automove-knowledge.md` and `doc
 
 ## Next Command Sequence
 
-Current next sequence: rerun the clean cross-panel/cross-budget timing route narrowly with corpus records and decision probes before adding a candidate or selector.
+Current next sequence: rerun the reset portfolio as a broad state-aware global scan so the next iteration starts from deduplicated route coverage rather than raw mechanism emissions.
 
 ```sh
-SMART_PRO_POLICY_MATRIX_PANEL_FILTER=sampled,active_blockers \
-SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_normal,vs_shipping_fast \
+SMART_PRO_POLICY_MATRIX_GLOBAL_ONLY=true \
 SMART_PRO_POLICY_MATRIX_STATE_LIMIT=2 \
 SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS=true \
-SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE=true \
-SMART_PRO_POLICY_MATRIX_TRACE_LIMIT=12 \
 ./scripts/run-automove-experiment.sh pro-policy-outcome-corpus frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard shipping_pro_search
 ```
 
-Read `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` and the record lines together. If the clean route collapses to exact boards, policy labels, or baseline-save overlap, do not write runtime code; extend the Outcome Corpus V2 workbench toward explicit timing/continuation features instead. If the decision probes show the same below-branch timing or rejected-head mechanism across sampled and active evidence, use that as the feature target for the next test-only ProV4/utility candidate.
+Read `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` by state counts first. If the scan still leaves only singleton/pair clean routes, do not write runtime code; extend the Outcome Corpus V2 workbench toward persistent records with explicit timing, continuation, pressure-window, and root-feature fields. Only a repeated clean route with positive state-level separation should become the feature target for a test-only ProV4/utility candidate.
 
 ## Major Idea Backlog
 
@@ -65,9 +62,9 @@ Read `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` and the record lines together. I
 
 Structural change: make corpus output a persistent, queryable artifact instead of stdout that humans manually scan. Emit normalized JSONL records for each policy decision, then add a postprocessor that ranks mechanisms by candidate-only wins, baseline-better saves, no-policy gaps, cross-budget stability, cost, and state-limit confidence.
 
-First proof: use the retained reset portfolio and current `pro-policy-outcome-corpus` feed. Add only harness/postprocess code until the report can answer "which mechanism is clean enough to become a feature?" without reading raw logs. Current progress: global outcome-corpus output now includes `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` labels for cross-panel clean, cross-budget clean, single-scope repeat, and baseline-save-risk axes.
+First proof: use the retained reset portfolio and current `pro-policy-outcome-corpus` feed. Add only harness/postprocess code until the report can answer "which mechanism is clean enough to become a feature?" without reading raw logs. Current progress: global outcome-corpus output now includes state-aware `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` labels for cross-panel clean, cross-budget clean, single-scope repeat, singleton/pair, and baseline-save-risk axes.
 
-Promotion signal: one mechanism repeats across at least two panels or opponent budgets, has positive net separation after baseline saves, and points to a feature below policy labels.
+Promotion signal: one mechanism repeats across deduplicated states in at least two panels or opponent budgets, has positive state-level separation after baseline saves, and points to a feature below policy labels.
 
 Kill signal: repeated keys remain exact-context, pair, branch, or broad `axis=exact_pressure` classes with comparable baseline-better counts.
 
@@ -160,8 +157,8 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - Static selectors over existing policy labels, exact contexts, branches, variants, and first moves are retired unless a new corpus feature changes the evidence.
 - The expanded reset portfolio has shown useful oracle coverage, but repeated exact winner context/pair evidence has stayed singleton-heavy.
 - Broad zero-window safe-pressure classes are contaminated by baseline-better saves and cannot justify runtime selectors.
-- The latest bounded route summary confirmed that the broad zero-window safe-pressure class is `baseline_save_risk` despite positive net games; candidate-only wins `10`, baseline-better games `5`, spanning both sampled and active panels.
-- Cleaner route signals are timing/stage-level and still diagnostic only: white `turn3_4 mons0` exact timing and rejected-head `engine_post_search` classes reached cross-panel clean at count `3`, while black early timing and ManaTempo-to-SpiritImpact stage classes reached active-only cross-budget clean at count `3`.
+- The latest state-aware bounded route summary confirmed that the broad zero-window safe-pressure class is `baseline_save_risk` despite positive raw emissions; it had candidate-only games `6`, baseline-better games `5`, candidate-only states `2`, and baseline-better states `3`.
+- Cleaner route signals are timing/stage-level and still diagnostic only. White `turn3_4 mons0` exact timing reached cross-panel clean at candidate-only states `2`, but the records split by variant, pressure window, first move, and winning policy. Earlier raw timing/stage emission counts overstated repeat strength.
 - Raw ProV2, no-selected-followup, full-scored reply guard, no-low-budget, alternating-white, and white-opening utility policies are diagnostic components, not retained challengers.
 - Root-origin and continuation-probe ProV4 attempts are retired unless they add a new discriminator below current score, rank, family, safety, progress, and `TurnEngineUtility` fields.
 - Future source-bearing work should be one of: Outcome Corpus V2, a test-only ProV4 unified root policy, or a corpus-calibrated utility feature.
@@ -173,7 +170,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - Shipping decision: public Pro remains on `frontier_pro_v2_guarded`.
 - Release containment: public `Pro` dispatch still routes through retained runtime code; `automove_experiments` remains under `#[cfg(test)]`.
 - Latest retained package direction: no runtime source retained from recent structural reset work.
-- Latest reset evidence: the bounded outcome-corpus route report has oracle coverage but no promotion permission; broad exact-pressure is contaminated, while timing/stage classes are clean enough only for a focused decision-probe rerun.
+- Latest reset evidence: the state-aware bounded outcome-corpus route report has oracle coverage but no promotion permission; broad exact-pressure is contaminated by baseline saves, while the remaining clean timing/stage routes are singleton/pair diagnostics rather than source permission.
 
 ## Session End Checklist
 
