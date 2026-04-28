@@ -2,9 +2,7 @@ use super::*;
 use crate::models::mons_game_model::automove_runtime_variants::{
     apply_frontier_pro_v2_guarded_config, clear_frontier_runtime_variant_branch,
     frontier_runtime_variant_branch_snapshot, select_frontier_pro_v2_guarded_inputs,
-    select_frontier_pro_v2_guarded_inputs_with_frontier_runtime,
-    select_frontier_pro_v2_guarded_without_late_black_fallback_inputs,
-    select_shipping_search_inputs,
+    select_frontier_pro_v2_guarded_inputs_with_frontier_runtime, select_shipping_search_inputs,
 };
 use crate::models::scoring::{
     evaluate_preferability_breakdown_with_weights, evaluate_preferability_with_context,
@@ -455,13 +453,6 @@ fn select_sweep_frontier_guarded_with_runtime_inputs(
     inputs
 }
 
-fn select_sweep_frontier_pro_v2_no_late_black_fallback_inputs(
-    game: &MonsGame,
-    config: AutomoveSearchConfig,
-) -> Vec<Input> {
-    select_frontier_pro_v2_guarded_without_late_black_fallback_inputs(game, config)
-}
-
 fn select_sweep_frontier_pro_v2_no_selected_followup_projection_inputs(
     game: &MonsGame,
     config: AutomoveSearchConfig,
@@ -493,42 +484,6 @@ fn select_sweep_frontier_pro_v3_full_scored_reply_guard_inputs(
     .and_then(|index| scored_roots.get(index))
     .map(|root| root.inputs.clone())
     .unwrap_or_else(|| select_sweep_frontier_pro_v2_guarded_counted_inputs(game, config))
-}
-
-fn select_sweep_frontier_pro_v2_head_rerank_inputs(
-    game: &MonsGame,
-    config: AutomoveSearchConfig,
-) -> Vec<Input> {
-    let mut runtime = apply_frontier_pro_v2_guarded_config(config);
-    runtime.enable_turn_head_rerank = true;
-    select_sweep_frontier_guarded_with_runtime_inputs(game, config, runtime)
-}
-
-fn select_sweep_frontier_pro_v2_no_spirit_family_inputs(
-    game: &MonsGame,
-    config: AutomoveSearchConfig,
-) -> Vec<Input> {
-    let mut runtime = apply_frontier_pro_v2_guarded_config(config);
-    runtime.turn_engine_enable_spirit_family = false;
-    select_sweep_frontier_guarded_with_runtime_inputs(game, config, runtime)
-}
-
-fn select_sweep_frontier_pro_v2_no_mid_tactical_guard_inputs(
-    game: &MonsGame,
-    config: AutomoveSearchConfig,
-) -> Vec<Input> {
-    let mut runtime = apply_frontier_pro_v2_guarded_config(config);
-    runtime.enable_turn_engine_mid_turn_tactical_guard = false;
-    select_sweep_frontier_guarded_with_runtime_inputs(game, config, runtime)
-}
-
-fn select_sweep_frontier_pro_v2_expansion_224_inputs(
-    game: &MonsGame,
-    config: AutomoveSearchConfig,
-) -> Vec<Input> {
-    let mut runtime = apply_frontier_pro_v2_guarded_config(config);
-    runtime.turn_engine_expansion_cap = 224;
-    select_sweep_frontier_guarded_with_runtime_inputs(game, config, runtime)
 }
 
 fn select_sweep_frontier_pro_v2_no_low_budget_guard_inputs(
@@ -665,32 +620,12 @@ fn pro_profile_sweep_candidates() -> Vec<ProProfileSweepCandidate> {
             selector: select_sweep_frontier_pro_v2_raw_inputs,
         },
         ProProfileSweepCandidate {
-            id: "frontier_pro_v2_no_late_black_fallback",
-            selector: select_sweep_frontier_pro_v2_no_late_black_fallback_inputs,
-        },
-        ProProfileSweepCandidate {
             id: "frontier_pro_v2_no_selected_followup_projection",
             selector: select_sweep_frontier_pro_v2_no_selected_followup_projection_inputs,
         },
         ProProfileSweepCandidate {
             id: "frontier_pro_v3_full_scored_reply_guard",
             selector: select_sweep_frontier_pro_v3_full_scored_reply_guard_inputs,
-        },
-        ProProfileSweepCandidate {
-            id: "frontier_pro_v2_head_rerank",
-            selector: select_sweep_frontier_pro_v2_head_rerank_inputs,
-        },
-        ProProfileSweepCandidate {
-            id: "frontier_pro_v2_no_spirit_family",
-            selector: select_sweep_frontier_pro_v2_no_spirit_family_inputs,
-        },
-        ProProfileSweepCandidate {
-            id: "frontier_pro_v2_no_mid_tactical_guard",
-            selector: select_sweep_frontier_pro_v2_no_mid_tactical_guard_inputs,
-        },
-        ProProfileSweepCandidate {
-            id: "frontier_pro_v2_expansion_224",
-            selector: select_sweep_frontier_pro_v2_expansion_224_inputs,
         },
         ProProfileSweepCandidate {
             id: "frontier_pro_v2_no_low_budget_guard",
@@ -1379,10 +1314,10 @@ fn pro_policy_matrix_outcome_label(delta: i32) -> &'static str {
     }
 }
 
-fn pro_policy_matrix_sorted_counts<'a>(
-    counts: &'a BTreeMap<String, usize>,
+fn pro_policy_matrix_sorted_counts(
+    counts: &BTreeMap<String, usize>,
     limit: usize,
-) -> Vec<(&'a String, &'a usize)> {
+) -> Vec<(&String, &usize)> {
     let mut entries = counts.iter().collect::<Vec<_>>();
     entries.sort_by(|left, right| right.1.cmp(left.1).then_with(|| left.0.cmp(right.0)));
     entries.into_iter().take(limit).collect()
@@ -2258,7 +2193,7 @@ fn smart_automove_pro_profile_attribution_probe() {
         .unwrap_or_else(|| "frontier_pro_v2_guarded".to_string());
     let right_id = env_string_value("SMART_PRO_SWEEP_ATTRIBUTION_RIGHT")
         .unwrap_or_else(|| "frontier_pro_v2_raw".to_string());
-    let duel_specs = vec![
+    let duel_specs = [
         AttributionDuelSpec {
             label: "vs_shipping_pro",
             opponent_mode: SmartAutomovePreference::Pro,
@@ -2538,7 +2473,7 @@ fn smart_automove_pro_policy_matrix_probe() {
         .map(|candidate| candidate.id)
         .collect::<Vec<_>>()
         .join(",");
-    let duel_specs = vec![
+    let duel_specs = [
         PolicyMatrixDuelSpec {
             label: "vs_shipping_pro",
             opponent_mode: SmartAutomovePreference::Pro,
@@ -3666,7 +3601,7 @@ fn smart_automove_pro_policy_cross_budget_probe() {
             ),
         })
         .unwrap_or(SmartAutomovePreference::Pro);
-    let duel_specs = vec![
+    let duel_specs = [
         CrossBudgetDuelSpec {
             label: "vs_shipping_pro",
             opponent_mode: SmartAutomovePreference::Pro,
@@ -4146,6 +4081,18 @@ struct PolicyWinnerStats {
     state_limit_hit: bool,
 }
 
+struct SweepDecisionRecordStoplightInput<'a> {
+    regressions: usize,
+    nonwins: usize,
+    recorded: usize,
+    missing_first_diff: usize,
+    branch_counts: &'a BTreeMap<String, usize>,
+    context_counts: &'a BTreeMap<String, usize>,
+    pair_counts: &'a BTreeMap<String, usize>,
+    mechanism_class_counts: &'a BTreeMap<String, usize>,
+    include_mechanism_class: bool,
+}
+
 fn pro_policy_winner_stoplight_label(
     stats: &PolicyWinnerStats,
     winner_counts: &BTreeMap<String, usize>,
@@ -4171,31 +4118,23 @@ fn pro_policy_winner_stoplight_label(
 }
 
 fn pro_sweep_decision_record_stoplight_label(
-    regressions: usize,
-    nonwins: usize,
-    recorded: usize,
-    missing_first_diff: usize,
-    branch_counts: &BTreeMap<String, usize>,
-    context_counts: &BTreeMap<String, usize>,
-    pair_counts: &BTreeMap<String, usize>,
-    mechanism_class_counts: &BTreeMap<String, usize>,
-    include_mechanism_class: bool,
+    input: &SweepDecisionRecordStoplightInput,
 ) -> &'static str {
-    if recorded > 0 && recorded == missing_first_diff {
+    if input.recorded > 0 && input.recorded == input.missing_first_diff {
         "missing_first_diff"
-    } else if nonwins == 0 && regressions == 0 {
+    } else if input.nonwins == 0 && input.regressions == 0 {
         "clean"
-    } else if include_mechanism_class && max_count(mechanism_class_counts) > 2 {
+    } else if input.include_mechanism_class && max_count(input.mechanism_class_counts) > 2 {
         "repeated_mechanism_class"
-    } else if max_count(pair_counts) > 1 {
+    } else if max_count(input.pair_counts) > 1 {
         "repeated_pair"
-    } else if max_count(context_counts) > 1 {
+    } else if max_count(input.context_counts) > 1 {
         "repeated_context"
-    } else if max_count(branch_counts) > 1 && regressions > 0 {
+    } else if max_count(input.branch_counts) > 1 && input.regressions > 0 {
         "branch_only_with_regressions"
-    } else if max_count(branch_counts) > 1 {
+    } else if max_count(input.branch_counts) > 1 {
         "branch_only"
-    } else if regressions > 0 {
+    } else if input.regressions > 0 {
         "singleton_regression_pressure"
     } else {
         "singleton_residue"
@@ -4238,7 +4177,7 @@ fn smart_automove_pro_policy_winner_probe() {
     let candidate_trace_limit = env_usize("SMART_PRO_POLICY_WINNER_CANDIDATE_TRACE_LIMIT");
     let state_limit = env_usize("SMART_PRO_POLICY_WINNER_STATE_LIMIT").map(|limit| limit.max(1));
     let include_mechanism = env_bool("SMART_PRO_POLICY_WINNER_INCLUDE_MECHANISM").unwrap_or(false);
-    let duel_specs = vec![
+    let duel_specs = [
         PolicyWinnerDuelSpec {
             label: "vs_shipping_pro",
             opponent_mode: SmartAutomovePreference::Pro,
@@ -4868,7 +4807,8 @@ fn smart_automove_pro_sweep_decision_record_probe() {
         .unwrap_or_else(|| "nonwins".to_string());
     let include_mechanism_class =
         env_bool("SMART_PRO_SWEEP_DECISION_RECORD_INCLUDE_MECHANISM_CLASS").unwrap_or(false);
-    let duel_specs = vec![
+    let outcome_scope = format!("{} scope={}", outcome_filter.join(","), scope);
+    let duel_specs = [
         SweepDecisionRecordDuelSpec {
             label: "vs_shipping_pro",
             opponent_mode: SmartAutomovePreference::Pro,
@@ -4899,7 +4839,7 @@ fn smart_automove_pro_sweep_decision_record_probe() {
             .map(|duel| duel.label)
             .collect::<Vec<_>>()
             .join(","),
-        format!("{} scope={}", outcome_filter.join(","), scope),
+        outcome_scope,
         env::var("SMART_AUTOMOVE_VARIANTS").unwrap_or_else(|_| "<default>".to_string()),
         include_mechanism_class,
     );
@@ -5095,17 +5035,17 @@ fn smart_automove_pro_sweep_decision_record_probe() {
             json_escape(candidate.id),
             json_escape(duel.label),
             json_escape(&scope),
-            pro_sweep_decision_record_stoplight_label(
+            pro_sweep_decision_record_stoplight_label(&SweepDecisionRecordStoplightInput {
                 regressions,
                 nonwins,
                 recorded,
                 missing_first_diff,
-                &branch_counts,
-                &context_counts,
-                &pair_counts,
-                &mechanism_class_counts,
+                branch_counts: &branch_counts,
+                context_counts: &context_counts,
+                pair_counts: &pair_counts,
+                mechanism_class_counts: &mechanism_class_counts,
                 include_mechanism_class,
-            ),
+            }),
             nonwins,
             regressions,
             recorded,
@@ -5150,7 +5090,7 @@ fn smart_automove_pro_sweep_decision_record_probe() {
                     "PRO_SWEEP_DECISION_RECORD_MECHANISM_CLASS {{\"candidate\":\"{}\",\"duel\":\"{}\",\"key\":\"{}\",\"games\":{}}}",
                     json_escape(candidate.id),
                     json_escape(duel.label),
-                    json_escape(&key),
+                    json_escape(key),
                     games,
                 );
             }
@@ -5181,7 +5121,7 @@ fn smart_automove_pro_profile_sweep_probe() {
     let max_plies = env_usize("SMART_PRO_SWEEP_MAX_PLIES").unwrap_or(96).max(56);
     let seed_tag = env_string_value("SMART_PRO_SWEEP_SEED_TAG")
         .unwrap_or_else(|| "pro_profile_sweep_v1".to_string());
-    let duel_specs = vec![
+    let duel_specs = [
         SweepDuelSpec {
             label: "vs_shipping_pro",
             opponent_mode: SmartAutomovePreference::Pro,
@@ -5285,7 +5225,7 @@ fn smart_automove_pro_promotion_dashboard_probe() {
     let max_plies = env_usize("SMART_PRO_DASHBOARD_MAX_PLIES")
         .unwrap_or(96)
         .max(56);
-    let duel_specs = vec![
+    let duel_specs = [
         DashboardDuelSpec {
             label: "vs_shipping_pro",
             opponent_mode: SmartAutomovePreference::Pro,
@@ -5678,7 +5618,8 @@ fn smart_automove_pro_decision_record_aggregation_probe() {
     let outcome_filter = pro_sweep_filter_tokens("SMART_PRO_DECISION_RECORD_OUTCOME", "all");
     let scope =
         env_string_value("SMART_PRO_DECISION_RECORD_SCOPE").unwrap_or_else(|| "delta".to_string());
-    let duel_specs = vec![
+    let outcome_scope = format!("{} scope={}", outcome_filter.join(","), scope);
+    let duel_specs = [
         DecisionRecordDuelSpec {
             label: "vs_shipping_pro",
             opponent_mode: SmartAutomovePreference::Pro,
@@ -5709,7 +5650,7 @@ fn smart_automove_pro_decision_record_aggregation_probe() {
             .map(|duel| duel.label)
             .collect::<Vec<_>>()
             .join(","),
-        format!("{} scope={}", outcome_filter.join(","), scope),
+        outcome_scope,
         env::var("SMART_AUTOMOVE_VARIANTS").unwrap_or_else(|_| "<default>".to_string())
     );
 
@@ -5977,7 +5918,7 @@ fn smart_automove_pro_reliability_duel_trace_probe() {
     let seed_tag = env_string_value("SMART_PRO_RELIABILITY_SEED_TAG")
         .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
     let duel_filter = env::var("SMART_PRO_RELIABILITY_DUEL_FILTER").ok();
-    let duel_specs = vec![
+    let duel_specs = [
         DuelSpec {
             label: "vs_shipping_pro",
             opponent_mode: SmartAutomovePreference::Pro,
@@ -7025,7 +6966,7 @@ fn smart_automove_pro_reliability_nonwin_trace_probe() {
     let seed_tag = env_string_value("SMART_PRO_RELIABILITY_SEED_TAG")
         .unwrap_or_else(|| "pro_turn_planner_reliability_v1".to_string());
     let duel_filter = env::var("SMART_PRO_RELIABILITY_DUEL_FILTER").ok();
-    let duel_specs = vec![
+    let duel_specs = [
         (
             "vs_shipping_pro",
             SmartAutomovePreference::Pro,

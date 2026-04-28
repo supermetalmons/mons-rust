@@ -793,24 +793,10 @@ fn execute_frontier_candidate_inputs_with_runtime(
     select_search_inputs_with_fresh_frontier_cache(game, runtime)
 }
 
-fn select_frontier_pro_v2_guarded_inputs_with_late_black_fallback(
-    game: &MonsGame,
-    config: AutomoveSearchConfig,
-    enable_late_black_fallback: bool,
-) -> Vec<Input> {
-    select_frontier_pro_v2_guarded_inputs_with_late_black_fallback_and_runtime(
-        game,
-        config,
-        apply_frontier_pro_v2_guarded_config(config),
-        enable_late_black_fallback,
-    )
-}
-
-fn select_frontier_pro_v2_guarded_inputs_with_late_black_fallback_and_runtime(
+fn select_frontier_pro_v2_guarded_inputs_with_runtime(
     game: &MonsGame,
     config: AutomoveSearchConfig,
     frontier_runtime: AutomoveSearchConfig,
-    enable_late_black_fallback: bool,
 ) -> Vec<Input> {
     if let Some(inputs) = select_early_white_fallback_inputs(game, config) {
         #[cfg(test)]
@@ -871,14 +857,11 @@ fn select_frontier_pro_v2_guarded_inputs_with_late_black_fallback_and_runtime(
         );
         return inputs;
     }
-    if enable_late_black_fallback {
-        if let Some(inputs) =
-            select_late_black_search_fallback_inputs(game, frontier_inputs.as_slice())
-        {
-            #[cfg(test)]
-            set_frontier_runtime_variant_branch("late_black_shipping_fallback");
-            return inputs;
-        }
+    if let Some(inputs) = select_late_black_search_fallback_inputs(game, frontier_inputs.as_slice())
+    {
+        #[cfg(test)]
+        set_frontier_runtime_variant_branch("late_black_shipping_fallback");
+        return inputs;
     }
     #[cfg(test)]
     set_frontier_runtime_variant_branch("frontier_execute");
@@ -891,27 +874,18 @@ pub(crate) fn select_frontier_pro_v2_guarded_inputs_with_frontier_runtime(
     config: AutomoveSearchConfig,
     frontier_runtime: AutomoveSearchConfig,
 ) -> Vec<Input> {
-    select_frontier_pro_v2_guarded_inputs_with_late_black_fallback_and_runtime(
-        game,
-        config,
-        frontier_runtime,
-        true,
-    )
+    select_frontier_pro_v2_guarded_inputs_with_runtime(game, config, frontier_runtime)
 }
 
 pub(crate) fn select_frontier_pro_v2_guarded_inputs(
     game: &MonsGame,
     config: AutomoveSearchConfig,
 ) -> Vec<Input> {
-    select_frontier_pro_v2_guarded_inputs_with_late_black_fallback(game, config, true)
-}
-
-#[cfg(test)]
-pub(crate) fn select_frontier_pro_v2_guarded_without_late_black_fallback_inputs(
-    game: &MonsGame,
-    config: AutomoveSearchConfig,
-) -> Vec<Input> {
-    select_frontier_pro_v2_guarded_inputs_with_late_black_fallback(game, config, false)
+    select_frontier_pro_v2_guarded_inputs_with_runtime(
+        game,
+        config,
+        apply_frontier_pro_v2_guarded_config(config),
+    )
 }
 
 pub(crate) fn turn_engine_config_from_search_config(

@@ -1206,3 +1206,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The raw gains came from bypassing guarded wrapper fallbacks: one early-white fallback and one late-black shipping fallback. That made fallback relaxation look plausible but also matched a historically risky selector family.
 - A temporary test-only candidate relaxed only those two surfaces: white turn-one start used a safe quiet mana-utility root, and black turn-four weak-window action+mana used raw guarded-config frontier. The sampled dashboard killed it immediately against shipping Pro at `7-5` (`0.5833`, confidence `0.6128`), with weak rows spread across `center_spoke_mana_rows`, `alternating_mana_rows`, `inner_wedge_mana_rows`, and `forward_bridge_mana_rows`. The remaining Normal/Fast sampled work was stopped and the source candidate was discarded.
 - Durable outcome: `PRO_POLICY_MATRIX_MECHANISM_CLASS` is useful for narrowing which candidate deltas deserve a focused probe, but active Fast raw fallback wins are not enough to relax guarded fallbacks. Do not retry early-white or late-black fallback removal unless a new utility/root-evaluation feature first clears sampled Pro/Normal/Fast.
+
+## Live Board Compression And Sweep Surface Prune
+
+- The live board was compressed back to current reset state, reset portfolio, next commands, stoplight rules, and a short no-go summary. Historical probe diaries remain in this archive and in `docs/automove-knowledge.md`.
+- No runtime behavior changed. Public Pro still routes through `frontier_pro_v2_guarded`, and `shipping_pro_search` remains the retained search-only baseline.
+- Stale test-only sweep candidates were removed from the active experiment runner: `frontier_pro_v2_no_late_black_fallback`, `frontier_pro_v2_head_rerank`, `frontier_pro_v2_no_spirit_family`, `frontier_pro_v2_no_mid_tactical_guard`, and `frontier_pro_v2_expansion_224`.
+- The retained reset portfolio remains guarded, alternating-white edge mana, white-opening utility mana, shipping-control, raw ProV2, no-selected-followup, full-scored reply guard, and no-low-budget.
+- Durable outcome: future agents should treat removed candidate IDs as archived evidence only. Recreate a pruned surface only as a new, named test-only candidate after outcome-corpus or ProV4 evidence shows a clean mechanism that the old ablation could not provide.

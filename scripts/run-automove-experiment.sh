@@ -38,7 +38,7 @@ examples:
   ./scripts/run-automove-experiment.sh pro-reliability frontier_pro_v2_guarded
   ./scripts/run-automove-experiment.sh pro-reliability-confirm frontier_pro_v2_guarded
   ./scripts/run-automove-experiment.sh pro-profile-sweep frontier_pro_v2_raw
-  SMART_PRO_SWEEP_ATTRIBUTION_RIGHT=frontier_pro_v2_raw ./scripts/run-automove-experiment.sh pro-profile-attribution frontier_pro_v2_no_late_black_fallback
+  SMART_PRO_SWEEP_ATTRIBUTION_RIGHT=frontier_pro_v2_raw ./scripts/run-automove-experiment.sh pro-profile-attribution frontier_pro_v2_guarded
   ./scripts/run-automove-experiment.sh pro-promotion-dashboard frontier_pro_v2_raw
   ./scripts/run-automove-experiment.sh pro-sweep-decision-record frontier_pro_v2_guarded
   ./scripts/run-automove-experiment.sh pro-policy-matrix frontier_pro_v2_guarded,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard
@@ -58,13 +58,8 @@ sweep_candidates=(
   shipping_pro_search_control
   frontier_pro_v2_guarded
   frontier_pro_v2_raw
-  frontier_pro_v2_no_late_black_fallback
   frontier_pro_v2_no_selected_followup_projection
   frontier_pro_v3_full_scored_reply_guard
-  frontier_pro_v2_head_rerank
-  frontier_pro_v2_no_spirit_family
-  frontier_pro_v2_no_mid_tactical_guard
-  frontier_pro_v2_expansion_224
   frontier_pro_v2_no_low_budget_guard
   frontier_pro_v3_alternating_white_edge_mana
   frontier_pro_v3_white_opening_utility_mana

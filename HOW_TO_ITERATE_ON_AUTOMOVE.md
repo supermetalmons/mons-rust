@@ -202,7 +202,7 @@ SMART_PRO_DASHBOARD_INCLUDE_GUARDED=false \
 `smart_automove_pro_profile_attribution_probe` replays the same opening seeds with two sweep candidates against the same shipping opponent, then prints outcome-changing first divergences as `PRO_PROFILE_SWEEP_ATTRIBUTION`, `PRO_PROFILE_SWEEP_ATTRIBUTION_SUMMARY`, `PRO_PROFILE_SWEEP_ATTRIBUTION_BRANCH`, and `PRO_PROFILE_SWEEP_ATTRIBUTION_PAIR` lines. It defaults to `frontier_pro_v2_guarded` vs `frontier_pro_v2_raw`; override with `SMART_PRO_SWEEP_ATTRIBUTION_LEFT` and `SMART_PRO_SWEEP_ATTRIBUTION_RIGHT`.
 
 ```sh
-SMART_PRO_SWEEP_ATTRIBUTION_LEFT=frontier_pro_v2_no_late_black_fallback \
+SMART_PRO_SWEEP_ATTRIBUTION_LEFT=frontier_pro_v2_guarded \
 SMART_PRO_SWEEP_ATTRIBUTION_RIGHT=frontier_pro_v2_raw \
 SMART_PRO_SWEEP_DUEL_FILTER=all \
 SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows,alternating_mana_rows,forward_bridge_mana_rows \
@@ -214,7 +214,7 @@ The attribution wrapper sets the left candidate from the stage argument and read
 ```sh
 SMART_PRO_SWEEP_ATTRIBUTION_RIGHT=frontier_pro_v2_raw \
 SMART_AUTOMOVE_VARIANTS=outer_edge_mana_rows,alternating_mana_rows,forward_bridge_mana_rows \
-./scripts/run-automove-experiment.sh pro-profile-attribution frontier_pro_v2_no_late_black_fallback
+./scripts/run-automove-experiment.sh pro-profile-attribution frontier_pro_v2_guarded
 ```
 
 `smart_automove_pro_sweep_decision_record_probe` aggregates nonwins or outcome deltas for any registered sweep candidate against a same-seed `shipping_pro_search_control` replay. Use it when a test-only candidate is not a retained profile and the retained-profile decision recorder cannot inspect it.
