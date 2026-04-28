@@ -2442,8 +2442,18 @@ fn smart_automove_pro_policy_matrix_probe() {
         baseline_better_states: BTreeSet<String>,
         candidate_only_panels: BTreeSet<String>,
         candidate_only_duels: BTreeSet<String>,
+        candidate_only_policies: BTreeSet<String>,
+        candidate_only_variants: BTreeSet<String>,
+        candidate_only_colors: BTreeSet<String>,
+        candidate_only_branches: BTreeSet<String>,
+        candidate_only_pairs: BTreeSet<String>,
         baseline_better_panels: BTreeSet<String>,
         baseline_better_duels: BTreeSet<String>,
+        baseline_better_policies: BTreeSet<String>,
+        baseline_better_variants: BTreeSet<String>,
+        baseline_better_colors: BTreeSet<String>,
+        baseline_better_branches: BTreeSet<String>,
+        baseline_better_pairs: BTreeSet<String>,
     }
 
     let shipping_profile = reliability_shipping_profile_id();
@@ -2814,6 +2824,22 @@ fn smart_automove_pro_policy_matrix_probe() {
                                             .insert(portfolio_state_key.clone());
                                         route.candidate_only_panels.insert(panel.label.to_string());
                                         route.candidate_only_duels.insert(duel.label.to_string());
+                                        route.candidate_only_policies.insert(winner.id.to_string());
+                                        route
+                                            .candidate_only_variants
+                                            .insert(automove_variant_label(variant).to_string());
+                                        route.candidate_only_colors.insert(
+                                            pro_profile_sweep_color_label(divergence.active_color)
+                                                .to_string(),
+                                        );
+                                        route.candidate_only_branches.insert(format!(
+                                            "{}->{}",
+                                            divergence.left_branch, divergence.right_branch
+                                        ));
+                                        route.candidate_only_pairs.insert(format!(
+                                            "{}->{}",
+                                            divergence.left_move_fen, divergence.right_move_fen
+                                        ));
                                     }
                                 }
                             }
@@ -3088,6 +3114,24 @@ fn smart_automove_pro_policy_matrix_probe() {
                                             .baseline_better_panels
                                             .insert(panel.label.to_string());
                                         route.baseline_better_duels.insert(duel.label.to_string());
+                                        route
+                                            .baseline_better_policies
+                                            .insert(candidate.id.to_string());
+                                        route
+                                            .baseline_better_variants
+                                            .insert(automove_variant_label(variant).to_string());
+                                        route.baseline_better_colors.insert(
+                                            pro_profile_sweep_color_label(divergence.active_color)
+                                                .to_string(),
+                                        );
+                                        route.baseline_better_branches.insert(format!(
+                                            "{}->{}",
+                                            divergence.left_branch, divergence.right_branch
+                                        ));
+                                        route.baseline_better_pairs.insert(format!(
+                                            "{}->{}",
+                                            divergence.left_move_fen, divergence.right_move_fen
+                                        ));
                                     }
                                 }
 
@@ -3447,11 +3491,41 @@ fn smart_automove_pro_policy_matrix_probe() {
                         .candidate_only_duels
                         .extend(route.candidate_only_duels);
                     global_route
+                        .candidate_only_policies
+                        .extend(route.candidate_only_policies);
+                    global_route
+                        .candidate_only_variants
+                        .extend(route.candidate_only_variants);
+                    global_route
+                        .candidate_only_colors
+                        .extend(route.candidate_only_colors);
+                    global_route
+                        .candidate_only_branches
+                        .extend(route.candidate_only_branches);
+                    global_route
+                        .candidate_only_pairs
+                        .extend(route.candidate_only_pairs);
+                    global_route
                         .baseline_better_panels
                         .extend(route.baseline_better_panels);
                     global_route
                         .baseline_better_duels
                         .extend(route.baseline_better_duels);
+                    global_route
+                        .baseline_better_policies
+                        .extend(route.baseline_better_policies);
+                    global_route
+                        .baseline_better_variants
+                        .extend(route.baseline_better_variants);
+                    global_route
+                        .baseline_better_colors
+                        .extend(route.baseline_better_colors);
+                    global_route
+                        .baseline_better_branches
+                        .extend(route.baseline_better_branches);
+                    global_route
+                        .baseline_better_pairs
+                        .extend(route.baseline_better_pairs);
                 }
             }
         });
@@ -3609,18 +3683,84 @@ fn smart_automove_pro_policy_matrix_probe() {
             } else {
                 "singleton_or_pair"
             };
+            let candidate_only_policies = route
+                .candidate_only_policies
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("|");
+            let candidate_only_variants = route
+                .candidate_only_variants
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("|");
+            let candidate_only_colors = route
+                .candidate_only_colors
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("|");
+            let candidate_only_branches = route
+                .candidate_only_branches
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("|");
+            let baseline_better_policies = route
+                .baseline_better_policies
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("|");
+            let baseline_better_variants = route
+                .baseline_better_variants
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("|");
+            let baseline_better_colors = route
+                .baseline_better_colors
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("|");
+            let baseline_better_branches = route
+                .baseline_better_branches
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("|");
             println!(
-                "PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE {{\"key\":\"{}\",\"label\":\"{}\",\"candidate_only_games\":{},\"baseline_better_games\":{},\"candidate_only_states\":{},\"baseline_better_states\":{},\"candidate_only_panels\":\"{}\",\"candidate_only_duels\":\"{}\",\"baseline_better_panels\":\"{}\",\"baseline_better_duels\":\"{}\"}}",
+                "PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE {{\"key\":\"{}\",\"label\":\"{}\",\"candidate_only_games\":{},\"baseline_better_games\":{},\"candidate_only_states\":{},\"baseline_better_states\":{},\"candidate_only_policy_count\":{},\"candidate_only_variant_count\":{},\"candidate_only_color_count\":{},\"candidate_only_branch_count\":{},\"candidate_only_pair_count\":{},\"baseline_better_policy_count\":{},\"baseline_better_variant_count\":{},\"baseline_better_color_count\":{},\"baseline_better_branch_count\":{},\"baseline_better_pair_count\":{},\"candidate_only_panels\":\"{}\",\"candidate_only_duels\":\"{}\",\"candidate_only_policies\":\"{}\",\"candidate_only_variants\":\"{}\",\"candidate_only_colors\":\"{}\",\"candidate_only_branches\":\"{}\",\"baseline_better_panels\":\"{}\",\"baseline_better_duels\":\"{}\",\"baseline_better_policies\":\"{}\",\"baseline_better_variants\":\"{}\",\"baseline_better_colors\":\"{}\",\"baseline_better_branches\":\"{}\"}}",
                 json_escape(key),
                 routing_label,
                 route.candidate_only_games,
                 route.baseline_better_games,
                 route.candidate_only_states.len(),
                 route.baseline_better_states.len(),
+                route.candidate_only_policies.len(),
+                route.candidate_only_variants.len(),
+                route.candidate_only_colors.len(),
+                route.candidate_only_branches.len(),
+                route.candidate_only_pairs.len(),
+                route.baseline_better_policies.len(),
+                route.baseline_better_variants.len(),
+                route.baseline_better_colors.len(),
+                route.baseline_better_branches.len(),
+                route.baseline_better_pairs.len(),
                 json_escape(&route.candidate_only_panels.iter().cloned().collect::<Vec<_>>().join("|")),
                 json_escape(&route.candidate_only_duels.iter().cloned().collect::<Vec<_>>().join("|")),
+                json_escape(&candidate_only_policies),
+                json_escape(&candidate_only_variants),
+                json_escape(&candidate_only_colors),
+                json_escape(&candidate_only_branches),
                 json_escape(&route.baseline_better_panels.iter().cloned().collect::<Vec<_>>().join("|")),
                 json_escape(&route.baseline_better_duels.iter().cloned().collect::<Vec<_>>().join("|")),
+                json_escape(&baseline_better_policies),
+                json_escape(&baseline_better_variants),
+                json_escape(&baseline_better_colors),
+                json_escape(&baseline_better_branches),
             );
         }
     }
