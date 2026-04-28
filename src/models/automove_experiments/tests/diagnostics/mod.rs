@@ -3634,6 +3634,160 @@ fn smart_automove_pro_policy_matrix_probe() {
         }
     }
     if include_portfolio_mechanism_class {
+        let route_label = |route: &PolicyMatrixMechanismRouteCoverage| -> &'static str {
+            if route.candidate_only_states.is_empty() {
+                "no_candidate_signal"
+            } else if !route.baseline_better_states.is_empty() {
+                "baseline_save_risk"
+            } else if route.candidate_only_panels.len() > 1 {
+                "cross_panel_clean"
+            } else if route.candidate_only_duels.len() > 1 {
+                "cross_budget_clean"
+            } else if route.candidate_only_states.len() > 2 {
+                "single_scope_repeat"
+            } else {
+                "singleton_or_pair"
+            }
+        };
+        let low_fragmentation_route = |route: &PolicyMatrixMechanismRouteCoverage| -> bool {
+            route.candidate_only_states.len() >= 2
+                && route.baseline_better_states.is_empty()
+                && route.candidate_only_policies.len() <= 1
+                && route.candidate_only_branches.len() <= 1
+                && route.candidate_only_pairs.len() <= 1
+        };
+        let route_fragmentation_score = |route: &PolicyMatrixMechanismRouteCoverage| -> usize {
+            route.candidate_only_policies.len().saturating_sub(1)
+                + route.candidate_only_branches.len().saturating_sub(1)
+                + route.candidate_only_pairs.len().saturating_sub(1)
+        };
+        let clean_low_fragmentation_routes = global_mechanism_axis_routes
+            .values()
+            .filter(|route| low_fragmentation_route(route))
+            .count();
+        let clean_fragmented_routes = global_mechanism_axis_routes
+            .values()
+            .filter(|route| {
+                route.candidate_only_states.len() >= 2
+                    && route.baseline_better_states.is_empty()
+                    && !low_fragmentation_route(route)
+            })
+            .count();
+        let baseline_risk_routes = global_mechanism_axis_routes
+            .values()
+            .filter(|route| {
+                !route.candidate_only_states.is_empty() && !route.baseline_better_states.is_empty()
+            })
+            .count();
+        let candidate_signal_routes = global_mechanism_axis_routes
+            .values()
+            .filter(|route| !route.candidate_only_states.is_empty())
+            .count();
+        let mut clean_entries = global_mechanism_axis_routes
+            .iter()
+            .filter(|(_, route)| {
+                route.candidate_only_states.len() >= 2 && route.baseline_better_states.is_empty()
+            })
+            .collect::<Vec<_>>();
+        clean_entries.sort_by(|(left_key, left_route), (right_key, right_route)| {
+            right_route
+                .candidate_only_states
+                .len()
+                .cmp(&left_route.candidate_only_states.len())
+                .then_with(|| {
+                    right_route
+                        .candidate_only_games
+                        .cmp(&left_route.candidate_only_games)
+                })
+                .then_with(|| {
+                    route_fragmentation_score(left_route)
+                        .cmp(&route_fragmentation_score(right_route))
+                })
+                .then_with(|| left_key.cmp(right_key))
+        });
+        let best_clean_route = clean_entries.first().copied();
+        let mut baseline_risk_entries = global_mechanism_axis_routes
+            .iter()
+            .filter(|(_, route)| {
+                !route.candidate_only_states.is_empty() && !route.baseline_better_states.is_empty()
+            })
+            .collect::<Vec<_>>();
+        baseline_risk_entries.sort_by(|(left_key, left_route), (right_key, right_route)| {
+            right_route
+                .candidate_only_states
+                .len()
+                .cmp(&left_route.candidate_only_states.len())
+                .then_with(|| {
+                    right_route
+                        .baseline_better_states
+                        .len()
+                        .cmp(&left_route.baseline_better_states.len())
+                })
+                .then_with(|| {
+                    right_route
+                        .candidate_only_games
+                        .cmp(&left_route.candidate_only_games)
+                })
+                .then_with(|| left_key.cmp(right_key))
+        });
+        let best_baseline_risk_route = baseline_risk_entries.first().copied();
+        let recommendation_label = if clean_low_fragmentation_routes > 0 {
+            "narrow_low_fragmentation_route"
+        } else if clean_fragmented_routes > 0 {
+            "build_outcome_corpus_v2"
+        } else if baseline_risk_routes > 0 {
+            "baseline_save_risk_only"
+        } else if candidate_signal_routes > 0 {
+            "singleton_candidate_routes"
+        } else {
+            "no_candidate_route"
+        };
+        let best_clean_key = best_clean_route.map(|(key, _)| key.as_str()).unwrap_or("");
+        let best_clean_label = best_clean_route
+            .map(|(_, route)| route_label(route))
+            .unwrap_or("none");
+        let best_clean_candidate_only_states = best_clean_route
+            .map(|(_, route)| route.candidate_only_states.len())
+            .unwrap_or_default();
+        let best_clean_candidate_only_games = best_clean_route
+            .map(|(_, route)| route.candidate_only_games)
+            .unwrap_or_default();
+        let best_clean_policy_count = best_clean_route
+            .map(|(_, route)| route.candidate_only_policies.len())
+            .unwrap_or_default();
+        let best_clean_branch_count = best_clean_route
+            .map(|(_, route)| route.candidate_only_branches.len())
+            .unwrap_or_default();
+        let best_clean_pair_count = best_clean_route
+            .map(|(_, route)| route.candidate_only_pairs.len())
+            .unwrap_or_default();
+        let best_baseline_risk_key = best_baseline_risk_route
+            .map(|(key, _)| key.as_str())
+            .unwrap_or("");
+        let best_baseline_risk_candidate_only_states = best_baseline_risk_route
+            .map(|(_, route)| route.candidate_only_states.len())
+            .unwrap_or_default();
+        let best_baseline_risk_baseline_better_states = best_baseline_risk_route
+            .map(|(_, route)| route.baseline_better_states.len())
+            .unwrap_or_default();
+        println!(
+            "PRO_POLICY_MATRIX_GLOBAL_ROUTE_RECOMMENDATION {{\"label\":\"{}\",\"candidate_signal_routes\":{},\"clean_low_fragmentation_routes\":{},\"clean_fragmented_routes\":{},\"baseline_risk_routes\":{},\"best_clean_key\":\"{}\",\"best_clean_label\":\"{}\",\"best_clean_candidate_only_states\":{},\"best_clean_candidate_only_games\":{},\"best_clean_policy_count\":{},\"best_clean_branch_count\":{},\"best_clean_pair_count\":{},\"best_baseline_risk_key\":\"{}\",\"best_baseline_risk_candidate_only_states\":{},\"best_baseline_risk_baseline_better_states\":{}}}",
+            recommendation_label,
+            candidate_signal_routes,
+            clean_low_fragmentation_routes,
+            clean_fragmented_routes,
+            baseline_risk_routes,
+            json_escape(best_clean_key),
+            json_escape(best_clean_label),
+            best_clean_candidate_only_states,
+            best_clean_candidate_only_games,
+            best_clean_policy_count,
+            best_clean_branch_count,
+            best_clean_pair_count,
+            json_escape(best_baseline_risk_key),
+            best_baseline_risk_candidate_only_states,
+            best_baseline_risk_baseline_better_states,
+        );
         let mut separation_entries = global_mechanism_axis_routes.iter().collect::<Vec<_>>();
         separation_entries.sort_by(|(left_key, left_counts), (right_key, right_counts)| {
             right_counts
@@ -3670,19 +3824,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                 route.candidate_only_states.len() as isize
                     - route.baseline_better_states.len() as isize,
             );
-            let routing_label = if route.candidate_only_states.is_empty() {
-                "no_candidate_signal"
-            } else if !route.baseline_better_states.is_empty() {
-                "baseline_save_risk"
-            } else if route.candidate_only_panels.len() > 1 {
-                "cross_panel_clean"
-            } else if route.candidate_only_duels.len() > 1 {
-                "cross_budget_clean"
-            } else if route.candidate_only_states.len() > 2 {
-                "single_scope_repeat"
-            } else {
-                "singleton_or_pair"
-            };
+            let routing_label = route_label(route);
             let candidate_only_policies = route
                 .candidate_only_policies
                 .iter()
