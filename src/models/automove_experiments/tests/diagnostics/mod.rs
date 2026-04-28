@@ -2469,6 +2469,14 @@ fn smart_automove_pro_policy_matrix_probe() {
         colors: BTreeSet<String>,
         branches: BTreeSet<String>,
         pairs: BTreeSet<String>,
+        duel_counts: BTreeMap<String, usize>,
+        candidate_counts: BTreeMap<String, usize>,
+        outcome_counts: BTreeMap<String, usize>,
+        portfolio_class_counts: BTreeMap<String, usize>,
+        variant_counts: BTreeMap<String, usize>,
+        color_counts: BTreeMap<String, usize>,
+        branch_counts: BTreeMap<String, usize>,
+        pair_counts: BTreeMap<String, usize>,
     }
 
     let shipping_profile = reliability_shipping_profile_id();
@@ -2498,6 +2506,10 @@ fn smart_automove_pro_policy_matrix_probe() {
     let route_bucket_limit = env_usize("SMART_PRO_POLICY_MATRIX_ROUTE_BUCKET_LIMIT")
         .unwrap_or(3)
         .max(1);
+    let record_filter_detail_limit =
+        env_usize("SMART_PRO_POLICY_MATRIX_RECORD_FILTER_DETAIL_LIMIT")
+            .unwrap_or(8)
+            .max(1);
     let include_decision_probe =
         env_bool("SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE").unwrap_or(false);
     let include_mechanism_class =
@@ -2571,6 +2583,41 @@ fn smart_automove_pro_policy_matrix_probe() {
         record_axis_filter.iter().any(|token| {
             mechanism_axes.contains(token) || baseline_better_mechanism_axes.contains(token)
         })
+    };
+    let add_record_filter_breakdown = |stats: &mut PolicyMatrixRecordFilterStats,
+                                       panel: &str,
+                                       duel: &str,
+                                       candidate: &str,
+                                       outcome: &str,
+                                       portfolio_class: &str,
+                                       variant: &str,
+                                       color: &str,
+                                       branch: String,
+                                       pair: String| {
+        stats.panels.insert(panel.to_string());
+        stats.duels.insert(duel.to_string());
+        stats.candidates.insert(candidate.to_string());
+        stats.outcomes.insert(outcome.to_string());
+        stats.portfolio_classes.insert(portfolio_class.to_string());
+        stats.variants.insert(variant.to_string());
+        stats.colors.insert(color.to_string());
+        stats.branches.insert(branch.clone());
+        stats.pairs.insert(pair.clone());
+
+        *stats.duel_counts.entry(duel.to_string()).or_default() += 1;
+        *stats
+            .candidate_counts
+            .entry(candidate.to_string())
+            .or_default() += 1;
+        *stats.outcome_counts.entry(outcome.to_string()).or_default() += 1;
+        *stats
+            .portfolio_class_counts
+            .entry(portfolio_class.to_string())
+            .or_default() += 1;
+        *stats.variant_counts.entry(variant.to_string()).or_default() += 1;
+        *stats.color_counts.entry(color.to_string()).or_default() += 1;
+        *stats.branch_counts.entry(branch).or_default() += 1;
+        *stats.pair_counts.entry(pair).or_default() += 1;
     };
 
     println!(
@@ -3003,27 +3050,18 @@ fn smart_automove_pro_policy_matrix_probe() {
                                         &baseline_better_mechanism_axes,
                                     ) {
                                         record_filter_stats.corpus_records += 1;
-                                        record_filter_stats.panels.insert(panel.label.to_string());
-                                        record_filter_stats.duels.insert(duel.label.to_string());
-                                        record_filter_stats
-                                            .candidates
-                                            .insert(candidate.id.to_string());
-                                        record_filter_stats.outcomes.insert(outcome.to_string());
-                                        record_filter_stats
-                                            .portfolio_classes
-                                            .insert(portfolio_class.to_string());
-                                        record_filter_stats
-                                            .variants
-                                            .insert(automove_variant_label(variant).to_string());
-                                        record_filter_stats.colors.insert(active_color.to_string());
-                                        record_filter_stats.branches.insert(format!(
-                                            "{}->{}",
-                                            baseline_branch, candidate_branch
-                                        ));
-                                        record_filter_stats.pairs.insert(format!(
-                                            "{}->{}",
-                                            baseline_move, candidate_move
-                                        ));
+                                        add_record_filter_breakdown(
+                                            &mut record_filter_stats,
+                                            panel.label,
+                                            duel.label,
+                                            candidate.id,
+                                            outcome,
+                                            portfolio_class,
+                                            automove_variant_label(variant),
+                                            active_color,
+                                            format!("{}->{}", baseline_branch, candidate_branch),
+                                            format!("{}->{}", baseline_move, candidate_move),
+                                        );
                                         println!(
                                             "PRO_POLICY_MATRIX_CORPUS_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"policy_results\":\"{}\",\"winning_policies\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"mechanism_axes\":\"{}\",\"baseline_better_mechanism_axes\":\"{}\",\"board\":\"{}\",\"opening\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
                                             json_escape(panel.label),
@@ -3247,6 +3285,29 @@ fn smart_automove_pro_policy_matrix_probe() {
                                         &baseline_better_mechanism_axes,
                                     ) {
                                         record_filter_stats.trace_records += 1;
+                                        if !include_corpus_records {
+                                            add_record_filter_breakdown(
+                                                &mut record_filter_stats,
+                                                panel.label,
+                                                duel.label,
+                                                candidate.id,
+                                                outcome,
+                                                "trace",
+                                                automove_variant_label(variant),
+                                                pro_profile_sweep_color_label(
+                                                    divergence.active_color,
+                                                ),
+                                                format!(
+                                                    "{}->{}",
+                                                    divergence.left_branch, divergence.right_branch
+                                                ),
+                                                format!(
+                                                    "{}->{}",
+                                                    divergence.left_move_fen,
+                                                    divergence.right_move_fen
+                                                ),
+                                            );
+                                        }
                                         println!(
                                             "PRO_POLICY_MATRIX_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"mechanism_axes\":\"{}\",\"baseline_better_mechanism_axes\":\"{}\",\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_decision\":\"{}\",\"candidate_decision\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
                                             json_escape(panel.label),
@@ -3647,11 +3708,23 @@ fn smart_automove_pro_policy_matrix_probe() {
         let join_record_set = |values: &BTreeSet<String>| -> String {
             values.iter().cloned().collect::<Vec<_>>().join("|")
         };
+        let record_filter_breakdown_source = if include_corpus_records {
+            "corpus"
+        } else {
+            "trace"
+        };
+        let record_filter_breakdown_records = if include_corpus_records {
+            record_filter_stats.corpus_records
+        } else {
+            record_filter_stats.trace_records
+        };
         println!(
-            "PRO_POLICY_MATRIX_RECORD_FILTER_SUMMARY {{\"record_axis_filter\":\"{}\",\"corpus_records\":{},\"trace_records\":{},\"panel_count\":{},\"duel_count\":{},\"candidate_count\":{},\"outcome_count\":{},\"portfolio_class_count\":{},\"variant_count\":{},\"color_count\":{},\"branch_count\":{},\"pair_count\":{},\"panels\":\"{}\",\"duels\":\"{}\",\"candidates\":\"{}\",\"outcomes\":\"{}\",\"portfolio_classes\":\"{}\",\"variants\":\"{}\",\"colors\":\"{}\",\"branches\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_RECORD_FILTER_SUMMARY {{\"record_axis_filter\":\"{}\",\"corpus_records\":{},\"trace_records\":{},\"breakdown_source\":\"{}\",\"breakdown_records\":{},\"panel_count\":{},\"duel_count\":{},\"candidate_count\":{},\"outcome_count\":{},\"portfolio_class_count\":{},\"variant_count\":{},\"color_count\":{},\"branch_count\":{},\"pair_count\":{},\"panels\":\"{}\",\"duels\":\"{}\",\"candidates\":\"{}\",\"outcomes\":\"{}\",\"portfolio_classes\":\"{}\",\"variants\":\"{}\",\"colors\":\"{}\",\"branches\":\"{}\"}}",
             json_escape(&record_axis_filter_label),
             record_filter_stats.corpus_records,
             record_filter_stats.trace_records,
+            record_filter_breakdown_source,
+            record_filter_breakdown_records,
             record_filter_stats.panels.len(),
             record_filter_stats.duels.len(),
             record_filter_stats.candidates.len(),
@@ -3670,6 +3743,34 @@ fn smart_automove_pro_policy_matrix_probe() {
             json_escape(&join_record_set(&record_filter_stats.colors)),
             json_escape(&join_record_set(&record_filter_stats.branches)),
         );
+        let print_record_filter_details = |dimension: &str, counts: &BTreeMap<String, usize>| {
+            for (rank, (key, records)) in
+                pro_policy_matrix_sorted_counts(counts, record_filter_detail_limit)
+                    .into_iter()
+                    .enumerate()
+            {
+                println!(
+                        "PRO_POLICY_MATRIX_RECORD_FILTER_DETAIL {{\"record_axis_filter\":\"{}\",\"breakdown_source\":\"{}\",\"dimension\":\"{}\",\"rank\":{},\"key\":\"{}\",\"records\":{}}}",
+                        json_escape(&record_axis_filter_label),
+                        record_filter_breakdown_source,
+                        dimension,
+                        rank + 1,
+                        json_escape(key),
+                        records,
+                    );
+            }
+        };
+        print_record_filter_details("duel", &record_filter_stats.duel_counts);
+        print_record_filter_details("candidate_policy", &record_filter_stats.candidate_counts);
+        print_record_filter_details("outcome", &record_filter_stats.outcome_counts);
+        print_record_filter_details(
+            "portfolio_class",
+            &record_filter_stats.portfolio_class_counts,
+        );
+        print_record_filter_details("variant", &record_filter_stats.variant_counts);
+        print_record_filter_details("color", &record_filter_stats.color_counts);
+        print_record_filter_details("branch", &record_filter_stats.branch_counts);
+        print_record_filter_details("first_move_pair", &record_filter_stats.pair_counts);
     }
     if !global_only {
         for (key, games) in
