@@ -12,7 +12,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-major-
 - Retained profiles are only `shipping_pro_search` and `frontier_pro_v2_guarded`.
 - The current mode is `structural-reset`.
 - There is no live runtime hypothesis and no promotable challenger.
-- Current diagnostic hypothesis: there is no source-level selector yet. State-aware route coverage killed broad exact-pressure and reduced the remaining timing/stage signals to diagnostic pairs, with white `turn3_4 mons0` still the cleanest but mixed by variant, pressure window, first move, and winning policy.
+- Current diagnostic hypothesis: there is no source-level selector yet. The broad state-aware scan killed exact-pressure again and left only active-only `engine_post_search` timing/stage routes; the top clean route is `pre_family=ManaTempo head_family=Some(SpiritImpact)` at three active `outer_edge_mana_rows` states across Pro/Fast, but focused records split by color, turn, winner policy, branch, and advisor status.
 - Recent stagnation is from the loop where local selectors are cheap to invent, broad promotion proof is expensive, and singleton-heavy corpus evidence still leaves room to try "one more gate".
 - Do not reopen archived profiles, archived seams, archived stages, or pruned sweep candidates as direct experiment targets.
 
@@ -45,16 +45,19 @@ Their historical no-go evidence remains in `docs/automove-knowledge.md` and `doc
 
 ## Next Command Sequence
 
-Current next sequence: rerun the reset portfolio as a broad state-aware global scan so the next iteration starts from deduplicated route coverage rather than raw mechanism emissions.
+Current next sequence: rerun the active Pro/Fast route with record-level mechanism axes, then decide whether Outcome Corpus V2 needs a persistent postprocessor or whether this active-only route is retired.
 
 ```sh
-SMART_PRO_POLICY_MATRIX_GLOBAL_ONLY=true \
+SMART_PRO_POLICY_MATRIX_PANEL_FILTER=active_blockers \
+SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_pro,vs_shipping_fast \
 SMART_PRO_POLICY_MATRIX_STATE_LIMIT=2 \
 SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS=true \
+SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE=true \
+SMART_PRO_POLICY_MATRIX_TRACE_LIMIT=40 \
 ./scripts/run-automove-experiment.sh pro-policy-outcome-corpus frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard shipping_pro_search
 ```
 
-Read `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` by state counts first. If the scan still leaves only singleton/pair clean routes, do not write runtime code; extend the Outcome Corpus V2 workbench toward persistent records with explicit timing, continuation, pressure-window, and root-feature fields. Only a repeated clean route with positive state-level separation should become the feature target for a test-only ProV4/utility candidate.
+Read `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` by state counts first, then use `mechanism_axes` on `PRO_POLICY_MATRIX_RECORD` / `PRO_POLICY_MATRIX_CORPUS_RECORD` to connect the clean axis back to exact records. If the active-only stage route still splits by policy, branch, color, or first move, do not write runtime code; extend Outcome Corpus V2 toward a persistent postprocessor that can group records by those axes automatically.
 
 ## Major Idea Backlog
 
@@ -62,7 +65,7 @@ Read `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` by state counts first. If the sc
 
 Structural change: make corpus output a persistent, queryable artifact instead of stdout that humans manually scan. Emit normalized JSONL records for each policy decision, then add a postprocessor that ranks mechanisms by candidate-only wins, baseline-better saves, no-policy gaps, cross-budget stability, cost, and state-limit confidence.
 
-First proof: use the retained reset portfolio and current `pro-policy-outcome-corpus` feed. Add only harness/postprocess code until the report can answer "which mechanism is clean enough to become a feature?" without reading raw logs. Current progress: global outcome-corpus output now includes state-aware `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` labels for cross-panel clean, cross-budget clean, single-scope repeat, singleton/pair, and baseline-save-risk axes.
+First proof: use the retained reset portfolio and current `pro-policy-outcome-corpus` feed. Add only harness/postprocess code until the report can answer "which mechanism is clean enough to become a feature?" without reading raw logs. Current progress: global outcome-corpus output now includes state-aware `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` labels, and record output now includes `mechanism_axes` / `baseline_better_mechanism_axes` so route lines can be matched back to divergences.
 
 Promotion signal: one mechanism repeats across deduplicated states in at least two panels or opponent budgets, has positive state-level separation after baseline saves, and points to a feature below policy labels.
 
@@ -157,8 +160,8 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - Static selectors over existing policy labels, exact contexts, branches, variants, and first moves are retired unless a new corpus feature changes the evidence.
 - The expanded reset portfolio has shown useful oracle coverage, but repeated exact winner context/pair evidence has stayed singleton-heavy.
 - Broad zero-window safe-pressure classes are contaminated by baseline-better saves and cannot justify runtime selectors.
-- The latest state-aware bounded route summary confirmed that the broad zero-window safe-pressure class is `baseline_save_risk` despite positive raw emissions; it had candidate-only games `6`, baseline-better games `5`, candidate-only states `2`, and baseline-better states `3`.
-- Cleaner route signals are timing/stage-level and still diagnostic only. White `turn3_4 mons0` exact timing reached cross-panel clean at candidate-only states `2`, but the records split by variant, pressure window, first move, and winning policy. Earlier raw timing/stage emission counts overstated repeat strength.
+- The latest broad state-aware route summary confirmed that zero-window safe-pressure remains `baseline_save_risk` despite positive raw emissions; it had candidate-only games `10`, baseline-better games `5`, candidate-only states `5`, and baseline-better states `3`.
+- Cleaner route signals are timing/stage-level and still diagnostic only. The top clean route is active-only `engine_post_search` with `pre_family=ManaTempo head_family=Some(SpiritImpact)`: candidate-only games `3`, baseline-better games `0`, candidate-only states `3`, spanning active Pro/Fast only. Focused records show mixed policies, colors, turns, branches, and advisor statuses, so it is not source permission.
 - Raw ProV2, no-selected-followup, full-scored reply guard, no-low-budget, alternating-white, and white-opening utility policies are diagnostic components, not retained challengers.
 - Root-origin and continuation-probe ProV4 attempts are retired unless they add a new discriminator below current score, rank, family, safety, progress, and `TurnEngineUtility` fields.
 - Future source-bearing work should be one of: Outcome Corpus V2, a test-only ProV4 unified root policy, or a corpus-calibrated utility feature.
@@ -166,11 +169,11 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 
 ## Latest Gate Snapshot
 
-- Date: `2026-04-28`
+- Date: `2026-04-29`
 - Shipping decision: public Pro remains on `frontier_pro_v2_guarded`.
 - Release containment: public `Pro` dispatch still routes through retained runtime code; `automove_experiments` remains under `#[cfg(test)]`.
 - Latest retained package direction: no runtime source retained from recent structural reset work.
-- Latest reset evidence: the state-aware bounded outcome-corpus route report has oracle coverage but no promotion permission; broad exact-pressure is contaminated by baseline saves, while the remaining clean timing/stage routes are singleton/pair diagnostics rather than source permission.
+- Latest reset evidence: the broad state-aware outcome-corpus route report has oracle coverage but no promotion permission; broad exact-pressure is contaminated by baseline saves, while the strongest clean stage route is active-only and record-mixed. The retained source change is harness-only mechanism-axis record output.
 
 ## Session End Checklist
 

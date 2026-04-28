@@ -2849,6 +2849,8 @@ fn smart_automove_pro_policy_matrix_probe() {
                                     stats.first_move_diffs += 1;
                                 }
                                 if include_corpus_records && !global_only {
+                                    let include_record_mechanism_axes = include_mechanism_class
+                                        || include_portfolio_mechanism_class;
                                     let first_diff_ply = first_divergence
                                         .as_ref()
                                         .map(|divergence| divergence.ply as i32)
@@ -2897,8 +2899,44 @@ fn smart_automove_pro_policy_matrix_probe() {
                                         .as_ref()
                                         .map(|divergence| divergence.right_move_fen.as_str())
                                         .unwrap_or("none");
+                                    let mechanism_axes = first_divergence
+                                        .as_ref()
+                                        .filter(|_| include_record_mechanism_axes)
+                                        .map(|divergence| {
+                                            pro_policy_matrix_mechanism_axes_for_moves(
+                                                baseline.id,
+                                                divergence.board_fen.as_str(),
+                                                divergence.left_move_fen.as_str(),
+                                                divergence.right_move_fen.as_str(),
+                                            )
+                                        })
+                                        .unwrap_or_else(|| {
+                                            if include_record_mechanism_axes {
+                                                "none".to_string()
+                                            } else {
+                                                "disabled".to_string()
+                                            }
+                                        });
+                                    let baseline_better_mechanism_axes = first_divergence
+                                        .as_ref()
+                                        .filter(|_| include_record_mechanism_axes && delta < 0)
+                                        .map(|divergence| {
+                                            pro_policy_matrix_mechanism_axes_for_moves(
+                                                baseline.id,
+                                                divergence.board_fen.as_str(),
+                                                divergence.right_move_fen.as_str(),
+                                                divergence.left_move_fen.as_str(),
+                                            )
+                                        })
+                                        .unwrap_or_else(|| {
+                                            if include_record_mechanism_axes {
+                                                "none".to_string()
+                                            } else {
+                                                "disabled".to_string()
+                                            }
+                                        });
                                     println!(
-                                        "PRO_POLICY_MATRIX_CORPUS_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"policy_results\":\"{}\",\"winning_policies\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"board\":\"{}\",\"opening\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
+                                        "PRO_POLICY_MATRIX_CORPUS_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"policy_results\":\"{}\",\"winning_policies\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"mechanism_axes\":\"{}\",\"baseline_better_mechanism_axes\":\"{}\",\"board\":\"{}\",\"opening\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
                                         json_escape(panel.label),
                                         json_escape(baseline.id),
                                         json_escape(candidate.id),
@@ -2925,6 +2963,8 @@ fn smart_automove_pro_policy_matrix_probe() {
                                         can_use_action,
                                         can_move_mana,
                                         json_escape(exact_context),
+                                        json_escape(&mechanism_axes),
+                                        json_escape(&baseline_better_mechanism_axes),
                                         json_escape(board_fen),
                                         json_escape(opening_fen),
                                         json_escape(baseline_move),
@@ -3052,6 +3092,31 @@ fn smart_automove_pro_policy_matrix_probe() {
                                 }
 
                                 if printed < trace_limit && !global_only {
+                                    let include_record_mechanism_axes = include_mechanism_class
+                                        || include_portfolio_mechanism_class;
+                                    let mechanism_axes = if include_record_mechanism_axes {
+                                        pro_policy_matrix_mechanism_axes_for_moves(
+                                            baseline.id,
+                                            divergence.board_fen.as_str(),
+                                            divergence.left_move_fen.as_str(),
+                                            divergence.right_move_fen.as_str(),
+                                        )
+                                    } else {
+                                        "disabled".to_string()
+                                    };
+                                    let baseline_better_mechanism_axes =
+                                        if include_record_mechanism_axes && delta < 0 {
+                                            pro_policy_matrix_mechanism_axes_for_moves(
+                                                baseline.id,
+                                                divergence.board_fen.as_str(),
+                                                divergence.right_move_fen.as_str(),
+                                                divergence.left_move_fen.as_str(),
+                                            )
+                                        } else if include_record_mechanism_axes {
+                                            "none".to_string()
+                                        } else {
+                                            "disabled".to_string()
+                                        };
                                     let baseline_decision = if include_decision_probe {
                                         pro_policy_matrix_move_decision_probe(
                                             &divergence.board_fen,
@@ -3069,7 +3134,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                                         "disabled".to_string()
                                     };
                                     println!(
-                                        "PRO_POLICY_MATRIX_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_decision\":\"{}\",\"candidate_decision\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
+                                        "PRO_POLICY_MATRIX_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"mechanism_axes\":\"{}\",\"baseline_better_mechanism_axes\":\"{}\",\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_decision\":\"{}\",\"candidate_decision\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
                                         json_escape(panel.label),
                                         json_escape(baseline.id),
                                         json_escape(candidate.id),
@@ -3091,6 +3156,8 @@ fn smart_automove_pro_policy_matrix_probe() {
                                         divergence.can_use_action,
                                         divergence.can_move_mana,
                                         json_escape(&divergence.exact_context),
+                                        json_escape(&mechanism_axes),
+                                        json_escape(&baseline_better_mechanism_axes),
                                         json_escape(&divergence.board_fen),
                                         json_escape(&divergence.left_move_fen),
                                         json_escape(&divergence.right_move_fen),
@@ -4169,6 +4236,34 @@ fn max_count_key(counts: &BTreeMap<String, usize>) -> &str {
 
 fn pro_policy_matrix_mechanism_axis_key(key: &str) -> &str {
     key.find("axis=").map(|index| &key[index..]).unwrap_or(key)
+}
+
+fn pro_policy_matrix_mechanism_axes_for_moves(
+    baseline_id: &str,
+    board_fen: &str,
+    baseline_move_fen: &str,
+    candidate_move_fen: &str,
+) -> String {
+    let board = MonsGame::from_fen(board_fen, false)
+        .expect("policy matrix mechanism axis board fen should be valid");
+    let mechanism_profile = pro_policy_mechanism_profile_for_baseline(baseline_id);
+    let baseline_probe =
+        runtime_decision_probe(mechanism_profile, SmartAutomovePreference::Pro, &board);
+    let baseline_advisor = pro_v2_root_advisor_decision_snapshot();
+
+    pro_policy_mechanism_class_keys(
+        mechanism_profile,
+        SmartAutomovePreference::Pro,
+        &board,
+        &baseline_probe,
+        baseline_advisor.as_ref(),
+        baseline_move_fen,
+        candidate_move_fen,
+    )
+    .into_iter()
+    .map(|key| pro_policy_matrix_mechanism_axis_key(&key).to_string())
+    .collect::<Vec<_>>()
+    .join("|")
 }
 
 #[derive(Default)]
