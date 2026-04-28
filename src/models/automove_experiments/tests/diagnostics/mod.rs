@@ -2456,6 +2456,21 @@ fn smart_automove_pro_policy_matrix_probe() {
         baseline_better_pairs: BTreeSet<String>,
     }
 
+    #[derive(Default)]
+    struct PolicyMatrixRecordFilterStats {
+        corpus_records: usize,
+        trace_records: usize,
+        panels: BTreeSet<String>,
+        duels: BTreeSet<String>,
+        candidates: BTreeSet<String>,
+        outcomes: BTreeSet<String>,
+        portfolio_classes: BTreeSet<String>,
+        variants: BTreeSet<String>,
+        colors: BTreeSet<String>,
+        branches: BTreeSet<String>,
+        pairs: BTreeSet<String>,
+    }
+
     let shipping_profile = reliability_shipping_profile_id();
     let shipping_selector = profile_selector_from_name(shipping_profile.as_str())
         .unwrap_or_else(|| panic!("shipping '{}' not found", shipping_profile));
@@ -2594,6 +2609,7 @@ fn smart_automove_pro_policy_matrix_probe() {
         BTreeMap::<String, usize>::new();
     let mut global_mechanism_axis_routes =
         BTreeMap::<String, PolicyMatrixMechanismRouteCoverage>::new();
+    let mut record_filter_stats = PolicyMatrixRecordFilterStats::default();
     let mut global_state_limit_hit = false;
 
     for panel in pro_promotion_dashboard_panel_specs()
@@ -2986,6 +3002,28 @@ fn smart_automove_pro_policy_matrix_probe() {
                                         &mechanism_axes,
                                         &baseline_better_mechanism_axes,
                                     ) {
+                                        record_filter_stats.corpus_records += 1;
+                                        record_filter_stats.panels.insert(panel.label.to_string());
+                                        record_filter_stats.duels.insert(duel.label.to_string());
+                                        record_filter_stats
+                                            .candidates
+                                            .insert(candidate.id.to_string());
+                                        record_filter_stats.outcomes.insert(outcome.to_string());
+                                        record_filter_stats
+                                            .portfolio_classes
+                                            .insert(portfolio_class.to_string());
+                                        record_filter_stats
+                                            .variants
+                                            .insert(automove_variant_label(variant).to_string());
+                                        record_filter_stats.colors.insert(active_color.to_string());
+                                        record_filter_stats.branches.insert(format!(
+                                            "{}->{}",
+                                            baseline_branch, candidate_branch
+                                        ));
+                                        record_filter_stats.pairs.insert(format!(
+                                            "{}->{}",
+                                            baseline_move, candidate_move
+                                        ));
                                         println!(
                                             "PRO_POLICY_MATRIX_CORPUS_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"policy_results\":\"{}\",\"winning_policies\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"mechanism_axes\":\"{}\",\"baseline_better_mechanism_axes\":\"{}\",\"board\":\"{}\",\"opening\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
                                             json_escape(panel.label),
@@ -3208,6 +3246,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                                         &mechanism_axes,
                                         &baseline_better_mechanism_axes,
                                     ) {
+                                        record_filter_stats.trace_records += 1;
                                         println!(
                                             "PRO_POLICY_MATRIX_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"mechanism_axes\":\"{}\",\"baseline_better_mechanism_axes\":\"{}\",\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_decision\":\"{}\",\"candidate_decision\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
                                             json_escape(panel.label),
@@ -3604,6 +3643,34 @@ fn smart_automove_pro_policy_matrix_probe() {
         )),
         global_state_limit_hit,
     );
+    if !global_only && (include_corpus_records || !record_axis_filter_all) {
+        let join_record_set = |values: &BTreeSet<String>| -> String {
+            values.iter().cloned().collect::<Vec<_>>().join("|")
+        };
+        println!(
+            "PRO_POLICY_MATRIX_RECORD_FILTER_SUMMARY {{\"record_axis_filter\":\"{}\",\"corpus_records\":{},\"trace_records\":{},\"panel_count\":{},\"duel_count\":{},\"candidate_count\":{},\"outcome_count\":{},\"portfolio_class_count\":{},\"variant_count\":{},\"color_count\":{},\"branch_count\":{},\"pair_count\":{},\"panels\":\"{}\",\"duels\":\"{}\",\"candidates\":\"{}\",\"outcomes\":\"{}\",\"portfolio_classes\":\"{}\",\"variants\":\"{}\",\"colors\":\"{}\",\"branches\":\"{}\"}}",
+            json_escape(&record_axis_filter_label),
+            record_filter_stats.corpus_records,
+            record_filter_stats.trace_records,
+            record_filter_stats.panels.len(),
+            record_filter_stats.duels.len(),
+            record_filter_stats.candidates.len(),
+            record_filter_stats.outcomes.len(),
+            record_filter_stats.portfolio_classes.len(),
+            record_filter_stats.variants.len(),
+            record_filter_stats.colors.len(),
+            record_filter_stats.branches.len(),
+            record_filter_stats.pairs.len(),
+            json_escape(&join_record_set(&record_filter_stats.panels)),
+            json_escape(&join_record_set(&record_filter_stats.duels)),
+            json_escape(&join_record_set(&record_filter_stats.candidates)),
+            json_escape(&join_record_set(&record_filter_stats.outcomes)),
+            json_escape(&join_record_set(&record_filter_stats.portfolio_classes)),
+            json_escape(&join_record_set(&record_filter_stats.variants)),
+            json_escape(&join_record_set(&record_filter_stats.colors)),
+            json_escape(&join_record_set(&record_filter_stats.branches)),
+        );
+    }
     if !global_only {
         for (key, games) in
             pro_policy_matrix_sorted_counts(&global_portfolio_class_counts, aggregate_limit)

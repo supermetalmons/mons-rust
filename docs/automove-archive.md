@@ -1270,3 +1270,11 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The filter computes mechanism axes for printed records even when the aggregate mechanism-class flags are off, but it does not change outcome totals, route aggregation, or stoplight labels.
 - The filter was smoke-validated on the active Fast `engine_post_search` route with `SMART_PRO_POLICY_MATRIX_RECORD_AXIS_FILTER='axis=stage baseline_stage=engine_post_search'`. The run emitted only the matching `PRO_POLICY_MATRIX_CORPUS_RECORD` and `PRO_POLICY_MATRIX_RECORD` pair plus the normal summaries.
 - Durable outcome: use route bucket output to pick an axis, then use the record-axis filter for focused corpus inspection. The filtered records are Outcome Corpus V2 input, not runtime source permission.
+
+## Record Filter Summary Output
+
+- No runtime challenger survived this iteration. The retained source change is harness-only: filtered matrix runs now emit `PRO_POLICY_MATRIX_RECORD_FILTER_SUMMARY`, summarizing matching corpus and trace records by panel, duel, policy, outcome, portfolio class, variant, color, branch transition, and first-move pair count.
+- The focused active Pro/Fast query for `axis=stage baseline_stage=engine_post_search head_accepted=false head_primary=Some("equal") pre_family=ManaTempo head_family=Some(SpiritImpact)` still returned `build_outcome_corpus_v2`: `total_games=6`, guarded baseline wins `1`, candidate-any wins `6`, candidate-only wins `5`, no-policy wins `0`, and `clean_low_fragmentation_routes=0`.
+- The selected route remained no-source. It matched four corpus records across `vs_shipping_pro` and `vs_shipping_fast`, black and white, policies `frontier_pro_v2_no_selected_followup_projection`, `frontier_pro_v3_full_scored_reply_guard`, and `shipping_pro_search_control`, two branch transitions, and four first-move pairs.
+- The summary output was smoke-validated on a one-state active Fast slice. It reported one corpus record, one trace record, and one policy/branch/pair for the filtered route, preserving the normal recommendation output.
+- Durable outcome: `engine_post_search` remains an Outcome Corpus V2 fixture, not source permission. Use `PRO_POLICY_MATRIX_RECORD_FILTER_SUMMARY` to retire or prioritize future bucket axes without manually counting raw filtered records.

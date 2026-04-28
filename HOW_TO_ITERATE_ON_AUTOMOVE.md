@@ -251,6 +251,8 @@ When mechanism-class output is enabled, printed `PRO_POLICY_MATRIX_RECORD` and `
 
 `SMART_PRO_POLICY_MATRIX_RECORD_AXIS_FILTER` also filters printed `PRO_POLICY_MATRIX_RECORD` trace lines. When a filter is set, mechanism axes are computed for records even if the broader mechanism-class aggregate flags are off; the filter is for printed record inspection only and does not change outcome counts or route aggregates.
 
+Filtered record runs emit `PRO_POLICY_MATRIX_RECORD_FILTER_SUMMARY` after the global stoplight. Read it before raw records: it reports matching corpus/trace record counts plus distinct panels, duels, policies, outcomes, variants, colors, branch transitions, and first-move pairs. Multiple policies, branches, or pairs in this summary keep the route in Outcome Corpus V2/postprocess territory.
+
 Set `SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE=true` on a narrow run when a first divergence needs deeper root evidence. This adds guarded root rank, family, score, selected/advisor status, and full-vs-no-selected-followup utility for both divergent moves. Keep this off for broad matrix runs because it reruns root scoring for printed records.
 
 Set `SMART_PRO_POLICY_MATRIX_INCLUDE_MECHANISM_CLASS=true` only on narrow matrix runs when the stoplights show a policy delta worth classifying. This adds `PRO_POLICY_MATRIX_MECHANISM_CLASS` records keyed by candidate, outcome, and coarse guarded mechanism class, and the portfolio stoplight reports `max_mechanism_class_games`, so candidate wins can be compared against baseline saves/regressions without reading every exact divergence. It reruns root/advisor probes for every nonzero first divergence, so do not enable it for a broad reset portfolio until a filtered run finishes cheaply.
