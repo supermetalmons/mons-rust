@@ -2480,6 +2480,9 @@ fn smart_automove_pro_policy_matrix_probe() {
     let aggregate_limit = env_usize("SMART_PRO_POLICY_MATRIX_AGGREGATE_LIMIT")
         .unwrap_or(64)
         .max(1);
+    let route_bucket_limit = env_usize("SMART_PRO_POLICY_MATRIX_ROUTE_BUCKET_LIMIT")
+        .unwrap_or(3)
+        .max(1);
     let include_decision_probe =
         env_bool("SMART_PRO_POLICY_MATRIX_INCLUDE_DECISION_PROBE").unwrap_or(false);
     let include_mechanism_class =
@@ -3661,6 +3664,26 @@ fn smart_automove_pro_policy_matrix_probe() {
                 + route.candidate_only_branches.len().saturating_sub(1)
                 + route.candidate_only_pairs.len().saturating_sub(1)
         };
+        let route_bucket = |route: &PolicyMatrixMechanismRouteCoverage| -> Option<&'static str> {
+            if low_fragmentation_route(route) {
+                Some("clean_low_fragmentation")
+            } else if route.candidate_only_states.len() >= 2
+                && route.baseline_better_states.is_empty()
+            {
+                Some("clean_fragmented")
+            } else if !route.candidate_only_states.is_empty()
+                && !route.baseline_better_states.is_empty()
+            {
+                Some("baseline_risk")
+            } else if !route.candidate_only_states.is_empty() {
+                Some("singleton_candidate")
+            } else {
+                None
+            }
+        };
+        let join_route_set = |values: &BTreeSet<String>| -> String {
+            values.iter().cloned().collect::<Vec<_>>().join("|")
+        };
         let clean_low_fragmentation_routes = global_mechanism_axis_routes
             .values()
             .filter(|route| low_fragmentation_route(route))
@@ -3788,6 +3811,65 @@ fn smart_automove_pro_policy_matrix_probe() {
             best_baseline_risk_candidate_only_states,
             best_baseline_risk_baseline_better_states,
         );
+        for bucket in [
+            "clean_low_fragmentation",
+            "clean_fragmented",
+            "baseline_risk",
+            "singleton_candidate",
+        ] {
+            let mut bucket_entries = global_mechanism_axis_routes
+                .iter()
+                .filter(|(_, route)| route_bucket(route) == Some(bucket))
+                .collect::<Vec<_>>();
+            bucket_entries.sort_by(|(left_key, left_route), (right_key, right_route)| {
+                right_route
+                    .candidate_only_states
+                    .len()
+                    .cmp(&left_route.candidate_only_states.len())
+                    .then_with(|| {
+                        right_route
+                            .candidate_only_games
+                            .cmp(&left_route.candidate_only_games)
+                    })
+                    .then_with(|| {
+                        right_route
+                            .baseline_better_states
+                            .len()
+                            .cmp(&left_route.baseline_better_states.len())
+                    })
+                    .then_with(|| {
+                        route_fragmentation_score(left_route)
+                            .cmp(&route_fragmentation_score(right_route))
+                    })
+                    .then_with(|| left_key.cmp(right_key))
+            });
+            for (rank, (key, route)) in bucket_entries
+                .into_iter()
+                .take(route_bucket_limit)
+                .enumerate()
+            {
+                println!(
+                    "PRO_POLICY_MATRIX_GLOBAL_ROUTE_BUCKET {{\"bucket\":\"{}\",\"rank\":{},\"key\":\"{}\",\"label\":\"{}\",\"candidate_only_games\":{},\"baseline_better_games\":{},\"candidate_only_states\":{},\"baseline_better_states\":{},\"candidate_only_policy_count\":{},\"candidate_only_branch_count\":{},\"candidate_only_pair_count\":{},\"candidate_only_panels\":\"{}\",\"candidate_only_duels\":\"{}\",\"candidate_only_policies\":\"{}\",\"candidate_only_branches\":\"{}\",\"baseline_better_policies\":\"{}\",\"baseline_better_branches\":\"{}\"}}",
+                    bucket,
+                    rank + 1,
+                    json_escape(key),
+                    route_label(route),
+                    route.candidate_only_games,
+                    route.baseline_better_games,
+                    route.candidate_only_states.len(),
+                    route.baseline_better_states.len(),
+                    route.candidate_only_policies.len(),
+                    route.candidate_only_branches.len(),
+                    route.candidate_only_pairs.len(),
+                    json_escape(&join_route_set(&route.candidate_only_panels)),
+                    json_escape(&join_route_set(&route.candidate_only_duels)),
+                    json_escape(&join_route_set(&route.candidate_only_policies)),
+                    json_escape(&join_route_set(&route.candidate_only_branches)),
+                    json_escape(&join_route_set(&route.baseline_better_policies)),
+                    json_escape(&join_route_set(&route.baseline_better_branches)),
+                );
+            }
+        }
         let mut separation_entries = global_mechanism_axis_routes.iter().collect::<Vec<_>>();
         separation_entries.sort_by(|(left_key, left_counts), (right_key, right_counts)| {
             right_counts

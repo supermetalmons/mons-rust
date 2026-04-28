@@ -45,7 +45,7 @@ Their historical no-go evidence remains in `docs/automove-knowledge.md` and `doc
 
 ## Next Command Sequence
 
-Current next sequence: rerun the broad global route recommendation scan, then follow the single top-level label. The latest broad result should point to Outcome Corpus V2, not runtime code, unless a future run produces `narrow_low_fragmentation_route`.
+Current next sequence: rerun the broad global route recommendation scan with route bucket output, then follow the single top-level label. The latest broad result should point to Outcome Corpus V2, not runtime code, unless a future run produces `narrow_low_fragmentation_route`.
 
 ```sh
 SMART_PRO_POLICY_MATRIX_GLOBAL_ONLY=true \
@@ -56,6 +56,7 @@ SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS=true \
 
 Read `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` by state counts first, then inspect `candidate_only_policy_count`, `candidate_only_branch_count`, and `candidate_only_pair_count`. A clean route that is fragmented on those dimensions is diagnostic only. Only a clean route with positive state-level separation and low fragmentation should earn a narrow record/probe rerun.
 Read `PRO_POLICY_MATRIX_GLOBAL_ROUTE_RECOMMENDATION` before raw route lines. `build_outcome_corpus_v2` means preserve harness/postprocess work and do not write a runtime selector.
+Read `PRO_POLICY_MATRIX_GLOBAL_ROUTE_BUCKET` next. Its bucketed shortlist should replace manual grepping through all raw route lines.
 
 ## Major Idea Backlog
 
@@ -63,7 +64,7 @@ Read `PRO_POLICY_MATRIX_GLOBAL_ROUTE_RECOMMENDATION` before raw route lines. `bu
 
 Structural change: make corpus output a persistent, queryable artifact instead of stdout that humans manually scan. Emit normalized JSONL records for each policy decision, then add a postprocessor that ranks mechanisms by candidate-only wins, baseline-better saves, no-policy gaps, cross-budget stability, cost, and state-limit confidence.
 
-First proof: use the retained reset portfolio and current `pro-policy-outcome-corpus` feed. Add only harness/postprocess code until the report can answer "which mechanism is clean enough to become a feature?" without reading raw logs. Current progress: global outcome-corpus output now includes state-aware `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` labels, route fragmentation counts, and `PRO_POLICY_MATRIX_GLOBAL_ROUTE_RECOMMENDATION`; record output includes `mechanism_axes` / `baseline_better_mechanism_axes` so route lines can be matched back to divergences.
+First proof: use the retained reset portfolio and current `pro-policy-outcome-corpus` feed. Add only harness/postprocess code until the report can answer "which mechanism is clean enough to become a feature?" without reading raw logs. Current progress: global outcome-corpus output now includes state-aware `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` labels, route fragmentation counts, `PRO_POLICY_MATRIX_GLOBAL_ROUTE_RECOMMENDATION`, and bucketed `PRO_POLICY_MATRIX_GLOBAL_ROUTE_BUCKET` shortlists; record output includes `mechanism_axes` / `baseline_better_mechanism_axes` so route lines can be matched back to divergences.
 
 Promotion signal: one mechanism repeats across deduplicated states in at least two panels or opponent budgets, has positive state-level separation after baseline saves, and points to a feature below policy labels.
 
@@ -161,6 +162,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - The latest broad state-aware route summary confirmed that zero-window safe-pressure remains `baseline_save_risk` despite positive raw emissions; it had candidate-only games `10`, baseline-better games `5`, candidate-only states `5`, and baseline-better states `3`.
 - Cleaner route signals are timing/stage-level and still diagnostic only. The top clean active route was `engine_post_search` with `pre_family=ManaTempo head_family=Some(SpiritImpact)`: candidate-only games `3`, baseline-better games `0`, candidate-only states `3`, spanning active Pro/Fast only. Focused records showed three winning policies, both colors, two branch transitions, and three first-move pairs, so it is retired as source permission.
 - The latest full reset portfolio route scan found zero clean low-fragmentation routes. All clean repeated routes were fragmented by policy, branch, or first-move pair, so the retained next step is Outcome Corpus V2/postprocess work rather than runtime selection.
+- The latest route recommendation scan emitted `build_outcome_corpus_v2`: `candidate_signal_routes=109`, `clean_low_fragmentation_routes=0`, `clean_fragmented_routes=8`, and `baseline_risk_routes=14`. The best clean route was still the active-only fragmented `engine_post_search` stage route; best baseline risk was still zero-window safe exact pressure.
 - Raw ProV2, no-selected-followup, full-scored reply guard, no-low-budget, alternating-white, and white-opening utility policies are diagnostic components, not retained challengers.
 - Root-origin and continuation-probe ProV4 attempts are retired unless they add a new discriminator below current score, rank, family, safety, progress, and `TurnEngineUtility` fields.
 - Future source-bearing work should be one of: Outcome Corpus V2, a test-only ProV4 unified root policy, or a corpus-calibrated utility feature.
@@ -172,7 +174,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - Shipping decision: public Pro remains on `frontier_pro_v2_guarded`.
 - Release containment: public `Pro` dispatch still routes through retained runtime code; `automove_experiments` remains under `#[cfg(test)]`.
 - Latest retained package direction: no runtime source retained from recent structural reset work.
-- Latest reset evidence: the broad route-fragmentation scan has oracle coverage but no source permission. Zero clean low-fragmentation routes were found; the strongest clean routes are fragmented across policy, branch, and first-move pair. The retained source change is harness-only route recommendation output.
+- Latest reset evidence: the broad route-fragmentation scan has oracle coverage but no source permission. Zero clean low-fragmentation routes were found; the strongest clean routes are fragmented across policy, branch, and first-move pair. The retained source change is harness-only route bucket shortlist output.
 
 ## Session End Checklist
 
