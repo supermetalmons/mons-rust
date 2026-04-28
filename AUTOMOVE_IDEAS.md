@@ -49,7 +49,7 @@ Current next sequence: run the next bounded active-slice outcome-corpus digest t
 
 ```sh
 SMART_PRO_POLICY_MATRIX_PANEL_FILTER=active_blockers \
-SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_pro \
+SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_normal \
 SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT=2 \
 SMART_PRO_POLICY_MATRIX_GLOBAL_ONLY=true \
 SMART_PRO_POLICY_MATRIX_INCLUDE_CORPUS_RECORDS=false \
@@ -67,7 +67,7 @@ Read `PRO_POLICY_MATRIX_GLOBAL_ROUTE_RECOMMENDATION` before raw route lines. `bu
 Read `PRO_POLICY_MATRIX_GLOBAL_ROUTE_BUCKET` next. Its bucketed shortlist should replace manual grepping through all raw route lines.
 For focused record inspection, copy the bucket `key` into `SMART_PRO_POLICY_MATRIX_RECORD_AXIS_FILTER`. The filtered records are for grouping/postprocess design; they do not override route-fragmentation no-go rules.
 Read `PRO_POLICY_MATRIX_RECORD_FILTER_SUMMARY` and `PRO_POLICY_MATRIX_RECORD_FILTER_DETAIL` before raw records; if the detail rows still have multiple policies, branches, or first-move pairs, keep the work in postprocess/harness.
-When a log exists, read the summarizer's `route_permission` and per-filter `permission` fields first. `postprocess_only` or `fragmented_no_source` means update knowledge and keep runtime source untouched.
+When a log exists, read the summarizer's `corpus_decision`, `route_permission`, and per-filter `permission` fields first. `coverage_gap`, `baseline_save_risk`, `singleton_no_source`, `postprocess_only`, or `fragmented_no_source` means update knowledge and keep runtime source untouched.
 Use `SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT` for global caps. `SMART_PRO_POLICY_MATRIX_STATE_LIMIT` is per panel/duel and can still fan out across the full panel/budget matrix.
 
 ## Major Idea Backlog
@@ -76,7 +76,7 @@ Use `SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT` for global caps. `SMART_PRO_POLI
 
 Structural change: make corpus output a persistent, queryable artifact instead of stdout that humans manually scan. Emit normalized JSONL records for each policy decision, then add a postprocessor that ranks mechanisms by candidate-only wins, baseline-better saves, no-policy gaps, cross-budget stability, cost, and state-limit confidence.
 
-First proof: use the retained reset portfolio and current `pro-policy-outcome-corpus` feed. Add only harness/postprocess code until the report can answer "which mechanism is clean enough to become a feature?" without reading raw logs. Current progress: global outcome-corpus output now includes state-aware `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` labels, route fragmentation counts, `PRO_POLICY_MATRIX_GLOBAL_ROUTE_RECOMMENDATION`, and bucketed `PRO_POLICY_MATRIX_GLOBAL_ROUTE_BUCKET` shortlists; record output includes `mechanism_axes` / `baseline_better_mechanism_axes`, `SMART_PRO_POLICY_MATRIX_RECORD_AXIS_FILTER`, `PRO_POLICY_MATRIX_RECORD_FILTER_SUMMARY`, and capped `PRO_POLICY_MATRIX_RECORD_FILTER_DETAIL` rows so route lines can be matched back to divergences without dumping or manually counting the full corpus. `scripts/summarize-automove-policy-matrix-log.py` now turns logged policy-matrix JSON lines into one digest with route and filter permissions, and `SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT` provides a true global cap.
+First proof: use the retained reset portfolio and current `pro-policy-outcome-corpus` feed. Add only harness/postprocess code until the report can answer "which mechanism is clean enough to become a feature?" without reading raw logs. Current progress: global outcome-corpus output now includes state-aware `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` labels, route fragmentation counts, `PRO_POLICY_MATRIX_GLOBAL_ROUTE_RECOMMENDATION`, and bucketed `PRO_POLICY_MATRIX_GLOBAL_ROUTE_BUCKET` shortlists; record output includes `mechanism_axes` / `baseline_better_mechanism_axes`, `SMART_PRO_POLICY_MATRIX_RECORD_AXIS_FILTER`, `PRO_POLICY_MATRIX_RECORD_FILTER_SUMMARY`, and capped `PRO_POLICY_MATRIX_RECORD_FILTER_DETAIL` rows so route lines can be matched back to divergences without dumping or manually counting the full corpus. `scripts/summarize-automove-policy-matrix-log.py` now turns logged policy-matrix JSON lines into one digest with `corpus_decision`, route, and filter permissions, and `SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT` provides a true global cap.
 
 Promotion signal: one mechanism repeats across deduplicated states in at least two panels or opponent budgets, has positive state-level separation after baseline saves, and points to a feature below policy labels.
 
@@ -181,6 +181,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - The safety/progress detail rerun confirmed the no-source split in the retained summarizer: `route_permission=postprocess_only`, route recommendation `build_outcome_corpus_v2`, filter permission `fragmented_no_source`, and candidate/branch/pair counts `3 / 2 / 4`. Detail counts were shipping-control `2`, no-selected `1`, full-scored `1`; Pro/Fast `3 / 1`; outer-edge/alternating `3 / 1`; first-move pairs all singleton.
 - A broad all-panel/all-budget reset digest with only `SMART_PRO_POLICY_MATRIX_STATE_LIMIT=2` was stopped after about fourteen minutes because that cap is per panel/duel. The retained harness fix is `SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT`.
 - A total-capped active Fast digest over the full reset portfolio completed successfully with two total states and stayed no-source: `baseline_save_risk_only`, `candidate_signal_routes=19`, `clean_low_fragmentation_routes=0`, `clean_fragmented_routes=0`, `baseline_risk_routes=1`. The only baseline-risk route was broad zero-window safe exact pressure, with candidate-only states `1` and baseline-better states `1`.
+- A total-capped active Pro digest over the full reset portfolio completed successfully with two total states and stayed no-source: summarizer `corpus_decision=coverage_gap`, route recommendation `singleton_candidate_routes`, `candidate_only_wins=1`, `no_policy_wins=1`, and zero clean routes. The only candidate route was zero-window safe exact pressure as singleton evidence split across two policies and two first-move pairs.
 - Raw ProV2, no-selected-followup, full-scored reply guard, no-low-budget, alternating-white, and white-opening utility policies are diagnostic components, not retained challengers.
 - Root-origin and continuation-probe ProV4 attempts are retired unless they add a new discriminator below current score, rank, family, safety, progress, and `TurnEngineUtility` fields.
 - Future source-bearing work should be one of: Outcome Corpus V2, a test-only ProV4 unified root policy, or a corpus-calibrated utility feature.
@@ -192,7 +193,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - Shipping decision: public Pro remains on `frontier_pro_v2_guarded`.
 - Release containment: public `Pro` dispatch still routes through retained runtime code; `automove_experiments` remains under `#[cfg(test)]`.
 - Latest retained package direction: no runtime source retained from recent structural reset work.
-- Latest reset evidence: the focused route-filter scans have oracle coverage but no source permission. The safety/progress and `engine_post_search` routes remain fragmented across policy, branch, color, budget, and first-move pair; the latest total-capped active Fast digest was `baseline_save_risk_only`. The retained source change is the policy-matrix total-state cap.
+- Latest reset evidence: the focused route-filter scans have oracle coverage but no source permission. The safety/progress and `engine_post_search` routes remain fragmented across policy, branch, color, budget, and first-move pair; the latest total-capped active Fast digest was `baseline_save_risk_only`, and active Pro was `coverage_gap`. The retained source change is the summarizer `corpus_decision` field.
 
 ## Session End Checklist
 

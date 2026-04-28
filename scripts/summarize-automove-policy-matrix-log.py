@@ -51,6 +51,31 @@ def permission_from_recommendation(recommendation):
     return "no_source"
 
 
+def corpus_decision(summary, stoplight, recommendation):
+    stoplight_label = stoplight.get("label", "")
+    recommendation_label = recommendation.get("label", "")
+    no_policy_wins = int(summary.get("no_policy_wins", 0))
+    baseline_only_wins = int(summary.get("baseline_only_wins", 0))
+
+    if recommendation_label == "narrow_low_fragmentation_route":
+        return "inspect_for_source"
+    if no_policy_wins > 0 or stoplight_label == "coverage_gap":
+        return "coverage_gap"
+    if (
+        baseline_only_wins > 0
+        or stoplight_label == "baseline_save_risk"
+        or recommendation_label == "baseline_save_risk_only"
+    ):
+        return "baseline_save_risk"
+    if recommendation_label == "build_outcome_corpus_v2":
+        return "postprocess_only"
+    if recommendation_label == "singleton_candidate_routes":
+        return "singleton_no_source"
+    if recommendation_label == "no_candidate_route":
+        return "no_candidate_route"
+    return "no_source"
+
+
 def permission_from_filter_summary(summary):
     if not summary:
         return "missing_summary"
@@ -106,24 +131,27 @@ def summarize(events):
             filter_details[data.get("record_axis_filter", "")].append(data)
 
     recommendation = latest.get("PRO_POLICY_MATRIX_GLOBAL_ROUTE_RECOMMENDATION", {})
+    global_summary = latest.get("PRO_POLICY_MATRIX_GLOBAL_SUMMARY", {})
+    stoplight = latest.get("PRO_POLICY_MATRIX_GLOBAL_STOPLIGHT", {})
     filters = []
-    for record_axis_filter, summary in sorted(filter_summaries.items()):
+    for record_axis_filter, filter_summary in sorted(filter_summaries.items()):
         details = sorted_details(filter_details.get(record_axis_filter, []))
         filters.append(
             {
                 "record_axis_filter": record_axis_filter,
-                "permission": permission_from_filter_summary(summary),
-                "summary": summary,
+                "permission": permission_from_filter_summary(filter_summary),
+                "summary": filter_summary,
                 "details": details,
             }
         )
 
     return {
         "event_counts": dict(sorted(event_counts.items())),
-        "global_summary": latest.get("PRO_POLICY_MATRIX_GLOBAL_SUMMARY", {}),
-        "global_stoplight": latest.get("PRO_POLICY_MATRIX_GLOBAL_STOPLIGHT", {}),
+        "global_summary": global_summary,
+        "global_stoplight": stoplight,
         "route_recommendation": recommendation,
         "route_permission": permission_from_recommendation(recommendation),
+        "corpus_decision": corpus_decision(global_summary, stoplight, recommendation),
         "route_buckets": {
             bucket: sorted(rows, key=lambda row: int(row.get("rank", 0)))
             for bucket, rows in sorted(route_buckets.items())
