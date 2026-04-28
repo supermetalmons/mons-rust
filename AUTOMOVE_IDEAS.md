@@ -1,6 +1,6 @@
 # Automove Ideas
 
-This is the live decision board for automove work. Keep it short.
+This is the live decision board for automove work. Keep it decision-oriented; move probe diaries to the archive.
 
 Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-major-reset-plan.md` for the current reset handoff, `docs/automove-knowledge.md` for durable rules, and `docs/automove-archive.md` for retired wave detail.
 
@@ -12,6 +12,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-major-
 - Retained profiles are only `shipping_pro_search` and `frontier_pro_v2_guarded`.
 - The current mode is `structural-reset`.
 - There is no live runtime hypothesis and no promotable challenger.
+- Recent stagnation is from the loop where local selectors are cheap to invent, broad promotion proof is expensive, and singleton-heavy corpus evidence still leaves room to try "one more gate".
 - Do not reopen archived profiles, archived seams, archived stages, or pruned sweep candidates as direct experiment targets.
 
 ## Reset Portfolio
@@ -43,31 +44,98 @@ Their historical no-go evidence remains in `docs/automove-knowledge.md` and `doc
 
 ## Next Command Sequence
 
-Default reset-mode entrypoint:
+Current next sequence: get a global routing answer from the outcome corpus before adding another candidate or selector.
 
 ```sh
+SMART_PRO_POLICY_MATRIX_GLOBAL_ONLY=true \
 ./scripts/run-automove-structural-scout.sh --outcome-corpus frontier_pro_v2_guarded
 ```
 
-Start filtered before widening:
+Read the dashboard stoplight first. If the outcome corpus reports a clean repeated mechanism with candidate-only wins separated from baseline-better saves across more than one panel or budget, rerun that one mechanism narrowly with corpus records and decision probes. If it stays singleton-heavy or contaminated, do not write runtime code; implement the Outcome Corpus V2 workbench below.
 
-```sh
-SMART_PRO_POLICY_MATRIX_PANEL_FILTER=active_blockers \
-SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_fast \
-./scripts/run-automove-structural-scout.sh --outcome-corpus frontier_pro_v2_guarded
-```
+## Major Idea Backlog
 
-Use `--corpus` when the next question is first-winning policy coverage or mechanism classes:
+### 1. Outcome Corpus V2 Workbench
 
-```sh
-./scripts/run-automove-structural-scout.sh --corpus frontier_pro_v2_guarded
-```
+Structural change: make corpus output a persistent, queryable artifact instead of stdout that humans manually scan. Emit normalized JSONL records for each policy decision, then add a postprocessor that ranks mechanisms by candidate-only wins, baseline-better saves, no-policy gaps, cross-budget stability, cost, and state-limit confidence.
 
-For a new test-only ProV4/root-policy candidate, register it as a sweep candidate first, then run:
+First proof: use the retained reset portfolio and current `pro-policy-outcome-corpus` feed. Add only harness/postprocess code until the report can answer "which mechanism is clean enough to become a feature?" without reading raw logs.
 
-```sh
-./scripts/run-automove-structural-scout.sh --corpus <candidate>
-```
+Promotion signal: one mechanism repeats across at least two panels or opponent budgets, has positive net separation after baseline saves, and points to a feature below policy labels.
+
+Kill signal: repeated keys remain exact-context, pair, branch, or broad `axis=exact_pressure` classes with comparable baseline-better counts.
+
+### 2. Test-Only ProV4 Unified Root Pool
+
+Structural change: stop treating guarded, head, pre-accept, advisor, preserved, raw, shipping-control, and ablation outputs as separate routing branches. Build a test-only `ProV4RootCandidate` pool with origin labels, root rank/score/family, advisor state, head/pre-accept/legacy status, liveness, reply-risk summary, exact pressure, utility axes, and continuation features. Select from that pool with one comparator.
+
+First proof: implement in diagnostics/sweep only. Register one candidate after the pool can explain current guarded decisions and produce a corpus record for every considered root.
+
+Promotion signal: dashboard is strong on sampled and active panels before attribution, and nonwins share a below-branch mechanism rather than a policy label.
+
+Kill signal: the comparator only reorders existing score/rank/family/safety/progress/`TurnEngineUtility` fields, or it improves sampled Pro while rotating Normal/Fast or active blockers.
+
+### 3. Corpus-Calibrated Utility Feature
+
+Structural change: use the policy portfolio as supervision to add one measured utility feature below selectors. Candidate feature families are continuation stability after the selected root, root preservation/omission as a soft prior, reply-risk floor interacted with progress/setup class, budget-invariant safety deltas, and timing pressure for roots that must enter before first printed divergence.
+
+First proof: extend corpus records with the missing feature value for baseline, guarded, and winning-policy roots; only then add a test-only sweep candidate that changes selection through that feature.
+
+Promotion signal: the feature separates candidate-only wins from baseline saves on both sampled and active evidence, then survives `pro-promotion-dashboard`.
+
+Kill signal: the feature is just another broad utility gate, fires on many guarded saves, or raises cost before strength moves.
+
+### 4. Decision-Timing And Continuation Stability
+
+Structural change: model "when the winning root must enter" as a first-class feature. Current first-divergence records often show the winning policy too late; add probes that compare root choice at selected, pre-accept, head, reply-risk approval, and final output with a cheap next-turn continuation-stability score.
+
+First proof: augment outcome-corpus records with decision-stage timing and cached continuation stability, then re-rank only boards where portfolio winners disagree with guarded.
+
+Promotion signal: the same timing/continuation class explains repairs across more than one variant or budget without hitting known guarded saves.
+
+Kill signal: timing labels are singleton-heavy or collapse to branch labels like `frontier_execute`, `head`, or `pre_accept`.
+
+### 5. Cross-Budget Invariant Mechanism Gate
+
+Structural change: make cross-budget stability a source permission gate, not a follow-up after a selector is already attractive. A proposed mechanism must show all-budget repair or non-regressing repair on the same openings before it can become runtime code.
+
+First proof: join outcome-corpus records by panel, seed tag, opening index, variant, side, and first-divergence ply across Pro/Normal/Fast opponents. Surface budget conflicts directly in the global report.
+
+Promotion signal: candidate-only mechanisms are stable or non-regressing across budgets and do not create `baseline_save_risk`.
+
+Kill signal: a mechanism is active-only, sampled-only, or budget-conflicted even if one panel looks strong.
+
+### 6. Faster Structural Scout Defaults
+
+Structural change: make broad reset scans cheap and decisive by default. Use global-only summaries, state caps, fast-fail dashboard routing, and mechanism-separation tables before printing long record streams.
+
+First proof: update the scout flow so reset mode produces one top-level recommendation: widen a clean mechanism, build a new root feature, run a ProV4 candidate dashboard, or record no-go.
+
+Promotion signal: future sessions stop with one of those decisions instead of another ambiguous matrix dump.
+
+Kill signal: the scout still requires manual interpretation of hundreds of lines before choosing the next action.
+
+### 7. Candidate Lifecycle And Registry Hygiene
+
+Structural change: require every new sweep candidate to declare its mechanism, expected invariant, risk rows, and kill condition next to its registration. Keep pruned candidate IDs archived and force new names for materially different ideas.
+
+First proof: add a small candidate metadata table in the diagnostic harness or docs, then have scripts print the metadata before running dashboards/corpus probes.
+
+Promotion signal: stale ablations stop reappearing as "new" experiments, and failed candidates archive into knowledge instead of accumulating in the live runner.
+
+Kill signal: the metadata becomes a diary or duplicates `docs/automove-archive.md` instead of changing run decisions.
+
+### 8. Cheap Active-Blocker Shadow Panel
+
+Structural change: keep active blockers as a compact shadow panel for architecture triage, not as retained promotion evidence or exact-selector fuel. It should catch obvious sampled-only false positives before full dashboard spend.
+
+First proof: derive a small, deterministic active-blocker sample from existing dashboard seeds and run it before expensive corpus widening.
+
+Promotion signal: the shadow panel kills bad ideas earlier while final decisions still rely on canonical sampled, active, and confirm gates.
+
+Kill signal: it encourages exact-board patching or diverges from the canonical active-blocker dashboard.
+
+For a new test-only ProV4/root-policy candidate, register it as a sweep candidate first, then use the structural scout corpus path from `HOW_TO_ITERATE_ON_AUTOMOVE.md`; that is not the current next command while no candidate exists.
 
 ## Stoplight Rules
 
@@ -89,6 +157,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - Raw ProV2, no-selected-followup, full-scored reply guard, no-low-budget, alternating-white, and white-opening utility policies are diagnostic components, not retained challengers.
 - Root-origin and continuation-probe ProV4 attempts are retired unless they add a new discriminator below current score, rank, family, safety, progress, and `TurnEngineUtility` fields.
 - Future source-bearing work should be one of: Outcome Corpus V2, a test-only ProV4 unified root policy, or a corpus-calibrated utility feature.
+- The fastest path to a promotable automove is probably not another named ProV3 component; it is a shorter evidence loop that ranks mechanisms, then one larger root/utility change measured on the dashboard before retained runtime code.
 
 ## Latest Gate Snapshot
 
@@ -103,11 +172,5 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 1. Update this file with the current state and exactly one next command sequence.
 2. Move durable rules into `docs/automove-knowledge.md`.
 3. Move retired wave detail into `docs/automove-archive.md`.
-4. Clean disposable artifacts after validation:
-
-```sh
-./scripts/clean-experiment-artifacts.sh --dry-run
-./scripts/clean-experiment-artifacts.sh
-```
-
+4. Clean disposable artifacts after validation.
 5. Leave exactly one clear next hypothesis, or explicitly record that there is no live challenger.
