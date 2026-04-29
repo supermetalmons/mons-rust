@@ -80,6 +80,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_consumable_delta",
     "post_engagement",
     "post_engagement_delta",
+    "post_mobility",
+    "post_mobility_delta",
 ]
 ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_rank", ("family", "rank_bucket")),
@@ -125,6 +127,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_engagement", ("family", "post_engagement")),
     ("progress_engagement_delta", ("progress", "post_engagement_delta")),
     ("path_engagement_delta", ("path", "post_engagement_delta")),
+    ("family_mobility", ("family", "post_mobility")),
+    ("progress_mobility_delta", ("progress", "post_mobility_delta")),
+    ("path_mobility_delta", ("path", "post_mobility_delta")),
 ]
 ROOT_POOL_GUARDED_ORIGIN_KINDS = {
     "guarded_selected",
@@ -174,6 +179,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_consumable_delta",
     "post_engagement",
     "post_engagement_delta",
+    "post_mobility",
+    "post_mobility_delta",
 ]
 ROOT_POOL_DELTA_NUMERIC_FIELDS = [
     "rank",
@@ -2210,6 +2217,8 @@ def root_pool_sample_root(row):
         "post_consumable_delta": row.get("post_consumable_delta", ""),
         "post_engagement": row.get("post_engagement", ""),
         "post_engagement_delta": row.get("post_engagement_delta", ""),
+        "post_mobility": row.get("post_mobility", ""),
+        "post_mobility_delta": row.get("post_mobility_delta", ""),
     }
 
 
