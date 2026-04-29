@@ -49,6 +49,13 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "reply_floor",
     "reply_risk",
     "followup_floor",
+    "post_turn_status",
+    "post_exact_window",
+    "post_exact_deny",
+    "post_exact_attack",
+    "post_drainer_safety",
+    "post_exact_pressure",
+    "post_exact_delta",
 ]
 ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_rank", ("family", "rank_bucket")),
@@ -60,6 +67,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("safety_progress", ("safety_detail", "progress")),
     ("reply_progress", ("reply_risk", "progress")),
     ("setup_progress", ("setup_gain", "progress")),
+    ("family_post_pressure", ("family", "post_exact_pressure")),
+    ("progress_post_delta", ("progress", "post_exact_delta")),
+    ("path_post_delta", ("path", "post_exact_delta")),
 ]
 ROOT_POOL_GUARDED_ORIGIN_KINDS = {
     "guarded_selected",
@@ -78,6 +88,13 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "soft_priority",
     "keeps_awake",
     "reply_risk",
+    "post_turn_status",
+    "post_exact_window",
+    "post_exact_deny",
+    "post_exact_attack",
+    "post_drainer_safety",
+    "post_exact_pressure",
+    "post_exact_delta",
 ]
 ROOT_POOL_DELTA_NUMERIC_FIELDS = [
     "rank",
@@ -2087,6 +2104,9 @@ def root_pool_sample_root(row):
         "safety_detail": row.get("safety_detail", ""),
         "progress": row.get("progress", ""),
         "reply_risk": row.get("reply_risk", ""),
+        "post_turn_status": row.get("post_turn_status", ""),
+        "post_exact_pressure": row.get("post_exact_pressure", ""),
+        "post_exact_delta": row.get("post_exact_delta", ""),
     }
 
 

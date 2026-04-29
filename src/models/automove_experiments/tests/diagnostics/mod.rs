@@ -2093,6 +2093,25 @@ fn pro_policy_mechanism_drainer_safety_bucket(value: i32) -> &'static str {
     }
 }
 
+fn pro_policy_mechanism_signed_delta_bucket(delta: i32) -> &'static str {
+    match delta {
+        ..=-2 => "drop_2_plus",
+        -1 => "drop_1",
+        0 => "same",
+        1 => "gain_1",
+        2.. => "gain_2_plus",
+    }
+}
+
+fn pro_policy_mechanism_bool_delta_bucket(before: bool, after: bool) -> &'static str {
+    match (before, after) {
+        (false, false) => "same_false",
+        (true, true) => "same_true",
+        (false, true) => "gained",
+        (true, false) => "lost",
+    }
+}
+
 fn pro_policy_mechanism_turn_bucket(turn_number: i32) -> &'static str {
     match turn_number {
         0..=2 => "turn0_2",
@@ -2133,6 +2152,40 @@ fn pro_policy_mechanism_exact_context_keys(game: &MonsGame) -> Vec<String> {
             context.opponent_can_win_immediately,
         ),
     ]
+}
+
+fn pro_v4_root_pool_exact_pressure_bucket(
+    context: &crate::models::automove_exact::ExactOpportunityContext,
+) -> String {
+    format!(
+        "window={};deny={};attack={};drainer_safety={}",
+        pro_policy_mechanism_value_bucket(context.delta.same_turn_score_window_value, "window0"),
+        pro_policy_mechanism_value_bucket(context.delta.opponent_window_deny_gain, "deny0"),
+        context.delta.drainer_attack_available,
+        pro_policy_mechanism_drainer_safety_bucket(context.delta.drainer_safety),
+    )
+}
+
+fn pro_v4_root_pool_exact_delta_bucket(
+    before: &crate::models::automove_exact::ExactOpportunityContext,
+    after: &crate::models::automove_exact::ExactOpportunityContext,
+) -> String {
+    format!(
+        "window={};deny={};attack={};drainer_safety={}",
+        pro_policy_mechanism_signed_delta_bucket(
+            after.delta.same_turn_score_window_value - before.delta.same_turn_score_window_value,
+        ),
+        pro_policy_mechanism_signed_delta_bucket(
+            after.delta.opponent_window_deny_gain - before.delta.opponent_window_deny_gain,
+        ),
+        pro_policy_mechanism_bool_delta_bucket(
+            before.delta.drainer_attack_available,
+            after.delta.drainer_attack_available,
+        ),
+        pro_policy_mechanism_signed_delta_bucket(
+            after.delta.drainer_safety - before.delta.drainer_safety,
+        ),
+    )
 }
 
 fn pro_policy_mechanism_advisor_class(
@@ -2616,6 +2669,8 @@ fn pro_v4_root_pool_print_snapshot(
             SmartAutomovePreference::Pro,
             &game,
         );
+    let pre_exact_context =
+        crate::models::automove_exact::exact_opportunity_context(&game, game.active_color);
     let mut index_by_inputs = BTreeMap::<String, usize>::new();
     for (index, root) in scored_roots.iter().enumerate() {
         index_by_inputs.insert(Input::fen_from_array(&root.inputs), index);
@@ -2780,6 +2835,13 @@ fn pro_v4_root_pool_print_snapshot(
             followup_floor,
             utility,
             path,
+            post_turn_status,
+            post_exact_window,
+            post_exact_deny,
+            post_exact_attack,
+            post_drainer_safety,
+            post_exact_pressure,
+            post_exact_delta,
         ) = if let Some(root) = root {
             let family = MonsGameModel::turn_engine_root_evaluation_family(root);
             let reply_snapshot = MonsGameModel::root_reply_risk_snapshot(
@@ -2800,6 +2862,54 @@ fn pro_v4_root_pool_print_snapshot(
                 runtime,
                 family,
             );
+            let post_same_active = root.game.active_color == game.active_color;
+            let (
+                post_turn_status,
+                post_exact_window,
+                post_exact_deny,
+                post_exact_attack,
+                post_drainer_safety,
+                post_exact_pressure,
+                post_exact_delta,
+            ) = if post_same_active {
+                let post_exact_context = crate::models::automove_exact::exact_opportunity_context(
+                    &root.game,
+                    game.active_color,
+                );
+                (
+                    "same_active".to_string(),
+                    pro_policy_mechanism_value_bucket(
+                        post_exact_context.delta.same_turn_score_window_value,
+                        "window0",
+                    )
+                    .to_string(),
+                    pro_policy_mechanism_value_bucket(
+                        post_exact_context.delta.opponent_window_deny_gain,
+                        "deny0",
+                    )
+                    .to_string(),
+                    post_exact_context
+                        .delta
+                        .drainer_attack_available
+                        .to_string(),
+                    pro_policy_mechanism_drainer_safety_bucket(
+                        post_exact_context.delta.drainer_safety,
+                    )
+                    .to_string(),
+                    pro_v4_root_pool_exact_pressure_bucket(&post_exact_context),
+                    pro_v4_root_pool_exact_delta_bucket(&pre_exact_context, &post_exact_context),
+                )
+            } else {
+                (
+                    "turn_changed".to_string(),
+                    "inactive".to_string(),
+                    "inactive".to_string(),
+                    "inactive".to_string(),
+                    "inactive".to_string(),
+                    "inactive".to_string(),
+                    "inactive".to_string(),
+                )
+            };
             (
                 Some(root.root_rank),
                 Some(root.score),
@@ -2829,6 +2939,13 @@ fn pro_v4_root_pool_print_snapshot(
                     advisor.as_str(),
                     forced_engine_inputs.as_ref(),
                 ),
+                post_turn_status,
+                post_exact_window,
+                post_exact_deny,
+                post_exact_attack,
+                post_drainer_safety,
+                post_exact_pressure,
+                post_exact_delta,
             )
         } else {
             (
@@ -2846,10 +2963,17 @@ fn pro_v4_root_pool_print_snapshot(
                 None,
                 "omitted".to_string(),
                 "omitted",
+                "omitted".to_string(),
+                "omitted".to_string(),
+                "omitted".to_string(),
+                "omitted".to_string(),
+                "omitted".to_string(),
+                "omitted".to_string(),
+                "omitted".to_string(),
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -2892,6 +3016,13 @@ fn pro_v4_root_pool_print_snapshot(
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| "omitted".to_string()),
             json_escape(&utility),
+            json_escape(&post_turn_status),
+            json_escape(&post_exact_window),
+            json_escape(&post_exact_deny),
+            json_escape(&post_exact_attack),
+            json_escape(&post_drainer_safety),
+            json_escape(&post_exact_pressure),
+            json_escape(&post_exact_delta),
         );
     }
 }
