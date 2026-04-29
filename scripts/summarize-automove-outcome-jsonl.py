@@ -84,6 +84,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_mobility_delta",
     "post_action_threat",
     "post_action_threat_delta",
+    "post_role_state",
+    "post_role_state_delta",
 ]
 ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_rank", ("family", "rank_bucket")),
@@ -135,6 +137,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_action_threat", ("family", "post_action_threat")),
     ("progress_action_threat_delta", ("progress", "post_action_threat_delta")),
     ("path_action_threat_delta", ("path", "post_action_threat_delta")),
+    ("family_role_state", ("family", "post_role_state")),
+    ("progress_role_state_delta", ("progress", "post_role_state_delta")),
+    ("path_role_state_delta", ("path", "post_role_state_delta")),
 ]
 ROOT_POOL_GUARDED_ORIGIN_KINDS = {
     "guarded_selected",
@@ -188,6 +193,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_mobility_delta",
     "post_action_threat",
     "post_action_threat_delta",
+    "post_role_state",
+    "post_role_state_delta",
 ]
 ROOT_POOL_DELTA_NUMERIC_FIELDS = [
     "rank",
@@ -2228,6 +2235,8 @@ def root_pool_sample_root(row):
         "post_mobility_delta": row.get("post_mobility_delta", ""),
         "post_action_threat": row.get("post_action_threat", ""),
         "post_action_threat_delta": row.get("post_action_threat_delta", ""),
+        "post_role_state": row.get("post_role_state", ""),
+        "post_role_state_delta": row.get("post_role_state_delta", ""),
     }
 
 
