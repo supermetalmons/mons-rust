@@ -35,6 +35,9 @@ With --outcome-corpus:
      Defaults to SMART_PRO_POLICY_MATRIX_STATE_LIMIT=2 and
      SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS=true unless
      overridden.
+     After a successful run, the log is postprocessed into .summary.json,
+     .jsonl, and .workbench.json artifacts unless
+     SMART_AUTOMOVE_SCOUT_POSTPROCESS_OUTCOME=false.
 
 With --confirm:
   5. all variants profile sweep, repeats=1, games=12
@@ -110,12 +113,33 @@ run_policy_corpus() {
 
 run_policy_outcome_corpus() {
   local portfolio="${SMART_PRO_POLICY_OUTCOME_CORPUS_PORTFOLIO:-${default_policy_corpus_portfolio}}"
+  local capture_path
+  local log_path
+  local status
   echo "== automove structural scout: policy-outcome-corpus =="
+  capture_path="$(mktemp /tmp/automove-structural-scout-outcome.XXXXXX)"
+  set +e
   SMART_PRO_POLICY_MATRIX_PANEL_FILTER="${SMART_PRO_POLICY_MATRIX_PANEL_FILTER:-all}" \
   SMART_PRO_POLICY_MATRIX_DUEL_FILTER="${SMART_PRO_POLICY_MATRIX_DUEL_FILTER:-all}" \
   SMART_PRO_POLICY_MATRIX_STATE_LIMIT="${SMART_PRO_POLICY_MATRIX_STATE_LIMIT:-2}" \
   SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS="${SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS:-true}" \
-    ./scripts/run-automove-experiment.sh pro-policy-outcome-corpus "${portfolio}" "${shipping}"
+    ./scripts/run-automove-experiment.sh pro-policy-outcome-corpus "${portfolio}" "${shipping}" \
+      | tee "${capture_path}"
+  status=$?
+  set -e
+
+  log_path="$(awk '/^  log: / { sub(/^  log: /, ""); print }' "${capture_path}" | tail -n 1)"
+  rm -f "${capture_path}"
+  if [ "${status}" -ne 0 ]; then
+    return "${status}"
+  fi
+  if [ "${SMART_AUTOMOVE_SCOUT_POSTPROCESS_OUTCOME:-true}" = "true" ]; then
+    if [ -z "${log_path}" ]; then
+      echo "automove structural scout: no policy-outcome-corpus log path found" >&2
+      return 3
+    fi
+    ./scripts/postprocess-automove-outcome-corpus-log.sh "${log_path}"
+  fi
 }
 
 run_profile_sweep_panel() {
