@@ -2244,6 +2244,33 @@ impl ProV4RootPoolOutcomeFeatures {
     }
 }
 
+const PRO_V4_ROOT_POOL_LEGAL_FANOUT_LIMIT: usize = 96;
+
+#[derive(Clone, Copy, Default)]
+struct ProV4RootPoolLegalFanout {
+    total: usize,
+    mon: usize,
+    mana: usize,
+    action: usize,
+    score: usize,
+    terminal: usize,
+    capped: bool,
+}
+
+struct ProV4RootPoolLegalFanoutFeatures {
+    post_legal_fanout: String,
+    post_legal_fanout_delta: String,
+}
+
+impl ProV4RootPoolLegalFanoutFeatures {
+    fn omitted() -> Self {
+        Self {
+            post_legal_fanout: "omitted".to_string(),
+            post_legal_fanout_delta: "omitted".to_string(),
+        }
+    }
+}
+
 fn pro_v4_root_pool_is_high_value_mana(mana: Mana, perspective: Color) -> bool {
     match mana {
         Mana::Supermana => true,
@@ -2261,6 +2288,20 @@ fn pro_v4_root_pool_count_delta_bucket(before: usize, after: usize) -> &'static 
 
 fn pro_v4_root_pool_count_field(value: usize) -> &'static str {
     forced_root_oracle_count_bucket(value)
+}
+
+fn pro_v4_root_pool_status(game: &MonsGame, perspective: Color) -> &'static str {
+    if let Some(winner) = game.winner_color() {
+        if winner == perspective {
+            "own_game_over"
+        } else {
+            "opp_game_over"
+        }
+    } else if game.active_color == perspective {
+        "same_active"
+    } else {
+        "opponent_turn"
+    }
 }
 
 fn pro_v4_root_pool_board_posture(
@@ -2466,18 +2507,140 @@ fn pro_v4_root_pool_bool_delta_bucket(before: bool, after: bool) -> &'static str
     }
 }
 
-fn pro_v4_root_pool_turn_budget(game: &MonsGame, perspective: Color) -> String {
-    let status = if let Some(winner) = game.winner_color() {
-        if winner == perspective {
-            "own_game_over"
-        } else {
-            "opp_game_over"
+fn pro_v4_root_pool_legal_fanout(
+    game: &MonsGame,
+    start_options: SuggestedStartInputOptions,
+) -> ProV4RootPoolLegalFanout {
+    if game.winner_color().is_some() {
+        return ProV4RootPoolLegalFanout::default();
+    }
+    let transitions = MonsGameModel::enumerate_legal_transitions(
+        game,
+        PRO_V4_ROOT_POOL_LEGAL_FANOUT_LIMIT,
+        start_options,
+    );
+    let mut fanout = ProV4RootPoolLegalFanout {
+        total: transitions.len(),
+        capped: transitions.len() >= PRO_V4_ROOT_POOL_LEGAL_FANOUT_LIMIT,
+        ..ProV4RootPoolLegalFanout::default()
+    };
+    for transition in transitions {
+        let mut has_mon = false;
+        let mut has_mana = false;
+        let mut has_action = false;
+        let mut has_score = false;
+        let mut has_terminal = false;
+        for event in transition.events {
+            match event {
+                Event::MonMove { .. } => has_mon = true,
+                Event::ManaMove { .. } => has_mana = true,
+                Event::MysticAction { .. }
+                | Event::DemonAction { .. }
+                | Event::DemonAdditionalStep { .. }
+                | Event::SpiritTargetMove { .. }
+                | Event::UsePotion { .. }
+                | Event::BombAttack { .. } => has_action = true,
+                Event::ManaScored { .. } => has_score = true,
+                Event::GameOver { .. } => has_terminal = true,
+                Event::PickupBomb { .. }
+                | Event::PickupPotion { .. }
+                | Event::PickupMana { .. }
+                | Event::MonFainted { .. }
+                | Event::ManaDropped { .. }
+                | Event::SupermanaBackToBase { .. }
+                | Event::MonAwake { .. }
+                | Event::BombExplosion { .. }
+                | Event::NextTurn { .. }
+                | Event::Takeback => {}
+            }
         }
-    } else if game.active_color == perspective {
+        fanout.mon += usize::from(has_mon);
+        fanout.mana += usize::from(has_mana);
+        fanout.action += usize::from(has_action);
+        fanout.score += usize::from(has_score);
+        fanout.terminal += usize::from(has_terminal);
+    }
+    fanout
+}
+
+fn pro_v4_root_pool_legal_fanout_bucket(
+    game: &MonsGame,
+    fanout: &ProV4RootPoolLegalFanout,
+    perspective: Color,
+) -> String {
+    format!(
+        "status={};cap={};total={};mon={};mana={};action={};score={};terminal={}",
+        pro_v4_root_pool_status(game, perspective),
+        fanout.capped,
+        pro_v4_root_pool_count_field(fanout.total),
+        pro_v4_root_pool_count_field(fanout.mon),
+        pro_v4_root_pool_count_field(fanout.mana),
+        pro_v4_root_pool_count_field(fanout.action),
+        pro_v4_root_pool_count_field(fanout.score),
+        pro_v4_root_pool_count_field(fanout.terminal),
+    )
+}
+
+fn pro_v4_root_pool_legal_fanout_delta_bucket(
+    before: &ProV4RootPoolLegalFanout,
+    after: &ProV4RootPoolLegalFanout,
+) -> String {
+    if before.capped || after.capped {
+        return "cap=true;total=capped;mon=capped;mana=capped;action=capped;score=capped;terminal=capped"
+            .to_string();
+    }
+    format!(
+        "cap=false;total={};mon={};mana={};action={};score={};terminal={}",
+        pro_v4_root_pool_count_delta_bucket(before.total, after.total),
+        pro_v4_root_pool_count_delta_bucket(before.mon, after.mon),
+        pro_v4_root_pool_count_delta_bucket(before.mana, after.mana),
+        pro_v4_root_pool_count_delta_bucket(before.action, after.action),
+        pro_v4_root_pool_count_delta_bucket(before.score, after.score),
+        pro_v4_root_pool_count_delta_bucket(before.terminal, after.terminal),
+    )
+}
+
+fn pro_v4_root_pool_legal_fanout_features(
+    before_game: &MonsGame,
+    before_fanout: &ProV4RootPoolLegalFanout,
+    after_game: &MonsGame,
+    start_options: SuggestedStartInputOptions,
+    perspective: Color,
+) -> ProV4RootPoolLegalFanoutFeatures {
+    let after_fanout = pro_v4_root_pool_legal_fanout(after_game, start_options);
+    let active = if after_game.winner_color().is_some() {
+        "game_over"
+    } else if before_game.active_color == after_game.active_color {
         "same_active"
     } else {
-        "opponent_turn"
+        "turn_changed"
     };
+    let post_legal_fanout_delta = if after_game.winner_color().is_some()
+        || after_game.active_color != before_game.active_color
+    {
+        format!(
+            "active={};cap=inactive;total=inactive;mon=inactive;mana=inactive;action=inactive;score=inactive;terminal=inactive",
+            active,
+        )
+    } else {
+        format!(
+            "active={};{}",
+            active,
+            pro_v4_root_pool_legal_fanout_delta_bucket(before_fanout, &after_fanout)
+        )
+    };
+    ProV4RootPoolLegalFanoutFeatures {
+        post_legal_fanout: pro_v4_root_pool_legal_fanout_bucket(
+            after_game,
+            &after_fanout,
+            perspective,
+        ),
+        post_legal_fanout_delta,
+    }
+}
+
+fn pro_v4_root_pool_turn_budget(game: &MonsGame, perspective: Color) -> String {
+    let status = pro_v4_root_pool_status(game, perspective);
     if game.winner_color().is_some() || game.active_color != perspective {
         return format!("status={status};action=inactive;mana=inactive;mons=inactive");
     }
@@ -3048,6 +3211,8 @@ fn pro_v4_root_pool_print_snapshot(
         );
     let pre_exact_context =
         crate::models::automove_exact::exact_opportunity_context(&game, game.active_color);
+    let root_start_options = MonsGameModel::automove_start_input_options(runtime);
+    let pre_legal_fanout = pro_v4_root_pool_legal_fanout(&game, root_start_options);
     let mut index_by_inputs = BTreeMap::<String, usize>::new();
     for (index, root) in scored_roots.iter().enumerate() {
         index_by_inputs.insert(Input::fen_from_array(&root.inputs), index);
@@ -3221,6 +3386,7 @@ fn pro_v4_root_pool_print_snapshot(
             post_exact_delta,
             board_features,
             outcome_features,
+            legal_fanout_features,
         ) = if let Some(root) = root {
             let family = MonsGameModel::turn_engine_root_evaluation_family(root);
             let reply_snapshot = MonsGameModel::root_reply_risk_snapshot(
@@ -3293,6 +3459,13 @@ fn pro_v4_root_pool_print_snapshot(
                 pro_v4_root_pool_board_features(&game, &root.game, game.active_color);
             let outcome_features =
                 pro_v4_root_pool_outcome_features(&game, &root.game, game.active_color);
+            let legal_fanout_features = pro_v4_root_pool_legal_fanout_features(
+                &game,
+                &pre_legal_fanout,
+                &root.game,
+                root_start_options,
+                game.active_color,
+            );
             (
                 Some(root.root_rank),
                 Some(root.score),
@@ -3331,6 +3504,7 @@ fn pro_v4_root_pool_print_snapshot(
                 post_exact_delta,
                 board_features,
                 outcome_features,
+                legal_fanout_features,
             )
         } else {
             (
@@ -3357,10 +3531,11 @@ fn pro_v4_root_pool_print_snapshot(
                 "omitted".to_string(),
                 ProV4RootPoolBoardFeatures::omitted(),
                 ProV4RootPoolOutcomeFeatures::omitted(),
+                ProV4RootPoolLegalFanoutFeatures::omitted(),
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -3420,6 +3595,8 @@ fn pro_v4_root_pool_print_snapshot(
             json_escape(&outcome_features.post_score_delta),
             json_escape(&outcome_features.post_turn_budget),
             json_escape(&outcome_features.post_turn_budget_delta),
+            json_escape(&legal_fanout_features.post_legal_fanout),
+            json_escape(&legal_fanout_features.post_legal_fanout_delta),
         );
     }
 }
