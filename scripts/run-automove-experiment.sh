@@ -65,6 +65,104 @@ sweep_candidates=(
   frontier_pro_v3_white_opening_utility_mana
 )
 
+sweep_candidate_metadata() {
+  local candidate_id="$1"
+  case "${candidate_id}" in
+    shipping_pro_search_control)
+      metadata_mechanism="search-only shipping baseline as a policy candidate"
+      metadata_expected_invariant="expose where retained search saves guarded without implying source routing"
+      metadata_risk_rows="shipping-control repairs have been singleton or budget-conflicted"
+      metadata_kill_condition="no repeated non-regressing mechanism below policy label"
+      ;;
+    frontier_pro_v2_guarded)
+      metadata_mechanism="retained shipped Pro guarded wrapper path"
+      metadata_expected_invariant="anchor promotion and corpus comparisons to the public Pro route"
+      metadata_risk_rows="self-scouts can only report promotion shape or no-source evidence"
+      metadata_kill_condition="dashboard not_promising or corpus source_permission no_source"
+      ;;
+    frontier_pro_v2_raw)
+      metadata_mechanism="direct ProV2 turn-engine path without guarded wrapper fallback routing"
+      metadata_expected_invariant="test whether guarded fallback routing is suppressing active-blocker strength"
+      metadata_risk_rows="sampled Pro and guarded-save regressions"
+      metadata_kill_condition="sampled dashboard miss or baseline-save contamination"
+      ;;
+    frontier_pro_v2_no_selected_followup_projection)
+      metadata_mechanism="guarded runtime with selected followup projection disabled"
+      metadata_expected_invariant="separate selected-root overcommit from durable root utility"
+      metadata_risk_rows="active Fast only repairs and cross-budget conflicts"
+      metadata_kill_condition="mixed cross-budget or fragmented route evidence"
+      ;;
+    frontier_pro_v3_full_scored_reply_guard)
+      metadata_mechanism="reply-risk guard over the full scored root shortlist"
+      metadata_expected_invariant="recover roots hidden by selected shortlist timing"
+      metadata_risk_rows="guarded white saves and timing-specific baseline-better rows"
+      metadata_kill_condition="coverage gap, baseline-save risk, or branch-pair fragmentation"
+      ;;
+    frontier_pro_v2_no_low_budget_guard)
+      metadata_mechanism="guarded runtime with low-budget guard disabled"
+      metadata_expected_invariant="test whether low-budget gating blocks active forward repairs"
+      metadata_risk_rows="local active forward gains without sampled or budget stability"
+      metadata_kill_condition="no-policy help or mixed cross-budget result"
+      ;;
+    frontier_pro_v3_alternating_white_edge_mana)
+      metadata_mechanism="test-only alternating white opening edge-mana root preference"
+      metadata_expected_invariant="cover the known alternating white sampled opening class"
+      metadata_risk_rows="variant and opening scoped selector pressure"
+      metadata_kill_condition="dashboard miss or singleton mechanism evidence"
+      ;;
+    frontier_pro_v3_white_opening_utility_mana)
+      metadata_mechanism="test-only white opening quiet-mana utility selector"
+      metadata_expected_invariant="cover the sampled Fast white corner-chain selected-root miss"
+      metadata_risk_rows="narrow white opening utility gate and sampled-only overfit"
+      metadata_kill_condition="dashboard miss, cost pressure, or fragmented corpus evidence"
+      ;;
+    *)
+      metadata_mechanism="unknown"
+      metadata_expected_invariant="unknown"
+      metadata_risk_rows="unknown"
+      metadata_kill_condition="unknown"
+      ;;
+  esac
+}
+
+print_one_sweep_candidate_metadata() {
+  local role="$1"
+  local candidate_id="$2"
+  sweep_candidate_metadata "${candidate_id}"
+  printf 'AUTOMOVE_SWEEP_CANDIDATE_METADATA {"role":"%s","id":"%s","mechanism":"%s","expected_invariant":"%s","risk_rows":"%s","kill_condition":"%s"}\n' \
+    "${role}" \
+    "${candidate_id}" \
+    "${metadata_mechanism}" \
+    "${metadata_expected_invariant}" \
+    "${metadata_risk_rows}" \
+    "${metadata_kill_condition}"
+}
+
+print_sweep_candidate_metadata() {
+  local role="$1"
+  local value="$2"
+  local old_ifs="${IFS}"
+  local token
+  local supported
+  IFS=','
+  for token in ${value}; do
+    IFS="${old_ifs}"
+    token="$(printf '%s' "${token}" | xargs)"
+    IFS=','
+    if [ -z "${token}" ]; then
+      continue
+    fi
+    if [ "${token}" = "all" ]; then
+      for supported in "${sweep_candidates[@]}"; do
+        print_one_sweep_candidate_metadata "${role}" "${supported}"
+      done
+      continue
+    fi
+    print_one_sweep_candidate_metadata "${role}" "${token}"
+  done
+  IFS="${old_ifs}"
+}
+
 profile_is_supported() {
   local profile="$1"
   local supported
@@ -275,32 +373,42 @@ require_supported_profile "shipping" "${shipping}"
 case "${stage}" in
   pro-profile-sweep)
     require_supported_sweep_filter "frontier" "${frontier}"
+    print_sweep_candidate_metadata "frontier" "${frontier}"
     ;;
   pro-promotion-dashboard)
     require_supported_sweep_filter "frontier" "${frontier}"
+    print_sweep_candidate_metadata "frontier" "${frontier}"
     ;;
   pro-sweep-decision-record)
     require_supported_sweep_candidate "frontier" "${frontier}"
+    print_sweep_candidate_metadata "frontier" "${frontier}"
     ;;
   pro-policy-matrix)
     require_supported_sweep_filter "frontier" "${frontier}"
+    print_sweep_candidate_metadata "frontier" "${frontier}"
     ;;
   pro-policy-outcome-corpus)
     require_supported_sweep_filter "frontier" "${frontier}"
+    print_sweep_candidate_metadata "frontier" "${frontier}"
     ;;
   pro-policy-cross-budget)
     require_supported_sweep_filter "frontier" "${frontier}"
+    print_sweep_candidate_metadata "frontier" "${frontier}"
     ;;
   pro-policy-winner)
     require_supported_sweep_filter "frontier" "${frontier}"
+    print_sweep_candidate_metadata "frontier" "${frontier}"
     ;;
   pro-policy-corpus)
     require_supported_sweep_filter "frontier" "${frontier}"
+    print_sweep_candidate_metadata "frontier" "${frontier}"
     ;;
   pro-profile-attribution)
     require_supported_sweep_candidate "frontier" "${frontier}"
+    print_sweep_candidate_metadata "frontier" "${frontier}"
     if [ -n "${SMART_PRO_SWEEP_ATTRIBUTION_RIGHT:-}" ]; then
       require_supported_sweep_candidate "attribution right" "${SMART_PRO_SWEEP_ATTRIBUTION_RIGHT}"
+      print_sweep_candidate_metadata "attribution_right" "${SMART_PRO_SWEEP_ATTRIBUTION_RIGHT}"
     fi
     ;;
   *)
