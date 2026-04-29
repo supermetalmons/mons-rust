@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -676,6 +677,12 @@ def pipe_join(items):
     return "|".join(str(item) for item in sorted(items, key=str))
 
 
+def pipe_split(value):
+    if not value:
+        return set()
+    return {item for item in str(value).split("|") if item}
+
+
 def summarize_state_axis_detail(detail, overlap_classes=None):
     if overlap_classes is None:
         overlap_classes = []
@@ -961,6 +968,279 @@ def state_discriminator_summary(
     }
 
 
+def default_token_target_families(state_summary, overlap_families):
+    families = set()
+    for row in state_summary.get("state_rows", []):
+        families.update(pipe_split(row.get("candidate_contaminated_families", "")))
+    if families:
+        return sorted(families)
+    return sorted(overlap_families)
+
+
+def parse_axis_fields(axis):
+    fields = []
+    for part in str(axis or "").split():
+        if "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key or not value:
+            continue
+        fields.append((key, value))
+    return fields
+
+
+def axis_value_atoms(value):
+    atoms = [
+        item
+        for item in re.split(r"[:+/,|]+", str(value))
+        if item and item != value
+    ]
+    return sorted(set(atoms))
+
+
+def axis_tokens(axis):
+    tokens = []
+    for key, value in parse_axis_fields(axis):
+        if key == "axis":
+            continue
+        tokens.append(
+            {
+                "token": f"{key}={value}",
+                "token_kind": "field_value",
+                "field": key,
+                "value": value,
+            }
+        )
+        for atom in axis_value_atoms(value):
+            tokens.append(
+                {
+                    "token": f"{key}:atom={atom}",
+                    "token_kind": "field_atom",
+                    "field": key,
+                    "value": atom,
+                }
+            )
+    return tokens
+
+
+def new_axis_token_group(token, token_kind, field, value):
+    return {
+        "token": token,
+        "token_kind": token_kind,
+        "field": field,
+        "value": value,
+        "record_count": 0,
+        "axis_families": set(),
+        "axes": set(),
+        "class_records": defaultdict(int),
+        "class_states": defaultdict(set),
+        "class_policies": defaultdict(set),
+        "class_duels": defaultdict(set),
+        "class_branches": defaultdict(set),
+        "class_pairs": defaultdict(set),
+    }
+
+
+def add_axis_token_row(groups, row):
+    record_class = row.get("record_class", "unknown")
+    state = row.get("cross_budget_state_id") or state_id(row)
+    if not state:
+        return
+    family = axis_family(row.get("axis", "none"))
+    for token in axis_tokens(row.get("axis", "none")):
+        group = groups.setdefault(
+            token["token"],
+            new_axis_token_group(
+                token["token"],
+                token["token_kind"],
+                token["field"],
+                token["value"],
+            ),
+        )
+        group["record_count"] += 1
+        group["axis_families"].add(family)
+        group["axes"].add(row.get("axis", "none"))
+        group["class_records"][record_class] += 1
+        group["class_states"][record_class].add(state)
+        for field, set_name in [
+            ("candidate", "class_policies"),
+            ("duel", "class_duels"),
+            ("branch", "class_branches"),
+            ("pair", "class_pairs"),
+        ]:
+            value = row.get(field, "")
+            if value:
+                group[set_name][record_class].add(value)
+
+
+def axis_token_groups(rows, target_states, target_families):
+    wanted_states = set(target_states)
+    wanted_families = set(target_families)
+    groups = {}
+    for row in rows:
+        if row.get("row_type") != "policy_axis":
+            continue
+        state = row.get("cross_budget_state_id") or state_id(row)
+        if state not in wanted_states:
+            continue
+        family = axis_family(row.get("axis", "none"))
+        if family not in wanted_families:
+            continue
+        add_axis_token_row(groups, row)
+    return groups
+
+
+def summarize_axis_token_group(group):
+    row = {
+        "token": group["token"],
+        "token_kind": group["token_kind"],
+        "field": group["field"],
+        "value": group["value"],
+        "record_count": group["record_count"],
+        "axis_family_count": len(group["axis_families"]),
+        "axis_families": pipe_join(group["axis_families"]),
+        "axis_count": len(group["axes"]),
+        "sample_axes": sorted(group["axes"])[:5],
+    }
+    for record_class in RECORD_CLASSES:
+        states = group["class_states"].get(record_class, set())
+        row[f"{record_class}_records"] = int(
+            group["class_records"].get(record_class, 0)
+        )
+        row[f"{record_class}_state_count"] = len(states)
+        row[f"{record_class}_state_ids"] = sorted(states)
+        row[f"{record_class}_policy_count"] = len(
+            group["class_policies"].get(record_class, set())
+        )
+        row[f"{record_class}_policies"] = pipe_join(
+            group["class_policies"].get(record_class, set())
+        )
+        row[f"{record_class}_duel_count"] = len(
+            group["class_duels"].get(record_class, set())
+        )
+        row[f"{record_class}_branch_count"] = len(
+            group["class_branches"].get(record_class, set())
+        )
+        row[f"{record_class}_pair_count"] = len(
+            group["class_pairs"].get(record_class, set())
+        )
+    row["baseline_or_no_policy_state_count"] = len(
+        group["class_states"].get("baseline_better", set())
+        | group["class_states"].get("no_policy", set())
+    )
+    row["candidate_clean_from_baseline_no_policy"] = (
+        row["candidate_better_state_count"] > 0
+        and row["baseline_or_no_policy_state_count"] == 0
+    )
+    row["candidate_repeated_across_target_states"] = (
+        row["candidate_better_state_count"] > 1
+    )
+    return row
+
+
+def sort_axis_token_rows(rows):
+    return sorted(
+        rows,
+        key=lambda row: (
+            -row["candidate_better_state_count"],
+            -row["candidate_better_records"],
+            row["same_outcome_state_count"],
+            row["candidate_better_policy_count"],
+            row["candidate_better_branch_count"],
+            row["candidate_better_pair_count"],
+            row["token_kind"],
+            row["token"],
+        ),
+    )
+
+
+def axis_token_decision(clean_repeated, clean_singleton, contaminated):
+    if clean_repeated:
+        return "inspect_repeated_candidate_tokens"
+    if clean_singleton:
+        return "singleton_candidate_tokens"
+    if contaminated:
+        return "no_clean_candidate_tokens"
+    return "no_candidate_tokens"
+
+
+def axis_token_next_action(decision):
+    return {
+        "inspect_repeated_candidate_tokens": "inspect_token_feature_before_runtime",
+        "singleton_candidate_tokens": "archive_or_widen_token_singletons",
+        "no_clean_candidate_tokens": "archive_current_families_or_add_new_feature_axis",
+        "no_candidate_tokens": "try_next_family_set",
+    }.get(decision, "review")
+
+
+def axis_token_discriminator_summary(
+    rows,
+    state_summary,
+    overlap_families,
+    token_limit,
+    token_families=None,
+):
+    target_states = state_summary.get("target_state_ids", [])
+    target_families = (
+        sorted(token_families)
+        if token_families is not None
+        else default_token_target_families(state_summary, overlap_families)
+    )
+    target_family_source = (
+        "cli_token_families"
+        if token_families is not None
+        else "state_contaminated_families"
+    )
+    groups = axis_token_groups(rows, target_states, target_families)
+    token_rows = [
+        row
+        for row in (summarize_axis_token_group(group) for group in groups.values())
+        if row["candidate_better_state_count"] > 0
+    ]
+    clean_tokens = [
+        row
+        for row in token_rows
+        if row["candidate_clean_from_baseline_no_policy"]
+    ]
+    clean_repeated = [
+        row for row in clean_tokens if row["candidate_repeated_across_target_states"]
+    ]
+    clean_singleton = [
+        row for row in clean_tokens if not row["candidate_repeated_across_target_states"]
+    ]
+    contaminated = [
+        row
+        for row in token_rows
+        if not row["candidate_clean_from_baseline_no_policy"]
+    ]
+    decision = axis_token_decision(clean_repeated, clean_singleton, contaminated)
+    return {
+        "target_source": state_summary.get("target_source", ""),
+        "target_state_count": len(target_states),
+        "target_state_ids": target_states,
+        "target_family_source": target_family_source,
+        "target_family_count": len(target_families),
+        "target_families": target_families,
+        "candidate_token_count": len(token_rows),
+        "clean_repeated_candidate_token_count": len(clean_repeated),
+        "clean_singleton_candidate_token_count": len(clean_singleton),
+        "contaminated_candidate_token_count": len(contaminated),
+        "axis_token_decision": decision,
+        "next_action": axis_token_next_action(decision),
+        "top_clean_repeated_candidate_tokens": sort_axis_token_rows(clean_repeated)[
+            :token_limit
+        ],
+        "top_clean_singleton_candidate_tokens": sort_axis_token_rows(clean_singleton)[
+            :token_limit
+        ],
+        "top_contaminated_candidate_tokens": sort_axis_token_rows(contaminated)[
+            :token_limit
+        ],
+    }
+
+
 def workbench_decision(source_rows, blocked_rows):
     if source_rows:
         return "inspect_for_source"
@@ -993,6 +1273,7 @@ def summarize(
     overlap_families=None,
     target_states=None,
     state_axis_limit=None,
+    token_families=None,
 ):
     if overlap_families is None:
         overlap_families = DEFAULT_OVERLAP_FAMILIES
@@ -1003,6 +1284,12 @@ def summarize(
     blocked_rows = blocked_candidate_rows(rows, axis_summaries)
     decision = workbench_decision(source_rows, blocked_rows)
     family_summary = family_overlap_summary(rows, overlap_families)
+    state_summary = state_discriminator_summary(
+        rows,
+        family_summary,
+        target_states=target_states,
+        state_axis_limit=state_axis_limit,
+    )
     return {
         "row_counts": sorted_count_rows(row_type_counts(rows)),
         "policy_decisions": policy_decision_counts(rows),
@@ -1016,11 +1303,13 @@ def summarize(
         "top_blocked_candidate_axes": blocked_rows[:limit],
         "blocked_axis_family_rollups": family_rollups(blocked_rows)[:limit],
         "family_overlap": family_summary,
-        "state_discriminator": state_discriminator_summary(
+        "state_discriminator": state_summary,
+        "axis_token_discriminator": axis_token_discriminator_summary(
             rows,
-            family_summary,
-            target_states=target_states,
-            state_axis_limit=state_axis_limit,
+            state_summary,
+            overlap_families,
+            token_limit=limit,
+            token_families=token_families,
         ),
     }
 
@@ -1067,6 +1356,14 @@ def main():
         default=None,
         help="maximum axes per state discriminator section (default: --limit)",
     )
+    parser.add_argument(
+        "--token-families",
+        default=None,
+        help=(
+            "comma-separated axis families for the token discriminator "
+            "(default: candidate-contaminated families from target states)"
+        ),
+    )
     args = parser.parse_args()
 
     missing = [str(path) for path in args.jsonl if not path.is_file()]
@@ -1080,6 +1377,9 @@ def main():
         target_states=parse_state_filter(args.states),
         state_axis_limit=max(1, args.state_axis_limit)
         if args.state_axis_limit is not None
+        else None,
+        token_families=parse_family_filter(args.token_families)
+        if args.token_families is not None
         else None,
     )
     if args.compact:
