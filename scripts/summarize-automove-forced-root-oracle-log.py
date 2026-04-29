@@ -152,6 +152,20 @@ def step_relation(super_steps, opponent_steps):
     return "tied"
 
 
+def root_step_bucket(value):
+    if value <= 0:
+        return "none"
+    if value == 1:
+        return "one"
+    if value == 2:
+        return "two"
+    if value <= 4:
+        return "three_four"
+    if value <= 12:
+        return "five_twelve"
+    return "unreachable"
+
+
 def parse_utility(text):
     return {key: int(value) for key, value in UTILITY_RE.findall(text or "")}
 
@@ -167,6 +181,11 @@ def root_axes(root):
     same_turn_window = int(root.get("same_turn_window", 0))
     safe_super_steps = int(root.get("safe_super_steps", 0))
     safe_opp_steps = int(root.get("safe_opp_steps", 0))
+    score_path_steps = int(root.get("score_path_steps", 0))
+    score_path_bucket = root_step_bucket(score_path_steps)
+    safe_super_bucket = root_step_bucket(safe_super_steps)
+    safe_opp_bucket = root_step_bucket(safe_opp_steps)
+    window = window_bucket(same_turn_window)
     safety_detail = root.get("safety_detail", "")
     if not safety_detail:
         safety_detail = "vulnerable" if bool(root.get("vulnerable", False)) else "safe"
@@ -186,8 +205,18 @@ def root_axes(root):
         f"family={family}",
         f"rank_band={band}",
         f"family_rank={family}|{band}",
-        f"same_turn_window={window_bucket(same_turn_window)}",
+        f"same_turn_window={window}",
+        f"score_path_steps={score_path_bucket}",
+        f"safe_super_steps={safe_super_bucket}",
+        f"safe_opp_steps={safe_opp_bucket}",
         f"safe_step_relation={step_relation(safe_super_steps, safe_opp_steps)}",
+        f"root_race_shape={window}|score_path_{score_path_bucket}|super_{safe_super_bucket}|opp_{safe_opp_bucket}",
+        f"family_rank_race_shape={family}|{band}|{score_path_bucket}|{safe_super_bucket}|{safe_opp_bucket}",
+        "mana_score_now="
+        f"super_score_{bool_axis(root, 'scores_supermana_this_turn')}|"
+        f"opp_score_{bool_axis(root, 'scores_opponent_mana_this_turn')}|"
+        f"super_pickup_{bool_axis(root, 'safe_supermana_pickup_now')}|"
+        f"opp_pickup_{bool_axis(root, 'safe_opponent_mana_pickup_now')}",
         f"wins_immediately={bool_axis(root, 'wins_immediately')}",
         f"attacks={bool_axis(root, 'attacks')}",
         f"vulnerable={bool_axis(root, 'vulnerable')}",
@@ -227,10 +256,10 @@ def root_axes(root):
                 f"{score_delta_bucket(utility.get('score_delta', 0))}",
                 f"utility.eval_score={score_bucket(utility.get('eval_score', 0))}",
                 "family_rank_window_safety="
-                f"{family}|{band}|{window_bucket(same_turn_window)}|"
+                f"{family}|{band}|{window}|"
                 f"{signed_bucket(utility.get('drainer_safety', 0))}",
                 "family_rank_window_safety_detail="
-                f"{family}|{band}|{window_bucket(same_turn_window)}|"
+                f"{family}|{band}|{window}|"
                 f"{safety_detail}",
             ]
         )
@@ -370,6 +399,7 @@ def summarize_group(group):
             "same_turn_window": int(first_winner.get("same_turn_window", 0)),
             "safety_detail": first_winner.get("safety_detail", ""),
             "progress": first_winner.get("progress", ""),
+            "score_path_steps": int(first_winner.get("score_path_steps", 0)),
             "reply_risk": first_winner.get("reply_risk", ""),
             "reply_bucket": first_winner.get("reply_bucket", ""),
             "followup_bucket": first_winner.get("followup_bucket", ""),
@@ -478,12 +508,18 @@ def root_provenance_items(root):
     progress = root_field_value(root, "progress")
     reply = root_field_value(root, "reply_bucket")
     followup = root_field_value(root, "followup_bucket")
+    window = window_bucket(int(root.get("same_turn_window", 0)))
+    score_path = root_step_bucket(int(root.get("score_path_steps", 0)))
+    safe_super = root_step_bucket(int(root.get("safe_super_steps", 0)))
+    safe_opp = root_step_bucket(int(root.get("safe_opp_steps", 0)))
     return [
         ("path", path),
         ("advisor_bucket", advisor),
         ("family", family),
         ("rank_band", rank),
         ("score_bucket", root_field_value(root, "score_bucket")),
+        ("score_path_steps", score_path),
+        ("root_race_shape", f"{window}|{score_path}|{safe_super}|{safe_opp}"),
         ("safety_detail", safety),
         ("progress", progress),
         ("reply_bucket", reply),
@@ -492,6 +528,10 @@ def root_provenance_items(root):
         ("path_safety_progress", f"{path}|{safety}|{progress}"),
         ("advisor_family_rank", f"{advisor}|{family}|{rank}"),
         ("family_rank_safety", f"{family}|{rank}|{safety}"),
+        (
+            "family_rank_race_shape",
+            f"{family}|{rank}|{score_path}|{safe_super}|{safe_opp}",
+        ),
         ("family_rank_reply", f"{family}|{rank}|{reply}"),
         ("family_rank_followup", f"{family}|{rank}|{followup}"),
     ]
@@ -746,6 +786,16 @@ def normalized_forced_root_row(group, root):
         "opponent_mana_progress": bool(root.get("opponent_mana_progress", False)),
         "safe_super_steps": int(root.get("safe_super_steps", 0)),
         "safe_opp_steps": int(root.get("safe_opp_steps", 0)),
+        "score_path_steps": int(root.get("score_path_steps", 0)),
+        "score_path_steps_bucket": root_step_bucket(
+            int(root.get("score_path_steps", 0))
+        ),
+        "safe_super_steps_bucket": root_step_bucket(
+            int(root.get("safe_super_steps", 0))
+        ),
+        "safe_opp_steps_bucket": root_step_bucket(
+            int(root.get("safe_opp_steps", 0))
+        ),
         "safe_step_relation": step_relation(
             int(root.get("safe_super_steps", 0)),
             int(root.get("safe_opp_steps", 0)),
@@ -753,6 +803,18 @@ def normalized_forced_root_row(group, root):
         "same_turn_window": int(root.get("same_turn_window", 0)),
         "same_turn_window_bucket": window_bucket(
             int(root.get("same_turn_window", 0))
+        ),
+        "scores_supermana_this_turn": bool(
+            root.get("scores_supermana_this_turn", False)
+        ),
+        "scores_opponent_mana_this_turn": bool(
+            root.get("scores_opponent_mana_this_turn", False)
+        ),
+        "safe_supermana_pickup_now": bool(
+            root.get("safe_supermana_pickup_now", False)
+        ),
+        "safe_opponent_mana_pickup_now": bool(
+            root.get("safe_opponent_mana_pickup_now", False)
         ),
         "reply_floor": int(root.get("reply_floor", 0)),
         "reply_risk": root.get("reply_risk", ""),
@@ -787,6 +849,7 @@ def normalized_forced_root_axis_rows(group, root):
         "root_rank": int(root.get("root_rank", -1)),
         "rank_band": root_field_value(root, "rank_band"),
         "score": int(root.get("score", 0)),
+        "score_path_steps": int(root.get("score_path_steps", 0)),
         "inputs": root.get("inputs", ""),
         "family": root.get("family", ""),
         "advisor_bucket": root.get("advisor_bucket", ""),
