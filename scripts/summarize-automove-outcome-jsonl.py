@@ -88,6 +88,12 @@ def parse_excluded_families(value):
     return set(parse_family_filter(value))
 
 
+def parse_optional_family_set(value):
+    if value is None:
+        return None
+    return set(parse_family_filter(value))
+
+
 def state_id(row):
     return row.get("state_id") or row.get("cross_budget_state_id") or ""
 
@@ -117,6 +123,10 @@ def excluded_axis_family(family, excluded_families):
 
 def contrast_axis_allowed(axis, excluded_families):
     return not excluded_axis_family(axis_family(axis), excluded_families)
+
+
+def included_signal_family(family, included_families):
+    return included_families is None or family in included_families
 
 
 def axis_group(axis):
@@ -1508,20 +1518,30 @@ def new_policy_contrast_record(row):
     }
 
 
-def add_policy_contrast_axis(record, row, excluded_families):
+def add_policy_contrast_axis(record, row, excluded_families, contrast_families):
     axis = row.get("axis", "none")
     if not contrast_axis_allowed(axis, excluded_families):
         return
     family = axis_family(axis)
-    record["axes"].add(axis)
-    record["axis_families"].add(family)
-    record["signals"].add(f"axis={axis}")
-    record["signals"].add(f"axis_family={family}")
+    signals = set()
+    signal_families = set()
+    if included_signal_family(family, contrast_families):
+        signal_families.add(family)
+        signals.add(f"axis={axis}")
+        signals.add(f"axis_family={family}")
     for token in axis_tokens(axis):
-        record["signals"].add(token["token"])
+        family = signal_family(token["token"])
+        if included_signal_family(family, contrast_families):
+            signal_families.add(family)
+            signals.add(token["token"])
+    if not signals:
+        return
+    record["axes"].add(axis)
+    record["axis_families"].update(signal_families)
+    record["signals"].update(signals)
 
 
-def policy_contrast_records(rows, excluded_families):
+def policy_contrast_records(rows, excluded_families, contrast_families):
     records = {}
     for row in rows:
         if row.get("row_type") not in {"policy_decision", "policy_axis"}:
@@ -1533,7 +1553,7 @@ def policy_contrast_records(rows, excluded_families):
             continue
         key = policy_record_key(row)
         record = records.setdefault(key, new_policy_contrast_record(row))
-        add_policy_contrast_axis(record, row, excluded_families)
+        add_policy_contrast_axis(record, row, excluded_families, contrast_families)
     return [
         record
         for record in records.values()
@@ -1760,8 +1780,8 @@ def sort_contrast_family_rows(rows):
     )
 
 
-def policy_contrast_report(rows, excluded_families, limit):
-    records = policy_contrast_records(rows, excluded_families)
+def policy_contrast_report(rows, excluded_families, contrast_families, limit):
+    records = policy_contrast_records(rows, excluded_families, contrast_families)
     records_by_state = defaultdict(list)
     class_counts = defaultdict(int)
     for record in records:
@@ -1865,6 +1885,12 @@ def policy_contrast_report(rows, excluded_families, limit):
         "source_permission": "no_source",
         "next_action": next_action_value,
         "excluded_families": sorted(excluded_families),
+        "contrast_family_source": "cli_contrast_families"
+        if contrast_families is not None
+        else "all_non_excluded_families",
+        "contrast_families": sorted(contrast_families)
+        if contrast_families is not None
+        else [],
         "record_count": len(records),
         "record_class_counts": sorted_count_rows(class_counts),
         "candidate_record_count": len(candidate_records),
@@ -1934,6 +1960,7 @@ def summarize(
     token_families=None,
     include_contrast=False,
     exclude_families=None,
+    contrast_families=None,
 ):
     if overlap_families is None:
         overlap_families = DEFAULT_OVERLAP_FAMILIES
@@ -1985,6 +2012,7 @@ def summarize(
         digest["contrast_report"] = policy_contrast_report(
             rows,
             exclude_families,
+            contrast_families,
             limit,
         )
     return digest
@@ -2056,6 +2084,14 @@ def main():
             "(supports aliases such as root_trajectory and race_shape)"
         ),
     )
+    parser.add_argument(
+        "--contrast-families",
+        default=None,
+        help=(
+            "comma-separated signal families to keep in the contrast report "
+            "(default: all non-excluded families)"
+        ),
+    )
     args = parser.parse_args()
 
     missing = [str(path) for path in args.jsonl if not path.is_file()]
@@ -2075,6 +2111,7 @@ def main():
         else None,
         include_contrast=args.contrast_report,
         exclude_families=parse_excluded_families(args.exclude_families),
+        contrast_families=parse_optional_family_set(args.contrast_families),
     )
     if args.compact:
         json.dump(digest, sys.stdout, sort_keys=True, separators=(",", ":"))
