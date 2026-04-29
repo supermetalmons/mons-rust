@@ -1917,6 +1917,8 @@ fn smart_automove_pro_forced_root_oracle_probe() {
         .unwrap_or_else(|| "sampled_alternating_white_no_policy".to_string());
     let continuation_id = env_string_value("SMART_PRO_FORCED_ROOT_ORACLE_CONTINUATION")
         .unwrap_or_else(|| "frontier_pro_v2_guarded".to_string());
+    let root_source_id = env_string_value("SMART_PRO_FORCED_ROOT_ORACLE_ROOT_SOURCE")
+        .unwrap_or_else(|| continuation_id.clone());
     let opponent_mode = env_string_value("SMART_PRO_FORCED_ROOT_ORACLE_OPPONENT_MODE")
         .map(|mode| mode.to_ascii_lowercase())
         .map(|mode| match mode.as_str() {
@@ -1949,15 +1951,16 @@ fn smart_automove_pro_forced_root_oracle_probe() {
         .unwrap_or_else(|| panic!("shipping '{}' not found", shipping_profile));
     let opponent_budget = SearchBudget::from_preference(opponent_mode);
     let (runtime, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
-        continuation.id,
+        root_source_id.as_str(),
         SmartAutomovePreference::Pro,
         &game,
     );
 
     println!(
-        "forced root oracle: label={} continuation={} shipping={} opponent_mode={:?} variant={} active_color={} roots={} root_limit={} max_plies={} start_ply={} rollout_max_plies={} fen={}",
+        "forced root oracle: label={} continuation={} root_source={} shipping={} opponent_mode={:?} variant={} active_color={} roots={} root_limit={} max_plies={} start_ply={} rollout_max_plies={} fen={}",
         label,
         continuation.id,
+        root_source_id,
         shipping_profile,
         opponent_mode,
         automove_variant_label(game.variant()),
@@ -2019,9 +2022,10 @@ fn smart_automove_pro_forced_root_oracle_probe() {
             .filter(|row| matches!(row.0, MatchResult::Draw))
             .count();
         println!(
-            "FORCED_ROOT_ORACLE_SUMMARY {{\"label\":\"{}\",\"continuation\":\"{}\",\"opponent_mode\":\"{:?}\",\"variant\":\"{}\",\"active_color\":\"{}\",\"source\":\"legal_transitions\",\"max_plies\":{},\"start_ply\":{},\"rollout_max_plies\":{},\"tested_roots\":{},\"wins\":{},\"draws\":{},\"losses\":{}}}",
+            "FORCED_ROOT_ORACLE_SUMMARY {{\"label\":\"{}\",\"continuation\":\"{}\",\"root_source\":\"{}\",\"opponent_mode\":\"{:?}\",\"variant\":\"{}\",\"active_color\":\"{}\",\"source\":\"legal_transitions\",\"max_plies\":{},\"start_ply\":{},\"rollout_max_plies\":{},\"tested_roots\":{},\"wins\":{},\"draws\":{},\"losses\":{}}}",
             json_escape(&label),
             json_escape(continuation.id),
+            json_escape(&root_source_id),
             opponent_mode,
             automove_variant_label(game.variant()),
             pro_profile_sweep_color_label(game.active_color),
@@ -2107,9 +2111,10 @@ fn smart_automove_pro_forced_root_oracle_probe() {
         .filter(|row| matches!(row.0, MatchResult::Draw))
         .count();
     println!(
-        "FORCED_ROOT_ORACLE_SUMMARY {{\"label\":\"{}\",\"continuation\":\"{}\",\"opponent_mode\":\"{:?}\",\"variant\":\"{}\",\"active_color\":\"{}\",\"max_plies\":{},\"start_ply\":{},\"rollout_max_plies\":{},\"tested_roots\":{},\"wins\":{},\"draws\":{},\"losses\":{}}}",
+        "FORCED_ROOT_ORACLE_SUMMARY {{\"label\":\"{}\",\"continuation\":\"{}\",\"root_source\":\"{}\",\"opponent_mode\":\"{:?}\",\"variant\":\"{}\",\"active_color\":\"{}\",\"max_plies\":{},\"start_ply\":{},\"rollout_max_plies\":{},\"tested_roots\":{},\"wins\":{},\"draws\":{},\"losses\":{}}}",
         json_escape(&label),
         json_escape(continuation.id),
+        json_escape(&root_source_id),
         opponent_mode,
         automove_variant_label(game.variant()),
         pro_profile_sweep_color_label(game.active_color),

@@ -12,7 +12,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-major-
 - Retained profiles are only `shipping_pro_search` and `frontier_pro_v2_guarded`.
 - The current mode is `structural-reset`.
 - There is no live runtime hypothesis and no promotable challenger.
-- Current diagnostic hypothesis: there is no source-level selector yet. The broad reset route scan found no clean low-fragmentation route; the filtered safety/progress and `engine_post_search` routes are retired as source evidence because their matching states split by policy, color, branch, first move, and advisor status. Outcome Corpus V2 now has a log summarizer with `corpus_decision` / `next_action` / `source_blocker`, multi-log `log_rollup` including rollup-level decisions, compact `coverage_gap_entries`, and a true total-state cap; use those before reading raw matrix logs.
+- Current diagnostic hypothesis: there is no source-level selector yet. The broad reset route scan found no clean low-fragmentation route; the filtered safety/progress and `engine_post_search` routes are retired as source evidence because their matching states split by policy, color, branch, first move, and advisor status. Outcome Corpus V2 now has a log summarizer with `corpus_decision` / `next_action` / `source_blocker`, multi-log `log_rollup` including rollup-level decisions, compact `coverage_gap_entries`, and a true total-state cap. A corrected-horizon forced-root oracle on the active Pro no-policy coverage-gap boards found winning roots in the current root set, but the winners are low/mid ranked and inconsistent by family, so the next work is root-feature/postprocess design rather than runtime selection.
 - Recent stagnation is from the loop where local selectors are cheap to invent, broad promotion proof is expensive, and singleton-heavy corpus evidence still leaves room to try "one more gate".
 - Do not reopen archived profiles, archived seams, archived stages, or pruned sweep candidates as direct experiment targets.
 
@@ -45,16 +45,17 @@ Their historical no-go evidence remains in `docs/automove-knowledge.md` and `doc
 
 ## Next Command Sequence
 
-Current next sequence: do not run another selector or widening experiment first. Use the compact active Pro coverage-gap entry to run a forced-root oracle on the earliest no-policy divergence board. This tests whether the current root set already contains a winning move before designing a new policy/root feature; it is diagnostic only, not runtime source permission.
+Current next sequence: do not write runtime code first. Add or use a compact forced-root oracle digest that compares corrected-horizon `FORCED_ROOT_ORACLE_SUMMARY` / `FORCED_ROOT_ORACLE_ROOT` rows across the active Pro coverage-gap boards and reports winning rank bands, families, utilities, and repeated feature axes. The goal is to find one below-policy root-ranking feature or prove that the wins are still fragmented.
 
 ```sh
 SMART_PRO_FORCED_ROOT_ORACLE_FEN='0 0 w 0 0 1 0 0 3 n05d0xa0xn04/n08e0xn02/n06s0xn04/n04y0xn03xxmn02/xxmxxmn08xxm/xxQxxmn03xxUn03xxMxxQ/xxMxxMn07xxMxxM/n11/n07Y0xn03/n04A0xS0xn05/n03E0xn01D0xn05 8' \
 SMART_PRO_FORCED_ROOT_ORACLE_CONTINUATION=frontier_pro_v2_guarded \
 SMART_PRO_FORCED_ROOT_ORACLE_START_PLY=7 \
+SMART_PRO_FORCED_ROOT_ORACLE_MAX_PLIES=56 \
 cargo test --release --lib smart_automove_pro_forced_root_oracle_probe -- --ignored --nocapture
 ```
 
-If the oracle finds no winning forced root, preserve the no-policy gap and move to a new root feature or broader no-policy corpus view. If it finds a winning root, inspect whether the root repeats below policy labels before creating a test-only ProV4/root-feature candidate.
+If comparing the corrected oracle rows finds no repeated below-policy root feature, archive the fragment and return to Outcome Corpus V2 feature extraction. Only a repeated feature shared by multiple corrected-horizon winning roots should earn a test-only ProV4/root-feature candidate.
 Read `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` by state counts only after compact coverage-gap and oracle evidence, then inspect `candidate_only_policy_count`, `candidate_only_branch_count`, and `candidate_only_pair_count`. A clean route that is fragmented on those dimensions is diagnostic only. Only a clean route with positive state-level separation and low fragmentation should earn a narrow record/probe rerun.
 Read `PRO_POLICY_MATRIX_GLOBAL_ROUTE_RECOMMENDATION` before raw route lines. `build_outcome_corpus_v2` means preserve harness/postprocess work and do not write a runtime selector.
 Read `PRO_POLICY_MATRIX_GLOBAL_ROUTE_BUCKET` next. Its bucketed shortlist should replace manual grepping through all raw route lines.
@@ -163,6 +164,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 
 - Static selectors over existing policy labels, exact contexts, branches, variants, and first moves are retired unless a new corpus feature changes the evidence.
 - The expanded reset portfolio has shown useful oracle coverage, but repeated exact winner context/pair evidence has stayed singleton-heavy.
+- The active Pro no-policy coverage-gap boards are root-covered under corrected horizon but not selector-covered: guarded continuation found `7/16`, `4/16`, and `1/17` winning roots on the checked ply-7, ply-20, and ply-40 boards, while the winning ranks and families did not collapse to one selector feature.
 - Broad zero-window safe-pressure classes are contaminated by baseline-better saves and cannot justify runtime selectors.
 - The latest broad state-aware route summary confirmed that zero-window safe-pressure remains `baseline_save_risk` despite positive raw emissions; it had candidate-only games `10`, baseline-better games `5`, candidate-only states `5`, and baseline-better states `3`.
 - Cleaner route signals are timing/stage-level and still diagnostic only. The top clean active route was `engine_post_search` with `pre_family=ManaTempo head_family=Some(SpiritImpact)`: candidate-only games `3`, baseline-better games `0`, candidate-only states `3`, spanning active Pro/Fast only. Focused records showed three winning policies, both colors, two branch transitions, and three first-move pairs, so it is retired as source permission.
@@ -184,6 +186,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - A sampled/active Pro-budget rollup over the full reset portfolio stayed no-source. Sampled Pro was guarded-covered (`corpus_decision=no_candidate_route`, guarded wins `2`, no candidate-only wins), while active Pro was `coverage_gap` (`candidate_only_wins=1`, `no_policy_wins=1`). The retained summarizer now emits `rollup_decision=coverage_gap`, `rollup_next_action=add_policy_or_root_feature`, and `rollup_permission=no_source` for that mixed no-source shape.
 - The focused active Pro coverage-gap record run showed the active `outer_edge_mana_rows` fixture: candidate black had `shipping_pro_search_control` and `frontier_pro_v3_full_scored_reply_guard` wins, but the same opening as candidate white was a true no-policy state where every current portfolio policy lost. The next postprocess gap is compacting `portfolio_class=no_policy_win` corpus records into per-state coverage-gap summaries.
 - The coverage-gap compact view is now implemented and validated on the focused active Pro fixture. It emits `coverage_gap_entry_count=1` and identifies the candidate-white `outer_edge_mana_rows` no-policy state with all seven policies losing, `first_diff_count=3`, and an earliest listed divergence at first-diff ply `7` on board `0 0 w 0 0 1 0 0 3 n05d0xa0xn04/n08e0xn02/n06s0xn04/n04y0xn03xxmn02/xxmxxmn08xxm/xxQxxmn03xxUn03xxMxxQ/xxMxxMn07xxMxxM/n11/n07Y0xn03/n04A0xS0xn05/n03E0xn01D0xn05 8`.
+- The forced-root oracle now supports `SMART_PRO_FORCED_ROOT_ORACLE_ROOT_SOURCE`, so roots can be scored by a runtime profile while a test-only continuation plays out the line. Always copy the source corpus max-plies cap into `SMART_PRO_FORCED_ROOT_ORACLE_MAX_PLIES` when probing corpus-derived boards.
 - Raw ProV2, no-selected-followup, full-scored reply guard, no-low-budget, alternating-white, and white-opening utility policies are diagnostic components, not retained challengers.
 - Root-origin and continuation-probe ProV4 attempts are retired unless they add a new discriminator below current score, rank, family, safety, progress, and `TurnEngineUtility` fields.
 - Future source-bearing work should be one of: Outcome Corpus V2, a test-only ProV4 unified root policy, or a corpus-calibrated utility feature.
@@ -195,7 +198,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - Shipping decision: public Pro remains on `frontier_pro_v2_guarded`.
 - Release containment: public `Pro` dispatch still routes through retained runtime code; `automove_experiments` remains under `#[cfg(test)]`.
 - Latest retained package direction: no runtime source retained from recent structural reset work.
-- Latest reset evidence: the focused route-filter scans have oracle coverage but no source permission. The safety/progress and `engine_post_search` routes remain fragmented across policy, branch, color, budget, and first-move pair; the latest sampled/active Pro-budget rollup was no-source with `rollup_decision=coverage_gap`, and the focused active Pro compact view exposes a no-policy state where every current policy loses. The retained change is `coverage_gap_entries` in the Outcome Corpus V2 summarizer; no runtime source is retained from this reset pass.
+- Latest reset evidence: the focused route-filter scans have oracle coverage but no source permission. The safety/progress and `engine_post_search` routes remain fragmented across policy, branch, color, budget, and first-move pair; the latest sampled/active Pro-budget rollup was no-source with `rollup_decision=coverage_gap`, and the focused active Pro compact view exposed a no-policy state where every current policy loses. Corrected-horizon forced-root probes show that the no-policy state is root-covered but rank/feature-fragmented. The retained change is harness-only `SMART_PRO_FORCED_ROOT_ORACLE_ROOT_SOURCE` plus the documented corrected-horizon rule; no runtime source is retained from this reset pass.
 
 ## Session End Checklist
 
