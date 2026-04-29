@@ -336,15 +336,18 @@ def corpus_axis_record_class(record):
     return portfolio_class or outcome or "unknown"
 
 
+def split_axis_field(value):
+    return [axis for axis in value.split("|") if axis]
+
+
 def corpus_record_axes(record, record_class):
+    axes = []
     if record_class == "baseline_better":
-        axes = record.get("baseline_better_mechanism_axes", "")
-        if axes:
-            return [axis for axis in axes.split("|") if axis]
-    axes = record.get("mechanism_axes", "")
-    if axes:
-        return [axis for axis in axes.split("|") if axis]
-    return ["none"]
+        axes.extend(split_axis_field(record.get("baseline_better_mechanism_axes", "")))
+    else:
+        axes.extend(split_axis_field(record.get("mechanism_axes", "")))
+    axes.extend(split_axis_field(record.get("timing_continuation_axes", "")))
+    return axes or ["none"]
 
 
 def corpus_axis_summary_state_key(record):
@@ -526,6 +529,7 @@ def record_axis_filter_text(record):
         for value in [
             record.get("mechanism_axes", ""),
             record.get("baseline_better_mechanism_axes", ""),
+            record.get("timing_continuation_axes", ""),
         ]
         if value
     )
@@ -603,6 +607,7 @@ def new_corpus_state_group(record):
         "branches": defaultdict(int),
         "pairs": defaultdict(int),
         "mechanism_axes": defaultdict(int),
+        "timing_continuation_axes": defaultdict(int),
         "divergences": {},
         "record_count": 0,
     }
@@ -626,6 +631,13 @@ def add_record_to_state_group(group, record, event):
                 group["mechanism_axes"][axis] += 1
     else:
         group["mechanism_axes"]["none"] += 1
+    timing_continuation_axes = record.get("timing_continuation_axes", "")
+    if timing_continuation_axes:
+        for axis in timing_continuation_axes.split("|"):
+            if axis:
+                group["timing_continuation_axes"][axis] += 1
+    else:
+        group["timing_continuation_axes"]["none"] += 1
 
     first_diff_ply = int(record.get("first_diff_ply", -1))
     if first_diff_ply < 0:
@@ -656,6 +668,7 @@ def add_record_to_state_group(group, record, event):
             "baseline_move": record.get("baseline_move", ""),
             "candidate_move": record.get("candidate_move", ""),
             "mechanism_axes": record.get("mechanism_axes", ""),
+            "timing_continuation_axes": record.get("timing_continuation_axes", ""),
         },
     )
 
@@ -694,6 +707,7 @@ def add_coverage_gap_record(groups, event):
             "branches": defaultdict(int),
             "pairs": defaultdict(int),
             "mechanism_axes": defaultdict(int),
+            "timing_continuation_axes": defaultdict(int),
             "divergences": {},
             "record_count": 0,
         },
@@ -734,6 +748,9 @@ def summarize_corpus_state_group(group, divergence_limit=3):
         "pair_count": len(pairs),
         "pairs": limited_count_rows(pairs),
         "top_mechanism_axes": limited_count_rows(group["mechanism_axes"], 5),
+        "top_timing_continuation_axes": limited_count_rows(
+            group["timing_continuation_axes"], 5
+        ),
         "first_diff_count": len(divergences),
         "divergences": divergences[:divergence_limit],
     }

@@ -1024,6 +1024,130 @@ fn pro_profile_sweep_divergence_context_key(divergence: &ProProfileSweepFirstDiv
     )
 }
 
+fn pro_policy_matrix_ply_bucket(ply: usize) -> &'static str {
+    match ply {
+        0..=7 => "ply0_7",
+        8..=15 => "ply8_15",
+        16..=31 => "ply16_31",
+        _ => "ply32_plus",
+    }
+}
+
+fn pro_policy_matrix_followup_count_bucket(count: usize) -> &'static str {
+    match count {
+        0 => "followups0",
+        1 => "followups1",
+        2 => "followups2",
+        _ => "followups3_plus",
+    }
+}
+
+fn pro_policy_matrix_continuation_rejoin_bucket(
+    left: &ProProfileSweepAttributionTrace,
+    right: &ProProfileSweepAttributionTrace,
+    divergence: &ProProfileSweepFirstDivergence,
+) -> &'static str {
+    let mut left_after = left
+        .candidate_turns
+        .iter()
+        .filter(|turn| turn.ply > divergence.ply);
+    let mut right_after = right
+        .candidate_turns
+        .iter()
+        .filter(|turn| turn.ply > divergence.ply);
+
+    match (left_after.next(), right_after.next()) {
+        (None, None) => "no_followup",
+        (Some(_), None) | (None, Some(_)) => "one_sided_followup",
+        (Some(left_next), Some(right_next)) if left_next.board_fen == right_next.board_fen => {
+            "next_rejoin"
+        }
+        (Some(_), Some(_)) => {
+            let mut left_later = left
+                .candidate_turns
+                .iter()
+                .filter(|turn| turn.ply > divergence.ply);
+            let right_later = right
+                .candidate_turns
+                .iter()
+                .filter(|turn| turn.ply > divergence.ply)
+                .collect::<Vec<_>>();
+            if left_later.any(|left_turn| {
+                right_later
+                    .iter()
+                    .any(|right_turn| left_turn.board_fen == right_turn.board_fen)
+            }) {
+                "later_rejoin"
+            } else {
+                "no_rejoin"
+            }
+        }
+    }
+}
+
+fn pro_policy_matrix_timing_continuation_axes(
+    first_divergence: Option<&ProProfileSweepFirstDivergence>,
+    baseline_trace: &ProProfileSweepAttributionTrace,
+    candidate_trace: &ProProfileSweepAttributionTrace,
+) -> String {
+    let Some(divergence) = first_divergence else {
+        return [
+            "axis=decision_timing first_diff=none".to_string(),
+            "axis=continuation_stability first_diff=none".to_string(),
+        ]
+        .join("|");
+    };
+
+    let baseline_followups = baseline_trace
+        .candidate_turns
+        .iter()
+        .filter(|turn| turn.ply > divergence.ply)
+        .count();
+    let candidate_followups = candidate_trace
+        .candidate_turns
+        .iter()
+        .filter(|turn| turn.ply > divergence.ply)
+        .count();
+    let branch_transition = if divergence.left_branch == divergence.right_branch {
+        "same_branch"
+    } else {
+        "branch_changed"
+    };
+    let final_state = if baseline_trace.final_fen == candidate_trace.final_fen {
+        "same_final"
+    } else {
+        "different_final"
+    };
+
+    [
+        format!(
+            "axis=decision_timing ply_bucket={} color={} turn_bucket={} mons_moves={} can_action={} can_mana={}",
+            pro_policy_matrix_ply_bucket(divergence.ply),
+            pro_profile_sweep_color_label(divergence.active_color),
+            pro_policy_mechanism_turn_bucket(divergence.turn_number),
+            pro_policy_mechanism_mons_moves_bucket(divergence.mons_moves_count),
+            divergence.can_use_action,
+            divergence.can_move_mana,
+        ),
+        format!(
+            "axis=decision_stage baseline_branch={} candidate_branch={} transition={}",
+            divergence.left_branch, divergence.right_branch, branch_transition,
+        ),
+        format!(
+            "axis=continuation_stability rejoin={} final_state={} baseline_followups={} candidate_followups={}",
+            pro_policy_matrix_continuation_rejoin_bucket(
+                baseline_trace,
+                candidate_trace,
+                divergence,
+            ),
+            final_state,
+            pro_policy_matrix_followup_count_bucket(baseline_followups),
+            pro_policy_matrix_followup_count_bucket(candidate_followups),
+        ),
+    ]
+    .join("|")
+}
+
 fn select_profile_sweep_candidate_inputs_with_branch(
     candidate: ProProfileSweepCandidate,
     game: &MonsGame,
@@ -2580,15 +2704,19 @@ fn smart_automove_pro_policy_matrix_probe() {
         }
     };
     let record_axis_filter_allows = |mechanism_axes: &str,
-                                     baseline_better_mechanism_axes: &str|
+                                     baseline_better_mechanism_axes: &str,
+                                     timing_continuation_axes: &str|
      -> bool {
         if record_axis_filter_all {
             return true;
         }
         let mechanism_axes = mechanism_axes.to_ascii_lowercase();
         let baseline_better_mechanism_axes = baseline_better_mechanism_axes.to_ascii_lowercase();
+        let timing_continuation_axes = timing_continuation_axes.to_ascii_lowercase();
         record_axis_filter.iter().any(|token| {
-            mechanism_axes.contains(token) || baseline_better_mechanism_axes.contains(token)
+            mechanism_axes.contains(token)
+                || baseline_better_mechanism_axes.contains(token)
+                || timing_continuation_axes.contains(token)
         })
     };
     let add_record_filter_breakdown = |stats: &mut PolicyMatrixRecordFilterStats,
@@ -3068,9 +3196,16 @@ fn smart_automove_pro_policy_matrix_probe() {
                                                 "disabled".to_string()
                                             }
                                         });
+                                    let timing_continuation_axes =
+                                        pro_policy_matrix_timing_continuation_axes(
+                                            first_divergence.as_ref(),
+                                            baseline_trace,
+                                            candidate_trace,
+                                        );
                                     if record_axis_filter_allows(
                                         &mechanism_axes,
                                         &baseline_better_mechanism_axes,
+                                        &timing_continuation_axes,
                                     ) {
                                         record_filter_stats.corpus_records += 1;
                                         add_record_filter_breakdown(
@@ -3086,7 +3221,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                                             format!("{}->{}", baseline_move, candidate_move),
                                         );
                                         println!(
-                                            "PRO_POLICY_MATRIX_CORPUS_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"policy_results\":\"{}\",\"winning_policies\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"mechanism_axes\":\"{}\",\"baseline_better_mechanism_axes\":\"{}\",\"board\":\"{}\",\"opening\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
+                                            "PRO_POLICY_MATRIX_CORPUS_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"policy_results\":\"{}\",\"winning_policies\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"mechanism_axes\":\"{}\",\"baseline_better_mechanism_axes\":\"{}\",\"timing_continuation_axes\":\"{}\",\"board\":\"{}\",\"opening\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
                                             json_escape(panel.label),
                                             json_escape(baseline.id),
                                             json_escape(candidate.id),
@@ -3115,6 +3250,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                                             json_escape(exact_context),
                                             json_escape(&mechanism_axes),
                                             json_escape(&baseline_better_mechanism_axes),
+                                            json_escape(&timing_continuation_axes),
                                             json_escape(board_fen),
                                             json_escape(opening_fen),
                                             json_escape(baseline_move),
@@ -3303,9 +3439,16 @@ fn smart_automove_pro_policy_matrix_probe() {
                                     } else {
                                         "disabled".to_string()
                                     };
+                                    let timing_continuation_axes =
+                                        pro_policy_matrix_timing_continuation_axes(
+                                            Some(&divergence),
+                                            baseline_trace,
+                                            candidate_trace,
+                                        );
                                     if record_axis_filter_allows(
                                         &mechanism_axes,
                                         &baseline_better_mechanism_axes,
+                                        &timing_continuation_axes,
                                     ) {
                                         record_filter_stats.trace_records += 1;
                                         if !include_corpus_records {
@@ -3332,7 +3475,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                                             );
                                         }
                                         println!(
-                                            "PRO_POLICY_MATRIX_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"mechanism_axes\":\"{}\",\"baseline_better_mechanism_axes\":\"{}\",\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_decision\":\"{}\",\"candidate_decision\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
+                                            "PRO_POLICY_MATRIX_RECORD {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"duel\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"outcome\":\"{}\",\"delta\":{},\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"first_diff_ply\":{},\"baseline_branch\":\"{}\",\"candidate_branch\":\"{}\",\"active_color\":\"{}\",\"turn\":{},\"mons_moves\":{},\"can_action\":{},\"can_mana\":{},\"exact_context\":\"{}\",\"mechanism_axes\":\"{}\",\"baseline_better_mechanism_axes\":\"{}\",\"timing_continuation_axes\":\"{}\",\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"baseline_decision\":\"{}\",\"candidate_decision\":\"{}\",\"baseline_final\":\"{}\",\"candidate_final\":\"{}\"}}",
                                             json_escape(panel.label),
                                             json_escape(baseline.id),
                                             json_escape(candidate.id),
@@ -3356,6 +3499,7 @@ fn smart_automove_pro_policy_matrix_probe() {
                                             json_escape(&divergence.exact_context),
                                             json_escape(&mechanism_axes),
                                             json_escape(&baseline_better_mechanism_axes),
+                                            json_escape(&timing_continuation_axes),
                                             json_escape(&divergence.board_fen),
                                             json_escape(&divergence.left_move_fen),
                                             json_escape(&divergence.right_move_fen),
