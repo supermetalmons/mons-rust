@@ -13,9 +13,14 @@ Default targets are intentionally narrow:
   /private/tmp/automove-*
   /tmp/mons_rust-*.sample.txt
   /private/tmp/mons_rust-*.sample.txt
+  ./__pycache__
+  ./scripts/__pycache__
 
 When /tmp and /private/tmp point at the same directory, the script scans that
 scratch root only once.
+
+Experiment logs and runtime-preflight stamps under target/ are cleaned by
+./scripts/clean-experiment-artifacts.sh, not by this scratch cleanup.
 
 Use --dry-run to print the matching paths without removing them.
 EOF
@@ -43,6 +48,8 @@ done
 
 shopt -s nullglob
 
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 tmp_roots=(/private/tmp)
 if [ ! /tmp -ef /private/tmp ]; then
   tmp_roots+=(/tmp)
@@ -61,6 +68,21 @@ for root in "${tmp_roots[@]}"; do
         ;;
     esac
   done
+done
+
+for path in "${repo_root}/__pycache__" "${repo_root}/scripts/__pycache__"; do
+  if [ -e "${path}" ]; then
+    case "${path}" in
+      "${repo_root}/__pycache__"|\
+      "${repo_root}/scripts/__pycache__")
+        paths+=("${path}")
+        ;;
+      *)
+        echo "refusing unexpected cleanup target: ${path}" >&2
+        exit 3
+        ;;
+    esac
+  fi
 done
 
 if [ "${#paths[@]}" -eq 0 ]; then

@@ -20,16 +20,8 @@ for future metadata-smoke runs.
 EOF
 }
 
-default_portfolio=(
-  frontier_pro_v2_guarded
-  frontier_pro_v3_alternating_white_edge_mana
-  frontier_pro_v3_white_opening_utility_mana
-  shipping_pro_search_control
-  frontier_pro_v2_raw
-  frontier_pro_v2_no_selected_followup_projection
-  frontier_pro_v3_full_scored_reply_guard
-  frontier_pro_v2_no_low_budget_guard
-)
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${script_dir}/automove-experiment-common.sh"
 
 log_root="${SMART_AUTOMOVE_METADATA_SMOKE_LOG_ROOT:-/tmp/automove-candidate-metadata-smoke}"
 keep_capture=false
@@ -123,7 +115,7 @@ if [ "${scout_status}" -ne 0 ]; then
 fi
 
 require_metadata "frontier" "${candidate}"
-for portfolio_candidate in "${default_portfolio[@]}"; do
+for portfolio_candidate in "${reset_portfolio[@]}"; do
   require_metadata "frontier" "${portfolio_candidate}"
 done
 

@@ -2204,6 +2204,14 @@ struct ProV4RootPoolBoardPosture {
     opp_fainted: usize,
 }
 
+#[derive(Clone, Copy)]
+struct ProV4RootPoolCustodyCounts {
+    own_carrier: usize,
+    opp_carrier: usize,
+    free: usize,
+    total: usize,
+}
+
 struct ProV4RootPoolBoardFeatures {
     post_high_value_custody: String,
     post_high_value_delta: String,
@@ -2755,21 +2763,15 @@ fn pro_v4_root_pool_custody_bucket(
 }
 
 fn pro_v4_root_pool_custody_delta_bucket(
-    before_own_carrier: usize,
-    after_own_carrier: usize,
-    before_opp_carrier: usize,
-    after_opp_carrier: usize,
-    before_free: usize,
-    after_free: usize,
-    before_total: usize,
-    after_total: usize,
+    before: ProV4RootPoolCustodyCounts,
+    after: ProV4RootPoolCustodyCounts,
 ) -> String {
     format!(
         "own_carrier={};opp_carrier={};free={};total={}",
-        pro_v4_root_pool_count_delta_bucket(before_own_carrier, after_own_carrier),
-        pro_v4_root_pool_count_delta_bucket(before_opp_carrier, after_opp_carrier),
-        pro_v4_root_pool_count_delta_bucket(before_free, after_free),
-        pro_v4_root_pool_count_delta_bucket(before_total, after_total),
+        pro_v4_root_pool_count_delta_bucket(before.own_carrier, after.own_carrier),
+        pro_v4_root_pool_count_delta_bucket(before.opp_carrier, after.opp_carrier),
+        pro_v4_root_pool_count_delta_bucket(before.free, after.free),
+        pro_v4_root_pool_count_delta_bucket(before.total, after.total),
     )
 }
 
@@ -2811,14 +2813,18 @@ fn pro_v4_root_pool_board_features(
             after.high_value_total,
         ),
         post_high_value_delta: pro_v4_root_pool_custody_delta_bucket(
-            before.high_value_own_carrier,
-            after.high_value_own_carrier,
-            before.high_value_opp_carrier,
-            after.high_value_opp_carrier,
-            before.high_value_free,
-            after.high_value_free,
-            before.high_value_total,
-            after.high_value_total,
+            ProV4RootPoolCustodyCounts {
+                own_carrier: before.high_value_own_carrier,
+                opp_carrier: before.high_value_opp_carrier,
+                free: before.high_value_free,
+                total: before.high_value_total,
+            },
+            ProV4RootPoolCustodyCounts {
+                own_carrier: after.high_value_own_carrier,
+                opp_carrier: after.high_value_opp_carrier,
+                free: after.high_value_free,
+                total: after.high_value_total,
+            },
         ),
         post_own_regular_custody: pro_v4_root_pool_custody_bucket(
             after.own_regular_own_carrier,
@@ -2827,14 +2833,18 @@ fn pro_v4_root_pool_board_features(
             after.own_regular_total,
         ),
         post_own_regular_delta: pro_v4_root_pool_custody_delta_bucket(
-            before.own_regular_own_carrier,
-            after.own_regular_own_carrier,
-            before.own_regular_opp_carrier,
-            after.own_regular_opp_carrier,
-            before.own_regular_free,
-            after.own_regular_free,
-            before.own_regular_total,
-            after.own_regular_total,
+            ProV4RootPoolCustodyCounts {
+                own_carrier: before.own_regular_own_carrier,
+                opp_carrier: before.own_regular_opp_carrier,
+                free: before.own_regular_free,
+                total: before.own_regular_total,
+            },
+            ProV4RootPoolCustodyCounts {
+                own_carrier: after.own_regular_own_carrier,
+                opp_carrier: after.own_regular_opp_carrier,
+                free: after.own_regular_free,
+                total: after.own_regular_total,
+            },
         ),
         post_mon_material: pro_v4_root_pool_mon_material_bucket(&after),
         post_mon_material_delta: pro_v4_root_pool_mon_material_delta_bucket(&before, &after),
@@ -5872,6 +5882,26 @@ struct ProV4RootPoolCandidateRow {
     policies: BTreeSet<String>,
 }
 
+struct ProV4RootPoolSnapshotRequest<'a> {
+    panel: &'a str,
+    baseline: ProProfileSweepCandidate,
+    candidate: ProProfileSweepCandidate,
+    candidate_ids: &'a str,
+    duel: &'a str,
+    seed_tag: &'a str,
+    repeat_index: usize,
+    opening_index: usize,
+    variant: GameVariant,
+    candidate_is_white: bool,
+    portfolio_class: &'a str,
+    outcome: &'a str,
+    baseline_trace: &'a ProProfileSweepAttributionTrace,
+    candidate_trace: &'a ProProfileSweepAttributionTrace,
+    traces: &'a [(ProProfileSweepCandidate, ProProfileSweepAttributionTrace)],
+    divergence: &'a ProProfileSweepFirstDivergence,
+    root_limit: usize,
+}
+
 fn pro_v4_root_pool_join_set(values: &BTreeSet<String>) -> String {
     values.iter().cloned().collect::<Vec<_>>().join("|")
 }
@@ -5934,25 +5964,26 @@ fn pro_v4_root_pool_policy_turn_at_board<'a>(
         .find(|turn| turn.board_fen == board_fen)
 }
 
-fn pro_v4_root_pool_print_snapshot(
-    panel: &str,
-    baseline: ProProfileSweepCandidate,
-    candidate: ProProfileSweepCandidate,
-    candidate_ids: &str,
-    duel: &str,
-    seed_tag: &str,
-    repeat_index: usize,
-    opening_index: usize,
-    variant: GameVariant,
-    candidate_is_white: bool,
-    portfolio_class: &str,
-    outcome: &str,
-    baseline_trace: &ProProfileSweepAttributionTrace,
-    candidate_trace: &ProProfileSweepAttributionTrace,
-    traces: &[(ProProfileSweepCandidate, ProProfileSweepAttributionTrace)],
-    divergence: &ProProfileSweepFirstDivergence,
-    root_limit: usize,
-) {
+fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
+    let ProV4RootPoolSnapshotRequest {
+        panel,
+        baseline,
+        candidate,
+        candidate_ids,
+        duel,
+        seed_tag,
+        repeat_index,
+        opening_index,
+        variant,
+        candidate_is_white,
+        portfolio_class,
+        outcome,
+        baseline_trace,
+        candidate_trace,
+        traces,
+        divergence,
+        root_limit,
+    } = request;
     let game = MonsGame::from_fen(divergence.board_fen.as_str(), false)
         .expect("ProV4 root-pool board fen should be valid");
     let mechanism_profile = pro_policy_mechanism_profile_for_baseline(baseline.id);
@@ -6529,22 +6560,24 @@ fn forced_root_oracle_window_delta(before: i32, after: i32) -> &'static str {
     }
 }
 
+#[derive(Clone, Copy)]
+struct ForcedRootOracleRaceState {
+    score_path_steps: i32,
+    safe_super_steps: i32,
+    safe_opp_steps: i32,
+    same_turn_window: i32,
+}
+
 fn forced_root_oracle_race_delta(
-    before_score_path_steps: i32,
-    after_score_path_steps: i32,
-    before_safe_super_steps: i32,
-    after_safe_super_steps: i32,
-    before_safe_opp_steps: i32,
-    after_safe_opp_steps: i32,
-    before_same_turn_window: i32,
-    after_same_turn_window: i32,
+    before: ForcedRootOracleRaceState,
+    after: ForcedRootOracleRaceState,
 ) -> String {
     format!(
         "score_{}|super_{}|opp_{}|window_{}",
-        forced_root_oracle_step_delta(before_score_path_steps, after_score_path_steps),
-        forced_root_oracle_step_delta(before_safe_super_steps, after_safe_super_steps),
-        forced_root_oracle_step_delta(before_safe_opp_steps, after_safe_opp_steps),
-        forced_root_oracle_window_delta(before_same_turn_window, after_same_turn_window),
+        forced_root_oracle_step_delta(before.score_path_steps, after.score_path_steps),
+        forced_root_oracle_step_delta(before.safe_super_steps, after.safe_super_steps),
+        forced_root_oracle_step_delta(before.safe_opp_steps, after.safe_opp_steps),
+        forced_root_oracle_window_delta(before.same_turn_window, after.same_turn_window),
     )
 }
 
@@ -7076,14 +7109,18 @@ fn smart_automove_pro_forced_root_oracle_probe() {
                 score_path_steps: root.score_path_best_steps,
                 same_turn_window: root.same_turn_score_window_value,
                 race_delta: forced_root_oracle_race_delta(
-                    before_score_path_steps,
-                    root.score_path_best_steps,
-                    before_safe_super_steps,
-                    root.safe_supermana_progress_steps,
-                    before_safe_opp_steps,
-                    root.safe_opponent_mana_progress_steps,
-                    before_same_turn_window,
-                    root.same_turn_score_window_value,
+                    ForcedRootOracleRaceState {
+                        score_path_steps: before_score_path_steps,
+                        safe_super_steps: before_safe_super_steps,
+                        safe_opp_steps: before_safe_opp_steps,
+                        same_turn_window: before_same_turn_window,
+                    },
+                    ForcedRootOracleRaceState {
+                        score_path_steps: root.score_path_best_steps,
+                        safe_super_steps: root.safe_supermana_progress_steps,
+                        safe_opp_steps: root.safe_opponent_mana_progress_steps,
+                        same_turn_window: root.same_turn_score_window_value,
+                    },
                 ),
                 root_trajectory: forced_root_oracle_root_trajectory(
                     &game,
@@ -8180,23 +8217,25 @@ fn smart_automove_pro_policy_matrix_probe() {
                                         {
                                             if let Some(divergence) = first_divergence.as_ref() {
                                                 pro_v4_root_pool_print_snapshot(
-                                                    panel.label,
-                                                    baseline,
-                                                    *candidate,
-                                                    candidate_ids.as_str(),
-                                                    duel.label,
-                                                    duel_seed_tag.as_str(),
-                                                    repeat_index,
-                                                    game_index,
-                                                    variant,
-                                                    candidate_is_white,
-                                                    portfolio_class,
-                                                    outcome,
-                                                    baseline_trace,
-                                                    candidate_trace,
-                                                    traces.as_slice(),
-                                                    divergence,
-                                                    pro_v4_root_pool_root_limit,
+                                                    ProV4RootPoolSnapshotRequest {
+                                                        panel: panel.label,
+                                                        baseline,
+                                                        candidate: *candidate,
+                                                        candidate_ids: candidate_ids.as_str(),
+                                                        duel: duel.label,
+                                                        seed_tag: duel_seed_tag.as_str(),
+                                                        repeat_index,
+                                                        opening_index: game_index,
+                                                        variant,
+                                                        candidate_is_white,
+                                                        portfolio_class,
+                                                        outcome,
+                                                        baseline_trace,
+                                                        candidate_trace,
+                                                        traces: traces.as_slice(),
+                                                        divergence,
+                                                        root_limit: pro_v4_root_pool_root_limit,
+                                                    },
                                                 );
                                                 pro_v4_root_pool_records_printed += 1;
                                             }

@@ -17,7 +17,7 @@ Archived profiles, archived seams, and archived stages are not valid experiment 
 9. In structural reset mode, run a filtered `pro-policy-outcome-corpus` or build the test-only ProV4 root-policy path before writing any selector from policy labels.
 10. If decision-record output is singleton by context/pair but still tempting, rerun it with `SMART_PRO_SWEEP_DECISION_RECORD_INCLUDE_MECHANISM_CLASS=true`.
 11. Archive or kill the line before starting another.
-12. Clean scratch artifacts with `./scripts/cleanup-automove-iteration-artifacts.sh` before ending the session.
+12. Clean scratch artifacts and target logs separately before ending the session.
 
 ## Variant Policy
 
@@ -132,7 +132,7 @@ SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_fast \
 6. If the line fails, discard runtime code and record the no-go in `docs/automove-archive.md` or `docs/automove-knowledge.md`.
 7. If the line passes, promote retained Classic regression coverage before confirm.
 8. End by compressing `AUTOMOVE_IDEAS.md` back to current state plus one next hypothesis.
-9. Run `./scripts/cleanup-automove-iteration-artifacts.sh --dry-run`, then run `./scripts/cleanup-automove-iteration-artifacts.sh` once the listed scratch artifacts are no longer needed.
+9. Run `./scripts/cleanup-automove-iteration-artifacts.sh --dry-run`, then run `./scripts/cleanup-automove-iteration-artifacts.sh` once the listed scratch artifacts are no longer needed. Use `./scripts/clean-experiment-artifacts.sh --dry-run` separately for `target/` logs and stamps.
 
 ## Diagnostic Toolbox
 
@@ -344,11 +344,19 @@ cargo test --release --lib <test_name> -- --ignored --nocapture
 - Selected-profile logs: `target/experiment-runs/<profile>/`
 - Workflow-only logs: `target/experiment-runs/misc/`
 - Runtime-preflight stamps: `target/experiment-stamps/`
+- Scratch files: `/tmp/automove-*`, `/private/tmp/automove-*`, `/tmp/mons_rust-*.sample.txt`, `/private/tmp/mons_rust-*.sample.txt`, and repo-local Python `__pycache__` directories used by automove scripts.
 - Run metadata records the stage variant policy and any explicit variant override.
 - Rust gate logs print resolved variant policy, sample size, and per-variant duel summaries.
 - Logs and stamps are disposable evidence, not durable memory.
 
-Standard cleanup:
+Scratch cleanup:
+
+```sh
+./scripts/cleanup-automove-iteration-artifacts.sh --dry-run
+./scripts/cleanup-automove-iteration-artifacts.sh
+```
+
+Target log/stamp cleanup:
 
 ```sh
 ./scripts/clean-experiment-artifacts.sh --dry-run
@@ -367,6 +375,7 @@ Full local cache cleanup after validation:
 1. Update `AUTOMOVE_IDEAS.md` with the current live state or next frontier.
 2. Move durable lessons into `docs/automove-knowledge.md`.
 3. Move retired wave detail into `docs/automove-archive.md`.
-4. Clean disposable artifacts once validation is complete.
-5. Leave exactly one clear next hypothesis, or explicitly record that there is no live challenger.
-6. Do not leave unarchived probe diaries or failed runtime branches in the live board.
+4. Clean scratch artifacts once validation is complete.
+5. Clean target logs/stamps separately only when the disposable evidence is no longer needed.
+6. Leave exactly one clear next hypothesis, or explicitly record that there is no live challenger.
+7. Do not leave unarchived probe diaries or failed runtime branches in the live board.
