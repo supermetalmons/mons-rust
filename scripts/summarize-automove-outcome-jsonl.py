@@ -70,6 +70,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_legal_fanout_delta",
     "post_attack_exposure",
     "post_attack_exposure_delta",
+    "post_support_guard",
+    "post_support_guard_delta",
 ]
 ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_rank", ("family", "rank_bucket")),
@@ -100,6 +102,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
         ("progress", "post_attack_exposure_delta"),
     ),
     ("path_attack_exposure_delta", ("path", "post_attack_exposure_delta")),
+    ("family_support_guard", ("family", "post_support_guard")),
+    ("progress_support_guard_delta", ("progress", "post_support_guard_delta")),
+    ("path_support_guard_delta", ("path", "post_support_guard_delta")),
 ]
 ROOT_POOL_GUARDED_ORIGIN_KINDS = {
     "guarded_selected",
@@ -139,6 +144,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_legal_fanout_delta",
     "post_attack_exposure",
     "post_attack_exposure_delta",
+    "post_support_guard",
+    "post_support_guard_delta",
 ]
 ROOT_POOL_DELTA_NUMERIC_FIELDS = [
     "rank",
@@ -2165,6 +2172,8 @@ def root_pool_sample_root(row):
         "post_legal_fanout_delta": row.get("post_legal_fanout_delta", ""),
         "post_attack_exposure": row.get("post_attack_exposure", ""),
         "post_attack_exposure_delta": row.get("post_attack_exposure_delta", ""),
+        "post_support_guard": row.get("post_support_guard", ""),
+        "post_support_guard_delta": row.get("post_support_guard_delta", ""),
     }
 
 

@@ -2297,6 +2297,34 @@ impl ProV4RootPoolAttackExposureFeatures {
     }
 }
 
+#[derive(Default)]
+struct ProV4RootPoolSupportGuardPosture {
+    own_angel_awake: usize,
+    own_guarded_mon: usize,
+    own_guarded_drainer: usize,
+    own_guarded_high_value_carrier: usize,
+    own_guarded_regular_carrier: usize,
+    opp_angel_awake: usize,
+    opp_guarded_mon: usize,
+    opp_guarded_drainer: usize,
+    opp_guarded_high_value_carrier: usize,
+    opp_guarded_regular_carrier: usize,
+}
+
+struct ProV4RootPoolSupportGuardFeatures {
+    post_support_guard: String,
+    post_support_guard_delta: String,
+}
+
+impl ProV4RootPoolSupportGuardFeatures {
+    fn omitted() -> Self {
+        Self {
+            post_support_guard: "omitted".to_string(),
+            post_support_guard_delta: "omitted".to_string(),
+        }
+    }
+}
+
 fn pro_v4_root_pool_is_high_value_mana(mana: Mana, perspective: Color) -> bool {
     match mana {
         Mana::Supermana => true,
@@ -2600,6 +2628,127 @@ fn pro_v4_root_pool_attack_exposure_features(
             perspective,
         ),
         post_attack_exposure_delta: pro_v4_root_pool_attack_exposure_delta_bucket(&before, &after),
+    }
+}
+
+fn pro_v4_root_pool_support_guard_posture(
+    game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolSupportGuardPosture {
+    if game.winner_color().is_some() {
+        return ProV4RootPoolSupportGuardPosture::default();
+    }
+    let mut posture = ProV4RootPoolSupportGuardPosture::default();
+    let own_angel = game.board.find_awake_angel(perspective);
+    let opp_angel = game.board.find_awake_angel(perspective.other());
+    posture.own_angel_awake = usize::from(own_angel.is_some());
+    posture.opp_angel_awake = usize::from(opp_angel.is_some());
+    for (location, item) in game.board.occupied() {
+        let Some(mon) = item.mon() else {
+            continue;
+        };
+        if mon.is_fainted() {
+            continue;
+        }
+        let guard_angel = if mon.color == perspective {
+            own_angel
+        } else {
+            opp_angel
+        };
+        let guarded =
+            guard_angel.is_some_and(|angel_location| angel_location.distance(&location) == 1);
+        if !guarded {
+            continue;
+        }
+        let high_value_carrier = item
+            .mana()
+            .copied()
+            .is_some_and(|mana| pro_v4_root_pool_is_high_value_mana(mana, perspective));
+        let own_regular_carrier = item
+            .mana()
+            .copied()
+            .is_some_and(|mana| pro_v4_root_pool_is_own_regular_mana(mana, perspective));
+        if mon.color == perspective {
+            posture.own_guarded_mon += 1;
+            if mon.kind == MonKind::Drainer {
+                posture.own_guarded_drainer += 1;
+            }
+            posture.own_guarded_high_value_carrier += usize::from(high_value_carrier);
+            posture.own_guarded_regular_carrier += usize::from(own_regular_carrier);
+        } else {
+            posture.opp_guarded_mon += 1;
+            if mon.kind == MonKind::Drainer {
+                posture.opp_guarded_drainer += 1;
+            }
+            posture.opp_guarded_high_value_carrier += usize::from(high_value_carrier);
+            posture.opp_guarded_regular_carrier += usize::from(own_regular_carrier);
+        }
+    }
+    posture
+}
+
+fn pro_v4_root_pool_support_guard_bucket(
+    game: &MonsGame,
+    posture: &ProV4RootPoolSupportGuardPosture,
+    perspective: Color,
+) -> String {
+    format!(
+        "status={};own_angel={};own_mon={};own_drainer={};own_high_value={};own_regular={};opp_angel={};opp_mon={};opp_drainer={};opp_high_value={};opp_regular={}",
+        pro_v4_root_pool_status(game, perspective),
+        pro_v4_root_pool_count_field(posture.own_angel_awake),
+        pro_v4_root_pool_count_field(posture.own_guarded_mon),
+        pro_v4_root_pool_count_field(posture.own_guarded_drainer),
+        pro_v4_root_pool_count_field(posture.own_guarded_high_value_carrier),
+        pro_v4_root_pool_count_field(posture.own_guarded_regular_carrier),
+        pro_v4_root_pool_count_field(posture.opp_angel_awake),
+        pro_v4_root_pool_count_field(posture.opp_guarded_mon),
+        pro_v4_root_pool_count_field(posture.opp_guarded_drainer),
+        pro_v4_root_pool_count_field(posture.opp_guarded_high_value_carrier),
+        pro_v4_root_pool_count_field(posture.opp_guarded_regular_carrier),
+    )
+}
+
+fn pro_v4_root_pool_support_guard_delta_bucket(
+    before: &ProV4RootPoolSupportGuardPosture,
+    after: &ProV4RootPoolSupportGuardPosture,
+) -> String {
+    format!(
+        "own_angel={};own_mon={};own_drainer={};own_high_value={};own_regular={};opp_angel={};opp_mon={};opp_drainer={};opp_high_value={};opp_regular={}",
+        pro_v4_root_pool_count_delta_bucket(before.own_angel_awake, after.own_angel_awake),
+        pro_v4_root_pool_count_delta_bucket(before.own_guarded_mon, after.own_guarded_mon),
+        pro_v4_root_pool_count_delta_bucket(before.own_guarded_drainer, after.own_guarded_drainer),
+        pro_v4_root_pool_count_delta_bucket(
+            before.own_guarded_high_value_carrier,
+            after.own_guarded_high_value_carrier,
+        ),
+        pro_v4_root_pool_count_delta_bucket(
+            before.own_guarded_regular_carrier,
+            after.own_guarded_regular_carrier,
+        ),
+        pro_v4_root_pool_count_delta_bucket(before.opp_angel_awake, after.opp_angel_awake),
+        pro_v4_root_pool_count_delta_bucket(before.opp_guarded_mon, after.opp_guarded_mon),
+        pro_v4_root_pool_count_delta_bucket(before.opp_guarded_drainer, after.opp_guarded_drainer),
+        pro_v4_root_pool_count_delta_bucket(
+            before.opp_guarded_high_value_carrier,
+            after.opp_guarded_high_value_carrier,
+        ),
+        pro_v4_root_pool_count_delta_bucket(
+            before.opp_guarded_regular_carrier,
+            after.opp_guarded_regular_carrier,
+        ),
+    )
+}
+
+fn pro_v4_root_pool_support_guard_features(
+    before_game: &MonsGame,
+    after_game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolSupportGuardFeatures {
+    let before = pro_v4_root_pool_support_guard_posture(before_game, perspective);
+    let after = pro_v4_root_pool_support_guard_posture(after_game, perspective);
+    ProV4RootPoolSupportGuardFeatures {
+        post_support_guard: pro_v4_root_pool_support_guard_bucket(after_game, &after, perspective),
+        post_support_guard_delta: pro_v4_root_pool_support_guard_delta_bucket(&before, &after),
     }
 }
 
@@ -3538,6 +3687,7 @@ fn pro_v4_root_pool_print_snapshot(
             outcome_features,
             legal_fanout_features,
             attack_exposure_features,
+            support_guard_features,
         ) = if let Some(root) = root {
             let family = MonsGameModel::turn_engine_root_evaluation_family(root);
             let reply_snapshot = MonsGameModel::root_reply_risk_snapshot(
@@ -3619,6 +3769,8 @@ fn pro_v4_root_pool_print_snapshot(
             );
             let attack_exposure_features =
                 pro_v4_root_pool_attack_exposure_features(&game, &root.game, game.active_color);
+            let support_guard_features =
+                pro_v4_root_pool_support_guard_features(&game, &root.game, game.active_color);
             (
                 Some(root.root_rank),
                 Some(root.score),
@@ -3659,6 +3811,7 @@ fn pro_v4_root_pool_print_snapshot(
                 outcome_features,
                 legal_fanout_features,
                 attack_exposure_features,
+                support_guard_features,
             )
         } else {
             (
@@ -3687,10 +3840,11 @@ fn pro_v4_root_pool_print_snapshot(
                 ProV4RootPoolOutcomeFeatures::omitted(),
                 ProV4RootPoolLegalFanoutFeatures::omitted(),
                 ProV4RootPoolAttackExposureFeatures::omitted(),
+                ProV4RootPoolSupportGuardFeatures::omitted(),
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -3754,6 +3908,8 @@ fn pro_v4_root_pool_print_snapshot(
             json_escape(&legal_fanout_features.post_legal_fanout_delta),
             json_escape(&attack_exposure_features.post_attack_exposure),
             json_escape(&attack_exposure_features.post_attack_exposure_delta),
+            json_escape(&support_guard_features.post_support_guard),
+            json_escape(&support_guard_features.post_support_guard_delta),
         );
     }
 }
