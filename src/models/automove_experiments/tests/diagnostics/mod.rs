@@ -1603,6 +1603,7 @@ struct ProPolicyMechanismRootClass {
     family: String,
     advisor: String,
     safety: &'static str,
+    safety_detail: &'static str,
     progress: &'static str,
     rank: Option<usize>,
     score: Option<i32>,
@@ -1726,6 +1727,77 @@ fn pro_policy_mechanism_reply_risk_bucket(
         (Some(score), _, _) if score < -256 => "bad_floor",
         (Some(score), _, _) if score < 96 => "thin_floor",
         (Some(_), _, _) => "stable_floor",
+    }
+}
+
+fn pro_policy_mechanism_safety_detail_bucket(
+    mana_handoff_to_opponent: bool,
+    has_roundtrip: bool,
+    own_drainer_walk_vulnerable: bool,
+    own_drainer_vulnerable: bool,
+) -> &'static str {
+    if mana_handoff_to_opponent && has_roundtrip {
+        "handoff_roundtrip"
+    } else if mana_handoff_to_opponent {
+        "mana_handoff"
+    } else if has_roundtrip {
+        "roundtrip"
+    } else if own_drainer_walk_vulnerable {
+        "walk_vulnerable"
+    } else if own_drainer_vulnerable {
+        "vulnerable"
+    } else {
+        "safe"
+    }
+}
+
+fn pro_policy_mechanism_safety_severity(detail: &str) -> Option<i32> {
+    match detail {
+        "safe" => Some(0),
+        "vulnerable" => Some(1),
+        "walk_vulnerable" => Some(2),
+        "roundtrip" => Some(3),
+        "mana_handoff" => Some(4),
+        "handoff_roundtrip" => Some(5),
+        "omitted" => None,
+        _ => None,
+    }
+}
+
+fn pro_policy_mechanism_safety_delta_bucket(
+    winner_detail: &str,
+    baseline_detail: &str,
+) -> &'static str {
+    match (
+        pro_policy_mechanism_safety_severity(winner_detail),
+        pro_policy_mechanism_safety_severity(baseline_detail),
+    ) {
+        (Some(winner), Some(baseline)) if winner == baseline => "same_safety",
+        (Some(winner), Some(baseline)) if winner < baseline => "winner_safer",
+        (Some(_), Some(_)) => "winner_riskier",
+        (Some(_), None) => "winner_live_baseline_omitted",
+        (None, Some(_)) => "winner_omitted_baseline_live",
+        (None, None) => "both_omitted",
+    }
+}
+
+fn pro_policy_mechanism_safety_progress_signal(root: &ProPolicyMechanismRootClass) -> &'static str {
+    let has_progress = !matches!(root.progress, "omitted" | "quiet");
+    match (root.safety_detail, has_progress) {
+        ("omitted", _) => "omitted",
+        ("safe", true) => "safe_progress",
+        ("safe", false) => "safe_quiet",
+        ("vulnerable", true) => "vulnerable_progress",
+        ("vulnerable", false) => "vulnerable_quiet",
+        ("walk_vulnerable", true) => "walk_vulnerable_progress",
+        ("walk_vulnerable", false) => "walk_vulnerable_quiet",
+        ("roundtrip", true) => "roundtrip_progress",
+        ("roundtrip", false) => "roundtrip_quiet",
+        ("mana_handoff", true) => "mana_handoff_progress",
+        ("mana_handoff", false) => "mana_handoff_quiet",
+        ("handoff_roundtrip", true) => "handoff_roundtrip_progress",
+        ("handoff_roundtrip", false) => "handoff_roundtrip_quiet",
+        _ => "unknown",
     }
 }
 
@@ -1964,6 +2036,7 @@ fn pro_policy_mechanism_root_class(
             family: "omitted".to_string(),
             advisor: advisor_class,
             safety: "omitted",
+            safety_detail: "omitted",
             progress: "omitted",
             rank: None,
             score: None,
@@ -2000,6 +2073,12 @@ fn pro_policy_mechanism_root_class(
     } else {
         "safe"
     };
+    let safety_detail = pro_policy_mechanism_safety_detail_bucket(
+        root.mana_handoff_to_opponent,
+        root.has_roundtrip,
+        root.own_drainer_walk_vulnerable,
+        root.own_drainer_vulnerable,
+    );
     let progress = if root.wins_immediately {
         "wins"
     } else if root.attacks_opponent_drainer {
@@ -2034,6 +2113,7 @@ fn pro_policy_mechanism_root_class(
         family: format!("{family:?}"),
         advisor: advisor_class,
         safety,
+        safety_detail,
         progress,
         rank: Some(root.root_rank),
         score: Some(root.score),
@@ -2115,6 +2195,10 @@ fn pro_policy_mechanism_class_keys_from_scored_roots(
         pro_policy_mechanism_floor_delta_bucket(winner.reply_floor, baseline.reply_floor);
     let followup_floor_delta =
         pro_policy_mechanism_floor_delta_bucket(winner.followup_floor, baseline.followup_floor);
+    let safety_delta =
+        pro_policy_mechanism_safety_delta_bucket(winner.safety_detail, baseline.safety_detail);
+    let baseline_safety_signal = pro_policy_mechanism_safety_progress_signal(&baseline);
+    let winner_safety_signal = pro_policy_mechanism_safety_progress_signal(&winner);
 
     let mut keys = vec![
         format!(
@@ -2183,12 +2267,27 @@ fn pro_policy_mechanism_class_keys_from_scored_roots(
             baseline.safety, baseline.progress, winner.safety, winner.progress,
         ),
         format!(
-            "axis=winner_root role={} live={} family={} advisor={} safety={} progress={} rank={}",
+            "axis=root_safety_detail baseline_detail={} baseline_progress={} baseline_signal={} winner_detail={} winner_progress={} winner_signal={} safety_delta={}",
+            baseline.safety_detail,
+            baseline.progress,
+            baseline_safety_signal,
+            winner.safety_detail,
+            winner.progress,
+            winner_safety_signal,
+            safety_delta,
+        ),
+        format!(
+            "axis=winner_safety_signal detail={} progress={} signal={} safety_delta={}",
+            winner.safety_detail, winner.progress, winner_safety_signal, safety_delta,
+        ),
+        format!(
+            "axis=winner_root role={} live={} family={} advisor={} safety={} safety_detail={} progress={} rank={}",
             winner.role,
             winner.live,
             winner.family,
             winner.advisor,
             winner.safety,
+            winner.safety_detail,
             winner.progress,
             pro_policy_mechanism_rank_bucket(winner.rank),
         ),
