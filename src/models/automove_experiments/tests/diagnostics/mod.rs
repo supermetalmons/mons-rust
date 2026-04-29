@@ -2622,6 +2622,36 @@ impl ProV4RootPoolWorstReplyFeatures {
     }
 }
 
+const PRO_V4_ROOT_POOL_REPLY_SPECTRUM_LIMIT: usize = 48;
+
+#[derive(Default)]
+struct ProV4RootPoolReplySpectrum {
+    total: usize,
+    own_win: usize,
+    opp_win: usize,
+    own_score_gain: usize,
+    own_score_drop: usize,
+    opp_score_gain: usize,
+    opp_score_drop: usize,
+    turn_back: usize,
+    opp_keeps_turn: usize,
+    capped: bool,
+}
+
+struct ProV4RootPoolReplySpectrumFeatures {
+    post_reply_spectrum: String,
+    post_reply_spectrum_effect: String,
+}
+
+impl ProV4RootPoolReplySpectrumFeatures {
+    fn omitted() -> Self {
+        Self {
+            post_reply_spectrum: "omitted".to_string(),
+            post_reply_spectrum_effect: "omitted".to_string(),
+        }
+    }
+}
+
 fn pro_v4_root_pool_is_high_value_mana(mana: Mana, perspective: Color) -> bool {
     match mana {
         Mana::Supermana => true,
@@ -5039,6 +5069,146 @@ fn pro_v4_root_pool_worst_reply_features(
     }
 }
 
+fn pro_v4_root_pool_reply_spectrum(
+    state_after_root: &MonsGame,
+    perspective: Color,
+    config: AutomoveSearchConfig,
+) -> ProV4RootPoolReplySpectrum {
+    if state_after_root.winner_color().is_some() || state_after_root.active_color == perspective {
+        return ProV4RootPoolReplySpectrum::default();
+    }
+
+    let replies = MonsGameModel::enumerate_legal_transitions(
+        state_after_root,
+        PRO_V4_ROOT_POOL_REPLY_SPECTRUM_LIMIT,
+        MonsGameModel::automove_start_input_options(config),
+    );
+    let opponent = perspective.other();
+    let base_own_score = pro_v4_root_pool_score_for_color(state_after_root, perspective);
+    let base_opp_score = pro_v4_root_pool_score_for_color(state_after_root, opponent);
+    let mut spectrum = ProV4RootPoolReplySpectrum {
+        total: replies.len(),
+        capped: replies.len() >= PRO_V4_ROOT_POOL_REPLY_SPECTRUM_LIMIT,
+        ..ProV4RootPoolReplySpectrum::default()
+    };
+    for reply in replies {
+        match reply.game.winner_color() {
+            Some(winner) if winner == perspective => spectrum.own_win += 1,
+            Some(_) => spectrum.opp_win += 1,
+            None => {
+                spectrum.turn_back += usize::from(reply.game.active_color == perspective);
+                spectrum.opp_keeps_turn += usize::from(reply.game.active_color == opponent);
+            }
+        }
+
+        let own_delta = pro_v4_root_pool_score_for_color(&reply.game, perspective) - base_own_score;
+        let opp_delta = pro_v4_root_pool_score_for_color(&reply.game, opponent) - base_opp_score;
+        spectrum.own_score_gain += usize::from(own_delta > 0);
+        spectrum.own_score_drop += usize::from(own_delta < 0);
+        spectrum.opp_score_gain += usize::from(opp_delta > 0);
+        spectrum.opp_score_drop += usize::from(opp_delta < 0);
+    }
+    spectrum
+}
+
+fn pro_v4_root_pool_reply_spectrum_bucket(
+    state_after_root: &MonsGame,
+    spectrum: &ProV4RootPoolReplySpectrum,
+    perspective: Color,
+) -> String {
+    format!(
+        "state={};cap={};total={};own_win={};opp_win={};own_gain={};own_drop={};opp_gain={};opp_drop={};turn_back={};opp_keep={}",
+        pro_v4_root_pool_status(state_after_root, perspective),
+        spectrum.capped,
+        pro_v4_root_pool_count_field(spectrum.total),
+        pro_v4_root_pool_count_field(spectrum.own_win),
+        pro_v4_root_pool_count_field(spectrum.opp_win),
+        pro_v4_root_pool_count_field(spectrum.own_score_gain),
+        pro_v4_root_pool_count_field(spectrum.own_score_drop),
+        pro_v4_root_pool_count_field(spectrum.opp_score_gain),
+        pro_v4_root_pool_count_field(spectrum.opp_score_drop),
+        pro_v4_root_pool_count_field(spectrum.turn_back),
+        pro_v4_root_pool_count_field(spectrum.opp_keeps_turn),
+    )
+}
+
+fn pro_v4_root_pool_reply_spectrum_threat_bucket(
+    spectrum: &ProV4RootPoolReplySpectrum,
+) -> &'static str {
+    if spectrum.opp_win > 0 {
+        "opp_win"
+    } else if spectrum.opp_score_gain > 1 {
+        "multi_opp_score"
+    } else if spectrum.opp_score_gain == 1 {
+        "one_opp_score"
+    } else if spectrum.own_score_drop > 0 {
+        "own_score_drop"
+    } else {
+        "no_direct_score_threat"
+    }
+}
+
+fn pro_v4_root_pool_reply_spectrum_relief_bucket(
+    spectrum: &ProV4RootPoolReplySpectrum,
+) -> &'static str {
+    if spectrum.own_win > 0 {
+        "own_win_reply"
+    } else if spectrum.own_score_gain > 0 || spectrum.opp_score_drop > 0 {
+        "reply_score_blunder"
+    } else {
+        "none"
+    }
+}
+
+fn pro_v4_root_pool_reply_spectrum_tempo_bucket(
+    spectrum: &ProV4RootPoolReplySpectrum,
+) -> &'static str {
+    if spectrum.total == 0 {
+        "none"
+    } else if spectrum.turn_back == 0 {
+        "opp_keeps_all"
+    } else if spectrum.opp_keeps_turn == 0 {
+        "all_turn_back"
+    } else {
+        "mixed_turn_back"
+    }
+}
+
+fn pro_v4_root_pool_reply_spectrum_effect_bucket(
+    state_after_root: &MonsGame,
+    spectrum: &ProV4RootPoolReplySpectrum,
+    perspective: Color,
+) -> String {
+    format!(
+        "state={};cap={};threat={};relief={};tempo={}",
+        pro_v4_root_pool_status(state_after_root, perspective),
+        spectrum.capped,
+        pro_v4_root_pool_reply_spectrum_threat_bucket(spectrum),
+        pro_v4_root_pool_reply_spectrum_relief_bucket(spectrum),
+        pro_v4_root_pool_reply_spectrum_tempo_bucket(spectrum),
+    )
+}
+
+fn pro_v4_root_pool_reply_spectrum_features(
+    state_after_root: &MonsGame,
+    perspective: Color,
+    config: AutomoveSearchConfig,
+) -> ProV4RootPoolReplySpectrumFeatures {
+    let spectrum = pro_v4_root_pool_reply_spectrum(state_after_root, perspective, config);
+    ProV4RootPoolReplySpectrumFeatures {
+        post_reply_spectrum: pro_v4_root_pool_reply_spectrum_bucket(
+            state_after_root,
+            &spectrum,
+            perspective,
+        ),
+        post_reply_spectrum_effect: pro_v4_root_pool_reply_spectrum_effect_bucket(
+            state_after_root,
+            &spectrum,
+            perspective,
+        ),
+    }
+}
+
 fn pro_v4_root_pool_score_for_color(game: &MonsGame, color: Color) -> i32 {
     match color {
         Color::White => game.white_score,
@@ -5986,6 +6156,7 @@ fn pro_v4_root_pool_print_snapshot(
             lane_shape_features,
             transition_features,
             worst_reply_features,
+            reply_spectrum_features,
         ) = if let Some(root) = root {
             let family = MonsGameModel::turn_engine_root_evaluation_family(root);
             let reply_snapshot = MonsGameModel::root_reply_risk_snapshot(
@@ -6091,6 +6262,8 @@ fn pro_v4_root_pool_print_snapshot(
                 pro_v4_root_pool_transition_features(&game, root, game.active_color);
             let worst_reply_features =
                 pro_v4_root_pool_worst_reply_features(&root.game, game.active_color, runtime);
+            let reply_spectrum_features =
+                pro_v4_root_pool_reply_spectrum_features(&root.game, game.active_color, runtime);
             (
                 Some(root.root_rank),
                 Some(root.score),
@@ -6143,6 +6316,7 @@ fn pro_v4_root_pool_print_snapshot(
                 lane_shape_features,
                 transition_features,
                 worst_reply_features,
+                reply_spectrum_features,
             )
         } else {
             (
@@ -6183,10 +6357,11 @@ fn pro_v4_root_pool_print_snapshot(
                 ProV4RootPoolLaneShapeFeatures::omitted(),
                 ProV4RootPoolTransitionFeatures::omitted(),
                 ProV4RootPoolWorstReplyFeatures::omitted(),
+                ProV4RootPoolReplySpectrumFeatures::omitted(),
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -6274,6 +6449,8 @@ fn pro_v4_root_pool_print_snapshot(
             json_escape(&transition_features.root_transition_effect),
             json_escape(&worst_reply_features.worst_reply_transition),
             json_escape(&worst_reply_features.worst_reply_effect),
+            json_escape(&reply_spectrum_features.post_reply_spectrum),
+            json_escape(&reply_spectrum_features.post_reply_spectrum_effect),
         );
     }
 }

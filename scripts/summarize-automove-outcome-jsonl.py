@@ -94,6 +94,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "root_transition_effect",
     "worst_reply_transition",
     "worst_reply_effect",
+    "post_reply_spectrum",
+    "post_reply_spectrum_effect",
 ]
 ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_rank", ("family", "rank_bucket")),
@@ -160,6 +162,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_worst_reply_transition", ("family", "worst_reply_transition")),
     ("progress_worst_reply_effect", ("progress", "worst_reply_effect")),
     ("path_worst_reply_effect", ("path", "worst_reply_effect")),
+    ("family_reply_spectrum", ("family", "post_reply_spectrum")),
+    ("progress_reply_spectrum_effect", ("progress", "post_reply_spectrum_effect")),
+    ("path_reply_spectrum_effect", ("path", "post_reply_spectrum_effect")),
 ]
 ROOT_POOL_GUARDED_ORIGIN_KINDS = {
     "guarded_selected",
@@ -223,6 +228,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "root_transition_effect",
     "worst_reply_transition",
     "worst_reply_effect",
+    "post_reply_spectrum",
+    "post_reply_spectrum_effect",
 ]
 ROOT_POOL_DELTA_NUMERIC_FIELDS = [
     "rank",
