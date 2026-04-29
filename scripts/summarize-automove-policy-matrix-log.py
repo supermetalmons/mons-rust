@@ -9,6 +9,13 @@ from pathlib import Path
 
 
 POLICY_MATRIX_PREFIX = "PRO_POLICY_MATRIX_"
+NO_SOURCE_DECISIONS = {
+    "baseline_save_risk",
+    "coverage_gap",
+    "no_candidate_route",
+    "postprocess_only",
+    "singleton_no_source",
+}
 
 
 def parse_policy_matrix_lines(paths):
@@ -215,6 +222,37 @@ def sorted_count_rows(counter):
     ]
 
 
+def count_keys(counter):
+    return {key for key, count in counter.items() if count > 0}
+
+
+def rollup_decision_from_counts(decision_counts):
+    decisions = count_keys(decision_counts)
+    if not decisions:
+        return "no_source"
+    if decisions == {"inspect_for_source"}:
+        return "inspect_for_source"
+    if decisions.issubset(NO_SOURCE_DECISIONS):
+        for decision in [
+            "baseline_save_risk",
+            "coverage_gap",
+            "postprocess_only",
+            "singleton_no_source",
+            "no_candidate_route",
+        ]:
+            if decision in decisions:
+                return decision
+    return "mixed_review_required"
+
+
+def rollup_permission_from_decision(decision):
+    if decision == "inspect_for_source":
+        return "inspect_for_source"
+    if decision in NO_SOURCE_DECISIONS:
+        return "no_source"
+    return "mixed_review_required"
+
+
 def log_summary(source_log, digest):
     recommendation = digest.get("route_recommendation", {})
     stoplight = digest.get("global_stoplight", {})
@@ -250,8 +288,12 @@ def add_log_rollup(digest, per_log_digests):
             source_blocker_count_key(summary["source_blocker"])
         ] += 1
 
+    rollup_decision = rollup_decision_from_counts(decision_counts)
     digest["log_rollup"] = {
         "log_count": len(log_summaries),
+        "rollup_decision": rollup_decision,
+        "rollup_next_action": next_action_for_decision(rollup_decision),
+        "rollup_permission": rollup_permission_from_decision(rollup_decision),
         "decision_counts": sorted_count_rows(decision_counts),
         "next_action_counts": sorted_count_rows(next_action_counts),
         "source_blocker_counts": sorted_count_rows(source_blocker_counts),
