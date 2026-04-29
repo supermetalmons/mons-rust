@@ -2516,6 +2516,386 @@ fn pro_policy_mechanism_class_keys_from_scored_roots(
     keys
 }
 
+#[derive(Default)]
+struct ProV4RootPoolCandidateRow {
+    origins: BTreeSet<String>,
+    origin_kinds: BTreeSet<String>,
+    policies: BTreeSet<String>,
+}
+
+fn pro_v4_root_pool_join_set(values: &BTreeSet<String>) -> String {
+    values.iter().cloned().collect::<Vec<_>>().join("|")
+}
+
+fn pro_v4_root_pool_origin_kind(origin: &str) -> &'static str {
+    if origin == "guarded_selected" {
+        "guarded_selected"
+    } else if origin == "guarded_pre_accept" {
+        "guarded_pre_accept"
+    } else if origin == "guarded_head" {
+        "guarded_head"
+    } else if origin.starts_with("guarded_scored_top") {
+        "guarded_scored"
+    } else if origin.starts_with("advisor_") {
+        "advisor"
+    } else if origin.starts_with("winning_policy_output:") {
+        "winning_policy_output"
+    } else if origin.starts_with("policy_output:") {
+        "policy_output"
+    } else {
+        "other"
+    }
+}
+
+fn pro_v4_root_pool_add_origin(
+    rows: &mut BTreeMap<String, ProV4RootPoolCandidateRow>,
+    inputs: &str,
+    origin: String,
+) {
+    if inputs == "none" || inputs.is_empty() {
+        return;
+    }
+    let row = rows.entry(inputs.to_string()).or_default();
+    row.origin_kinds
+        .insert(pro_v4_root_pool_origin_kind(origin.as_str()).to_string());
+    row.origins.insert(origin);
+}
+
+fn pro_v4_root_pool_add_policy(
+    rows: &mut BTreeMap<String, ProV4RootPoolCandidateRow>,
+    inputs: &str,
+    policy: String,
+) {
+    if inputs == "none" || inputs.is_empty() {
+        return;
+    }
+    rows.entry(inputs.to_string())
+        .or_default()
+        .policies
+        .insert(policy);
+}
+
+fn pro_v4_root_pool_policy_turn_at_board<'a>(
+    trace: &'a ProProfileSweepAttributionTrace,
+    board_fen: &str,
+) -> Option<&'a ProProfileSweepAttributionTurn> {
+    trace
+        .candidate_turns
+        .iter()
+        .find(|turn| turn.board_fen == board_fen)
+}
+
+fn pro_v4_root_pool_print_snapshot(
+    panel: &str,
+    baseline: ProProfileSweepCandidate,
+    candidate: ProProfileSweepCandidate,
+    candidate_ids: &str,
+    duel: &str,
+    seed_tag: &str,
+    repeat_index: usize,
+    opening_index: usize,
+    variant: GameVariant,
+    candidate_is_white: bool,
+    portfolio_class: &str,
+    outcome: &str,
+    baseline_trace: &ProProfileSweepAttributionTrace,
+    candidate_trace: &ProProfileSweepAttributionTrace,
+    traces: &[(ProProfileSweepCandidate, ProProfileSweepAttributionTrace)],
+    divergence: &ProProfileSweepFirstDivergence,
+    root_limit: usize,
+) {
+    let game = MonsGame::from_fen(divergence.board_fen.as_str(), false)
+        .expect("ProV4 root-pool board fen should be valid");
+    let mechanism_profile = pro_policy_mechanism_profile_for_baseline(baseline.id);
+    let baseline_probe =
+        runtime_decision_probe(mechanism_profile, SmartAutomovePreference::Pro, &game);
+    let baseline_advisor = pro_v2_root_advisor_decision_snapshot();
+    let (runtime, scored_roots, _, forced_engine_inputs) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(
+            mechanism_profile,
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+    let mut index_by_inputs = BTreeMap::<String, usize>::new();
+    for (index, root) in scored_roots.iter().enumerate() {
+        index_by_inputs.insert(Input::fen_from_array(&root.inputs), index);
+    }
+
+    let mut rows = BTreeMap::<String, ProV4RootPoolCandidateRow>::new();
+    pro_v4_root_pool_add_origin(
+        &mut rows,
+        baseline_probe.selected_input_fen.as_str(),
+        "guarded_selected".to_string(),
+    );
+    pro_v4_root_pool_add_origin(
+        &mut rows,
+        baseline_probe.pre_accept_input_fen.as_str(),
+        "guarded_pre_accept".to_string(),
+    );
+    if let Some(head) = baseline_probe.head_input_fen.as_ref() {
+        pro_v4_root_pool_add_origin(&mut rows, head.as_str(), "guarded_head".to_string());
+    }
+    for root in scored_roots.iter().take(root_limit) {
+        pro_v4_root_pool_add_origin(
+            &mut rows,
+            Input::fen_from_array(&root.inputs).as_str(),
+            format!("guarded_scored_top{}", root.root_rank),
+        );
+    }
+    if let Some(advisor) = baseline_advisor.as_ref() {
+        if let Some(entry) = advisor.approved_root.as_ref() {
+            pro_v4_root_pool_add_origin(
+                &mut rows,
+                Input::fen_from_array(&entry.inputs).as_str(),
+                format!("advisor_approved:{:?}:{:?}", entry.reason, entry.family),
+            );
+        }
+        for entry in &advisor.ordered_shortlist {
+            pro_v4_root_pool_add_origin(
+                &mut rows,
+                Input::fen_from_array(&entry.inputs).as_str(),
+                format!("advisor_ordered:{:?}:{:?}", entry.reason, entry.family),
+            );
+        }
+        for entry in &advisor.preserved_family_representatives {
+            pro_v4_root_pool_add_origin(
+                &mut rows,
+                Input::fen_from_array(&entry.inputs).as_str(),
+                format!("advisor_preserved:{:?}:{:?}", entry.reason, entry.family),
+            );
+        }
+        if let Some(injected) = advisor.injected_root.as_ref() {
+            let admitted = if injected.admitted {
+                "admitted"
+            } else {
+                "rejected"
+            };
+            pro_v4_root_pool_add_origin(
+                &mut rows,
+                Input::fen_from_array(&injected.inputs).as_str(),
+                format!(
+                    "advisor_injected_{}:{:?}:{:?}",
+                    admitted, injected.reason, injected.family
+                ),
+            );
+        }
+    }
+    for (policy, trace) in traces {
+        if let Some(turn) =
+            pro_v4_root_pool_policy_turn_at_board(trace, divergence.board_fen.as_str())
+        {
+            let result = format_match_result(trace.result);
+            pro_v4_root_pool_add_origin(
+                &mut rows,
+                turn.move_fen.as_str(),
+                format!("policy_output:{}:{}", policy.id, turn.candidate_branch),
+            );
+            if matches!(trace.result, MatchResult::ProfileAWin) {
+                pro_v4_root_pool_add_origin(
+                    &mut rows,
+                    turn.move_fen.as_str(),
+                    format!("winning_policy_output:{}", policy.id),
+                );
+            }
+            pro_v4_root_pool_add_policy(
+                &mut rows,
+                turn.move_fen.as_str(),
+                format!("{}:{}:{}", policy.id, result, turn.candidate_branch),
+            );
+        }
+    }
+
+    let live_root_count = rows
+        .keys()
+        .filter(|inputs| index_by_inputs.contains_key(*inputs))
+        .count();
+    let policy_root_count = rows
+        .values()
+        .filter(|row| row.origin_kinds.contains("policy_output"))
+        .count();
+    let winning_policy_root_count = rows
+        .values()
+        .filter(|row| row.origin_kinds.contains("winning_policy_output"))
+        .count();
+    let omitted_policy_root_count = rows
+        .iter()
+        .filter(|(inputs, row)| {
+            row.origin_kinds.contains("policy_output") && !index_by_inputs.contains_key(*inputs)
+        })
+        .count();
+    println!(
+        "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_SUMMARY {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"baseline_result\":\"{}\",\"candidate_result\":\"{}\",\"winning_policies\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"root_limit\":{},\"root_count\":{},\"live_root_count\":{},\"policy_root_count\":{},\"winning_policy_root_count\":{},\"omitted_policy_root_count\":{}}}",
+        json_escape(panel),
+        json_escape(baseline.id),
+        json_escape(candidate.id),
+        json_escape(candidate_ids),
+        json_escape(duel),
+        json_escape(seed_tag),
+        repeat_index,
+        opening_index,
+        automove_variant_label(variant),
+        candidate_is_white,
+        json_escape(portfolio_class),
+        json_escape(outcome),
+        format_match_result(baseline_trace.result),
+        format_match_result(candidate_trace.result),
+        json_escape(
+            &traces
+                .iter()
+                .filter(|(_, trace)| matches!(trace.result, MatchResult::ProfileAWin))
+                .map(|(policy, _)| policy.id)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        divergence.ply,
+        json_escape(&divergence.board_fen),
+        json_escape(&divergence.left_move_fen),
+        json_escape(&divergence.right_move_fen),
+        root_limit,
+        rows.len(),
+        live_root_count,
+        policy_root_count,
+        winning_policy_root_count,
+        omitted_policy_root_count,
+    );
+
+    for (inputs, row) in rows {
+        let root = index_by_inputs
+            .get(&inputs)
+            .and_then(|index| scored_roots.get(*index));
+        let advisor =
+            pro_policy_mechanism_advisor_class(baseline_advisor.as_ref(), inputs.as_str());
+        let (
+            rank,
+            score,
+            family,
+            safety_detail,
+            progress,
+            efficiency,
+            setup_gain,
+            soft_priority,
+            keeps_awake,
+            reply_floor,
+            reply_risk,
+            followup_floor,
+            utility,
+            path,
+        ) = if let Some(root) = root {
+            let family = MonsGameModel::turn_engine_root_evaluation_family(root);
+            let reply_snapshot = MonsGameModel::root_reply_risk_snapshot(
+                &root.game,
+                game.active_color,
+                runtime,
+                runtime.root_reply_risk_reply_limit.clamp(1, 24),
+            );
+            let followup_floor = MonsGameModel::pro_v2_spirit_followup_floor_score(
+                &root.game,
+                game.active_color,
+                runtime,
+            );
+            let utility = MonsGameModel::turn_engine_selected_override_utility(
+                &game,
+                root,
+                game.active_color,
+                runtime,
+                family,
+            );
+            (
+                Some(root.root_rank),
+                Some(root.score),
+                format!("{family:?}"),
+                pro_policy_mechanism_safety_detail_bucket(
+                    root.mana_handoff_to_opponent,
+                    root.has_roundtrip,
+                    root.own_drainer_walk_vulnerable,
+                    root.own_drainer_vulnerable,
+                ),
+                pro_policy_mechanism_root_progress_bucket(root),
+                Some(root.efficiency),
+                Some(root.spirit_setup_gain),
+                Some(root.interview_soft_priority),
+                Some(root.keeps_awake_spirit_on_base),
+                Some(reply_snapshot.worst_reply_score),
+                pro_policy_mechanism_reply_risk_bucket(
+                    Some(reply_snapshot.worst_reply_score),
+                    Some(reply_snapshot.allows_immediate_opponent_win),
+                    Some(reply_snapshot.opponent_reaches_match_point),
+                ),
+                Some(followup_floor),
+                format!("{utility:?}"),
+                forced_root_oracle_path_bucket(
+                    root.inputs.as_slice(),
+                    root.root_rank,
+                    advisor.as_str(),
+                    forced_engine_inputs.as_ref(),
+                ),
+            )
+        } else {
+            (
+                None,
+                None,
+                "omitted".to_string(),
+                "omitted",
+                "omitted",
+                None,
+                None,
+                None,
+                None,
+                None,
+                "omitted",
+                None,
+                "omitted".to_string(),
+                "omitted",
+            )
+        };
+        println!(
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\"}}",
+            json_escape(panel),
+            json_escape(baseline.id),
+            json_escape(candidate.id),
+            json_escape(candidate_ids),
+            json_escape(duel),
+            json_escape(seed_tag),
+            repeat_index,
+            opening_index,
+            automove_variant_label(variant),
+            candidate_is_white,
+            json_escape(portfolio_class),
+            json_escape(outcome),
+            divergence.ply,
+            json_escape(&divergence.board_fen),
+            json_escape(&divergence.left_move_fen),
+            json_escape(&divergence.right_move_fen),
+            json_escape(&inputs),
+            json_escape(&pro_v4_root_pool_join_set(&row.origins)),
+            json_escape(&pro_v4_root_pool_join_set(&row.origin_kinds)),
+            json_escape(&pro_v4_root_pool_join_set(&row.policies)),
+            root.is_some(),
+            rank.map(|value| value as i32).unwrap_or(-1),
+            pro_policy_mechanism_rank_bucket(rank),
+            score.unwrap_or(0),
+            json_escape(&family),
+            json_escape(&advisor),
+            pro_policy_mechanism_advisor_bucket(&advisor),
+            path,
+            safety_detail,
+            progress,
+            pro_policy_mechanism_efficiency_bucket(efficiency),
+            pro_policy_mechanism_setup_gain_bucket(setup_gain),
+            pro_policy_mechanism_soft_priority_bucket(soft_priority),
+            pro_policy_mechanism_bool_bucket(keeps_awake, "keeps_awake"),
+            reply_floor
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "omitted".to_string()),
+            reply_risk,
+            followup_floor
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "omitted".to_string()),
+            json_escape(&utility),
+        );
+    }
+}
+
 fn pro_sweep_candidate_record_context_key(
     duel_label: &str,
     variant: GameVariant,
@@ -3612,6 +3992,16 @@ fn smart_automove_pro_policy_matrix_probe() {
         env_bool("SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS").unwrap_or(false);
     let include_corpus_records =
         env_bool("SMART_PRO_POLICY_MATRIX_INCLUDE_CORPUS_RECORDS").unwrap_or(false);
+    let include_pro_v4_root_pool =
+        env_bool("SMART_PRO_POLICY_MATRIX_INCLUDE_PROV4_ROOT_POOL").unwrap_or(false);
+    let pro_v4_root_pool_record_limit =
+        env_usize("SMART_PRO_POLICY_MATRIX_PROV4_ROOT_POOL_RECORD_LIMIT")
+            .unwrap_or(16)
+            .max(1);
+    let pro_v4_root_pool_root_limit =
+        env_usize("SMART_PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT_LIMIT")
+            .unwrap_or(16)
+            .max(1);
     let global_only = env_bool("SMART_PRO_POLICY_MATRIX_GLOBAL_ONLY").unwrap_or(false);
     let record_axis_filter =
         pro_sweep_filter_tokens("SMART_PRO_POLICY_MATRIX_RECORD_AXIS_FILTER", "all");
@@ -3719,7 +4109,7 @@ fn smart_automove_pro_policy_matrix_probe() {
     };
 
     println!(
-        "pro policy matrix: baseline={} candidates={} panels={} duels={} max_plies={} state_limit={:?} total_state_limit={:?} include_decision_probe={} include_mechanism_class={} include_portfolio_mechanism_class={} include_corpus_records={} global_only={} record_axis_filter={}",
+        "pro policy matrix: baseline={} candidates={} panels={} duels={} max_plies={} state_limit={:?} total_state_limit={:?} include_decision_probe={} include_mechanism_class={} include_portfolio_mechanism_class={} include_corpus_records={} include_pro_v4_root_pool={} pro_v4_root_pool_record_limit={} pro_v4_root_pool_root_limit={} global_only={} record_axis_filter={}",
         baseline.id,
         candidate_ids,
         pro_promotion_dashboard_panel_specs()
@@ -3741,6 +4131,9 @@ fn smart_automove_pro_policy_matrix_probe() {
         include_mechanism_class,
         include_portfolio_mechanism_class,
         include_corpus_records,
+        include_pro_v4_root_pool,
+        pro_v4_root_pool_record_limit,
+        pro_v4_root_pool_root_limit,
         global_only,
         record_axis_filter_label,
     );
@@ -3758,6 +4151,7 @@ fn smart_automove_pro_policy_matrix_probe() {
     let mut record_filter_stats = PolicyMatrixRecordFilterStats::default();
     let mut global_state_limit_hit = false;
     let mut total_states_seen = 0usize;
+    let mut pro_v4_root_pool_records_printed = 0usize;
 
     'panels: for panel in pro_promotion_dashboard_panel_specs()
         .into_iter()
@@ -4221,6 +4615,33 @@ fn smart_automove_pro_policy_matrix_probe() {
                                             json_escape(&baseline_trace.final_fen),
                                             json_escape(&candidate_trace.final_fen),
                                         );
+                                        if include_pro_v4_root_pool
+                                            && pro_v4_root_pool_records_printed
+                                                < pro_v4_root_pool_record_limit
+                                        {
+                                            if let Some(divergence) = first_divergence.as_ref() {
+                                                pro_v4_root_pool_print_snapshot(
+                                                    panel.label,
+                                                    baseline,
+                                                    *candidate,
+                                                    candidate_ids.as_str(),
+                                                    duel.label,
+                                                    duel_seed_tag.as_str(),
+                                                    repeat_index,
+                                                    game_index,
+                                                    variant,
+                                                    candidate_is_white,
+                                                    portfolio_class,
+                                                    outcome,
+                                                    baseline_trace,
+                                                    candidate_trace,
+                                                    traces.as_slice(),
+                                                    divergence,
+                                                    pro_v4_root_pool_root_limit,
+                                                );
+                                                pro_v4_root_pool_records_printed += 1;
+                                            }
+                                        }
                                     }
                                 }
                                 if delta == 0 && first_divergence.is_none() {

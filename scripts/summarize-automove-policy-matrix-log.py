@@ -1428,6 +1428,19 @@ def normalized_coverage_gap_state_row(entry):
     }
 
 
+def normalized_pro_v4_root_pool_row(event, row_type):
+    record = event["data"]
+    state_record = {field: record.get(field, "") for field in CORPUS_STATE_FIELDS}
+    return {
+        **record,
+        "row_type": row_type,
+        "source_log": event["source_log"],
+        "source_line": event["source_line"],
+        "state_id": corpus_state_id(state_record),
+        "cross_budget_state_id": cross_budget_state_id(state_record),
+    }
+
+
 def build_jsonl_rows(events):
     rows = []
     for event in events:
@@ -1435,6 +1448,11 @@ def build_jsonl_rows(events):
             continue
         rows.append(normalized_policy_decision_row(event))
         rows.extend(normalized_policy_axis_rows(event))
+    for event in events:
+        if event["event_type"] == "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_SUMMARY":
+            rows.append(normalized_pro_v4_root_pool_row(event, "pro_v4_root_pool_summary"))
+        elif event["event_type"] == "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT":
+            rows.append(normalized_pro_v4_root_pool_row(event, "pro_v4_root_pool_root"))
 
     rows.extend(
         normalized_corpus_axis_summary_row(row) for row in corpus_axis_rows(events)
@@ -1464,6 +1482,110 @@ def write_jsonl_rows(path, rows):
         "path": str(path),
         "rows": sum(row_type_counts.values()),
         "row_type_counts": sorted_count_rows(row_type_counts),
+    }
+
+
+def split_pipe_field(value):
+    return [item for item in str(value or "").split("|") if item]
+
+
+def summarize_pro_v4_root_pool(events, limit=8):
+    summaries = [
+        event["data"]
+        for event in events
+        if event["event_type"] == "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_SUMMARY"
+    ]
+    roots = [
+        event["data"]
+        for event in events
+        if event["event_type"] == "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT"
+    ]
+    if not summaries and not roots:
+        return {
+            "summary_count": 0,
+            "root_count": 0,
+            "source_permission": "not_run",
+        }
+
+    origin_kind_counts = defaultdict(int)
+    origin_counts = defaultdict(int)
+    policy_counts = defaultdict(int)
+    portfolio_class_counts = defaultdict(int)
+    outcome_counts = defaultdict(int)
+    winning_root_field_counts = defaultdict(lambda: defaultdict(int))
+    candidate_only_winning_root_field_counts = defaultdict(lambda: defaultdict(int))
+    live_count = 0
+    omitted_policy_root_count = 0
+    winning_policy_root_count = 0
+    winning_policy_live_root_count = 0
+    for root in roots:
+        kinds = split_pipe_field(root.get("origin_kinds", ""))
+        origins = split_pipe_field(root.get("origins", ""))
+        policies = split_pipe_field(root.get("policies", ""))
+        for kind in kinds:
+            origin_kind_counts[kind] += 1
+        for origin in origins:
+            origin_counts[origin] += 1
+        for policy in policies:
+            policy_counts[policy] += 1
+        portfolio_class_counts[root.get("portfolio_class", "")] += 1
+        outcome_counts[root.get("outcome", "")] += 1
+        live = bool(root.get("live", False))
+        if live:
+            live_count += 1
+        if "policy_output" in kinds and not live:
+            omitted_policy_root_count += 1
+        if "winning_policy_output" in kinds:
+            winning_policy_root_count += 1
+            if live:
+                winning_policy_live_root_count += 1
+            for field in [
+                "family",
+                "rank_bucket",
+                "advisor_bucket",
+                "path",
+                "progress",
+                "safety_detail",
+                "reply_risk",
+            ]:
+                winning_root_field_counts[field][root.get(field, "")] += 1
+                if root.get("portfolio_class", "") == "candidate_only_win":
+                    candidate_only_winning_root_field_counts[field][
+                        root.get(field, "")
+                    ] += 1
+
+    return {
+        "summary_count": len(summaries),
+        "root_count": len(roots),
+        "source_permission": "diagnostic_only",
+        "live_root_count": live_count,
+        "omitted_policy_root_count": omitted_policy_root_count,
+        "winning_policy_root_count": winning_policy_root_count,
+        "winning_policy_live_root_count": winning_policy_live_root_count,
+        "summary_root_counts": {
+            "root_count": sum(int(row.get("root_count", 0)) for row in summaries),
+            "live_root_count": sum(int(row.get("live_root_count", 0)) for row in summaries),
+            "policy_root_count": sum(int(row.get("policy_root_count", 0)) for row in summaries),
+            "winning_policy_root_count": sum(
+                int(row.get("winning_policy_root_count", 0)) for row in summaries
+            ),
+            "omitted_policy_root_count": sum(
+                int(row.get("omitted_policy_root_count", 0)) for row in summaries
+            ),
+        },
+        "portfolio_class_counts": sorted_count_rows(portfolio_class_counts),
+        "outcome_counts": sorted_count_rows(outcome_counts),
+        "origin_kind_counts": sorted_count_rows(origin_kind_counts),
+        "winning_root_field_counts": {
+            field: sorted_count_rows(counts)
+            for field, counts in sorted(winning_root_field_counts.items())
+        },
+        "candidate_only_winning_root_field_counts": {
+            field: sorted_count_rows(counts)
+            for field, counts in sorted(candidate_only_winning_root_field_counts.items())
+        },
+        "top_origins": sorted_count_rows(origin_counts)[:limit],
+        "top_policy_outputs": sorted_count_rows(policy_counts)[:limit],
     }
 
 
@@ -1538,6 +1660,7 @@ def summarize(events):
         "record_filters": filters,
         "corpus_axis_summary": summarize_corpus_axes(events),
         "cross_budget_axis_summary": summarize_cross_budget_axes(events),
+        "pro_v4_root_pool_summary": summarize_pro_v4_root_pool(events),
         "coverage_gap_entry_count": len(coverage_gap_entries),
         "coverage_gap_entries": coverage_gap_entries,
     }
