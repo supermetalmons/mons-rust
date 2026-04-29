@@ -215,7 +215,31 @@ impl TurnEngineUtility {
 }
 
 #[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TurnEngineUtilityComponentsForTest {
+    pub win_state: i32,
+    pub avoid_immediate_loss: i32,
+    pub score_delta: i32,
+    pub deny_gain: i32,
+    pub drainer_attack: i32,
+    pub drainer_safety: i32,
+    pub eval_score: i32,
+}
+
+#[cfg(test)]
 impl TurnEngineUtility {
+    pub(crate) fn components_for_test(self) -> TurnEngineUtilityComponentsForTest {
+        TurnEngineUtilityComponentsForTest {
+            win_state: self.win_state,
+            avoid_immediate_loss: self.avoid_immediate_loss,
+            score_delta: self.score_delta,
+            deny_gain: self.deny_gain,
+            drainer_attack: self.drainer_attack,
+            drainer_safety: self.drainer_safety,
+            eval_score: self.eval_score,
+        }
+    }
+
     pub(crate) fn from_eval_score_for_test(eval_score: i32) -> Self {
         Self {
             win_state: 0,

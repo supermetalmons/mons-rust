@@ -1841,6 +1841,124 @@ fn pro_policy_mechanism_utility_primary_order(
     }
 }
 
+fn pro_policy_mechanism_utility_delta_bucket(
+    winner_value: Option<i32>,
+    baseline_value: Option<i32>,
+) -> &'static str {
+    match (winner_value, baseline_value) {
+        (Some(winner), Some(baseline)) => match winner.saturating_sub(baseline) {
+            1024.. => "winner_better_1024_plus",
+            257..=1023 => "winner_better_257_1023",
+            96..=256 => "winner_better_96_256",
+            1..=95 => "winner_better_1_95",
+            0 => "same",
+            -95..=-1 => "winner_worse_1_95",
+            -256..=-96 => "winner_worse_96_256",
+            -1023..=-257 => "winner_worse_257_1023",
+            _ => "winner_worse_1024_plus",
+        },
+        (Some(_), None) => "winner_live_baseline_omitted",
+        (None, Some(_)) => "winner_omitted_baseline_live",
+        (None, None) => "both_omitted",
+    }
+}
+
+fn pro_policy_mechanism_utility_pivot_component(
+    winner: Option<TurnEngineUtility>,
+    baseline: Option<TurnEngineUtility>,
+) -> &'static str {
+    let (Some(winner), Some(baseline)) = (winner, baseline) else {
+        return match (winner, baseline) {
+            (Some(_), None) => "winner_live",
+            (None, Some(_)) => "baseline_live",
+            (None, None) => "both_omitted",
+            (Some(_), Some(_)) => unreachable!(),
+        };
+    };
+    let winner = winner.components_for_test();
+    let baseline = baseline.components_for_test();
+    [
+        ("win_state", winner.win_state, baseline.win_state),
+        (
+            "avoid_immediate_loss",
+            winner.avoid_immediate_loss,
+            baseline.avoid_immediate_loss,
+        ),
+        ("score_delta", winner.score_delta, baseline.score_delta),
+        ("deny_gain", winner.deny_gain, baseline.deny_gain),
+        (
+            "drainer_attack",
+            winner.drainer_attack,
+            baseline.drainer_attack,
+        ),
+        (
+            "drainer_safety",
+            winner.drainer_safety,
+            baseline.drainer_safety,
+        ),
+        ("eval_score", winner.eval_score, baseline.eval_score),
+    ]
+    .into_iter()
+    .find_map(
+        |(name, winner_value, baseline_value)| match winner_value.cmp(&baseline_value) {
+            std::cmp::Ordering::Greater => Some(match name {
+                "win_state" => "win_state_better",
+                "avoid_immediate_loss" => "avoid_immediate_loss_better",
+                "score_delta" => "score_delta_better",
+                "deny_gain" => "deny_gain_better",
+                "drainer_attack" => "drainer_attack_better",
+                "drainer_safety" => "drainer_safety_better",
+                _ => "eval_score_better",
+            }),
+            std::cmp::Ordering::Less => Some(match name {
+                "win_state" => "win_state_worse",
+                "avoid_immediate_loss" => "avoid_immediate_loss_worse",
+                "score_delta" => "score_delta_worse",
+                "deny_gain" => "deny_gain_worse",
+                "drainer_attack" => "drainer_attack_worse",
+                "drainer_safety" => "drainer_safety_worse",
+                _ => "eval_score_worse",
+            }),
+            std::cmp::Ordering::Equal => None,
+        },
+    )
+    .unwrap_or("same")
+}
+
+fn pro_policy_mechanism_utility_component_axis(
+    winner: &ProPolicyMechanismRootClass,
+    baseline: &ProPolicyMechanismRootClass,
+    winner_vs_baseline_utility: &str,
+    winner_rank_delta: &str,
+    winner_score_delta: &str,
+) -> String {
+    let winner_components = winner.utility.map(TurnEngineUtility::components_for_test);
+    let baseline_components = baseline.utility.map(TurnEngineUtility::components_for_test);
+    let component_delta = |extract: fn(
+        crate::models::automove_turn_engine::TurnEngineUtilityComponentsForTest,
+    ) -> i32| {
+        pro_policy_mechanism_utility_delta_bucket(
+            winner_components.map(extract),
+            baseline_components.map(extract),
+        )
+    };
+
+    format!(
+        "axis=utility_component_delta pivot={} primary={} rank_delta={} root_score_delta={} win_state={} avoid_loss={} score_delta={} deny_gain={} drainer_attack={} drainer_safety={} eval_score={}",
+        pro_policy_mechanism_utility_pivot_component(winner.utility, baseline.utility),
+        winner_vs_baseline_utility,
+        winner_rank_delta,
+        winner_score_delta,
+        component_delta(|components| components.win_state),
+        component_delta(|components| components.avoid_immediate_loss),
+        component_delta(|components| components.score_delta),
+        component_delta(|components| components.deny_gain),
+        component_delta(|components| components.drainer_attack),
+        component_delta(|components| components.drainer_safety),
+        component_delta(|components| components.eval_score),
+    )
+}
+
 fn pro_policy_mechanism_root_presence_bucket(root: &ProPolicyMechanismRootClass) -> &'static str {
     match root.live {
         "top3_live" => "top3_considered",
@@ -2238,6 +2356,13 @@ fn pro_policy_mechanism_class_keys_from_scored_roots(
         format!(
             "axis=rank_score_delta winner_rank_delta={} winner_score_delta={} winner_vs_baseline_primary={}",
             winner_rank_delta, winner_score_delta, winner_vs_baseline_utility,
+        ),
+        pro_policy_mechanism_utility_component_axis(
+            &winner,
+            &baseline,
+            winner_vs_baseline_utility,
+            winner_rank_delta,
+            winner_score_delta,
         ),
         format!(
             "axis=root_preservation winner_presence={} winner_path={} winner_advisor={} winner_signal={} winner_rank_delta={}",
