@@ -12,7 +12,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-major-
 - Retained profiles are only `shipping_pro_search` and `frontier_pro_v2_guarded`.
 - The current mode is `structural-reset`.
 - There is no live runtime hypothesis and no promotable challenger.
-- Current diagnostic hypothesis: there is no source-level selector yet. The broad reset route scan found no clean low-fragmentation route; the filtered safety/progress and `engine_post_search` routes are retired as source evidence because their matching states split by policy, color, branch, first move, and advisor status. Outcome Corpus V2 now has a log summarizer with `corpus_decision` / `next_action` / `source_blocker`, multi-log `log_rollup` including rollup-level decisions, compact `coverage_gap_entries`, same-opening sibling summaries, and a true total-state cap. A corrected-horizon forced-root oracle on the active Pro no-policy coverage-gap boards found winning roots in the current root set, but the forced-root digest found no repeated axis that separates those winners from losing roots. The next work is testing whether the new same-opening candidate-only/no-policy pairing repeats.
+- Current diagnostic hypothesis: there is no source-level selector yet. The broad reset route scan found no clean low-fragmentation route; the filtered safety/progress and `engine_post_search` routes are retired as source evidence because their matching states split by policy, color, branch, first move, and advisor status. Outcome Corpus V2 now has a log summarizer with `corpus_decision` / `next_action` / `source_blocker`, multi-log `log_rollup` including rollup-level decisions, compact `coverage_gap_entries`, same-opening sibling summaries, and a true total-state cap. A corrected-horizon forced-root oracle on the active Pro no-policy coverage-gap boards found winning roots in the current root set, but the forced-root digest found no repeated axis that separates those winners from losing roots. The widened active Pro same-opening pairing check stayed singleton, so the work returns to broader record-bearing Outcome Corpus V2 feature extraction.
 - Recent stagnation is from the loop where local selectors are cheap to invent, broad promotion proof is expensive, and singleton-heavy corpus evidence still leaves room to try "one more gate".
 - Do not reopen archived profiles, archived seams, archived stages, or pruned sweep candidates as direct experiment targets.
 
@@ -45,21 +45,19 @@ Their historical no-go evidence remains in `docs/automove-knowledge.md` and `doc
 
 ## Next Command Sequence
 
-Current next sequence: do not write runtime code or a ProV4 comparator. Widen the active Pro Outcome Corpus V2 slice just enough to test whether the same-opening candidate-only/no-policy cross-side pairing repeats beyond the first `outer_edge_mana_rows` opening. Read `coverage_gap_entries[].same_opening_sibling_states` before raw records.
+Current next sequence: do not write runtime code or a ProV4 comparator. Run one broader, record-bearing Outcome Corpus V2 slice with a true global cap so the next postprocessor work can compare candidate-only wins, baseline saves, shared wins, and no-policy gaps across panels and budgets before any raw record inspection.
 
 ```sh
-SMART_PRO_POLICY_MATRIX_PANEL_FILTER=active_blockers \
-SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_pro \
-SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT=4 \
+SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT=8 \
 SMART_PRO_POLICY_MATRIX_GLOBAL_ONLY=false \
 SMART_PRO_POLICY_MATRIX_INCLUDE_CORPUS_RECORDS=true \
 SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS=true \
-SMART_PRO_POLICY_MATRIX_ROUTE_BUCKET_LIMIT=5 \
+SMART_PRO_POLICY_MATRIX_ROUTE_BUCKET_LIMIT=8 \
 SMART_PRO_POLICY_MATRIX_MAX_PLIES=56 \
 ./scripts/run-automove-experiment.sh pro-policy-outcome-corpus frontier_pro_v2_guarded,frontier_pro_v3_alternating_white_edge_mana,frontier_pro_v3_white_opening_utility_mana,shipping_pro_search_control,frontier_pro_v2_raw,frontier_pro_v2_no_selected_followup_projection,frontier_pro_v3_full_scored_reply_guard,frontier_pro_v2_no_low_budget_guard
 ```
 
-Log that command and read it with `scripts/summarize-automove-policy-matrix-log.py <log>` before raw records. If multiple coverage-gap entries have same-opening siblings with opposite-side candidate-only wins, extend the postprocessor into an explicit cross-side pairing report. If the pairing stays singleton, archive it and return to broader Outcome Corpus V2 feature extraction.
+Log that command and read it with `scripts/summarize-automove-policy-matrix-log.py <log>` before raw records. Read `corpus_decision`, `next_action`, `source_blocker`, `route_buckets`, `record_filters`, and `coverage_gap_entries` first. If the digest still reports `build_outcome_corpus_v2` / fragmented records, add only the smallest postprocessor feature-extraction report needed to rank lower-level axes across candidate-only wins, baseline saves, shared wins, and no-policy gaps. Runtime source stays untouched unless the summarizer reports `inspect_for_source`.
 Read `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` by state counts only after compact coverage-gap and oracle evidence, then inspect `candidate_only_policy_count`, `candidate_only_branch_count`, and `candidate_only_pair_count`. A clean route that is fragmented on those dimensions is diagnostic only. Only a clean route with positive state-level separation and low fragmentation should earn a narrow record/probe rerun.
 Read `PRO_POLICY_MATRIX_GLOBAL_ROUTE_RECOMMENDATION` before raw route lines. `build_outcome_corpus_v2` means preserve harness/postprocess work and do not write a runtime selector.
 Read `PRO_POLICY_MATRIX_GLOBAL_ROUTE_BUCKET` next. Its bucketed shortlist should replace manual grepping through all raw route lines.
@@ -170,7 +168,8 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - The expanded reset portfolio has shown useful oracle coverage, but repeated exact winner context/pair evidence has stayed singleton-heavy.
 - The active Pro no-policy coverage-gap boards are root-covered under corrected horizon but not selector-covered: guarded continuation found `7/16`, `4/16`, and `1/17` winning roots on the checked ply-7, ply-20, and ply-40 boards, while the winning ranks and families did not collapse to one selector feature.
 - The forced-root digest confirmed the same no-source shape across all three checked boards: `summary_count=3`, `tested_roots=49`, `wins=12`, `losses=37`, `promising_repeated_axes=[]`, and `oracle_decision=fragmented_root_features`. Even `rank_band=rank8_plus` repeated across all winner groups but also appeared on `16` losing roots.
-- The active Pro Outcome Corpus V2 rerun stayed `coverage_gap` with `candidate_only_wins=1` and `no_policy_wins=1`, but `same_opening_sibling_states` now shows the candidate-white no-policy entry is paired with a candidate-black sibling from the same opening where every corpus record is `candidate_only_win` and the winning policies are `shipping_pro_search_control` plus `frontier_pro_v3_full_scored_reply_guard`.
+- The active Pro Outcome Corpus V2 rerun with two total states stayed `coverage_gap` with `candidate_only_wins=1` and `no_policy_wins=1`, and `same_opening_sibling_states` showed the candidate-white no-policy entry paired with a candidate-black sibling from the same opening where every corpus record is `candidate_only_win` and the winning policies are `shipping_pro_search_control` plus `frontier_pro_v3_full_scored_reply_guard`.
+- The active Pro four-state widening kept that same-opening cross-side pairing singleton. It stayed `coverage_gap` with `total_games=4`, `candidate_only_wins=2`, `no_policy_wins=1`, `shared_wins=1`, `coverage_gap_entry_count=1`, and only the original `outer_edge_mana_rows` no-policy entry with one same-opening sibling. Treat the pairing as archived singleton evidence, not source permission.
 - Broad zero-window safe-pressure classes are contaminated by baseline-better saves and cannot justify runtime selectors.
 - The latest broad state-aware route summary confirmed that zero-window safe-pressure remains `baseline_save_risk` despite positive raw emissions; it had candidate-only games `10`, baseline-better games `5`, candidate-only states `5`, and baseline-better states `3`.
 - Cleaner route signals are timing/stage-level and still diagnostic only. The top clean active route was `engine_post_search` with `pre_family=ManaTempo head_family=Some(SpiritImpact)`: candidate-only games `3`, baseline-better games `0`, candidate-only states `3`, spanning active Pro/Fast only. Focused records showed three winning policies, both colors, two branch transitions, and three first-move pairs, so it is retired as source permission.
@@ -206,7 +205,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - Shipping decision: public Pro remains on `frontier_pro_v2_guarded`.
 - Release containment: public `Pro` dispatch still routes through retained runtime code; `automove_experiments` remains under `#[cfg(test)]`.
 - Latest retained package direction: no runtime source retained from recent structural reset work.
-- Latest reset evidence: the focused route-filter scans have oracle coverage but no source permission. The safety/progress and `engine_post_search` routes remain fragmented across policy, branch, color, budget, and first-move pair; the latest active Pro outcome-corpus rerun was no-source with `corpus_decision=coverage_gap`, and the focused active Pro compact view exposed a no-policy state where every current policy loses. Corrected-horizon forced-root probes show that the no-policy state is root-covered, and the forced-root digest confirms current root rank/family/utility axes do not cleanly separate winners from losses. The retained change is same-opening sibling summaries in the policy-matrix summarizer; no runtime source is retained from this reset pass.
+- Latest reset evidence: the focused route-filter scans have oracle coverage but no source permission. The safety/progress and `engine_post_search` routes remain fragmented across policy, branch, color, budget, and first-move pair; the active Pro compact view exposed a no-policy state where every current policy loses. Corrected-horizon forced-root probes show that the no-policy state is root-covered, and the forced-root digest confirms current root rank/family/utility axes do not cleanly separate winners from losses. The active Pro same-opening sibling check stayed singleton after widening from two to four states, so the retained direction is broader Outcome Corpus V2 feature extraction; no runtime source is retained from this reset pass.
 
 ## Session End Checklist
 
