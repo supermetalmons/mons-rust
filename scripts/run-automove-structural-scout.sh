@@ -42,6 +42,9 @@ With --outcome-corpus:
 With --confirm:
   5. all variants profile sweep, repeats=1, games=12
 
+After all successful stages, the scout prints AUTOMOVE_STRUCTURAL_SCOUT_DECISION
+with the dashboard stoplight plus any outcome-corpus postprocess decision.
+
 The candidate list must be supported by the pro-promotion-dashboard diagnostic in
 ./scripts/run-automove-experiment.sh.
 EOF
@@ -83,6 +86,26 @@ fi
 
 candidate="$1"
 shipping="${2:-shipping_pro_search}"
+dashboard_log_path=""
+outcome_log_path=""
+outcome_summary_path=""
+outcome_jsonl_path=""
+outcome_workbench_path=""
+
+log_path_from_capture() {
+  awk '/^  log: / { sub(/^  log: /, ""); print }' "$1" | tail -n 1
+}
+
+output_prefix_for_log() {
+  case "$1" in
+    *.log)
+      printf '%s\n' "${1%.log}"
+      ;;
+    *)
+      printf '%s\n' "$1"
+      ;;
+  esac
+}
 
 default_dashboard_include_guarded() {
   if [ "${candidate}" = "frontier_pro_v2_guarded" ]; then
@@ -94,11 +117,28 @@ default_dashboard_include_guarded() {
 
 run_dashboard() {
   local include_guarded
+  local capture_path
+  local status
   include_guarded="${SMART_PRO_DASHBOARD_INCLUDE_GUARDED:-$(default_dashboard_include_guarded)}"
   echo "== automove structural scout: promotion-dashboard =="
+  capture_path="$(mktemp /tmp/automove-structural-scout-dashboard.XXXXXX)"
+  set +e
   SMART_PRO_DASHBOARD_PANEL_FILTER="${SMART_PRO_DASHBOARD_PANEL_FILTER:-all}" \
   SMART_PRO_DASHBOARD_INCLUDE_GUARDED="${include_guarded}" \
-    ./scripts/run-automove-experiment.sh pro-promotion-dashboard "${candidate}" "${shipping}"
+    ./scripts/run-automove-experiment.sh pro-promotion-dashboard "${candidate}" "${shipping}" \
+      | tee "${capture_path}"
+  status=$?
+  set -e
+
+  dashboard_log_path="$(log_path_from_capture "${capture_path}")"
+  rm -f "${capture_path}"
+  if [ "${status}" -ne 0 ]; then
+    return "${status}"
+  fi
+  if [ -z "${dashboard_log_path}" ]; then
+    echo "automove structural scout: no promotion-dashboard log path found" >&2
+    return 3
+  fi
 }
 
 run_policy_corpus() {
@@ -133,11 +173,17 @@ run_policy_outcome_corpus() {
   if [ "${status}" -ne 0 ]; then
     return "${status}"
   fi
+  outcome_log_path="${log_path}"
   if [ "${SMART_AUTOMOVE_SCOUT_POSTPROCESS_OUTCOME:-true}" = "true" ]; then
     if [ -z "${log_path}" ]; then
       echo "automove structural scout: no policy-outcome-corpus log path found" >&2
       return 3
     fi
+    local output_prefix
+    output_prefix="$(output_prefix_for_log "${log_path}")"
+    outcome_summary_path="${output_prefix}.summary.json"
+    outcome_jsonl_path="${output_prefix}.jsonl"
+    outcome_workbench_path="${output_prefix}.workbench.json"
     ./scripts/postprocess-automove-outcome-corpus-log.sh "${log_path}"
   fi
 }
@@ -147,6 +193,128 @@ run_profile_sweep_panel() {
   shift
   echo "== automove structural scout: ${panel} =="
   env "$@" ./scripts/run-automove-experiment.sh pro-profile-sweep "${candidate}" "${shipping}"
+}
+
+emit_structural_scout_decision() {
+  python3 - \
+    "${candidate}" \
+    "${shipping}" \
+    "${dashboard_log_path}" \
+    "${outcome_log_path}" \
+    "${outcome_summary_path}" \
+    "${outcome_workbench_path}" <<'PY'
+import json
+import os
+import sys
+
+candidate, shipping, dashboard_log, outcome_log, summary_path, workbench_path = sys.argv[1:]
+
+
+def last_json_line(path, prefix):
+    if not path or not os.path.isfile(path):
+        return None
+    found = None
+    with open(path, "r", encoding="utf-8") as handle:
+        for line in handle:
+            if line.startswith(prefix + " "):
+                try:
+                    found = json.loads(line.split(" ", 1)[1])
+                except json.JSONDecodeError:
+                    continue
+    return found
+
+
+def load_json(path):
+    if not path or not os.path.isfile(path):
+        return None
+    with open(path, "r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+dashboard = last_json_line(dashboard_log, "PRO_PROMOTION_DASHBOARD_STOPLIGHT") or {}
+summary = load_json(summary_path) or {}
+workbench = load_json(workbench_path) or {}
+cross_budget = summary.get("cross_budget_axis_summary") or {}
+
+dashboard_label = dashboard.get("label")
+if dashboard_label == "promotable_shape":
+    promotion_decision = "confirm_before_promotion"
+elif dashboard_label in {"not_promising", "cost_blocked"}:
+    promotion_decision = "do_not_promote"
+elif dashboard_label:
+    promotion_decision = "diagnostic_only"
+else:
+    promotion_decision = "unknown"
+
+route_permission = summary.get("route_permission")
+workbench_permission = workbench.get("source_permission")
+if not summary and not workbench:
+    source_decision = "not_evaluated"
+elif route_permission == "no_source" or workbench_permission == "no_source":
+    source_decision = "no_runtime_source"
+elif route_permission in {"postprocess_only", "fragmented_no_source"}:
+    source_decision = "postprocess_only"
+elif route_permission:
+    source_decision = "inspect_source_candidate"
+else:
+    source_decision = "unknown"
+
+if source_decision in {"no_runtime_source", "postprocess_only"}:
+    scout_decision = "record_no_source"
+elif source_decision == "inspect_source_candidate":
+    scout_decision = "inspect_source_candidate_before_runtime"
+elif promotion_decision == "confirm_before_promotion":
+    scout_decision = "run_confirm_before_promotion"
+elif promotion_decision == "do_not_promote":
+    scout_decision = "record_no_promotion"
+else:
+    scout_decision = "read_stage_logs"
+
+digest = {
+    "candidate": candidate,
+    "shipping": shipping,
+    "dashboard": {
+        "label": dashboard_label,
+        "classification": dashboard.get("classification"),
+        "panels": dashboard.get("panels"),
+        "max_candidate_avg_ms": dashboard.get("max_candidate_avg_ms"),
+    },
+    "dashboard_log": dashboard_log or None,
+    "outcome_log": outcome_log or None,
+    "outcome_summary": summary_path or None,
+    "outcome_workbench": workbench_path or None,
+    "outcome": {
+        "corpus_decision": summary.get("corpus_decision"),
+        "next_action": summary.get("next_action"),
+        "route_permission": route_permission,
+        "source_blocker": summary.get("source_blocker"),
+        "coverage_gap_entry_count": summary.get("coverage_gap_entry_count"),
+        "source_candidate_rollups": len(cross_budget.get("source_candidate_rollups") or []),
+        "blocked_candidate_rollups": len(cross_budget.get("blocked_candidate_rollups") or []),
+    },
+    "workbench": {
+        "decision": workbench.get("workbench_decision"),
+        "next_action": workbench.get("next_action"),
+        "source_permission": workbench_permission,
+        "source_candidate_axis_count": workbench.get("source_candidate_axis_count"),
+        "blocked_candidate_axis_count": workbench.get("blocked_candidate_axis_count"),
+    },
+    "promotion_decision": promotion_decision,
+    "source_decision": source_decision,
+    "scout_decision": scout_decision,
+}
+
+print("automove structural scout decision:")
+if dashboard_log:
+    print(f"  dashboard_log: {dashboard_log}")
+if outcome_log:
+    print(f"  outcome_log: {outcome_log}")
+if summary_path:
+    print(f"  outcome_summary: {summary_path}")
+if workbench_path:
+    print(f"  outcome_workbench: {workbench_path}")
+print("AUTOMOVE_STRUCTURAL_SCOUT_DECISION " + json.dumps(digest, sort_keys=True))
+PY
 }
 
 run_dashboard
@@ -169,3 +337,5 @@ if [ "${confirm}" = true ]; then
     SMART_PRO_SWEEP_MAX_PLIES=96 \
     SMART_PRO_SWEEP_SEED_TAG=pro_profile_all_variant_scout_v1
 fi
+
+emit_structural_scout_decision
