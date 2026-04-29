@@ -2271,6 +2271,32 @@ impl ProV4RootPoolLegalFanoutFeatures {
     }
 }
 
+#[derive(Default)]
+struct ProV4RootPoolAttackExposurePosture {
+    own_mon_attackable: usize,
+    own_drainer_attackable: usize,
+    own_high_value_carrier_attackable: usize,
+    own_regular_carrier_attackable: usize,
+    opp_mon_attackable: usize,
+    opp_drainer_attackable: usize,
+    opp_high_value_carrier_attackable: usize,
+    opp_regular_carrier_attackable: usize,
+}
+
+struct ProV4RootPoolAttackExposureFeatures {
+    post_attack_exposure: String,
+    post_attack_exposure_delta: String,
+}
+
+impl ProV4RootPoolAttackExposureFeatures {
+    fn omitted() -> Self {
+        Self {
+            post_attack_exposure: "omitted".to_string(),
+            post_attack_exposure_delta: "omitted".to_string(),
+        }
+    }
+}
+
 fn pro_v4_root_pool_is_high_value_mana(mana: Mana, perspective: Color) -> bool {
     match mana {
         Mana::Supermana => true,
@@ -2450,6 +2476,130 @@ fn pro_v4_root_pool_board_features(
         ),
         post_mon_material: pro_v4_root_pool_mon_material_bucket(&after),
         post_mon_material_delta: pro_v4_root_pool_mon_material_delta_bucket(&before, &after),
+    }
+}
+
+fn pro_v4_root_pool_attack_exposure_posture(
+    game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolAttackExposurePosture {
+    if game.winner_color().is_some() {
+        return ProV4RootPoolAttackExposurePosture::default();
+    }
+    let mut posture = ProV4RootPoolAttackExposurePosture::default();
+    for (location, item) in game.board.occupied() {
+        let Some(mon) = item.mon() else {
+            continue;
+        };
+        if mon.is_fainted() {
+            continue;
+        }
+        let attackable = crate::models::automove_exact::can_attack_target_on_board(
+            &game.board,
+            mon.color.other(),
+            mon.color,
+            location,
+            Config::MONS_MOVES_PER_TURN,
+            true,
+        );
+        if !attackable {
+            continue;
+        }
+        let high_value_carrier = item
+            .mana()
+            .copied()
+            .is_some_and(|mana| pro_v4_root_pool_is_high_value_mana(mana, perspective));
+        let own_regular_carrier = item
+            .mana()
+            .copied()
+            .is_some_and(|mana| pro_v4_root_pool_is_own_regular_mana(mana, perspective));
+        if mon.color == perspective {
+            posture.own_mon_attackable += 1;
+            if mon.kind == MonKind::Drainer {
+                posture.own_drainer_attackable += 1;
+            }
+            posture.own_high_value_carrier_attackable += usize::from(high_value_carrier);
+            posture.own_regular_carrier_attackable += usize::from(own_regular_carrier);
+        } else {
+            posture.opp_mon_attackable += 1;
+            if mon.kind == MonKind::Drainer {
+                posture.opp_drainer_attackable += 1;
+            }
+            posture.opp_high_value_carrier_attackable += usize::from(high_value_carrier);
+            posture.opp_regular_carrier_attackable += usize::from(own_regular_carrier);
+        }
+    }
+    posture
+}
+
+fn pro_v4_root_pool_attack_exposure_bucket(
+    game: &MonsGame,
+    posture: &ProV4RootPoolAttackExposurePosture,
+    perspective: Color,
+) -> String {
+    format!(
+        "status={};own_mon={};own_drainer={};own_high_value={};own_regular={};opp_mon={};opp_drainer={};opp_high_value={};opp_regular={}",
+        pro_v4_root_pool_status(game, perspective),
+        pro_v4_root_pool_count_field(posture.own_mon_attackable),
+        pro_v4_root_pool_count_field(posture.own_drainer_attackable),
+        pro_v4_root_pool_count_field(posture.own_high_value_carrier_attackable),
+        pro_v4_root_pool_count_field(posture.own_regular_carrier_attackable),
+        pro_v4_root_pool_count_field(posture.opp_mon_attackable),
+        pro_v4_root_pool_count_field(posture.opp_drainer_attackable),
+        pro_v4_root_pool_count_field(posture.opp_high_value_carrier_attackable),
+        pro_v4_root_pool_count_field(posture.opp_regular_carrier_attackable),
+    )
+}
+
+fn pro_v4_root_pool_attack_exposure_delta_bucket(
+    before: &ProV4RootPoolAttackExposurePosture,
+    after: &ProV4RootPoolAttackExposurePosture,
+) -> String {
+    format!(
+        "own_mon={};own_drainer={};own_high_value={};own_regular={};opp_mon={};opp_drainer={};opp_high_value={};opp_regular={}",
+        pro_v4_root_pool_count_delta_bucket(before.own_mon_attackable, after.own_mon_attackable),
+        pro_v4_root_pool_count_delta_bucket(
+            before.own_drainer_attackable,
+            after.own_drainer_attackable,
+        ),
+        pro_v4_root_pool_count_delta_bucket(
+            before.own_high_value_carrier_attackable,
+            after.own_high_value_carrier_attackable,
+        ),
+        pro_v4_root_pool_count_delta_bucket(
+            before.own_regular_carrier_attackable,
+            after.own_regular_carrier_attackable,
+        ),
+        pro_v4_root_pool_count_delta_bucket(before.opp_mon_attackable, after.opp_mon_attackable),
+        pro_v4_root_pool_count_delta_bucket(
+            before.opp_drainer_attackable,
+            after.opp_drainer_attackable,
+        ),
+        pro_v4_root_pool_count_delta_bucket(
+            before.opp_high_value_carrier_attackable,
+            after.opp_high_value_carrier_attackable,
+        ),
+        pro_v4_root_pool_count_delta_bucket(
+            before.opp_regular_carrier_attackable,
+            after.opp_regular_carrier_attackable,
+        ),
+    )
+}
+
+fn pro_v4_root_pool_attack_exposure_features(
+    before_game: &MonsGame,
+    after_game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolAttackExposureFeatures {
+    let before = pro_v4_root_pool_attack_exposure_posture(before_game, perspective);
+    let after = pro_v4_root_pool_attack_exposure_posture(after_game, perspective);
+    ProV4RootPoolAttackExposureFeatures {
+        post_attack_exposure: pro_v4_root_pool_attack_exposure_bucket(
+            after_game,
+            &after,
+            perspective,
+        ),
+        post_attack_exposure_delta: pro_v4_root_pool_attack_exposure_delta_bucket(&before, &after),
     }
 }
 
@@ -3387,6 +3537,7 @@ fn pro_v4_root_pool_print_snapshot(
             board_features,
             outcome_features,
             legal_fanout_features,
+            attack_exposure_features,
         ) = if let Some(root) = root {
             let family = MonsGameModel::turn_engine_root_evaluation_family(root);
             let reply_snapshot = MonsGameModel::root_reply_risk_snapshot(
@@ -3466,6 +3617,8 @@ fn pro_v4_root_pool_print_snapshot(
                 root_start_options,
                 game.active_color,
             );
+            let attack_exposure_features =
+                pro_v4_root_pool_attack_exposure_features(&game, &root.game, game.active_color);
             (
                 Some(root.root_rank),
                 Some(root.score),
@@ -3505,6 +3658,7 @@ fn pro_v4_root_pool_print_snapshot(
                 board_features,
                 outcome_features,
                 legal_fanout_features,
+                attack_exposure_features,
             )
         } else {
             (
@@ -3532,10 +3686,11 @@ fn pro_v4_root_pool_print_snapshot(
                 ProV4RootPoolBoardFeatures::omitted(),
                 ProV4RootPoolOutcomeFeatures::omitted(),
                 ProV4RootPoolLegalFanoutFeatures::omitted(),
+                ProV4RootPoolAttackExposureFeatures::omitted(),
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -3597,6 +3752,8 @@ fn pro_v4_root_pool_print_snapshot(
             json_escape(&outcome_features.post_turn_budget_delta),
             json_escape(&legal_fanout_features.post_legal_fanout),
             json_escape(&legal_fanout_features.post_legal_fanout_delta),
+            json_escape(&attack_exposure_features.post_attack_exposure),
+            json_escape(&attack_exposure_features.post_attack_exposure_delta),
         );
     }
 }
