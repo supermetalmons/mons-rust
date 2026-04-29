@@ -2213,6 +2213,154 @@ def root_pool_signal_items(row):
     return items
 
 
+def root_pool_signal_field_family(field):
+    field = str(field or "")
+    if "worst_reply" in field:
+        return "worst_reply_event_footprint"
+    if "root_transition" in field:
+        return "root_transition_event_footprint"
+    if "lane_shape" in field:
+        return "lane_shape"
+    if "base_recovery" in field:
+        return "base_recovery"
+    if "role_state" in field:
+        return "role_state"
+    if "action_threat" in field:
+        return "action_threat"
+    if "mobility" in field:
+        return "mobility"
+    if "engagement" in field:
+        return "engagement"
+    if "consumable" in field:
+        return "consumable"
+    if "mana_path" in field:
+        return "mana_path"
+    if "territory" in field:
+        return "territory"
+    if "support_guard" in field:
+        return "support_guard"
+    if "attack_exposure" in field:
+        return "attack_exposure"
+    if "legal_fanout" in field:
+        return "legal_fanout"
+    if "turn_budget" in field or "score" in field or "scoreboard" in field:
+        return "scoreboard_turn_budget"
+    if (
+        "high_value" in field
+        or "own_regular" in field
+        or "mon_material" in field
+    ):
+        return "board_resource"
+    if "exact" in field or "post_pressure" in field:
+        return "exact_pressure"
+    if field == "post_turn_status":
+        return "turn_status"
+    return "core_root"
+
+
+def root_pool_signal_rollup_class(row):
+    if not row["candidate_clean_from_blockers"]:
+        return "contaminated"
+    if row["candidate_repeated_across_states"]:
+        if row["candidate_low_fragmentation"]:
+            return "low_fragmentation_repeated"
+        return "fragmented_repeated"
+    return "clean_singleton"
+
+
+def root_pool_signal_rollup_status(class_counts):
+    if class_counts["low_fragmentation_repeated"]:
+        return "candidate_source_lead"
+    if class_counts["fragmented_repeated"]:
+        return "fragmented_repeated_no_source"
+    if class_counts["clean_singleton"] and class_counts["contaminated"]:
+        return "singleton_and_contaminated_no_source"
+    if class_counts["clean_singleton"]:
+        return "singleton_no_source"
+    if class_counts["contaminated"]:
+        return "contaminated_no_source"
+    return "no_candidate_signal"
+
+
+def summarize_root_pool_signal_rollups(signal_rows, key_name, key_fn):
+    groups = {}
+    for row in signal_rows:
+        key = key_fn(row)
+        group = groups.setdefault(
+            key,
+            {
+                key_name: key,
+                "signal_count": 0,
+                "fields": set(),
+                "candidate_root_count": 0,
+                "candidate_states": set(),
+                "candidate_snapshot_signals": 0,
+                "blocker_root_count": 0,
+                "guarded_blocker_root_count": 0,
+                "same_state_blocker_root_count": 0,
+                "class_counts": defaultdict(int),
+            },
+        )
+        group["signal_count"] += 1
+        group["fields"].add(row["field"])
+        group["candidate_root_count"] += int(row.get("candidate_root_count", 0))
+        group["candidate_states"].update(row.get("candidate_state_ids", []))
+        group["candidate_snapshot_signals"] += int(
+            row.get("candidate_snapshot_count", 0)
+        )
+        group["blocker_root_count"] += int(row.get("blocker_root_count", 0))
+        group["guarded_blocker_root_count"] += int(
+            row.get("guarded_blocker_root_count", 0)
+        )
+        group["same_state_blocker_root_count"] += int(
+            row.get("same_state_blocker_root_count", 0)
+        )
+        group["class_counts"][root_pool_signal_rollup_class(row)] += 1
+
+    rows = []
+    for group in groups.values():
+        class_counts = group["class_counts"]
+        rows.append(
+            {
+                key_name: group[key_name],
+                "field_count": len(group["fields"]),
+                "fields": pipe_join(group["fields"]),
+                "signal_count": group["signal_count"],
+                "candidate_root_count": group["candidate_root_count"],
+                "candidate_state_count": len(group["candidate_states"]),
+                "candidate_state_ids": sorted(group["candidate_states"]),
+                "candidate_snapshot_signal_count": group[
+                    "candidate_snapshot_signals"
+                ],
+                "blocker_root_count": group["blocker_root_count"],
+                "guarded_blocker_root_count": group["guarded_blocker_root_count"],
+                "same_state_blocker_root_count": group[
+                    "same_state_blocker_root_count"
+                ],
+                "low_fragmentation_repeated_signal_count": class_counts[
+                    "low_fragmentation_repeated"
+                ],
+                "fragmented_repeated_signal_count": class_counts[
+                    "fragmented_repeated"
+                ],
+                "clean_singleton_signal_count": class_counts["clean_singleton"],
+                "contaminated_signal_count": class_counts["contaminated"],
+                "rollup_status": root_pool_signal_rollup_status(class_counts),
+            }
+        )
+    return sorted(
+        rows,
+        key=lambda row: (
+            -row["low_fragmentation_repeated_signal_count"],
+            -row["fragmented_repeated_signal_count"],
+            -row["clean_singleton_signal_count"],
+            -row["contaminated_signal_count"],
+            -row["candidate_state_count"],
+            row[key_name],
+        ),
+    )
+
+
 def root_pool_sample_root(row):
     return {
         "cross_budget_state_id": root_pool_cross_state(row),
@@ -2553,6 +2701,16 @@ def root_pool_discriminator_summary(rows, limit):
         "contaminated_candidate_signal_count": len(contaminated),
         "candidate_signal_field_counts": sorted_count_rows(candidate_signal_fields),
         "blocker_signal_field_counts": sorted_count_rows(blocker_signal_fields),
+        "signal_field_rollups": summarize_root_pool_signal_rollups(
+            signal_rows,
+            "field",
+            lambda row: row["field"],
+        ),
+        "signal_family_rollups": summarize_root_pool_signal_rollups(
+            signal_rows,
+            "field_family",
+            lambda row: root_pool_signal_field_family(row["field"]),
+        ),
         "top_low_fragmentation_repeated_candidate_signals": sort_root_pool_signal_rows(
             low_fragmentation_repeated
         )[:limit],
@@ -3018,6 +3176,16 @@ def root_pool_guarded_delta_discriminator_summary(rows, limit):
         "contaminated_candidate_delta_signal_count": len(contaminated),
         "candidate_delta_field_counts": sorted_count_rows(candidate_delta_fields),
         "blocker_delta_field_counts": sorted_count_rows(blocker_delta_fields),
+        "delta_field_rollups": summarize_root_pool_signal_rollups(
+            delta_rows,
+            "field",
+            lambda row: row["field"],
+        ),
+        "delta_family_rollups": summarize_root_pool_signal_rollups(
+            delta_rows,
+            "field_family",
+            lambda row: root_pool_signal_field_family(row["field"]),
+        ),
         "top_low_fragmentation_repeated_candidate_delta_signals": sort_root_pool_delta_rows(
             low_fragmentation_repeated
         )[:limit],
