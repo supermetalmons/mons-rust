@@ -322,6 +322,176 @@ def coverage_gap_group_key(record):
     )
 
 
+def corpus_axis_record_class(record):
+    outcome = record.get("outcome", "")
+    portfolio_class = record.get("portfolio_class", "")
+    if outcome == "candidate_better":
+        return "candidate_better"
+    if outcome == "baseline_better":
+        return "baseline_better"
+    if portfolio_class == "no_policy_win":
+        return "no_policy"
+    if outcome == "same_outcome":
+        return "same_outcome"
+    return portfolio_class or outcome or "unknown"
+
+
+def corpus_record_axes(record, record_class):
+    if record_class == "baseline_better":
+        axes = record.get("baseline_better_mechanism_axes", "")
+        if axes:
+            return [axis for axis in axes.split("|") if axis]
+    axes = record.get("mechanism_axes", "")
+    if axes:
+        return [axis for axis in axes.split("|") if axis]
+    return ["none"]
+
+
+def corpus_axis_summary_state_key(record):
+    return coverage_gap_group_key(record)
+
+
+def corpus_record_branch(record):
+    return f"{record.get('baseline_branch', '')}->{record.get('candidate_branch', '')}"
+
+
+def corpus_record_pair(record):
+    return f"{record.get('baseline_move', '')}->{record.get('candidate_move', '')}"
+
+
+def new_corpus_axis_group(axis):
+    return {
+        "key": axis,
+        "record_count": 0,
+        "states": set(),
+        "class_records": defaultdict(int),
+        "class_states": defaultdict(set),
+        "candidates": set(),
+        "branches": set(),
+        "pairs": set(),
+        "panels": set(),
+        "duels": set(),
+        "variants": set(),
+        "source_logs": set(),
+    }
+
+
+def add_corpus_axis_record(groups, event):
+    record = event["data"]
+    record_class = corpus_axis_record_class(record)
+    state_key = corpus_axis_summary_state_key(record)
+    for axis in corpus_record_axes(record, record_class):
+        group = groups.setdefault(axis, new_corpus_axis_group(axis))
+        group["record_count"] += 1
+        group["states"].add(state_key)
+        group["class_records"][record_class] += 1
+        group["class_states"][record_class].add(state_key)
+        group["candidates"].add(record.get("candidate", ""))
+        group["branches"].add(corpus_record_branch(record))
+        group["pairs"].add(corpus_record_pair(record))
+        group["panels"].add(record.get("panel", ""))
+        group["duels"].add(record.get("duel", ""))
+        group["variants"].add(record.get("variant", ""))
+        group["source_logs"].add(event["source_log"])
+
+
+def corpus_axis_decision(row):
+    candidate_states = row.get("candidate_better_states", 0)
+    baseline_states = row.get("baseline_better_states", 0)
+    no_policy_states = row.get("no_policy_states", 0)
+    if no_policy_states > 0:
+        return "coverage_gap_axis"
+    if candidate_states > 0 and baseline_states > 0:
+        return "baseline_save_risk"
+    if candidate_states > 1:
+        return "repeated_candidate_axis"
+    if candidate_states == 1:
+        return "singleton_candidate_axis"
+    if baseline_states > 0:
+        return "baseline_better_only"
+    return "shared_or_neutral"
+
+
+def summarize_corpus_axis_group(group):
+    row = {
+        "key": group["key"],
+        "record_count": group["record_count"],
+        "state_count": len(group["states"]),
+        "candidate_count": len(group["candidates"]),
+        "branch_count": len(group["branches"]),
+        "pair_count": len(group["pairs"]),
+        "panel_count": len(group["panels"]),
+        "duel_count": len(group["duels"]),
+        "variant_count": len(group["variants"]),
+        "source_log_count": len(group["source_logs"]),
+    }
+    for record_class in [
+        "candidate_better",
+        "baseline_better",
+        "no_policy",
+        "same_outcome",
+    ]:
+        row[f"{record_class}_records"] = int(
+            group["class_records"].get(record_class, 0)
+        )
+        row[f"{record_class}_states"] = len(
+            group["class_states"].get(record_class, set())
+        )
+    row["axis_decision"] = corpus_axis_decision(row)
+    return row
+
+
+def top_corpus_axis_rows(rows, record_class, limit=8):
+    state_field = f"{record_class}_states"
+    record_field = f"{record_class}_records"
+    return sorted(
+        [row for row in rows if row.get(record_field, 0) > 0],
+        key=lambda row: (
+            -int(row.get(state_field, 0)),
+            -int(row.get(record_field, 0)),
+            row.get("key", ""),
+        ),
+    )[:limit]
+
+
+def summarize_corpus_axes(events, limit=8):
+    groups = {}
+    record_count = 0
+    state_keys = set()
+    class_records = defaultdict(int)
+    class_states = defaultdict(set)
+    for event in events:
+        if event["event_type"] != "PRO_POLICY_MATRIX_CORPUS_RECORD":
+            continue
+        record = event["data"]
+        record_count += 1
+        state_key = corpus_axis_summary_state_key(record)
+        state_keys.add(state_key)
+        record_class = corpus_axis_record_class(record)
+        class_records[record_class] += 1
+        class_states[record_class].add(state_key)
+        add_corpus_axis_record(groups, event)
+
+    rows = [summarize_corpus_axis_group(group) for group in groups.values()]
+    rows = sorted(rows, key=lambda row: (-row["state_count"], row["key"]))
+    return {
+        "record_count": record_count,
+        "state_count": len(state_keys),
+        "class_record_counts": sorted_count_rows(class_records),
+        "class_state_counts": sorted_count_rows(
+            {key: len(value) for key, value in class_states.items()}
+        ),
+        "top_candidate_better_axes": top_corpus_axis_rows(
+            rows, "candidate_better", limit
+        ),
+        "top_baseline_better_axes": top_corpus_axis_rows(
+            rows, "baseline_better", limit
+        ),
+        "top_no_policy_axes": top_corpus_axis_rows(rows, "no_policy", limit),
+        "top_same_outcome_axes": top_corpus_axis_rows(rows, "same_outcome", limit),
+    }
+
+
 def opening_state_group_key(record):
     return tuple(
         record.get(field, "")
@@ -368,8 +538,8 @@ def add_record_to_state_group(group, record, event):
     group["outcomes"][record.get("outcome", "")] += 1
     group["portfolio_classes"][record.get("portfolio_class", "")] += 1
 
-    branch = f"{record.get('baseline_branch', '')}->{record.get('candidate_branch', '')}"
-    pair = f"{record.get('baseline_move', '')}->{record.get('candidate_move', '')}"
+    branch = corpus_record_branch(record)
+    pair = corpus_record_pair(record)
     group["branches"][branch] += 1
     group["pairs"][pair] += 1
     mechanism_axes = record.get("mechanism_axes", "")
@@ -610,6 +780,7 @@ def summarize(events):
             for bucket, rows in sorted(route_buckets.items())
         },
         "record_filters": filters,
+        "corpus_axis_summary": summarize_corpus_axes(events),
         "coverage_gap_entry_count": len(coverage_gap_entries),
         "coverage_gap_entries": coverage_gap_entries,
     }
