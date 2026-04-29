@@ -2379,6 +2379,35 @@ impl ProV4RootPoolManaPathFeatures {
     }
 }
 
+#[derive(Default)]
+struct ProV4RootPoolConsumablePosture {
+    free_choice: usize,
+    free_bomb: usize,
+    free_potion: usize,
+    own_bomb_carrier: usize,
+    own_potion_carrier: usize,
+    opp_bomb_carrier: usize,
+    opp_potion_carrier: usize,
+    own_bomb_threat: usize,
+    opp_bomb_threat: usize,
+    own_potion_ready: usize,
+    opp_potion_ready: usize,
+}
+
+struct ProV4RootPoolConsumableFeatures {
+    post_consumable: String,
+    post_consumable_delta: String,
+}
+
+impl ProV4RootPoolConsumableFeatures {
+    fn omitted() -> Self {
+        Self {
+            post_consumable: "omitted".to_string(),
+            post_consumable_delta: "omitted".to_string(),
+        }
+    }
+}
+
 fn pro_v4_root_pool_is_high_value_mana(mana: Mana, perspective: Color) -> bool {
     match mana {
         Mana::Supermana => true,
@@ -3107,6 +3136,150 @@ fn pro_v4_root_pool_mana_path_features(
     ProV4RootPoolManaPathFeatures {
         post_mana_path: pro_v4_root_pool_mana_path_bucket(after_game, &after, perspective),
         post_mana_path_delta: pro_v4_root_pool_mana_path_delta_bucket(&before, &after),
+    }
+}
+
+fn pro_v4_root_pool_has_fainted_mon(game: &MonsGame, color: Color) -> bool {
+    game.board.occupied().any(|(_, item)| {
+        item.mon()
+            .is_some_and(|mon| mon.color == color && mon.is_fainted())
+    })
+}
+
+fn pro_v4_root_pool_bomb_targets_mon(game: &MonsGame, location: Location, attacker: Color) -> bool {
+    location.reachable_by_bomb_ref().iter().any(|target| {
+        game.board.item(*target).is_some_and(|item| {
+            item.mon()
+                .is_some_and(|mon| mon.color != attacker && !mon.is_fainted())
+        })
+    })
+}
+
+fn pro_v4_root_pool_consumable_posture(
+    game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolConsumablePosture {
+    if game.winner_color().is_some() {
+        return ProV4RootPoolConsumablePosture::default();
+    }
+    let mut posture = ProV4RootPoolConsumablePosture::default();
+    let own_can_heal = pro_v4_root_pool_has_fainted_mon(game, perspective);
+    let opp_can_heal = pro_v4_root_pool_has_fainted_mon(game, perspective.other());
+    for (location, item) in game.board.occupied() {
+        let Some(consumable) = item.consumable().copied() else {
+            continue;
+        };
+        match item {
+            Item::Consumable { .. } => match consumable {
+                Consumable::BombOrPotion => posture.free_choice += 1,
+                Consumable::Bomb => posture.free_bomb += 1,
+                Consumable::Potion => posture.free_potion += 1,
+            },
+            Item::MonWithConsumable { mon, .. } => {
+                if mon.is_fainted() {
+                    continue;
+                }
+                let own = mon.color == perspective;
+                match consumable {
+                    Consumable::Bomb => {
+                        if own {
+                            posture.own_bomb_carrier += 1;
+                            posture.own_bomb_threat += usize::from(
+                                pro_v4_root_pool_bomb_targets_mon(game, location, mon.color),
+                            );
+                        } else {
+                            posture.opp_bomb_carrier += 1;
+                            posture.opp_bomb_threat += usize::from(
+                                pro_v4_root_pool_bomb_targets_mon(game, location, mon.color),
+                            );
+                        }
+                    }
+                    Consumable::Potion => {
+                        if own {
+                            posture.own_potion_carrier += 1;
+                            posture.own_potion_ready += usize::from(own_can_heal);
+                        } else {
+                            posture.opp_potion_carrier += 1;
+                            posture.opp_potion_ready += usize::from(opp_can_heal);
+                        }
+                    }
+                    Consumable::BombOrPotion => {
+                        if own {
+                            posture.own_bomb_carrier += 1;
+                            posture.own_potion_carrier += 1;
+                            posture.own_bomb_threat += usize::from(
+                                pro_v4_root_pool_bomb_targets_mon(game, location, mon.color),
+                            );
+                            posture.own_potion_ready += usize::from(own_can_heal);
+                        } else {
+                            posture.opp_bomb_carrier += 1;
+                            posture.opp_potion_carrier += 1;
+                            posture.opp_bomb_threat += usize::from(
+                                pro_v4_root_pool_bomb_targets_mon(game, location, mon.color),
+                            );
+                            posture.opp_potion_ready += usize::from(opp_can_heal);
+                        }
+                    }
+                }
+            }
+            Item::Mon { .. } | Item::MonWithMana { .. } | Item::Mana { .. } => {}
+        }
+    }
+    posture
+}
+
+fn pro_v4_root_pool_consumable_bucket(
+    game: &MonsGame,
+    posture: &ProV4RootPoolConsumablePosture,
+    perspective: Color,
+) -> String {
+    format!(
+        "status={};free_choice={};free_bomb={};free_potion={};own_bomb={};own_potion={};own_bomb_threat={};own_potion_ready={};opp_bomb={};opp_potion={};opp_bomb_threat={};opp_potion_ready={}",
+        pro_v4_root_pool_status(game, perspective),
+        pro_v4_root_pool_count_field(posture.free_choice),
+        pro_v4_root_pool_count_field(posture.free_bomb),
+        pro_v4_root_pool_count_field(posture.free_potion),
+        pro_v4_root_pool_count_field(posture.own_bomb_carrier),
+        pro_v4_root_pool_count_field(posture.own_potion_carrier),
+        pro_v4_root_pool_count_field(posture.own_bomb_threat),
+        pro_v4_root_pool_count_field(posture.own_potion_ready),
+        pro_v4_root_pool_count_field(posture.opp_bomb_carrier),
+        pro_v4_root_pool_count_field(posture.opp_potion_carrier),
+        pro_v4_root_pool_count_field(posture.opp_bomb_threat),
+        pro_v4_root_pool_count_field(posture.opp_potion_ready),
+    )
+}
+
+fn pro_v4_root_pool_consumable_delta_bucket(
+    before: &ProV4RootPoolConsumablePosture,
+    after: &ProV4RootPoolConsumablePosture,
+) -> String {
+    format!(
+        "free_choice={};free_bomb={};free_potion={};own_bomb={};own_potion={};own_bomb_threat={};own_potion_ready={};opp_bomb={};opp_potion={};opp_bomb_threat={};opp_potion_ready={}",
+        pro_v4_root_pool_count_delta_bucket(before.free_choice, after.free_choice),
+        pro_v4_root_pool_count_delta_bucket(before.free_bomb, after.free_bomb),
+        pro_v4_root_pool_count_delta_bucket(before.free_potion, after.free_potion),
+        pro_v4_root_pool_count_delta_bucket(before.own_bomb_carrier, after.own_bomb_carrier),
+        pro_v4_root_pool_count_delta_bucket(before.own_potion_carrier, after.own_potion_carrier),
+        pro_v4_root_pool_count_delta_bucket(before.own_bomb_threat, after.own_bomb_threat),
+        pro_v4_root_pool_count_delta_bucket(before.own_potion_ready, after.own_potion_ready),
+        pro_v4_root_pool_count_delta_bucket(before.opp_bomb_carrier, after.opp_bomb_carrier),
+        pro_v4_root_pool_count_delta_bucket(before.opp_potion_carrier, after.opp_potion_carrier),
+        pro_v4_root_pool_count_delta_bucket(before.opp_bomb_threat, after.opp_bomb_threat),
+        pro_v4_root_pool_count_delta_bucket(before.opp_potion_ready, after.opp_potion_ready),
+    )
+}
+
+fn pro_v4_root_pool_consumable_features(
+    before_game: &MonsGame,
+    after_game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolConsumableFeatures {
+    let before = pro_v4_root_pool_consumable_posture(before_game, perspective);
+    let after = pro_v4_root_pool_consumable_posture(after_game, perspective);
+    ProV4RootPoolConsumableFeatures {
+        post_consumable: pro_v4_root_pool_consumable_bucket(after_game, &after, perspective),
+        post_consumable_delta: pro_v4_root_pool_consumable_delta_bucket(&before, &after),
     }
 }
 
@@ -4048,6 +4221,7 @@ fn pro_v4_root_pool_print_snapshot(
             support_guard_features,
             territory_features,
             mana_path_features,
+            consumable_features,
         ) = if let Some(root) = root {
             let family = MonsGameModel::turn_engine_root_evaluation_family(root);
             let reply_snapshot = MonsGameModel::root_reply_risk_snapshot(
@@ -4135,6 +4309,8 @@ fn pro_v4_root_pool_print_snapshot(
                 pro_v4_root_pool_territory_features(&game, &root.game, game.active_color);
             let mana_path_features =
                 pro_v4_root_pool_mana_path_features(&game, &root.game, game.active_color);
+            let consumable_features =
+                pro_v4_root_pool_consumable_features(&game, &root.game, game.active_color);
             (
                 Some(root.root_rank),
                 Some(root.score),
@@ -4178,6 +4354,7 @@ fn pro_v4_root_pool_print_snapshot(
                 support_guard_features,
                 territory_features,
                 mana_path_features,
+                consumable_features,
             )
         } else {
             (
@@ -4209,10 +4386,11 @@ fn pro_v4_root_pool_print_snapshot(
                 ProV4RootPoolSupportGuardFeatures::omitted(),
                 ProV4RootPoolTerritoryFeatures::omitted(),
                 ProV4RootPoolManaPathFeatures::omitted(),
+                ProV4RootPoolConsumableFeatures::omitted(),
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -4282,6 +4460,8 @@ fn pro_v4_root_pool_print_snapshot(
             json_escape(&territory_features.post_territory_delta),
             json_escape(&mana_path_features.post_mana_path),
             json_escape(&mana_path_features.post_mana_path_delta),
+            json_escape(&consumable_features.post_consumable),
+            json_escape(&consumable_features.post_consumable_delta),
         );
     }
 }

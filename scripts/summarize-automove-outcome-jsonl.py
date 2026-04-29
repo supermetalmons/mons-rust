@@ -76,6 +76,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_territory_delta",
     "post_mana_path",
     "post_mana_path_delta",
+    "post_consumable",
+    "post_consumable_delta",
 ]
 ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_rank", ("family", "rank_bucket")),
@@ -115,6 +117,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_mana_path", ("family", "post_mana_path")),
     ("progress_mana_path_delta", ("progress", "post_mana_path_delta")),
     ("path_mana_path_delta", ("path", "post_mana_path_delta")),
+    ("family_consumable", ("family", "post_consumable")),
+    ("progress_consumable_delta", ("progress", "post_consumable_delta")),
+    ("path_consumable_delta", ("path", "post_consumable_delta")),
 ]
 ROOT_POOL_GUARDED_ORIGIN_KINDS = {
     "guarded_selected",
@@ -160,6 +165,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_territory_delta",
     "post_mana_path",
     "post_mana_path_delta",
+    "post_consumable",
+    "post_consumable_delta",
 ]
 ROOT_POOL_DELTA_NUMERIC_FIELDS = [
     "rank",
@@ -2192,6 +2199,8 @@ def root_pool_sample_root(row):
         "post_territory_delta": row.get("post_territory_delta", ""),
         "post_mana_path": row.get("post_mana_path", ""),
         "post_mana_path_delta": row.get("post_mana_path_delta", ""),
+        "post_consumable": row.get("post_consumable", ""),
+        "post_consumable_delta": row.get("post_consumable_delta", ""),
     }
 
 
