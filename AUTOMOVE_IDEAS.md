@@ -10,6 +10,7 @@ This is the live decision board for automove work. Keep it short and decision-or
 - The live experiment surface is Pro-only and multi-variant.
 - The current mode is `structural-reset`.
 - There is no live runtime hypothesis and no promotable challenger.
+- Latest sampled/active Fast scouts found no source permission: sampled Fast was `no_candidate_route`; active Fast had repeated candidate axes, but every route remained singleton or fragmented by policy, branch, or first move, and ProV4 root-pool / guarded-delta rows were also fragmented.
 - Runtime source stays untouched unless a new corpus/root feature separates candidate wins from baseline saves across sampled and active evidence with low fragmentation.
 
 ## Reset Portfolio
@@ -43,7 +44,7 @@ Do not write runtime selectors from:
 
 - existing policy labels, branch labels, exact contexts, first moves, variants, or singleton-heavy corpus rows;
 - broad zero-window exact-pressure classes or current exact-pressure deltas;
-- current ProV4 root-pool, guarded-delta, root-ordering profile, root-preservation, reply-floor, root-safety, utility/rank, forced-root feature-axis, root-pool provenance, forced-root pool JSONL, root trajectory, race geometry, root-pool contrast, outcome contrast, family-overlap, state-discriminator, broad token, vulnerable-baseline token, or utility/rank token-pair evidence;
+- current active Fast lower-live safe-step / ManaTempo pressure, ProV4 root-pool, guarded-delta, root-ordering profile, root-preservation, reply-floor, root-safety, utility/rank, forced-root feature-axis, root-pool provenance, forced-root pool JSONL, root trajectory, race geometry, root-pool contrast, outcome contrast, family-overlap, state-discriminator, broad token, vulnerable-baseline token, or utility/rank token-pair evidence;
 - current post-root feature families: exact pressure, board-resource custody/material, scoreboard/turn-budget, legal-transition fanout, attack-exposure, support-guard, territory, mana-path, consumable, engagement, mobility, action-threat, role-state/loadout, base-recovery, lane-shape, root-transition/event footprint, worst-reply event footprint, and immediate reply-spectrum shape.
 
 Those paths produced no source permission because the evidence stayed `coverage_gap`, `baseline_save_risk`, `no_candidate_route`, singleton-only, policy/branch/pair fragmented, shared with blockers, or contaminated by guarded baseline saves. Their detailed run notes are archived in `docs/automove-archive.md`; durable rules live in `docs/automove-knowledge.md`.
@@ -62,15 +63,7 @@ python3 -m py_compile \
 ./scripts/cleanup-automove-iteration-artifacts.sh --dry-run
 ```
 
-If continuing reset-mode diagnostics without a new candidate, start from a bounded outcome-corpus scout:
-
-```sh
-SMART_PRO_POLICY_MATRIX_PANEL_FILTER=sampled \
-SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_fast \
-./scripts/run-automove-structural-scout.sh --outcome-corpus frontier_pro_v2_guarded
-```
-
-Only widen after the postprocess summary reports a repeated, low-fragmentation candidate-only mechanism that is not a baseline save, coverage gap, no-candidate route, singleton, policy/branch/pair split, or same-outcome blocker. If no such mechanism appears, update archive/knowledge and keep runtime source unchanged.
+Do not rerun the current sampled/active Fast portfolio slices as source work. They are now archived as no-source. If continuing reset-mode diagnostics without a new candidate, first add or expose a genuinely new measured root feature that is not in the retired evidence list, then run the smallest outcome-corpus scout that emits that feature.
 
 For a new test-only ProV4/root-policy candidate, register it as a sweep candidate with metadata first, then use:
 
