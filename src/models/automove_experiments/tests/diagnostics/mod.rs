@@ -2519,6 +2519,268 @@ fn forced_root_oracle_race_delta(
     )
 }
 
+struct ForcedRootOraclePrimaryMove {
+    action: &'static str,
+    actor: &'static str,
+    payload: &'static str,
+    from: Location,
+    to: Location,
+}
+
+fn forced_root_oracle_mon_kind_label(kind: MonKind) -> &'static str {
+    match kind {
+        MonKind::Demon => "demon",
+        MonKind::Drainer => "drainer",
+        MonKind::Angel => "angel",
+        MonKind::Spirit => "spirit",
+        MonKind::Mystic => "mystic",
+    }
+}
+
+fn forced_root_oracle_mana_label(mana: Mana, perspective: Color) -> &'static str {
+    match mana {
+        Mana::Supermana => "super",
+        Mana::Regular(color) if color == perspective => "own_regular",
+        Mana::Regular(_) => "opp_regular",
+    }
+}
+
+fn forced_root_oracle_payload_label(item: &Item, perspective: Color) -> &'static str {
+    match item {
+        Item::Mon { .. } => "no_payload",
+        Item::MonWithMana { mana, .. } | Item::Mana { mana } => {
+            forced_root_oracle_mana_label(*mana, perspective)
+        }
+        Item::MonWithConsumable { .. } | Item::Consumable { .. } => "consumable",
+    }
+}
+
+fn forced_root_oracle_input_len_bucket(input_count: usize) -> &'static str {
+    match input_count {
+        0 => "inputs0",
+        1 => "inputs1",
+        2 => "inputs2",
+        3 => "inputs3",
+        _ => "inputs4_plus",
+    }
+}
+
+fn forced_root_oracle_count_bucket(count: usize) -> &'static str {
+    match count {
+        0 => "count0",
+        1 => "count1",
+        2 => "count2",
+        3 => "count3",
+        _ => "count4_plus",
+    }
+}
+
+fn forced_root_oracle_forward_index(perspective: Color, location: Location) -> i32 {
+    match perspective {
+        Color::White => Config::MAX_LOCATION_INDEX - location.i,
+        Color::Black => location.i,
+    }
+}
+
+fn forced_root_oracle_forward_delta(
+    perspective: Color,
+    from: Location,
+    to: Location,
+) -> &'static str {
+    let before = forced_root_oracle_forward_index(perspective, from);
+    let after = forced_root_oracle_forward_index(perspective, to);
+    if after > before {
+        "advance"
+    } else if after < before {
+        "retreat"
+    } else {
+        "sideways"
+    }
+}
+
+fn forced_root_oracle_center_delta(from: Location, to: Location) -> &'static str {
+    let center = Config::SUPERMANA_BASE;
+    let before = from.distance(&center);
+    let after = to.distance(&center);
+    if after < before {
+        "toward_center"
+    } else if after > before {
+        "away_center"
+    } else {
+        "same_center"
+    }
+}
+
+fn forced_root_oracle_zone(board: &Board, perspective: Color, location: Location) -> &'static str {
+    match board.square(location) {
+        Square::SupermanaBase => "super_base",
+        Square::ManaPool { color } if color == perspective => "own_pool",
+        Square::ManaPool { .. } => "opp_pool",
+        Square::ManaBase { color } if color == perspective => "own_mana_base",
+        Square::ManaBase { .. } => "opp_mana_base",
+        Square::MonBase { color, .. } if color == perspective => "own_mon_base",
+        Square::MonBase { .. } => "opp_mon_base",
+        Square::ConsumableBase => "consumable_base",
+        Square::Regular => {
+            let forward = forced_root_oracle_forward_index(perspective, location);
+            if forward <= 2 {
+                "own_side"
+            } else if forward <= 4 {
+                "own_mid"
+            } else if forward <= 6 {
+                "center_lane"
+            } else if forward <= 8 {
+                "opp_mid"
+            } else {
+                "opp_side"
+            }
+        }
+    }
+}
+
+fn forced_root_oracle_primary_move(
+    events: &[Event],
+    perspective: Color,
+) -> Option<ForcedRootOraclePrimaryMove> {
+    for event in events {
+        match event {
+            Event::MonMove { item, from, to } => {
+                let actor = item
+                    .mon()
+                    .map(|mon| forced_root_oracle_mon_kind_label(mon.kind))
+                    .unwrap_or("mon");
+                return Some(ForcedRootOraclePrimaryMove {
+                    action: "mon_move",
+                    actor,
+                    payload: forced_root_oracle_payload_label(item, perspective),
+                    from: *from,
+                    to: *to,
+                });
+            }
+            Event::ManaMove { mana, from, to } => {
+                return Some(ForcedRootOraclePrimaryMove {
+                    action: "mana_move",
+                    actor: "mana",
+                    payload: forced_root_oracle_mana_label(*mana, perspective),
+                    from: *from,
+                    to: *to,
+                });
+            }
+            Event::MysticAction { mystic, from, to } => {
+                return Some(ForcedRootOraclePrimaryMove {
+                    action: "mystic_action",
+                    actor: forced_root_oracle_mon_kind_label(mystic.kind),
+                    payload: "no_payload",
+                    from: *from,
+                    to: *to,
+                });
+            }
+            Event::DemonAction { demon, from, to }
+            | Event::DemonAdditionalStep { demon, from, to } => {
+                return Some(ForcedRootOraclePrimaryMove {
+                    action: "demon_action",
+                    actor: forced_root_oracle_mon_kind_label(demon.kind),
+                    payload: "no_payload",
+                    from: *from,
+                    to: *to,
+                });
+            }
+            Event::SpiritTargetMove { item, from, to, .. } => {
+                return Some(ForcedRootOraclePrimaryMove {
+                    action: "spirit_target",
+                    actor: "spirit",
+                    payload: forced_root_oracle_payload_label(item, perspective),
+                    from: *from,
+                    to: *to,
+                });
+            }
+            Event::UsePotion { from, to } => {
+                return Some(ForcedRootOraclePrimaryMove {
+                    action: "use_potion",
+                    actor: "potion",
+                    payload: "consumable",
+                    from: *from,
+                    to: *to,
+                });
+            }
+            Event::BombAttack { by, from, to } => {
+                return Some(ForcedRootOraclePrimaryMove {
+                    action: "bomb_attack",
+                    actor: forced_root_oracle_mon_kind_label(by.kind),
+                    payload: "consumable",
+                    from: *from,
+                    to: *to,
+                });
+            }
+            Event::PickupMana { mana, at, .. } | Event::ManaScored { mana, at } => {
+                return Some(ForcedRootOraclePrimaryMove {
+                    action: "mana_touch",
+                    actor: "mana",
+                    payload: forced_root_oracle_mana_label(*mana, perspective),
+                    from: *at,
+                    to: *at,
+                });
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn forced_root_oracle_root_trajectory(
+    game: &MonsGame,
+    perspective: Color,
+    inputs: &[Input],
+) -> String {
+    let Some((_, events)) = MonsGameModel::apply_inputs_for_search_with_events(game, inputs) else {
+        return "invalid".to_string();
+    };
+    let event_count = forced_root_oracle_count_bucket(events.len());
+    let input_count = forced_root_oracle_input_len_bucket(inputs.len());
+    let has_score = events
+        .iter()
+        .any(|event| matches!(event, Event::ManaScored { .. }));
+    let has_pickup = events
+        .iter()
+        .any(|event| matches!(event, Event::PickupMana { .. }));
+    let has_faint = events
+        .iter()
+        .any(|event| matches!(event, Event::MonFainted { .. }));
+    let has_special = events.iter().any(|event| {
+        matches!(
+            event,
+            Event::MysticAction { .. }
+                | Event::DemonAction { .. }
+                | Event::DemonAdditionalStep { .. }
+                | Event::SpiritTargetMove { .. }
+                | Event::UsePotion { .. }
+                | Event::BombAttack { .. }
+        )
+    });
+    let material = format!(
+        "score_{}|pickup_{}|faint_{}|special_{}",
+        has_score, has_pickup, has_faint, has_special
+    );
+
+    if let Some(primary) = forced_root_oracle_primary_move(events.as_slice(), perspective) {
+        format!(
+            "action_{}|actor_{}|payload_{}|from_{}|to_{}|forward_{}|center_{}|{}|{}|{}",
+            primary.action,
+            primary.actor,
+            primary.payload,
+            forced_root_oracle_zone(&game.board, perspective, primary.from),
+            forced_root_oracle_zone(&game.board, perspective, primary.to),
+            forced_root_oracle_forward_delta(perspective, primary.from, primary.to),
+            forced_root_oracle_center_delta(primary.from, primary.to),
+            input_count,
+            event_count,
+            material,
+        )
+    } else {
+        format!("action_none|{}|{}|{}", input_count, event_count, material)
+    }
+}
+
 #[test]
 #[ignore = "diagnostic: force each root once on a blocker board and continue with Pro policy"]
 fn smart_automove_pro_forced_root_oracle_probe() {
@@ -2545,6 +2807,7 @@ fn smart_automove_pro_forced_root_oracle_probe() {
         score_path_steps: i32,
         same_turn_window: i32,
         race_delta: String,
+        root_trajectory: String,
         scores_supermana_this_turn: bool,
         scores_opponent_mana_this_turn: bool,
         safe_supermana_pickup_now: bool,
@@ -2793,6 +3056,11 @@ fn smart_automove_pro_forced_root_oracle_probe() {
                     before_same_turn_window,
                     root.same_turn_score_window_value,
                 ),
+                root_trajectory: forced_root_oracle_root_trajectory(
+                    &game,
+                    game.active_color,
+                    root.inputs.as_slice(),
+                ),
                 scores_supermana_this_turn: root.scores_supermana_this_turn,
                 scores_opponent_mana_this_turn: root.scores_opponent_mana_this_turn,
                 safe_supermana_pickup_now: root.safe_supermana_pickup_now,
@@ -2857,7 +3125,7 @@ fn smart_automove_pro_forced_root_oracle_probe() {
 
     for row in rows.into_iter().take(print_limit) {
         println!(
-            "FORCED_ROOT_ORACLE_ROOT {{\"label\":\"{}\",\"result\":\"{}\",\"root_rank\":{},\"score\":{},\"inputs\":\"{}\",\"family\":\"{}\",\"wins_immediately\":{},\"attacks\":{},\"vulnerable\":{},\"walk_vulnerable\":{},\"mana_handoff\":{},\"roundtrip\":{},\"safety_detail\":\"{}\",\"progress\":\"{}\",\"spirit_development\":{},\"spirit_setup\":{},\"supermana_progress\":{},\"opponent_mana_progress\":{},\"safe_super_steps\":{},\"safe_opp_steps\":{},\"score_path_steps\":{},\"same_turn_window\":{},\"race_delta\":\"{}\",\"scores_supermana_this_turn\":{},\"scores_opponent_mana_this_turn\":{},\"safe_supermana_pickup_now\":{},\"safe_opponent_mana_pickup_now\":{},\"reply_floor\":{},\"reply_risk\":\"{}\",\"reply_bucket\":\"{}\",\"followup_floor\":{},\"followup_bucket\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"utility\":\"{:?}\",\"final\":\"{}\"}}",
+            "FORCED_ROOT_ORACLE_ROOT {{\"label\":\"{}\",\"result\":\"{}\",\"root_rank\":{},\"score\":{},\"inputs\":\"{}\",\"family\":\"{}\",\"wins_immediately\":{},\"attacks\":{},\"vulnerable\":{},\"walk_vulnerable\":{},\"mana_handoff\":{},\"roundtrip\":{},\"safety_detail\":\"{}\",\"progress\":\"{}\",\"spirit_development\":{},\"spirit_setup\":{},\"supermana_progress\":{},\"opponent_mana_progress\":{},\"safe_super_steps\":{},\"safe_opp_steps\":{},\"score_path_steps\":{},\"same_turn_window\":{},\"race_delta\":\"{}\",\"root_trajectory\":\"{}\",\"scores_supermana_this_turn\":{},\"scores_opponent_mana_this_turn\":{},\"safe_supermana_pickup_now\":{},\"safe_opponent_mana_pickup_now\":{},\"reply_floor\":{},\"reply_risk\":\"{}\",\"reply_bucket\":\"{}\",\"followup_floor\":{},\"followup_bucket\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"utility\":\"{:?}\",\"final\":\"{}\"}}",
             json_escape(&label),
             format_match_result(row.result),
             row.root_rank,
@@ -2881,6 +3149,7 @@ fn smart_automove_pro_forced_root_oracle_probe() {
             row.score_path_steps,
             row.same_turn_window,
             json_escape(&row.race_delta),
+            json_escape(&row.root_trajectory),
             row.scores_supermana_this_turn,
             row.scores_opponent_mana_this_turn,
             row.safe_supermana_pickup_now,
