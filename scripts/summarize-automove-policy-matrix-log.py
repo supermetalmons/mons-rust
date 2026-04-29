@@ -92,6 +92,53 @@ def next_action_for_decision(decision):
     return "keep_postprocess"
 
 
+def source_blocker_for_decision(decision, summary, stoplight, recommendation):
+    if decision == "inspect_for_source":
+        return {"kind": "none"}
+    if decision == "coverage_gap":
+        return {
+            "kind": "coverage_gap",
+            "no_policy_wins": int(summary.get("no_policy_wins", 0)),
+            "stoplight": stoplight.get("label", ""),
+        }
+    if decision == "baseline_save_risk":
+        return {
+            "kind": "baseline_save_risk",
+            "route_key": recommendation.get("best_baseline_risk_key", ""),
+            "candidate_only_states": int(
+                recommendation.get("best_baseline_risk_candidate_only_states", 0)
+            ),
+            "baseline_better_states": int(
+                recommendation.get("best_baseline_risk_baseline_better_states", 0)
+            ),
+        }
+    if decision == "postprocess_only":
+        return {
+            "kind": "fragmented_routes",
+            "clean_fragmented_routes": int(
+                recommendation.get("clean_fragmented_routes", 0)
+            ),
+            "clean_low_fragmentation_routes": int(
+                recommendation.get("clean_low_fragmentation_routes", 0)
+            ),
+        }
+    if decision == "singleton_no_source":
+        return {
+            "kind": "singleton_candidate_routes",
+            "candidate_signal_routes": int(
+                recommendation.get("candidate_signal_routes", 0)
+            ),
+        }
+    if decision == "no_candidate_route":
+        return {
+            "kind": "no_candidate_route",
+            "candidate_signal_routes": int(
+                recommendation.get("candidate_signal_routes", 0)
+            ),
+        }
+    return {"kind": "unknown"}
+
+
 def permission_from_filter_summary(summary):
     if not summary:
         return "missing_summary"
@@ -171,6 +218,9 @@ def summarize(events):
         "route_permission": permission_from_recommendation(recommendation),
         "corpus_decision": decision,
         "next_action": next_action_for_decision(decision),
+        "source_blocker": source_blocker_for_decision(
+            decision, global_summary, stoplight, recommendation
+        ),
         "route_buckets": {
             bucket: sorted(rows, key=lambda row: int(row.get("rank", 0)))
             for bucket, rows in sorted(route_buckets.items())
