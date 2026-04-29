@@ -186,6 +186,7 @@ def root_axes(root):
     safe_super_bucket = root_step_bucket(safe_super_steps)
     safe_opp_bucket = root_step_bucket(safe_opp_steps)
     window = window_bucket(same_turn_window)
+    race_delta = root.get("race_delta", "unknown")
     safety_detail = root.get("safety_detail", "")
     if not safety_detail:
         safety_detail = "vulnerable" if bool(root.get("vulnerable", False)) else "safe"
@@ -212,6 +213,7 @@ def root_axes(root):
         f"safe_step_relation={step_relation(safe_super_steps, safe_opp_steps)}",
         f"root_race_shape={window}|score_path_{score_path_bucket}|super_{safe_super_bucket}|opp_{safe_opp_bucket}",
         f"family_rank_race_shape={family}|{band}|{score_path_bucket}|{safe_super_bucket}|{safe_opp_bucket}",
+        f"race_delta={race_delta}",
         "mana_score_now="
         f"super_score_{bool_axis(root, 'scores_supermana_this_turn')}|"
         f"opp_score_{bool_axis(root, 'scores_opponent_mana_this_turn')}|"
@@ -400,6 +402,7 @@ def summarize_group(group):
             "safety_detail": first_winner.get("safety_detail", ""),
             "progress": first_winner.get("progress", ""),
             "score_path_steps": int(first_winner.get("score_path_steps", 0)),
+            "race_delta": first_winner.get("race_delta", ""),
             "reply_risk": first_winner.get("reply_risk", ""),
             "reply_bucket": first_winner.get("reply_bucket", ""),
             "followup_bucket": first_winner.get("followup_bucket", ""),
@@ -512,6 +515,7 @@ def root_provenance_items(root):
     score_path = root_step_bucket(int(root.get("score_path_steps", 0)))
     safe_super = root_step_bucket(int(root.get("safe_super_steps", 0)))
     safe_opp = root_step_bucket(int(root.get("safe_opp_steps", 0)))
+    race_delta = root.get("race_delta", "unknown")
     return [
         ("path", path),
         ("advisor_bucket", advisor),
@@ -520,6 +524,7 @@ def root_provenance_items(root):
         ("score_bucket", root_field_value(root, "score_bucket")),
         ("score_path_steps", score_path),
         ("root_race_shape", f"{window}|{score_path}|{safe_super}|{safe_opp}"),
+        ("race_delta", race_delta),
         ("safety_detail", safety),
         ("progress", progress),
         ("reply_bucket", reply),
@@ -804,6 +809,7 @@ def normalized_forced_root_row(group, root):
         "same_turn_window_bucket": window_bucket(
             int(root.get("same_turn_window", 0))
         ),
+        "race_delta": root.get("race_delta", ""),
         "scores_supermana_this_turn": bool(
             root.get("scores_supermana_this_turn", False)
         ),
@@ -850,6 +856,7 @@ def normalized_forced_root_axis_rows(group, root):
         "rank_band": root_field_value(root, "rank_band"),
         "score": int(root.get("score", 0)),
         "score_path_steps": int(root.get("score_path_steps", 0)),
+        "race_delta": root.get("race_delta", ""),
         "inputs": root.get("inputs", ""),
         "family": root.get("family", ""),
         "advisor_bucket": root.get("advisor_bucket", ""),

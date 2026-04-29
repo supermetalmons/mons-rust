@@ -1,4 +1,5 @@
 use super::*;
+use crate::models::automove_exact::exact_turn_summary;
 use crate::models::mons_game_model::automove_runtime_variants::{
     apply_frontier_pro_v2_guarded_config, clear_frontier_runtime_variant_branch,
     frontier_runtime_variant_branch_snapshot, select_frontier_pro_v2_guarded_inputs,
@@ -2471,6 +2472,53 @@ fn forced_root_oracle_path_bucket(
     }
 }
 
+fn forced_root_oracle_reachable_step(value: i32) -> bool {
+    value > 0 && value <= 12
+}
+
+fn forced_root_oracle_step_delta(before: i32, after: i32) -> &'static str {
+    let before_reachable = forced_root_oracle_reachable_step(before);
+    let after_reachable = forced_root_oracle_reachable_step(after);
+    match (before_reachable, after_reachable) {
+        (false, false) => "same_unreachable",
+        (false, true) => "new_reachable",
+        (true, false) => "lost_reachable",
+        (true, true) if after < before => "faster",
+        (true, true) if after > before => "slower",
+        (true, true) => "same_reachable",
+    }
+}
+
+fn forced_root_oracle_window_delta(before: i32, after: i32) -> &'static str {
+    match (before > 0, after > 0) {
+        (false, false) => "same_zero",
+        (false, true) => "new_window",
+        (true, false) => "lost_window",
+        (true, true) if after > before => "larger_window",
+        (true, true) if after < before => "smaller_window",
+        (true, true) => "same_window",
+    }
+}
+
+fn forced_root_oracle_race_delta(
+    before_score_path_steps: i32,
+    after_score_path_steps: i32,
+    before_safe_super_steps: i32,
+    after_safe_super_steps: i32,
+    before_safe_opp_steps: i32,
+    after_safe_opp_steps: i32,
+    before_same_turn_window: i32,
+    after_same_turn_window: i32,
+) -> String {
+    format!(
+        "score_{}|super_{}|opp_{}|window_{}",
+        forced_root_oracle_step_delta(before_score_path_steps, after_score_path_steps),
+        forced_root_oracle_step_delta(before_safe_super_steps, after_safe_super_steps),
+        forced_root_oracle_step_delta(before_safe_opp_steps, after_safe_opp_steps),
+        forced_root_oracle_window_delta(before_same_turn_window, after_same_turn_window),
+    )
+}
+
 #[test]
 #[ignore = "diagnostic: force each root once on a blocker board and continue with Pro policy"]
 fn smart_automove_pro_forced_root_oracle_probe() {
@@ -2496,6 +2544,7 @@ fn smart_automove_pro_forced_root_oracle_probe() {
         safe_opp_steps: i32,
         score_path_steps: i32,
         same_turn_window: i32,
+        race_delta: String,
         scores_supermana_this_turn: bool,
         scores_opponent_mana_this_turn: bool,
         safe_supermana_pickup_now: bool,
@@ -2658,6 +2707,18 @@ fn smart_automove_pro_forced_root_oracle_probe() {
         return;
     }
 
+    let before_turn = exact_turn_summary(&game, game.active_color);
+    let before_safe_super_steps = before_turn
+        .safe_supermana_progress_steps
+        .unwrap_or(Config::BOARD_SIZE + 4);
+    let before_safe_opp_steps = before_turn
+        .safe_opponent_mana_progress_steps
+        .unwrap_or(Config::BOARD_SIZE + 4);
+    let before_score_path_steps = before_turn
+        .score_path_best_steps
+        .unwrap_or(Config::BOARD_SIZE * 3);
+    let before_same_turn_window = before_turn.same_turn_score_window_value;
+
     let mut rows = scored_roots
         .iter()
         .take(root_limit)
@@ -2722,6 +2783,16 @@ fn smart_automove_pro_forced_root_oracle_probe() {
                 safe_opp_steps: root.safe_opponent_mana_progress_steps,
                 score_path_steps: root.score_path_best_steps,
                 same_turn_window: root.same_turn_score_window_value,
+                race_delta: forced_root_oracle_race_delta(
+                    before_score_path_steps,
+                    root.score_path_best_steps,
+                    before_safe_super_steps,
+                    root.safe_supermana_progress_steps,
+                    before_safe_opp_steps,
+                    root.safe_opponent_mana_progress_steps,
+                    before_same_turn_window,
+                    root.same_turn_score_window_value,
+                ),
                 scores_supermana_this_turn: root.scores_supermana_this_turn,
                 scores_opponent_mana_this_turn: root.scores_opponent_mana_this_turn,
                 safe_supermana_pickup_now: root.safe_supermana_pickup_now,
@@ -2786,7 +2857,7 @@ fn smart_automove_pro_forced_root_oracle_probe() {
 
     for row in rows.into_iter().take(print_limit) {
         println!(
-            "FORCED_ROOT_ORACLE_ROOT {{\"label\":\"{}\",\"result\":\"{}\",\"root_rank\":{},\"score\":{},\"inputs\":\"{}\",\"family\":\"{}\",\"wins_immediately\":{},\"attacks\":{},\"vulnerable\":{},\"walk_vulnerable\":{},\"mana_handoff\":{},\"roundtrip\":{},\"safety_detail\":\"{}\",\"progress\":\"{}\",\"spirit_development\":{},\"spirit_setup\":{},\"supermana_progress\":{},\"opponent_mana_progress\":{},\"safe_super_steps\":{},\"safe_opp_steps\":{},\"score_path_steps\":{},\"same_turn_window\":{},\"scores_supermana_this_turn\":{},\"scores_opponent_mana_this_turn\":{},\"safe_supermana_pickup_now\":{},\"safe_opponent_mana_pickup_now\":{},\"reply_floor\":{},\"reply_risk\":\"{}\",\"reply_bucket\":\"{}\",\"followup_floor\":{},\"followup_bucket\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"utility\":\"{:?}\",\"final\":\"{}\"}}",
+            "FORCED_ROOT_ORACLE_ROOT {{\"label\":\"{}\",\"result\":\"{}\",\"root_rank\":{},\"score\":{},\"inputs\":\"{}\",\"family\":\"{}\",\"wins_immediately\":{},\"attacks\":{},\"vulnerable\":{},\"walk_vulnerable\":{},\"mana_handoff\":{},\"roundtrip\":{},\"safety_detail\":\"{}\",\"progress\":\"{}\",\"spirit_development\":{},\"spirit_setup\":{},\"supermana_progress\":{},\"opponent_mana_progress\":{},\"safe_super_steps\":{},\"safe_opp_steps\":{},\"score_path_steps\":{},\"same_turn_window\":{},\"race_delta\":\"{}\",\"scores_supermana_this_turn\":{},\"scores_opponent_mana_this_turn\":{},\"safe_supermana_pickup_now\":{},\"safe_opponent_mana_pickup_now\":{},\"reply_floor\":{},\"reply_risk\":\"{}\",\"reply_bucket\":\"{}\",\"followup_floor\":{},\"followup_bucket\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"utility\":\"{:?}\",\"final\":\"{}\"}}",
             json_escape(&label),
             format_match_result(row.result),
             row.root_rank,
@@ -2809,6 +2880,7 @@ fn smart_automove_pro_forced_root_oracle_probe() {
             row.safe_opp_steps,
             row.score_path_steps,
             row.same_turn_window,
+            json_escape(&row.race_delta),
             row.scores_supermana_this_turn,
             row.scores_opponent_mana_this_turn,
             row.safe_supermana_pickup_now,
