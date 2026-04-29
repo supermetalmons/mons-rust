@@ -2608,6 +2608,20 @@ impl ProV4RootPoolTransitionFeatures {
     }
 }
 
+struct ProV4RootPoolWorstReplyFeatures {
+    worst_reply_transition: String,
+    worst_reply_effect: String,
+}
+
+impl ProV4RootPoolWorstReplyFeatures {
+    fn omitted() -> Self {
+        Self {
+            worst_reply_transition: "omitted".to_string(),
+            worst_reply_effect: "omitted".to_string(),
+        }
+    }
+}
+
 fn pro_v4_root_pool_is_high_value_mana(mana: Mana, perspective: Color) -> bool {
     match mana {
         Mana::Supermana => true,
@@ -4913,6 +4927,118 @@ fn pro_v4_root_pool_transition_features(
     }
 }
 
+fn pro_v4_root_pool_reply_score(
+    game: &MonsGame,
+    perspective: Color,
+    config: AutomoveSearchConfig,
+) -> i32 {
+    match game.winner_color() {
+        Some(winner) if winner == perspective => SMART_TERMINAL_SCORE / 2,
+        Some(_) => -SMART_TERMINAL_SCORE / 2,
+        None => MonsGameModel::evaluate_search_preferability(game, perspective, config),
+    }
+}
+
+fn pro_v4_root_pool_no_reply_transition(
+    state_after_root: &MonsGame,
+    perspective: Color,
+    score: i32,
+) -> ProV4RootPoolWorstReplyFeatures {
+    ProV4RootPoolWorstReplyFeatures {
+        worst_reply_transition: format!(
+            "state={};floor={};{};{}",
+            pro_v4_root_pool_status(state_after_root, perspective),
+            pro_policy_mechanism_floor_bucket(Some(score)),
+            pro_v4_root_pool_input_shape_bucket(&[]),
+            pro_v4_root_pool_transition_primary_bucket(state_after_root, &[], perspective),
+        ),
+        worst_reply_effect: format!(
+            "state={};floor={};{}",
+            pro_v4_root_pool_status(state_after_root, perspective),
+            pro_policy_mechanism_floor_bucket(Some(score)),
+            pro_v4_root_pool_transition_effect_bucket(
+                state_after_root,
+                state_after_root,
+                &[],
+                perspective,
+            ),
+        ),
+    }
+}
+
+fn pro_v4_root_pool_worst_reply_features(
+    state_after_root: &MonsGame,
+    perspective: Color,
+    config: AutomoveSearchConfig,
+) -> ProV4RootPoolWorstReplyFeatures {
+    if state_after_root.winner_color().is_some() || state_after_root.active_color == perspective {
+        return pro_v4_root_pool_no_reply_transition(
+            state_after_root,
+            perspective,
+            pro_v4_root_pool_reply_score(state_after_root, perspective, config),
+        );
+    }
+
+    let reply_limit = config.root_reply_risk_reply_limit.clamp(1, 24);
+    let replies = MonsGameModel::enumerate_legal_transitions(
+        state_after_root,
+        reply_limit,
+        MonsGameModel::automove_start_input_options(config),
+    );
+    let Some((score, _, input_shape, reply)) = replies
+        .into_iter()
+        .map(|reply| {
+            let score = pro_v4_root_pool_reply_score(&reply.game, perspective, config);
+            let input_fen = Input::fen_from_array(&reply.inputs);
+            let input_shape = pro_v4_root_pool_input_shape_bucket(&reply.inputs);
+            (score, input_fen, input_shape, reply)
+        })
+        .min_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)))
+    else {
+        return ProV4RootPoolWorstReplyFeatures {
+            worst_reply_transition: format!(
+                "state=no_replies;floor={};{};{}",
+                pro_policy_mechanism_floor_bucket(Some(SMART_TERMINAL_SCORE / 4)),
+                pro_v4_root_pool_input_shape_bucket(&[]),
+                pro_v4_root_pool_transition_primary_bucket(state_after_root, &[], perspective),
+            ),
+            worst_reply_effect: format!(
+                "state=no_replies;floor={};{}",
+                pro_policy_mechanism_floor_bucket(Some(SMART_TERMINAL_SCORE / 4)),
+                pro_v4_root_pool_transition_effect_bucket(
+                    state_after_root,
+                    state_after_root,
+                    &[],
+                    perspective,
+                ),
+            ),
+        };
+    };
+
+    ProV4RootPoolWorstReplyFeatures {
+        worst_reply_transition: format!(
+            "state=opponent_reply;floor={};{};{}",
+            pro_policy_mechanism_floor_bucket(Some(score)),
+            input_shape,
+            pro_v4_root_pool_transition_primary_bucket(
+                state_after_root,
+                &reply.events,
+                perspective,
+            ),
+        ),
+        worst_reply_effect: format!(
+            "state=opponent_reply;floor={};{}",
+            pro_policy_mechanism_floor_bucket(Some(score)),
+            pro_v4_root_pool_transition_effect_bucket(
+                state_after_root,
+                &reply.game,
+                &reply.events,
+                perspective,
+            ),
+        ),
+    }
+}
+
 fn pro_v4_root_pool_score_for_color(game: &MonsGame, color: Color) -> i32 {
     match color {
         Color::White => game.white_score,
@@ -5859,6 +5985,7 @@ fn pro_v4_root_pool_print_snapshot(
             base_recovery_features,
             lane_shape_features,
             transition_features,
+            worst_reply_features,
         ) = if let Some(root) = root {
             let family = MonsGameModel::turn_engine_root_evaluation_family(root);
             let reply_snapshot = MonsGameModel::root_reply_risk_snapshot(
@@ -5962,6 +6089,8 @@ fn pro_v4_root_pool_print_snapshot(
                 pro_v4_root_pool_lane_shape_features(&game, &root.game, game.active_color);
             let transition_features =
                 pro_v4_root_pool_transition_features(&game, root, game.active_color);
+            let worst_reply_features =
+                pro_v4_root_pool_worst_reply_features(&root.game, game.active_color, runtime);
             (
                 Some(root.root_rank),
                 Some(root.score),
@@ -6013,6 +6142,7 @@ fn pro_v4_root_pool_print_snapshot(
                 base_recovery_features,
                 lane_shape_features,
                 transition_features,
+                worst_reply_features,
             )
         } else {
             (
@@ -6052,10 +6182,11 @@ fn pro_v4_root_pool_print_snapshot(
                 ProV4RootPoolBaseRecoveryFeatures::omitted(),
                 ProV4RootPoolLaneShapeFeatures::omitted(),
                 ProV4RootPoolTransitionFeatures::omitted(),
+                ProV4RootPoolWorstReplyFeatures::omitted(),
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -6141,6 +6272,8 @@ fn pro_v4_root_pool_print_snapshot(
             json_escape(&lane_shape_features.post_lane_shape_delta),
             json_escape(&transition_features.root_transition),
             json_escape(&transition_features.root_transition_effect),
+            json_escape(&worst_reply_features.worst_reply_transition),
+            json_escape(&worst_reply_features.worst_reply_effect),
         );
     }
 }
