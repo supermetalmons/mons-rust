@@ -74,6 +74,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_support_guard_delta",
     "post_territory",
     "post_territory_delta",
+    "post_mana_path",
+    "post_mana_path_delta",
 ]
 ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_rank", ("family", "rank_bucket")),
@@ -110,6 +112,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_territory", ("family", "post_territory")),
     ("progress_territory_delta", ("progress", "post_territory_delta")),
     ("path_territory_delta", ("path", "post_territory_delta")),
+    ("family_mana_path", ("family", "post_mana_path")),
+    ("progress_mana_path_delta", ("progress", "post_mana_path_delta")),
+    ("path_mana_path_delta", ("path", "post_mana_path_delta")),
 ]
 ROOT_POOL_GUARDED_ORIGIN_KINDS = {
     "guarded_selected",
@@ -153,6 +158,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_support_guard_delta",
     "post_territory",
     "post_territory_delta",
+    "post_mana_path",
+    "post_mana_path_delta",
 ]
 ROOT_POOL_DELTA_NUMERIC_FIELDS = [
     "rank",
@@ -2183,6 +2190,8 @@ def root_pool_sample_root(row):
         "post_support_guard_delta": row.get("post_support_guard_delta", ""),
         "post_territory": row.get("post_territory", ""),
         "post_territory_delta": row.get("post_territory_delta", ""),
+        "post_mana_path": row.get("post_mana_path", ""),
+        "post_mana_path_delta": row.get("post_mana_path_delta", ""),
     }
 
 
