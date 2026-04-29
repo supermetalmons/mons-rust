@@ -636,8 +636,11 @@ def summarize_cross_budget_axis_group(group):
         "candidate_is_white": group["candidate_is_white"],
         "record_count": group["record_count"],
         "candidate_count": len(group["candidates"]),
+        "candidates": "|".join(sorted(group["candidates"])),
         "branch_count": len(group["branches"]),
+        "branches": "|".join(sorted(group["branches"])),
         "pair_count": len(group["pairs"]),
+        "pairs": "|".join(sorted(group["pairs"])),
         "duel_count": len(group["duels"]),
         "duels": "|".join(sorted(group["duels"])),
         "source_log_count": len(group["source_logs"]),
@@ -656,7 +659,70 @@ def summarize_cross_budget_axis_group(group):
         row[f"{record_class}_duel_count"] = len(duels)
         row[f"{record_class}_duels"] = "|".join(sorted(duels))
     row["cross_budget_decision"] = cross_budget_axis_decision(row)
+    row["fragmented_dimensions"] = cross_budget_fragmented_dimensions(row)
     return row
+
+
+def cross_budget_fragmented_dimensions(row):
+    dimensions = []
+    for field, dimension in [
+        ("candidate_count", "candidate_policy"),
+        ("branch_count", "branch"),
+        ("pair_count", "first_move_pair"),
+    ]:
+        if int(row.get(field, 0)) > 1:
+            dimensions.append(dimension)
+    return "|".join(dimensions)
+
+
+def cross_budget_source_status(row):
+    if int(row.get("candidate_better_joined_states", 0)) <= 0:
+        return "no_candidate_signal"
+    if int(row.get("baseline_better_joined_states", 0)) > 0:
+        return "baseline_save_risk"
+    if int(row.get("no_policy_joined_states", 0)) > 0:
+        return "coverage_gap"
+    if row.get("fragmented_dimensions", ""):
+        return "fragmented_no_source"
+    if int(row.get("all_budget_repair_joined_states", 0)) > 0:
+        return "source_candidate_all_budget"
+    if int(row.get("non_regressing_repair_joined_states", 0)) > 0:
+        if int(row.get("candidate_better_joined_states", 0)) > 1:
+            return "source_candidate_non_regressing"
+        return "singleton_non_regressing"
+    if int(row.get("candidate_better_joined_states", 0)) == 1:
+        return "singleton_candidate"
+    return "no_source"
+
+
+def cross_budget_source_permission(status):
+    if status.startswith("source_candidate_"):
+        return "inspect_for_source"
+    if status in {
+        "baseline_save_risk",
+        "coverage_gap",
+        "fragmented_no_source",
+        "singleton_candidate",
+        "singleton_non_regressing",
+    }:
+        return "no_source"
+    return "postprocess_only"
+
+
+def cross_budget_source_action(status):
+    if status == "source_candidate_all_budget":
+        return "inspect_all_budget_records"
+    if status == "source_candidate_non_regressing":
+        return "inspect_non_regressing_records"
+    if status == "fragmented_no_source":
+        return "keep_postprocess"
+    if status == "baseline_save_risk":
+        return "avoid_selector"
+    if status == "coverage_gap":
+        return "add_policy_or_root_feature"
+    if status in {"singleton_candidate", "singleton_non_regressing"}:
+        return "widen_or_archive_singleton"
+    return "try_next_slice"
 
 
 def cross_budget_axis_row_sort_key(row):
@@ -685,6 +751,9 @@ def new_cross_budget_axis_rollup(axis):
         "joined_states": set(),
         "duels": set(),
         "source_logs": set(),
+        "candidates": set(),
+        "branches": set(),
+        "pairs": set(),
         "decisions": defaultdict(int),
         "decision_states": defaultdict(set),
         "class_states": defaultdict(set),
@@ -703,6 +772,15 @@ def summarize_cross_budget_axis_rollups(rows):
         for duel in row.get("duels", "").split("|"):
             if duel:
                 group["duels"].add(duel)
+        for candidate in row.get("candidates", "").split("|"):
+            if candidate:
+                group["candidates"].add(candidate)
+        for branch in row.get("branches", "").split("|"):
+            if branch:
+                group["branches"].add(branch)
+        for pair in row.get("pairs", "").split("|"):
+            if pair:
+                group["pairs"].add(pair)
         decision = row.get("cross_budget_decision", "")
         group["decisions"][decision] += 1
         group["decision_states"][decision].add(state_key)
@@ -722,9 +800,13 @@ def summarize_cross_budget_axis_rollups(rows):
             "record_count": group["record_count"],
             "joined_state_count": len(group["joined_states"]),
             "duel_count": len(group["duels"]),
+            "candidate_count": len(group["candidates"]),
+            "branch_count": len(group["branches"]),
+            "pair_count": len(group["pairs"]),
             "source_log_count": len(group["source_logs"]),
             "decision_counts": sorted_count_rows(group["decisions"]),
         }
+        row["fragmented_dimensions"] = cross_budget_fragmented_dimensions(row)
         for decision, states in group["decision_states"].items():
             row[f"{decision}_joined_states"] = len(states)
         for record_class in [
@@ -736,6 +818,11 @@ def summarize_cross_budget_axis_rollups(rows):
             row[f"{record_class}_joined_states"] = len(
                 group["class_states"].get(record_class, set())
             )
+        row["source_status"] = cross_budget_source_status(row)
+        row["source_permission"] = cross_budget_source_permission(
+            row["source_status"]
+        )
+        row["source_action"] = cross_budget_source_action(row["source_status"])
         rollups.append(row)
     return rollups
 
@@ -748,6 +835,42 @@ def top_cross_budget_axis_rollups_by_decision(rollups, decision, limit=8):
             -int(row.get(decision_field, 0)),
             -int(row.get("joined_state_count", 0)),
             -int(row.get("record_count", 0)),
+            row.get("key", ""),
+        ),
+    )[:limit]
+
+
+def cross_budget_source_candidate_rows(rollups, limit=8):
+    return sorted(
+        [
+            row
+            for row in rollups
+            if row.get("source_status", "").startswith("source_candidate_")
+        ],
+        key=lambda row: (
+            -int(row.get("all_budget_repair_joined_states", 0)),
+            -int(row.get("non_regressing_repair_joined_states", 0)),
+            -int(row.get("candidate_better_joined_states", 0)),
+            -int(row.get("joined_state_count", 0)),
+            row.get("key", ""),
+        ),
+    )[:limit]
+
+
+def blocked_cross_budget_candidate_rows(rollups, limit=8):
+    return sorted(
+        [
+            row
+            for row in rollups
+            if int(row.get("candidate_better_joined_states", 0)) > 0
+            and not row.get("source_status", "").startswith("source_candidate_")
+        ],
+        key=lambda row: (
+            -int(row.get("candidate_better_joined_states", 0)),
+            row.get("source_status", ""),
+            -int(row.get("baseline_better_joined_states", 0)),
+            -int(row.get("no_policy_joined_states", 0)),
+            -int(row.get("pair_count", 0)),
             row.get("key", ""),
         ),
     )[:limit]
@@ -777,6 +900,9 @@ def summarize_cross_budget_axes(events, limit=8):
     for row in rows:
         decision_counts[row["cross_budget_decision"]] += 1
     rollups = summarize_cross_budget_axis_rollups(rows)
+    source_status_counts = defaultdict(int)
+    for row in rollups:
+        source_status_counts[row["source_status"]] += 1
 
     return {
         "record_count": record_count,
@@ -787,6 +913,13 @@ def summarize_cross_budget_axes(events, limit=8):
             {key: len(value) for key, value in class_joined_states.items()}
         ),
         "cross_budget_decision_counts": sorted_count_rows(decision_counts),
+        "source_status_counts": sorted_count_rows(source_status_counts),
+        "source_candidate_rollups": cross_budget_source_candidate_rows(
+            rollups, limit
+        ),
+        "blocked_candidate_rollups": blocked_cross_budget_candidate_rows(
+            rollups, limit
+        ),
         "top_axes_by_decision": {
             decision: top_cross_budget_axis_decision_rows(rows, decision, limit)
             for decision in sorted(decision_counts)
