@@ -2,6 +2,7 @@
 """Summarize normalized Outcome Corpus V2 JSONL workbench rows."""
 
 import argparse
+import itertools
 import json
 import re
 import sys
@@ -1025,6 +1026,32 @@ def axis_tokens(axis):
     return tokens
 
 
+def axis_token_pairs(axis):
+    tokens_by_key = {}
+    for token in axis_tokens(axis):
+        tokens_by_key.setdefault(token["token"], token)
+    tokens = [tokens_by_key[key] for key in sorted(tokens_by_key)]
+    pairs = []
+    for left, right in itertools.combinations(tokens, 2):
+        if left["field"] == right["field"]:
+            continue
+        pairs.append(
+            {
+                "token": f"{left['token']} && {right['token']}",
+                "token_kind": "token_pair",
+                "field": f"{left['field']}&&{right['field']}",
+                "value": f"{left['value']}&&{right['value']}",
+                "left_token": left["token"],
+                "right_token": right["token"],
+                "left_field": left["field"],
+                "right_field": right["field"],
+                "left_value": left["value"],
+                "right_value": right["value"],
+            }
+        )
+    return pairs
+
+
 def new_axis_token_group(token, token_kind, field, value):
     return {
         "token": token,
@@ -1043,36 +1070,63 @@ def new_axis_token_group(token, token_kind, field, value):
     }
 
 
-def add_axis_token_row(groups, row):
+def new_axis_token_pair_group(pair):
+    group = new_axis_token_group(
+        pair["token"],
+        pair["token_kind"],
+        pair["field"],
+        pair["value"],
+    )
+    group["left_token"] = pair["left_token"]
+    group["right_token"] = pair["right_token"]
+    group["left_field"] = pair["left_field"]
+    group["right_field"] = pair["right_field"]
+    group["left_value"] = pair["left_value"]
+    group["right_value"] = pair["right_value"]
+    return group
+
+
+def add_axis_token_item_row(groups, row, item, new_group):
     record_class = row.get("record_class", "unknown")
     state = row.get("cross_budget_state_id") or state_id(row)
     if not state:
         return
     family = axis_family(row.get("axis", "none"))
+    group = groups.setdefault(item["token"], new_group(item))
+    group["record_count"] += 1
+    group["axis_families"].add(family)
+    group["axes"].add(row.get("axis", "none"))
+    group["class_records"][record_class] += 1
+    group["class_states"][record_class].add(state)
+    for field, set_name in [
+        ("candidate", "class_policies"),
+        ("duel", "class_duels"),
+        ("branch", "class_branches"),
+        ("pair", "class_pairs"),
+    ]:
+        value = row.get(field, "")
+        if value:
+            group[set_name][record_class].add(value)
+
+
+def add_axis_token_row(groups, row):
     for token in axis_tokens(row.get("axis", "none")):
-        group = groups.setdefault(
-            token["token"],
-            new_axis_token_group(
-                token["token"],
-                token["token_kind"],
-                token["field"],
-                token["value"],
+        add_axis_token_item_row(
+            groups,
+            row,
+            token,
+            lambda item: new_axis_token_group(
+                item["token"],
+                item["token_kind"],
+                item["field"],
+                item["value"],
             ),
         )
-        group["record_count"] += 1
-        group["axis_families"].add(family)
-        group["axes"].add(row.get("axis", "none"))
-        group["class_records"][record_class] += 1
-        group["class_states"][record_class].add(state)
-        for field, set_name in [
-            ("candidate", "class_policies"),
-            ("duel", "class_duels"),
-            ("branch", "class_branches"),
-            ("pair", "class_pairs"),
-        ]:
-            value = row.get(field, "")
-            if value:
-                group[set_name][record_class].add(value)
+
+
+def add_axis_token_pair_row(groups, row):
+    for pair in axis_token_pairs(row.get("axis", "none")):
+        add_axis_token_item_row(groups, row, pair, new_axis_token_pair_group)
 
 
 def axis_token_groups(rows, target_states, target_families):
@@ -1092,6 +1146,23 @@ def axis_token_groups(rows, target_states, target_families):
     return groups
 
 
+def axis_token_pair_groups(rows, target_states, target_families):
+    wanted_states = set(target_states)
+    wanted_families = set(target_families)
+    groups = {}
+    for row in rows:
+        if row.get("row_type") != "policy_axis":
+            continue
+        state = row.get("cross_budget_state_id") or state_id(row)
+        if state not in wanted_states:
+            continue
+        family = axis_family(row.get("axis", "none"))
+        if family not in wanted_families:
+            continue
+        add_axis_token_pair_row(groups, row)
+    return groups
+
+
 def summarize_axis_token_group(group):
     row = {
         "token": group["token"],
@@ -1104,6 +1175,16 @@ def summarize_axis_token_group(group):
         "axis_count": len(group["axes"]),
         "sample_axes": sorted(group["axes"])[:5],
     }
+    for field in [
+        "left_token",
+        "right_token",
+        "left_field",
+        "right_field",
+        "left_value",
+        "right_value",
+    ]:
+        if field in group:
+            row[field] = group[field]
     for record_class in RECORD_CLASSES:
         states = group["class_states"].get(record_class, set())
         row[f"{record_class}_records"] = int(
@@ -1282,6 +1363,91 @@ def axis_token_discriminator_summary(
     }
 
 
+def axis_token_pair_discriminator_summary(
+    rows,
+    state_summary,
+    overlap_families,
+    pair_limit,
+    token_families=None,
+):
+    target_states = state_summary.get("target_state_ids", [])
+    target_families = (
+        sorted(token_families)
+        if token_families is not None
+        else default_token_target_families(state_summary, overlap_families)
+    )
+    target_family_source = (
+        "cli_token_families"
+        if token_families is not None
+        else "state_contaminated_families"
+    )
+    groups = axis_token_pair_groups(rows, target_states, target_families)
+    pair_rows = [
+        row
+        for row in (summarize_axis_token_group(group) for group in groups.values())
+        if row["candidate_better_state_count"] > 0
+    ]
+    clean_pairs = [
+        row for row in pair_rows if row["candidate_clean_from_baseline_no_policy"]
+    ]
+    clean_repeated = [
+        row for row in clean_pairs if row["candidate_repeated_across_target_states"]
+    ]
+    low_fragmentation_repeated = [
+        row for row in clean_repeated if row["candidate_low_fragmentation"]
+    ]
+    fragmented_repeated = [
+        row for row in clean_repeated if not row["candidate_low_fragmentation"]
+    ]
+    clean_singleton = [
+        row for row in clean_pairs if not row["candidate_repeated_across_target_states"]
+    ]
+    contaminated = [
+        row for row in pair_rows if not row["candidate_clean_from_baseline_no_policy"]
+    ]
+    decision = axis_token_decision(
+        low_fragmentation_repeated,
+        fragmented_repeated,
+        clean_singleton,
+        contaminated,
+    )
+    return {
+        "target_source": state_summary.get("target_source", ""),
+        "target_state_count": len(target_states),
+        "target_state_ids": target_states,
+        "target_family_source": target_family_source,
+        "target_family_count": len(target_families),
+        "target_families": target_families,
+        "candidate_token_pair_count": len(pair_rows),
+        "clean_repeated_candidate_token_pair_count": len(clean_repeated),
+        "low_fragmentation_clean_repeated_candidate_token_pair_count": len(
+            low_fragmentation_repeated
+        ),
+        "fragmented_clean_repeated_candidate_token_pair_count": len(
+            fragmented_repeated
+        ),
+        "clean_singleton_candidate_token_pair_count": len(clean_singleton),
+        "contaminated_candidate_token_pair_count": len(contaminated),
+        "axis_token_pair_decision": decision,
+        "next_action": axis_token_next_action(decision),
+        "top_low_fragmentation_clean_repeated_candidate_token_pairs": sort_axis_token_rows(
+            low_fragmentation_repeated
+        )[:pair_limit],
+        "top_fragmented_clean_repeated_candidate_token_pairs": sort_axis_token_rows(
+            fragmented_repeated
+        )[:pair_limit],
+        "top_clean_repeated_candidate_token_pairs": sort_axis_token_rows(
+            clean_repeated
+        )[:pair_limit],
+        "top_clean_singleton_candidate_token_pairs": sort_axis_token_rows(
+            clean_singleton
+        )[:pair_limit],
+        "top_contaminated_candidate_token_pairs": sort_axis_token_rows(contaminated)[
+            :pair_limit
+        ],
+    }
+
+
 def workbench_decision(source_rows, blocked_rows):
     if source_rows:
         return "inspect_for_source"
@@ -1350,6 +1516,13 @@ def summarize(
             state_summary,
             overlap_families,
             token_limit=limit,
+            token_families=token_families,
+        ),
+        "axis_token_pair_discriminator": axis_token_pair_discriminator_summary(
+            rows,
+            state_summary,
+            overlap_families,
+            pair_limit=limit,
             token_families=token_families,
         ),
     }
