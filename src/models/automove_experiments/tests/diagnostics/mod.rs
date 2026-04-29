@@ -2226,6 +2226,24 @@ impl ProV4RootPoolBoardFeatures {
     }
 }
 
+struct ProV4RootPoolOutcomeFeatures {
+    post_scoreboard: String,
+    post_score_delta: String,
+    post_turn_budget: String,
+    post_turn_budget_delta: String,
+}
+
+impl ProV4RootPoolOutcomeFeatures {
+    fn omitted() -> Self {
+        Self {
+            post_scoreboard: "omitted".to_string(),
+            post_score_delta: "omitted".to_string(),
+            post_turn_budget: "omitted".to_string(),
+            post_turn_budget_delta: "omitted".to_string(),
+        }
+    }
+}
+
 fn pro_v4_root_pool_is_high_value_mana(mana: Mana, perspective: Color) -> bool {
     match mana {
         Mana::Supermana => true,
@@ -2391,6 +2409,159 @@ fn pro_v4_root_pool_board_features(
         ),
         post_mon_material: pro_v4_root_pool_mon_material_bucket(&after),
         post_mon_material_delta: pro_v4_root_pool_mon_material_delta_bucket(&before, &after),
+    }
+}
+
+fn pro_v4_root_pool_score_for_color(game: &MonsGame, color: Color) -> i32 {
+    match color {
+        Color::White => game.white_score,
+        Color::Black => game.black_score,
+    }
+}
+
+fn pro_v4_root_pool_score_to_win_bucket(score: i32) -> &'static str {
+    match Config::TARGET_SCORE.saturating_sub(score) {
+        ..=0 => "won",
+        1 => "need1",
+        2 => "need2",
+        3 => "need3",
+        _ => "need4_plus",
+    }
+}
+
+fn pro_v4_root_pool_score_delta_bucket(delta: i32) -> &'static str {
+    match delta {
+        ..=-1 => "drop",
+        0 => "same",
+        1 => "gain1",
+        2 => "gain2",
+        _ => "gain3_plus",
+    }
+}
+
+fn pro_v4_root_pool_score_diff_bucket(diff: i32) -> &'static str {
+    match diff {
+        ..=-2 => "trail2_plus",
+        -1 => "trail1",
+        0 => "tied",
+        1 => "lead1",
+        _ => "lead2_plus",
+    }
+}
+
+fn pro_v4_root_pool_winner_bucket(game: &MonsGame, perspective: Color) -> &'static str {
+    match game.winner_color() {
+        Some(color) if color == perspective => "own_win",
+        Some(_) => "opp_win",
+        None => "none",
+    }
+}
+
+fn pro_v4_root_pool_bool_delta_bucket(before: bool, after: bool) -> &'static str {
+    match (before, after) {
+        (false, false) => "same_false",
+        (true, true) => "same_true",
+        (false, true) => "gained",
+        (true, false) => "spent",
+    }
+}
+
+fn pro_v4_root_pool_turn_budget(game: &MonsGame, perspective: Color) -> String {
+    let status = if let Some(winner) = game.winner_color() {
+        if winner == perspective {
+            "own_game_over"
+        } else {
+            "opp_game_over"
+        }
+    } else if game.active_color == perspective {
+        "same_active"
+    } else {
+        "opponent_turn"
+    };
+    if game.winner_color().is_some() || game.active_color != perspective {
+        return format!("status={status};action=inactive;mana=inactive;mons=inactive");
+    }
+    format!(
+        "status={};action={};mana={};mons={}",
+        status,
+        if game.player_can_use_action() {
+            "can_action"
+        } else {
+            "no_action"
+        },
+        if game.player_can_move_mana() {
+            "can_mana"
+        } else {
+            "no_mana"
+        },
+        pro_policy_mechanism_mons_moves_bucket(game.mons_moves_count),
+    )
+}
+
+fn pro_v4_root_pool_turn_budget_delta(
+    before_game: &MonsGame,
+    after_game: &MonsGame,
+    perspective: Color,
+) -> String {
+    let active = if after_game.winner_color().is_some() {
+        "game_over"
+    } else if after_game.active_color == perspective {
+        "same_active"
+    } else {
+        "turn_changed"
+    };
+    if after_game.winner_color().is_some() || after_game.active_color != perspective {
+        return format!("active={active};action=inactive;mana=inactive;mons=inactive");
+    }
+    format!(
+        "active={};action={};mana={};mons={}",
+        active,
+        pro_v4_root_pool_bool_delta_bucket(
+            before_game.player_can_use_action(),
+            after_game.player_can_use_action(),
+        ),
+        pro_v4_root_pool_bool_delta_bucket(
+            before_game.player_can_move_mana(),
+            after_game.player_can_move_mana(),
+        ),
+        pro_policy_mechanism_signed_delta_bucket(
+            after_game.mons_moves_count - before_game.mons_moves_count,
+        ),
+    )
+}
+
+fn pro_v4_root_pool_outcome_features(
+    before_game: &MonsGame,
+    after_game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolOutcomeFeatures {
+    let opponent = perspective.other();
+    let before_own_score = pro_v4_root_pool_score_for_color(before_game, perspective);
+    let before_opp_score = pro_v4_root_pool_score_for_color(before_game, opponent);
+    let after_own_score = pro_v4_root_pool_score_for_color(after_game, perspective);
+    let after_opp_score = pro_v4_root_pool_score_for_color(after_game, opponent);
+    let before_diff = before_own_score - before_opp_score;
+    let after_diff = after_own_score - after_opp_score;
+    ProV4RootPoolOutcomeFeatures {
+        post_scoreboard: format!(
+            "own={};opp={};diff={}",
+            pro_v4_root_pool_score_to_win_bucket(after_own_score),
+            pro_v4_root_pool_score_to_win_bucket(after_opp_score),
+            pro_v4_root_pool_score_diff_bucket(after_diff),
+        ),
+        post_score_delta: format!(
+            "own={};opp={};diff={};winner={}",
+            pro_v4_root_pool_score_delta_bucket(after_own_score - before_own_score),
+            pro_v4_root_pool_score_delta_bucket(after_opp_score - before_opp_score),
+            pro_policy_mechanism_signed_delta_bucket(after_diff - before_diff),
+            pro_v4_root_pool_winner_bucket(after_game, perspective),
+        ),
+        post_turn_budget: pro_v4_root_pool_turn_budget(after_game, perspective),
+        post_turn_budget_delta: pro_v4_root_pool_turn_budget_delta(
+            before_game,
+            after_game,
+            perspective,
+        ),
     }
 }
 
@@ -3049,6 +3220,7 @@ fn pro_v4_root_pool_print_snapshot(
             post_exact_pressure,
             post_exact_delta,
             board_features,
+            outcome_features,
         ) = if let Some(root) = root {
             let family = MonsGameModel::turn_engine_root_evaluation_family(root);
             let reply_snapshot = MonsGameModel::root_reply_risk_snapshot(
@@ -3119,6 +3291,8 @@ fn pro_v4_root_pool_print_snapshot(
             };
             let board_features =
                 pro_v4_root_pool_board_features(&game, &root.game, game.active_color);
+            let outcome_features =
+                pro_v4_root_pool_outcome_features(&game, &root.game, game.active_color);
             (
                 Some(root.root_rank),
                 Some(root.score),
@@ -3156,6 +3330,7 @@ fn pro_v4_root_pool_print_snapshot(
                 post_exact_pressure,
                 post_exact_delta,
                 board_features,
+                outcome_features,
             )
         } else {
             (
@@ -3181,10 +3356,11 @@ fn pro_v4_root_pool_print_snapshot(
                 "omitted".to_string(),
                 "omitted".to_string(),
                 ProV4RootPoolBoardFeatures::omitted(),
+                ProV4RootPoolOutcomeFeatures::omitted(),
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -3240,6 +3416,10 @@ fn pro_v4_root_pool_print_snapshot(
             json_escape(&board_features.post_own_regular_delta),
             json_escape(&board_features.post_mon_material),
             json_escape(&board_features.post_mon_material_delta),
+            json_escape(&outcome_features.post_scoreboard),
+            json_escape(&outcome_features.post_score_delta),
+            json_escape(&outcome_features.post_turn_budget),
+            json_escape(&outcome_features.post_turn_budget_delta),
         );
     }
 }

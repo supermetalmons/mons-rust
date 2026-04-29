@@ -62,6 +62,10 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_own_regular_delta",
     "post_mon_material",
     "post_mon_material_delta",
+    "post_scoreboard",
+    "post_score_delta",
+    "post_turn_budget",
+    "post_turn_budget_delta",
 ]
 ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_rank", ("family", "rank_bucket")),
@@ -80,6 +84,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("progress_high_value_delta", ("progress", "post_high_value_delta")),
     ("path_high_value_delta", ("path", "post_high_value_delta")),
     ("family_mon_material_delta", ("family", "post_mon_material_delta")),
+    ("family_score_delta", ("family", "post_score_delta")),
+    ("progress_turn_budget", ("progress", "post_turn_budget")),
+    ("path_turn_budget_delta", ("path", "post_turn_budget_delta")),
 ]
 ROOT_POOL_GUARDED_ORIGIN_KINDS = {
     "guarded_selected",
@@ -111,6 +118,10 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_own_regular_delta",
     "post_mon_material",
     "post_mon_material_delta",
+    "post_scoreboard",
+    "post_score_delta",
+    "post_turn_budget",
+    "post_turn_budget_delta",
 ]
 ROOT_POOL_DELTA_NUMERIC_FIELDS = [
     "rank",
@@ -2129,6 +2140,10 @@ def root_pool_sample_root(row):
         "post_own_regular_delta": row.get("post_own_regular_delta", ""),
         "post_mon_material": row.get("post_mon_material", ""),
         "post_mon_material_delta": row.get("post_mon_material_delta", ""),
+        "post_scoreboard": row.get("post_scoreboard", ""),
+        "post_score_delta": row.get("post_score_delta", ""),
+        "post_turn_budget": row.get("post_turn_budget", ""),
+        "post_turn_budget_delta": row.get("post_turn_budget_delta", ""),
     }
 
 
