@@ -16,6 +16,19 @@ SIGNAL_SECTIONS = {
     "token_pair": "token_pair",
 }
 
+CONTRAST_FIELDS = [
+    "family",
+    "rank_band",
+    "path",
+    "advisor_bucket",
+    "safety_detail",
+    "progress",
+    "reply_bucket",
+    "followup_bucket",
+    "race_delta",
+    "root_trajectory",
+]
+
 
 def parse_jsonl_rows(paths):
     rows = []
@@ -182,6 +195,13 @@ def root_sample(root):
         "result": root.get("result", ""),
         "inputs": root.get("inputs", ""),
     }
+
+
+def int_value(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def add_signal_occurrence(groups, signal_item, signal_type, root, axis=None):
@@ -455,6 +475,245 @@ def summarize_signal_section(roots, axes_by_root, signal_type, limit):
     }
 
 
+def contrast_field_value(root, field):
+    value = root.get(field, "")
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return ""
+    return str(value)
+
+
+def contrast_root_fields(root):
+    fields = {}
+    for field in CONTRAST_FIELDS:
+        value = contrast_field_value(root, field)
+        if value:
+            fields[field] = value
+    return fields
+
+
+def contrast_axis_tokens(axis_rows):
+    tokens = set()
+    for axis_row in axis_rows:
+        axis = axis_row.get("axis", "")
+        if not axis:
+            continue
+        tokens.add(f"axis={axis}")
+        for token in axis_tokens(axis):
+            tokens.add(token["signal"])
+    return tokens
+
+
+def contrast_signature(root, axis_rows):
+    fields = contrast_root_fields(root)
+    return {
+        *(f"{field}={value}" for field, value in fields.items()),
+        *contrast_axis_tokens(axis_rows),
+    }
+
+
+def contrast_label_groups(roots):
+    groups = defaultdict(lambda: {"winners": [], "losers": []})
+    for root in roots.values():
+        label = root.get("label", "")
+        if root.get("is_winning_root", False):
+            groups[label]["winners"].append(root)
+        else:
+            groups[label]["losers"].append(root)
+    return groups
+
+
+def nearest_losing_sibling(winner, losers, signatures):
+    winner_id = winner.get("root_id", "")
+    winner_signature = signatures.get(winner_id, set())
+    candidates = []
+    for loser in losers:
+        loser_id = loser.get("root_id", "")
+        loser_signature = signatures.get(loser_id, set())
+        shared = winner_signature & loser_signature
+        union_size = len(winner_signature | loser_signature)
+        rank_distance = abs(
+            int_value(winner.get("root_rank", 0)) - int_value(loser.get("root_rank", 0))
+        )
+        candidates.append(
+            (
+                -len(shared),
+                -round(len(shared) / union_size, 4) if union_size else 0,
+                rank_distance,
+                int_value(loser.get("root_rank", 0)),
+                loser,
+                shared,
+            )
+        )
+    if not candidates:
+        return None, set()
+    candidates.sort(key=lambda item: item[:4])
+    return candidates[0][4], candidates[0][5]
+
+
+def update_contrast_counter(counter, key, label, root_id):
+    item = counter.setdefault(
+        key,
+        {
+            "key": key,
+            "count": 0,
+            "labels": set(),
+            "winner_roots": set(),
+        },
+    )
+    item["count"] += 1
+    if label:
+        item["labels"].add(label)
+    if root_id:
+        item["winner_roots"].add(root_id)
+
+
+def summarize_contrast_counter(counter, limit):
+    rows = []
+    for item in counter.values():
+        rows.append(
+            {
+                "key": item["key"],
+                "count": item["count"],
+                "label_count": len(item["labels"]),
+                "labels": sorted(item["labels"]),
+                "winner_root_count": len(item["winner_roots"]),
+            }
+        )
+    return sorted(
+        rows,
+        key=lambda row: (-row["label_count"], -row["count"], row["key"]),
+    )[:limit]
+
+
+def root_pool_contrast_report(roots, axes_by_root, limit):
+    signatures = {
+        root_id: contrast_signature(root, axes_by_root.get(root_id, []))
+        for root_id, root in roots.items()
+    }
+    groups = contrast_label_groups(roots)
+    field_delta_counts = {}
+    winner_field_counts = {}
+    winner_only_token_counts = {}
+    contrast_rows = []
+    labels_with_contrast = set()
+
+    for label, group in sorted(groups.items()):
+        losers = sorted(
+            group["losers"],
+            key=lambda root: int_value(root.get("root_rank", 0)),
+        )
+        if not group["winners"] or not losers:
+            continue
+        labels_with_contrast.add(label)
+        for winner in sorted(
+            group["winners"],
+            key=lambda root: int_value(root.get("root_rank", 0)),
+        ):
+            loser, shared = nearest_losing_sibling(winner, losers, signatures)
+            if loser is None:
+                continue
+            winner_id = winner.get("root_id", "")
+            loser_id = loser.get("root_id", "")
+            winner_fields = contrast_root_fields(winner)
+            loser_fields = contrast_root_fields(loser)
+            differing_fields = []
+            for field in CONTRAST_FIELDS:
+                winner_value = winner_fields.get(field, "")
+                loser_value = loser_fields.get(field, "")
+                if winner_value == loser_value:
+                    continue
+                differing_fields.append(
+                    {
+                        "field": field,
+                        "winner_value": winner_value,
+                        "loser_value": loser_value,
+                    }
+                )
+                update_contrast_counter(
+                    field_delta_counts,
+                    f"{field}:{winner_value}->{loser_value}",
+                    label,
+                    winner_id,
+                )
+                if winner_value:
+                    update_contrast_counter(
+                        winner_field_counts,
+                        f"{field}={winner_value}",
+                        label,
+                        winner_id,
+                    )
+
+            winner_only_tokens = signatures[winner_id] - signatures[loser_id]
+            for token in winner_only_tokens:
+                update_contrast_counter(
+                    winner_only_token_counts,
+                    token,
+                    label,
+                    winner_id,
+                )
+
+            contrast_rows.append(
+                {
+                    "label": label,
+                    "winner": root_sample(winner),
+                    "nearest_loser": root_sample(loser),
+                    "shared_signal_count": len(shared),
+                    "winner_signal_count": len(signatures[winner_id]),
+                    "nearest_loser_signal_count": len(signatures[loser_id]),
+                    "winner_only_signal_count": len(winner_only_tokens),
+                    "differing_fields": differing_fields,
+                    "sample_winner_only_signals": sorted(winner_only_tokens)[:10],
+                }
+            )
+
+    top_field_deltas = summarize_contrast_counter(field_delta_counts, limit)
+    top_winner_fields = summarize_contrast_counter(winner_field_counts, limit)
+    top_winner_only_tokens = summarize_contrast_counter(
+        winner_only_token_counts,
+        limit,
+    )
+    repeated_field_deltas = [
+        row for row in top_field_deltas if row["label_count"] > 1
+    ]
+    repeated_winner_fields = [
+        row for row in top_winner_fields if row["label_count"] > 1
+    ]
+    repeated_winner_only_tokens = [
+        row for row in top_winner_only_tokens if row["label_count"] > 1
+    ]
+    if repeated_field_deltas or repeated_winner_fields:
+        decision = "inspect_repeated_contrast_deltas"
+        next_action_value = "design_one_new_feature_from_contrast_then_validate"
+    elif repeated_winner_only_tokens:
+        decision = "token_only_repeated_contrast"
+        next_action_value = "add_non_archived_feature_or_return_to_outcome_corpus"
+    elif contrast_rows:
+        decision = "singleton_or_local_contrast_only"
+        next_action_value = "return_to_outcome_corpus_feature_extraction"
+    else:
+        decision = "no_contrast_available"
+        next_action_value = "collect_oracle_rows_with_winning_and_losing_roots"
+
+    return {
+        "contrast_decision": decision,
+        "source_permission": "no_source",
+        "next_action": next_action_value,
+        "label_count": len(groups),
+        "labels_with_contrast_count": len(labels_with_contrast),
+        "labels_with_contrast": sorted(labels_with_contrast),
+        "winning_root_contrast_count": len(contrast_rows),
+        "repeated_field_delta_count": len(repeated_field_deltas),
+        "repeated_winner_field_count": len(repeated_winner_fields),
+        "repeated_winner_only_signal_count": len(repeated_winner_only_tokens),
+        "top_field_deltas": top_field_deltas,
+        "top_winner_fields_vs_nearest_loser": top_winner_fields,
+        "top_winner_only_signals_vs_nearest_loser": top_winner_only_tokens,
+        "sample_contrasts": contrast_rows[:limit],
+    }
+
+
 def root_pool_summary(rows, roots):
     labels = set()
     labels_with_wins = set()
@@ -529,7 +788,7 @@ def next_action(decision):
     }.get(decision, "review")
 
 
-def summarize(rows, limit=12):
+def summarize(rows, limit=12, include_contrast=False):
     roots = root_rows(rows)
     axes_by_root = axis_rows_by_root(rows, roots)
     sections = {
@@ -542,7 +801,7 @@ def summarize(rows, limit=12):
         for section_name, signal_type in SIGNAL_SECTIONS.items()
     }
     decision = workbench_decision(sections)
-    return {
+    digest = {
         "root_pool": root_pool_summary(rows, roots),
         "workbench_decision": decision,
         "source_permission": "inspect_for_source"
@@ -551,6 +810,13 @@ def summarize(rows, limit=12):
         "next_action": next_action(decision),
         **sections,
     }
+    if include_contrast:
+        digest["contrast_report"] = root_pool_contrast_report(
+            roots,
+            axes_by_root,
+            limit,
+        )
+    return digest
 
 
 def main():
@@ -572,13 +838,25 @@ def main():
         action="store_true",
         help="emit compact JSON instead of pretty-printed JSON",
     )
+    parser.add_argument(
+        "--contrast-report",
+        action="store_true",
+        help=(
+            "also emit a postprocess-only nearest-losing-sibling contrast "
+            "report for winning roots"
+        ),
+    )
     args = parser.parse_args()
 
     missing = [str(path) for path in args.jsonl if not path.is_file()]
     if missing:
         raise SystemExit(f"missing JSONL file(s): {', '.join(missing)}")
 
-    digest = summarize(parse_jsonl_rows(args.jsonl), limit=max(1, args.limit))
+    digest = summarize(
+        parse_jsonl_rows(args.jsonl),
+        limit=max(1, args.limit),
+        include_contrast=args.contrast_report,
+    )
     if args.compact:
         json.dump(digest, sys.stdout, sort_keys=True, separators=(",", ":"))
     else:
