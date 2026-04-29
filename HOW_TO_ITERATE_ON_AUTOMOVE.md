@@ -17,7 +17,7 @@ Archived profiles, archived seams, and archived stages are not valid experiment 
 9. In structural reset mode, run a filtered `pro-policy-outcome-corpus` or build the test-only ProV4 root-policy path before writing any selector from policy labels.
 10. If decision-record output is singleton by context/pair but still tempting, rerun it with `SMART_PRO_SWEEP_DECISION_RECORD_INCLUDE_MECHANISM_CLASS=true`.
 11. Archive or kill the line before starting another.
-12. Clean logs and stamps before ending the session.
+12. Clean scratch artifacts with `./scripts/cleanup-automove-iteration-artifacts.sh` before ending the session.
 
 ## Variant Policy
 
@@ -130,6 +130,7 @@ SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_fast \
 6. If the line fails, discard runtime code and record the no-go in `docs/automove-archive.md` or `docs/automove-knowledge.md`.
 7. If the line passes, promote retained Classic regression coverage before confirm.
 8. End by compressing `AUTOMOVE_IDEAS.md` back to current state plus one next hypothesis.
+9. Run `./scripts/cleanup-automove-iteration-artifacts.sh --dry-run`, then run `./scripts/cleanup-automove-iteration-artifacts.sh` once the listed scratch artifacts are no longer needed.
 
 ## Diagnostic Toolbox
 
