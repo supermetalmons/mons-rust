@@ -1607,6 +1607,10 @@ struct ProPolicyMechanismRootClass {
     rank: Option<usize>,
     score: Option<i32>,
     utility: Option<TurnEngineUtility>,
+    reply_floor: Option<i32>,
+    followup_floor: Option<i32>,
+    allows_immediate_opponent_win: Option<bool>,
+    opponent_reaches_match_point: Option<bool>,
 }
 
 fn pro_policy_mechanism_rank_bucket(rank: Option<usize>) -> &'static str {
@@ -1667,6 +1671,61 @@ fn pro_policy_mechanism_score_delta_bucket(
         (Some(_), None) => "winner_live_baseline_omitted",
         (None, Some(_)) => "winner_omitted_baseline_live",
         (None, None) => "both_omitted",
+    }
+}
+
+fn pro_policy_mechanism_floor_bucket(score: Option<i32>) -> &'static str {
+    match score {
+        Some(score) if score <= -SMART_TERMINAL_SCORE / 4 => "terminal_bad",
+        Some(..=-1024) => "very_bad",
+        Some(-1023..=-257) => "bad",
+        Some(-256..=-1) => "slightly_bad",
+        Some(0..=255) => "neutral",
+        Some(256..=1023) => "good",
+        Some(1024..) => "very_good",
+        None => "omitted",
+    }
+}
+
+fn pro_policy_mechanism_floor_delta_bucket(
+    winner_score: Option<i32>,
+    baseline_score: Option<i32>,
+) -> &'static str {
+    match (winner_score, baseline_score) {
+        (Some(winner), Some(baseline)) => {
+            let delta = winner.saturating_sub(baseline);
+            match delta {
+                1024.. => "winner_floor_better_1024_plus",
+                257..=1023 => "winner_floor_better_257_1023",
+                96..=256 => "winner_floor_better_96_256",
+                -95..=95 => "winner_floor_close",
+                -256..=-96 => "winner_floor_worse_96_256",
+                -1023..=-257 => "winner_floor_worse_257_1023",
+                _ => "winner_floor_worse_1024_plus",
+            }
+        }
+        (Some(_), None) => "winner_live_baseline_omitted",
+        (None, Some(_)) => "winner_omitted_baseline_live",
+        (None, None) => "both_omitted",
+    }
+}
+
+fn pro_policy_mechanism_reply_risk_bucket(
+    floor: Option<i32>,
+    allows_immediate_opponent_win: Option<bool>,
+    opponent_reaches_match_point: Option<bool>,
+) -> &'static str {
+    match (
+        floor,
+        allows_immediate_opponent_win,
+        opponent_reaches_match_point,
+    ) {
+        (None, _, _) => "omitted",
+        (_, Some(true), _) => "allows_immediate_loss",
+        (_, _, Some(true)) => "opponent_match_point",
+        (Some(score), _, _) if score < -256 => "bad_floor",
+        (Some(score), _, _) if score < 96 => "thin_floor",
+        (Some(_), _, _) => "stable_floor",
     }
 }
 
@@ -1909,6 +1968,10 @@ fn pro_policy_mechanism_root_class(
             rank: None,
             score: None,
             utility: None,
+            reply_floor: None,
+            followup_floor: None,
+            allows_immediate_opponent_win: None,
+            opponent_reaches_match_point: None,
         };
     };
 
@@ -1920,6 +1983,14 @@ fn pro_policy_mechanism_root_class(
         config,
         family,
     );
+    let reply_snapshot = MonsGameModel::root_reply_risk_snapshot(
+        &root.game,
+        game.active_color,
+        config,
+        config.root_reply_risk_reply_limit.clamp(1, 24),
+    );
+    let followup_floor =
+        MonsGameModel::pro_v2_spirit_followup_floor_score(&root.game, game.active_color, config);
     let safety = if root.mana_handoff_to_opponent || root.has_roundtrip {
         "handoff_or_roundtrip"
     } else if root.own_drainer_walk_vulnerable {
@@ -1967,6 +2038,10 @@ fn pro_policy_mechanism_root_class(
         rank: Some(root.root_rank),
         score: Some(root.score),
         utility: Some(utility),
+        reply_floor: Some(reply_snapshot.worst_reply_score),
+        followup_floor: Some(followup_floor),
+        allows_immediate_opponent_win: Some(reply_snapshot.allows_immediate_opponent_win),
+        opponent_reaches_match_point: Some(reply_snapshot.opponent_reaches_match_point),
     }
 }
 
@@ -2026,6 +2101,20 @@ fn pro_policy_mechanism_class_keys_from_scored_roots(
     let winner_path = pro_policy_mechanism_root_path_bucket(&winner.role);
     let winner_advisor = pro_policy_mechanism_advisor_bucket(&winner.advisor);
     let winner_preservation_signal = pro_policy_mechanism_root_preservation_signal(&winner);
+    let baseline_reply_risk = pro_policy_mechanism_reply_risk_bucket(
+        baseline.reply_floor,
+        baseline.allows_immediate_opponent_win,
+        baseline.opponent_reaches_match_point,
+    );
+    let winner_reply_risk = pro_policy_mechanism_reply_risk_bucket(
+        winner.reply_floor,
+        winner.allows_immediate_opponent_win,
+        winner.opponent_reaches_match_point,
+    );
+    let reply_floor_delta =
+        pro_policy_mechanism_floor_delta_bucket(winner.reply_floor, baseline.reply_floor);
+    let followup_floor_delta =
+        pro_policy_mechanism_floor_delta_bucket(winner.followup_floor, baseline.followup_floor);
 
     let mut keys = vec![
         format!(
@@ -2069,6 +2158,25 @@ fn pro_policy_mechanism_class_keys_from_scored_roots(
             winner_advisor,
             winner_preservation_signal,
             winner_rank_delta,
+        ),
+        format!(
+            "axis=reply_floor_progress baseline_reply={} baseline_followup={} baseline_progress={} winner_reply={} winner_followup={} winner_progress={} reply_delta={} followup_delta={}",
+            baseline_reply_risk,
+            pro_policy_mechanism_floor_bucket(baseline.followup_floor),
+            baseline.progress,
+            winner_reply_risk,
+            pro_policy_mechanism_floor_bucket(winner.followup_floor),
+            winner.progress,
+            reply_floor_delta,
+            followup_floor_delta,
+        ),
+        format!(
+            "axis=winner_reply_floor progress={} reply={} followup={} reply_delta={} followup_delta={}",
+            winner.progress,
+            winner_reply_risk,
+            pro_policy_mechanism_floor_bucket(winner.followup_floor),
+            reply_floor_delta,
+            followup_floor_delta,
         ),
         format!(
             "axis=safety_progress baseline_safety={} baseline_progress={} winner_safety={} winner_progress={}",
