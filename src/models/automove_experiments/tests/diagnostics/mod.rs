@@ -1608,6 +1608,10 @@ struct ProPolicyMechanismRootClass {
     progress: &'static str,
     rank: Option<usize>,
     score: Option<i32>,
+    efficiency: Option<i32>,
+    spirit_setup_gain: Option<i32>,
+    interview_soft_priority: Option<i32>,
+    keeps_awake_spirit_on_base: Option<bool>,
     utility: Option<TurnEngineUtility>,
     reply_floor: Option<i32>,
     followup_floor: Option<i32>,
@@ -1861,6 +1865,49 @@ fn pro_policy_mechanism_utility_delta_bucket(
         (Some(_), None) => "winner_live_baseline_omitted",
         (None, Some(_)) => "winner_omitted_baseline_live",
         (None, None) => "both_omitted",
+    }
+}
+
+fn pro_policy_mechanism_efficiency_bucket(value: Option<i32>) -> &'static str {
+    match value {
+        Some(..=-257) => "eff_bad_257_plus",
+        Some(-256..=-96) => "eff_bad_96_256",
+        Some(-95..=-1) => "eff_bad_1_95",
+        Some(0) => "eff_zero",
+        Some(1..=95) => "eff_good_1_95",
+        Some(96..=256) => "eff_good_96_256",
+        Some(257..) => "eff_good_257_plus",
+        None => "omitted",
+    }
+}
+
+fn pro_policy_mechanism_setup_gain_bucket(value: Option<i32>) -> &'static str {
+    match value {
+        Some(..=-1) => "setup_negative",
+        Some(0) => "setup_zero",
+        Some(1..=31) => "setup_low_1_31",
+        Some(32..=79) => "setup_mid_32_79",
+        Some(80..) => "setup_high_80_plus",
+        None => "omitted",
+    }
+}
+
+fn pro_policy_mechanism_soft_priority_bucket(value: Option<i32>) -> &'static str {
+    match value {
+        Some(..=-1) => "soft_negative",
+        Some(0) => "soft_zero",
+        Some(1..=39) => "soft_low_1_39",
+        Some(40..=79) => "soft_mid_40_79",
+        Some(80..) => "soft_high_80_plus",
+        None => "omitted",
+    }
+}
+
+fn pro_policy_mechanism_bool_bucket(value: Option<bool>, true_label: &'static str) -> &'static str {
+    match value {
+        Some(true) => true_label,
+        Some(false) => "false",
+        None => "omitted",
     }
 }
 
@@ -2185,6 +2232,10 @@ fn pro_policy_mechanism_root_class(
             progress: "omitted",
             rank: None,
             score: None,
+            efficiency: None,
+            spirit_setup_gain: None,
+            interview_soft_priority: None,
+            keeps_awake_spirit_on_base: None,
             utility: None,
             reply_floor: None,
             followup_floor: None,
@@ -2240,6 +2291,10 @@ fn pro_policy_mechanism_root_class(
         progress,
         rank: Some(root.root_rank),
         score: Some(root.score),
+        efficiency: Some(root.efficiency),
+        spirit_setup_gain: Some(root.spirit_setup_gain),
+        interview_soft_priority: Some(root.interview_soft_priority),
+        keeps_awake_spirit_on_base: Some(root.keeps_awake_spirit_on_base),
         utility: Some(utility),
         reply_floor: Some(reply_snapshot.worst_reply_score),
         followup_floor: Some(followup_floor),
@@ -2300,6 +2355,16 @@ fn pro_policy_mechanism_class_keys_from_scored_roots(
     let winner_vs_baseline_score = pro_policy_mechanism_score_order(winner.score, baseline.score);
     let winner_rank_delta = pro_policy_mechanism_rank_delta_bucket(winner.rank, baseline.rank);
     let winner_score_delta = pro_policy_mechanism_score_delta_bucket(winner.score, baseline.score);
+    let winner_efficiency_delta =
+        pro_policy_mechanism_utility_delta_bucket(winner.efficiency, baseline.efficiency);
+    let winner_setup_gain_delta = pro_policy_mechanism_utility_delta_bucket(
+        winner.spirit_setup_gain,
+        baseline.spirit_setup_gain,
+    );
+    let winner_soft_priority_delta = pro_policy_mechanism_utility_delta_bucket(
+        winner.interview_soft_priority,
+        baseline.interview_soft_priority,
+    );
     let winner_presence = pro_policy_mechanism_root_presence_bucket(&winner);
     let winner_path = pro_policy_mechanism_root_path_bucket(&winner.role);
     let winner_advisor = pro_policy_mechanism_advisor_bucket(&winner.advisor);
@@ -2364,6 +2429,31 @@ fn pro_policy_mechanism_class_keys_from_scored_roots(
             winner_vs_baseline_utility,
             winner_rank_delta,
             winner_score_delta,
+        ),
+        format!(
+            "axis=root_ordering_profile baseline_efficiency={} winner_efficiency={} efficiency_delta={} baseline_setup_gain={} winner_setup_gain={} setup_gain_delta={} baseline_soft_priority={} winner_soft_priority={} soft_priority_delta={} winner_keeps_awake={} winner_progress={} winner_rank_delta={} winner_score_delta={}",
+            pro_policy_mechanism_efficiency_bucket(baseline.efficiency),
+            pro_policy_mechanism_efficiency_bucket(winner.efficiency),
+            winner_efficiency_delta,
+            pro_policy_mechanism_setup_gain_bucket(baseline.spirit_setup_gain),
+            pro_policy_mechanism_setup_gain_bucket(winner.spirit_setup_gain),
+            winner_setup_gain_delta,
+            pro_policy_mechanism_soft_priority_bucket(baseline.interview_soft_priority),
+            pro_policy_mechanism_soft_priority_bucket(winner.interview_soft_priority),
+            winner_soft_priority_delta,
+            pro_policy_mechanism_bool_bucket(winner.keeps_awake_spirit_on_base, "keeps_awake"),
+            winner.progress,
+            winner_rank_delta,
+            winner_score_delta,
+        ),
+        format!(
+            "axis=winner_root_ordering efficiency={} setup_gain={} soft_priority={} keeps_awake={} progress={} rank={}",
+            pro_policy_mechanism_efficiency_bucket(winner.efficiency),
+            pro_policy_mechanism_setup_gain_bucket(winner.spirit_setup_gain),
+            pro_policy_mechanism_soft_priority_bucket(winner.interview_soft_priority),
+            pro_policy_mechanism_bool_bucket(winner.keeps_awake_spirit_on_base, "keeps_awake"),
+            winner.progress,
+            pro_policy_mechanism_rank_bucket(winner.rank),
         ),
         format!(
             "axis=root_preservation winner_presence={} winner_path={} winner_advisor={} winner_signal={} winner_rank_delta={}",
