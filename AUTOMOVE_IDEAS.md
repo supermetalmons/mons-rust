@@ -45,12 +45,10 @@ Their historical no-go evidence remains in `docs/automove-knowledge.md` and `doc
 
 ## Next Command Sequence
 
-Current next sequence: run the next bounded sampled Pro outcome-corpus digest through the retained log summarizer. This is Outcome Corpus V2/postprocess validation only, not runtime source permission.
+Current next sequence: run one true-global bounded all-slice outcome-corpus digest through the retained log summarizer. This is Outcome Corpus V2/postprocess validation only, not runtime source permission.
 
 ```sh
-SMART_PRO_POLICY_MATRIX_PANEL_FILTER=sampled \
-SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_pro \
-SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT=2 \
+SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT=6 \
 SMART_PRO_POLICY_MATRIX_GLOBAL_ONLY=true \
 SMART_PRO_POLICY_MATRIX_INCLUDE_CORPUS_RECORDS=false \
 SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS=true \
@@ -185,6 +183,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - A total-capped active Normal digest over the full reset portfolio completed successfully with two total states and stayed no-source: summarizer `corpus_decision=no_candidate_route`, `next_action=try_next_slice`, route recommendation `no_candidate_route`, `candidate_only_wins=0`, `no_policy_wins=0`, and `candidate_signal_routes=0`. Guarded shared both checked wins, while full-scored reply guard only emitted baseline-better save-risk rows on one outer-edge white state.
 - A total-capped sampled Normal digest over the full reset portfolio completed successfully with two total states and stayed no-source: summarizer `corpus_decision=singleton_no_source`, `next_action=widen_or_archive_singleton`, route recommendation `singleton_candidate_routes`, `candidate_only_wins=1`, `no_policy_wins=0`, and `candidate_signal_routes=14`. The top route was one white `inner_wedge_mana_rows` state split across no-selected-followup and shipping-control, two branch transitions, and two first-move pairs.
 - A total-capped sampled Fast digest over the full reset portfolio completed successfully with two total states and stayed no-source: summarizer `corpus_decision=no_candidate_route`, `next_action=try_next_slice`, route recommendation `no_candidate_route`, `candidate_only_wins=0`, `no_policy_wins=0`, and `candidate_signal_routes=0`. Guarded shared both checked wins; other policies only emitted baseline-better pressure on split-flank states, including zero-window safe exact pressure.
+- A total-capped sampled Pro digest over the full reset portfolio completed successfully with two total states and stayed no-source: summarizer `corpus_decision=no_candidate_route`, `next_action=try_next_slice`, route recommendation `no_candidate_route`, `candidate_only_wins=0`, `no_policy_wins=0`, and `candidate_signal_routes=0`. Guarded shared both checked inner-wedge wins; other policies only emitted baseline-better pressure, led by zero-window safe exact pressure with `baseline_better_games=5` and `baseline_better_states=2`.
 - Raw ProV2, no-selected-followup, full-scored reply guard, no-low-budget, alternating-white, and white-opening utility policies are diagnostic components, not retained challengers.
 - Root-origin and continuation-probe ProV4 attempts are retired unless they add a new discriminator below current score, rank, family, safety, progress, and `TurnEngineUtility` fields.
 - Future source-bearing work should be one of: Outcome Corpus V2, a test-only ProV4 unified root policy, or a corpus-calibrated utility feature.
@@ -196,7 +195,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - Shipping decision: public Pro remains on `frontier_pro_v2_guarded`.
 - Release containment: public `Pro` dispatch still routes through retained runtime code; `automove_experiments` remains under `#[cfg(test)]`.
 - Latest retained package direction: no runtime source retained from recent structural reset work.
-- Latest reset evidence: the focused route-filter scans have oracle coverage but no source permission. The safety/progress and `engine_post_search` routes remain fragmented across policy, branch, color, budget, and first-move pair; the latest total-capped active Fast digest was `baseline_save_risk_only`, active Pro was `coverage_gap`, active Normal was `no_candidate_route`, sampled Normal was `singleton_no_source`, and sampled Fast was `no_candidate_route`. No runtime source is retained from this reset pass.
+- Latest reset evidence: the focused route-filter scans have oracle coverage but no source permission. The safety/progress and `engine_post_search` routes remain fragmented across policy, branch, color, budget, and first-move pair; the latest total-capped active Fast digest was `baseline_save_risk_only`, active Pro was `coverage_gap`, active Normal was `no_candidate_route`, sampled Normal was `singleton_no_source`, sampled Fast was `no_candidate_route`, and sampled Pro was `no_candidate_route`. No runtime source is retained from this reset pass.
 
 ## Session End Checklist
 
