@@ -354,6 +354,47 @@ def corpus_axis_summary_state_key(record):
     return coverage_gap_group_key(record)
 
 
+def cross_budget_seed_family(seed_tag, duel):
+    seed_suffixes = {
+        "vs_shipping_normal": "_vs_normal",
+        "vs_shipping_fast": "_vs_fast",
+    }
+    suffix = seed_suffixes.get(duel, "")
+    if suffix and seed_tag.endswith(suffix):
+        return seed_tag[: -len(suffix)]
+    return seed_tag
+
+
+def cross_budget_axis_state_key(record):
+    seed_family = cross_budget_seed_family(
+        record.get("seed_tag", ""), record.get("duel", "")
+    )
+    return tuple(
+        [
+            record.get("panel", ""),
+            seed_family,
+            record.get("repeat", ""),
+            record.get("opening_index", ""),
+            record.get("variant", ""),
+            record.get("candidate_is_white", ""),
+        ]
+    )
+
+
+def cross_budget_axis_state_label(state_key):
+    fields = [
+        "panel",
+        "seed_family",
+        "repeat",
+        "opening_index",
+        "variant",
+        "candidate_is_white",
+    ]
+    return " ".join(
+        f"{field}={value}" for field, value in zip(fields, state_key)
+    )
+
+
 def corpus_record_branch(record):
     return f"{record.get('baseline_branch', '')}->{record.get('candidate_branch', '')}"
 
@@ -514,6 +555,248 @@ def summarize_corpus_axes(events, limit=8):
         ),
         "top_no_policy_axes": top_corpus_axis_rows(rows, "no_policy", limit),
         "top_same_outcome_axes": top_corpus_axis_rows(rows, "same_outcome", limit),
+    }
+
+
+def new_cross_budget_axis_group(axis, state_key, record):
+    return {
+        "key": axis,
+        "state_key": state_key,
+        "state_label": cross_budget_axis_state_label(state_key),
+        "panel": record.get("panel", ""),
+        "seed_family": state_key[1],
+        "repeat": int(record.get("repeat", 0)),
+        "opening_index": int(record.get("opening_index", 0)),
+        "variant": record.get("variant", ""),
+        "candidate_is_white": bool(record.get("candidate_is_white", False)),
+        "record_count": 0,
+        "class_records": defaultdict(int),
+        "class_duels": defaultdict(set),
+        "seed_tags": set(),
+        "candidates": set(),
+        "branches": set(),
+        "pairs": set(),
+        "duels": set(),
+        "source_logs": set(),
+    }
+
+
+def add_cross_budget_axis_record(groups, event):
+    record = event["data"]
+    record_class = corpus_axis_record_class(record)
+    state_key = cross_budget_axis_state_key(record)
+    for axis in corpus_record_axes(record, record_class):
+        group_key = (axis, state_key)
+        group = groups.setdefault(
+            group_key, new_cross_budget_axis_group(axis, state_key, record)
+        )
+        duel = record.get("duel", "")
+        group["record_count"] += 1
+        group["class_records"][record_class] += 1
+        group["class_duels"][record_class].add(duel)
+        group["seed_tags"].add(record.get("seed_tag", ""))
+        group["candidates"].add(record.get("candidate", ""))
+        group["branches"].add(corpus_record_branch(record))
+        group["pairs"].add(corpus_record_pair(record))
+        group["duels"].add(duel)
+        group["source_logs"].add(event["source_log"])
+
+
+def cross_budget_axis_decision(row):
+    candidate_duels = row.get("candidate_better_duel_count", 0)
+    baseline_duels = row.get("baseline_better_duel_count", 0)
+    no_policy_duels = row.get("no_policy_duel_count", 0)
+    if candidate_duels > 0 and baseline_duels > 0:
+        return "budget_conflict"
+    if no_policy_duels > 0 and candidate_duels > 0:
+        return "partial_repair_coverage_gap"
+    if no_policy_duels > 0:
+        return "coverage_gap"
+    if candidate_duels >= 3:
+        return "all_budget_repair"
+    if candidate_duels > 0:
+        return "non_regressing_repair"
+    if baseline_duels > 0:
+        return "baseline_save_risk"
+    return "shared_or_neutral"
+
+
+def summarize_cross_budget_axis_group(group):
+    row = {
+        "key": group["key"],
+        "state_key": group["state_key"],
+        "state_label": group["state_label"],
+        "panel": group["panel"],
+        "seed_family": group["seed_family"],
+        "seed_tag_count": len(group["seed_tags"]),
+        "seed_tags": "|".join(sorted(group["seed_tags"])),
+        "repeat": group["repeat"],
+        "opening_index": group["opening_index"],
+        "variant": group["variant"],
+        "candidate_is_white": group["candidate_is_white"],
+        "record_count": group["record_count"],
+        "candidate_count": len(group["candidates"]),
+        "branch_count": len(group["branches"]),
+        "pair_count": len(group["pairs"]),
+        "duel_count": len(group["duels"]),
+        "duels": "|".join(sorted(group["duels"])),
+        "source_log_count": len(group["source_logs"]),
+        "source_logs": sorted(group["source_logs"]),
+    }
+    for record_class in [
+        "candidate_better",
+        "baseline_better",
+        "no_policy",
+        "same_outcome",
+    ]:
+        duels = group["class_duels"].get(record_class, set())
+        row[f"{record_class}_records"] = int(
+            group["class_records"].get(record_class, 0)
+        )
+        row[f"{record_class}_duel_count"] = len(duels)
+        row[f"{record_class}_duels"] = "|".join(sorted(duels))
+    row["cross_budget_decision"] = cross_budget_axis_decision(row)
+    return row
+
+
+def cross_budget_axis_row_sort_key(row):
+    return (
+        -int(row.get("duel_count", 0)),
+        -int(row.get("candidate_better_duel_count", 0)),
+        -int(row.get("baseline_better_duel_count", 0)),
+        -int(row.get("no_policy_duel_count", 0)),
+        -int(row.get("record_count", 0)),
+        row.get("key", ""),
+        row.get("state_label", ""),
+    )
+
+
+def top_cross_budget_axis_decision_rows(rows, decision, limit=8):
+    return sorted(
+        [row for row in rows if row.get("cross_budget_decision") == decision],
+        key=cross_budget_axis_row_sort_key,
+    )[:limit]
+
+
+def new_cross_budget_axis_rollup(axis):
+    return {
+        "key": axis,
+        "record_count": 0,
+        "joined_states": set(),
+        "duels": set(),
+        "source_logs": set(),
+        "decisions": defaultdict(int),
+        "decision_states": defaultdict(set),
+        "class_states": defaultdict(set),
+    }
+
+
+def summarize_cross_budget_axis_rollups(rows):
+    groups = {}
+    for row in rows:
+        group = groups.setdefault(row["key"], new_cross_budget_axis_rollup(row["key"]))
+        state_key = tuple(row["state_key"])
+        group["record_count"] += int(row.get("record_count", 0))
+        group["joined_states"].add(state_key)
+        for source_log in row.get("source_logs", []):
+            group["source_logs"].add(source_log)
+        for duel in row.get("duels", "").split("|"):
+            if duel:
+                group["duels"].add(duel)
+        decision = row.get("cross_budget_decision", "")
+        group["decisions"][decision] += 1
+        group["decision_states"][decision].add(state_key)
+        for record_class in [
+            "candidate_better",
+            "baseline_better",
+            "no_policy",
+            "same_outcome",
+        ]:
+            if int(row.get(f"{record_class}_duel_count", 0)) > 0:
+                group["class_states"][record_class].add(state_key)
+
+    rollups = []
+    for group in groups.values():
+        row = {
+            "key": group["key"],
+            "record_count": group["record_count"],
+            "joined_state_count": len(group["joined_states"]),
+            "duel_count": len(group["duels"]),
+            "source_log_count": len(group["source_logs"]),
+            "decision_counts": sorted_count_rows(group["decisions"]),
+        }
+        for decision, states in group["decision_states"].items():
+            row[f"{decision}_joined_states"] = len(states)
+        for record_class in [
+            "candidate_better",
+            "baseline_better",
+            "no_policy",
+            "same_outcome",
+        ]:
+            row[f"{record_class}_joined_states"] = len(
+                group["class_states"].get(record_class, set())
+            )
+        rollups.append(row)
+    return rollups
+
+
+def top_cross_budget_axis_rollups_by_decision(rollups, decision, limit=8):
+    decision_field = f"{decision}_joined_states"
+    return sorted(
+        [row for row in rollups if int(row.get(decision_field, 0)) > 0],
+        key=lambda row: (
+            -int(row.get(decision_field, 0)),
+            -int(row.get("joined_state_count", 0)),
+            -int(row.get("record_count", 0)),
+            row.get("key", ""),
+        ),
+    )[:limit]
+
+
+def summarize_cross_budget_axes(events, limit=8):
+    groups = {}
+    record_count = 0
+    joined_state_keys = set()
+    class_records = defaultdict(int)
+    class_joined_states = defaultdict(set)
+    for event in events:
+        if event["event_type"] != "PRO_POLICY_MATRIX_CORPUS_RECORD":
+            continue
+        record = event["data"]
+        record_count += 1
+        state_key = cross_budget_axis_state_key(record)
+        joined_state_keys.add(state_key)
+        record_class = corpus_axis_record_class(record)
+        class_records[record_class] += 1
+        class_joined_states[record_class].add(state_key)
+        add_cross_budget_axis_record(groups, event)
+
+    rows = [summarize_cross_budget_axis_group(group) for group in groups.values()]
+    rows = sorted(rows, key=cross_budget_axis_row_sort_key)
+    decision_counts = defaultdict(int)
+    for row in rows:
+        decision_counts[row["cross_budget_decision"]] += 1
+    rollups = summarize_cross_budget_axis_rollups(rows)
+
+    return {
+        "record_count": record_count,
+        "joined_state_count": len(joined_state_keys),
+        "axis_state_group_count": len(rows),
+        "class_record_counts": sorted_count_rows(class_records),
+        "class_joined_state_counts": sorted_count_rows(
+            {key: len(value) for key, value in class_joined_states.items()}
+        ),
+        "cross_budget_decision_counts": sorted_count_rows(decision_counts),
+        "top_axes_by_decision": {
+            decision: top_cross_budget_axis_decision_rows(rows, decision, limit)
+            for decision in sorted(decision_counts)
+        },
+        "top_axis_rollups_by_decision": {
+            decision: top_cross_budget_axis_rollups_by_decision(
+                rollups, decision, limit
+            )
+            for decision in sorted(decision_counts)
+        },
     }
 
 
@@ -878,6 +1161,7 @@ def summarize(events):
         },
         "record_filters": filters,
         "corpus_axis_summary": summarize_corpus_axes(events),
+        "cross_budget_axis_summary": summarize_cross_budget_axes(events),
         "coverage_gap_entry_count": len(coverage_gap_entries),
         "coverage_gap_entries": coverage_gap_entries,
     }
