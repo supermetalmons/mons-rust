@@ -12,7 +12,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the operator flow, `docs/automove-major-
 - Retained profiles are only `shipping_pro_search` and `frontier_pro_v2_guarded`.
 - The current mode is `structural-reset`.
 - There is no live runtime hypothesis and no promotable challenger.
-- Current diagnostic hypothesis: there is no source-level selector yet. The broad reset route scan found no clean low-fragmentation route; the filtered safety/progress and `engine_post_search` routes are retired as source evidence because their matching states split by policy, color, branch, first move, and advisor status. Outcome Corpus V2 now has a log summarizer with `corpus_decision` / `next_action` / `source_blocker`, multi-log `log_rollup` including rollup-level decisions, compact `coverage_gap_entries`, same-opening sibling summaries, record-level `corpus_axis_summary.top_axes_by_decision`, per-token `axis_filter_matches`, decision timing / continuation-stability axes, root-preservation axes, reply-risk / followup-floor axes, detailed root-safety axes, cross-budget axis source-status summaries, and a true total-state cap. A corrected-horizon forced-root oracle on the active Pro no-policy coverage-gap boards found winning roots in the current root set, but enriched forced-root safety/reply/advisor/path axes still found no repeated winner-vs-nonwinner separator. The widened active Pro same-opening pairing check stayed singleton, the sampled eight-state record-bearing slice stayed baseline-save-risk, the explicit active Pro axis summary stayed coverage-gap, the focused sampled Pro axis-filter check killed the two active repeated-candidate leads, the first sampled/active timing-axis pass stayed no-source, the first active cross-budget axis validation classified zero-window exact pressure plus no-rejoin continuation as budget-conflicted rather than stable repairs, the two-state active cross-budget widening produced zero source-candidate rollups, the sampled cross-budget source-status pass also produced zero source-candidate rollups, the sampled+active root-preservation axis smoke produced zero source-candidate rollups, the sampled+active reply-floor axis smoke produced zero source-candidate rollups, the sampled+active root-safety detail smoke produced zero source-candidate rollups, and the enriched forced-root feature-axis digest stayed `fragmented_root_features`. Work remains Outcome Corpus V2 feature extraction rather than runtime selectors.
+- Current diagnostic hypothesis: there is no source-level selector yet. The broad reset route scan found no clean low-fragmentation route; the filtered safety/progress and `engine_post_search` routes are retired as source evidence because their matching states split by policy, color, branch, first move, and advisor status. Outcome Corpus V2 now has a log summarizer with `corpus_decision` / `next_action` / `source_blocker`, multi-log `log_rollup` including rollup-level decisions, compact `coverage_gap_entries`, same-opening sibling summaries, record-level `corpus_axis_summary.top_axes_by_decision`, per-token `axis_filter_matches`, decision timing / continuation-stability axes, root-preservation axes, reply-risk / followup-floor axes, detailed root-safety axes, cross-budget axis source-status summaries, normalized JSONL workbench export, and a true total-state cap. A corrected-horizon forced-root oracle on the active Pro no-policy coverage-gap boards found winning roots in the current root set, but enriched forced-root safety/reply/advisor/path axes still found no repeated winner-vs-nonwinner separator. The widened active Pro same-opening pairing check stayed singleton, the sampled eight-state record-bearing slice stayed baseline-save-risk, the explicit active Pro axis summary stayed coverage-gap, the focused sampled Pro axis-filter check killed the two active repeated-candidate leads, the first sampled/active timing-axis pass stayed no-source, the first active cross-budget axis validation classified zero-window exact pressure plus no-rejoin continuation as budget-conflicted rather than stable repairs, the two-state active cross-budget widening produced zero source-candidate rollups, the sampled cross-budget source-status pass also produced zero source-candidate rollups, the sampled+active root-preservation axis smoke produced zero source-candidate rollups, the sampled+active reply-floor axis smoke produced zero source-candidate rollups, the sampled+active root-safety detail smoke produced zero source-candidate rollups, the enriched forced-root feature-axis digest stayed `fragmented_root_features`, and the first JSONL workbench smoke stayed `coverage_gap` with no source-candidate rollups. Work remains Outcome Corpus V2 feature extraction rather than runtime selectors.
 - Recent stagnation is from the loop where local selectors are cheap to invent, broad promotion proof is expensive, and singleton-heavy corpus evidence still leaves room to try "one more gate".
 - Do not reopen archived profiles, archived seams, archived stages, or pruned sweep candidates as direct experiment targets.
 
@@ -45,13 +45,9 @@ Their historical no-go evidence remains in `docs/automove-knowledge.md` and `doc
 
 ## Next Command Sequence
 
-Current next sequence: do not write runtime selector code and do not rerun current-axis, root-preservation, reply-floor, root-safety, or forced-root feature-axis passes. The next useful work is Outcome Corpus V2 workbench extraction: add a normalized JSONL export from policy-matrix logs so candidate-better, baseline-better, no-policy, shared, cross-budget, and coverage-gap records can be queried without repeated stdout scans. Validate on the same small sampled+active reset slice before considering any ProV4 comparator.
+Current next sequence: do not write runtime selector code and do not rerun current-axis, root-preservation, reply-floor, root-safety, or forced-root feature-axis passes. The next useful work is the first JSONL-driven workbench query: consume a normalized export and rank blocked candidate-bearing axes by candidate states, baseline-save/no-policy contamination, cross-budget status, fragmentation, and coverage-gap overlap. Only use that report to choose one new below-policy feature or decide that the current exported fields are exhausted.
 
 ```sh
-rg "PRO_POLICY_MATRIX_CORPUS_RECORD|coverage_gap_entries|cross_budget_axis_summary|axis_filter_matches|jsonl|argparse" \
-  scripts/summarize-automove-policy-matrix-log.py \
-  src/models/automove_experiments/tests/diagnostics/mod.rs
-
 SMART_PRO_POLICY_MATRIX_PANEL_FILTER=sampled,active_blockers \
 SMART_PRO_POLICY_MATRIX_DUEL_FILTER=vs_shipping_pro,vs_shipping_normal,vs_shipping_fast \
 SMART_PRO_POLICY_MATRIX_STATE_LIMIT=1 \
@@ -65,10 +61,44 @@ cargo test --release --lib smart_automove_pro_policy_matrix_probe -- --ignored -
   > /tmp/automove-outcome-corpus-workbench-smoke.log 2>&1
 
 scripts/summarize-automove-policy-matrix-log.py \
+  --jsonl-out /tmp/automove-outcome-corpus-workbench-smoke.jsonl \
   /tmp/automove-outcome-corpus-workbench-smoke.log
+
+python3 - <<'PY'
+import json
+rows = []
+with open('/tmp/automove-outcome-corpus-workbench-smoke.jsonl') as handle:
+    for line in handle:
+        row = json.loads(line)
+        if row.get('row_type') != 'cross_budget_axis_rollup':
+            continue
+        if int(row.get('candidate_better_joined_states', 0)) <= 0:
+            continue
+        rows.append(row)
+rows.sort(
+    key=lambda row: (
+        row.get('source_status') != 'baseline_save_risk',
+        -int(row.get('candidate_better_joined_states', 0)),
+        int(row.get('baseline_better_joined_states', 0)),
+        int(row.get('no_policy_joined_states', 0)),
+        int(row.get('pair_count', 0)),
+        row.get('key', ''),
+    )
+)
+for row in rows[:12]:
+    print(json.dumps({
+        'key': row['key'],
+        'source_status': row.get('source_status', ''),
+        'candidate': row.get('candidate_better_joined_states', 0),
+        'baseline': row.get('baseline_better_joined_states', 0),
+        'no_policy': row.get('no_policy_joined_states', 0),
+        'fragmented': row.get('fragmented_dimensions', ''),
+    }, sort_keys=True))
+PY
 ```
 
 Runtime source stays untouched unless a new below-policy axis creates non-empty `source_candidate_rollups` on sampled evidence and a future active rerun also clears baseline-save, coverage-gap, singleton, and fragmentation statuses.
+Use `--jsonl-out` on `scripts/summarize-automove-policy-matrix-log.py` to create the normalized workbench artifact. It emits `policy_decision`, `policy_axis`, `corpus_axis_summary`, `cross_budget_axis_state`, `cross_budget_axis_rollup`, and `coverage_gap_state` rows; prefer those rows over manual stdout scanning when comparing candidate-better, baseline-better, no-policy, shared, cross-budget, and coverage-gap evidence.
 Read `PRO_POLICY_MATRIX_GLOBAL_MECHANISM_ROUTE` by state counts only after compact coverage-gap and oracle evidence, then inspect `candidate_only_policy_count`, `candidate_only_branch_count`, and `candidate_only_pair_count`. A clean route that is fragmented on those dimensions is diagnostic only. Only a clean route with positive state-level separation and low fragmentation should earn a narrow record/probe rerun.
 Read `PRO_POLICY_MATRIX_GLOBAL_ROUTE_RECOMMENDATION` before raw route lines. `build_outcome_corpus_v2` means preserve harness/postprocess work and do not write a runtime selector.
 Read `PRO_POLICY_MATRIX_GLOBAL_ROUTE_BUCKET` next. Its bucketed shortlist should replace manual grepping through all raw route lines.
@@ -192,6 +222,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - The reply-risk / followup-floor feature-axis smoke stayed no-source. It added `axis=reply_floor_progress` and `axis=winner_reply_floor`, then checked one sampled plus one active state across Pro/Normal/Fast budgets. The digest stayed `coverage_gap`, `source_candidate_rollups=[]`, and source statuses were led by `no_candidate_signal=183`, `singleton_non_regressing=28`, `fragmented_no_source=14`, `baseline_save_risk=7`, and `coverage_gap=4`. Coarser replay groupings over winner reply/followup, reply deltas, and reply-progress tradeoffs also produced no source candidates.
 - The detailed root-safety feature-axis smoke stayed no-source. It added `axis=root_safety_detail` and `axis=winner_safety_signal`, splitting handoff, roundtrip, walk-vulnerability, vulnerable, and safe roots before crossing them with progress/setup and safety delta. One sampled plus one active state across Pro/Normal/Fast budgets stayed `coverage_gap`, `source_candidate_rollups=[]`, and source statuses were led by `no_candidate_signal=200`, `singleton_non_regressing=32`, `fragmented_no_source=17`, `baseline_save_risk=8`, and `coverage_gap=4`. A cheap replay of coarser safety-delta/signal groupings also produced no source candidates; `winner_safer` was only singleton evidence, while repeated same-safety rows were baseline-save risk or fragmented.
 - The enriched forced-root feature-axis digest stayed no-source. It added detailed safety, progress, reply/followup floor, advisor bucket, and path fields to `FORCED_ROOT_ORACLE_ROOT`, then reran the three corrected active Pro `outer_edge_mana_rows` coverage-gap boards. Root coverage stayed `49` tested roots, `12` wins, `37` losses, and all three groups had wins, but `promising_repeated_axes=[]` and `oracle_decision=fragmented_root_features`. The repeated winner axes were all contaminated by losing roots: `rank_band=rank8_plus` had `16` nonwinner roots, `path_safety=lower_unlisted|safe` had `21`, and broad safety/reply/utility axes appeared on all `37` nonwinners.
+- The first normalized JSONL workbench export stayed no-source. The same sampled+active one-state cross-budget smoke passed in `295.06s`, and `--jsonl-out` emitted `1341` rows: `42` `policy_decision`, `471` `policy_axis`, `261` `corpus_axis_summary`, `305` `cross_budget_axis_state`, `261` `cross_budget_axis_rollup`, and one `coverage_gap_state`. The digest stayed `corpus_decision=coverage_gap`, `route_permission=no_source`, `source_candidate_rollups=[]`, and source statuses led by `no_candidate_signal=200`, `singleton_non_regressing=32`, `fragmented_no_source=17`, `baseline_save_risk=8`, and `coverage_gap=4`.
 - Broad zero-window safe-pressure classes are contaminated by baseline-better saves and cannot justify runtime selectors.
 - The latest broad state-aware route summary confirmed that zero-window safe-pressure remains `baseline_save_risk` despite positive raw emissions; it had candidate-only games `10`, baseline-better games `5`, candidate-only states `5`, and baseline-better states `3`.
 - Cleaner route signals are timing/stage-level and still diagnostic only. The top clean active route was `engine_post_search` with `pre_family=ManaTempo head_family=Some(SpiritImpact)`: candidate-only games `3`, baseline-better games `0`, candidate-only states `3`, spanning active Pro/Fast only. Focused records showed three winning policies, both colors, two branch transitions, and three first-move pairs, so it is retired as source permission.
@@ -218,7 +249,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - The policy-matrix summarizer now adds `same_opening_sibling_states` to coverage-gap entries. Use this to detect cross-side candidate-only/no-policy pairings before raw corpus records.
 - Raw ProV2, no-selected-followup, full-scored reply guard, no-low-budget, alternating-white, and white-opening utility policies are diagnostic components, not retained challengers.
 - Root-origin and continuation-probe ProV4 attempts are retired unless they add a new discriminator below current score, rank, family, safety, progress, and `TurnEngineUtility` fields.
-- Future source-bearing work should start by making Outcome Corpus V2 records queryable across candidate wins, baseline saves, no-policy gaps, cross-budget status, and forced-root feature evidence below current timing/continuation, root-preservation, reply-floor, root-safety, and policy/branch labels, then use that evidence to justify either a corpus-calibrated utility feature or a test-only ProV4 unified root policy.
+- Future source-bearing work should start from the Outcome Corpus V2 JSONL workbench and rank candidate-bearing blocked axes across candidate wins, baseline saves, no-policy gaps, cross-budget status, and forced-root feature evidence below current timing/continuation, root-preservation, reply-floor, root-safety, and policy/branch labels. Use that evidence to justify either a corpus-calibrated utility feature or a test-only ProV4 unified root policy.
 - The fastest path to a promotable automove is probably not another named ProV3 component; it is a shorter evidence loop that ranks mechanisms, then one larger root/utility change measured on the dashboard before retained runtime code.
 
 ## Latest Gate Snapshot
@@ -227,7 +258,7 @@ For a new test-only ProV4/root-policy candidate, register it as a sweep candidat
 - Shipping decision: public Pro remains on `frontier_pro_v2_guarded`.
 - Release containment: public `Pro` dispatch still routes through retained runtime code; `automove_experiments` remains under `#[cfg(test)]`.
 - Latest retained package direction: no runtime source retained from recent structural reset work.
-- Latest reset evidence: the focused route-filter scans have oracle coverage but no source permission. The safety/progress and `engine_post_search` routes remain fragmented across policy, branch, color, budget, and first-move pair; the active Pro compact view exposed a no-policy state where every current policy loses. Corrected-horizon forced-root probes show that the no-policy state is root-covered, and the enriched forced-root digest confirms current rank/family/utility/safety/reply/advisor/path axes do not cleanly separate winners from losses. The active Pro same-opening sibling check stayed singleton after widening from two to four states, the unfiltered sampled eight-state record-bearing slice stayed baseline-save-risk, the explicit active Pro axis summary stayed coverage-gap with no low-fragmentation route, the focused sampled Pro axis-filter run killed the two active repeated-candidate axes as source leads, the first timing/continuation-axis pass stayed no-source, sampled plus active cross-budget source-status passes produced no source-candidate rollups, and the root-preservation, reply-floor, root-safety, and forced-root feature-axis passes all produced no source permission. The retained direction is an Outcome Corpus V2 workbench/export so the next feature search can query records directly; no runtime source is retained from this reset pass.
+- Latest reset evidence: the focused route-filter scans have oracle coverage but no source permission. The safety/progress and `engine_post_search` routes remain fragmented across policy, branch, color, budget, and first-move pair; the active Pro compact view exposed a no-policy state where every current policy loses. Corrected-horizon forced-root probes show that the no-policy state is root-covered, and the enriched forced-root digest confirms current rank/family/utility/safety/reply/advisor/path axes do not cleanly separate winners from losses. The active Pro same-opening sibling check stayed singleton after widening from two to four states, the unfiltered sampled eight-state record-bearing slice stayed baseline-save-risk, the explicit active Pro axis summary stayed coverage-gap with no low-fragmentation route, the focused sampled Pro axis-filter run killed the two active repeated-candidate axes as source leads, the first timing/continuation-axis pass stayed no-source, sampled plus active cross-budget source-status passes produced no source-candidate rollups, the root-preservation, reply-floor, root-safety, and forced-root feature-axis passes all produced no source permission, and the first JSONL workbench export stayed coverage-gap/no-source. The retained direction is a JSONL-driven workbench query that ranks blocked candidate-bearing axes before adding another below-policy feature; no runtime source is retained from this reset pass.
 
 ## Session End Checklist
 

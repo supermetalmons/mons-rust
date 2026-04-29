@@ -16,6 +16,23 @@ NO_SOURCE_DECISIONS = {
     "postprocess_only",
     "singleton_no_source",
 }
+CORPUS_STATE_FIELDS = [
+    "panel",
+    "duel",
+    "seed_tag",
+    "repeat",
+    "opening_index",
+    "variant",
+    "candidate_is_white",
+]
+CROSS_BUDGET_STATE_FIELDS = [
+    "panel",
+    "seed_family",
+    "repeat",
+    "opening_index",
+    "variant",
+    "candidate_is_white",
+]
 
 
 def parse_policy_matrix_lines(paths):
@@ -51,6 +68,30 @@ def parse_policy_matrix_log(path):
                 }
             )
     return events
+
+
+def stable_id_value(value):
+    if isinstance(value, bool):
+        return str(value).lower()
+    return str(value)
+
+
+def state_id_from_pairs(pairs):
+    return "|".join(f"{field}={stable_id_value(value)}" for field, value in pairs)
+
+
+def corpus_state_id(record):
+    return state_id_from_pairs(
+        (field, record.get(field, "")) for field in CORPUS_STATE_FIELDS
+    )
+
+
+def cross_budget_state_id_from_key(state_key):
+    return state_id_from_pairs(zip(CROSS_BUDGET_STATE_FIELDS, state_key))
+
+
+def cross_budget_state_id(record):
+    return cross_budget_state_id_from_key(cross_budget_axis_state_key(record))
 
 
 def permission_from_recommendation(recommendation):
@@ -512,7 +553,7 @@ def top_corpus_axis_decision_rows(rows, decision, limit=8):
     )[:limit]
 
 
-def summarize_corpus_axes(events, limit=8):
+def collect_corpus_axis_groups(events):
     groups = {}
     record_count = 0
     state_keys = set()
@@ -529,9 +570,28 @@ def summarize_corpus_axes(events, limit=8):
         class_records[record_class] += 1
         class_states[record_class].add(state_key)
         add_corpus_axis_record(groups, event)
+    return groups, record_count, state_keys, class_records, class_states
 
+
+def sorted_corpus_axis_rows(groups):
     rows = [summarize_corpus_axis_group(group) for group in groups.values()]
-    rows = sorted(rows, key=lambda row: (-row["state_count"], row["key"]))
+    return sorted(rows, key=lambda row: (-row["state_count"], row["key"]))
+
+
+def corpus_axis_rows(events):
+    groups, _, _, _, _ = collect_corpus_axis_groups(events)
+    return sorted_corpus_axis_rows(groups)
+
+
+def summarize_corpus_axes(events, limit=8):
+    (
+        groups,
+        record_count,
+        state_keys,
+        class_records,
+        class_states,
+    ) = collect_corpus_axis_groups(events)
+    rows = sorted_corpus_axis_rows(groups)
     axis_decision_counts = defaultdict(int)
     for row in rows:
         axis_decision_counts[row["axis_decision"]] += 1
@@ -876,7 +936,7 @@ def blocked_cross_budget_candidate_rows(rollups, limit=8):
     )[:limit]
 
 
-def summarize_cross_budget_axes(events, limit=8):
+def collect_cross_budget_axis_groups(events):
     groups = {}
     record_count = 0
     joined_state_keys = set()
@@ -893,9 +953,28 @@ def summarize_cross_budget_axes(events, limit=8):
         class_records[record_class] += 1
         class_joined_states[record_class].add(state_key)
         add_cross_budget_axis_record(groups, event)
+    return groups, record_count, joined_state_keys, class_records, class_joined_states
 
+
+def sorted_cross_budget_axis_state_rows(groups):
     rows = [summarize_cross_budget_axis_group(group) for group in groups.values()]
-    rows = sorted(rows, key=cross_budget_axis_row_sort_key)
+    return sorted(rows, key=cross_budget_axis_row_sort_key)
+
+
+def cross_budget_axis_state_rows(events):
+    groups, _, _, _, _ = collect_cross_budget_axis_groups(events)
+    return sorted_cross_budget_axis_state_rows(groups)
+
+
+def summarize_cross_budget_axes(events, limit=8):
+    (
+        groups,
+        record_count,
+        joined_state_keys,
+        class_records,
+        class_joined_states,
+    ) = collect_cross_budget_axis_groups(events)
+    rows = sorted_cross_budget_axis_state_rows(groups)
     decision_counts = defaultdict(int)
     for row in rows:
         decision_counts[row["cross_budget_decision"]] += 1
@@ -1224,6 +1303,170 @@ def sorted_coverage_gap_entries(groups, corpus_state_groups):
     )
 
 
+def coverage_gap_entries_from_events(events):
+    coverage_gap_groups = {}
+    corpus_state_groups = {}
+    for event in events:
+        if event["event_type"] != "PRO_POLICY_MATRIX_CORPUS_RECORD":
+            continue
+        add_corpus_state_record(corpus_state_groups, event)
+        add_coverage_gap_record(coverage_gap_groups, event)
+    return sorted_coverage_gap_entries(coverage_gap_groups, corpus_state_groups)
+
+
+def normalized_policy_decision_row(event):
+    record = event["data"]
+    record_class = corpus_axis_record_class(record)
+    return {
+        **record,
+        "row_type": "policy_decision",
+        "source_log": event["source_log"],
+        "source_line": event["source_line"],
+        "state_id": corpus_state_id(record),
+        "cross_budget_state_id": cross_budget_state_id(record),
+        "record_class": record_class,
+        "active_axes": corpus_record_axes(record, record_class),
+        "mechanism_axes": split_axis_field(record.get("mechanism_axes", "")),
+        "baseline_better_mechanism_axes": split_axis_field(
+            record.get("baseline_better_mechanism_axes", "")
+        ),
+        "timing_continuation_axes": split_axis_field(
+            record.get("timing_continuation_axes", "")
+        ),
+        "branch": corpus_record_branch(record),
+        "pair": corpus_record_pair(record),
+    }
+
+
+def policy_axis_items(record, record_class):
+    mechanism_axes = split_axis_field(record.get("mechanism_axes", ""))
+    baseline_better_axes = split_axis_field(
+        record.get("baseline_better_mechanism_axes", "")
+    )
+    timing_axes = split_axis_field(record.get("timing_continuation_axes", ""))
+    primary_axes = (
+        baseline_better_axes if record_class == "baseline_better" else mechanism_axes
+    )
+    primary_source = (
+        "baseline_better_mechanism"
+        if record_class == "baseline_better"
+        else "mechanism"
+    )
+    items = [(axis, primary_source) for axis in primary_axes]
+    items.extend((axis, "timing_continuation") for axis in timing_axes)
+    return items or [("none", "missing")]
+
+
+def normalized_policy_axis_rows(event):
+    record = event["data"]
+    record_class = corpus_axis_record_class(record)
+    base = {
+        "row_type": "policy_axis",
+        "source_log": event["source_log"],
+        "source_line": event["source_line"],
+        "state_id": corpus_state_id(record),
+        "cross_budget_state_id": cross_budget_state_id(record),
+        "record_class": record_class,
+        "panel": record.get("panel", ""),
+        "duel": record.get("duel", ""),
+        "seed_tag": record.get("seed_tag", ""),
+        "seed_family": cross_budget_seed_family(
+            record.get("seed_tag", ""), record.get("duel", "")
+        ),
+        "repeat": int(record.get("repeat", 0)),
+        "opening_index": int(record.get("opening_index", 0)),
+        "variant": record.get("variant", ""),
+        "candidate_is_white": bool(record.get("candidate_is_white", False)),
+        "baseline": record.get("baseline", ""),
+        "candidate": record.get("candidate", ""),
+        "portfolio_class": record.get("portfolio_class", ""),
+        "outcome": record.get("outcome", ""),
+        "branch": corpus_record_branch(record),
+        "pair": corpus_record_pair(record),
+        "first_diff_ply": int(record.get("first_diff_ply", -1)),
+    }
+    return [
+        {
+            **base,
+            "axis": axis,
+            "axis_source": axis_source,
+        }
+        for axis, axis_source in policy_axis_items(record, record_class)
+    ]
+
+
+def normalized_cross_budget_axis_row(row):
+    return {
+        "row_type": "cross_budget_axis_state",
+        "cross_budget_state_id": cross_budget_state_id_from_key(row["state_key"]),
+        **row,
+    }
+
+
+def normalized_cross_budget_rollup_row(row):
+    return {
+        "row_type": "cross_budget_axis_rollup",
+        **row,
+    }
+
+
+def normalized_corpus_axis_summary_row(row):
+    return {
+        "row_type": "corpus_axis_summary",
+        **row,
+    }
+
+
+def normalized_coverage_gap_state_row(entry):
+    state_record = {
+        field: entry.get(field, "") for field in CORPUS_STATE_FIELDS
+    }
+    return {
+        "row_type": "coverage_gap_state",
+        "state_id": corpus_state_id(state_record),
+        **entry,
+    }
+
+
+def build_jsonl_rows(events):
+    rows = []
+    for event in events:
+        if event["event_type"] != "PRO_POLICY_MATRIX_CORPUS_RECORD":
+            continue
+        rows.append(normalized_policy_decision_row(event))
+        rows.extend(normalized_policy_axis_rows(event))
+
+    rows.extend(
+        normalized_corpus_axis_summary_row(row) for row in corpus_axis_rows(events)
+    )
+    cross_budget_rows = cross_budget_axis_state_rows(events)
+    rows.extend(normalized_cross_budget_axis_row(row) for row in cross_budget_rows)
+    rows.extend(
+        normalized_cross_budget_rollup_row(row)
+        for row in summarize_cross_budget_axis_rollups(cross_budget_rows)
+    )
+    rows.extend(
+        normalized_coverage_gap_state_row(entry)
+        for entry in coverage_gap_entries_from_events(events)
+    )
+    return rows
+
+
+def write_jsonl_rows(path, rows):
+    row_type_counts = defaultdict(int)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            row_type_counts[row.get("row_type", "unknown")] += 1
+            json.dump(row, handle, sort_keys=True, separators=(",", ":"))
+            handle.write("\n")
+    return {
+        "path": str(path),
+        "rows": sum(row_type_counts.values()),
+        "row_type_counts": sorted_count_rows(row_type_counts),
+    }
+
+
 def summarize(events):
     latest = {}
     route_buckets = defaultdict(list)
@@ -1313,24 +1556,43 @@ def main():
         action="store_true",
         help="emit compact JSON instead of pretty-printed JSON",
     )
+    parser.add_argument(
+        "--jsonl-out",
+        type=Path,
+        help="write normalized Outcome Corpus V2 workbench rows to this JSONL file",
+    )
+    parser.add_argument(
+        "--jsonl-only",
+        action="store_true",
+        help="write --jsonl-out without printing the summary digest",
+    )
     args = parser.parse_args()
+
+    if args.jsonl_only and not args.jsonl_out:
+        raise SystemExit("--jsonl-only requires --jsonl-out")
 
     missing = [str(path) for path in args.logs if not path.is_file()]
     if missing:
         raise SystemExit(f"missing log file(s): {', '.join(missing)}")
 
     per_log_events = [(path, parse_policy_matrix_log(path)) for path in args.logs]
-    digest = summarize(
-        [
-            event
-            for _source_log, events in per_log_events
-            for event in events
-        ]
-    )
+    events = [
+        event
+        for _source_log, source_events in per_log_events
+        for event in source_events
+    ]
+    digest = summarize(events)
     digest = add_log_rollup(
         digest,
         [(str(source_log), summarize(events)) for source_log, events in per_log_events],
     )
+    if args.jsonl_out:
+        digest["jsonl_export"] = write_jsonl_rows(
+            args.jsonl_out,
+            build_jsonl_rows(events),
+        )
+    if args.jsonl_only:
+        return
     if args.compact:
         json.dump(digest, sys.stdout, sort_keys=True, separators=(",", ":"))
     else:
