@@ -2594,6 +2594,20 @@ impl ProV4RootPoolLaneShapeFeatures {
     }
 }
 
+struct ProV4RootPoolTransitionFeatures {
+    root_transition: String,
+    root_transition_effect: String,
+}
+
+impl ProV4RootPoolTransitionFeatures {
+    fn omitted() -> Self {
+        Self {
+            root_transition: "omitted".to_string(),
+            root_transition_effect: "omitted".to_string(),
+        }
+    }
+}
+
 fn pro_v4_root_pool_is_high_value_mana(mana: Mana, perspective: Color) -> bool {
     match mana {
         Mana::Supermana => true,
@@ -4513,6 +4527,392 @@ fn pro_v4_root_pool_lane_shape_features(
     }
 }
 
+fn pro_v4_root_pool_side_label(color: Color, perspective: Color) -> &'static str {
+    if color == perspective {
+        "own"
+    } else {
+        "opp"
+    }
+}
+
+fn pro_v4_root_pool_mana_transition_label(mana: Mana, perspective: Color) -> &'static str {
+    match mana {
+        Mana::Supermana => "supermana",
+        Mana::Regular(color) if color == perspective => "own_regular",
+        Mana::Regular(_) => "opp_regular",
+    }
+}
+
+fn pro_v4_root_pool_consumable_transition_label(consumable: Consumable) -> &'static str {
+    match consumable {
+        Consumable::Potion => "potion",
+        Consumable::Bomb => "bomb",
+        Consumable::BombOrPotion => "choice",
+    }
+}
+
+fn pro_v4_root_pool_mon_transition_label(mon: Mon, perspective: Color) -> String {
+    format!(
+        "{}_{}",
+        pro_v4_root_pool_side_label(mon.color, perspective),
+        pro_v4_root_pool_role_label(pro_v4_root_pool_role_index(mon.kind)),
+    )
+}
+
+fn pro_v4_root_pool_item_transition_label(item: &Item, perspective: Color) -> String {
+    match item {
+        Item::Mon { mon } => pro_v4_root_pool_mon_transition_label(*mon, perspective),
+        Item::Mana { mana } => {
+            pro_v4_root_pool_mana_transition_label(*mana, perspective).to_string()
+        }
+        Item::MonWithMana { mon, mana } => format!(
+            "{}+{}",
+            pro_v4_root_pool_mon_transition_label(*mon, perspective),
+            pro_v4_root_pool_mana_transition_label(*mana, perspective),
+        ),
+        Item::MonWithConsumable { mon, consumable } => format!(
+            "{}+{}",
+            pro_v4_root_pool_mon_transition_label(*mon, perspective),
+            pro_v4_root_pool_consumable_transition_label(*consumable),
+        ),
+        Item::Consumable { consumable } => {
+            pro_v4_root_pool_consumable_transition_label(*consumable).to_string()
+        }
+    }
+}
+
+fn pro_v4_root_pool_input_shape_bucket(inputs: &[Input]) -> String {
+    let mut modifiers = BTreeSet::<&'static str>::new();
+    let mut location_count = 0usize;
+    let mut modifier_count = 0usize;
+    for input in inputs {
+        match input {
+            Input::Location(_) => location_count += 1,
+            Input::Modifier(Modifier::SelectPotion) => {
+                modifier_count += 1;
+                modifiers.insert("potion");
+            }
+            Input::Modifier(Modifier::SelectBomb) => {
+                modifier_count += 1;
+                modifiers.insert("bomb");
+            }
+            Input::Modifier(Modifier::Cancel) => {
+                modifier_count += 1;
+                modifiers.insert("cancel");
+            }
+            Input::Takeback => {}
+        }
+    }
+    let modifier_bucket = if modifiers.is_empty() {
+        "none".to_string()
+    } else {
+        modifiers.into_iter().collect::<Vec<_>>().join("+")
+    };
+    format!(
+        "len={};loc={};mod={};mods={}",
+        pro_v4_root_pool_count_field(inputs.len()),
+        pro_v4_root_pool_count_field(location_count),
+        pro_v4_root_pool_count_field(modifier_count),
+        modifier_bucket,
+    )
+}
+
+fn pro_v4_root_pool_location_delta_bucket(color: Color, from: Location, to: Location) -> String {
+    let forward_delta =
+        pro_v4_root_pool_forward_index(color, to) - pro_v4_root_pool_forward_index(color, from);
+    let lateral_delta =
+        pro_v4_root_pool_lateral_index(color, to) - pro_v4_root_pool_lateral_index(color, from);
+    format!(
+        "dist={};forward={};lateral={}",
+        pro_v4_root_pool_count_field(from.distance(&to) as usize),
+        pro_policy_mechanism_signed_delta_bucket(forward_delta),
+        pro_policy_mechanism_signed_delta_bucket(lateral_delta),
+    )
+}
+
+fn pro_v4_root_pool_transition_actor_at(
+    game: &MonsGame,
+    location: Location,
+    perspective: Color,
+) -> String {
+    game.board
+        .item(location)
+        .and_then(Item::mon)
+        .map(|mon| pro_v4_root_pool_mon_transition_label(*mon, perspective))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn pro_v4_root_pool_target_item_label(
+    game: &MonsGame,
+    location: Location,
+    perspective: Color,
+) -> String {
+    game.board
+        .item(location)
+        .map(|item| pro_v4_root_pool_item_transition_label(item, perspective))
+        .unwrap_or_else(|| "empty".to_string())
+}
+
+fn pro_v4_root_pool_transition_primary_bucket(
+    before_game: &MonsGame,
+    events: &[Event],
+    perspective: Color,
+) -> String {
+    let Some(event) = events.first() else {
+        return "primary=none;actor=none;payload=none;move=none".to_string();
+    };
+    let (primary, actor, payload, movement) = match event {
+        Event::MonMove { item, from, to } => {
+            let actor = item
+                .mon()
+                .map(|mon| pro_v4_root_pool_mon_transition_label(*mon, perspective))
+                .unwrap_or_else(|| "unknown".to_string());
+            let movement = item
+                .mon()
+                .map(|mon| pro_v4_root_pool_location_delta_bucket(mon.color, *from, *to))
+                .unwrap_or_else(|| "none".to_string());
+            (
+                "mon_move",
+                actor,
+                pro_v4_root_pool_item_transition_label(item, perspective),
+                movement,
+            )
+        }
+        Event::ManaMove { mana, from, to } => (
+            "mana_move",
+            pro_v4_root_pool_mana_transition_label(*mana, perspective).to_string(),
+            pro_v4_root_pool_target_item_label(before_game, *to, perspective),
+            pro_v4_root_pool_location_delta_bucket(perspective, *from, *to),
+        ),
+        Event::ManaScored { mana, at } => (
+            "mana_score",
+            pro_v4_root_pool_mana_transition_label(*mana, perspective).to_string(),
+            pro_v4_root_pool_target_item_label(before_game, *at, perspective),
+            "score".to_string(),
+        ),
+        Event::MysticAction { mystic, from, to } => (
+            "mystic_action",
+            pro_v4_root_pool_mon_transition_label(*mystic, perspective),
+            pro_v4_root_pool_target_item_label(before_game, *to, perspective),
+            pro_v4_root_pool_location_delta_bucket(mystic.color, *from, *to),
+        ),
+        Event::DemonAction { demon, from, to } => (
+            "demon_action",
+            pro_v4_root_pool_mon_transition_label(*demon, perspective),
+            pro_v4_root_pool_target_item_label(before_game, *to, perspective),
+            pro_v4_root_pool_location_delta_bucket(demon.color, *from, *to),
+        ),
+        Event::DemonAdditionalStep { demon, from, to } => (
+            "demon_step",
+            pro_v4_root_pool_mon_transition_label(*demon, perspective),
+            pro_v4_root_pool_target_item_label(before_game, *to, perspective),
+            pro_v4_root_pool_location_delta_bucket(demon.color, *from, *to),
+        ),
+        Event::SpiritTargetMove { item, from, to, by } => {
+            let actor = pro_v4_root_pool_transition_actor_at(before_game, *by, perspective);
+            let movement_color = item.mon().map_or(perspective, |mon| mon.color);
+            (
+                "spirit_move",
+                actor,
+                pro_v4_root_pool_item_transition_label(item, perspective),
+                pro_v4_root_pool_location_delta_bucket(movement_color, *from, *to),
+            )
+        }
+        Event::PickupBomb { by, at } => (
+            "pickup_bomb",
+            pro_v4_root_pool_mon_transition_label(*by, perspective),
+            pro_v4_root_pool_target_item_label(before_game, *at, perspective),
+            "pickup".to_string(),
+        ),
+        Event::PickupPotion { by, at } => (
+            "pickup_potion",
+            pro_v4_root_pool_item_transition_label(by, perspective),
+            pro_v4_root_pool_target_item_label(before_game, *at, perspective),
+            "pickup".to_string(),
+        ),
+        Event::UsePotion { from, to } => (
+            "use_potion",
+            pro_v4_root_pool_target_item_label(before_game, *from, perspective),
+            pro_v4_root_pool_target_item_label(before_game, *to, perspective),
+            pro_v4_root_pool_location_delta_bucket(perspective, *from, *to),
+        ),
+        Event::PickupMana { mana, by, at } => (
+            "pickup_mana",
+            pro_v4_root_pool_mon_transition_label(*by, perspective),
+            pro_v4_root_pool_mana_transition_label(*mana, perspective).to_string(),
+            pro_v4_root_pool_location_delta_bucket(by.color, *at, *at),
+        ),
+        Event::MonFainted { mon, from, to } => (
+            "mon_fainted",
+            pro_v4_root_pool_mon_transition_label(*mon, perspective),
+            "fainted".to_string(),
+            pro_v4_root_pool_location_delta_bucket(mon.color, *from, *to),
+        ),
+        Event::ManaDropped { mana, at } => (
+            "mana_dropped",
+            pro_v4_root_pool_mana_transition_label(*mana, perspective).to_string(),
+            pro_v4_root_pool_target_item_label(before_game, *at, perspective),
+            "drop".to_string(),
+        ),
+        Event::SupermanaBackToBase { from, to } => (
+            "supermana_back",
+            "supermana".to_string(),
+            pro_v4_root_pool_target_item_label(before_game, *to, perspective),
+            pro_v4_root_pool_location_delta_bucket(perspective, *from, *to),
+        ),
+        Event::BombAttack { by, from, to } => (
+            "bomb_attack",
+            pro_v4_root_pool_mon_transition_label(*by, perspective),
+            pro_v4_root_pool_target_item_label(before_game, *to, perspective),
+            pro_v4_root_pool_location_delta_bucket(by.color, *from, *to),
+        ),
+        Event::MonAwake { mon, at } => (
+            "mon_awake",
+            pro_v4_root_pool_mon_transition_label(*mon, perspective),
+            pro_v4_root_pool_target_item_label(before_game, *at, perspective),
+            "awake".to_string(),
+        ),
+        Event::BombExplosion { at } => (
+            "bomb_explosion",
+            "bomb".to_string(),
+            pro_v4_root_pool_target_item_label(before_game, *at, perspective),
+            "explode".to_string(),
+        ),
+        Event::NextTurn { color } => (
+            "next_turn",
+            pro_v4_root_pool_side_label(*color, perspective).to_string(),
+            "turn".to_string(),
+            "turn".to_string(),
+        ),
+        Event::GameOver { winner } => (
+            "game_over",
+            pro_v4_root_pool_side_label(*winner, perspective).to_string(),
+            "winner".to_string(),
+            "game_over".to_string(),
+        ),
+        Event::Takeback => (
+            "takeback",
+            "none".to_string(),
+            "none".to_string(),
+            "takeback".to_string(),
+        ),
+    };
+    format!("primary={primary};actor={actor};payload={payload};move={movement}")
+}
+
+fn pro_v4_root_pool_transition_effect_bucket(
+    before_game: &MonsGame,
+    after_game: &MonsGame,
+    events: &[Event],
+    perspective: Color,
+) -> String {
+    let mut effects = BTreeSet::<&'static str>::new();
+    let mut own_score = 0usize;
+    let mut opp_score = 0usize;
+    let mut own_fainted = [0; PRO_V4_ROOT_POOL_ROLE_COUNT];
+    let mut opp_fainted = [0; PRO_V4_ROOT_POOL_ROLE_COUNT];
+    for event in events {
+        match event {
+            Event::ManaScored { mana, at } => {
+                effects.insert("score");
+                let scoring_color = match before_game.board.square(*at) {
+                    Square::ManaPool { color } => color,
+                    _ => perspective,
+                };
+                if scoring_color == perspective {
+                    own_score += mana.score(scoring_color) as usize;
+                } else {
+                    opp_score += mana.score(scoring_color) as usize;
+                }
+            }
+            Event::MonFainted { mon, .. } => {
+                effects.insert("faint");
+                let role_index = pro_v4_root_pool_role_index(mon.kind);
+                if mon.color == perspective {
+                    own_fainted[role_index] += 1;
+                } else {
+                    opp_fainted[role_index] += 1;
+                }
+            }
+            Event::PickupMana { .. } => {
+                effects.insert("pickup_mana");
+            }
+            Event::PickupBomb { .. } => {
+                effects.insert("pickup_bomb");
+            }
+            Event::PickupPotion { .. } | Event::UsePotion { .. } => {
+                effects.insert("potion");
+            }
+            Event::ManaDropped { .. } => {
+                effects.insert("drop_mana");
+            }
+            Event::SupermanaBackToBase { .. } => {
+                effects.insert("supermana_reset");
+            }
+            Event::BombAttack { .. } => {
+                effects.insert("bomb_attack");
+            }
+            Event::BombExplosion { .. } => {
+                effects.insert("bomb_explosion");
+            }
+            Event::MonAwake { .. } => {
+                effects.insert("awake");
+            }
+            Event::NextTurn { .. } => {
+                effects.insert("turn_changed");
+            }
+            Event::GameOver { .. } => {
+                effects.insert("game_over");
+            }
+            Event::MonMove { .. }
+            | Event::ManaMove { .. }
+            | Event::MysticAction { .. }
+            | Event::DemonAction { .. }
+            | Event::DemonAdditionalStep { .. }
+            | Event::SpiritTargetMove { .. }
+            | Event::Takeback => {}
+        }
+    }
+    let effect_bucket = if effects.is_empty() {
+        "none".to_string()
+    } else {
+        effects.into_iter().collect::<Vec<_>>().join("+")
+    };
+    format!(
+        "status={};events={};effects={};own_score={};opp_score={};own_faint={};opp_faint={}",
+        pro_v4_root_pool_status(after_game, perspective),
+        pro_v4_root_pool_count_field(events.len()),
+        effect_bucket,
+        pro_v4_root_pool_count_field(own_score),
+        pro_v4_root_pool_count_field(opp_score),
+        pro_v4_root_pool_role_set_bucket(&own_fainted),
+        pro_v4_root_pool_role_set_bucket(&opp_fainted),
+    )
+}
+
+fn pro_v4_root_pool_transition_features(
+    before_game: &MonsGame,
+    root: &RootEvaluation,
+    perspective: Color,
+) -> ProV4RootPoolTransitionFeatures {
+    let events = MonsGameModel::apply_inputs_for_search_with_events(before_game, &root.inputs)
+        .map(|(_, events)| events)
+        .unwrap_or_default();
+    ProV4RootPoolTransitionFeatures {
+        root_transition: format!(
+            "{};{}",
+            pro_v4_root_pool_input_shape_bucket(&root.inputs),
+            pro_v4_root_pool_transition_primary_bucket(before_game, &events, perspective),
+        ),
+        root_transition_effect: pro_v4_root_pool_transition_effect_bucket(
+            before_game,
+            &root.game,
+            &events,
+            perspective,
+        ),
+    }
+}
+
 fn pro_v4_root_pool_score_for_color(game: &MonsGame, color: Color) -> i32 {
     match color {
         Color::White => game.white_score,
@@ -5458,6 +5858,7 @@ fn pro_v4_root_pool_print_snapshot(
             role_state_features,
             base_recovery_features,
             lane_shape_features,
+            transition_features,
         ) = if let Some(root) = root {
             let family = MonsGameModel::turn_engine_root_evaluation_family(root);
             let reply_snapshot = MonsGameModel::root_reply_risk_snapshot(
@@ -5559,6 +5960,8 @@ fn pro_v4_root_pool_print_snapshot(
                 pro_v4_root_pool_base_recovery_features(&game, &root.game, game.active_color);
             let lane_shape_features =
                 pro_v4_root_pool_lane_shape_features(&game, &root.game, game.active_color);
+            let transition_features =
+                pro_v4_root_pool_transition_features(&game, root, game.active_color);
             (
                 Some(root.root_rank),
                 Some(root.score),
@@ -5609,6 +6012,7 @@ fn pro_v4_root_pool_print_snapshot(
                 role_state_features,
                 base_recovery_features,
                 lane_shape_features,
+                transition_features,
             )
         } else {
             (
@@ -5647,10 +6051,11 @@ fn pro_v4_root_pool_print_snapshot(
                 ProV4RootPoolRoleStateFeatures::omitted(),
                 ProV4RootPoolBaseRecoveryFeatures::omitted(),
                 ProV4RootPoolLaneShapeFeatures::omitted(),
+                ProV4RootPoolTransitionFeatures::omitted(),
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -5734,6 +6139,8 @@ fn pro_v4_root_pool_print_snapshot(
             json_escape(&base_recovery_features.post_base_recovery_delta),
             json_escape(&lane_shape_features.post_lane_shape),
             json_escape(&lane_shape_features.post_lane_shape_delta),
+            json_escape(&transition_features.root_transition),
+            json_escape(&transition_features.root_transition_effect),
         );
     }
 }

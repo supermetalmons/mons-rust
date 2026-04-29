@@ -90,6 +90,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_base_recovery_delta",
     "post_lane_shape",
     "post_lane_shape_delta",
+    "root_transition",
+    "root_transition_effect",
 ]
 ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_rank", ("family", "rank_bucket")),
@@ -150,6 +152,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_lane_shape", ("family", "post_lane_shape")),
     ("progress_lane_shape_delta", ("progress", "post_lane_shape_delta")),
     ("path_lane_shape_delta", ("path", "post_lane_shape_delta")),
+    ("family_root_transition", ("family", "root_transition")),
+    ("progress_root_transition_effect", ("progress", "root_transition_effect")),
+    ("path_root_transition_effect", ("path", "root_transition_effect")),
 ]
 ROOT_POOL_GUARDED_ORIGIN_KINDS = {
     "guarded_selected",
@@ -209,6 +214,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_base_recovery_delta",
     "post_lane_shape",
     "post_lane_shape_delta",
+    "root_transition",
+    "root_transition_effect",
 ]
 ROOT_POOL_DELTA_NUMERIC_FIELDS = [
     "rank",
@@ -2255,6 +2262,8 @@ def root_pool_sample_root(row):
         "post_base_recovery_delta": row.get("post_base_recovery_delta", ""),
         "post_lane_shape": row.get("post_lane_shape", ""),
         "post_lane_shape_delta": row.get("post_lane_shape_delta", ""),
+        "root_transition": row.get("root_transition", ""),
+        "root_transition_effect": row.get("root_transition_effect", ""),
     }
 
 
