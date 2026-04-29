@@ -33,6 +33,7 @@ With --outcome-corpus:
   4. pro-policy-outcome-corpus over the default structural portfolio, unless
      SMART_PRO_POLICY_OUTCOME_CORPUS_PORTFOLIO is set
      Defaults to SMART_PRO_POLICY_MATRIX_STATE_LIMIT=2 and
+     SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT=6 unless overridden.
      SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS=true unless
      overridden.
      After a successful run, the log is postprocessed into .summary.json,
@@ -117,13 +118,16 @@ default_dashboard_include_guarded() {
 
 run_dashboard() {
   local include_guarded
+  local promotion_fast_fail
   local capture_path
   local status
   include_guarded="${SMART_PRO_DASHBOARD_INCLUDE_GUARDED:-$(default_dashboard_include_guarded)}"
+  promotion_fast_fail="${SMART_PRO_DASHBOARD_PROMOTION_FAST_FAIL:-true}"
   echo "== automove structural scout: promotion-dashboard =="
   capture_path="$(mktemp /tmp/automove-structural-scout-dashboard.XXXXXX)"
   set +e
   SMART_PRO_DASHBOARD_PANEL_FILTER="${SMART_PRO_DASHBOARD_PANEL_FILTER:-all}" \
+  SMART_PRO_DASHBOARD_PROMOTION_FAST_FAIL="${promotion_fast_fail}" \
   SMART_PRO_DASHBOARD_INCLUDE_GUARDED="${include_guarded}" \
     ./scripts/run-automove-experiment.sh pro-promotion-dashboard "${candidate}" "${shipping}" \
       | tee "${capture_path}"
@@ -162,6 +166,7 @@ run_policy_outcome_corpus() {
   SMART_PRO_POLICY_MATRIX_PANEL_FILTER="${SMART_PRO_POLICY_MATRIX_PANEL_FILTER:-all}" \
   SMART_PRO_POLICY_MATRIX_DUEL_FILTER="${SMART_PRO_POLICY_MATRIX_DUEL_FILTER:-all}" \
   SMART_PRO_POLICY_MATRIX_STATE_LIMIT="${SMART_PRO_POLICY_MATRIX_STATE_LIMIT:-2}" \
+  SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT="${SMART_PRO_POLICY_MATRIX_TOTAL_STATE_LIMIT:-6}" \
   SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS="${SMART_PRO_POLICY_MATRIX_INCLUDE_PORTFOLIO_MECHANISM_CLASS:-true}" \
     ./scripts/run-automove-experiment.sh pro-policy-outcome-corpus "${portfolio}" "${shipping}" \
       | tee "${capture_path}"
