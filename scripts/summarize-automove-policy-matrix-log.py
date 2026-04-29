@@ -322,49 +322,63 @@ def coverage_gap_group_key(record):
     )
 
 
-def add_coverage_gap_record(groups, event):
-    record = event["data"]
-    if record.get("portfolio_class") != "no_policy_win":
-        return
-
-    key = coverage_gap_group_key(record)
-    group = groups.setdefault(
-        key,
-        {
-            "panel": record.get("panel", ""),
-            "duel": record.get("duel", ""),
-            "seed_tag": record.get("seed_tag", ""),
-            "repeat": int(record.get("repeat", 0)),
-            "opening_index": int(record.get("opening_index", 0)),
-            "variant": record.get("variant", ""),
-            "candidate_is_white": bool(record.get("candidate_is_white", False)),
-            "opening": record.get("opening", ""),
-            "policy_results": record.get("policy_results", ""),
-            "winning_policies": record.get("winning_policies", ""),
-            "source_logs": set(),
-            "candidates": set(),
-            "outcomes": defaultdict(int),
-            "branches": defaultdict(int),
-            "pairs": defaultdict(int),
-            "mechanism_axes": defaultdict(int),
-            "divergences": {},
-            "record_count": 0,
-        },
+def opening_state_group_key(record):
+    return tuple(
+        record.get(field, "")
+        for field in [
+            "panel",
+            "duel",
+            "seed_tag",
+            "repeat",
+            "opening_index",
+            "variant",
+        ]
     )
 
+
+def new_corpus_state_group(record):
+    return {
+        "key": coverage_gap_group_key(record),
+        "panel": record.get("panel", ""),
+        "duel": record.get("duel", ""),
+        "seed_tag": record.get("seed_tag", ""),
+        "repeat": int(record.get("repeat", 0)),
+        "opening_index": int(record.get("opening_index", 0)),
+        "variant": record.get("variant", ""),
+        "candidate_is_white": bool(record.get("candidate_is_white", False)),
+        "opening": record.get("opening", ""),
+        "policy_results": record.get("policy_results", ""),
+        "winning_policies": record.get("winning_policies", ""),
+        "source_logs": set(),
+        "candidates": set(),
+        "outcomes": defaultdict(int),
+        "portfolio_classes": defaultdict(int),
+        "branches": defaultdict(int),
+        "pairs": defaultdict(int),
+        "mechanism_axes": defaultdict(int),
+        "divergences": {},
+        "record_count": 0,
+    }
+
+
+def add_record_to_state_group(group, record, event):
     group["record_count"] += 1
     group["source_logs"].add(event["source_log"])
     group["candidates"].add(record.get("candidate", ""))
     group["outcomes"][record.get("outcome", "")] += 1
+    group["portfolio_classes"][record.get("portfolio_class", "")] += 1
 
     branch = f"{record.get('baseline_branch', '')}->{record.get('candidate_branch', '')}"
     pair = f"{record.get('baseline_move', '')}->{record.get('candidate_move', '')}"
     group["branches"][branch] += 1
     group["pairs"][pair] += 1
     mechanism_axes = record.get("mechanism_axes", "")
-    for axis in mechanism_axes.split("|"):
-        if axis:
-            group["mechanism_axes"][axis] += 1
+    if mechanism_axes:
+        for axis in mechanism_axes.split("|"):
+            if axis:
+                group["mechanism_axes"][axis] += 1
+    else:
+        group["mechanism_axes"]["none"] += 1
 
     first_diff_ply = int(record.get("first_diff_ply", -1))
     if first_diff_ply < 0:
@@ -381,6 +395,7 @@ def add_coverage_gap_record(groups, event):
         {
             "candidate": record.get("candidate", ""),
             "outcome": record.get("outcome", ""),
+            "portfolio_class": record.get("portfolio_class", ""),
             "first_diff_ply": first_diff_ply,
             "branch": branch,
             "pair": pair,
@@ -398,21 +413,110 @@ def add_coverage_gap_record(groups, event):
     )
 
 
-def sorted_coverage_gap_entries(groups):
+def add_corpus_state_record(groups, event):
+    record = event["data"]
+    key = coverage_gap_group_key(record)
+    group = groups.setdefault(key, new_corpus_state_group(record))
+    add_record_to_state_group(group, record, event)
+
+
+def add_coverage_gap_record(groups, event):
+    record = event["data"]
+    if record.get("portfolio_class") != "no_policy_win":
+        return
+
+    key = coverage_gap_group_key(record)
+    group = groups.setdefault(
+        key,
+        {
+            "key": key,
+            "panel": record.get("panel", ""),
+            "duel": record.get("duel", ""),
+            "seed_tag": record.get("seed_tag", ""),
+            "repeat": int(record.get("repeat", 0)),
+            "opening_index": int(record.get("opening_index", 0)),
+            "variant": record.get("variant", ""),
+            "candidate_is_white": bool(record.get("candidate_is_white", False)),
+            "opening": record.get("opening", ""),
+            "policy_results": record.get("policy_results", ""),
+            "winning_policies": record.get("winning_policies", ""),
+            "source_logs": set(),
+            "candidates": set(),
+            "outcomes": defaultdict(int),
+            "portfolio_classes": defaultdict(int),
+            "branches": defaultdict(int),
+            "pairs": defaultdict(int),
+            "mechanism_axes": defaultdict(int),
+            "divergences": {},
+            "record_count": 0,
+        },
+    )
+
+    add_record_to_state_group(group, record, event)
+
+
+def sorted_divergences(group):
+    return sorted(
+        group["divergences"].values(),
+        key=lambda item: (
+            item["first_diff_ply"],
+            item["candidate"],
+            item["branch"],
+            item["pair"],
+        ),
+    )
+
+
+def summarize_corpus_state_group(group, divergence_limit=3):
+    branches = dict(group["branches"])
+    pairs = dict(group["pairs"])
+    divergences = sorted_divergences(group)
+    return {
+        "candidate_is_white": group["candidate_is_white"],
+        "opening": group["opening"],
+        "policy_results": group["policy_results"],
+        "winning_policies": group["winning_policies"],
+        "source_logs": sorted(group["source_logs"]),
+        "record_count": group["record_count"],
+        "candidate_count": len(group["candidates"]),
+        "candidates": "|".join(sorted(group["candidates"])),
+        "portfolio_class_counts": sorted_count_rows(group["portfolio_classes"]),
+        "outcome_counts": sorted_count_rows(group["outcomes"]),
+        "branch_count": len(branches),
+        "branches": limited_count_rows(branches),
+        "pair_count": len(pairs),
+        "pairs": limited_count_rows(pairs),
+        "top_mechanism_axes": limited_count_rows(group["mechanism_axes"], 5),
+        "first_diff_count": len(divergences),
+        "divergences": divergences[:divergence_limit],
+    }
+
+
+def coverage_gap_sibling_states(group, corpus_state_groups):
+    opening_key = opening_state_group_key(group)
+    siblings = []
+    for key, state_group in corpus_state_groups.items():
+        if opening_state_group_key(state_group) != opening_key:
+            continue
+        if key == group["key"]:
+            continue
+        siblings.append(summarize_corpus_state_group(state_group))
+    return sorted(
+        siblings,
+        key=lambda item: (
+            str(item["candidate_is_white"]),
+            item["winning_policies"],
+            item["record_count"],
+        ),
+    )
+
+
+def sorted_coverage_gap_entries(groups, corpus_state_groups):
     entries = []
     for group in groups.values():
-        branches = dict(group["branches"])
-        pairs = dict(group["pairs"])
-        divergences = sorted(
-            group["divergences"].values(),
-            key=lambda item: (
-                item["first_diff_ply"],
-                item["candidate"],
-                item["branch"],
-                item["pair"],
-            ),
-        )
-        entries.append(
+        entry = summarize_corpus_state_group(group, divergence_limit=5)
+        sibling_states = coverage_gap_sibling_states(group, corpus_state_groups)
+        entry.update(
             {
                 "panel": group["panel"],
                 "duel": group["duel"],
@@ -420,24 +524,11 @@ def sorted_coverage_gap_entries(groups):
                 "repeat": group["repeat"],
                 "opening_index": group["opening_index"],
                 "variant": group["variant"],
-                "candidate_is_white": group["candidate_is_white"],
-                "opening": group["opening"],
-                "policy_results": group["policy_results"],
-                "winning_policies": group["winning_policies"],
-                "source_logs": sorted(group["source_logs"]),
-                "record_count": group["record_count"],
-                "candidate_count": len(group["candidates"]),
-                "candidates": "|".join(sorted(group["candidates"])),
-                "outcome_counts": sorted_count_rows(group["outcomes"]),
-                "branch_count": len(branches),
-                "branches": limited_count_rows(branches),
-                "pair_count": len(pairs),
-                "pairs": limited_count_rows(pairs),
-                "top_mechanism_axes": limited_count_rows(group["mechanism_axes"], 5),
-                "first_diff_count": len(divergences),
-                "divergences": divergences[:5],
+                "same_opening_sibling_state_count": len(sibling_states),
+                "same_opening_sibling_states": sibling_states,
             }
         )
+        entries.append(entry)
 
     return sorted(
         entries,
@@ -459,6 +550,7 @@ def summarize(events):
     filter_summaries = {}
     filter_details = defaultdict(list)
     coverage_gap_groups = {}
+    corpus_state_groups = {}
     event_counts = defaultdict(int)
 
     for event in events:
@@ -478,6 +570,7 @@ def summarize(events):
         elif event_type == "PRO_POLICY_MATRIX_RECORD_FILTER_DETAIL":
             filter_details[data.get("record_axis_filter", "")].append(data)
         elif event_type == "PRO_POLICY_MATRIX_CORPUS_RECORD":
+            add_corpus_state_record(corpus_state_groups, event)
             add_coverage_gap_record(coverage_gap_groups, event)
 
     recommendation = latest.get("PRO_POLICY_MATRIX_GLOBAL_ROUTE_RECOMMENDATION", {})
@@ -496,7 +589,10 @@ def summarize(events):
         )
 
     decision = corpus_decision(global_summary, stoplight, recommendation)
-    coverage_gap_entries = sorted_coverage_gap_entries(coverage_gap_groups)
+    coverage_gap_entries = sorted_coverage_gap_entries(
+        coverage_gap_groups,
+        corpus_state_groups,
+    )
 
     return {
         "event_counts": dict(sorted(event_counts.items())),
