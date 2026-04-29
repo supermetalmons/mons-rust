@@ -1801,6 +1801,32 @@ fn pro_policy_mechanism_safety_progress_signal(root: &ProPolicyMechanismRootClas
     }
 }
 
+fn pro_policy_mechanism_root_progress_bucket(root: &RootEvaluation) -> &'static str {
+    if root.wins_immediately {
+        "wins"
+    } else if root.attacks_opponent_drainer {
+        "attacks_drainer"
+    } else if root.spirit_same_turn_score_setup_now || root.spirit_own_mana_setup_now {
+        "spirit_setup"
+    } else if root.spirit_development {
+        "spirit_development"
+    } else if root.supermana_progress && root.opponent_mana_progress {
+        "both_mana_progress"
+    } else if root.supermana_progress {
+        "supermana_progress"
+    } else if root.opponent_mana_progress {
+        "opponent_mana_progress"
+    } else if root.safe_supermana_progress_steps > 0 || root.safe_opponent_mana_progress_steps > 0 {
+        "safe_step_progress"
+    } else if root.same_turn_score_window_value > 0 {
+        "score_window"
+    } else if root.score_path_best_steps > 0 {
+        "score_path"
+    } else {
+        "quiet"
+    }
+}
+
 fn pro_policy_mechanism_utility_primary_order(
     left: Option<TurnEngineUtility>,
     right: Option<TurnEngineUtility>,
@@ -2079,29 +2105,7 @@ fn pro_policy_mechanism_root_class(
         root.own_drainer_walk_vulnerable,
         root.own_drainer_vulnerable,
     );
-    let progress = if root.wins_immediately {
-        "wins"
-    } else if root.attacks_opponent_drainer {
-        "attacks_drainer"
-    } else if root.spirit_same_turn_score_setup_now || root.spirit_own_mana_setup_now {
-        "spirit_setup"
-    } else if root.spirit_development {
-        "spirit_development"
-    } else if root.supermana_progress && root.opponent_mana_progress {
-        "both_mana_progress"
-    } else if root.supermana_progress {
-        "supermana_progress"
-    } else if root.opponent_mana_progress {
-        "opponent_mana_progress"
-    } else if root.safe_supermana_progress_steps > 0 || root.safe_opponent_mana_progress_steps > 0 {
-        "safe_step_progress"
-    } else if root.same_turn_score_window_value > 0 {
-        "score_window"
-    } else if root.score_path_best_steps > 0 {
-        "score_path"
-    } else {
-        "quiet"
-    };
+    let progress = pro_policy_mechanism_root_progress_bucket(root);
 
     ProPolicyMechanismRootClass {
         role: role_parts.join("+"),
@@ -2317,9 +2321,67 @@ fn pro_sweep_candidate_record_context_key(
     )
 }
 
+fn forced_root_oracle_path_bucket(
+    root_inputs: &[Input],
+    root_rank: usize,
+    advisor: &str,
+    forced_engine_inputs: Option<&Vec<Input>>,
+) -> &'static str {
+    if forced_engine_inputs.is_some_and(|inputs| inputs.as_slice() == root_inputs) {
+        "injected_forced"
+    } else if advisor.starts_with("approved:") {
+        "advisor_approved"
+    } else if advisor.starts_with("ordered:") {
+        "advisor_ordered"
+    } else if advisor.starts_with("preserved:") {
+        "advisor_preserved"
+    } else if advisor.starts_with("injected_admitted:") {
+        "advisor_injected_admitted"
+    } else if advisor.starts_with("injected_rejected:") {
+        "advisor_injected_rejected"
+    } else if root_rank <= 2 {
+        "top3_unlisted"
+    } else {
+        "lower_unlisted"
+    }
+}
+
 #[test]
 #[ignore = "diagnostic: force each root once on a blocker board and continue with Pro policy"]
 fn smart_automove_pro_forced_root_oracle_probe() {
+    struct ForcedRootOracleRow {
+        result: MatchResult,
+        root_rank: usize,
+        score: i32,
+        inputs: String,
+        family: String,
+        wins_immediately: bool,
+        attacks: bool,
+        vulnerable: bool,
+        walk_vulnerable: bool,
+        mana_handoff: bool,
+        roundtrip: bool,
+        safety_detail: &'static str,
+        progress: &'static str,
+        spirit_development: bool,
+        spirit_setup: bool,
+        supermana_progress: bool,
+        opponent_mana_progress: bool,
+        safe_super_steps: i32,
+        safe_opp_steps: i32,
+        same_turn_window: i32,
+        reply_floor: i32,
+        reply_risk: &'static str,
+        reply_bucket: &'static str,
+        followup_floor: i32,
+        followup_bucket: &'static str,
+        advisor: String,
+        advisor_bucket: &'static str,
+        path: &'static str,
+        utility: TurnEngineUtility,
+        final_fen: String,
+    }
+
     const DEFAULT_ALTERNATING_WHITE_NO_POLICY_FEN: &str =
         "0 0 w 0 0 3 0 0 1 n03y0xs0xd0xa0xe0xn03/n11/n11/n11/n01xxmn01xxmn01xxmn01xxmn01xxmn01/xxQn04xxUn04xxQ/n01xxMn01xxMn01xxMn01xxMn01xxMn01/n11/n11/n04A0xn01S0xY0xn03/n03E0xn01D0xn05 4";
 
@@ -2362,11 +2424,14 @@ fn smart_automove_pro_forced_root_oracle_probe() {
     let shipping_selector = profile_selector_from_name(shipping_profile.as_str())
         .unwrap_or_else(|| panic!("shipping '{}' not found", shipping_profile));
     let opponent_budget = SearchBudget::from_preference(opponent_mode);
-    let (runtime, scored_roots, _, _) = profile_runtime_scored_roots_with_forced_engine_inputs(
-        root_source_id.as_str(),
-        SmartAutomovePreference::Pro,
-        &game,
-    );
+    let (runtime, scored_roots, _, forced_engine_inputs) =
+        profile_runtime_scored_roots_with_forced_engine_inputs(
+            root_source_id.as_str(),
+            SmartAutomovePreference::Pro,
+            &game,
+        );
+    let _ = select_sweep_frontier_config_inputs(&game, runtime);
+    let root_source_advisor = pro_v2_root_advisor_decision_snapshot();
 
     println!(
         "forced root oracle: label={} continuation={} root_source={} shipping={} opponent_mode={:?} variant={} active_color={} roots={} root_limit={} max_plies={} start_ply={} rollout_max_plies={} fen={}",
@@ -2477,6 +2542,7 @@ fn smart_automove_pro_forced_root_oracle_probe() {
                 root.inputs.as_slice(),
             );
             let family = MonsGameModel::turn_engine_root_evaluation_family(root);
+            let inputs = Input::fen_from_array(&root.inputs);
             let utility = MonsGameModel::turn_engine_selected_override_utility(
                 &game,
                 root,
@@ -2484,43 +2550,87 @@ fn smart_automove_pro_forced_root_oracle_probe() {
                 runtime,
                 family,
             );
-            (
-                trace.result,
-                root.root_rank,
-                root.score,
-                Input::fen_from_array(&root.inputs),
-                family,
-                root.wins_immediately,
-                root.attacks_opponent_drainer,
+            let reply_snapshot = MonsGameModel::root_reply_risk_snapshot(
+                &root.game,
+                game.active_color,
+                runtime,
+                runtime.root_reply_risk_reply_limit.clamp(1, 24),
+            );
+            let followup_floor = MonsGameModel::pro_v2_spirit_followup_floor_score(
+                &root.game,
+                game.active_color,
+                runtime,
+            );
+            let advisor =
+                pro_policy_mechanism_advisor_class(root_source_advisor.as_ref(), inputs.as_str());
+            let safety_detail = pro_policy_mechanism_safety_detail_bucket(
+                root.mana_handoff_to_opponent,
+                root.has_roundtrip,
+                root.own_drainer_walk_vulnerable,
                 root.own_drainer_vulnerable,
-                root.spirit_development,
-                root.spirit_same_turn_score_setup_now || root.spirit_own_mana_setup_now,
-                root.supermana_progress,
-                root.opponent_mana_progress,
-                root.safe_supermana_progress_steps,
-                root.safe_opponent_mana_progress_steps,
-                root.same_turn_score_window_value,
+            );
+            ForcedRootOracleRow {
+                result: trace.result,
+                root_rank: root.root_rank,
+                score: root.score,
+                inputs,
+                family: format!("{family:?}"),
+                wins_immediately: root.wins_immediately,
+                attacks: root.attacks_opponent_drainer,
+                vulnerable: root.own_drainer_vulnerable,
+                walk_vulnerable: root.own_drainer_walk_vulnerable,
+                mana_handoff: root.mana_handoff_to_opponent,
+                roundtrip: root.has_roundtrip,
+                safety_detail,
+                progress: pro_policy_mechanism_root_progress_bucket(root),
+                spirit_development: root.spirit_development,
+                spirit_setup: root.spirit_same_turn_score_setup_now
+                    || root.spirit_own_mana_setup_now,
+                supermana_progress: root.supermana_progress,
+                opponent_mana_progress: root.opponent_mana_progress,
+                safe_super_steps: root.safe_supermana_progress_steps,
+                safe_opp_steps: root.safe_opponent_mana_progress_steps,
+                same_turn_window: root.same_turn_score_window_value,
+                reply_floor: reply_snapshot.worst_reply_score,
+                reply_risk: pro_policy_mechanism_reply_risk_bucket(
+                    Some(reply_snapshot.worst_reply_score),
+                    Some(reply_snapshot.allows_immediate_opponent_win),
+                    Some(reply_snapshot.opponent_reaches_match_point),
+                ),
+                reply_bucket: pro_policy_mechanism_floor_bucket(Some(
+                    reply_snapshot.worst_reply_score,
+                )),
+                followup_floor,
+                followup_bucket: pro_policy_mechanism_floor_bucket(Some(followup_floor)),
+                advisor_bucket: pro_policy_mechanism_advisor_bucket(&advisor),
+                path: forced_root_oracle_path_bucket(
+                    root.inputs.as_slice(),
+                    root.root_rank,
+                    &advisor,
+                    forced_engine_inputs.as_ref(),
+                ),
+                advisor,
                 utility,
-                trace.final_fen,
-            )
+                final_fen: trace.final_fen,
+            }
         })
         .collect::<Vec<_>>();
 
     rows.sort_by(|left, right| {
-        match_result_points(right.0)
-            .cmp(&match_result_points(left.0))
-            .then_with(|| left.1.cmp(&right.1))
-            .then_with(|| right.2.cmp(&left.2))
-            .then_with(|| left.3.cmp(&right.3))
+        match_result_points(right.result)
+            .cmp(&match_result_points(left.result))
+            .then_with(|| left.root_rank.cmp(&right.root_rank))
+            .then_with(|| right.score.cmp(&left.score))
+            .then_with(|| left.inputs.cmp(&right.inputs))
     });
 
     let wins = rows
         .iter()
-        .filter(|row| matches!(row.0, MatchResult::ProfileAWin))
+        .filter(|row| matches!(row.result, MatchResult::ProfileAWin))
         .count();
     let draws = rows
         .iter()
-        .filter(|row| matches!(row.0, MatchResult::Draw))
+        .filter(|row| matches!(row.result, MatchResult::Draw))
         .count();
     println!(
         "FORCED_ROOT_ORACLE_SUMMARY {{\"label\":\"{}\",\"continuation\":\"{}\",\"root_source\":\"{}\",\"opponent_mode\":\"{:?}\",\"variant\":\"{}\",\"active_color\":\"{}\",\"max_plies\":{},\"start_ply\":{},\"rollout_max_plies\":{},\"tested_roots\":{},\"wins\":{},\"draws\":{},\"losses\":{}}}",
@@ -2539,46 +2649,40 @@ fn smart_automove_pro_forced_root_oracle_probe() {
         rows.len().saturating_sub(wins + draws),
     );
 
-    for (
-        result,
-        root_rank,
-        score,
-        inputs,
-        family,
-        wins_immediately,
-        attacks,
-        vulnerable,
-        spirit_development,
-        spirit_setup,
-        supermana_progress,
-        opponent_mana_progress,
-        safe_super_steps,
-        safe_opp_steps,
-        same_turn_window,
-        utility,
-        final_fen,
-    ) in rows.into_iter().take(print_limit)
-    {
+    for row in rows.into_iter().take(print_limit) {
         println!(
-            "FORCED_ROOT_ORACLE_ROOT {{\"label\":\"{}\",\"result\":\"{}\",\"root_rank\":{},\"score\":{},\"inputs\":\"{}\",\"family\":\"{:?}\",\"wins_immediately\":{},\"attacks\":{},\"vulnerable\":{},\"spirit_development\":{},\"spirit_setup\":{},\"supermana_progress\":{},\"opponent_mana_progress\":{},\"safe_super_steps\":{},\"safe_opp_steps\":{},\"same_turn_window\":{},\"utility\":\"{:?}\",\"final\":\"{}\"}}",
+            "FORCED_ROOT_ORACLE_ROOT {{\"label\":\"{}\",\"result\":\"{}\",\"root_rank\":{},\"score\":{},\"inputs\":\"{}\",\"family\":\"{}\",\"wins_immediately\":{},\"attacks\":{},\"vulnerable\":{},\"walk_vulnerable\":{},\"mana_handoff\":{},\"roundtrip\":{},\"safety_detail\":\"{}\",\"progress\":\"{}\",\"spirit_development\":{},\"spirit_setup\":{},\"supermana_progress\":{},\"opponent_mana_progress\":{},\"safe_super_steps\":{},\"safe_opp_steps\":{},\"same_turn_window\":{},\"reply_floor\":{},\"reply_risk\":\"{}\",\"reply_bucket\":\"{}\",\"followup_floor\":{},\"followup_bucket\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"utility\":\"{:?}\",\"final\":\"{}\"}}",
             json_escape(&label),
-            format_match_result(result),
-            root_rank,
-            score,
-            json_escape(&inputs),
-            family,
-            wins_immediately,
-            attacks,
-            vulnerable,
-            spirit_development,
-            spirit_setup,
-            supermana_progress,
-            opponent_mana_progress,
-            safe_super_steps,
-            safe_opp_steps,
-            same_turn_window,
-            utility,
-            json_escape(&final_fen),
+            format_match_result(row.result),
+            row.root_rank,
+            row.score,
+            json_escape(&row.inputs),
+            json_escape(&row.family),
+            row.wins_immediately,
+            row.attacks,
+            row.vulnerable,
+            row.walk_vulnerable,
+            row.mana_handoff,
+            row.roundtrip,
+            row.safety_detail,
+            row.progress,
+            row.spirit_development,
+            row.spirit_setup,
+            row.supermana_progress,
+            row.opponent_mana_progress,
+            row.safe_super_steps,
+            row.safe_opp_steps,
+            row.same_turn_window,
+            row.reply_floor,
+            row.reply_risk,
+            row.reply_bucket,
+            row.followup_floor,
+            row.followup_bucket,
+            json_escape(&row.advisor),
+            row.advisor_bucket,
+            row.path,
+            row.utility,
+            json_escape(&row.final_fen),
         );
     }
 }

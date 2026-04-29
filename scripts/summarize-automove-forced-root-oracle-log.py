@@ -107,6 +107,24 @@ def score_bucket(value):
     return "score_negative"
 
 
+def floor_bucket(value):
+    if value is None:
+        return "omitted"
+    if value <= -100000:
+        return "terminal_bad"
+    if value <= -1024:
+        return "very_bad"
+    if value <= -257:
+        return "bad"
+    if value <= -1:
+        return "slightly_bad"
+    if value <= 255:
+        return "neutral"
+    if value <= 1023:
+        return "good"
+    return "very_good"
+
+
 def window_bucket(value):
     if value <= 0:
         return "window0"
@@ -128,6 +146,10 @@ def parse_utility(text):
     return {key: int(value) for key, value in UTILITY_RE.findall(text or "")}
 
 
+def bool_axis(root, field):
+    return str(bool(root.get(field, False))).lower()
+
+
 def root_axes(root):
     family = root.get("family", "")
     band = rank_band(int(root.get("root_rank", -1)))
@@ -135,19 +157,53 @@ def root_axes(root):
     same_turn_window = int(root.get("same_turn_window", 0))
     safe_super_steps = int(root.get("safe_super_steps", 0))
     safe_opp_steps = int(root.get("safe_opp_steps", 0))
+    safety_detail = root.get("safety_detail", "")
+    if not safety_detail:
+        safety_detail = "vulnerable" if bool(root.get("vulnerable", False)) else "safe"
+    progress = root.get("progress", "")
+    if not progress:
+        progress = "spirit_development" if bool(root.get("spirit_development", False)) else "quiet"
+    reply_risk = root.get("reply_risk", "unknown")
+    reply_bucket = root.get("reply_bucket", "")
+    if not reply_bucket:
+        reply_bucket = floor_bucket(root.get("reply_floor"))
+    followup_bucket = root.get("followup_bucket", "")
+    if not followup_bucket:
+        followup_bucket = floor_bucket(root.get("followup_floor"))
+    advisor_bucket = root.get("advisor_bucket", "unknown")
+    path = root.get("path", "unknown")
     axes = [
         f"family={family}",
         f"rank_band={band}",
         f"family_rank={family}|{band}",
         f"same_turn_window={window_bucket(same_turn_window)}",
         f"safe_step_relation={step_relation(safe_super_steps, safe_opp_steps)}",
-        f"wins_immediately={str(bool(root.get('wins_immediately', False))).lower()}",
-        f"attacks={str(bool(root.get('attacks', False))).lower()}",
-        f"vulnerable={str(bool(root.get('vulnerable', False))).lower()}",
-        f"spirit_development={str(bool(root.get('spirit_development', False))).lower()}",
-        f"spirit_setup={str(bool(root.get('spirit_setup', False))).lower()}",
-        f"supermana_progress={str(bool(root.get('supermana_progress', False))).lower()}",
-        f"opponent_mana_progress={str(bool(root.get('opponent_mana_progress', False))).lower()}",
+        f"wins_immediately={bool_axis(root, 'wins_immediately')}",
+        f"attacks={bool_axis(root, 'attacks')}",
+        f"vulnerable={bool_axis(root, 'vulnerable')}",
+        f"walk_vulnerable={bool_axis(root, 'walk_vulnerable')}",
+        f"mana_handoff={bool_axis(root, 'mana_handoff')}",
+        f"roundtrip={bool_axis(root, 'roundtrip')}",
+        f"safety_detail={safety_detail}",
+        f"progress={progress}",
+        f"safety_progress={safety_detail}|{progress}",
+        f"spirit_development={bool_axis(root, 'spirit_development')}",
+        f"spirit_setup={bool_axis(root, 'spirit_setup')}",
+        f"supermana_progress={bool_axis(root, 'supermana_progress')}",
+        f"opponent_mana_progress={bool_axis(root, 'opponent_mana_progress')}",
+        f"reply_risk={reply_risk}",
+        f"reply_bucket={reply_bucket}",
+        f"reply_progress={reply_risk}|{progress}",
+        f"followup_bucket={followup_bucket}",
+        f"followup_progress={followup_bucket}|{progress}",
+        f"advisor_bucket={advisor_bucket}",
+        f"path={path}",
+        f"path_safety={path}|{safety_detail}",
+        f"advisor_family={advisor_bucket}|{family}",
+        f"family_rank_safety={family}|{band}|{safety_detail}",
+        f"family_rank_reply={family}|{band}|{reply_risk}",
+        f"family_rank_followup={family}|{band}|{followup_bucket}",
+        f"safety_reply_progress={safety_detail}|{reply_risk}|{progress}",
     ]
     if utility:
         axes.extend(
@@ -163,6 +219,9 @@ def root_axes(root):
                 "family_rank_window_safety="
                 f"{family}|{band}|{window_bucket(same_turn_window)}|"
                 f"{signed_bucket(utility.get('drainer_safety', 0))}",
+                "family_rank_window_safety_detail="
+                f"{family}|{band}|{window_bucket(same_turn_window)}|"
+                f"{safety_detail}",
             ]
         )
     return axes
@@ -263,6 +322,13 @@ def summarize_group(group):
             "inputs": first_winner.get("inputs", ""),
             "family": first_winner.get("family", ""),
             "same_turn_window": int(first_winner.get("same_turn_window", 0)),
+            "safety_detail": first_winner.get("safety_detail", ""),
+            "progress": first_winner.get("progress", ""),
+            "reply_risk": first_winner.get("reply_risk", ""),
+            "reply_bucket": first_winner.get("reply_bucket", ""),
+            "followup_bucket": first_winner.get("followup_bucket", ""),
+            "advisor_bucket": first_winner.get("advisor_bucket", ""),
+            "path": first_winner.get("path", ""),
             "utility": first_winner.get("utility", ""),
         }
         if first_winner
@@ -339,8 +405,15 @@ def promising_repeated_axes(axis_rows, groups_with_wins):
     if groups_with_wins < 2:
         return []
     narrow_dimensions = {
+        "advisor_family",
         "family_rank",
+        "family_rank_followup",
+        "family_rank_reply",
+        "family_rank_safety",
+        "family_rank_window_safety_detail",
         "family_rank_window_safety",
+        "path_safety",
+        "safety_reply_progress",
     }
     return [
         row
