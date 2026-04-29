@@ -1684,6 +1684,75 @@ fn pro_policy_mechanism_utility_primary_order(
     }
 }
 
+fn pro_policy_mechanism_root_presence_bucket(root: &ProPolicyMechanismRootClass) -> &'static str {
+    match root.live {
+        "top3_live" => "top3_considered",
+        "lower_live" => "lower_considered",
+        _ => "omitted",
+    }
+}
+
+fn pro_policy_mechanism_root_path_bucket(role: &str) -> &'static str {
+    if role.split('+').any(|part| {
+        matches!(
+            part,
+            "selected" | "pre_accept" | "head" | "legacy" | "legacy_full_pool"
+        )
+    }) {
+        "selected_path"
+    } else {
+        "off_selected_path"
+    }
+}
+
+fn pro_policy_mechanism_advisor_bucket(advisor: &str) -> &'static str {
+    if advisor.starts_with("approved:") {
+        "approved"
+    } else if advisor.starts_with("ordered:") {
+        "ordered"
+    } else if advisor.starts_with("preserved:") {
+        "preserved"
+    } else if advisor.starts_with("injected_admitted:") {
+        "injected_admitted"
+    } else if advisor.starts_with("injected_rejected:") {
+        "injected_rejected"
+    } else if advisor == "advisor_none" {
+        "advisor_none"
+    } else {
+        "unlisted"
+    }
+}
+
+fn pro_policy_mechanism_root_preservation_signal(
+    root: &ProPolicyMechanismRootClass,
+) -> &'static str {
+    let presence = pro_policy_mechanism_root_presence_bucket(root);
+    let path = pro_policy_mechanism_root_path_bucket(&root.role);
+    let advisor = pro_policy_mechanism_advisor_bucket(&root.advisor);
+
+    if path == "selected_path" {
+        "selected_path"
+    } else if presence != "omitted" {
+        match advisor {
+            "approved" => "considered_approved_off_path",
+            "ordered" => "considered_ordered_off_path",
+            "preserved" => "considered_preserved_off_path",
+            "injected_admitted" => "considered_injected_admitted_off_path",
+            "injected_rejected" => "considered_injected_rejected_off_path",
+            _ => "considered_unlisted_off_path",
+        }
+    } else {
+        match advisor {
+            "approved" => "omitted_approved",
+            "ordered" => "omitted_ordered",
+            "preserved" => "omitted_preserved",
+            "injected_admitted" => "omitted_injected_admitted",
+            "injected_rejected" => "omitted_injected_rejected",
+            _ => "omitted_unlisted",
+        }
+    }
+}
+
 fn pro_policy_mechanism_value_bucket(value: i32, zero: &'static str) -> &'static str {
     match value {
         0 => zero,
@@ -1953,6 +2022,10 @@ fn pro_policy_mechanism_class_keys_from_scored_roots(
     let winner_vs_baseline_score = pro_policy_mechanism_score_order(winner.score, baseline.score);
     let winner_rank_delta = pro_policy_mechanism_rank_delta_bucket(winner.rank, baseline.rank);
     let winner_score_delta = pro_policy_mechanism_score_delta_bucket(winner.score, baseline.score);
+    let winner_presence = pro_policy_mechanism_root_presence_bucket(&winner);
+    let winner_path = pro_policy_mechanism_root_path_bucket(&winner.role);
+    let winner_advisor = pro_policy_mechanism_advisor_bucket(&winner.advisor);
+    let winner_preservation_signal = pro_policy_mechanism_root_preservation_signal(&winner);
 
     let mut keys = vec![
         format!(
@@ -1988,6 +2061,14 @@ fn pro_policy_mechanism_class_keys_from_scored_roots(
         format!(
             "axis=rank_score_delta winner_rank_delta={} winner_score_delta={} winner_vs_baseline_primary={}",
             winner_rank_delta, winner_score_delta, winner_vs_baseline_utility,
+        ),
+        format!(
+            "axis=root_preservation winner_presence={} winner_path={} winner_advisor={} winner_signal={} winner_rank_delta={}",
+            winner_presence,
+            winner_path,
+            winner_advisor,
+            winner_preservation_signal,
+            winner_rank_delta,
         ),
         format!(
             "axis=safety_progress baseline_safety={} baseline_progress={} winner_safety={} winner_progress={}",
