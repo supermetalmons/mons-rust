@@ -30,6 +30,11 @@ DEFAULT_OVERLAP_FAMILIES = [
     "root_safety_detail",
     "safety_progress",
 ]
+CONTRAST_BLOCKER_CLASSES = [
+    "baseline_better",
+    "no_policy",
+    "same_outcome",
+]
 
 
 def parse_jsonl_rows(paths):
@@ -79,6 +84,10 @@ def parse_state_filter(value):
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def parse_excluded_families(value):
+    return set(parse_family_filter(value))
+
+
 def state_id(row):
     return row.get("state_id") or row.get("cross_budget_state_id") or ""
 
@@ -90,6 +99,24 @@ def axis_family(axis):
     if "=" in first:
         return first.split("=", 1)[0]
     return first or "none"
+
+
+def excluded_axis_family(family, excluded_families):
+    if family in excluded_families:
+        return True
+    if "root_trajectory" in excluded_families and "trajectory" in family:
+        return True
+    if "race_delta" in excluded_families and "race_delta" in family:
+        return True
+    if "race_shape" in excluded_families and "race_shape" in family:
+        return True
+    if "root_pool" in excluded_families and family.startswith("root_pool"):
+        return True
+    return False
+
+
+def contrast_axis_allowed(axis, excluded_families):
+    return not excluded_axis_family(axis_family(axis), excluded_families)
 
 
 def axis_group(axis):
@@ -1448,6 +1475,430 @@ def axis_token_pair_discriminator_summary(
     }
 
 
+def policy_record_key(row):
+    return (row.get("source_jsonl", ""), row.get("source_log", ""), row.get("source_line", ""))
+
+
+def new_policy_contrast_record(row):
+    return {
+        "record_key": "|".join(str(item) for item in policy_record_key(row)),
+        "source_jsonl": row.get("source_jsonl", ""),
+        "source_log": row.get("source_log", ""),
+        "source_line": row.get("source_line", ""),
+        "record_class": row.get("record_class", "unknown"),
+        "cross_budget_state_id": row.get("cross_budget_state_id") or state_id(row),
+        "state_id": state_id(row),
+        "panel": row.get("panel", ""),
+        "duel": row.get("duel", ""),
+        "seed_family": row.get("seed_family", ""),
+        "repeat": row.get("repeat", ""),
+        "opening_index": row.get("opening_index", ""),
+        "variant": row.get("variant", ""),
+        "candidate_is_white": row.get("candidate_is_white", ""),
+        "candidate": row.get("candidate", ""),
+        "baseline": row.get("baseline", ""),
+        "portfolio_class": row.get("portfolio_class", ""),
+        "outcome": row.get("outcome", ""),
+        "branch": row.get("branch", ""),
+        "pair": row.get("pair", ""),
+        "first_diff_ply": row.get("first_diff_ply", ""),
+        "axes": set(),
+        "axis_families": set(),
+        "signals": set(),
+    }
+
+
+def add_policy_contrast_axis(record, row, excluded_families):
+    axis = row.get("axis", "none")
+    if not contrast_axis_allowed(axis, excluded_families):
+        return
+    family = axis_family(axis)
+    record["axes"].add(axis)
+    record["axis_families"].add(family)
+    record["signals"].add(f"axis={axis}")
+    record["signals"].add(f"axis_family={family}")
+    for token in axis_tokens(axis):
+        record["signals"].add(token["token"])
+
+
+def policy_contrast_records(rows, excluded_families):
+    records = {}
+    for row in rows:
+        if row.get("row_type") not in {"policy_decision", "policy_axis"}:
+            continue
+        key = policy_record_key(row)
+        records.setdefault(key, new_policy_contrast_record(row))
+    for row in rows:
+        if row.get("row_type") != "policy_axis":
+            continue
+        key = policy_record_key(row)
+        record = records.setdefault(key, new_policy_contrast_record(row))
+        add_policy_contrast_axis(record, row, excluded_families)
+    return [
+        record
+        for record in records.values()
+        if record["record_class"] in RECORD_CLASSES
+    ]
+
+
+def contrast_record_sample(record):
+    return {
+        "record_class": record.get("record_class", ""),
+        "cross_budget_state_id": record.get("cross_budget_state_id", ""),
+        "panel": record.get("panel", ""),
+        "duel": record.get("duel", ""),
+        "variant": record.get("variant", ""),
+        "candidate_is_white": record.get("candidate_is_white", ""),
+        "candidate": record.get("candidate", ""),
+        "branch": record.get("branch", ""),
+        "pair": record.get("pair", ""),
+        "first_diff_ply": record.get("first_diff_ply", ""),
+        "axis_families": pipe_join(record.get("axis_families", set())),
+        "axis_count": len(record.get("axes", set())),
+    }
+
+
+def contrast_first_diff_distance(left, right):
+    return abs(
+        int_field(left, "first_diff_ply") - int_field(right, "first_diff_ply")
+    )
+
+
+def nearest_policy_contrast_sibling(candidate, siblings):
+    candidate_signals = candidate.get("signals", set())
+    candidates = []
+    for sibling in siblings:
+        sibling_signals = sibling.get("signals", set())
+        shared = candidate_signals & sibling_signals
+        union_size = len(candidate_signals | sibling_signals)
+        same_duel_rank = 0 if sibling.get("duel", "") == candidate.get("duel", "") else 1
+        same_panel_rank = 0 if sibling.get("panel", "") == candidate.get("panel", "") else 1
+        candidates.append(
+            (
+                same_duel_rank,
+                same_panel_rank,
+                -len(shared),
+                -round(len(shared) / union_size, 4) if union_size else 0,
+                contrast_first_diff_distance(candidate, sibling),
+                sibling.get("record_key", ""),
+                sibling,
+                shared,
+            )
+        )
+    if not candidates:
+        return None, set()
+    candidates.sort(key=lambda item: item[:6])
+    return candidates[0][6], candidates[0][7]
+
+
+def new_contrast_signal_group(signal):
+    return {
+        "signal": signal,
+        "count": 0,
+        "states": set(),
+        "contrast_classes": set(),
+        "axis_families": set(),
+        "candidate_policies": set(),
+        "branches": set(),
+        "pairs": set(),
+        "duels": set(),
+        "sample_contrasts": [],
+    }
+
+
+def signal_family(signal):
+    if signal.startswith("axis="):
+        return axis_family(signal[len("axis=") :])
+    if signal.startswith("axis_family="):
+        return signal.split("=", 1)[1]
+    field = signal.split("=", 1)[0].split(":", 1)[0]
+    return field or "token"
+
+
+def add_contrast_signal_occurrence(groups, signal, candidate, blocker, contrast_class):
+    group = groups.setdefault(signal, new_contrast_signal_group(signal))
+    group["count"] += 1
+    state = candidate.get("cross_budget_state_id", "")
+    if state:
+        group["states"].add(state)
+    group["contrast_classes"].add(contrast_class)
+    group["axis_families"].add(signal_family(signal))
+    for field, set_name in [
+        ("candidate", "candidate_policies"),
+        ("branch", "branches"),
+        ("pair", "pairs"),
+        ("duel", "duels"),
+    ]:
+        value = candidate.get(field, "")
+        if value:
+            group[set_name].add(value)
+    if len(group["sample_contrasts"]) < 5:
+        group["sample_contrasts"].append(
+            {
+                "candidate": contrast_record_sample(candidate),
+                "blocker": contrast_record_sample(blocker),
+                "contrast_class": contrast_class,
+            }
+        )
+
+
+def summarize_contrast_signal_group(group):
+    fragmented_dimensions = []
+    if len(group["candidate_policies"]) > 1:
+        fragmented_dimensions.append("policy")
+    if len(group["branches"]) > 1:
+        fragmented_dimensions.append("branch")
+    if len(group["pairs"]) > 1:
+        fragmented_dimensions.append("pair")
+    if len(group["duels"]) > 1:
+        fragmented_dimensions.append("duel")
+    return {
+        "signal": group["signal"],
+        "signal_family": signal_family(group["signal"]),
+        "count": group["count"],
+        "state_count": len(group["states"]),
+        "states": sorted(group["states"]),
+        "contrast_class_count": len(group["contrast_classes"]),
+        "contrast_classes": pipe_join(group["contrast_classes"]),
+        "axis_family_count": len(group["axis_families"]),
+        "axis_families": pipe_join(group["axis_families"]),
+        "candidate_policy_count": len(group["candidate_policies"]),
+        "candidate_policies": pipe_join(group["candidate_policies"]),
+        "branch_count": len(group["branches"]),
+        "branches": pipe_join(group["branches"]),
+        "pair_count": len(group["pairs"]),
+        "pairs": pipe_join(group["pairs"]),
+        "duel_count": len(group["duels"]),
+        "duels": pipe_join(group["duels"]),
+        "fragmented_dimensions": pipe_join(fragmented_dimensions),
+        "fragment_count": len(fragmented_dimensions),
+        "sample_contrasts": group["sample_contrasts"],
+    }
+
+
+def sort_contrast_signal_rows(rows):
+    return sorted(
+        rows,
+        key=lambda row: (
+            -row["state_count"],
+            -row["contrast_class_count"],
+            row["fragment_count"],
+            -row["count"],
+            row["signal_family"],
+            row["signal"],
+        ),
+    )
+
+
+def new_contrast_family_group(family):
+    return {
+        "axis_family": family,
+        "count": 0,
+        "states": set(),
+        "contrast_classes": set(),
+        "candidate_policies": set(),
+        "branches": set(),
+        "pairs": set(),
+        "duels": set(),
+    }
+
+
+def add_contrast_family_occurrence(groups, family, candidate, contrast_class):
+    group = groups.setdefault(family, new_contrast_family_group(family))
+    group["count"] += 1
+    state = candidate.get("cross_budget_state_id", "")
+    if state:
+        group["states"].add(state)
+    group["contrast_classes"].add(contrast_class)
+    for field, set_name in [
+        ("candidate", "candidate_policies"),
+        ("branch", "branches"),
+        ("pair", "pairs"),
+        ("duel", "duels"),
+    ]:
+        value = candidate.get(field, "")
+        if value:
+            group[set_name].add(value)
+
+
+def summarize_contrast_family_group(group):
+    fragmented_dimensions = []
+    if len(group["candidate_policies"]) > 1:
+        fragmented_dimensions.append("policy")
+    if len(group["branches"]) > 1:
+        fragmented_dimensions.append("branch")
+    if len(group["pairs"]) > 1:
+        fragmented_dimensions.append("pair")
+    if len(group["duels"]) > 1:
+        fragmented_dimensions.append("duel")
+    return {
+        "axis_family": group["axis_family"],
+        "count": group["count"],
+        "state_count": len(group["states"]),
+        "states": sorted(group["states"]),
+        "contrast_class_count": len(group["contrast_classes"]),
+        "contrast_classes": pipe_join(group["contrast_classes"]),
+        "candidate_policy_count": len(group["candidate_policies"]),
+        "branch_count": len(group["branches"]),
+        "pair_count": len(group["pairs"]),
+        "duel_count": len(group["duels"]),
+        "fragmented_dimensions": pipe_join(fragmented_dimensions),
+        "fragment_count": len(fragmented_dimensions),
+    }
+
+
+def sort_contrast_family_rows(rows):
+    return sorted(
+        rows,
+        key=lambda row: (
+            -row["state_count"],
+            -row["contrast_class_count"],
+            row["fragment_count"],
+            -row["count"],
+            row["axis_family"],
+        ),
+    )
+
+
+def policy_contrast_report(rows, excluded_families, limit):
+    records = policy_contrast_records(rows, excluded_families)
+    records_by_state = defaultdict(list)
+    class_counts = defaultdict(int)
+    for record in records:
+        class_counts[record["record_class"]] += 1
+        state = record.get("cross_budget_state_id", "")
+        if state:
+            records_by_state[state].append(record)
+
+    signal_groups = {}
+    family_groups = {}
+    contrast_rows = []
+    candidate_records = [
+        record for record in records if record["record_class"] == "candidate_better"
+    ]
+    for candidate in candidate_records:
+        state_records = records_by_state.get(candidate.get("cross_budget_state_id", ""), [])
+        for contrast_class in CONTRAST_BLOCKER_CLASSES:
+            siblings = [
+                record
+                for record in state_records
+                if record["record_class"] == contrast_class
+            ]
+            blocker, shared = nearest_policy_contrast_sibling(candidate, siblings)
+            if blocker is None:
+                continue
+            candidate_only = candidate["signals"] - blocker["signals"]
+            candidate_only_families = {
+                family
+                for signal in candidate_only
+                for family in [signal_family(signal)]
+                if not excluded_axis_family(family, excluded_families)
+            }
+            for signal in candidate_only:
+                if excluded_axis_family(signal_family(signal), excluded_families):
+                    continue
+                add_contrast_signal_occurrence(
+                    signal_groups,
+                    signal,
+                    candidate,
+                    blocker,
+                    contrast_class,
+                )
+            for family in candidate_only_families:
+                add_contrast_family_occurrence(
+                    family_groups,
+                    family,
+                    candidate,
+                    contrast_class,
+                )
+            contrast_rows.append(
+                {
+                    "contrast_class": contrast_class,
+                    "candidate": contrast_record_sample(candidate),
+                    "nearest_blocker": contrast_record_sample(blocker),
+                    "shared_signal_count": len(shared),
+                    "candidate_signal_count": len(candidate["signals"]),
+                    "blocker_signal_count": len(blocker["signals"]),
+                    "candidate_only_signal_count": len(candidate_only),
+                    "candidate_only_families": pipe_join(candidate_only_families),
+                    "sample_candidate_only_signals": sorted(candidate_only)[:10],
+                }
+            )
+
+    signal_rows = [
+        summarize_contrast_signal_group(group)
+        for group in signal_groups.values()
+    ]
+    family_rows = [
+        summarize_contrast_family_group(group)
+        for group in family_groups.values()
+    ]
+    repeated_signals = [row for row in signal_rows if row["state_count"] > 1]
+    low_fragmentation_repeated_signals = [
+        row for row in repeated_signals if row["fragment_count"] == 0
+    ]
+    fragmented_repeated_signals = [
+        row for row in repeated_signals if row["fragment_count"] > 0
+    ]
+    repeated_families = [row for row in family_rows if row["state_count"] > 1]
+    low_fragmentation_repeated_families = [
+        row for row in repeated_families if row["fragment_count"] == 0
+    ]
+    fragmented_repeated_families = [
+        row for row in repeated_families if row["fragment_count"] > 0
+    ]
+    if low_fragmentation_repeated_signals or low_fragmentation_repeated_families:
+        decision = "inspect_repeated_outcome_contrast"
+        next_action_value = "validate_contrast_family_in_focused_outcome_slice"
+    elif fragmented_repeated_signals or fragmented_repeated_families:
+        decision = "fragmented_repeated_outcome_contrast"
+        next_action_value = "add_below_fragmented_family_feature_or_archive"
+    elif contrast_rows:
+        decision = "singleton_outcome_contrast_only"
+        next_action_value = "return_to_feature_backlog"
+    else:
+        decision = "no_outcome_contrast_available"
+        next_action_value = "collect_candidate_and_blocker_rows"
+
+    return {
+        "contrast_decision": decision,
+        "source_permission": "no_source",
+        "next_action": next_action_value,
+        "excluded_families": sorted(excluded_families),
+        "record_count": len(records),
+        "record_class_counts": sorted_count_rows(class_counts),
+        "candidate_record_count": len(candidate_records),
+        "contrast_count": len(contrast_rows),
+        "candidate_only_signal_count": len(signal_rows),
+        "repeated_candidate_only_signal_count": len(repeated_signals),
+        "low_fragmentation_repeated_signal_count": len(
+            low_fragmentation_repeated_signals
+        ),
+        "fragmented_repeated_signal_count": len(fragmented_repeated_signals),
+        "candidate_only_family_count": len(family_rows),
+        "repeated_candidate_only_family_count": len(repeated_families),
+        "low_fragmentation_repeated_family_count": len(
+            low_fragmentation_repeated_families
+        ),
+        "fragmented_repeated_family_count": len(fragmented_repeated_families),
+        "top_low_fragmentation_repeated_signals": sort_contrast_signal_rows(
+            low_fragmentation_repeated_signals
+        )[:limit],
+        "top_fragmented_repeated_signals": sort_contrast_signal_rows(
+            fragmented_repeated_signals
+        )[:limit],
+        "top_candidate_only_signals": sort_contrast_signal_rows(signal_rows)[:limit],
+        "top_low_fragmentation_repeated_families": sort_contrast_family_rows(
+            low_fragmentation_repeated_families
+        )[:limit],
+        "top_fragmented_repeated_families": sort_contrast_family_rows(
+            fragmented_repeated_families
+        )[:limit],
+        "top_candidate_only_families": sort_contrast_family_rows(family_rows)[:limit],
+        "sample_contrasts": contrast_rows[:limit],
+    }
+
+
 def workbench_decision(source_rows, blocked_rows):
     if source_rows:
         return "inspect_for_source"
@@ -1481,9 +1932,13 @@ def summarize(
     target_states=None,
     state_axis_limit=None,
     token_families=None,
+    include_contrast=False,
+    exclude_families=None,
 ):
     if overlap_families is None:
         overlap_families = DEFAULT_OVERLAP_FAMILIES
+    if exclude_families is None:
+        exclude_families = set()
     if state_axis_limit is None:
         state_axis_limit = limit
     axis_summaries = collect_policy_axis_summaries(rows)
@@ -1497,7 +1952,7 @@ def summarize(
         target_states=target_states,
         state_axis_limit=state_axis_limit,
     )
-    return {
+    digest = {
         "row_counts": sorted_count_rows(row_type_counts(rows)),
         "policy_decisions": policy_decision_counts(rows),
         **source_status_counts(rows),
@@ -1526,6 +1981,13 @@ def summarize(
             token_families=token_families,
         ),
     }
+    if include_contrast:
+        digest["contrast_report"] = policy_contrast_report(
+            rows,
+            exclude_families,
+            limit,
+        )
+    return digest
 
 
 def main():
@@ -1578,6 +2040,22 @@ def main():
             "(default: candidate-contaminated families from target states)"
         ),
     )
+    parser.add_argument(
+        "--contrast-report",
+        action="store_true",
+        help=(
+            "also emit a postprocess-only candidate-vs-blocker contrast report "
+            "over normalized outcome rows"
+        ),
+    )
+    parser.add_argument(
+        "--exclude-families",
+        default="",
+        help=(
+            "comma-separated axis families to exclude from the contrast report "
+            "(supports aliases such as root_trajectory and race_shape)"
+        ),
+    )
     args = parser.parse_args()
 
     missing = [str(path) for path in args.jsonl if not path.is_file()]
@@ -1595,6 +2073,8 @@ def main():
         token_families=parse_family_filter(args.token_families)
         if args.token_families is not None
         else None,
+        include_contrast=args.contrast_report,
+        exclude_families=parse_excluded_families(args.exclude_families),
     )
     if args.compact:
         json.dump(digest, sys.stdout, sort_keys=True, separators=(",", ":"))
