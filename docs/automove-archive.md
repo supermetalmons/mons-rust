@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Turn-Completion Stability ProV4 Probe
+
+- Temporary test-only candidate source was cut and removed in the same session.
+- The candidate preserved guarded fallbacks, captured the root-selection snapshot only inside `frontier_execute`, and used a cheap same-turn continuation rollout to compare root completion stability against the guarded root.
+- The first structural scout killed it before active-panel spend. `frontier_pro_v4_turn_completion_stability` failed the sampled Pro dashboard at `7-5` versus `shipping_pro_search`, `win_rate=0.5833`, `confidence=0.6128`, candidate average `149.61ms`, and `PRO_PROMOTION_DASHBOARD_STOPLIGHT` `not_promising`. The follow-on policy corpus had global baseline wins `5`, policy wins `7`, no-policy wins `0`, but the candidate never appeared as a winning policy.
+- A looser cut increased sampled-dashboard overrides and improved lower-budget rows, but still did not become promotable: Pro `8-4`, Normal `10-2`, Fast `11-1`, max candidate average `220.67ms`, and stoplight `not_promising`. Weak rows kept rotating across alternating, inner-wedge, split-flank, and corner-chain slices.
+- Durable outcome: cheap same-turn continuation completion is useful diagnostic evidence, but not a promotable ProV4 root selector by itself. It overlaps the old followup/reply-floor lines, stays sampled-only, and does not produce a repeated policy-corpus mechanism.
+
 ## Cross-Budget Static-Eval ProV4 Consensus
 
 - Temporary test-only candidate source was cut and removed in the same session.
