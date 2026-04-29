@@ -319,6 +319,8 @@ SMART_PRO_FORCED_ROOT_ORACLE_MAX_PLIES=<source_corpus_max_plies> \
 cargo test --release --lib smart_automove_pro_forced_root_oracle_probe -- --ignored --nocapture
 ```
 
+After logging one or more forced-root oracle runs, use `scripts/summarize-automove-forced-root-oracle-log.py <log>` before reading raw roots. Read `oracle_decision`, `next_action`, `root_coverage`, `promising_repeated_axes`, and `repeated_winner_axes`. Winner-only repeats are not enough; the digest reports `nonwinner_count` and `winner_precision`, and axes that also appear on losing roots remain postprocess evidence rather than ProV4 source permission.
+
 `smart_automove_pro_decision_record_aggregation_probe` aggregates first-divergence records against `shipping_pro_search` and reports whether the shipping root was selected, pre-accepted, head-selected, legacy-selected, candidate-live, advisor-approved, ordered, preserved, injected, or omitted. Use `SMART_PRO_DECISION_RECORD_SCOPE=nonwins` when the promotion miss is flat losses rather than frontier-worse-than-shipping deltas.
 
 ```sh
