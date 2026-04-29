@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Cross-Budget Static-Eval ProV4 Consensus
+
+- Temporary test-only candidate source was cut and removed in the same session.
+- The candidate ranked the ProV2 scored root pool with a new Fast/Normal/Pro static-eval consensus feature, safety guards, and guarded utility checks. The first smoke version was too loose because it overrode `early_white_fallback` and `late_black_shipping_fallback`, losing the tiny sampled Fast slice `0-2`; the tightened version preserved non-`frontier_execute` guarded fallbacks and matched guarded on that tiny attribution slice.
+- The structural scout still killed it before active-panel spend. `frontier_pro_v4_cross_budget_consensus` fast-failed the sampled dashboard at Pro `6-6` versus `shipping_pro_search`, `win_rate=0.5000`, `confidence=0.0000`, max candidate average `187.31ms`, and `PRO_PROMOTION_DASHBOARD_STOPLIGHT` `not_promising`.
+- The follow-on policy corpus did not expose the candidate as source evidence. With the candidate added to the reset portfolio, the corpus had global baseline wins `5`, policy wins `7`, no-policy wins `0`, but winner policies remained old fragmented routes and `frontier_pro_v4_cross_budget_consensus` never appeared as a winning policy.
+- Durable outcome: cross-budget static eval over root states is another shallow selector signal, not a promotable ProV4 root feature. Do not retry it without a new measured utility component below existing static scoring, guarded fallback preservation, root rank, and `TurnEngineUtility`.
+
 ## Iterative-Deepening Recheck And Advisor Reply-Floor Policy
 
 - Temporary test-only candidate source was cut and removed in the same session.
