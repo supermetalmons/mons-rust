@@ -35,6 +35,37 @@ CONTRAST_BLOCKER_CLASSES = [
     "no_policy",
     "same_outcome",
 ]
+ROOT_POOL_SIGNAL_FIELDS = [
+    "family",
+    "rank_bucket",
+    "advisor_bucket",
+    "path",
+    "safety_detail",
+    "progress",
+    "efficiency",
+    "setup_gain",
+    "soft_priority",
+    "keeps_awake",
+    "reply_floor",
+    "reply_risk",
+    "followup_floor",
+]
+ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
+    ("family_rank", ("family", "rank_bucket")),
+    ("family_path", ("family", "path")),
+    ("family_reply", ("family", "reply_risk")),
+    ("family_progress", ("family", "progress")),
+    ("advisor_family", ("advisor_bucket", "family")),
+    ("path_safety", ("path", "safety_detail")),
+    ("safety_progress", ("safety_detail", "progress")),
+    ("reply_progress", ("reply_risk", "progress")),
+    ("setup_progress", ("setup_gain", "progress")),
+]
+ROOT_POOL_GUARDED_ORIGIN_KINDS = {
+    "guarded_selected",
+    "guarded_pre_accept",
+    "guarded_head",
+}
 
 
 def parse_jsonl_rows(paths):
@@ -1925,6 +1956,416 @@ def policy_contrast_report(rows, excluded_families, contrast_families, limit):
     }
 
 
+def root_pool_rows(rows):
+    return [row for row in rows if row.get("row_type") == "pro_v4_root_pool_root"]
+
+
+def root_pool_origin_kinds(row):
+    return set(split_pipe(row.get("origin_kinds", "")))
+
+
+def root_pool_cross_state(row):
+    return row.get("cross_budget_state_id") or state_id(row)
+
+
+def root_pool_pair(row):
+    baseline = row.get("baseline_move", "")
+    candidate = row.get("candidate_move", "")
+    if baseline or candidate:
+        return f"{baseline}->{candidate}"
+    return ""
+
+
+def root_pool_snapshot_id(row):
+    return "|".join(
+        [
+            state_id(row),
+            f"candidate={row.get('candidate', '')}",
+            f"board={row.get('board', '')}",
+            f"baseline_move={row.get('baseline_move', '')}",
+            f"candidate_move={row.get('candidate_move', '')}",
+        ]
+    )
+
+
+def root_pool_is_candidate_winning_policy(row):
+    return (
+        row.get("portfolio_class") == "candidate_only_win"
+        and "winning_policy_output" in root_pool_origin_kinds(row)
+    )
+
+
+def root_pool_blocker_reasons(row, candidate_cross_states):
+    kinds = root_pool_origin_kinds(row)
+    reasons = set()
+    guarded_kinds = kinds & ROOT_POOL_GUARDED_ORIGIN_KINDS
+    for kind in guarded_kinds:
+        reasons.add(kind)
+
+    is_candidate = root_pool_is_candidate_winning_policy(row)
+    if root_pool_cross_state(row) in candidate_cross_states and not is_candidate:
+        portfolio_class = row.get("portfolio_class", "")
+        if portfolio_class and portfolio_class != "candidate_only_win":
+            reasons.add(f"same_state_{portfolio_class}")
+        if "policy_output" in kinds and "winning_policy_output" not in kinds:
+            reasons.add("same_state_nonwinning_policy_output")
+    return reasons
+
+
+def root_pool_field_value(row, field):
+    value = str(row.get(field, "")).strip()
+    if not value or value == "omitted":
+        return ""
+    return value
+
+
+def root_pool_signal_items(row):
+    items = []
+    for field in ROOT_POOL_SIGNAL_FIELDS:
+        value = root_pool_field_value(row, field)
+        if not value:
+            continue
+        items.append(
+            {
+                "signal": f"root_pool:{field}={value}",
+                "signal_kind": "field_value",
+                "field": field,
+                "value": value,
+            }
+        )
+    for compound, fields in ROOT_POOL_COMPOUND_SIGNAL_FIELDS:
+        values = [root_pool_field_value(row, field) for field in fields]
+        if not all(values):
+            continue
+        value = "|".join(values)
+        items.append(
+            {
+                "signal": f"root_pool:{compound}={value}",
+                "signal_kind": "field_compound",
+                "field": compound,
+                "value": value,
+            }
+        )
+    return items
+
+
+def root_pool_sample_root(row):
+    return {
+        "cross_budget_state_id": root_pool_cross_state(row),
+        "state_id": state_id(row),
+        "portfolio_class": row.get("portfolio_class", ""),
+        "outcome": row.get("outcome", ""),
+        "candidate": row.get("candidate", ""),
+        "duel": row.get("duel", ""),
+        "variant": row.get("variant", ""),
+        "pair": root_pool_pair(row),
+        "origin_kinds": row.get("origin_kinds", ""),
+        "policies": row.get("policies", ""),
+        "family": row.get("family", ""),
+        "rank_bucket": row.get("rank_bucket", ""),
+        "advisor_bucket": row.get("advisor_bucket", ""),
+        "path": row.get("path", ""),
+        "safety_detail": row.get("safety_detail", ""),
+        "progress": row.get("progress", ""),
+        "reply_risk": row.get("reply_risk", ""),
+    }
+
+
+def new_root_pool_signal_group(item):
+    return {
+        "signal": item["signal"],
+        "signal_kind": item["signal_kind"],
+        "field": item["field"],
+        "value": item["value"],
+        "candidate_roots": 0,
+        "candidate_states": set(),
+        "candidate_snapshots": set(),
+        "candidate_profiles": set(),
+        "candidate_policies": set(),
+        "candidate_duels": set(),
+        "candidate_pairs": set(),
+        "candidate_variants": set(),
+        "blocker_roots": 0,
+        "blocker_states": set(),
+        "blocker_snapshots": set(),
+        "blocker_reasons": defaultdict(int),
+        "guarded_blocker_roots": 0,
+        "same_state_blocker_roots": 0,
+        "sample_candidate_roots": [],
+        "sample_blocker_roots": [],
+    }
+
+
+def add_root_pool_candidate_occurrence(group, row):
+    group["candidate_roots"] += 1
+    state = root_pool_cross_state(row)
+    snapshot = root_pool_snapshot_id(row)
+    if state:
+        group["candidate_states"].add(state)
+    if snapshot:
+        group["candidate_snapshots"].add(snapshot)
+    for value in split_pipe(row.get("policies", "")):
+        group["candidate_policies"].add(value)
+    for field, set_name in [
+        ("candidate", "candidate_profiles"),
+        ("duel", "candidate_duels"),
+        ("variant", "candidate_variants"),
+    ]:
+        value = row.get(field, "")
+        if value:
+            group[set_name].add(value)
+    pair = root_pool_pair(row)
+    if pair:
+        group["candidate_pairs"].add(pair)
+    if len(group["sample_candidate_roots"]) < 5:
+        group["sample_candidate_roots"].append(root_pool_sample_root(row))
+
+
+def add_root_pool_blocker_occurrence(group, row, reasons):
+    group["blocker_roots"] += 1
+    state = root_pool_cross_state(row)
+    snapshot = root_pool_snapshot_id(row)
+    if state:
+        group["blocker_states"].add(state)
+    if snapshot:
+        group["blocker_snapshots"].add(snapshot)
+    if reasons & ROOT_POOL_GUARDED_ORIGIN_KINDS:
+        group["guarded_blocker_roots"] += 1
+    if any(reason.startswith("same_state_") for reason in reasons):
+        group["same_state_blocker_roots"] += 1
+    for reason in reasons:
+        group["blocker_reasons"][reason] += 1
+    if len(group["sample_blocker_roots"]) < 5:
+        sample = root_pool_sample_root(row)
+        sample["blocker_reasons"] = pipe_join(reasons)
+        group["sample_blocker_roots"].append(sample)
+
+
+def summarize_root_pool_signal_group(group):
+    fragmented_dimensions = []
+    if len(group["candidate_profiles"]) > 1:
+        fragmented_dimensions.append("candidate")
+    if len(group["candidate_policies"]) > 1:
+        fragmented_dimensions.append("policy")
+    if len(group["candidate_duels"]) > 1:
+        fragmented_dimensions.append("duel")
+    if len(group["candidate_pairs"]) > 1:
+        fragmented_dimensions.append("pair")
+    if len(group["candidate_variants"]) > 1:
+        fragmented_dimensions.append("variant")
+    return {
+        "signal": group["signal"],
+        "signal_kind": group["signal_kind"],
+        "field": group["field"],
+        "value": group["value"],
+        "candidate_root_count": group["candidate_roots"],
+        "candidate_state_count": len(group["candidate_states"]),
+        "candidate_state_ids": sorted(group["candidate_states"]),
+        "candidate_snapshot_count": len(group["candidate_snapshots"]),
+        "candidate_profile_count": len(group["candidate_profiles"]),
+        "candidate_profiles": pipe_join(group["candidate_profiles"]),
+        "candidate_policy_count": len(group["candidate_policies"]),
+        "candidate_policies": pipe_join(group["candidate_policies"]),
+        "candidate_duel_count": len(group["candidate_duels"]),
+        "candidate_duels": pipe_join(group["candidate_duels"]),
+        "candidate_pair_count": len(group["candidate_pairs"]),
+        "candidate_pairs": pipe_join(group["candidate_pairs"]),
+        "candidate_variant_count": len(group["candidate_variants"]),
+        "candidate_variants": pipe_join(group["candidate_variants"]),
+        "blocker_root_count": group["blocker_roots"],
+        "blocker_state_count": len(group["blocker_states"]),
+        "blocker_snapshot_count": len(group["blocker_snapshots"]),
+        "guarded_blocker_root_count": group["guarded_blocker_roots"],
+        "same_state_blocker_root_count": group["same_state_blocker_roots"],
+        "blocker_reason_counts": sorted_count_rows(group["blocker_reasons"]),
+        "candidate_clean_from_blockers": group["blocker_roots"] == 0,
+        "candidate_repeated_across_states": len(group["candidate_states"]) > 1,
+        "candidate_fragmented_dimensions": pipe_join(fragmented_dimensions),
+        "candidate_fragment_count": len(fragmented_dimensions),
+        "candidate_low_fragmentation": not fragmented_dimensions,
+        "sample_candidate_roots": group["sample_candidate_roots"],
+        "sample_blocker_roots": group["sample_blocker_roots"],
+    }
+
+
+def sort_root_pool_signal_rows(rows):
+    return sorted(
+        rows,
+        key=lambda row: (
+            -row["candidate_state_count"],
+            row["candidate_fragment_count"],
+            row["blocker_root_count"],
+            -row["candidate_root_count"],
+            row["field"],
+            row["signal"],
+        ),
+    )
+
+
+def root_pool_discriminator_decision(
+    low_fragmentation_repeated,
+    fragmented_repeated,
+    clean_singleton,
+    contaminated,
+    candidate_roots,
+    root_rows_value,
+):
+    if not root_rows_value:
+        return "no_pro_v4_root_pool_rows"
+    if not candidate_roots:
+        return "no_candidate_only_winning_policy_roots"
+    if low_fragmentation_repeated:
+        return "inspect_repeated_root_pool_discriminator"
+    if fragmented_repeated:
+        return "fragmented_repeated_root_pool_signal"
+    if clean_singleton:
+        return "singleton_root_pool_signal"
+    if contaminated:
+        return "contaminated_root_pool_signals"
+    return "no_candidate_root_pool_signals"
+
+
+def root_pool_discriminator_next_action(decision):
+    return {
+        "inspect_repeated_root_pool_discriminator": (
+            "validate_root_pool_signal_in_focused_outcome_slice"
+        ),
+        "fragmented_repeated_root_pool_signal": (
+            "add_below_fragmented_root_feature_or_archive"
+        ),
+        "singleton_root_pool_signal": "archive_or_widen_root_pool_singletons",
+        "contaminated_root_pool_signals": "add_new_root_feature_or_archive_current_fields",
+        "no_candidate_only_winning_policy_roots": "rerun_with_candidate_only_root_pool_rows",
+        "no_pro_v4_root_pool_rows": "enable_pro_v4_root_pool_export",
+        "no_candidate_root_pool_signals": "add_new_root_feature_or_archive_current_fields",
+    }.get(decision, "review")
+
+
+def root_pool_discriminator_summary(rows, limit):
+    roots = root_pool_rows(rows)
+    candidate_roots = [
+        row for row in roots if root_pool_is_candidate_winning_policy(row)
+    ]
+    candidate_cross_states = {
+        root_pool_cross_state(row) for row in candidate_roots if root_pool_cross_state(row)
+    }
+    candidate_snapshots = {
+        root_pool_snapshot_id(row) for row in candidate_roots if root_pool_snapshot_id(row)
+    }
+
+    blocker_roots = []
+    blocker_reason_by_id = {}
+    for row in roots:
+        reasons = root_pool_blocker_reasons(row, candidate_cross_states)
+        if not reasons:
+            continue
+        blocker_roots.append(row)
+        blocker_reason_by_id[id(row)] = reasons
+
+    groups = {}
+    candidate_signal_fields = defaultdict(int)
+    blocker_signal_fields = defaultdict(int)
+    for row in candidate_roots:
+        for item in root_pool_signal_items(row):
+            group = groups.setdefault(
+                item["signal"], new_root_pool_signal_group(item)
+            )
+            candidate_signal_fields[item["field"]] += 1
+            add_root_pool_candidate_occurrence(group, row)
+    for row in blocker_roots:
+        reasons = blocker_reason_by_id[id(row)]
+        for item in root_pool_signal_items(row):
+            group = groups.setdefault(
+                item["signal"], new_root_pool_signal_group(item)
+            )
+            blocker_signal_fields[item["field"]] += 1
+            add_root_pool_blocker_occurrence(group, row, reasons)
+
+    signal_rows = [
+        summarize_root_pool_signal_group(group)
+        for group in groups.values()
+        if group["candidate_roots"] > 0
+    ]
+    clean = [row for row in signal_rows if row["candidate_clean_from_blockers"]]
+    clean_repeated = [
+        row for row in clean if row["candidate_repeated_across_states"]
+    ]
+    low_fragmentation_repeated = [
+        row for row in clean_repeated if row["candidate_low_fragmentation"]
+    ]
+    fragmented_repeated = [
+        row for row in clean_repeated if not row["candidate_low_fragmentation"]
+    ]
+    clean_singleton = [
+        row for row in clean if not row["candidate_repeated_across_states"]
+    ]
+    contaminated = [
+        row for row in signal_rows if not row["candidate_clean_from_blockers"]
+    ]
+    decision = root_pool_discriminator_decision(
+        low_fragmentation_repeated,
+        fragmented_repeated,
+        clean_singleton,
+        contaminated,
+        candidate_roots,
+        roots,
+    )
+    source_permission_value = (
+        "inspect_for_source"
+        if decision == "inspect_repeated_root_pool_discriminator"
+        else "no_source"
+    )
+    return {
+        "discriminator_decision": decision,
+        "source_permission": source_permission_value,
+        "next_action": root_pool_discriminator_next_action(decision),
+        "root_count": len(roots),
+        "candidate_only_winning_policy_root_count": len(candidate_roots),
+        "candidate_cross_budget_state_count": len(candidate_cross_states),
+        "candidate_cross_budget_state_ids": sorted(candidate_cross_states),
+        "candidate_snapshot_count": len(candidate_snapshots),
+        "blocker_root_count": len(blocker_roots),
+        "guarded_blocker_root_count": sum(
+            1
+            for row in blocker_roots
+            if blocker_reason_by_id[id(row)] & ROOT_POOL_GUARDED_ORIGIN_KINDS
+        ),
+        "same_state_blocker_root_count": sum(
+            1
+            for row in blocker_roots
+            if any(
+                reason.startswith("same_state_")
+                for reason in blocker_reason_by_id[id(row)]
+            )
+        ),
+        "candidate_signal_count": len(signal_rows),
+        "clean_repeated_candidate_signal_count": len(clean_repeated),
+        "low_fragmentation_repeated_candidate_signal_count": len(
+            low_fragmentation_repeated
+        ),
+        "fragmented_repeated_candidate_signal_count": len(fragmented_repeated),
+        "clean_singleton_candidate_signal_count": len(clean_singleton),
+        "contaminated_candidate_signal_count": len(contaminated),
+        "candidate_signal_field_counts": sorted_count_rows(candidate_signal_fields),
+        "blocker_signal_field_counts": sorted_count_rows(blocker_signal_fields),
+        "top_low_fragmentation_repeated_candidate_signals": sort_root_pool_signal_rows(
+            low_fragmentation_repeated
+        )[:limit],
+        "top_fragmented_repeated_candidate_signals": sort_root_pool_signal_rows(
+            fragmented_repeated
+        )[:limit],
+        "top_clean_repeated_candidate_signals": sort_root_pool_signal_rows(
+            clean_repeated
+        )[:limit],
+        "top_clean_singleton_candidate_signals": sort_root_pool_signal_rows(
+            clean_singleton
+        )[:limit],
+        "top_contaminated_candidate_signals": sort_root_pool_signal_rows(
+            contaminated
+        )[:limit],
+    }
+
+
 def workbench_decision(source_rows, blocked_rows):
     if source_rows:
         return "inspect_for_source"
@@ -2006,6 +2447,10 @@ def summarize(
             overlap_families,
             pair_limit=limit,
             token_families=token_families,
+        ),
+        "pro_v4_root_pool_discriminator": root_pool_discriminator_summary(
+            rows,
+            limit=limit,
         ),
     }
     if include_contrast:
