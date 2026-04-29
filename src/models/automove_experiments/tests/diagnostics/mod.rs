@@ -2188,6 +2188,212 @@ fn pro_v4_root_pool_exact_delta_bucket(
     )
 }
 
+#[derive(Default)]
+struct ProV4RootPoolBoardPosture {
+    high_value_own_carrier: usize,
+    high_value_opp_carrier: usize,
+    high_value_free: usize,
+    high_value_total: usize,
+    own_regular_own_carrier: usize,
+    own_regular_opp_carrier: usize,
+    own_regular_free: usize,
+    own_regular_total: usize,
+    own_awake: usize,
+    own_fainted: usize,
+    opp_awake: usize,
+    opp_fainted: usize,
+}
+
+struct ProV4RootPoolBoardFeatures {
+    post_high_value_custody: String,
+    post_high_value_delta: String,
+    post_own_regular_custody: String,
+    post_own_regular_delta: String,
+    post_mon_material: String,
+    post_mon_material_delta: String,
+}
+
+impl ProV4RootPoolBoardFeatures {
+    fn omitted() -> Self {
+        Self {
+            post_high_value_custody: "omitted".to_string(),
+            post_high_value_delta: "omitted".to_string(),
+            post_own_regular_custody: "omitted".to_string(),
+            post_own_regular_delta: "omitted".to_string(),
+            post_mon_material: "omitted".to_string(),
+            post_mon_material_delta: "omitted".to_string(),
+        }
+    }
+}
+
+fn pro_v4_root_pool_is_high_value_mana(mana: Mana, perspective: Color) -> bool {
+    match mana {
+        Mana::Supermana => true,
+        Mana::Regular(color) => color != perspective,
+    }
+}
+
+fn pro_v4_root_pool_is_own_regular_mana(mana: Mana, perspective: Color) -> bool {
+    matches!(mana, Mana::Regular(color) if color == perspective)
+}
+
+fn pro_v4_root_pool_count_delta_bucket(before: usize, after: usize) -> &'static str {
+    pro_policy_mechanism_signed_delta_bucket(after as i32 - before as i32)
+}
+
+fn pro_v4_root_pool_count_field(value: usize) -> &'static str {
+    forced_root_oracle_count_bucket(value)
+}
+
+fn pro_v4_root_pool_board_posture(
+    game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolBoardPosture {
+    let mut posture = ProV4RootPoolBoardPosture::default();
+    for (_, item) in game.board.occupied() {
+        if let Some(mon) = item.mon() {
+            let own = mon.color == perspective;
+            if mon.is_fainted() {
+                if own {
+                    posture.own_fainted += 1;
+                } else {
+                    posture.opp_fainted += 1;
+                }
+            } else if own {
+                posture.own_awake += 1;
+            } else {
+                posture.opp_awake += 1;
+            }
+        }
+
+        let Some(mana) = item.mana().copied() else {
+            continue;
+        };
+        let carrier = match item {
+            Item::MonWithMana { mon, .. } => Some(mon.color),
+            _ => None,
+        };
+        if pro_v4_root_pool_is_high_value_mana(mana, perspective) {
+            posture.high_value_total += 1;
+            match carrier {
+                Some(color) if color == perspective => posture.high_value_own_carrier += 1,
+                Some(_) => posture.high_value_opp_carrier += 1,
+                None => posture.high_value_free += 1,
+            }
+        } else if pro_v4_root_pool_is_own_regular_mana(mana, perspective) {
+            posture.own_regular_total += 1;
+            match carrier {
+                Some(color) if color == perspective => posture.own_regular_own_carrier += 1,
+                Some(_) => posture.own_regular_opp_carrier += 1,
+                None => posture.own_regular_free += 1,
+            }
+        }
+    }
+    posture
+}
+
+fn pro_v4_root_pool_custody_bucket(
+    own_carrier: usize,
+    opp_carrier: usize,
+    free: usize,
+    total: usize,
+) -> String {
+    format!(
+        "own_carrier={};opp_carrier={};free={};total={}",
+        pro_v4_root_pool_count_field(own_carrier),
+        pro_v4_root_pool_count_field(opp_carrier),
+        pro_v4_root_pool_count_field(free),
+        pro_v4_root_pool_count_field(total),
+    )
+}
+
+fn pro_v4_root_pool_custody_delta_bucket(
+    before_own_carrier: usize,
+    after_own_carrier: usize,
+    before_opp_carrier: usize,
+    after_opp_carrier: usize,
+    before_free: usize,
+    after_free: usize,
+    before_total: usize,
+    after_total: usize,
+) -> String {
+    format!(
+        "own_carrier={};opp_carrier={};free={};total={}",
+        pro_v4_root_pool_count_delta_bucket(before_own_carrier, after_own_carrier),
+        pro_v4_root_pool_count_delta_bucket(before_opp_carrier, after_opp_carrier),
+        pro_v4_root_pool_count_delta_bucket(before_free, after_free),
+        pro_v4_root_pool_count_delta_bucket(before_total, after_total),
+    )
+}
+
+fn pro_v4_root_pool_mon_material_bucket(posture: &ProV4RootPoolBoardPosture) -> String {
+    format!(
+        "own_awake={};own_fainted={};opp_awake={};opp_fainted={}",
+        pro_v4_root_pool_count_field(posture.own_awake),
+        pro_v4_root_pool_count_field(posture.own_fainted),
+        pro_v4_root_pool_count_field(posture.opp_awake),
+        pro_v4_root_pool_count_field(posture.opp_fainted),
+    )
+}
+
+fn pro_v4_root_pool_mon_material_delta_bucket(
+    before: &ProV4RootPoolBoardPosture,
+    after: &ProV4RootPoolBoardPosture,
+) -> String {
+    format!(
+        "own_awake={};own_fainted={};opp_awake={};opp_fainted={}",
+        pro_v4_root_pool_count_delta_bucket(before.own_awake, after.own_awake),
+        pro_v4_root_pool_count_delta_bucket(before.own_fainted, after.own_fainted),
+        pro_v4_root_pool_count_delta_bucket(before.opp_awake, after.opp_awake),
+        pro_v4_root_pool_count_delta_bucket(before.opp_fainted, after.opp_fainted),
+    )
+}
+
+fn pro_v4_root_pool_board_features(
+    before_game: &MonsGame,
+    after_game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolBoardFeatures {
+    let before = pro_v4_root_pool_board_posture(before_game, perspective);
+    let after = pro_v4_root_pool_board_posture(after_game, perspective);
+    ProV4RootPoolBoardFeatures {
+        post_high_value_custody: pro_v4_root_pool_custody_bucket(
+            after.high_value_own_carrier,
+            after.high_value_opp_carrier,
+            after.high_value_free,
+            after.high_value_total,
+        ),
+        post_high_value_delta: pro_v4_root_pool_custody_delta_bucket(
+            before.high_value_own_carrier,
+            after.high_value_own_carrier,
+            before.high_value_opp_carrier,
+            after.high_value_opp_carrier,
+            before.high_value_free,
+            after.high_value_free,
+            before.high_value_total,
+            after.high_value_total,
+        ),
+        post_own_regular_custody: pro_v4_root_pool_custody_bucket(
+            after.own_regular_own_carrier,
+            after.own_regular_opp_carrier,
+            after.own_regular_free,
+            after.own_regular_total,
+        ),
+        post_own_regular_delta: pro_v4_root_pool_custody_delta_bucket(
+            before.own_regular_own_carrier,
+            after.own_regular_own_carrier,
+            before.own_regular_opp_carrier,
+            after.own_regular_opp_carrier,
+            before.own_regular_free,
+            after.own_regular_free,
+            before.own_regular_total,
+            after.own_regular_total,
+        ),
+        post_mon_material: pro_v4_root_pool_mon_material_bucket(&after),
+        post_mon_material_delta: pro_v4_root_pool_mon_material_delta_bucket(&before, &after),
+    }
+}
+
 fn pro_policy_mechanism_advisor_class(
     advisor: Option<&crate::models::mons_game_model::ProV2RootAdvisorDecision>,
     move_fen: &str,
@@ -2842,6 +3048,7 @@ fn pro_v4_root_pool_print_snapshot(
             post_drainer_safety,
             post_exact_pressure,
             post_exact_delta,
+            board_features,
         ) = if let Some(root) = root {
             let family = MonsGameModel::turn_engine_root_evaluation_family(root);
             let reply_snapshot = MonsGameModel::root_reply_risk_snapshot(
@@ -2910,6 +3117,8 @@ fn pro_v4_root_pool_print_snapshot(
                     "inactive".to_string(),
                 )
             };
+            let board_features =
+                pro_v4_root_pool_board_features(&game, &root.game, game.active_color);
             (
                 Some(root.root_rank),
                 Some(root.score),
@@ -2946,6 +3155,7 @@ fn pro_v4_root_pool_print_snapshot(
                 post_drainer_safety,
                 post_exact_pressure,
                 post_exact_delta,
+                board_features,
             )
         } else {
             (
@@ -2970,10 +3180,11 @@ fn pro_v4_root_pool_print_snapshot(
                 "omitted".to_string(),
                 "omitted".to_string(),
                 "omitted".to_string(),
+                ProV4RootPoolBoardFeatures::omitted(),
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -3023,6 +3234,12 @@ fn pro_v4_root_pool_print_snapshot(
             json_escape(&post_drainer_safety),
             json_escape(&post_exact_pressure),
             json_escape(&post_exact_delta),
+            json_escape(&board_features.post_high_value_custody),
+            json_escape(&board_features.post_high_value_delta),
+            json_escape(&board_features.post_own_regular_custody),
+            json_escape(&board_features.post_own_regular_delta),
+            json_escape(&board_features.post_mon_material),
+            json_escape(&board_features.post_mon_material_delta),
         );
     }
 }

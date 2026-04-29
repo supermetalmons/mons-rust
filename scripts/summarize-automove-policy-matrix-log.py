@@ -1550,6 +1550,12 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_turn_status",
                 "post_exact_pressure",
                 "post_exact_delta",
+                "post_high_value_custody",
+                "post_high_value_delta",
+                "post_own_regular_custody",
+                "post_own_regular_delta",
+                "post_mon_material",
+                "post_mon_material_delta",
             ]:
                 winning_root_field_counts[field][root.get(field, "")] += 1
                 if root.get("portfolio_class", "") == "candidate_only_win":

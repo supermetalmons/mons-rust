@@ -56,6 +56,12 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_drainer_safety",
     "post_exact_pressure",
     "post_exact_delta",
+    "post_high_value_custody",
+    "post_high_value_delta",
+    "post_own_regular_custody",
+    "post_own_regular_delta",
+    "post_mon_material",
+    "post_mon_material_delta",
 ]
 ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_rank", ("family", "rank_bucket")),
@@ -70,6 +76,10 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_post_pressure", ("family", "post_exact_pressure")),
     ("progress_post_delta", ("progress", "post_exact_delta")),
     ("path_post_delta", ("path", "post_exact_delta")),
+    ("family_high_value_custody", ("family", "post_high_value_custody")),
+    ("progress_high_value_delta", ("progress", "post_high_value_delta")),
+    ("path_high_value_delta", ("path", "post_high_value_delta")),
+    ("family_mon_material_delta", ("family", "post_mon_material_delta")),
 ]
 ROOT_POOL_GUARDED_ORIGIN_KINDS = {
     "guarded_selected",
@@ -95,6 +105,12 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_drainer_safety",
     "post_exact_pressure",
     "post_exact_delta",
+    "post_high_value_custody",
+    "post_high_value_delta",
+    "post_own_regular_custody",
+    "post_own_regular_delta",
+    "post_mon_material",
+    "post_mon_material_delta",
 ]
 ROOT_POOL_DELTA_NUMERIC_FIELDS = [
     "rank",
@@ -2107,6 +2123,12 @@ def root_pool_sample_root(row):
         "post_turn_status": row.get("post_turn_status", ""),
         "post_exact_pressure": row.get("post_exact_pressure", ""),
         "post_exact_delta": row.get("post_exact_delta", ""),
+        "post_high_value_custody": row.get("post_high_value_custody", ""),
+        "post_high_value_delta": row.get("post_high_value_delta", ""),
+        "post_own_regular_custody": row.get("post_own_regular_custody", ""),
+        "post_own_regular_delta": row.get("post_own_regular_delta", ""),
+        "post_mon_material": row.get("post_mon_material", ""),
+        "post_mon_material_delta": row.get("post_mon_material_delta", ""),
     }
 
 
