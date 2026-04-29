@@ -1580,6 +1580,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_action_threat_delta",
                 "post_role_state",
                 "post_role_state_delta",
+                "post_base_recovery",
+                "post_base_recovery_delta",
             ]:
                 winning_root_field_counts[field][root.get(field, "")] += 1
                 if root.get("portfolio_class", "") == "candidate_only_win":

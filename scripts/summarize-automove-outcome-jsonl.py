@@ -86,6 +86,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_action_threat_delta",
     "post_role_state",
     "post_role_state_delta",
+    "post_base_recovery",
+    "post_base_recovery_delta",
 ]
 ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_rank", ("family", "rank_bucket")),
@@ -140,6 +142,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_role_state", ("family", "post_role_state")),
     ("progress_role_state_delta", ("progress", "post_role_state_delta")),
     ("path_role_state_delta", ("path", "post_role_state_delta")),
+    ("family_base_recovery", ("family", "post_base_recovery")),
+    ("progress_base_recovery_delta", ("progress", "post_base_recovery_delta")),
+    ("path_base_recovery_delta", ("path", "post_base_recovery_delta")),
 ]
 ROOT_POOL_GUARDED_ORIGIN_KINDS = {
     "guarded_selected",
@@ -195,6 +200,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_action_threat_delta",
     "post_role_state",
     "post_role_state_delta",
+    "post_base_recovery",
+    "post_base_recovery_delta",
 ]
 ROOT_POOL_DELTA_NUMERIC_FIELDS = [
     "rank",
@@ -2237,6 +2244,8 @@ def root_pool_sample_root(row):
         "post_action_threat_delta": row.get("post_action_threat_delta", ""),
         "post_role_state": row.get("post_role_state", ""),
         "post_role_state_delta": row.get("post_role_state_delta", ""),
+        "post_base_recovery": row.get("post_base_recovery", ""),
+        "post_base_recovery_delta": row.get("post_base_recovery_delta", ""),
     }
 
 
