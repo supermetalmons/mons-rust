@@ -71,6 +71,12 @@ def parse_family_filter(value):
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def parse_state_filter(value):
+    if value is None:
+        return None
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 def state_id(row):
     return row.get("state_id") or row.get("cross_budget_state_id") or ""
 
@@ -566,6 +572,395 @@ def family_overlap_summary(rows, families):
     }
 
 
+def new_state_axis_detail(axis):
+    return {
+        "axis": axis,
+        "axis_family": axis_family(axis),
+        "record_count": 0,
+        "axis_sources": defaultdict(int),
+        "policies": set(),
+        "duels": set(),
+        "branches": set(),
+        "pairs": set(),
+        "portfolio_classes": set(),
+        "outcomes": set(),
+        "first_diff_plies": set(),
+    }
+
+
+def new_state_discriminator_group(state):
+    return {
+        "cross_budget_state_id": state,
+        "panel": "",
+        "seed_family": "",
+        "repeat": "",
+        "opening_index": "",
+        "variant": "",
+        "candidate_is_white": "",
+        "record_classes": defaultdict(int),
+        "families_by_class": defaultdict(set),
+        "policies_by_class": defaultdict(set),
+        "duels_by_class": defaultdict(set),
+        "branches_by_class": defaultdict(set),
+        "pairs_by_class": defaultdict(set),
+        "axes_by_class": defaultdict(dict),
+    }
+
+
+def add_state_axis_detail(group, row):
+    record_class = row.get("record_class", "unknown")
+    axis = row.get("axis", "none")
+    axes = group["axes_by_class"][record_class]
+    detail = axes.setdefault(axis, new_state_axis_detail(axis))
+    detail["record_count"] += 1
+    detail["axis_sources"][row.get("axis_source", "")] += 1
+    set_fields = {
+        "candidate": "policies",
+        "duel": "duels",
+        "branch": "branches",
+        "pair": "pairs",
+        "portfolio_class": "portfolio_classes",
+        "outcome": "outcomes",
+    }
+    for field, set_field in set_fields.items():
+        value = row.get(field, "")
+        if value:
+            detail[set_field].add(value)
+    first_diff_ply = row.get("first_diff_ply", "")
+    if first_diff_ply not in {"", None}:
+        detail["first_diff_plies"].add(first_diff_ply)
+
+
+def add_state_discriminator_row(groups, row):
+    cross_state = row.get("cross_budget_state_id") or state_id(row)
+    if not cross_state:
+        return
+    group = groups.setdefault(cross_state, new_state_discriminator_group(cross_state))
+    for field in [
+        "panel",
+        "seed_family",
+        "repeat",
+        "opening_index",
+        "variant",
+        "candidate_is_white",
+    ]:
+        if group[field] == "":
+            group[field] = row.get(field, "")
+
+    record_class = row.get("record_class", "unknown")
+    family = axis_family(row.get("axis", "none"))
+    group["record_classes"][record_class] += 1
+    group["families_by_class"][record_class].add(family)
+    for field, set_name in [
+        ("candidate", "policies_by_class"),
+        ("duel", "duels_by_class"),
+        ("branch", "branches_by_class"),
+        ("pair", "pairs_by_class"),
+    ]:
+        value = row.get(field, "")
+        if value:
+            group[set_name][record_class].add(value)
+    add_state_axis_detail(group, row)
+
+
+def state_discriminator_groups(rows):
+    groups = {}
+    for row in rows:
+        if row.get("row_type") != "policy_axis":
+            continue
+        add_state_discriminator_row(groups, row)
+    return groups
+
+
+def pipe_join(items):
+    return "|".join(str(item) for item in sorted(items, key=str))
+
+
+def summarize_state_axis_detail(detail, overlap_classes=None):
+    if overlap_classes is None:
+        overlap_classes = []
+    plies = sorted(detail["first_diff_plies"], key=str)
+    return {
+        "axis": detail["axis"],
+        "axis_family": detail["axis_family"],
+        "record_count": detail["record_count"],
+        "axis_sources": "|".join(
+            item["key"] for item in sorted_count_rows(detail["axis_sources"])
+        ),
+        "overlap_classes": "|".join(sorted(overlap_classes)),
+        "policy_count": len(detail["policies"]),
+        "policies": pipe_join(detail["policies"]),
+        "duel_count": len(detail["duels"]),
+        "duels": pipe_join(detail["duels"]),
+        "branch_count": len(detail["branches"]),
+        "branches": pipe_join(detail["branches"]),
+        "pair_count": len(detail["pairs"]),
+        "pairs": pipe_join(detail["pairs"]),
+        "portfolio_classes": pipe_join(detail["portfolio_classes"]),
+        "outcomes": pipe_join(detail["outcomes"]),
+        "first_diff_ply_count": len(plies),
+        "first_diff_plies": pipe_join(plies),
+    }
+
+
+def sorted_state_axis_rows(group, record_class, axes, limit):
+    class_axes = group["axes_by_class"].get(record_class, {})
+    baseline_axes = set(group["axes_by_class"].get("baseline_better", {}))
+    no_policy_axes = set(group["axes_by_class"].get("no_policy", {}))
+    same_outcome_axes = set(group["axes_by_class"].get("same_outcome", {}))
+    rows = []
+    for axis in axes:
+        detail = class_axes.get(axis)
+        if not detail:
+            continue
+        overlap_classes = []
+        if axis in baseline_axes and record_class != "baseline_better":
+            overlap_classes.append("baseline_better")
+        if axis in no_policy_axes and record_class != "no_policy":
+            overlap_classes.append("no_policy")
+        if axis in same_outcome_axes and record_class != "same_outcome":
+            overlap_classes.append("same_outcome")
+        rows.append(summarize_state_axis_detail(detail, overlap_classes))
+    return sorted(
+        rows,
+        key=lambda row: (
+            -row["record_count"],
+            row["axis_family"],
+            row["axis"],
+        ),
+    )[:limit]
+
+
+def clean_state_axis(detail):
+    return (
+        len(detail["policies"]) <= 1
+        and len(detail["branches"]) <= 1
+        and len(detail["pairs"]) <= 1
+    )
+
+
+def default_state_targets_from_family_overlap(family_summary):
+    state_family_counts = defaultdict(int)
+    contaminated_family_counts = defaultdict(int)
+    for row in family_summary.get("family_rows", []):
+        baseline_or_no_policy = set(row["baseline_state_ids"]) | set(
+            row["no_policy_state_ids"]
+        )
+        for state in row["candidate_state_ids"]:
+            state_family_counts[state] += 1
+            if state in baseline_or_no_policy:
+                contaminated_family_counts[state] += 1
+    shared_contaminated = [
+        state
+        for state, count in state_family_counts.items()
+        if count > 1 and contaminated_family_counts.get(state, 0) > 0
+    ]
+    if shared_contaminated:
+        return sorted(
+            shared_contaminated,
+            key=lambda state: (
+                -state_family_counts[state],
+                -contaminated_family_counts[state],
+                state,
+            ),
+        )
+    shared = [state for state, count in state_family_counts.items() if count > 1]
+    if shared:
+        return sorted(shared, key=lambda state: (-state_family_counts[state], state))
+    return sorted(state_family_counts)
+
+
+def state_discriminator_row_decision(row):
+    if not row["present"]:
+        return "missing_state"
+    if row["candidate_axis_count"] == 0:
+        return "no_candidate_state_axes"
+    if row["candidate_unique_axis_count"] == 0:
+        return "no_state_discriminator"
+    if row["candidate_unique_family_count"] == 0:
+        return "no_unique_state_family"
+    if row["clean_unique_candidate_axis_count"] > 0:
+        return "inspect_state_candidate_axes"
+    return "fragmented_state_discriminator"
+
+
+def summarize_state_discriminator_group(group, state_axis_limit):
+    class_axes = group["axes_by_class"]
+    candidate_axes = set(class_axes.get("candidate_better", {}))
+    baseline_axes = set(class_axes.get("baseline_better", {}))
+    no_policy_axes = set(class_axes.get("no_policy", {}))
+    same_outcome_axes = set(class_axes.get("same_outcome", {}))
+    contaminating_axes = baseline_axes | no_policy_axes
+    candidate_unique_axes = candidate_axes - contaminating_axes
+    candidate_contaminated_axes = candidate_axes & contaminating_axes
+    candidate_same_outcome_axes = candidate_axes & same_outcome_axes
+    candidate_details = class_axes.get("candidate_better", {})
+    clean_unique_axes = [
+        axis
+        for axis in candidate_unique_axes
+        if clean_state_axis(candidate_details[axis])
+    ]
+
+    candidate_families = group["families_by_class"].get("candidate_better", set())
+    baseline_families = group["families_by_class"].get("baseline_better", set())
+    no_policy_families = group["families_by_class"].get("no_policy", set())
+    contaminating_families = baseline_families | no_policy_families
+    row = {
+        "cross_budget_state_id": group["cross_budget_state_id"],
+        "present": True,
+        "panel": group["panel"],
+        "seed_family": group["seed_family"],
+        "repeat": group["repeat"],
+        "opening_index": group["opening_index"],
+        "variant": group["variant"],
+        "candidate_is_white": group["candidate_is_white"],
+        "record_class_counts": sorted_count_rows(group["record_classes"]),
+        "candidate_axis_count": len(candidate_axes),
+        "baseline_axis_count": len(baseline_axes),
+        "no_policy_axis_count": len(no_policy_axes),
+        "same_outcome_axis_count": len(same_outcome_axes),
+        "candidate_unique_axis_count": len(candidate_unique_axes),
+        "clean_unique_candidate_axis_count": len(clean_unique_axes),
+        "candidate_contaminated_axis_count": len(candidate_contaminated_axes),
+        "candidate_baseline_overlap_axis_count": len(candidate_axes & baseline_axes),
+        "candidate_no_policy_overlap_axis_count": len(candidate_axes & no_policy_axes),
+        "candidate_same_outcome_overlap_axis_count": len(
+            candidate_same_outcome_axes
+        ),
+        "candidate_family_count": len(candidate_families),
+        "candidate_unique_family_count": len(
+            candidate_families - contaminating_families
+        ),
+        "candidate_contaminated_family_count": len(
+            candidate_families & contaminating_families
+        ),
+        "candidate_families": pipe_join(candidate_families),
+        "baseline_families": pipe_join(baseline_families),
+        "no_policy_families": pipe_join(no_policy_families),
+        "candidate_unique_families": pipe_join(
+            candidate_families - contaminating_families
+        ),
+        "candidate_contaminated_families": pipe_join(
+            candidate_families & contaminating_families
+        ),
+        "candidate_policy_count": len(
+            group["policies_by_class"].get("candidate_better", set())
+        ),
+        "candidate_policies": pipe_join(
+            group["policies_by_class"].get("candidate_better", set())
+        ),
+        "baseline_policy_count": len(
+            group["policies_by_class"].get("baseline_better", set())
+        ),
+        "baseline_policies": pipe_join(
+            group["policies_by_class"].get("baseline_better", set())
+        ),
+        "no_policy_candidate_count": len(
+            group["policies_by_class"].get("no_policy", set())
+        ),
+        "no_policy_candidates": pipe_join(
+            group["policies_by_class"].get("no_policy", set())
+        ),
+        "candidate_branch_count": len(
+            group["branches_by_class"].get("candidate_better", set())
+        ),
+        "candidate_pair_count": len(
+            group["pairs_by_class"].get("candidate_better", set())
+        ),
+        "top_candidate_unique_axes": sorted_state_axis_rows(
+            group, "candidate_better", candidate_unique_axes, state_axis_limit
+        ),
+        "top_candidate_contaminated_axes": sorted_state_axis_rows(
+            group, "candidate_better", candidate_contaminated_axes, state_axis_limit
+        ),
+        "top_baseline_axes": sorted_state_axis_rows(
+            group, "baseline_better", baseline_axes, state_axis_limit
+        ),
+        "top_no_policy_axes": sorted_state_axis_rows(
+            group, "no_policy", no_policy_axes, state_axis_limit
+        ),
+    }
+    row["state_discriminator_decision"] = state_discriminator_row_decision(row)
+    return row
+
+
+def missing_state_discriminator_row(state):
+    return {
+        "cross_budget_state_id": state,
+        "present": False,
+        "candidate_axis_count": 0,
+        "baseline_axis_count": 0,
+        "no_policy_axis_count": 0,
+        "same_outcome_axis_count": 0,
+        "candidate_unique_axis_count": 0,
+        "clean_unique_candidate_axis_count": 0,
+        "candidate_contaminated_axis_count": 0,
+        "state_discriminator_decision": "missing_state",
+    }
+
+
+def state_discriminator_decision(state_rows):
+    if not state_rows:
+        return "no_target_states"
+    decisions = [row["state_discriminator_decision"] for row in state_rows]
+    if all(decision == "missing_state" for decision in decisions):
+        return "target_states_missing"
+    if "inspect_state_candidate_axes" in decisions:
+        return "inspect_state_candidate_axes"
+    if "fragmented_state_discriminator" in decisions:
+        return "fragmented_state_discriminator"
+    if "no_unique_state_family" in decisions:
+        return "no_state_family_discriminator"
+    if "no_state_discriminator" in decisions:
+        return "no_state_discriminator"
+    if "no_candidate_state_axes" in decisions:
+        return "no_candidate_state_axes"
+    return "review_state_discriminator"
+
+
+def state_discriminator_next_action(decision):
+    return {
+        "inspect_state_candidate_axes": "inspect_unique_state_axes_before_feature",
+        "fragmented_state_discriminator": "archive_or_add_below_policy_feature",
+        "no_state_family_discriminator": "archive_current_families_or_add_new_feature_axis",
+        "no_state_discriminator": "archive_contaminated_families",
+        "no_candidate_state_axes": "try_next_state_set",
+        "target_states_missing": "rerun_jsonl_with_target_states",
+        "no_target_states": "try_next_family_set",
+    }.get(decision, "review")
+
+
+def state_discriminator_summary(
+    rows,
+    family_summary,
+    target_states=None,
+    state_axis_limit=8,
+):
+    if target_states is None:
+        target_states = default_state_targets_from_family_overlap(family_summary)
+        target_source = (
+            f"family_overlap_{family_summary.get('family_overlap_decision', 'unknown')}"
+        )
+    else:
+        target_source = "cli_states"
+    groups = state_discriminator_groups(rows)
+    state_rows = [
+        summarize_state_discriminator_group(groups[state], state_axis_limit)
+        if state in groups
+        else missing_state_discriminator_row(state)
+        for state in target_states
+    ]
+    decision = state_discriminator_decision(state_rows)
+    return {
+        "target_source": target_source,
+        "target_state_count": len(target_states),
+        "target_state_ids": target_states,
+        "state_rows": state_rows,
+        "state_discriminator_decision": decision,
+        "next_action": state_discriminator_next_action(decision),
+    }
+
+
 def workbench_decision(source_rows, blocked_rows):
     if source_rows:
         return "inspect_for_source"
@@ -592,13 +987,22 @@ def source_permission(decision):
     return "no_source"
 
 
-def summarize(rows, limit=12, overlap_families=None):
+def summarize(
+    rows,
+    limit=12,
+    overlap_families=None,
+    target_states=None,
+    state_axis_limit=None,
+):
     if overlap_families is None:
         overlap_families = DEFAULT_OVERLAP_FAMILIES
+    if state_axis_limit is None:
+        state_axis_limit = limit
     axis_summaries = collect_policy_axis_summaries(rows)
     source_rows = source_candidate_rows(rows, axis_summaries)
     blocked_rows = blocked_candidate_rows(rows, axis_summaries)
     decision = workbench_decision(source_rows, blocked_rows)
+    family_summary = family_overlap_summary(rows, overlap_families)
     return {
         "row_counts": sorted_count_rows(row_type_counts(rows)),
         "policy_decisions": policy_decision_counts(rows),
@@ -611,7 +1015,13 @@ def summarize(rows, limit=12, overlap_families=None):
         "top_source_candidate_axes": source_rows[:limit],
         "top_blocked_candidate_axes": blocked_rows[:limit],
         "blocked_axis_family_rollups": family_rollups(blocked_rows)[:limit],
-        "family_overlap": family_overlap_summary(rows, overlap_families),
+        "family_overlap": family_summary,
+        "state_discriminator": state_discriminator_summary(
+            rows,
+            family_summary,
+            target_states=target_states,
+            state_axis_limit=state_axis_limit,
+        ),
     }
 
 
@@ -643,6 +1053,20 @@ def main():
             f"(default: {','.join(DEFAULT_OVERLAP_FAMILIES)})"
         ),
     )
+    parser.add_argument(
+        "--states",
+        default=None,
+        help=(
+            "comma-separated cross-budget state ids for the state discriminator "
+            "drilldown (default: shared contaminated family-overlap states)"
+        ),
+    )
+    parser.add_argument(
+        "--state-axis-limit",
+        type=int,
+        default=None,
+        help="maximum axes per state discriminator section (default: --limit)",
+    )
     args = parser.parse_args()
 
     missing = [str(path) for path in args.jsonl if not path.is_file()]
@@ -653,6 +1077,10 @@ def main():
         parse_jsonl_rows(args.jsonl),
         limit=max(1, args.limit),
         overlap_families=parse_family_filter(args.families),
+        target_states=parse_state_filter(args.states),
+        state_axis_limit=max(1, args.state_axis_limit)
+        if args.state_axis_limit is not None
+        else None,
     )
     if args.compact:
         json.dump(digest, sys.stdout, sort_keys=True, separators=(",", ":"))
