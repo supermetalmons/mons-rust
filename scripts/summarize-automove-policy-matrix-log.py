@@ -514,6 +514,61 @@ def summarize_corpus_axes(events, limit=8):
     }
 
 
+def record_axis_filter_tokens(record_axis_filter):
+    if not record_axis_filter or record_axis_filter == "all":
+        return []
+    return [token.strip() for token in record_axis_filter.split(",") if token.strip()]
+
+
+def record_axis_filter_text(record):
+    return "|".join(
+        value
+        for value in [
+            record.get("mechanism_axes", ""),
+            record.get("baseline_better_mechanism_axes", ""),
+        ]
+        if value
+    )
+
+
+def new_axis_filter_match_group(token):
+    group = new_corpus_axis_group(token)
+    group["axis_filter"] = token
+    return group
+
+
+def add_axis_filter_match_record(group, record, event):
+    record_class = corpus_axis_record_class(record)
+    state_key = corpus_axis_summary_state_key(record)
+    group["record_count"] += 1
+    group["states"].add(state_key)
+    group["class_records"][record_class] += 1
+    group["class_states"][record_class].add(state_key)
+    group["candidates"].add(record.get("candidate", ""))
+    group["branches"].add(corpus_record_branch(record))
+    group["pairs"].add(corpus_record_pair(record))
+    group["panels"].add(record.get("panel", ""))
+    group["duels"].add(record.get("duel", ""))
+    group["variants"].add(record.get("variant", ""))
+    group["source_logs"].add(event["source_log"])
+
+
+def summarize_record_axis_filter_matches(events, record_axis_filter):
+    tokens = record_axis_filter_tokens(record_axis_filter)
+    if not tokens:
+        return []
+    groups = {token: new_axis_filter_match_group(token) for token in tokens}
+    for event in events:
+        if event["event_type"] != "PRO_POLICY_MATRIX_CORPUS_RECORD":
+            continue
+        record = event["data"]
+        axis_text = record_axis_filter_text(record)
+        for token, group in groups.items():
+            if token in axis_text:
+                add_axis_filter_match_record(group, record, event)
+    return [summarize_corpus_axis_group(groups[token]) for token in tokens]
+
+
 def opening_state_group_key(record):
     return tuple(
         record.get(field, "")
@@ -777,6 +832,9 @@ def summarize(events):
                 "permission": permission_from_filter_summary(filter_summary),
                 "summary": filter_summary,
                 "details": details,
+                "axis_filter_matches": summarize_record_axis_filter_matches(
+                    events, record_axis_filter
+                ),
             }
         )
 
