@@ -93,6 +93,7 @@ Use this path when `AUTOMOVE_IDEAS.md` says there is no live challenger or when 
 - Do not edit runtime code for a broad Pro change unless the candidate is strong on both panels.
 - If no candidate is strong on both panels, use `pro-policy-corpus` to look for repeated root/advisor/head/utility mechanisms across the existing policy portfolio before designing another selector.
 - Sweep, dashboard, policy-matrix, policy-corpus, outcome-corpus, cross-budget, winner, and attribution stages print `AUTOMOVE_SWEEP_CANDIDATE_METADATA` before the logged test run. Read the mechanism, expected invariant, risk rows, and kill condition before interpreting any candidate as new evidence.
+- Use `./scripts/run-automove-candidate-metadata-smoke.sh` to run the capped sampled structural-scout outcome-corpus smoke and validate candidate metadata output through one stable command path.
 - Use `--corpus` on the structural scout when the repo is in reset mode:
 
 ```sh
