@@ -72,6 +72,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_attack_exposure_delta",
     "post_support_guard",
     "post_support_guard_delta",
+    "post_territory",
+    "post_territory_delta",
 ]
 ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_rank", ("family", "rank_bucket")),
@@ -105,6 +107,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_support_guard", ("family", "post_support_guard")),
     ("progress_support_guard_delta", ("progress", "post_support_guard_delta")),
     ("path_support_guard_delta", ("path", "post_support_guard_delta")),
+    ("family_territory", ("family", "post_territory")),
+    ("progress_territory_delta", ("progress", "post_territory_delta")),
+    ("path_territory_delta", ("path", "post_territory_delta")),
 ]
 ROOT_POOL_GUARDED_ORIGIN_KINDS = {
     "guarded_selected",
@@ -146,6 +151,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_attack_exposure_delta",
     "post_support_guard",
     "post_support_guard_delta",
+    "post_territory",
+    "post_territory_delta",
 ]
 ROOT_POOL_DELTA_NUMERIC_FIELDS = [
     "rank",
@@ -2174,6 +2181,8 @@ def root_pool_sample_root(row):
         "post_attack_exposure_delta": row.get("post_attack_exposure_delta", ""),
         "post_support_guard": row.get("post_support_guard", ""),
         "post_support_guard_delta": row.get("post_support_guard_delta", ""),
+        "post_territory": row.get("post_territory", ""),
+        "post_territory_delta": row.get("post_territory_delta", ""),
     }
 
 

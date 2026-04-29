@@ -2325,6 +2325,36 @@ impl ProV4RootPoolSupportGuardFeatures {
     }
 }
 
+#[derive(Default)]
+struct ProV4RootPoolTerritoryPosture {
+    own_front: usize,
+    own_deep: usize,
+    own_center: usize,
+    own_pool: usize,
+    own_drainer_front: usize,
+    own_spirit_front: usize,
+    opp_front: usize,
+    opp_deep: usize,
+    opp_center: usize,
+    opp_pool: usize,
+    opp_drainer_front: usize,
+    opp_spirit_front: usize,
+}
+
+struct ProV4RootPoolTerritoryFeatures {
+    post_territory: String,
+    post_territory_delta: String,
+}
+
+impl ProV4RootPoolTerritoryFeatures {
+    fn omitted() -> Self {
+        Self {
+            post_territory: "omitted".to_string(),
+            post_territory_delta: "omitted".to_string(),
+        }
+    }
+}
+
 fn pro_v4_root_pool_is_high_value_mana(mana: Mana, perspective: Color) -> bool {
     match mana {
         Mana::Supermana => true,
@@ -2355,6 +2385,13 @@ fn pro_v4_root_pool_status(game: &MonsGame, perspective: Color) -> &'static str 
         "same_active"
     } else {
         "opponent_turn"
+    }
+}
+
+fn pro_v4_root_pool_forward_index(perspective: Color, location: Location) -> i32 {
+    match perspective {
+        Color::White => Config::MAX_LOCATION_INDEX - location.i,
+        Color::Black => location.i,
     }
 }
 
@@ -2749,6 +2786,122 @@ fn pro_v4_root_pool_support_guard_features(
     ProV4RootPoolSupportGuardFeatures {
         post_support_guard: pro_v4_root_pool_support_guard_bucket(after_game, &after, perspective),
         post_support_guard_delta: pro_v4_root_pool_support_guard_delta_bucket(&before, &after),
+    }
+}
+
+fn pro_v4_root_pool_mon_on_pool(board: &Board, location: Location, color: Color) -> bool {
+    matches!(board.square(location), Square::ManaPool { color: pool_color } if pool_color == color)
+}
+
+fn pro_v4_root_pool_territory_posture(
+    game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolTerritoryPosture {
+    if game.winner_color().is_some() {
+        return ProV4RootPoolTerritoryPosture::default();
+    }
+    let mut posture = ProV4RootPoolTerritoryPosture::default();
+    let center = Config::SUPERMANA_BASE;
+    for (location, item) in game.board.occupied() {
+        let Some(mon) = item.mon() else {
+            continue;
+        };
+        if mon.is_fainted() {
+            continue;
+        }
+        let side = mon.color;
+        let forward = pro_v4_root_pool_forward_index(side, location);
+        let front = forward >= 5;
+        let deep = forward >= 8;
+        let center_control = location.distance(&center) <= 2;
+        let pool = pro_v4_root_pool_mon_on_pool(&game.board, location, side);
+        if side == perspective {
+            posture.own_front += usize::from(front);
+            posture.own_deep += usize::from(deep);
+            posture.own_center += usize::from(center_control);
+            posture.own_pool += usize::from(pool);
+            if front && mon.kind == MonKind::Drainer {
+                posture.own_drainer_front += 1;
+            }
+            if front && mon.kind == MonKind::Spirit {
+                posture.own_spirit_front += 1;
+            }
+        } else {
+            posture.opp_front += usize::from(front);
+            posture.opp_deep += usize::from(deep);
+            posture.opp_center += usize::from(center_control);
+            posture.opp_pool += usize::from(pool);
+            if front && mon.kind == MonKind::Drainer {
+                posture.opp_drainer_front += 1;
+            }
+            if front && mon.kind == MonKind::Spirit {
+                posture.opp_spirit_front += 1;
+            }
+        }
+    }
+    posture
+}
+
+fn pro_v4_root_pool_territory_bucket(
+    game: &MonsGame,
+    posture: &ProV4RootPoolTerritoryPosture,
+    perspective: Color,
+) -> String {
+    format!(
+        "status={};own_front={};own_deep={};own_center={};own_pool={};own_drainer_front={};own_spirit_front={};opp_front={};opp_deep={};opp_center={};opp_pool={};opp_drainer_front={};opp_spirit_front={}",
+        pro_v4_root_pool_status(game, perspective),
+        pro_v4_root_pool_count_field(posture.own_front),
+        pro_v4_root_pool_count_field(posture.own_deep),
+        pro_v4_root_pool_count_field(posture.own_center),
+        pro_v4_root_pool_count_field(posture.own_pool),
+        pro_v4_root_pool_count_field(posture.own_drainer_front),
+        pro_v4_root_pool_count_field(posture.own_spirit_front),
+        pro_v4_root_pool_count_field(posture.opp_front),
+        pro_v4_root_pool_count_field(posture.opp_deep),
+        pro_v4_root_pool_count_field(posture.opp_center),
+        pro_v4_root_pool_count_field(posture.opp_pool),
+        pro_v4_root_pool_count_field(posture.opp_drainer_front),
+        pro_v4_root_pool_count_field(posture.opp_spirit_front),
+    )
+}
+
+fn pro_v4_root_pool_territory_delta_bucket(
+    before: &ProV4RootPoolTerritoryPosture,
+    after: &ProV4RootPoolTerritoryPosture,
+) -> String {
+    format!(
+        "own_front={};own_deep={};own_center={};own_pool={};own_drainer_front={};own_spirit_front={};opp_front={};opp_deep={};opp_center={};opp_pool={};opp_drainer_front={};opp_spirit_front={}",
+        pro_v4_root_pool_count_delta_bucket(before.own_front, after.own_front),
+        pro_v4_root_pool_count_delta_bucket(before.own_deep, after.own_deep),
+        pro_v4_root_pool_count_delta_bucket(before.own_center, after.own_center),
+        pro_v4_root_pool_count_delta_bucket(before.own_pool, after.own_pool),
+        pro_v4_root_pool_count_delta_bucket(
+            before.own_drainer_front,
+            after.own_drainer_front,
+        ),
+        pro_v4_root_pool_count_delta_bucket(before.own_spirit_front, after.own_spirit_front),
+        pro_v4_root_pool_count_delta_bucket(before.opp_front, after.opp_front),
+        pro_v4_root_pool_count_delta_bucket(before.opp_deep, after.opp_deep),
+        pro_v4_root_pool_count_delta_bucket(before.opp_center, after.opp_center),
+        pro_v4_root_pool_count_delta_bucket(before.opp_pool, after.opp_pool),
+        pro_v4_root_pool_count_delta_bucket(
+            before.opp_drainer_front,
+            after.opp_drainer_front,
+        ),
+        pro_v4_root_pool_count_delta_bucket(before.opp_spirit_front, after.opp_spirit_front),
+    )
+}
+
+fn pro_v4_root_pool_territory_features(
+    before_game: &MonsGame,
+    after_game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolTerritoryFeatures {
+    let before = pro_v4_root_pool_territory_posture(before_game, perspective);
+    let after = pro_v4_root_pool_territory_posture(after_game, perspective);
+    ProV4RootPoolTerritoryFeatures {
+        post_territory: pro_v4_root_pool_territory_bucket(after_game, &after, perspective),
+        post_territory_delta: pro_v4_root_pool_territory_delta_bucket(&before, &after),
     }
 }
 
@@ -3688,6 +3841,7 @@ fn pro_v4_root_pool_print_snapshot(
             legal_fanout_features,
             attack_exposure_features,
             support_guard_features,
+            territory_features,
         ) = if let Some(root) = root {
             let family = MonsGameModel::turn_engine_root_evaluation_family(root);
             let reply_snapshot = MonsGameModel::root_reply_risk_snapshot(
@@ -3771,6 +3925,8 @@ fn pro_v4_root_pool_print_snapshot(
                 pro_v4_root_pool_attack_exposure_features(&game, &root.game, game.active_color);
             let support_guard_features =
                 pro_v4_root_pool_support_guard_features(&game, &root.game, game.active_color);
+            let territory_features =
+                pro_v4_root_pool_territory_features(&game, &root.game, game.active_color);
             (
                 Some(root.root_rank),
                 Some(root.score),
@@ -3812,6 +3968,7 @@ fn pro_v4_root_pool_print_snapshot(
                 legal_fanout_features,
                 attack_exposure_features,
                 support_guard_features,
+                territory_features,
             )
         } else {
             (
@@ -3841,10 +3998,11 @@ fn pro_v4_root_pool_print_snapshot(
                 ProV4RootPoolLegalFanoutFeatures::omitted(),
                 ProV4RootPoolAttackExposureFeatures::omitted(),
                 ProV4RootPoolSupportGuardFeatures::omitted(),
+                ProV4RootPoolTerritoryFeatures::omitted(),
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -3910,6 +4068,8 @@ fn pro_v4_root_pool_print_snapshot(
             json_escape(&attack_exposure_features.post_attack_exposure_delta),
             json_escape(&support_guard_features.post_support_guard),
             json_escape(&support_guard_features.post_support_guard_delta),
+            json_escape(&territory_features.post_territory),
+            json_escape(&territory_features.post_territory_delta),
         );
     }
 }
