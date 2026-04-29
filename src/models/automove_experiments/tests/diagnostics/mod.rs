@@ -2464,6 +2464,44 @@ impl ProV4RootPoolMobilityFeatures {
     }
 }
 
+#[derive(Default)]
+struct ProV4RootPoolActionThreatPosture {
+    own_action_actors: usize,
+    own_action_targets: usize,
+    own_mystic_actors: usize,
+    own_mystic_targets: usize,
+    own_demon_actors: usize,
+    own_demon_targets: usize,
+    own_spirit_actors: usize,
+    own_spirit_targets: usize,
+    own_spirit_enemy_targets: usize,
+    own_spirit_item_targets: usize,
+    opp_action_actors: usize,
+    opp_action_targets: usize,
+    opp_mystic_actors: usize,
+    opp_mystic_targets: usize,
+    opp_demon_actors: usize,
+    opp_demon_targets: usize,
+    opp_spirit_actors: usize,
+    opp_spirit_targets: usize,
+    opp_spirit_enemy_targets: usize,
+    opp_spirit_item_targets: usize,
+}
+
+struct ProV4RootPoolActionThreatFeatures {
+    post_action_threat: String,
+    post_action_threat_delta: String,
+}
+
+impl ProV4RootPoolActionThreatFeatures {
+    fn omitted() -> Self {
+        Self {
+            post_action_threat: "omitted".to_string(),
+            post_action_threat_delta: "omitted".to_string(),
+        }
+    }
+}
+
 fn pro_v4_root_pool_is_high_value_mana(mana: Mana, perspective: Color) -> bool {
     match mana {
         Mana::Supermana => true,
@@ -3617,6 +3655,273 @@ fn pro_v4_root_pool_mobility_features(
     }
 }
 
+fn pro_v4_root_pool_action_target_guarded(
+    board: &Board,
+    target_color: Color,
+    target: Location,
+) -> bool {
+    board
+        .find_awake_angel(target_color)
+        .is_some_and(|angel| angel.distance(&target) == 1)
+}
+
+fn pro_v4_root_pool_live_enemy_target_count(
+    board: &Board,
+    actor_color: Color,
+    targets: &[Location],
+) -> usize {
+    targets
+        .iter()
+        .filter(|&&target| {
+            if pro_v4_root_pool_action_target_guarded(board, actor_color.other(), target) {
+                return false;
+            }
+            matches!(
+                board.item(target),
+                Some(Item::Mon { mon })
+                    | Some(Item::MonWithMana { mon, .. })
+                    | Some(Item::MonWithConsumable { mon, .. })
+                    if mon.color != actor_color && !mon.is_fainted()
+            )
+        })
+        .count()
+}
+
+fn pro_v4_root_pool_demon_target_count(board: &Board, actor_color: Color, from: Location) -> usize {
+    from.reachable_by_demon_action_ref()
+        .iter()
+        .filter(|&&target| {
+            let between = from.location_between(&target);
+            board.item(between).is_none()
+                && !matches!(
+                    board.square(between),
+                    Square::SupermanaBase | Square::MonBase { .. }
+                )
+                && !pro_v4_root_pool_action_target_guarded(board, actor_color.other(), target)
+                && matches!(
+                    board.item(target),
+                    Some(Item::Mon { mon })
+                        | Some(Item::MonWithMana { mon, .. })
+                        | Some(Item::MonWithConsumable { mon, .. })
+                        if mon.color != actor_color && !mon.is_fainted()
+                )
+        })
+        .count()
+}
+
+fn pro_v4_root_pool_spirit_target_counts(
+    board: &Board,
+    actor_color: Color,
+    from: Location,
+) -> (usize, usize, usize) {
+    let mut mon_targets = 0;
+    let mut enemy_targets = 0;
+    let mut item_targets = 0;
+    for &target in from.reachable_by_spirit_action_ref() {
+        match board.item(target) {
+            Some(Item::Mon { mon })
+            | Some(Item::MonWithMana { mon, .. })
+            | Some(Item::MonWithConsumable { mon, .. }) => {
+                if !mon.is_fainted() {
+                    mon_targets += 1;
+                    enemy_targets += usize::from(mon.color != actor_color);
+                }
+            }
+            Some(Item::Mana { .. }) | Some(Item::Consumable { .. }) => {
+                item_targets += 1;
+            }
+            None => {}
+        }
+    }
+    (mon_targets + item_targets, enemy_targets, item_targets)
+}
+
+fn pro_v4_root_pool_add_action_counts(
+    posture: &mut ProV4RootPoolActionThreatPosture,
+    perspective: Color,
+    actor_color: Color,
+    mon_kind: MonKind,
+    target_count: usize,
+    enemy_target_count: usize,
+    item_target_count: usize,
+) {
+    if target_count == 0 {
+        return;
+    }
+    let own = actor_color == perspective;
+    if own {
+        posture.own_action_actors += 1;
+        posture.own_action_targets += target_count;
+    } else {
+        posture.opp_action_actors += 1;
+        posture.opp_action_targets += target_count;
+    }
+    match (own, mon_kind) {
+        (true, MonKind::Mystic) => {
+            posture.own_mystic_actors += 1;
+            posture.own_mystic_targets += target_count;
+        }
+        (false, MonKind::Mystic) => {
+            posture.opp_mystic_actors += 1;
+            posture.opp_mystic_targets += target_count;
+        }
+        (true, MonKind::Demon) => {
+            posture.own_demon_actors += 1;
+            posture.own_demon_targets += target_count;
+        }
+        (false, MonKind::Demon) => {
+            posture.opp_demon_actors += 1;
+            posture.opp_demon_targets += target_count;
+        }
+        (true, MonKind::Spirit) => {
+            posture.own_spirit_actors += 1;
+            posture.own_spirit_targets += target_count;
+            posture.own_spirit_enemy_targets += enemy_target_count;
+            posture.own_spirit_item_targets += item_target_count;
+        }
+        (false, MonKind::Spirit) => {
+            posture.opp_spirit_actors += 1;
+            posture.opp_spirit_targets += target_count;
+            posture.opp_spirit_enemy_targets += enemy_target_count;
+            posture.opp_spirit_item_targets += item_target_count;
+        }
+        (_, MonKind::Angel | MonKind::Drainer) => {}
+    }
+}
+
+fn pro_v4_root_pool_action_threat_posture(
+    game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolActionThreatPosture {
+    if game.winner_color().is_some() {
+        return ProV4RootPoolActionThreatPosture::default();
+    }
+    let mut posture = ProV4RootPoolActionThreatPosture::default();
+    for (location, item) in game.board.occupied() {
+        let Some(mon) = item.mon() else {
+            continue;
+        };
+        if mon.is_fainted() || matches!(game.board.square(location), Square::MonBase { .. }) {
+            continue;
+        }
+        let (target_count, enemy_target_count, item_target_count) = match mon.kind {
+            MonKind::Mystic => (
+                pro_v4_root_pool_live_enemy_target_count(
+                    &game.board,
+                    mon.color,
+                    location.reachable_by_mystic_action_ref(),
+                ),
+                0,
+                0,
+            ),
+            MonKind::Demon => (
+                pro_v4_root_pool_demon_target_count(&game.board, mon.color, location),
+                0,
+                0,
+            ),
+            MonKind::Spirit => {
+                pro_v4_root_pool_spirit_target_counts(&game.board, mon.color, location)
+            }
+            MonKind::Angel | MonKind::Drainer => (0, 0, 0),
+        };
+        pro_v4_root_pool_add_action_counts(
+            &mut posture,
+            perspective,
+            mon.color,
+            mon.kind,
+            target_count,
+            enemy_target_count,
+            item_target_count,
+        );
+    }
+    posture
+}
+
+fn pro_v4_root_pool_action_threat_bucket(
+    game: &MonsGame,
+    posture: &ProV4RootPoolActionThreatPosture,
+    perspective: Color,
+) -> String {
+    format!(
+        "status={};own_actor={};own_target={};own_mystic_actor={};own_mystic_target={};own_demon_actor={};own_demon_target={};own_spirit_actor={};own_spirit_target={};own_spirit_enemy={};own_spirit_item={};opp_actor={};opp_target={};opp_mystic_actor={};opp_mystic_target={};opp_demon_actor={};opp_demon_target={};opp_spirit_actor={};opp_spirit_target={};opp_spirit_enemy={};opp_spirit_item={}",
+        pro_v4_root_pool_status(game, perspective),
+        pro_v4_root_pool_count_field(posture.own_action_actors),
+        pro_v4_root_pool_count_field(posture.own_action_targets),
+        pro_v4_root_pool_count_field(posture.own_mystic_actors),
+        pro_v4_root_pool_count_field(posture.own_mystic_targets),
+        pro_v4_root_pool_count_field(posture.own_demon_actors),
+        pro_v4_root_pool_count_field(posture.own_demon_targets),
+        pro_v4_root_pool_count_field(posture.own_spirit_actors),
+        pro_v4_root_pool_count_field(posture.own_spirit_targets),
+        pro_v4_root_pool_count_field(posture.own_spirit_enemy_targets),
+        pro_v4_root_pool_count_field(posture.own_spirit_item_targets),
+        pro_v4_root_pool_count_field(posture.opp_action_actors),
+        pro_v4_root_pool_count_field(posture.opp_action_targets),
+        pro_v4_root_pool_count_field(posture.opp_mystic_actors),
+        pro_v4_root_pool_count_field(posture.opp_mystic_targets),
+        pro_v4_root_pool_count_field(posture.opp_demon_actors),
+        pro_v4_root_pool_count_field(posture.opp_demon_targets),
+        pro_v4_root_pool_count_field(posture.opp_spirit_actors),
+        pro_v4_root_pool_count_field(posture.opp_spirit_targets),
+        pro_v4_root_pool_count_field(posture.opp_spirit_enemy_targets),
+        pro_v4_root_pool_count_field(posture.opp_spirit_item_targets),
+    )
+}
+
+fn pro_v4_root_pool_action_threat_delta_bucket(
+    before: &ProV4RootPoolActionThreatPosture,
+    after: &ProV4RootPoolActionThreatPosture,
+) -> String {
+    format!(
+        "own_actor={};own_target={};own_mystic_actor={};own_mystic_target={};own_demon_actor={};own_demon_target={};own_spirit_actor={};own_spirit_target={};own_spirit_enemy={};own_spirit_item={};opp_actor={};opp_target={};opp_mystic_actor={};opp_mystic_target={};opp_demon_actor={};opp_demon_target={};opp_spirit_actor={};opp_spirit_target={};opp_spirit_enemy={};opp_spirit_item={}",
+        pro_v4_root_pool_count_delta_bucket(before.own_action_actors, after.own_action_actors),
+        pro_v4_root_pool_count_delta_bucket(before.own_action_targets, after.own_action_targets),
+        pro_v4_root_pool_count_delta_bucket(before.own_mystic_actors, after.own_mystic_actors),
+        pro_v4_root_pool_count_delta_bucket(before.own_mystic_targets, after.own_mystic_targets),
+        pro_v4_root_pool_count_delta_bucket(before.own_demon_actors, after.own_demon_actors),
+        pro_v4_root_pool_count_delta_bucket(before.own_demon_targets, after.own_demon_targets),
+        pro_v4_root_pool_count_delta_bucket(before.own_spirit_actors, after.own_spirit_actors),
+        pro_v4_root_pool_count_delta_bucket(before.own_spirit_targets, after.own_spirit_targets),
+        pro_v4_root_pool_count_delta_bucket(
+            before.own_spirit_enemy_targets,
+            after.own_spirit_enemy_targets,
+        ),
+        pro_v4_root_pool_count_delta_bucket(
+            before.own_spirit_item_targets,
+            after.own_spirit_item_targets,
+        ),
+        pro_v4_root_pool_count_delta_bucket(before.opp_action_actors, after.opp_action_actors),
+        pro_v4_root_pool_count_delta_bucket(before.opp_action_targets, after.opp_action_targets),
+        pro_v4_root_pool_count_delta_bucket(before.opp_mystic_actors, after.opp_mystic_actors),
+        pro_v4_root_pool_count_delta_bucket(before.opp_mystic_targets, after.opp_mystic_targets),
+        pro_v4_root_pool_count_delta_bucket(before.opp_demon_actors, after.opp_demon_actors),
+        pro_v4_root_pool_count_delta_bucket(before.opp_demon_targets, after.opp_demon_targets),
+        pro_v4_root_pool_count_delta_bucket(before.opp_spirit_actors, after.opp_spirit_actors),
+        pro_v4_root_pool_count_delta_bucket(before.opp_spirit_targets, after.opp_spirit_targets),
+        pro_v4_root_pool_count_delta_bucket(
+            before.opp_spirit_enemy_targets,
+            after.opp_spirit_enemy_targets,
+        ),
+        pro_v4_root_pool_count_delta_bucket(
+            before.opp_spirit_item_targets,
+            after.opp_spirit_item_targets,
+        ),
+    )
+}
+
+fn pro_v4_root_pool_action_threat_features(
+    before_game: &MonsGame,
+    after_game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolActionThreatFeatures {
+    let before = pro_v4_root_pool_action_threat_posture(before_game, perspective);
+    let after = pro_v4_root_pool_action_threat_posture(after_game, perspective);
+    ProV4RootPoolActionThreatFeatures {
+        post_action_threat: pro_v4_root_pool_action_threat_bucket(after_game, &after, perspective),
+        post_action_threat_delta: pro_v4_root_pool_action_threat_delta_bucket(&before, &after),
+    }
+}
+
 fn pro_v4_root_pool_score_for_color(game: &MonsGame, color: Color) -> i32 {
     match color {
         Color::White => game.white_score,
@@ -4558,6 +4863,7 @@ fn pro_v4_root_pool_print_snapshot(
             consumable_features,
             engagement_features,
             mobility_features,
+            action_threat_features,
         ) = if let Some(root) = root {
             let family = MonsGameModel::turn_engine_root_evaluation_family(root);
             let reply_snapshot = MonsGameModel::root_reply_risk_snapshot(
@@ -4651,6 +4957,8 @@ fn pro_v4_root_pool_print_snapshot(
                 pro_v4_root_pool_engagement_features(&game, &root.game, game.active_color);
             let mobility_features =
                 pro_v4_root_pool_mobility_features(&game, &root.game, game.active_color);
+            let action_threat_features =
+                pro_v4_root_pool_action_threat_features(&game, &root.game, game.active_color);
             (
                 Some(root.root_rank),
                 Some(root.score),
@@ -4697,6 +5005,7 @@ fn pro_v4_root_pool_print_snapshot(
                 consumable_features,
                 engagement_features,
                 mobility_features,
+                action_threat_features,
             )
         } else {
             (
@@ -4731,10 +5040,11 @@ fn pro_v4_root_pool_print_snapshot(
                 ProV4RootPoolConsumableFeatures::omitted(),
                 ProV4RootPoolEngagementFeatures::omitted(),
                 ProV4RootPoolMobilityFeatures::omitted(),
+                ProV4RootPoolActionThreatFeatures::omitted(),
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -4810,6 +5120,8 @@ fn pro_v4_root_pool_print_snapshot(
             json_escape(&engagement_features.post_engagement_delta),
             json_escape(&mobility_features.post_mobility),
             json_escape(&mobility_features.post_mobility_delta),
+            json_escape(&action_threat_features.post_action_threat),
+            json_escape(&action_threat_features.post_action_threat_delta),
         );
     }
 }
