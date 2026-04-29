@@ -14,29 +14,35 @@ POLICY_MATRIX_PREFIX = "PRO_POLICY_MATRIX_"
 def parse_policy_matrix_lines(paths):
     events = []
     for path in paths:
-        with path.open("r", encoding="utf-8") as handle:
-            for line_number, line in enumerate(handle, start=1):
-                line = line.rstrip("\n")
-                if not line.startswith(POLICY_MATRIX_PREFIX):
-                    continue
-                try:
-                    event_type, payload = line.split(" ", 1)
-                except ValueError:
-                    continue
-                try:
-                    data = json.loads(payload)
-                except json.JSONDecodeError as error:
-                    raise SystemExit(
-                        f"{path}:{line_number}: invalid JSON after {event_type}: {error}"
-                    ) from error
-                events.append(
-                    {
-                        "event_type": event_type,
-                        "source_log": str(path),
-                        "source_line": line_number,
-                        "data": data,
-                    }
-                )
+        events.extend(parse_policy_matrix_log(path))
+    return events
+
+
+def parse_policy_matrix_log(path):
+    events = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            line = line.rstrip("\n")
+            if not line.startswith(POLICY_MATRIX_PREFIX):
+                continue
+            try:
+                event_type, payload = line.split(" ", 1)
+            except ValueError:
+                continue
+            try:
+                data = json.loads(payload)
+            except json.JSONDecodeError as error:
+                raise SystemExit(
+                    f"{path}:{line_number}: invalid JSON after {event_type}: {error}"
+                ) from error
+            events.append(
+                {
+                    "event_type": event_type,
+                    "source_log": str(path),
+                    "source_line": line_number,
+                    "data": data,
+                }
+            )
     return events
 
 
@@ -169,6 +175,91 @@ def sorted_details(details):
     )
 
 
+def summarized_global_counts(summary):
+    fields = [
+        "total_games",
+        "baseline_wins",
+        "candidate_any_wins",
+        "candidate_only_wins",
+        "baseline_only_wins",
+        "no_policy_wins",
+    ]
+    return {field: int(summary.get(field, 0)) for field in fields}
+
+
+def summarized_recommendation_counts(recommendation):
+    fields = [
+        "candidate_signal_routes",
+        "clean_low_fragmentation_routes",
+        "clean_fragmented_routes",
+        "baseline_risk_routes",
+        "best_clean_candidate_only_states",
+        "best_baseline_risk_candidate_only_states",
+        "best_baseline_risk_baseline_better_states",
+    ]
+    return {field: int(recommendation.get(field, 0)) for field in fields}
+
+
+def source_blocker_count_key(blocker):
+    kind = blocker.get("kind", "unknown")
+    if kind == "baseline_save_risk":
+        route_key = blocker.get("route_key", "")
+        return f"{kind}:{route_key}" if route_key else kind
+    return kind
+
+
+def sorted_count_rows(counter):
+    return [
+        {"key": key, "count": count}
+        for key, count in sorted(counter.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
+
+def log_summary(source_log, digest):
+    recommendation = digest.get("route_recommendation", {})
+    stoplight = digest.get("global_stoplight", {})
+    return {
+        "source_log": source_log,
+        "event_counts": digest.get("event_counts", {}),
+        "corpus_decision": digest.get("corpus_decision", ""),
+        "next_action": digest.get("next_action", ""),
+        "source_blocker": digest.get("source_blocker", {}),
+        "route_permission": digest.get("route_permission", ""),
+        "global_counts": summarized_global_counts(digest.get("global_summary", {})),
+        "stoplight_label": stoplight.get("label", ""),
+        "route_recommendation_label": recommendation.get("label", ""),
+        "route_counts": summarized_recommendation_counts(recommendation),
+    }
+
+
+def add_log_rollup(digest, per_log_digests):
+    if len(per_log_digests) <= 1:
+        return digest
+
+    decision_counts = defaultdict(int)
+    next_action_counts = defaultdict(int)
+    source_blocker_counts = defaultdict(int)
+    log_summaries = []
+
+    for source_log, per_log_digest in per_log_digests:
+        summary = log_summary(source_log, per_log_digest)
+        log_summaries.append(summary)
+        decision_counts[summary["corpus_decision"]] += 1
+        next_action_counts[summary["next_action"]] += 1
+        source_blocker_counts[
+            source_blocker_count_key(summary["source_blocker"])
+        ] += 1
+
+    digest["log_rollup"] = {
+        "log_count": len(log_summaries),
+        "decision_counts": sorted_count_rows(decision_counts),
+        "next_action_counts": sorted_count_rows(next_action_counts),
+        "source_blocker_counts": sorted_count_rows(source_blocker_counts),
+        "log_summaries": log_summaries,
+    }
+    return digest
+
+
 def summarize(events):
     latest = {}
     route_buckets = defaultdict(list)
@@ -248,7 +339,18 @@ def main():
     if missing:
         raise SystemExit(f"missing log file(s): {', '.join(missing)}")
 
-    digest = summarize(parse_policy_matrix_lines(args.logs))
+    per_log_events = [(path, parse_policy_matrix_log(path)) for path in args.logs]
+    digest = summarize(
+        [
+            event
+            for _source_log, events in per_log_events
+            for event in events
+        ]
+    )
+    digest = add_log_rollup(
+        digest,
+        [(str(source_log), summarize(events)) for source_log, events in per_log_events],
+    )
     if args.compact:
         json.dump(digest, sys.stdout, sort_keys=True, separators=(",", ":"))
     else:
