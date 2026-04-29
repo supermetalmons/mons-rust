@@ -55,6 +55,16 @@ def sorted_count_rows(counter):
     ]
 
 
+def stable_id_value(value):
+    if isinstance(value, bool):
+        return str(value).lower()
+    return str(value)
+
+
+def state_id_from_pairs(pairs):
+    return "|".join(f"{field}={stable_id_value(value)}" for field, value in pairs)
+
+
 def limited_count_rows(counter, limit=8):
     return sorted_count_rows(counter)[:limit]
 
@@ -245,6 +255,32 @@ def group_key(summary):
     )
 
 
+ROOT_POOL_ID_FIELDS = [
+    "label",
+    "continuation",
+    "root_source",
+    "opponent_mode",
+    "variant",
+    "active_color",
+    "max_plies",
+    "start_ply",
+    "rollout_max_plies",
+    "source",
+]
+
+
+def summary_value(summary, field):
+    if field == "source":
+        return summary.get(field, "scored_roots")
+    return summary.get(field, "")
+
+
+def root_pool_id(summary):
+    return state_id_from_pairs(
+        (field, summary_value(summary, field)) for field in ROOT_POOL_ID_FIELDS
+    )
+
+
 def new_group(summary, event):
     return {
         "key": group_key(summary),
@@ -256,10 +292,13 @@ def new_group(summary, event):
 
 
 def add_row_to_group(group, event):
+    data = dict(event["data"])
+    data["_source_log"] = event["source_log"]
+    data["_source_line"] = event["source_line"]
     if event["event_type"] == "FORCED_ROOT_ORACLE_ROOT":
-        group["roots"].append(event["data"])
+        group["roots"].append(data)
     elif event["event_type"] == "FORCED_ROOT_ORACLE_LEGAL_ROOT":
-        group["legal_roots"].append(event["data"])
+        group["legal_roots"].append(data)
     group["source_logs"].add(event["source_log"])
 
 
@@ -269,6 +308,13 @@ def result_points(result):
     if result == "draw":
         return 1
     return 0
+
+
+def root_result_class(root):
+    result = root.get("result", "unknown")
+    if result in {"win", "draw", "loss"}:
+        return result
+    return "unknown"
 
 
 def sorted_roots(roots):
@@ -401,6 +447,179 @@ def axis_separation(groups):
     )
 
 
+def root_field_value(root, field):
+    if field == "rank_band":
+        return rank_band(int(root.get("root_rank", -1)))
+    if field == "score_bucket":
+        return score_bucket(int(root.get("score", 0)))
+    if field == "safety_detail":
+        return root.get("safety_detail") or (
+            "vulnerable" if bool(root.get("vulnerable", False)) else "safe"
+        )
+    if field == "progress":
+        return root.get("progress") or (
+            "spirit_development"
+            if bool(root.get("spirit_development", False))
+            else "quiet"
+        )
+    if field == "reply_bucket":
+        return root.get("reply_bucket") or floor_bucket(root.get("reply_floor"))
+    if field == "followup_bucket":
+        return root.get("followup_bucket") or floor_bucket(root.get("followup_floor"))
+    return root.get(field, "")
+
+
+def root_provenance_items(root):
+    family = root_field_value(root, "family")
+    rank = root_field_value(root, "rank_band")
+    path = root_field_value(root, "path")
+    advisor = root_field_value(root, "advisor_bucket")
+    safety = root_field_value(root, "safety_detail")
+    progress = root_field_value(root, "progress")
+    reply = root_field_value(root, "reply_bucket")
+    followup = root_field_value(root, "followup_bucket")
+    return [
+        ("path", path),
+        ("advisor_bucket", advisor),
+        ("family", family),
+        ("rank_band", rank),
+        ("score_bucket", root_field_value(root, "score_bucket")),
+        ("safety_detail", safety),
+        ("progress", progress),
+        ("reply_bucket", reply),
+        ("followup_bucket", followup),
+        ("path_family_rank", f"{path}|{family}|{rank}"),
+        ("path_safety_progress", f"{path}|{safety}|{progress}"),
+        ("advisor_family_rank", f"{advisor}|{family}|{rank}"),
+        ("family_rank_safety", f"{family}|{rank}|{safety}"),
+        ("family_rank_reply", f"{family}|{rank}|{reply}"),
+        ("family_rank_followup", f"{family}|{rank}|{followup}"),
+    ]
+
+
+def sorted_provenance_rows(rows):
+    return sorted(
+        rows,
+        key=lambda row: (
+            -row["winner_label_count"],
+            row["nonwinner_root_count"],
+            -row["winner_root_count"],
+            row["dimension"],
+            row["key"],
+        ),
+    )
+
+
+def root_pool_provenance_rows(groups):
+    rollups = {}
+    for group in groups:
+        label = group["summary"].get("label", "")
+        for root in group["roots"]:
+            result = root_result_class(root)
+            for dimension, key in root_provenance_items(root):
+                row = rollups.setdefault(
+                    (dimension, key),
+                    {
+                        "dimension": dimension,
+                        "key": key,
+                        "root_count": 0,
+                        "winner_root_count": 0,
+                        "draw_root_count": 0,
+                        "nonwinner_root_count": 0,
+                        "winner_labels": set(),
+                        "nonwinner_labels": set(),
+                    },
+                )
+                row["root_count"] += 1
+                if result == "win":
+                    row["winner_root_count"] += 1
+                    row["winner_labels"].add(label)
+                elif result == "draw":
+                    row["draw_root_count"] += 1
+                    row["nonwinner_labels"].add(label)
+                else:
+                    row["nonwinner_root_count"] += 1
+                    row["nonwinner_labels"].add(label)
+
+    rows = []
+    for row in rollups.values():
+        winner_labels = sorted(row["winner_labels"])
+        nonwinner_labels = sorted(row["nonwinner_labels"])
+        root_count = row["root_count"]
+        rows.append(
+            {
+                "dimension": row["dimension"],
+                "key": row["key"],
+                "root_count": root_count,
+                "winner_root_count": row["winner_root_count"],
+                "draw_root_count": row["draw_root_count"],
+                "nonwinner_root_count": row["nonwinner_root_count"],
+                "winner_label_count": len(winner_labels),
+                "winner_labels": winner_labels,
+                "nonwinner_label_count": len(nonwinner_labels),
+                "nonwinner_labels": nonwinner_labels,
+                "winner_precision": round(row["winner_root_count"] / root_count, 4)
+                if root_count > 0
+                else 0.0,
+            }
+        )
+    return sorted_provenance_rows(rows)
+
+
+def root_pool_provenance_summary(groups):
+    root_count = 0
+    printed_all_tested = True
+    result_counts = defaultdict(int)
+    path_counts = defaultdict(int)
+    family_counts = defaultdict(int)
+    advisor_counts = defaultdict(int)
+    winner_path_counts = defaultdict(int)
+    winner_family_counts = defaultdict(int)
+    winner_advisor_counts = defaultdict(int)
+
+    for group in groups:
+        summary = group["summary"]
+        roots = group["roots"]
+        root_count += len(roots)
+        tested_roots = int(summary.get("tested_roots", 0))
+        printed_all_tested = printed_all_tested and len(roots) >= tested_roots
+        for root in roots:
+            result = root_result_class(root)
+            result_counts[result] += 1
+            path = root_field_value(root, "path")
+            family = root_field_value(root, "family")
+            advisor = root_field_value(root, "advisor_bucket")
+            path_counts[path] += 1
+            family_counts[family] += 1
+            advisor_counts[advisor] += 1
+            if result == "win":
+                winner_path_counts[path] += 1
+                winner_family_counts[family] += 1
+                winner_advisor_counts[advisor] += 1
+
+    provenance_rows = root_pool_provenance_rows(groups)
+    clean_repeated = [
+        row
+        for row in provenance_rows
+        if row["winner_label_count"] >= 2 and row["nonwinner_root_count"] == 0
+    ]
+    return {
+        "pool_count": len(groups),
+        "printed_root_count": root_count,
+        "printed_all_tested_roots": printed_all_tested,
+        "result_counts": sorted_count_rows(result_counts),
+        "path_counts": sorted_count_rows(path_counts),
+        "family_counts": sorted_count_rows(family_counts),
+        "advisor_bucket_counts": sorted_count_rows(advisor_counts),
+        "winner_path_counts": sorted_count_rows(winner_path_counts),
+        "winner_family_counts": sorted_count_rows(winner_family_counts),
+        "winner_advisor_bucket_counts": sorted_count_rows(winner_advisor_counts),
+        "clean_repeated_winner_provenance_count": len(clean_repeated),
+        "top_clean_repeated_winner_provenance": clean_repeated[:8],
+        "top_winner_provenance": provenance_rows[:16],
+    }
+
+
 def promising_repeated_axes(axis_rows, groups_with_wins):
     if groups_with_wins < 2:
         return []
@@ -452,7 +671,154 @@ def next_action_for_decision(decision):
     return "collect_forced_root_oracle_logs"
 
 
-def summarize(events):
+def root_pool_metadata(summary):
+    return {
+        "root_pool_id": root_pool_id(summary),
+        "label": summary.get("label", ""),
+        "continuation": summary.get("continuation", ""),
+        "root_source": summary.get("root_source", ""),
+        "opponent_mode": summary.get("opponent_mode", ""),
+        "variant": summary.get("variant", ""),
+        "active_color": summary.get("active_color", ""),
+        "source": summary.get("source", "scored_roots"),
+        "max_plies": int(summary.get("max_plies", 0)),
+        "start_ply": int(summary.get("start_ply", 0)),
+        "rollout_max_plies": int(summary.get("rollout_max_plies", 0)),
+    }
+
+
+def root_id(summary, root):
+    return state_id_from_pairs(
+        [
+            ("root_pool_id", root_pool_id(summary)),
+            ("root_rank", root.get("root_rank", "")),
+            ("inputs", root.get("inputs", "")),
+        ]
+    )
+
+
+def normalized_root_pool_summary_row(group):
+    summary = group["summary"]
+    tested_roots = int(summary.get("tested_roots", 0))
+    return {
+        "row_type": "forced_root_pool_summary",
+        **root_pool_metadata(summary),
+        "source_logs": sorted(group["source_logs"]),
+        "tested_roots": tested_roots,
+        "wins": int(summary.get("wins", 0)),
+        "draws": int(summary.get("draws", 0)),
+        "losses": int(summary.get("losses", 0)),
+        "printed_roots": len(group["roots"]),
+        "printed_legal_roots": len(group["legal_roots"]),
+        "printed_all_tested_roots": len(group["roots"]) >= tested_roots,
+    }
+
+
+def normalized_forced_root_row(group, root):
+    summary = group["summary"]
+    utility = parse_utility(root.get("utility", ""))
+    result = root_result_class(root)
+    return {
+        "row_type": "forced_root_pool_root",
+        **root_pool_metadata(summary),
+        "source_log": root.get("_source_log", ""),
+        "source_line": int(root.get("_source_line", 0)),
+        "root_id": root_id(summary, root),
+        "result": result,
+        "is_winning_root": result == "win",
+        "root_rank": int(root.get("root_rank", -1)),
+        "rank_band": root_field_value(root, "rank_band"),
+        "score": int(root.get("score", 0)),
+        "score_bucket": root_field_value(root, "score_bucket"),
+        "inputs": root.get("inputs", ""),
+        "family": root.get("family", ""),
+        "wins_immediately": bool(root.get("wins_immediately", False)),
+        "attacks": bool(root.get("attacks", False)),
+        "vulnerable": bool(root.get("vulnerable", False)),
+        "walk_vulnerable": bool(root.get("walk_vulnerable", False)),
+        "mana_handoff": bool(root.get("mana_handoff", False)),
+        "roundtrip": bool(root.get("roundtrip", False)),
+        "safety_detail": root_field_value(root, "safety_detail"),
+        "progress": root_field_value(root, "progress"),
+        "spirit_development": bool(root.get("spirit_development", False)),
+        "spirit_setup": bool(root.get("spirit_setup", False)),
+        "supermana_progress": bool(root.get("supermana_progress", False)),
+        "opponent_mana_progress": bool(root.get("opponent_mana_progress", False)),
+        "safe_super_steps": int(root.get("safe_super_steps", 0)),
+        "safe_opp_steps": int(root.get("safe_opp_steps", 0)),
+        "safe_step_relation": step_relation(
+            int(root.get("safe_super_steps", 0)),
+            int(root.get("safe_opp_steps", 0)),
+        ),
+        "same_turn_window": int(root.get("same_turn_window", 0)),
+        "same_turn_window_bucket": window_bucket(
+            int(root.get("same_turn_window", 0))
+        ),
+        "reply_floor": int(root.get("reply_floor", 0)),
+        "reply_risk": root.get("reply_risk", ""),
+        "reply_bucket": root_field_value(root, "reply_bucket"),
+        "followup_floor": int(root.get("followup_floor", 0)),
+        "followup_bucket": root_field_value(root, "followup_bucket"),
+        "advisor": root.get("advisor", ""),
+        "advisor_bucket": root.get("advisor_bucket", ""),
+        "path": root.get("path", ""),
+        "utility": root.get("utility", ""),
+        "utility_avoid_immediate_loss": utility.get("avoid_immediate_loss", 0),
+        "utility_deny_gain": utility.get("deny_gain", 0),
+        "utility_drainer_attack": utility.get("drainer_attack", 0),
+        "utility_drainer_safety": utility.get("drainer_safety", 0),
+        "utility_score_delta": utility.get("score_delta", 0),
+        "utility_eval_score": utility.get("eval_score", 0),
+        "final": root.get("final", ""),
+    }
+
+
+def normalized_forced_root_axis_rows(group, root):
+    summary = group["summary"]
+    result = root_result_class(root)
+    base = {
+        "row_type": "forced_root_pool_axis",
+        **root_pool_metadata(summary),
+        "source_log": root.get("_source_log", ""),
+        "source_line": int(root.get("_source_line", 0)),
+        "root_id": root_id(summary, root),
+        "result": result,
+        "is_winning_root": result == "win",
+        "root_rank": int(root.get("root_rank", -1)),
+        "rank_band": root_field_value(root, "rank_band"),
+        "score": int(root.get("score", 0)),
+        "inputs": root.get("inputs", ""),
+        "family": root.get("family", ""),
+        "advisor_bucket": root.get("advisor_bucket", ""),
+        "path": root.get("path", ""),
+    }
+    return [
+        {
+            **base,
+            "axis": axis,
+            "dimension": axis_dimension(axis),
+        }
+        for axis in root_axes(root)
+    ]
+
+
+def normalized_legal_root_row(group, root):
+    summary = group["summary"]
+    result = root_result_class(root)
+    return {
+        "row_type": "forced_root_legal_root",
+        **root_pool_metadata(summary),
+        "source_log": root.get("_source_log", ""),
+        "source_line": int(root.get("_source_line", 0)),
+        "result": result,
+        "is_winning_root": result == "win",
+        "inputs": root.get("inputs", ""),
+        "events": root.get("events", ""),
+        "final": root.get("final", ""),
+    }
+
+
+def group_events(events):
     groups = {}
     current_group_by_label = {}
     event_counts = defaultdict(int)
@@ -475,7 +841,41 @@ def summarize(events):
             key = current_group_by_label.get(label)
             if key is not None:
                 add_row_to_group(groups[key], event)
+    return groups, event_counts
 
+
+def build_jsonl_rows(events):
+    groups, _event_counts = group_events(events)
+    rows = []
+    for group in sorted(groups.values(), key=lambda item: item["key"]):
+        rows.append(normalized_root_pool_summary_row(group))
+        for root in sorted_roots(group["roots"]):
+            rows.append(normalized_forced_root_row(group, root))
+            rows.extend(normalized_forced_root_axis_rows(group, root))
+        for root in sorted(
+            group["legal_roots"], key=lambda item: item.get("inputs", "")
+        ):
+            rows.append(normalized_legal_root_row(group, root))
+    return rows
+
+
+def write_jsonl_rows(path, rows):
+    row_type_counts = defaultdict(int)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            row_type_counts[row.get("row_type", "unknown")] += 1
+            json.dump(row, handle, sort_keys=True, separators=(",", ":"))
+            handle.write("\n")
+    return {
+        "path": str(path),
+        "rows": sum(row_type_counts.values()),
+        "row_type_counts": sorted_count_rows(row_type_counts),
+    }
+
+
+def summarize(events):
+    groups, event_counts = group_events(events)
     group_values = list(groups.values())
     group_summaries = sorted(
         [summarize_group(group) for group in group_values],
@@ -504,7 +904,10 @@ def summarize(events):
         },
         "oracle_decision": decision,
         "next_action": next_action_for_decision(decision),
-        "promising_repeated_axes": promising_repeated_axes(axis_rows, groups_with_wins)[:8],
+        "root_pool_provenance": root_pool_provenance_summary(group_values),
+        "promising_repeated_axes": promising_repeated_axes(axis_rows, groups_with_wins)[
+            :8
+        ],
         "repeated_winner_axes": axis_rows[:24],
         "group_summaries": group_summaries,
     }
@@ -523,13 +926,34 @@ def main():
         action="store_true",
         help="emit compact JSON instead of pretty-printed JSON",
     )
+    parser.add_argument(
+        "--jsonl-out",
+        type=Path,
+        help="write normalized forced-root pool provenance rows to this JSONL file",
+    )
+    parser.add_argument(
+        "--jsonl-only",
+        action="store_true",
+        help="write --jsonl-out without printing the summary digest",
+    )
     args = parser.parse_args()
+
+    if args.jsonl_only and not args.jsonl_out:
+        raise SystemExit("--jsonl-only requires --jsonl-out")
 
     missing = [str(path) for path in args.logs if not path.is_file()]
     if missing:
         raise SystemExit(f"missing log file(s): {', '.join(missing)}")
 
-    digest = summarize(parse_forced_root_oracle_lines(args.logs))
+    events = parse_forced_root_oracle_lines(args.logs)
+    digest = summarize(events)
+    if args.jsonl_out:
+        digest["jsonl_export"] = write_jsonl_rows(
+            args.jsonl_out,
+            build_jsonl_rows(events),
+        )
+    if args.jsonl_only:
+        return
     if args.compact:
         json.dump(digest, sys.stdout, sort_keys=True, separators=(",", ":"))
     else:
