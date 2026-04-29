@@ -1137,6 +1137,18 @@ def summarize_axis_token_group(group):
     row["candidate_repeated_across_target_states"] = (
         row["candidate_better_state_count"] > 1
     )
+    fragmented_dimensions = []
+    if row["candidate_better_policy_count"] > 1:
+        fragmented_dimensions.append("policy")
+    if row["candidate_better_branch_count"] > 1:
+        fragmented_dimensions.append("branch")
+    if row["candidate_better_pair_count"] > 1:
+        fragmented_dimensions.append("pair")
+    if row["same_outcome_state_count"] > 0:
+        fragmented_dimensions.append("same_outcome")
+    row["candidate_fragmented_dimensions"] = "|".join(fragmented_dimensions)
+    row["candidate_fragment_count"] = len(fragmented_dimensions)
+    row["candidate_low_fragmentation"] = not fragmented_dimensions
     return row
 
 
@@ -1156,9 +1168,16 @@ def sort_axis_token_rows(rows):
     )
 
 
-def axis_token_decision(clean_repeated, clean_singleton, contaminated):
-    if clean_repeated:
+def axis_token_decision(
+    low_fragmentation_repeated,
+    fragmented_repeated,
+    clean_singleton,
+    contaminated,
+):
+    if low_fragmentation_repeated:
         return "inspect_repeated_candidate_tokens"
+    if fragmented_repeated:
+        return "fragmented_repeated_candidate_tokens"
     if clean_singleton:
         return "singleton_candidate_tokens"
     if contaminated:
@@ -1169,6 +1188,7 @@ def axis_token_decision(clean_repeated, clean_singleton, contaminated):
 def axis_token_next_action(decision):
     return {
         "inspect_repeated_candidate_tokens": "inspect_token_feature_before_runtime",
+        "fragmented_repeated_candidate_tokens": "archive_or_widen_fragmented_tokens",
         "singleton_candidate_tokens": "archive_or_widen_token_singletons",
         "no_clean_candidate_tokens": "archive_current_families_or_add_new_feature_axis",
         "no_candidate_tokens": "try_next_family_set",
@@ -1207,6 +1227,12 @@ def axis_token_discriminator_summary(
     clean_repeated = [
         row for row in clean_tokens if row["candidate_repeated_across_target_states"]
     ]
+    low_fragmentation_repeated = [
+        row for row in clean_repeated if row["candidate_low_fragmentation"]
+    ]
+    fragmented_repeated = [
+        row for row in clean_repeated if not row["candidate_low_fragmentation"]
+    ]
     clean_singleton = [
         row for row in clean_tokens if not row["candidate_repeated_across_target_states"]
     ]
@@ -1215,7 +1241,12 @@ def axis_token_discriminator_summary(
         for row in token_rows
         if not row["candidate_clean_from_baseline_no_policy"]
     ]
-    decision = axis_token_decision(clean_repeated, clean_singleton, contaminated)
+    decision = axis_token_decision(
+        low_fragmentation_repeated,
+        fragmented_repeated,
+        clean_singleton,
+        contaminated,
+    )
     return {
         "target_source": state_summary.get("target_source", ""),
         "target_state_count": len(target_states),
@@ -1225,10 +1256,20 @@ def axis_token_discriminator_summary(
         "target_families": target_families,
         "candidate_token_count": len(token_rows),
         "clean_repeated_candidate_token_count": len(clean_repeated),
+        "low_fragmentation_clean_repeated_candidate_token_count": len(
+            low_fragmentation_repeated
+        ),
+        "fragmented_clean_repeated_candidate_token_count": len(fragmented_repeated),
         "clean_singleton_candidate_token_count": len(clean_singleton),
         "contaminated_candidate_token_count": len(contaminated),
         "axis_token_decision": decision,
         "next_action": axis_token_next_action(decision),
+        "top_low_fragmentation_clean_repeated_candidate_tokens": sort_axis_token_rows(
+            low_fragmentation_repeated
+        )[:token_limit],
+        "top_fragmented_clean_repeated_candidate_tokens": sort_axis_token_rows(
+            fragmented_repeated
+        )[:token_limit],
         "top_clean_repeated_candidate_tokens": sort_axis_token_rows(clean_repeated)[
             :token_limit
         ],
