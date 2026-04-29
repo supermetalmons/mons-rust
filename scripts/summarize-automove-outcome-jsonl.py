@@ -66,6 +66,25 @@ ROOT_POOL_GUARDED_ORIGIN_KINDS = {
     "guarded_pre_accept",
     "guarded_head",
 }
+ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
+    "family",
+    "rank_bucket",
+    "advisor_bucket",
+    "path",
+    "safety_detail",
+    "progress",
+    "efficiency",
+    "setup_gain",
+    "soft_priority",
+    "keeps_awake",
+    "reply_risk",
+]
+ROOT_POOL_DELTA_NUMERIC_FIELDS = [
+    "rank",
+    "score",
+    "reply_floor",
+    "followup_floor",
+]
 
 
 def parse_jsonl_rows(paths):
@@ -2366,6 +2385,471 @@ def root_pool_discriminator_summary(rows, limit):
     }
 
 
+def root_pool_guarded_roots_by_snapshot(roots):
+    grouped = defaultdict(lambda: defaultdict(list))
+    for row in roots:
+        snapshot = root_pool_snapshot_id(row)
+        for kind in sorted(root_pool_origin_kinds(row) & ROOT_POOL_GUARDED_ORIGIN_KINDS):
+            grouped[snapshot][kind].append(row)
+    return grouped
+
+
+def root_pool_is_same_inputs(left, right):
+    return str(left.get("inputs", "")) == str(right.get("inputs", ""))
+
+
+def root_pool_is_same_state_policy_output_blocker(row, candidate_cross_states):
+    if root_pool_is_candidate_winning_policy(row):
+        return False
+    if root_pool_cross_state(row) not in candidate_cross_states:
+        return False
+    kinds = root_pool_origin_kinds(row)
+    return "policy_output" in kinds or "winning_policy_output" in kinds
+
+
+def root_pool_number(row, field):
+    value = row.get(field, None)
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def root_pool_delta_bucket(value, rank_like=False):
+    value = abs(value)
+    if value == 0:
+        return "same"
+    if rank_like:
+        if value <= 2:
+            return "1_2"
+        if value <= 5:
+            return "3_5"
+        return "6_plus"
+    if value <= 95:
+        return "1_95"
+    if value <= 255:
+        return "96_255"
+    return "256_plus"
+
+
+def root_pool_numeric_delta_signal(field, candidate, guarded):
+    candidate_value = root_pool_number(candidate, field)
+    guarded_value = root_pool_number(guarded, field)
+    if candidate_value is None or guarded_value is None:
+        return None
+    if field == "rank":
+        delta = guarded_value - candidate_value
+        rank_like = True
+    else:
+        delta = candidate_value - guarded_value
+        rank_like = False
+    if delta == 0:
+        direction = "same"
+    elif delta > 0:
+        direction = "candidate_better"
+    else:
+        direction = "candidate_worse"
+    bucket = root_pool_delta_bucket(delta, rank_like=rank_like)
+    return f"{direction}_{bucket}" if direction != "same" else "same"
+
+
+def root_pool_guarded_delta_signal_items(candidate, guarded, guarded_kind):
+    items = []
+    for field in ROOT_POOL_DELTA_CATEGORICAL_FIELDS:
+        candidate_value = root_pool_field_value(candidate, field)
+        guarded_value = root_pool_field_value(guarded, field)
+        if not candidate_value or not guarded_value:
+            continue
+        change = "same" if candidate_value == guarded_value else "different"
+        items.append(
+            {
+                "signal": (
+                    "root_pool_guarded_delta:"
+                    f"against={guarded_kind}:{field}_change={change}"
+                ),
+                "signal_kind": "field_change",
+                "field": f"{field}_change",
+                "value": change,
+                "guarded_kind": guarded_kind,
+            }
+        )
+        if candidate_value != guarded_value:
+            transition = f"{guarded_value}->{candidate_value}"
+            items.append(
+                {
+                    "signal": (
+                        "root_pool_guarded_delta:"
+                        f"against={guarded_kind}:{field}={transition}"
+                    ),
+                    "signal_kind": "field_transition",
+                    "field": field,
+                    "value": transition,
+                    "guarded_kind": guarded_kind,
+                }
+            )
+
+    for field in ROOT_POOL_DELTA_NUMERIC_FIELDS:
+        delta_signal = root_pool_numeric_delta_signal(field, candidate, guarded)
+        if not delta_signal:
+            continue
+        items.append(
+            {
+                "signal": (
+                    "root_pool_guarded_delta:"
+                    f"against={guarded_kind}:{field}_delta={delta_signal}"
+                ),
+                "signal_kind": "numeric_delta",
+                "field": f"{field}_delta",
+                "value": delta_signal,
+                "guarded_kind": guarded_kind,
+            }
+        )
+    return items
+
+
+def root_pool_delta_sample(candidate, guarded, guarded_kind):
+    return {
+        "guarded_kind": guarded_kind,
+        "candidate_root": root_pool_sample_root(candidate),
+        "guarded_root": root_pool_sample_root(guarded),
+    }
+
+
+def new_root_pool_delta_group(item):
+    return {
+        "signal": item["signal"],
+        "signal_kind": item["signal_kind"],
+        "field": item["field"],
+        "value": item["value"],
+        "candidate_comparisons": 0,
+        "candidate_roots": set(),
+        "candidate_states": set(),
+        "candidate_snapshots": set(),
+        "candidate_profiles": set(),
+        "candidate_policies": set(),
+        "candidate_duels": set(),
+        "candidate_pairs": set(),
+        "candidate_variants": set(),
+        "candidate_guarded_kinds": set(),
+        "blocker_comparisons": 0,
+        "blocker_roots": set(),
+        "blocker_states": set(),
+        "blocker_snapshots": set(),
+        "blocker_guarded_kinds": set(),
+        "blocker_portfolio_classes": set(),
+        "sample_candidate_deltas": [],
+        "sample_blocker_deltas": [],
+    }
+
+
+def root_pool_root_key(row):
+    return "|".join(
+        [
+            root_pool_snapshot_id(row),
+            f"inputs={row.get('inputs', '')}",
+            f"policies={row.get('policies', '')}",
+            f"origin_kinds={row.get('origin_kinds', '')}",
+        ]
+    )
+
+
+def add_root_pool_delta_occurrence(group, candidate, guarded, guarded_kind, is_blocker):
+    if is_blocker:
+        group["blocker_comparisons"] += 1
+        group["blocker_roots"].add(root_pool_root_key(candidate))
+        state = root_pool_cross_state(candidate)
+        if state:
+            group["blocker_states"].add(state)
+        snapshot = root_pool_snapshot_id(candidate)
+        if snapshot:
+            group["blocker_snapshots"].add(snapshot)
+        group["blocker_guarded_kinds"].add(guarded_kind)
+        portfolio_class = candidate.get("portfolio_class", "")
+        if portfolio_class:
+            group["blocker_portfolio_classes"].add(portfolio_class)
+        if len(group["sample_blocker_deltas"]) < 5:
+            group["sample_blocker_deltas"].append(
+                root_pool_delta_sample(candidate, guarded, guarded_kind)
+            )
+        return
+
+    group["candidate_comparisons"] += 1
+    group["candidate_roots"].add(root_pool_root_key(candidate))
+    state = root_pool_cross_state(candidate)
+    if state:
+        group["candidate_states"].add(state)
+    snapshot = root_pool_snapshot_id(candidate)
+    if snapshot:
+        group["candidate_snapshots"].add(snapshot)
+    for value in split_pipe(candidate.get("policies", "")):
+        group["candidate_policies"].add(value)
+    for field, set_name in [
+        ("candidate", "candidate_profiles"),
+        ("duel", "candidate_duels"),
+        ("variant", "candidate_variants"),
+    ]:
+        value = candidate.get(field, "")
+        if value:
+            group[set_name].add(value)
+    pair = root_pool_pair(candidate)
+    if pair:
+        group["candidate_pairs"].add(pair)
+    group["candidate_guarded_kinds"].add(guarded_kind)
+    if len(group["sample_candidate_deltas"]) < 5:
+        group["sample_candidate_deltas"].append(
+            root_pool_delta_sample(candidate, guarded, guarded_kind)
+        )
+
+
+def summarize_root_pool_delta_group(group):
+    fragmented_dimensions = []
+    if len(group["candidate_profiles"]) > 1:
+        fragmented_dimensions.append("candidate")
+    if len(group["candidate_policies"]) > 1:
+        fragmented_dimensions.append("policy")
+    if len(group["candidate_duels"]) > 1:
+        fragmented_dimensions.append("duel")
+    if len(group["candidate_pairs"]) > 1:
+        fragmented_dimensions.append("pair")
+    if len(group["candidate_variants"]) > 1:
+        fragmented_dimensions.append("variant")
+    if len(group["candidate_guarded_kinds"]) > 1:
+        fragmented_dimensions.append("guarded_kind")
+    return {
+        "signal": group["signal"],
+        "signal_kind": group["signal_kind"],
+        "field": group["field"],
+        "value": group["value"],
+        "candidate_comparison_count": group["candidate_comparisons"],
+        "candidate_root_count": len(group["candidate_roots"]),
+        "candidate_state_count": len(group["candidate_states"]),
+        "candidate_state_ids": sorted(group["candidate_states"]),
+        "candidate_snapshot_count": len(group["candidate_snapshots"]),
+        "candidate_profile_count": len(group["candidate_profiles"]),
+        "candidate_profiles": pipe_join(group["candidate_profiles"]),
+        "candidate_policy_count": len(group["candidate_policies"]),
+        "candidate_policies": pipe_join(group["candidate_policies"]),
+        "candidate_duel_count": len(group["candidate_duels"]),
+        "candidate_duels": pipe_join(group["candidate_duels"]),
+        "candidate_pair_count": len(group["candidate_pairs"]),
+        "candidate_pairs": pipe_join(group["candidate_pairs"]),
+        "candidate_variant_count": len(group["candidate_variants"]),
+        "candidate_variants": pipe_join(group["candidate_variants"]),
+        "candidate_guarded_kind_count": len(group["candidate_guarded_kinds"]),
+        "candidate_guarded_kinds": pipe_join(group["candidate_guarded_kinds"]),
+        "blocker_comparison_count": group["blocker_comparisons"],
+        "blocker_root_count": len(group["blocker_roots"]),
+        "blocker_state_count": len(group["blocker_states"]),
+        "blocker_snapshot_count": len(group["blocker_snapshots"]),
+        "blocker_guarded_kind_count": len(group["blocker_guarded_kinds"]),
+        "blocker_guarded_kinds": pipe_join(group["blocker_guarded_kinds"]),
+        "blocker_portfolio_class_count": len(group["blocker_portfolio_classes"]),
+        "blocker_portfolio_classes": pipe_join(group["blocker_portfolio_classes"]),
+        "candidate_clean_from_blockers": group["blocker_comparisons"] == 0,
+        "candidate_repeated_across_states": len(group["candidate_states"]) > 1,
+        "candidate_fragmented_dimensions": pipe_join(fragmented_dimensions),
+        "candidate_fragment_count": len(fragmented_dimensions),
+        "candidate_low_fragmentation": not fragmented_dimensions,
+        "sample_candidate_deltas": group["sample_candidate_deltas"],
+        "sample_blocker_deltas": group["sample_blocker_deltas"],
+    }
+
+
+def sort_root_pool_delta_rows(rows):
+    return sorted(
+        rows,
+        key=lambda row: (
+            -row["candidate_state_count"],
+            row["candidate_fragment_count"],
+            row["blocker_comparison_count"],
+            -row["candidate_comparison_count"],
+            row["field"],
+            row["signal"],
+        ),
+    )
+
+
+def root_pool_delta_decision(
+    low_fragmentation_repeated,
+    fragmented_repeated,
+    clean_singleton,
+    contaminated,
+    candidate_comparison_count,
+    roots,
+):
+    if not roots:
+        return "no_pro_v4_root_pool_rows"
+    if candidate_comparison_count == 0:
+        return "no_candidate_guarded_delta_comparisons"
+    if low_fragmentation_repeated:
+        return "inspect_repeated_root_pool_guarded_delta"
+    if fragmented_repeated:
+        return "fragmented_repeated_root_pool_guarded_delta"
+    if clean_singleton:
+        return "singleton_root_pool_guarded_delta"
+    if contaminated:
+        return "contaminated_root_pool_guarded_deltas"
+    return "no_candidate_root_pool_guarded_delta"
+
+
+def root_pool_delta_next_action(decision):
+    return {
+        "inspect_repeated_root_pool_guarded_delta": (
+            "validate_root_pool_delta_in_focused_outcome_slice"
+        ),
+        "fragmented_repeated_root_pool_guarded_delta": (
+            "add_below_fragmented_delta_feature_or_archive"
+        ),
+        "singleton_root_pool_guarded_delta": "archive_or_widen_delta_singletons",
+        "contaminated_root_pool_guarded_deltas": (
+            "add_new_root_feature_or_archive_current_deltas"
+        ),
+        "no_candidate_guarded_delta_comparisons": "increase_root_pool_root_limit_or_add_feature",
+        "no_pro_v4_root_pool_rows": "enable_pro_v4_root_pool_export",
+        "no_candidate_root_pool_guarded_delta": (
+            "add_new_root_feature_or_archive_current_deltas"
+        ),
+    }.get(decision, "review")
+
+
+def root_pool_guarded_delta_discriminator_summary(rows, limit):
+    roots = root_pool_rows(rows)
+    candidate_roots = [
+        row for row in roots if root_pool_is_candidate_winning_policy(row)
+    ]
+    candidate_cross_states = {
+        root_pool_cross_state(row) for row in candidate_roots if root_pool_cross_state(row)
+    }
+    guarded_by_snapshot = root_pool_guarded_roots_by_snapshot(roots)
+    blocker_roots = [
+        row
+        for row in roots
+        if root_pool_is_same_state_policy_output_blocker(row, candidate_cross_states)
+    ]
+
+    groups = {}
+    candidate_delta_fields = defaultdict(int)
+    blocker_delta_fields = defaultdict(int)
+    candidate_comparison_count = 0
+    blocker_comparison_count = 0
+
+    def add_delta_rows(root, is_blocker):
+        nonlocal candidate_comparison_count, blocker_comparison_count
+        for guarded_kind, guarded_rows in guarded_by_snapshot.get(
+            root_pool_snapshot_id(root), {}
+        ).items():
+            for guarded in guarded_rows:
+                if root_pool_is_same_inputs(root, guarded):
+                    continue
+                items = root_pool_guarded_delta_signal_items(
+                    root,
+                    guarded,
+                    guarded_kind,
+                )
+                if not items:
+                    continue
+                if is_blocker:
+                    blocker_comparison_count += 1
+                else:
+                    candidate_comparison_count += 1
+                for item in items:
+                    group = groups.setdefault(
+                        item["signal"], new_root_pool_delta_group(item)
+                    )
+                    if is_blocker:
+                        blocker_delta_fields[item["field"]] += 1
+                    else:
+                        candidate_delta_fields[item["field"]] += 1
+                    add_root_pool_delta_occurrence(
+                        group,
+                        root,
+                        guarded,
+                        guarded_kind,
+                        is_blocker=is_blocker,
+                    )
+
+    for root in candidate_roots:
+        add_delta_rows(root, is_blocker=False)
+    for root in blocker_roots:
+        add_delta_rows(root, is_blocker=True)
+
+    delta_rows = [
+        summarize_root_pool_delta_group(group)
+        for group in groups.values()
+        if group["candidate_comparisons"] > 0
+    ]
+    clean = [row for row in delta_rows if row["candidate_clean_from_blockers"]]
+    clean_repeated = [
+        row for row in clean if row["candidate_repeated_across_states"]
+    ]
+    low_fragmentation_repeated = [
+        row for row in clean_repeated if row["candidate_low_fragmentation"]
+    ]
+    fragmented_repeated = [
+        row for row in clean_repeated if not row["candidate_low_fragmentation"]
+    ]
+    clean_singleton = [
+        row for row in clean if not row["candidate_repeated_across_states"]
+    ]
+    contaminated = [
+        row for row in delta_rows if not row["candidate_clean_from_blockers"]
+    ]
+    decision = root_pool_delta_decision(
+        low_fragmentation_repeated,
+        fragmented_repeated,
+        clean_singleton,
+        contaminated,
+        candidate_comparison_count,
+        roots,
+    )
+    source_permission_value = (
+        "inspect_for_source"
+        if decision == "inspect_repeated_root_pool_guarded_delta"
+        else "no_source"
+    )
+    return {
+        "discriminator_decision": decision,
+        "source_permission": source_permission_value,
+        "next_action": root_pool_delta_next_action(decision),
+        "root_count": len(roots),
+        "candidate_only_winning_policy_root_count": len(candidate_roots),
+        "candidate_cross_budget_state_count": len(candidate_cross_states),
+        "candidate_cross_budget_state_ids": sorted(candidate_cross_states),
+        "candidate_guarded_delta_comparison_count": candidate_comparison_count,
+        "same_state_policy_output_blocker_root_count": len(blocker_roots),
+        "blocker_guarded_delta_comparison_count": blocker_comparison_count,
+        "candidate_delta_signal_count": len(delta_rows),
+        "clean_repeated_candidate_delta_signal_count": len(clean_repeated),
+        "low_fragmentation_repeated_candidate_delta_signal_count": len(
+            low_fragmentation_repeated
+        ),
+        "fragmented_repeated_candidate_delta_signal_count": len(
+            fragmented_repeated
+        ),
+        "clean_singleton_candidate_delta_signal_count": len(clean_singleton),
+        "contaminated_candidate_delta_signal_count": len(contaminated),
+        "candidate_delta_field_counts": sorted_count_rows(candidate_delta_fields),
+        "blocker_delta_field_counts": sorted_count_rows(blocker_delta_fields),
+        "top_low_fragmentation_repeated_candidate_delta_signals": sort_root_pool_delta_rows(
+            low_fragmentation_repeated
+        )[:limit],
+        "top_fragmented_repeated_candidate_delta_signals": sort_root_pool_delta_rows(
+            fragmented_repeated
+        )[:limit],
+        "top_clean_repeated_candidate_delta_signals": sort_root_pool_delta_rows(
+            clean_repeated
+        )[:limit],
+        "top_clean_singleton_candidate_delta_signals": sort_root_pool_delta_rows(
+            clean_singleton
+        )[:limit],
+        "top_contaminated_candidate_delta_signals": sort_root_pool_delta_rows(
+            contaminated
+        )[:limit],
+    }
+
+
 def workbench_decision(source_rows, blocked_rows):
     if source_rows:
         return "inspect_for_source"
@@ -2451,6 +2935,12 @@ def summarize(
         "pro_v4_root_pool_discriminator": root_pool_discriminator_summary(
             rows,
             limit=limit,
+        ),
+        "pro_v4_root_pool_guarded_delta_discriminator": (
+            root_pool_guarded_delta_discriminator_summary(
+                rows,
+                limit=limit,
+            )
         ),
     }
     if include_contrast:
