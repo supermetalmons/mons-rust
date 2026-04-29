@@ -454,6 +454,20 @@ def top_corpus_axis_rows(rows, record_class, limit=8):
     )[:limit]
 
 
+def top_corpus_axis_decision_rows(rows, decision, limit=8):
+    return sorted(
+        [row for row in rows if row.get("axis_decision") == decision],
+        key=lambda row: (
+            -int(row.get("no_policy_states", 0)),
+            -int(row.get("candidate_better_states", 0)),
+            -int(row.get("baseline_better_states", 0)),
+            -int(row.get("same_outcome_states", 0)),
+            -int(row.get("state_count", 0)),
+            row.get("key", ""),
+        ),
+    )[:limit]
+
+
 def summarize_corpus_axes(events, limit=8):
     groups = {}
     record_count = 0
@@ -474,6 +488,9 @@ def summarize_corpus_axes(events, limit=8):
 
     rows = [summarize_corpus_axis_group(group) for group in groups.values()]
     rows = sorted(rows, key=lambda row: (-row["state_count"], row["key"]))
+    axis_decision_counts = defaultdict(int)
+    for row in rows:
+        axis_decision_counts[row["axis_decision"]] += 1
     return {
         "record_count": record_count,
         "state_count": len(state_keys),
@@ -481,6 +498,11 @@ def summarize_corpus_axes(events, limit=8):
         "class_state_counts": sorted_count_rows(
             {key: len(value) for key, value in class_states.items()}
         ),
+        "axis_decision_counts": sorted_count_rows(axis_decision_counts),
+        "top_axes_by_decision": {
+            decision: top_corpus_axis_decision_rows(rows, decision, limit)
+            for decision in sorted(axis_decision_counts)
+        },
         "top_candidate_better_axes": top_corpus_axis_rows(
             rows, "candidate_better", limit
         ),
