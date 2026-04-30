@@ -108,6 +108,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_carrier_route_delta",
     "post_consumable",
     "post_consumable_delta",
+    "post_consumable_base",
+    "post_consumable_base_delta",
     "post_engagement",
     "post_engagement_delta",
     "post_mobility",
@@ -220,6 +222,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_consumable", ("family", "post_consumable")),
     ("progress_consumable_delta", ("progress", "post_consumable_delta")),
     ("path_consumable_delta", ("path", "post_consumable_delta")),
+    ("family_consumable_base", ("family", "post_consumable_base")),
+    ("progress_consumable_base_delta", ("progress", "post_consumable_base_delta")),
+    ("path_consumable_base_delta", ("path", "post_consumable_base_delta")),
     ("family_engagement", ("family", "post_engagement")),
     ("progress_engagement_delta", ("progress", "post_engagement_delta")),
     ("path_engagement_delta", ("path", "post_engagement_delta")),
@@ -336,6 +341,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_carrier_route_delta",
     "post_consumable",
     "post_consumable_delta",
+    "post_consumable_base",
+    "post_consumable_base_delta",
     "post_engagement",
     "post_engagement_delta",
     "post_mobility",
@@ -2383,6 +2390,8 @@ def root_pool_signal_field_family(field):
         return "mobility"
     if "engagement" in field:
         return "engagement"
+    if "consumable_base" in field:
+        return "consumable_base"
     if "consumable" in field:
         return "consumable"
     if "pickup_access" in field:
@@ -2597,6 +2606,8 @@ def root_pool_sample_root(row):
         "post_mana_base_delta": row.get("post_mana_base_delta", ""),
         "post_consumable": row.get("post_consumable", ""),
         "post_consumable_delta": row.get("post_consumable_delta", ""),
+        "post_consumable_base": row.get("post_consumable_base", ""),
+        "post_consumable_base_delta": row.get("post_consumable_base_delta", ""),
         "post_engagement": row.get("post_engagement", ""),
         "post_engagement_delta": row.get("post_engagement_delta", ""),
         "post_mobility": row.get("post_mobility", ""),
