@@ -2726,6 +2726,32 @@ impl ProV4RootPoolMobilityFeatures {
 }
 
 #[derive(Default)]
+struct ProV4RootPoolRoleMobilityPosture {
+    own_steps: [Option<usize>; PRO_V4_ROOT_POOL_ROLE_COUNT],
+    own_forward: [Option<usize>; PRO_V4_ROOT_POOL_ROLE_COUNT],
+    own_pool: [Option<usize>; PRO_V4_ROOT_POOL_ROLE_COUNT],
+    own_pickup: [Option<usize>; PRO_V4_ROOT_POOL_ROLE_COUNT],
+    opp_steps: [Option<usize>; PRO_V4_ROOT_POOL_ROLE_COUNT],
+    opp_forward: [Option<usize>; PRO_V4_ROOT_POOL_ROLE_COUNT],
+    opp_pool: [Option<usize>; PRO_V4_ROOT_POOL_ROLE_COUNT],
+    opp_pickup: [Option<usize>; PRO_V4_ROOT_POOL_ROLE_COUNT],
+}
+
+struct ProV4RootPoolRoleMobilityFeatures {
+    post_role_mobility: String,
+    post_role_mobility_delta: String,
+}
+
+impl ProV4RootPoolRoleMobilityFeatures {
+    fn omitted() -> Self {
+        Self {
+            post_role_mobility: "omitted".to_string(),
+            post_role_mobility_delta: "omitted".to_string(),
+        }
+    }
+}
+
+#[derive(Default)]
 struct ProV4RootPoolActionThreatPosture {
     own_action_actors: usize,
     own_action_targets: usize,
@@ -5598,6 +5624,151 @@ fn pro_v4_root_pool_mobility_features(
     ProV4RootPoolMobilityFeatures {
         post_mobility: pro_v4_root_pool_mobility_bucket(after_game, &after, perspective),
         post_mobility_delta: pro_v4_root_pool_mobility_delta_bucket(&before, &after),
+    }
+}
+
+fn pro_v4_root_pool_role_mobility_count_bucket(value: Option<usize>) -> &'static str {
+    match value {
+        None => "none",
+        Some(0) => "zero",
+        Some(1) => "one",
+        Some(2) => "two",
+        Some(3 | 4) => "three_four",
+        Some(_) => "five_plus",
+    }
+}
+
+fn pro_v4_root_pool_role_mobility_posture(
+    game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolRoleMobilityPosture {
+    if game.winner_color().is_some() {
+        return ProV4RootPoolRoleMobilityPosture::default();
+    }
+    let mut posture = ProV4RootPoolRoleMobilityPosture::default();
+    for (location, item) in game.board.occupied() {
+        let Some(mon) = item.mon() else {
+            continue;
+        };
+        if mon.is_fainted() {
+            continue;
+        }
+        let mut step_targets = 0usize;
+        let mut forward_steps = 0usize;
+        let mut pool_steps = 0usize;
+        let mut pickup_steps = 0usize;
+        let current_forward = pro_v4_root_pool_forward_index(mon.color, location);
+        for &target in location.nearby_locations_ref() {
+            if !pro_v4_root_pool_mon_can_step_to(&game.board, item, location, target) {
+                continue;
+            }
+            step_targets += 1;
+            forward_steps +=
+                usize::from(pro_v4_root_pool_forward_index(mon.color, target) > current_forward);
+            pool_steps += usize::from(
+                matches!(game.board.square(target), Square::ManaPool { color } if color == mon.color),
+            );
+            pickup_steps += usize::from(game.board.item(target).is_some());
+        }
+        let role_index = pro_v4_root_pool_role_index(mon.kind);
+        if mon.color == perspective {
+            posture.own_steps[role_index] = Some(step_targets);
+            posture.own_forward[role_index] = Some(forward_steps);
+            posture.own_pool[role_index] = Some(pool_steps);
+            posture.own_pickup[role_index] = Some(pickup_steps);
+        } else {
+            posture.opp_steps[role_index] = Some(step_targets);
+            posture.opp_forward[role_index] = Some(forward_steps);
+            posture.opp_pool[role_index] = Some(pool_steps);
+            posture.opp_pickup[role_index] = Some(pickup_steps);
+        }
+    }
+    posture
+}
+
+fn pro_v4_root_pool_role_mobility_side_bucket(
+    values: &[Option<usize>; PRO_V4_ROOT_POOL_ROLE_COUNT],
+) -> String {
+    format!(
+        "angel={};drainer={};mystic={};demon={};spirit={}",
+        pro_v4_root_pool_role_mobility_count_bucket(values[0]),
+        pro_v4_root_pool_role_mobility_count_bucket(values[1]),
+        pro_v4_root_pool_role_mobility_count_bucket(values[2]),
+        pro_v4_root_pool_role_mobility_count_bucket(values[3]),
+        pro_v4_root_pool_role_mobility_count_bucket(values[4]),
+    )
+}
+
+fn pro_v4_root_pool_role_mobility_delta_value(
+    before: Option<usize>,
+    after: Option<usize>,
+) -> &'static str {
+    pro_v4_root_pool_i32_delta_bucket(
+        before.map(|value| value as i32),
+        after.map(|value| value as i32),
+    )
+}
+
+fn pro_v4_root_pool_role_mobility_side_delta_bucket(
+    before: &[Option<usize>; PRO_V4_ROOT_POOL_ROLE_COUNT],
+    after: &[Option<usize>; PRO_V4_ROOT_POOL_ROLE_COUNT],
+) -> String {
+    format!(
+        "angel={};drainer={};mystic={};demon={};spirit={}",
+        pro_v4_root_pool_role_mobility_delta_value(before[0], after[0]),
+        pro_v4_root_pool_role_mobility_delta_value(before[1], after[1]),
+        pro_v4_root_pool_role_mobility_delta_value(before[2], after[2]),
+        pro_v4_root_pool_role_mobility_delta_value(before[3], after[3]),
+        pro_v4_root_pool_role_mobility_delta_value(before[4], after[4]),
+    )
+}
+
+fn pro_v4_root_pool_role_mobility_bucket(
+    game: &MonsGame,
+    posture: &ProV4RootPoolRoleMobilityPosture,
+    perspective: Color,
+) -> String {
+    format!(
+        "status={};own_steps={};own_forward={};own_pool={};own_pickup={};opp_steps={};opp_forward={};opp_pool={};opp_pickup={}",
+        pro_v4_root_pool_status(game, perspective),
+        pro_v4_root_pool_role_mobility_side_bucket(&posture.own_steps),
+        pro_v4_root_pool_role_mobility_side_bucket(&posture.own_forward),
+        pro_v4_root_pool_role_mobility_side_bucket(&posture.own_pool),
+        pro_v4_root_pool_role_mobility_side_bucket(&posture.own_pickup),
+        pro_v4_root_pool_role_mobility_side_bucket(&posture.opp_steps),
+        pro_v4_root_pool_role_mobility_side_bucket(&posture.opp_forward),
+        pro_v4_root_pool_role_mobility_side_bucket(&posture.opp_pool),
+        pro_v4_root_pool_role_mobility_side_bucket(&posture.opp_pickup),
+    )
+}
+
+fn pro_v4_root_pool_role_mobility_delta_bucket(
+    before: &ProV4RootPoolRoleMobilityPosture,
+    after: &ProV4RootPoolRoleMobilityPosture,
+) -> String {
+    format!(
+        "own_steps={};own_forward={};own_pool={};own_pickup={};opp_steps={};opp_forward={};opp_pool={};opp_pickup={}",
+        pro_v4_root_pool_role_mobility_side_delta_bucket(&before.own_steps, &after.own_steps),
+        pro_v4_root_pool_role_mobility_side_delta_bucket(&before.own_forward, &after.own_forward),
+        pro_v4_root_pool_role_mobility_side_delta_bucket(&before.own_pool, &after.own_pool),
+        pro_v4_root_pool_role_mobility_side_delta_bucket(&before.own_pickup, &after.own_pickup),
+        pro_v4_root_pool_role_mobility_side_delta_bucket(&before.opp_steps, &after.opp_steps),
+        pro_v4_root_pool_role_mobility_side_delta_bucket(&before.opp_forward, &after.opp_forward),
+        pro_v4_root_pool_role_mobility_side_delta_bucket(&before.opp_pool, &after.opp_pool),
+        pro_v4_root_pool_role_mobility_side_delta_bucket(&before.opp_pickup, &after.opp_pickup),
+    )
+}
+
+fn pro_v4_root_pool_role_mobility_features(
+    before_game: &MonsGame,
+    after_game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolRoleMobilityFeatures {
+    let before = pro_v4_root_pool_role_mobility_posture(before_game, perspective);
+    let after = pro_v4_root_pool_role_mobility_posture(after_game, perspective);
+    ProV4RootPoolRoleMobilityFeatures {
+        post_role_mobility: pro_v4_root_pool_role_mobility_bucket(after_game, &after, perspective),
+        post_role_mobility_delta: pro_v4_root_pool_role_mobility_delta_bucket(&before, &after),
     }
 }
 
@@ -8682,6 +8853,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             consumable_features,
             engagement_features,
             mobility_features,
+            role_mobility_features,
             action_threat_features,
             step_threat_features,
             role_state_features,
@@ -8804,6 +8976,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 pro_v4_root_pool_engagement_features(&game, &root.game, game.active_color);
             let mobility_features =
                 pro_v4_root_pool_mobility_features(&game, &root.game, game.active_color);
+            let role_mobility_features =
+                pro_v4_root_pool_role_mobility_features(&game, &root.game, game.active_color);
             let action_threat_features =
                 pro_v4_root_pool_action_threat_features(&game, &root.game, game.active_color);
             let step_threat_features =
@@ -8878,6 +9052,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 consumable_features,
                 engagement_features,
                 mobility_features,
+                role_mobility_features,
                 action_threat_features,
                 step_threat_features,
                 role_state_features,
@@ -8931,6 +9106,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 ProV4RootPoolConsumableFeatures::omitted(),
                 ProV4RootPoolEngagementFeatures::omitted(),
                 ProV4RootPoolMobilityFeatures::omitted(),
+                ProV4RootPoolRoleMobilityFeatures::omitted(),
                 ProV4RootPoolActionThreatFeatures::omitted(),
                 ProV4RootPoolStepThreatFeatures::omitted(),
                 ProV4RootPoolRoleStateFeatures::omitted(),
@@ -8943,7 +9119,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_cooldown_tempo\":\"{}\",\"post_cooldown_tempo_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_drainer_geometry\":\"{}\",\"post_drainer_geometry_delta\":\"{}\",\"post_role_coordination\":\"{}\",\"post_role_coordination_delta\":\"{}\",\"post_formation_balance\":\"{}\",\"post_formation_balance_delta\":\"{}\",\"post_role_deployment\":\"{}\",\"post_role_deployment_delta\":\"{}\",\"post_role_pressure\":\"{}\",\"post_role_pressure_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pickup_access\":\"{}\",\"post_pickup_access_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_cooldown_tempo\":\"{}\",\"post_cooldown_tempo_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_drainer_geometry\":\"{}\",\"post_drainer_geometry_delta\":\"{}\",\"post_role_coordination\":\"{}\",\"post_role_coordination_delta\":\"{}\",\"post_formation_balance\":\"{}\",\"post_formation_balance_delta\":\"{}\",\"post_role_deployment\":\"{}\",\"post_role_deployment_delta\":\"{}\",\"post_role_pressure\":\"{}\",\"post_role_pressure_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pickup_access\":\"{}\",\"post_pickup_access_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_role_mobility\":\"{}\",\"post_role_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -9043,6 +9219,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             json_escape(&engagement_features.post_engagement_delta),
             json_escape(&mobility_features.post_mobility),
             json_escape(&mobility_features.post_mobility_delta),
+            json_escape(&role_mobility_features.post_role_mobility),
+            json_escape(&role_mobility_features.post_role_mobility_delta),
             json_escape(&action_threat_features.post_action_threat),
             json_escape(&action_threat_features.post_action_threat_delta),
             json_escape(&step_threat_features.post_step_threat),

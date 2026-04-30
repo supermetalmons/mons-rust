@@ -106,6 +106,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_engagement_delta",
     "post_mobility",
     "post_mobility_delta",
+    "post_role_mobility",
+    "post_role_mobility_delta",
     "post_action_threat",
     "post_action_threat_delta",
     "post_step_threat",
@@ -207,6 +209,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_mobility", ("family", "post_mobility")),
     ("progress_mobility_delta", ("progress", "post_mobility_delta")),
     ("path_mobility_delta", ("path", "post_mobility_delta")),
+    ("family_role_mobility", ("family", "post_role_mobility")),
+    ("progress_role_mobility_delta", ("progress", "post_role_mobility_delta")),
+    ("path_role_mobility_delta", ("path", "post_role_mobility_delta")),
     ("family_action_threat", ("family", "post_action_threat")),
     ("progress_action_threat_delta", ("progress", "post_action_threat_delta")),
     ("path_action_threat_delta", ("path", "post_action_threat_delta")),
@@ -309,6 +314,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_engagement_delta",
     "post_mobility",
     "post_mobility_delta",
+    "post_role_mobility",
+    "post_role_mobility_delta",
     "post_action_threat",
     "post_action_threat_delta",
     "post_step_threat",
@@ -2336,6 +2343,8 @@ def root_pool_signal_field_family(field):
         return "action_threat"
     if "followup" in field:
         return "followup_transition_shape"
+    if "role_mobility" in field:
+        return "role_mobility"
     if "mobility" in field:
         return "mobility"
     if "engagement" in field:
@@ -2550,6 +2559,8 @@ def root_pool_sample_root(row):
         "post_engagement_delta": row.get("post_engagement_delta", ""),
         "post_mobility": row.get("post_mobility", ""),
         "post_mobility_delta": row.get("post_mobility_delta", ""),
+        "post_role_mobility": row.get("post_role_mobility", ""),
+        "post_role_mobility_delta": row.get("post_role_mobility_delta", ""),
         "post_action_threat": row.get("post_action_threat", ""),
         "post_action_threat_delta": row.get("post_action_threat_delta", ""),
         "post_role_state": row.get("post_role_state", ""),
