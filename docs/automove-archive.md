@@ -1998,3 +1998,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Other sampled rows showed split pressure rather than promotion shape: `alternating_mana_rows=1-1`, `forward_bridge_mana_rows=2-2`, `center_spoke_mana_rows=2-0`, and `split_flank_mana_rows=2-0`.
 - The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
 - Durable outcome: disabling hard spirit-deploy interview preference is archived as another direct ProV4 config no-go. Do not reopen hard spirit-deploy toggles unless a future corpus/root feature first separates spirit-deploy wins from inner-wedge regressions and baseline saves.
+
+## ProV4 No-Move-Class-Coverage No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_no_move_class_coverage` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper and disabled guarded root/child move-class coverage plus strict tactical class coverage (`enable_move_class_coverage=false`, `enable_child_move_class_coverage=false`, `enable_strict_tactical_class_coverage=false`).
+- The tiny sampled Fast smoke failed immediately on `split_flank_mana_rows`: `wins=1`, `losses=1`, `confidence=0.0000`, `duel_passes=false`, `candidate_avg_ms=177.00`, and `opponent_avg_ms=3.90`.
+- Branch coverage in the smoke was ordinary guarded execution, not a new route: `frontier_execute=84` turns, `late_black_shipping_fallback=6`, and `early_white_fallback=6`.
+- Because the cheap smoke failed the hard threshold, no sampled dashboard or active panel spend was earned.
+- Durable outcome: root/child move-class coverage removal is archived as another direct ProV4 config no-go. Do not reopen move-class coverage toggles unless a future corpus/root feature first separates class-covered tactical wins from split-flank regressions and baseline saves.
