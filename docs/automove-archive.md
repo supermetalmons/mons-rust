@@ -1899,3 +1899,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - `frontier_pro_v4_no_deterministic_tiebreak` preserved the guarded wrapper but disabled deterministic interview tiebreak (`enable_interview_deterministic_tiebreak=false`). The tiny sampled Fast smoke reached `wins=2`, `losses=0`, `confidence=0.7500`, `duel_passes=false`, `candidate_avg_ms=212.51`, and `opponent_avg_ms=4.32`, but the sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `7-5` across `12` games (`win_rate=0.5833`, `confidence=0.6128`), with `candidate_avg_ms=141.74` versus shipping `60.50`; weakest variant was again `inner_wedge_mana_rows=0-2`.
 - The sampled dashboard stoplight was `not_promising` / `partial_dashboard` for both dashboarded candidates, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
 - Durable outcome: direct selective-extension, root-allocation, and deterministic interview-tiebreak toggles are archived as ProV4 config no-gos. Do not reopen them unless a future corpus/root feature first separates stable sampled roots from inner-wedge regressions and baseline saves.
+
+## ProV4 No-Event-Ordering No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_no_event_ordering_bonus` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper and disabled the guarded Pro event-ordering bonus (`enable_event_ordering_bonus=false`).
+- The tiny sampled Fast smoke ran successfully but did not meet the sweep pass threshold: `wins=2`, `losses=0`, `confidence=0.7500`, `duel_passes=false`, `candidate_avg_ms=195.48`, and `opponent_avg_ms=4.22`.
+- The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `7-5` across `12` games (`win_rate=0.5833`, `confidence=0.6128`), with `candidate_avg_ms=139.02` versus shipping `61.48`; weakest variant was `inner_wedge_mana_rows=0-2`.
+- The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
+- Durable outcome: event-ordering bonus toggling is archived as another direct ProV4 config no-go. Do not reopen event-ordering toggles unless a future corpus/root feature first separates stable sampled roots from inner-wedge regressions and baseline saves.
