@@ -2202,6 +2202,10 @@ struct ProV4RootPoolBoardPosture {
     own_fainted: usize,
     opp_awake: usize,
     opp_fainted: usize,
+    own_cooldown_next: [usize; PRO_V4_ROOT_POOL_ROLE_COUNT],
+    own_cooldown_later: [usize; PRO_V4_ROOT_POOL_ROLE_COUNT],
+    opp_cooldown_next: [usize; PRO_V4_ROOT_POOL_ROLE_COUNT],
+    opp_cooldown_later: [usize; PRO_V4_ROOT_POOL_ROLE_COUNT],
 }
 
 #[derive(Clone, Copy)]
@@ -2219,6 +2223,8 @@ struct ProV4RootPoolBoardFeatures {
     post_own_regular_delta: String,
     post_mon_material: String,
     post_mon_material_delta: String,
+    post_cooldown_tempo: String,
+    post_cooldown_tempo_delta: String,
 }
 
 impl ProV4RootPoolBoardFeatures {
@@ -2230,6 +2236,8 @@ impl ProV4RootPoolBoardFeatures {
             post_own_regular_delta: "omitted".to_string(),
             post_mon_material: "omitted".to_string(),
             post_mon_material_delta: "omitted".to_string(),
+            post_cooldown_tempo: "omitted".to_string(),
+            post_cooldown_tempo_delta: "omitted".to_string(),
         }
     }
 }
@@ -2916,10 +2924,21 @@ fn pro_v4_root_pool_board_posture(
         if let Some(mon) = item.mon() {
             let own = mon.color == perspective;
             if mon.is_fainted() {
+                let role_index = pro_v4_root_pool_role_index(mon.kind);
                 if own {
                     posture.own_fainted += 1;
+                    if mon.cooldown <= 1 {
+                        posture.own_cooldown_next[role_index] += 1;
+                    } else {
+                        posture.own_cooldown_later[role_index] += 1;
+                    }
                 } else {
                     posture.opp_fainted += 1;
+                    if mon.cooldown <= 1 {
+                        posture.opp_cooldown_next[role_index] += 1;
+                    } else {
+                        posture.opp_cooldown_later[role_index] += 1;
+                    }
                 }
             } else if own {
                 posture.own_awake += 1;
@@ -3005,6 +3024,35 @@ fn pro_v4_root_pool_mon_material_delta_bucket(
     )
 }
 
+fn pro_v4_root_pool_cooldown_tempo_bucket(posture: &ProV4RootPoolBoardPosture) -> String {
+    format!(
+        "own_next={};own_later={};opp_next={};opp_later={}",
+        pro_v4_root_pool_role_set_bucket(&posture.own_cooldown_next),
+        pro_v4_root_pool_role_set_bucket(&posture.own_cooldown_later),
+        pro_v4_root_pool_role_set_bucket(&posture.opp_cooldown_next),
+        pro_v4_root_pool_role_set_bucket(&posture.opp_cooldown_later),
+    )
+}
+
+fn pro_v4_root_pool_cooldown_tempo_delta_bucket(
+    before: &ProV4RootPoolBoardPosture,
+    after: &ProV4RootPoolBoardPosture,
+) -> String {
+    format!(
+        "own_next={};own_later={};opp_next={};opp_later={}",
+        pro_v4_root_pool_role_delta_set_bucket(&before.own_cooldown_next, &after.own_cooldown_next,),
+        pro_v4_root_pool_role_delta_set_bucket(
+            &before.own_cooldown_later,
+            &after.own_cooldown_later,
+        ),
+        pro_v4_root_pool_role_delta_set_bucket(&before.opp_cooldown_next, &after.opp_cooldown_next,),
+        pro_v4_root_pool_role_delta_set_bucket(
+            &before.opp_cooldown_later,
+            &after.opp_cooldown_later,
+        ),
+    )
+}
+
 fn pro_v4_root_pool_board_features(
     before_game: &MonsGame,
     after_game: &MonsGame,
@@ -3055,6 +3103,8 @@ fn pro_v4_root_pool_board_features(
         ),
         post_mon_material: pro_v4_root_pool_mon_material_bucket(&after),
         post_mon_material_delta: pro_v4_root_pool_mon_material_delta_bucket(&before, &after),
+        post_cooldown_tempo: pro_v4_root_pool_cooldown_tempo_bucket(&after),
+        post_cooldown_tempo_delta: pro_v4_root_pool_cooldown_tempo_delta_bucket(&before, &after),
     }
 }
 
@@ -7889,7 +7939,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pickup_access\":\"{}\",\"post_pickup_access_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_cooldown_tempo\":\"{}\",\"post_cooldown_tempo_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pickup_access\":\"{}\",\"post_pickup_access_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -7945,6 +7995,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             json_escape(&board_features.post_own_regular_delta),
             json_escape(&board_features.post_mon_material),
             json_escape(&board_features.post_mon_material_delta),
+            json_escape(&board_features.post_cooldown_tempo),
+            json_escape(&board_features.post_cooldown_tempo_delta),
             json_escape(&outcome_features.post_scoreboard),
             json_escape(&outcome_features.post_score_delta),
             json_escape(&outcome_features.post_turn_budget),

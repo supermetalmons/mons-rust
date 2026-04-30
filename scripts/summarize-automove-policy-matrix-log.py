@@ -1556,6 +1556,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_own_regular_delta",
                 "post_mon_material",
                 "post_mon_material_delta",
+                "post_cooldown_tempo",
+                "post_cooldown_tempo_delta",
                 "post_scoreboard",
                 "post_score_delta",
                 "post_turn_budget",
