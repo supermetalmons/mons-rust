@@ -1944,3 +1944,13 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `7-5` across `12` games (`win_rate=0.5833`, `confidence=0.6128`), with `candidate_avg_ms=140.38` versus shipping `60.01`; weakest variant was `inner_wedge_mana_rows=0-2`.
 - The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
 - Durable outcome: final opponent-mana bonus uplift toggling is archived as another direct ProV4 config no-go. Do not reopen opponent-mana soft-priority bonus tuning unless a future corpus/root feature first separates stable sampled roots from utility/rank, race-delta, scoring-context, and baseline-save contamination.
+
+## ProV4 No-Reply-Risk-Guard No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_no_reply_risk_guard` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper and disabled only the guarded Pro root reply-risk guard (`enable_root_reply_risk_guard=false`).
+- The tiny sampled Fast smoke reached only weak evidence: `wins=2`, `losses=0`, `confidence=0.7500`, `duel_passes=false`, `candidate_avg_ms=197.43`, and `opponent_avg_ms=3.93` on `split_flank_mana_rows`.
+- The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `8-4` across `12` games (`win_rate=0.6667`, `confidence=0.8062`), with `candidate_avg_ms=146.58` versus shipping `60.41`.
+- Variant rows showed local repair without promotion shape: `inner_wedge_mana_rows=2-0`, `forward_bridge_mana_rows=3-1`, but `center_spoke_mana_rows=1-1`, `alternating_mana_rows=1-1`, and `split_flank_mana_rows=1-1`.
+- The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
+- Durable outcome: disabling the root reply-risk guard is archived as another direct ProV4 config no-go. Do not reopen reply-risk guard removal unless a future corpus/root feature first separates reply-risk-blocked wins from split-variant regressions and baseline saves.
