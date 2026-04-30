@@ -1582,6 +1582,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_role_pressure_delta",
                 "post_role_contact",
                 "post_role_contact_delta",
+                "post_cohesion",
+                "post_cohesion_delta",
                 "post_territory",
                 "post_territory_delta",
                 "post_mana_path",

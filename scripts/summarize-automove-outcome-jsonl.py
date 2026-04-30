@@ -88,6 +88,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_role_pressure_delta",
     "post_role_contact",
     "post_role_contact_delta",
+    "post_cohesion",
+    "post_cohesion_delta",
     "post_territory",
     "post_territory_delta",
     "post_mana_path",
@@ -186,6 +188,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_role_contact", ("family", "post_role_contact")),
     ("progress_role_contact_delta", ("progress", "post_role_contact_delta")),
     ("path_role_contact_delta", ("path", "post_role_contact_delta")),
+    ("family_cohesion", ("family", "post_cohesion")),
+    ("progress_cohesion_delta", ("progress", "post_cohesion_delta")),
+    ("path_cohesion_delta", ("path", "post_cohesion_delta")),
     ("family_territory", ("family", "post_territory")),
     ("progress_territory_delta", ("progress", "post_territory_delta")),
     ("path_territory_delta", ("path", "post_territory_delta")),
@@ -306,6 +311,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_role_pressure_delta",
     "post_role_contact",
     "post_role_contact_delta",
+    "post_cohesion",
+    "post_cohesion_delta",
     "post_territory",
     "post_territory_delta",
     "post_mana_path",
@@ -2359,6 +2366,8 @@ def root_pool_signal_field_family(field):
         return "action_threat"
     if "role_contact" in field:
         return "role_contact"
+    if "cohesion" in field:
+        return "cohesion"
     if "followup" in field:
         return "followup_transition_shape"
     if "role_mobility" in field:
@@ -2565,6 +2574,8 @@ def root_pool_sample_root(row):
         "post_role_pressure_delta": row.get("post_role_pressure_delta", ""),
         "post_role_contact": row.get("post_role_contact", ""),
         "post_role_contact_delta": row.get("post_role_contact_delta", ""),
+        "post_cohesion": row.get("post_cohesion", ""),
+        "post_cohesion_delta": row.get("post_cohesion_delta", ""),
         "post_territory": row.get("post_territory", ""),
         "post_territory_delta": row.get("post_territory_delta", ""),
         "post_mana_path": row.get("post_mana_path", ""),
