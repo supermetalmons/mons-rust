@@ -1572,6 +1572,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_mana_path_delta",
                 "post_mana_contest",
                 "post_mana_contest_delta",
+                "post_pool_access",
+                "post_pool_access_delta",
                 "post_carrier_route",
                 "post_carrier_route_delta",
                 "post_consumable",
