@@ -1845,3 +1845,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `5-7` across `12` games (`win_rate=0.4167`, `confidence=0.0000`), with `candidate_avg_ms=169.68` versus shipping `61.10`; weakest variant was `inner_wedge_mana_rows=0-2`.
 - The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
 - Durable outcome: root aspiration windowing is archived as another direct ProV4 config no-go. Do not reopen root-window or aspiration toggles unless a future corpus/root feature first separates candidate wins from guarded saves and quiet-save regressions.
+
+## ProV4 Walk-Threat Safety No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_walk_threat_safety` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper and enabled `enable_walk_threat_prefilter=true` inside the guarded frontier runtime with `root_walk_threat_score_margin=1800`.
+- The tiny sampled Fast smoke ran successfully but did not meet the sweep pass threshold: `wins=2`, `losses=0`, `confidence=0.7500`, `duel_passes=false`, `candidate_avg_ms=209.81`, and `opponent_avg_ms=4.55`.
+- The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `7-5` across `12` games (`win_rate=0.5833`, `confidence=0.6128`), with `candidate_avg_ms=143.94` versus shipping `92.10`; weakest variant was `inner_wedge_mana_rows=0-2`.
+- The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
+- Durable outcome: drainer walk-threat safety filtering is archived as another direct ProV4 config no-go. Do not reopen walk-threat root filters or walk-threat safety margins unless a future corpus/root feature first separates quiet saves from quiet-progress regressions.
