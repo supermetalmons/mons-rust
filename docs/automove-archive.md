@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Depth-Consensus ProV4 Probe
+
+- Temporary test-only candidate source was cut and removed in the same session.
+- The candidate preserved guarded fallbacks, captured the normal guarded root-selection snapshot, and only overrode `frontier_execute` roots when a strategic root stayed close at full depth and became materially stronger in a cheap shallower-depth check.
+- A one-game sampled Fast smoke compiled, fired `depth_consensus` once, won `2-0` on `split_flank_mana_rows`, and averaged `242.36ms` per candidate move.
+- The sampled dashboard killed it on the first completed duel before Normal/Fast or active spend: sampled Pro `6-6`, win rate `0.5000`, confidence `0.0000`, candidate average `168.25ms`. Weak rows included `inner_wedge_mana_rows` `0-2`, `forward_bridge_mana_rows` `1-3`, and `alternating_mana_rows` split `1-1`; the candidate fired `13` depth-consensus overrides across the Pro duel.
+- Durable outcome: shallow-vs-full root depth stability is not a sufficient ProV4 discriminator in this shape. It is affordable enough to test, but it does not preserve the sampled Pro floor and should not be reopened without corpus evidence that depth-instability separates candidate wins from guarded saves.
+
 ## PVS Search-Ordering ProV4 Probe
 
 - Temporary test-only candidate source was cut and removed in the same session.
