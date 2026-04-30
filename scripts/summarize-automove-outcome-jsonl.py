@@ -120,6 +120,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_mobility_delta",
     "post_role_mobility",
     "post_role_mobility_delta",
+    "post_role_escape",
+    "post_role_escape_delta",
     "post_action_threat",
     "post_action_threat_delta",
     "post_action_reach",
@@ -244,6 +246,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_role_mobility", ("family", "post_role_mobility")),
     ("progress_role_mobility_delta", ("progress", "post_role_mobility_delta")),
     ("path_role_mobility_delta", ("path", "post_role_mobility_delta")),
+    ("family_role_escape", ("family", "post_role_escape")),
+    ("progress_role_escape_delta", ("progress", "post_role_escape_delta")),
+    ("path_role_escape_delta", ("path", "post_role_escape_delta")),
     ("family_action_threat", ("family", "post_action_threat")),
     ("progress_action_threat_delta", ("progress", "post_action_threat_delta")),
     ("path_action_threat_delta", ("path", "post_action_threat_delta")),
@@ -363,6 +368,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_mobility_delta",
     "post_role_mobility",
     "post_role_mobility_delta",
+    "post_role_escape",
+    "post_role_escape_delta",
     "post_action_threat",
     "post_action_threat_delta",
     "post_action_reach",
@@ -2398,6 +2405,8 @@ def root_pool_signal_field_family(field):
         return "cohesion"
     if "followup" in field:
         return "followup_transition_shape"
+    if "role_escape" in field:
+        return "role_escape"
     if "role_mobility" in field:
         return "role_mobility"
     if "mobility" in field:
@@ -2636,6 +2645,8 @@ def root_pool_sample_root(row):
         "post_mobility_delta": row.get("post_mobility_delta", ""),
         "post_role_mobility": row.get("post_role_mobility", ""),
         "post_role_mobility_delta": row.get("post_role_mobility_delta", ""),
+        "post_role_escape": row.get("post_role_escape", ""),
+        "post_role_escape_delta": row.get("post_role_escape_delta", ""),
         "post_action_threat": row.get("post_action_threat", ""),
         "post_action_threat_delta": row.get("post_action_threat_delta", ""),
         "post_action_reach": row.get("post_action_reach", ""),
