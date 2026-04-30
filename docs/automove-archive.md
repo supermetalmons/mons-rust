@@ -1935,3 +1935,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `6-6` across `12` games (`win_rate=0.5000`, `confidence=0.0000`), with `candidate_avg_ms=125.08` versus shipping `54.01`; weakest variant was `inner_wedge_mana_rows=0-2`.
 - The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
 - Durable outcome: final branch-limit uplift toggling is archived as another direct ProV4 config no-go. Do not reopen branch-limit uplift or nearby breadth-reduction toggles unless a future corpus/root feature first separates stable sampled roots from inner-wedge regressions and baseline saves.
+
+## ProV4 No-Opponent-Mana-Bonus-Uplift No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_no_opponent_mana_bonus_uplift` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper and reverted only the final guarded Pro opponent-mana soft-priority bonus bump (`progress=320->280`, `score=400->340`).
+- The tiny sampled Fast smoke reached only weak evidence: `wins=2`, `losses=0`, `confidence=0.7500`, `duel_passes=false`, `candidate_avg_ms=210.87`, and `opponent_avg_ms=4.47` on `split_flank_mana_rows`.
+- The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `7-5` across `12` games (`win_rate=0.5833`, `confidence=0.6128`), with `candidate_avg_ms=140.38` versus shipping `60.01`; weakest variant was `inner_wedge_mana_rows=0-2`.
+- The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
+- Durable outcome: final opponent-mana bonus uplift toggling is archived as another direct ProV4 config no-go. Do not reopen opponent-mana soft-priority bonus tuning unless a future corpus/root feature first separates stable sampled roots from utility/rank, race-delta, scoring-context, and baseline-save contamination.
