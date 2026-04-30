@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## PVS Search-Ordering ProV4 Probe
+
+- Temporary test-only candidate source was cut and removed in the same session.
+- The candidate preserved the guarded wrapper and enabled `enable_pvs`, `enable_killer_move_ordering`, `enable_history_heuristic`, and `enable_tt_depth_preferred_replacement` inside the guarded ProV2 runtime to test whether search traversal/order quality, rather than root policy, was suppressing broad Pro strength or cost.
+- A one-game sampled Fast smoke compiled and split `1-1` on `split_flank_mana_rows`, averaging `192.18ms` per candidate move.
+- The sampled-only dashboard killed it before Fast or active-panel spend: sampled Pro `6-6`, win rate `0.5000`, confidence `0.0000`, candidate average `136.27ms`; sampled Normal `9-3`, win rate `0.7500`, confidence `0.9270`, candidate average `166.73ms`. Weak rows included Pro `inner_wedge_mana_rows` `0-2`, Pro `center_spoke_mana_rows` / `alternating_mana_rows` split `1-1`, Pro `forward_bridge_mana_rows` split `2-2`, Normal `forward_bridge_mana_rows` `0-2`, and Normal `outer_edge_mana_rows` split `1-1`.
+- Durable outcome: PVS plus killer/history/TT ordering is not a promotable guarded ProV2 mode in this shape. It did not create a strength floor and rotated Pro into a flat sampled result despite staying below the move-time ceiling.
+
 ## Child-Ordering Shortlist ProV4 Probe
 
 - Temporary test-only candidate source was cut and removed in the same session.
