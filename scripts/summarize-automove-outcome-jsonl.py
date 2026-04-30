@@ -80,6 +80,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_mana_path_delta",
     "post_mana_contest",
     "post_mana_contest_delta",
+    "post_mana_base",
+    "post_mana_base_delta",
     "post_pool_access",
     "post_pool_access_delta",
     "post_carrier_route",
@@ -152,6 +154,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_mana_contest", ("family", "post_mana_contest")),
     ("progress_mana_contest_delta", ("progress", "post_mana_contest_delta")),
     ("path_mana_contest_delta", ("path", "post_mana_contest_delta")),
+    ("family_mana_base", ("family", "post_mana_base")),
+    ("progress_mana_base_delta", ("progress", "post_mana_base_delta")),
+    ("path_mana_base_delta", ("path", "post_mana_base_delta")),
     ("family_pool_access", ("family", "post_pool_access")),
     ("progress_pool_access_delta", ("progress", "post_pool_access_delta")),
     ("path_pool_access_delta", ("path", "post_pool_access_delta")),
@@ -243,6 +248,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_mana_path_delta",
     "post_mana_contest",
     "post_mana_contest_delta",
+    "post_mana_base",
+    "post_mana_base_delta",
     "post_pool_access",
     "post_pool_access_delta",
     "post_carrier_route",
@@ -2284,6 +2291,8 @@ def root_pool_signal_field_family(field):
         return "engagement"
     if "consumable" in field:
         return "consumable"
+    if "mana_base" in field:
+        return "mana_base_access"
     if "mana_path" in field:
         return "mana_path"
     if "territory" in field:
@@ -2456,6 +2465,8 @@ def root_pool_sample_root(row):
         "post_territory_delta": row.get("post_territory_delta", ""),
         "post_mana_path": row.get("post_mana_path", ""),
         "post_mana_path_delta": row.get("post_mana_path_delta", ""),
+        "post_mana_base": row.get("post_mana_base", ""),
+        "post_mana_base_delta": row.get("post_mana_base_delta", ""),
         "post_consumable": row.get("post_consumable", ""),
         "post_consumable_delta": row.get("post_consumable_delta", ""),
         "post_engagement": row.get("post_engagement", ""),
