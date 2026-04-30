@@ -2105,3 +2105,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Other sampled rows showed split pressure rather than promotion shape: `alternating_mana_rows=1-1`, `forward_bridge_mana_rows=2-2`, `center_spoke_mana_rows=2-0`, and `split_flank_mana_rows=2-0`.
 - The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
 - Durable outcome: budgeted exact-lite progress/spirit-window root analysis is archived as another direct ProV4 config no-go. Do not reopen exact-lite progress toggles unless a future corpus/root feature first separates exact-lite-selected progress/setup wins from inner-wedge regressions and baseline saves.
+
+## ProV4 Eligibility-Guard No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_eligibility_guard` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper and enabled the dormant turn-engine eligibility guard (`enable_turn_engine_eligibility_guard=true`) inside the guarded frontier runtime.
+- The tiny sampled Fast smoke failed immediately on `split_flank_mana_rows`: `wins=1`, `losses=1`, `confidence=0.0000`, `duel_passes=false`, `candidate_avg_ms=175.86`, and `opponent_avg_ms=4.09`.
+- Branch coverage in the smoke was ordinary guarded execution, not a new route: `frontier_execute=83` turns, `late_black_shipping_fallback=6`, and `early_white_fallback=6`.
+- No sampled promotion dashboard was run because the candidate missed the cheapest Fast gate.
+- Durable outcome: turn-engine eligibility guarding is archived as another direct ProV4 config no-go. Do not reopen eligibility-guard toggles unless a future corpus/root feature first separates ineligible turn-engine regressions from guarded fallback saves across sampled and active panels.
