@@ -144,6 +144,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_action_escape_profile_delta",
     "post_action_counter_profile",
     "post_action_counter_profile_delta",
+    "post_action_target_safety_profile",
+    "post_action_target_safety_profile_delta",
     "post_action_reach",
     "post_action_reach_delta",
     "post_step_threat",
@@ -365,6 +367,18 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
         "path_action_counter_profile_delta",
         ("path", "post_action_counter_profile_delta"),
     ),
+    (
+        "family_action_target_safety_profile",
+        ("family", "post_action_target_safety_profile"),
+    ),
+    (
+        "progress_action_target_safety_profile_delta",
+        ("progress", "post_action_target_safety_profile_delta"),
+    ),
+    (
+        "path_action_target_safety_profile_delta",
+        ("path", "post_action_target_safety_profile_delta"),
+    ),
     ("family_action_reach", ("family", "post_action_reach")),
     ("progress_action_reach_delta", ("progress", "post_action_reach_delta")),
     ("path_action_reach_delta", ("path", "post_action_reach_delta")),
@@ -505,6 +519,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_action_escape_profile_delta",
     "post_action_counter_profile",
     "post_action_counter_profile_delta",
+    "post_action_target_safety_profile",
+    "post_action_target_safety_profile_delta",
     "post_action_reach",
     "post_action_reach_delta",
     "post_step_threat",
@@ -2550,6 +2566,8 @@ def root_pool_signal_field_family(field):
         return "action_escape_profile"
     if "action_counter_profile" in field:
         return "action_counter_profile"
+    if "action_target_safety_profile" in field:
+        return "action_target_safety_profile"
     if "action_threat" in field:
         return "action_threat"
     if "role_contact" in field:
@@ -2835,6 +2853,12 @@ def root_pool_sample_root(row):
         "post_action_counter_profile": row.get("post_action_counter_profile", ""),
         "post_action_counter_profile_delta": row.get(
             "post_action_counter_profile_delta", ""
+        ),
+        "post_action_target_safety_profile": row.get(
+            "post_action_target_safety_profile", ""
+        ),
+        "post_action_target_safety_profile_delta": row.get(
+            "post_action_target_safety_profile_delta", ""
         ),
         "post_action_reach": row.get("post_action_reach", ""),
         "post_action_reach_delta": row.get("post_action_reach_delta", ""),
