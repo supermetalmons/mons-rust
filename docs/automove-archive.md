@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Bounded Followup/Reply ProV4 Probe
+
+- Temporary test-only candidate source was cut and removed in the same session.
+- The candidate preserved the guarded wrapper and kept selected-followup projection enabled, but narrowed reply-risk margin, shortlist, reply limit, node share, opponent seed cap, reply seed cap, and expansion cap to test whether Pro was overpaying for unstable follow-up detail.
+- A one-game sampled Fast smoke compiled and split `1-1` on `split_flank_mana_rows`, averaging `224.74ms` per candidate move.
+- The sampled-only promotion dashboard killed it without active-panel or corpus spend: Pro `7-5`, Normal `7-5`, Fast `4-8`, max candidate average `234.13ms`, and `PRO_PROMOTION_DASHBOARD_STOPLIGHT` `not_promising`.
+- Durable outcome: narrowing selected-followup/reply breadth is not a promotable cost/strength tradeoff. It did not improve Pro or Normal enough and sharply regressed sampled Fast.
+
 ## Policy-Root-Pool ProV4 Probe
 
 - Temporary test-only candidate source was cut and removed in the same session.
