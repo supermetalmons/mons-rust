@@ -1624,6 +1624,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_spirit_item_profile_delta",
                 "post_action_role_profile",
                 "post_action_role_profile_delta",
+                "post_action_guard_profile",
+                "post_action_guard_profile_delta",
                 "post_action_reach",
                 "post_action_reach_delta",
                 "post_step_threat",
