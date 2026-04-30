@@ -1578,6 +1578,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_formation_balance_delta",
                 "post_role_deployment",
                 "post_role_deployment_delta",
+                "post_role_pressure",
+                "post_role_pressure_delta",
                 "post_territory",
                 "post_territory_delta",
                 "post_mana_path",

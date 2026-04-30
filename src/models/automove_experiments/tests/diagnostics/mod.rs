@@ -2814,6 +2814,26 @@ impl ProV4RootPoolRoleDeploymentFeatures {
 }
 
 #[derive(Default)]
+struct ProV4RootPoolRolePressurePosture {
+    own_nearest_enemy: [Option<i32>; PRO_V4_ROOT_POOL_ROLE_COUNT],
+    opp_nearest_enemy: [Option<i32>; PRO_V4_ROOT_POOL_ROLE_COUNT],
+}
+
+struct ProV4RootPoolRolePressureFeatures {
+    post_role_pressure: String,
+    post_role_pressure_delta: String,
+}
+
+impl ProV4RootPoolRolePressureFeatures {
+    fn omitted() -> Self {
+        Self {
+            post_role_pressure: "omitted".to_string(),
+            post_role_pressure_delta: "omitted".to_string(),
+        }
+    }
+}
+
+#[derive(Default)]
 struct ProV4RootPoolRoleStatePosture {
     own_awake: [usize; PRO_V4_ROOT_POOL_ROLE_COUNT],
     own_fainted: [usize; PRO_V4_ROOT_POOL_ROLE_COUNT],
@@ -6291,6 +6311,119 @@ fn pro_v4_root_pool_role_deployment_features(
     }
 }
 
+fn pro_v4_root_pool_role_pressure_bucket_value(distance: Option<i32>) -> &'static str {
+    match distance {
+        None => "none",
+        Some(..=1) => "contact0_1",
+        Some(2) => "near2",
+        Some(3 | 4) => "mid3_4",
+        Some(_) => "far5_plus",
+    }
+}
+
+fn pro_v4_root_pool_role_pressure_posture(
+    game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolRolePressurePosture {
+    if game.winner_color().is_some() {
+        return ProV4RootPoolRolePressurePosture::default();
+    }
+    let live_mons: Vec<(Location, Color, MonKind)> = game
+        .board
+        .occupied()
+        .filter_map(|(location, item)| {
+            item.mon()
+                .filter(|mon| !mon.is_fainted())
+                .map(|mon| (location, mon.color, mon.kind))
+        })
+        .collect();
+    let mut posture = ProV4RootPoolRolePressurePosture::default();
+    for (location, color, kind) in &live_mons {
+        let nearest_enemy = live_mons
+            .iter()
+            .filter(|(_, other_color, _)| other_color != color)
+            .map(|(other_location, _, _)| location.distance(other_location))
+            .min();
+        let role_index = pro_v4_root_pool_role_index(*kind);
+        if *color == perspective {
+            posture.own_nearest_enemy[role_index] = nearest_enemy;
+        } else {
+            posture.opp_nearest_enemy[role_index] = nearest_enemy;
+        }
+    }
+    posture
+}
+
+fn pro_v4_root_pool_role_pressure_side_bucket(
+    values: &[Option<i32>; PRO_V4_ROOT_POOL_ROLE_COUNT],
+) -> String {
+    format!(
+        "angel={};drainer={};mystic={};demon={};spirit={}",
+        pro_v4_root_pool_role_pressure_bucket_value(values[0]),
+        pro_v4_root_pool_role_pressure_bucket_value(values[1]),
+        pro_v4_root_pool_role_pressure_bucket_value(values[2]),
+        pro_v4_root_pool_role_pressure_bucket_value(values[3]),
+        pro_v4_root_pool_role_pressure_bucket_value(values[4]),
+    )
+}
+
+fn pro_v4_root_pool_role_pressure_side_delta_bucket(
+    before: &[Option<i32>; PRO_V4_ROOT_POOL_ROLE_COUNT],
+    after: &[Option<i32>; PRO_V4_ROOT_POOL_ROLE_COUNT],
+) -> String {
+    format!(
+        "angel={};drainer={};mystic={};demon={};spirit={}",
+        pro_v4_root_pool_i32_delta_bucket(before[0], after[0]),
+        pro_v4_root_pool_i32_delta_bucket(before[1], after[1]),
+        pro_v4_root_pool_i32_delta_bucket(before[2], after[2]),
+        pro_v4_root_pool_i32_delta_bucket(before[3], after[3]),
+        pro_v4_root_pool_i32_delta_bucket(before[4], after[4]),
+    )
+}
+
+fn pro_v4_root_pool_role_pressure_bucket(
+    game: &MonsGame,
+    posture: &ProV4RootPoolRolePressurePosture,
+    perspective: Color,
+) -> String {
+    format!(
+        "status={};own={};opp={}",
+        pro_v4_root_pool_status(game, perspective),
+        pro_v4_root_pool_role_pressure_side_bucket(&posture.own_nearest_enemy),
+        pro_v4_root_pool_role_pressure_side_bucket(&posture.opp_nearest_enemy),
+    )
+}
+
+fn pro_v4_root_pool_role_pressure_delta_bucket(
+    before: &ProV4RootPoolRolePressurePosture,
+    after: &ProV4RootPoolRolePressurePosture,
+) -> String {
+    format!(
+        "own={};opp={}",
+        pro_v4_root_pool_role_pressure_side_delta_bucket(
+            &before.own_nearest_enemy,
+            &after.own_nearest_enemy,
+        ),
+        pro_v4_root_pool_role_pressure_side_delta_bucket(
+            &before.opp_nearest_enemy,
+            &after.opp_nearest_enemy,
+        ),
+    )
+}
+
+fn pro_v4_root_pool_role_pressure_features(
+    before_game: &MonsGame,
+    after_game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolRolePressureFeatures {
+    let before = pro_v4_root_pool_role_pressure_posture(before_game, perspective);
+    let after = pro_v4_root_pool_role_pressure_posture(after_game, perspective);
+    ProV4RootPoolRolePressureFeatures {
+        post_role_pressure: pro_v4_root_pool_role_pressure_bucket(after_game, &after, perspective),
+        post_role_pressure_delta: pro_v4_root_pool_role_pressure_delta_bucket(&before, &after),
+    }
+}
+
 fn pro_v4_root_pool_role_state_posture(
     game: &MonsGame,
     perspective: Color,
@@ -8538,6 +8671,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             role_coordination_features,
             formation_balance_features,
             role_deployment_features,
+            role_pressure_features,
             territory_features,
             mana_path_features,
             mana_contest_features,
@@ -8648,6 +8782,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 pro_v4_root_pool_formation_balance_features(&game, &root.game, game.active_color);
             let role_deployment_features =
                 pro_v4_root_pool_role_deployment_features(&game, &root.game, game.active_color);
+            let role_pressure_features =
+                pro_v4_root_pool_role_pressure_features(&game, &root.game, game.active_color);
             let territory_features =
                 pro_v4_root_pool_territory_features(&game, &root.game, game.active_color);
             let mana_path_features =
@@ -8731,6 +8867,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 role_coordination_features,
                 formation_balance_features,
                 role_deployment_features,
+                role_pressure_features,
                 territory_features,
                 mana_path_features,
                 mana_contest_features,
@@ -8783,6 +8920,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 ProV4RootPoolRoleCoordinationFeatures::omitted(),
                 ProV4RootPoolFormationBalanceFeatures::omitted(),
                 ProV4RootPoolRoleDeploymentFeatures::omitted(),
+                ProV4RootPoolRolePressureFeatures::omitted(),
                 ProV4RootPoolTerritoryFeatures::omitted(),
                 ProV4RootPoolManaPathFeatures::omitted(),
                 ProV4RootPoolManaContestFeatures::omitted(),
@@ -8805,7 +8943,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_cooldown_tempo\":\"{}\",\"post_cooldown_tempo_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_drainer_geometry\":\"{}\",\"post_drainer_geometry_delta\":\"{}\",\"post_role_coordination\":\"{}\",\"post_role_coordination_delta\":\"{}\",\"post_formation_balance\":\"{}\",\"post_formation_balance_delta\":\"{}\",\"post_role_deployment\":\"{}\",\"post_role_deployment_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pickup_access\":\"{}\",\"post_pickup_access_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_cooldown_tempo\":\"{}\",\"post_cooldown_tempo_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_drainer_geometry\":\"{}\",\"post_drainer_geometry_delta\":\"{}\",\"post_role_coordination\":\"{}\",\"post_role_coordination_delta\":\"{}\",\"post_formation_balance\":\"{}\",\"post_formation_balance_delta\":\"{}\",\"post_role_deployment\":\"{}\",\"post_role_deployment_delta\":\"{}\",\"post_role_pressure\":\"{}\",\"post_role_pressure_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pickup_access\":\"{}\",\"post_pickup_access_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -8883,6 +9021,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             json_escape(&formation_balance_features.post_formation_balance_delta),
             json_escape(&role_deployment_features.post_role_deployment),
             json_escape(&role_deployment_features.post_role_deployment_delta),
+            json_escape(&role_pressure_features.post_role_pressure),
+            json_escape(&role_pressure_features.post_role_pressure_delta),
             json_escape(&territory_features.post_territory),
             json_escape(&territory_features.post_territory_delta),
             json_escape(&mana_path_features.post_mana_path),
