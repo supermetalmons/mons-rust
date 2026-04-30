@@ -1570,6 +1570,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_territory_delta",
                 "post_mana_path",
                 "post_mana_path_delta",
+                "post_carrier_route",
+                "post_carrier_route_delta",
                 "post_consumable",
                 "post_consumable_delta",
                 "post_engagement",
