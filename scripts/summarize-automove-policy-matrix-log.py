@@ -1630,6 +1630,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_action_actor_profile_delta",
                 "post_action_zone_profile",
                 "post_action_zone_profile_delta",
+                "post_action_payload_profile",
+                "post_action_payload_profile_delta",
                 "post_action_reach",
                 "post_action_reach_delta",
                 "post_step_threat",
