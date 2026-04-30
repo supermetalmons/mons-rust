@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Targeted Exact-Narrowing ProV4 Probe
+
+- Temporary test-only candidate source was cut and removed in the same session.
+- The candidate preserved the guarded wrapper and enabled `enable_targeted_exact_turn_summary_memo` plus `enable_targeted_score_window_narrowing` inside the guarded ProV2 runtime to test whether targeted exact plausibility reduced unsafe same-turn score-window candidates without policy routing.
+- A one-game sampled Fast smoke compiled and won `2-0` on `split_flank_mana_rows`, averaging `204.77ms` per candidate move; the tiny sample still had insufficient confidence by design.
+- The sampled-only dashboard killed it before Fast or active-panel spend: sampled Pro `7-5`, win rate `0.5833`, confidence `0.6128`, candidate average `141.28ms`; sampled Normal `7-5`, win rate `0.5833`, confidence `0.6128`, candidate average `173.17ms`. Weak rows included Pro `inner_wedge_mana_rows` `0-2`, Pro `alternating_mana_rows` split `1-1`, Pro `forward_bridge_mana_rows` split `2-2`, Normal `forward_bridge_mana_rows` `0-2`, and Normal `alternating_mana_rows` / `inner_wedge_mana_rows` / `corner_chain_mana_rows` split `1-1`.
+- Durable outcome: targeted exact-turn memo plus score-window narrowing is not a promotable guarded ProV2 config mode. It worsened sampled Pro/Normal relative to the retained shape and should not be reopened without corpus evidence that the narrowed score-window candidates separate wins from guarded saves.
+
 ## Root-Breadth Rebalance ProV4 Probe
 
 - Temporary test-only candidate source was cut and removed in the same session.
