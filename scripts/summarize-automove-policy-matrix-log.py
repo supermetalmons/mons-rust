@@ -1562,6 +1562,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_turn_budget_delta",
                 "post_legal_fanout",
                 "post_legal_fanout_delta",
+                "post_followup_shape",
+                "post_followup_effect",
                 "post_attack_exposure",
                 "post_attack_exposure_delta",
                 "post_support_guard",

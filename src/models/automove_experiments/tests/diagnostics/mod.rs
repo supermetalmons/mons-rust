@@ -2262,12 +2262,26 @@ struct ProV4RootPoolLegalFanout {
     action: usize,
     score: usize,
     terminal: usize,
+    primary_mon: usize,
+    primary_mana: usize,
+    primary_action: usize,
+    primary_score: usize,
+    primary_pickup: usize,
+    primary_turn: usize,
+    primary_terminal: usize,
+    primary_special: usize,
+    effect_pickup: usize,
+    effect_faint: usize,
+    effect_special: usize,
+    turn_end: usize,
     capped: bool,
 }
 
 struct ProV4RootPoolLegalFanoutFeatures {
     post_legal_fanout: String,
     post_legal_fanout_delta: String,
+    post_followup_shape: String,
+    post_followup_effect: String,
 }
 
 impl ProV4RootPoolLegalFanoutFeatures {
@@ -2275,6 +2289,8 @@ impl ProV4RootPoolLegalFanoutFeatures {
         Self {
             post_legal_fanout: "omitted".to_string(),
             post_legal_fanout_delta: "omitted".to_string(),
+            post_followup_shape: "omitted".to_string(),
+            post_followup_effect: "omitted".to_string(),
         }
     }
 }
@@ -6254,11 +6270,44 @@ fn pro_v4_root_pool_legal_fanout(
         ..ProV4RootPoolLegalFanout::default()
     };
     for transition in transitions {
+        let primary_event = transition.events.first();
         let mut has_mon = false;
         let mut has_mana = false;
         let mut has_action = false;
         let mut has_score = false;
         let mut has_terminal = false;
+        let mut has_pickup = false;
+        let mut has_faint = false;
+        let mut has_special = false;
+        let turn_ended = transition.game.winner_color().is_some()
+            || transition.game.active_color != game.active_color;
+        match primary_event {
+            Some(Event::MonMove { .. }) => fanout.primary_mon += 1,
+            Some(Event::ManaMove { .. }) => fanout.primary_mana += 1,
+            Some(
+                Event::MysticAction { .. }
+                | Event::DemonAction { .. }
+                | Event::DemonAdditionalStep { .. }
+                | Event::SpiritTargetMove { .. }
+                | Event::UsePotion { .. }
+                | Event::BombAttack { .. },
+            ) => fanout.primary_action += 1,
+            Some(Event::ManaScored { .. }) => fanout.primary_score += 1,
+            Some(
+                Event::PickupBomb { .. } | Event::PickupPotion { .. } | Event::PickupMana { .. },
+            ) => fanout.primary_pickup += 1,
+            Some(Event::NextTurn { .. }) => fanout.primary_turn += 1,
+            Some(Event::GameOver { .. }) => fanout.primary_terminal += 1,
+            Some(
+                Event::MonFainted { .. }
+                | Event::ManaDropped { .. }
+                | Event::SupermanaBackToBase { .. }
+                | Event::BombExplosion { .. }
+                | Event::MonAwake { .. }
+                | Event::Takeback,
+            ) => fanout.primary_special += 1,
+            None => {}
+        }
         for event in transition.events {
             match event {
                 Event::MonMove { .. } => has_mon = true,
@@ -6273,14 +6322,14 @@ fn pro_v4_root_pool_legal_fanout(
                 Event::GameOver { .. } => has_terminal = true,
                 Event::PickupBomb { .. }
                 | Event::PickupPotion { .. }
-                | Event::PickupMana { .. }
-                | Event::MonFainted { .. }
-                | Event::ManaDropped { .. }
+                | Event::PickupMana { .. } => has_pickup = true,
+                Event::MonFainted { .. } => has_faint = true,
+                Event::ManaDropped { .. }
                 | Event::SupermanaBackToBase { .. }
                 | Event::MonAwake { .. }
                 | Event::BombExplosion { .. }
                 | Event::NextTurn { .. }
-                | Event::Takeback => {}
+                | Event::Takeback => has_special = true,
             }
         }
         fanout.mon += usize::from(has_mon);
@@ -6288,6 +6337,10 @@ fn pro_v4_root_pool_legal_fanout(
         fanout.action += usize::from(has_action);
         fanout.score += usize::from(has_score);
         fanout.terminal += usize::from(has_terminal);
+        fanout.effect_pickup += usize::from(has_pickup);
+        fanout.effect_faint += usize::from(has_faint);
+        fanout.effect_special += usize::from(has_special);
+        fanout.turn_end += usize::from(turn_ended);
     }
     fanout
 }
@@ -6329,6 +6382,71 @@ fn pro_v4_root_pool_legal_fanout_delta_bucket(
     )
 }
 
+fn pro_v4_root_pool_followup_inactive_bucket(
+    game: &MonsGame,
+    perspective: Color,
+    fields: &str,
+) -> String {
+    format!(
+        "status={};cap=inactive;{}",
+        pro_v4_root_pool_status(game, perspective),
+        fields,
+    )
+}
+
+fn pro_v4_root_pool_followup_shape_bucket(
+    game: &MonsGame,
+    fanout: &ProV4RootPoolLegalFanout,
+    perspective: Color,
+) -> String {
+    if game.winner_color().is_some() || game.active_color != perspective {
+        return pro_v4_root_pool_followup_inactive_bucket(
+            game,
+            perspective,
+            "total=inactive;mon=inactive;mana=inactive;action=inactive;score=inactive;pickup=inactive;turn=inactive;terminal=inactive;special=inactive",
+        );
+    }
+    format!(
+        "status={};cap={};total={};mon={};mana={};action={};score={};pickup={};turn={};terminal={};special={}",
+        pro_v4_root_pool_status(game, perspective),
+        fanout.capped,
+        pro_v4_root_pool_count_field(fanout.total),
+        pro_v4_root_pool_count_field(fanout.primary_mon),
+        pro_v4_root_pool_count_field(fanout.primary_mana),
+        pro_v4_root_pool_count_field(fanout.primary_action),
+        pro_v4_root_pool_count_field(fanout.primary_score),
+        pro_v4_root_pool_count_field(fanout.primary_pickup),
+        pro_v4_root_pool_count_field(fanout.primary_turn),
+        pro_v4_root_pool_count_field(fanout.primary_terminal),
+        pro_v4_root_pool_count_field(fanout.primary_special),
+    )
+}
+
+fn pro_v4_root_pool_followup_effect_bucket(
+    game: &MonsGame,
+    fanout: &ProV4RootPoolLegalFanout,
+    perspective: Color,
+) -> String {
+    if game.winner_color().is_some() || game.active_color != perspective {
+        return pro_v4_root_pool_followup_inactive_bucket(
+            game,
+            perspective,
+            "score=inactive;pickup=inactive;faint=inactive;special=inactive;terminal=inactive;turn_end=inactive",
+        );
+    }
+    format!(
+        "status={};cap={};score={};pickup={};faint={};special={};terminal={};turn_end={}",
+        pro_v4_root_pool_status(game, perspective),
+        fanout.capped,
+        pro_v4_root_pool_count_field(fanout.score),
+        pro_v4_root_pool_count_field(fanout.effect_pickup),
+        pro_v4_root_pool_count_field(fanout.effect_faint),
+        pro_v4_root_pool_count_field(fanout.effect_special),
+        pro_v4_root_pool_count_field(fanout.terminal),
+        pro_v4_root_pool_count_field(fanout.turn_end),
+    )
+}
+
 fn pro_v4_root_pool_legal_fanout_features(
     before_game: &MonsGame,
     before_fanout: &ProV4RootPoolLegalFanout,
@@ -6365,6 +6483,16 @@ fn pro_v4_root_pool_legal_fanout_features(
             perspective,
         ),
         post_legal_fanout_delta,
+        post_followup_shape: pro_v4_root_pool_followup_shape_bucket(
+            after_game,
+            &after_fanout,
+            perspective,
+        ),
+        post_followup_effect: pro_v4_root_pool_followup_effect_bucket(
+            after_game,
+            &after_fanout,
+            perspective,
+        ),
     }
 }
 
@@ -7380,7 +7508,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -7442,6 +7570,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             json_escape(&outcome_features.post_turn_budget_delta),
             json_escape(&legal_fanout_features.post_legal_fanout),
             json_escape(&legal_fanout_features.post_legal_fanout_delta),
+            json_escape(&legal_fanout_features.post_followup_shape),
+            json_escape(&legal_fanout_features.post_followup_effect),
             json_escape(&attack_exposure_features.post_attack_exposure),
             json_escape(&attack_exposure_features.post_attack_exposure_delta),
             json_escape(&support_guard_features.post_support_guard),
