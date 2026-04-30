@@ -2016,3 +2016,14 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Branch coverage in the smoke was ordinary guarded execution, not a new route: `frontier_execute=83` turns, `late_black_shipping_fallback=6`, and `early_white_fallback=6`.
 - Because the cheap smoke failed the hard threshold, no sampled dashboard or active panel spend was earned.
 - Durable outcome: potion-action root mixing and potion progress compensation removal is archived as another direct ProV4 config no-go. Do not reopen potion-mix toggles unless a future corpus/root feature first separates potion-root wins from split-flank regressions, archived consumable-feature contamination, and baseline saves.
+
+## ProV4 No-Interview-Soft-Priors No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_no_interview_soft_priors` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper and disabled all interview soft root priors (`enable_interview_soft_root_priors=false`).
+- The tiny sampled Fast smoke reached only weak evidence on `split_flank_mana_rows`: `wins=2`, `losses=0`, `confidence=0.7500`, `duel_passes=false`, `candidate_avg_ms=158.06`, and `opponent_avg_ms=4.99`.
+- Branch coverage in the smoke was ordinary guarded execution, not a new route: `frontier_execute=82` turns, `late_black_shipping_fallback=8`, and `early_white_fallback=6`.
+- The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `7-5` across `12` games (`win_rate=0.5833`, `confidence=0.6128`), with `candidate_avg_ms=147.81` versus shipping `59.32`; weakest variant was `inner_wedge_mana_rows=0-2`.
+- Other sampled rows showed split pressure rather than promotion shape: `center_spoke_mana_rows=1-1`, `alternating_mana_rows=1-1`, `forward_bridge_mana_rows=3-1`, and `split_flank_mana_rows=2-0`.
+- The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
+- Durable outcome: disabling interview soft root priors is archived as another direct ProV4 config no-go. Do not reopen interview soft-prior toggles unless a future corpus/root feature first separates soft-prior-blocked wins from inner-wedge regressions and baseline saves.
