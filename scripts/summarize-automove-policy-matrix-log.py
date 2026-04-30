@@ -1642,6 +1642,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_action_target_safety_profile_delta",
                 "post_action_score_profile",
                 "post_action_score_profile_delta",
+                "post_action_denial_profile",
+                "post_action_denial_profile_delta",
                 "post_action_reach",
                 "post_action_reach_delta",
                 "post_step_threat",
