@@ -1881,3 +1881,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `8-4` across `12` games (`win_rate=0.6667`, `confidence=0.8062`), with `candidate_avg_ms=171.62` versus shipping `61.13`; weakest variant was `inner_wedge_mana_rows=0-2`.
 - The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
 - Durable outcome: futility-pruning toggling is archived as another direct ProV4 config no-go. Do not reopen futility-pruning toggles unless a future corpus/root feature first separates pruned tactical wins from quiet-save losses.
+
+## ProV4 No-Quiet-Reductions No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_no_quiet_reductions` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper and disabled quiet move reductions inside the guarded frontier runtime (`enable_quiet_reductions=false`).
+- The tiny sampled Fast smoke ran successfully but failed the sweep pass threshold: `wins=1`, `losses=1`, `confidence=0.0000`, `duel_passes=false`, `candidate_avg_ms=330.17`, and `opponent_avg_ms=4.13`.
+- The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `7-5` across `12` games (`win_rate=0.5833`, `confidence=0.6128`), with `candidate_avg_ms=340.12` versus shipping `64.73`; variant rows were balanced except forward-bridge `3-1`.
+- The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
+- Durable outcome: quiet-reduction toggling is archived as another direct ProV4 config no-go. Do not reopen quiet-reduction toggles unless a future corpus/root feature first separates quiet-save wins from baseline saves and cost pressure.
