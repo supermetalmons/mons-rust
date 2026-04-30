@@ -2358,6 +2358,38 @@ impl ProV4RootPoolSupportGuardFeatures {
 }
 
 #[derive(Default)]
+struct ProV4RootPoolObjectiveScreenPosture {
+    own_high_carrier: usize,
+    own_screened_high_carrier: usize,
+    own_regular_carrier: usize,
+    own_screened_regular_carrier: usize,
+    opp_high_carrier: usize,
+    opp_screened_high_carrier: usize,
+    opp_regular_carrier: usize,
+    opp_screened_regular_carrier: usize,
+    free_high: usize,
+    free_high_own_screen: usize,
+    free_high_opp_screen: usize,
+    free_regular: usize,
+    free_regular_own_screen: usize,
+    free_regular_opp_screen: usize,
+}
+
+struct ProV4RootPoolObjectiveScreenFeatures {
+    post_objective_screen: String,
+    post_objective_screen_delta: String,
+}
+
+impl ProV4RootPoolObjectiveScreenFeatures {
+    fn omitted() -> Self {
+        Self {
+            post_objective_screen: "omitted".to_string(),
+            post_objective_screen_delta: "omitted".to_string(),
+        }
+    }
+}
+
+#[derive(Default)]
 struct ProV4RootPoolDrainerGeometryPosture {
     own_location: Option<Location>,
     opp_location: Option<Location>,
@@ -3577,6 +3609,154 @@ fn pro_v4_root_pool_support_guard_features(
     ProV4RootPoolSupportGuardFeatures {
         post_support_guard: pro_v4_root_pool_support_guard_bucket(after_game, &after, perspective),
         post_support_guard_delta: pro_v4_root_pool_support_guard_delta_bucket(&before, &after),
+    }
+}
+
+fn pro_v4_root_pool_objective_screen_posture(
+    game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolObjectiveScreenPosture {
+    if game.winner_color().is_some() {
+        return ProV4RootPoolObjectiveScreenPosture::default();
+    }
+    let mut posture = ProV4RootPoolObjectiveScreenPosture::default();
+    for (location, item) in game.board.occupied() {
+        if let Some(mon) = item.mon() {
+            if mon.is_fainted() {
+                continue;
+            }
+            let Some(mana) = item.mana().copied() else {
+                continue;
+            };
+            let screened = pro_v4_root_pool_adjacent_live_mon_count(game, location, mon.color) > 0;
+            let own = mon.color == perspective;
+            if pro_v4_root_pool_is_high_value_mana(mana, perspective) {
+                if own {
+                    posture.own_high_carrier += 1;
+                    posture.own_screened_high_carrier += usize::from(screened);
+                } else {
+                    posture.opp_high_carrier += 1;
+                    posture.opp_screened_high_carrier += usize::from(screened);
+                }
+            } else if pro_v4_root_pool_is_own_regular_mana(mana, perspective) {
+                if own {
+                    posture.own_regular_carrier += 1;
+                    posture.own_screened_regular_carrier += usize::from(screened);
+                } else {
+                    posture.opp_regular_carrier += 1;
+                    posture.opp_screened_regular_carrier += usize::from(screened);
+                }
+            }
+            continue;
+        }
+
+        let Item::Mana { mana } = item else {
+            continue;
+        };
+        let own_screen = pro_v4_root_pool_adjacent_live_mon_count(game, location, perspective) > 0;
+        let opp_screen =
+            pro_v4_root_pool_adjacent_live_mon_count(game, location, perspective.other()) > 0;
+        if pro_v4_root_pool_is_high_value_mana(*mana, perspective) {
+            posture.free_high += 1;
+            posture.free_high_own_screen += usize::from(own_screen);
+            posture.free_high_opp_screen += usize::from(opp_screen);
+        } else if pro_v4_root_pool_is_own_regular_mana(*mana, perspective) {
+            posture.free_regular += 1;
+            posture.free_regular_own_screen += usize::from(own_screen);
+            posture.free_regular_opp_screen += usize::from(opp_screen);
+        }
+    }
+    posture
+}
+
+fn pro_v4_root_pool_objective_screen_bucket(
+    game: &MonsGame,
+    posture: &ProV4RootPoolObjectiveScreenPosture,
+    perspective: Color,
+) -> String {
+    format!(
+        "status={};own_high={};own_high_screen={};own_regular={};own_regular_screen={};opp_high={};opp_high_screen={};opp_regular={};opp_regular_screen={};free_high={};free_high_own_screen={};free_high_opp_screen={};free_regular={};free_regular_own_screen={};free_regular_opp_screen={}",
+        pro_v4_root_pool_status(game, perspective),
+        pro_v4_root_pool_count_field(posture.own_high_carrier),
+        pro_v4_root_pool_count_field(posture.own_screened_high_carrier),
+        pro_v4_root_pool_count_field(posture.own_regular_carrier),
+        pro_v4_root_pool_count_field(posture.own_screened_regular_carrier),
+        pro_v4_root_pool_count_field(posture.opp_high_carrier),
+        pro_v4_root_pool_count_field(posture.opp_screened_high_carrier),
+        pro_v4_root_pool_count_field(posture.opp_regular_carrier),
+        pro_v4_root_pool_count_field(posture.opp_screened_regular_carrier),
+        pro_v4_root_pool_count_field(posture.free_high),
+        pro_v4_root_pool_count_field(posture.free_high_own_screen),
+        pro_v4_root_pool_count_field(posture.free_high_opp_screen),
+        pro_v4_root_pool_count_field(posture.free_regular),
+        pro_v4_root_pool_count_field(posture.free_regular_own_screen),
+        pro_v4_root_pool_count_field(posture.free_regular_opp_screen),
+    )
+}
+
+fn pro_v4_root_pool_objective_screen_delta_bucket(
+    before: &ProV4RootPoolObjectiveScreenPosture,
+    after: &ProV4RootPoolObjectiveScreenPosture,
+) -> String {
+    format!(
+        "own_high={};own_high_screen={};own_regular={};own_regular_screen={};opp_high={};opp_high_screen={};opp_regular={};opp_regular_screen={};free_high={};free_high_own_screen={};free_high_opp_screen={};free_regular={};free_regular_own_screen={};free_regular_opp_screen={}",
+        pro_v4_root_pool_count_delta_bucket(before.own_high_carrier, after.own_high_carrier),
+        pro_v4_root_pool_count_delta_bucket(
+            before.own_screened_high_carrier,
+            after.own_screened_high_carrier,
+        ),
+        pro_v4_root_pool_count_delta_bucket(before.own_regular_carrier, after.own_regular_carrier),
+        pro_v4_root_pool_count_delta_bucket(
+            before.own_screened_regular_carrier,
+            after.own_screened_regular_carrier,
+        ),
+        pro_v4_root_pool_count_delta_bucket(before.opp_high_carrier, after.opp_high_carrier),
+        pro_v4_root_pool_count_delta_bucket(
+            before.opp_screened_high_carrier,
+            after.opp_screened_high_carrier,
+        ),
+        pro_v4_root_pool_count_delta_bucket(before.opp_regular_carrier, after.opp_regular_carrier),
+        pro_v4_root_pool_count_delta_bucket(
+            before.opp_screened_regular_carrier,
+            after.opp_screened_regular_carrier,
+        ),
+        pro_v4_root_pool_count_delta_bucket(before.free_high, after.free_high),
+        pro_v4_root_pool_count_delta_bucket(
+            before.free_high_own_screen,
+            after.free_high_own_screen,
+        ),
+        pro_v4_root_pool_count_delta_bucket(
+            before.free_high_opp_screen,
+            after.free_high_opp_screen,
+        ),
+        pro_v4_root_pool_count_delta_bucket(before.free_regular, after.free_regular),
+        pro_v4_root_pool_count_delta_bucket(
+            before.free_regular_own_screen,
+            after.free_regular_own_screen,
+        ),
+        pro_v4_root_pool_count_delta_bucket(
+            before.free_regular_opp_screen,
+            after.free_regular_opp_screen,
+        ),
+    )
+}
+
+fn pro_v4_root_pool_objective_screen_features(
+    before_game: &MonsGame,
+    after_game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolObjectiveScreenFeatures {
+    let before = pro_v4_root_pool_objective_screen_posture(before_game, perspective);
+    let after = pro_v4_root_pool_objective_screen_posture(after_game, perspective);
+    ProV4RootPoolObjectiveScreenFeatures {
+        post_objective_screen: pro_v4_root_pool_objective_screen_bucket(
+            after_game,
+            &after,
+            perspective,
+        ),
+        post_objective_screen_delta: pro_v4_root_pool_objective_screen_delta_bucket(
+            &before, &after,
+        ),
     }
 }
 
@@ -9368,6 +9548,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             legal_fanout_features,
             attack_exposure_features,
             support_guard_features,
+            objective_screen_features,
             drainer_geometry_features,
             role_coordination_features,
             formation_balance_features,
@@ -9479,6 +9660,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 pro_v4_root_pool_attack_exposure_features(&game, &root.game, game.active_color);
             let support_guard_features =
                 pro_v4_root_pool_support_guard_features(&game, &root.game, game.active_color);
+            let objective_screen_features =
+                pro_v4_root_pool_objective_screen_features(&game, &root.game, game.active_color);
             let drainer_geometry_features =
                 pro_v4_root_pool_drainer_geometry_features(&game, &root.game, game.active_color);
             let role_coordination_features =
@@ -9576,6 +9759,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 legal_fanout_features,
                 attack_exposure_features,
                 support_guard_features,
+                objective_screen_features,
                 drainer_geometry_features,
                 role_coordination_features,
                 formation_balance_features,
@@ -9633,6 +9817,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 ProV4RootPoolLegalFanoutFeatures::omitted(),
                 ProV4RootPoolAttackExposureFeatures::omitted(),
                 ProV4RootPoolSupportGuardFeatures::omitted(),
+                ProV4RootPoolObjectiveScreenFeatures::omitted(),
                 ProV4RootPoolDrainerGeometryFeatures::omitted(),
                 ProV4RootPoolRoleCoordinationFeatures::omitted(),
                 ProV4RootPoolFormationBalanceFeatures::omitted(),
@@ -9664,7 +9849,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_cooldown_tempo\":\"{}\",\"post_cooldown_tempo_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_drainer_geometry\":\"{}\",\"post_drainer_geometry_delta\":\"{}\",\"post_role_coordination\":\"{}\",\"post_role_coordination_delta\":\"{}\",\"post_formation_balance\":\"{}\",\"post_formation_balance_delta\":\"{}\",\"post_role_deployment\":\"{}\",\"post_role_deployment_delta\":\"{}\",\"post_role_pressure\":\"{}\",\"post_role_pressure_delta\":\"{}\",\"post_role_contact\":\"{}\",\"post_role_contact_delta\":\"{}\",\"post_cohesion\":\"{}\",\"post_cohesion_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pickup_access\":\"{}\",\"post_pickup_access_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_role_mobility\":\"{}\",\"post_role_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_action_reach\":\"{}\",\"post_action_reach_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_cooldown_tempo\":\"{}\",\"post_cooldown_tempo_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_objective_screen\":\"{}\",\"post_objective_screen_delta\":\"{}\",\"post_drainer_geometry\":\"{}\",\"post_drainer_geometry_delta\":\"{}\",\"post_role_coordination\":\"{}\",\"post_role_coordination_delta\":\"{}\",\"post_formation_balance\":\"{}\",\"post_formation_balance_delta\":\"{}\",\"post_role_deployment\":\"{}\",\"post_role_deployment_delta\":\"{}\",\"post_role_pressure\":\"{}\",\"post_role_pressure_delta\":\"{}\",\"post_role_contact\":\"{}\",\"post_role_contact_delta\":\"{}\",\"post_cohesion\":\"{}\",\"post_cohesion_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pickup_access\":\"{}\",\"post_pickup_access_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_role_mobility\":\"{}\",\"post_role_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_action_reach\":\"{}\",\"post_action_reach_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -9734,6 +9919,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             json_escape(&attack_exposure_features.post_attack_exposure_delta),
             json_escape(&support_guard_features.post_support_guard),
             json_escape(&support_guard_features.post_support_guard_delta),
+            json_escape(&objective_screen_features.post_objective_screen),
+            json_escape(&objective_screen_features.post_objective_screen_delta),
             json_escape(&drainer_geometry_features.post_drainer_geometry),
             json_escape(&drainer_geometry_features.post_drainer_geometry_delta),
             json_escape(&role_coordination_features.post_role_coordination),

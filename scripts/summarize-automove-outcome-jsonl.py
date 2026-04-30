@@ -76,6 +76,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_attack_exposure_delta",
     "post_support_guard",
     "post_support_guard_delta",
+    "post_objective_screen",
+    "post_objective_screen_delta",
     "post_drainer_geometry",
     "post_drainer_geometry_delta",
     "post_role_coordination",
@@ -170,6 +172,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_support_guard", ("family", "post_support_guard")),
     ("progress_support_guard_delta", ("progress", "post_support_guard_delta")),
     ("path_support_guard_delta", ("path", "post_support_guard_delta")),
+    ("family_objective_screen", ("family", "post_objective_screen")),
+    ("progress_objective_screen_delta", ("progress", "post_objective_screen_delta")),
+    ("path_objective_screen_delta", ("path", "post_objective_screen_delta")),
     ("family_drainer_geometry", ("family", "post_drainer_geometry")),
     ("progress_drainer_geometry_delta", ("progress", "post_drainer_geometry_delta")),
     ("path_drainer_geometry_delta", ("path", "post_drainer_geometry_delta")),
@@ -299,6 +304,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_attack_exposure_delta",
     "post_support_guard",
     "post_support_guard_delta",
+    "post_objective_screen",
+    "post_objective_screen_delta",
     "post_drainer_geometry",
     "post_drainer_geometry_delta",
     "post_role_coordination",
@@ -2396,6 +2403,8 @@ def root_pool_signal_field_family(field):
         return "role_deployment"
     if "role_pressure" in field:
         return "role_pressure"
+    if "objective_screen" in field:
+        return "objective_screen"
     if "support_guard" in field:
         return "support_guard"
     if "attack_exposure" in field:
@@ -2562,6 +2571,8 @@ def root_pool_sample_root(row):
         "post_attack_exposure_delta": row.get("post_attack_exposure_delta", ""),
         "post_support_guard": row.get("post_support_guard", ""),
         "post_support_guard_delta": row.get("post_support_guard_delta", ""),
+        "post_objective_screen": row.get("post_objective_screen", ""),
+        "post_objective_screen_delta": row.get("post_objective_screen_delta", ""),
         "post_drainer_geometry": row.get("post_drainer_geometry", ""),
         "post_drainer_geometry_delta": row.get("post_drainer_geometry_delta", ""),
         "post_role_coordination": row.get("post_role_coordination", ""),
