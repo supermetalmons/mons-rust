@@ -2434,6 +2434,34 @@ impl ProV4RootPoolManaContestFeatures {
 }
 
 #[derive(Default)]
+struct ProV4RootPoolPickupAccessPosture {
+    own_high_value_access: usize,
+    own_regular_access: usize,
+    opp_high_value_access: usize,
+    opp_regular_access: usize,
+    super_own_access: usize,
+    super_opp_access: usize,
+    own_drainer_access: usize,
+    opp_drainer_access: usize,
+    contested_access: usize,
+    unclaimed_free: usize,
+}
+
+struct ProV4RootPoolPickupAccessFeatures {
+    post_pickup_access: String,
+    post_pickup_access_delta: String,
+}
+
+impl ProV4RootPoolPickupAccessFeatures {
+    fn omitted() -> Self {
+        Self {
+            post_pickup_access: "omitted".to_string(),
+            post_pickup_access_delta: "omitted".to_string(),
+        }
+    }
+}
+
+#[derive(Default)]
 struct ProV4RootPoolManaBasePosture {
     own_base_free: usize,
     own_base_own_mon: usize,
@@ -3719,6 +3747,124 @@ fn pro_v4_root_pool_mana_contest_features(
     ProV4RootPoolManaContestFeatures {
         post_mana_contest: pro_v4_root_pool_mana_contest_bucket(after_game, &after, perspective),
         post_mana_contest_delta: pro_v4_root_pool_mana_contest_delta_bucket(&before, &after),
+    }
+}
+
+fn pro_v4_root_pool_pickup_access_posture(
+    game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolPickupAccessPosture {
+    if game.winner_color().is_some() {
+        return ProV4RootPoolPickupAccessPosture::default();
+    }
+    let mut posture = ProV4RootPoolPickupAccessPosture::default();
+    let opponent = perspective.other();
+    for (target, item) in game.board.occupied() {
+        let Item::Mana { mana } = item else {
+            continue;
+        };
+        let mut own_access = false;
+        let mut opp_access = false;
+        let mut own_drainer_access = false;
+        let mut opp_drainer_access = false;
+        for &from in target.nearby_locations_ref() {
+            let Some(actor_item) = game.board.item(from) else {
+                continue;
+            };
+            let Some(actor) = actor_item.mon() else {
+                continue;
+            };
+            if actor.is_fainted()
+                || !pro_v4_root_pool_mon_can_step_to(&game.board, actor_item, from, target)
+            {
+                continue;
+            }
+            if actor.color == perspective {
+                own_access = true;
+                own_drainer_access |= actor.kind == MonKind::Drainer;
+            } else {
+                opp_access = true;
+                opp_drainer_access |= actor.kind == MonKind::Drainer;
+            }
+        }
+        if own_access {
+            posture.own_high_value_access +=
+                usize::from(pro_v4_root_pool_is_high_value_mana(*mana, perspective));
+            posture.own_regular_access +=
+                usize::from(pro_v4_root_pool_is_own_regular_mana(*mana, perspective));
+            posture.super_own_access += usize::from(matches!(mana, Mana::Supermana));
+        }
+        if opp_access {
+            posture.opp_high_value_access +=
+                usize::from(pro_v4_root_pool_is_high_value_mana(*mana, opponent));
+            posture.opp_regular_access +=
+                usize::from(pro_v4_root_pool_is_own_regular_mana(*mana, opponent));
+            posture.super_opp_access += usize::from(matches!(mana, Mana::Supermana));
+        }
+        posture.own_drainer_access += usize::from(own_drainer_access);
+        posture.opp_drainer_access += usize::from(opp_drainer_access);
+        posture.contested_access += usize::from(own_access && opp_access);
+        posture.unclaimed_free += usize::from(!own_access && !opp_access);
+    }
+    posture
+}
+
+fn pro_v4_root_pool_pickup_access_bucket(
+    game: &MonsGame,
+    posture: &ProV4RootPoolPickupAccessPosture,
+    perspective: Color,
+) -> String {
+    format!(
+        "status={};own_high={};own_regular={};opp_high={};opp_regular={};super_own={};super_opp={};own_drainer={};opp_drainer={};contested={};unclaimed={}",
+        pro_v4_root_pool_status(game, perspective),
+        pro_v4_root_pool_count_field(posture.own_high_value_access),
+        pro_v4_root_pool_count_field(posture.own_regular_access),
+        pro_v4_root_pool_count_field(posture.opp_high_value_access),
+        pro_v4_root_pool_count_field(posture.opp_regular_access),
+        pro_v4_root_pool_count_field(posture.super_own_access),
+        pro_v4_root_pool_count_field(posture.super_opp_access),
+        pro_v4_root_pool_count_field(posture.own_drainer_access),
+        pro_v4_root_pool_count_field(posture.opp_drainer_access),
+        pro_v4_root_pool_count_field(posture.contested_access),
+        pro_v4_root_pool_count_field(posture.unclaimed_free),
+    )
+}
+
+fn pro_v4_root_pool_pickup_access_delta_bucket(
+    before: &ProV4RootPoolPickupAccessPosture,
+    after: &ProV4RootPoolPickupAccessPosture,
+) -> String {
+    format!(
+        "own_high={};own_regular={};opp_high={};opp_regular={};super_own={};super_opp={};own_drainer={};opp_drainer={};contested={};unclaimed={}",
+        pro_v4_root_pool_count_delta_bucket(
+            before.own_high_value_access,
+            after.own_high_value_access,
+        ),
+        pro_v4_root_pool_count_delta_bucket(before.own_regular_access, after.own_regular_access),
+        pro_v4_root_pool_count_delta_bucket(
+            before.opp_high_value_access,
+            after.opp_high_value_access,
+        ),
+        pro_v4_root_pool_count_delta_bucket(before.opp_regular_access, after.opp_regular_access),
+        pro_v4_root_pool_count_delta_bucket(before.super_own_access, after.super_own_access),
+        pro_v4_root_pool_count_delta_bucket(before.super_opp_access, after.super_opp_access),
+        pro_v4_root_pool_count_delta_bucket(before.own_drainer_access, after.own_drainer_access),
+        pro_v4_root_pool_count_delta_bucket(before.opp_drainer_access, after.opp_drainer_access),
+        pro_v4_root_pool_count_delta_bucket(before.contested_access, after.contested_access),
+        pro_v4_root_pool_count_delta_bucket(before.unclaimed_free, after.unclaimed_free),
+    )
+}
+
+fn pro_v4_root_pool_pickup_access_features(
+    before_game: &MonsGame,
+    after_game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolPickupAccessFeatures {
+    let before = pro_v4_root_pool_pickup_access_posture(before_game, perspective);
+    let after = pro_v4_root_pool_pickup_access_posture(after_game, perspective);
+    ProV4RootPoolPickupAccessFeatures {
+        post_pickup_access: pro_v4_root_pool_pickup_access_bucket(after_game, &after, perspective),
+        post_pickup_access_delta: pro_v4_root_pool_pickup_access_delta_bucket(&before, &after),
     }
 }
 
@@ -7495,6 +7641,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             territory_features,
             mana_path_features,
             mana_contest_features,
+            pickup_access_features,
             mana_base_features,
             pool_access_features,
             carrier_route_features,
@@ -7599,6 +7746,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 pro_v4_root_pool_mana_path_features(&game, &root.game, game.active_color);
             let mana_contest_features =
                 pro_v4_root_pool_mana_contest_features(&game, &root.game, game.active_color);
+            let pickup_access_features =
+                pro_v4_root_pool_pickup_access_features(&game, &root.game, game.active_color);
             let mana_base_features =
                 pro_v4_root_pool_mana_base_features(&game, &root.game, game.active_color);
             let pool_access_features =
@@ -7673,6 +7822,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 territory_features,
                 mana_path_features,
                 mana_contest_features,
+                pickup_access_features,
                 mana_base_features,
                 pool_access_features,
                 carrier_route_features,
@@ -7720,6 +7870,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 ProV4RootPoolTerritoryFeatures::omitted(),
                 ProV4RootPoolManaPathFeatures::omitted(),
                 ProV4RootPoolManaContestFeatures::omitted(),
+                ProV4RootPoolPickupAccessFeatures::omitted(),
                 ProV4RootPoolManaBaseFeatures::omitted(),
                 ProV4RootPoolPoolAccessFeatures::omitted(),
                 ProV4RootPoolCarrierRouteFeatures::omitted(),
@@ -7738,7 +7889,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pickup_access\":\"{}\",\"post_pickup_access_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -7812,6 +7963,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             json_escape(&mana_path_features.post_mana_path_delta),
             json_escape(&mana_contest_features.post_mana_contest),
             json_escape(&mana_contest_features.post_mana_contest_delta),
+            json_escape(&pickup_access_features.post_pickup_access),
+            json_escape(&pickup_access_features.post_pickup_access_delta),
             json_escape(&mana_base_features.post_mana_base),
             json_escape(&mana_base_features.post_mana_base_delta),
             json_escape(&pool_access_features.post_pool_access),

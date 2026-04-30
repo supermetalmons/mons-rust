@@ -80,6 +80,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_mana_path_delta",
     "post_mana_contest",
     "post_mana_contest_delta",
+    "post_pickup_access",
+    "post_pickup_access_delta",
     "post_mana_base",
     "post_mana_base_delta",
     "post_pool_access",
@@ -154,6 +156,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_mana_contest", ("family", "post_mana_contest")),
     ("progress_mana_contest_delta", ("progress", "post_mana_contest_delta")),
     ("path_mana_contest_delta", ("path", "post_mana_contest_delta")),
+    ("family_pickup_access", ("family", "post_pickup_access")),
+    ("progress_pickup_access_delta", ("progress", "post_pickup_access_delta")),
+    ("path_pickup_access_delta", ("path", "post_pickup_access_delta")),
     ("family_mana_base", ("family", "post_mana_base")),
     ("progress_mana_base_delta", ("progress", "post_mana_base_delta")),
     ("path_mana_base_delta", ("path", "post_mana_base_delta")),
@@ -248,6 +253,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_mana_path_delta",
     "post_mana_contest",
     "post_mana_contest_delta",
+    "post_pickup_access",
+    "post_pickup_access_delta",
     "post_mana_base",
     "post_mana_base_delta",
     "post_pool_access",
@@ -2291,6 +2298,8 @@ def root_pool_signal_field_family(field):
         return "engagement"
     if "consumable" in field:
         return "consumable"
+    if "pickup_access" in field:
+        return "pickup_access"
     if "mana_base" in field:
         return "mana_base_access"
     if "mana_path" in field:
@@ -2465,6 +2474,8 @@ def root_pool_sample_root(row):
         "post_territory_delta": row.get("post_territory_delta", ""),
         "post_mana_path": row.get("post_mana_path", ""),
         "post_mana_path_delta": row.get("post_mana_path_delta", ""),
+        "post_pickup_access": row.get("post_pickup_access", ""),
+        "post_pickup_access_delta": row.get("post_pickup_access_delta", ""),
         "post_mana_base": row.get("post_mana_base", ""),
         "post_mana_base_delta": row.get("post_mana_base_delta", ""),
         "post_consumable": row.get("post_consumable", ""),
