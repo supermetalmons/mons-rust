@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Policy-Root-Pool ProV4 Probe
+
+- Temporary test-only candidate source was cut and removed in the same session.
+- The candidate preserved guarded fallbacks, captured the guarded root-selection snapshot only inside `frontier_execute`, then pooled live outputs from raw, selected-followup-disabled, full-scored reply-guard, and shipping-control policies. Candidate roots were ranked by source agreement, `TurnEngineUtility`, bounded reply floor, progress value, score, and rank.
+- The one-game sampled Fast smoke compiled and fired the candidate `11` times in `96` candidate turns, but lost `0-2` on `split_flank_mana_rows` and averaged `597.78ms` per candidate move.
+- The line was killed before sampled-dashboard spend because it was both weaker than the recent root comparators and close to the Pro move-time ceiling on a tiny smoke.
+- Durable outcome: live policy-output root pooling is not a practical ProV4 mode in this shape. It reintroduces policy-output overfit and high selector cost without evidence that it separates candidate wins from guarded saves.
+
 ## Reply-Floor Progress ProV4 Probe
 
 - Temporary test-only candidate source was cut and removed in the same session.
