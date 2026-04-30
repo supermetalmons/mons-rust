@@ -2156,3 +2156,15 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Dashboard branch coverage stayed mostly ordinary guarded execution: `frontier_execute=502`, `late_black_shipping_fallback=43`, `early_white_fallback=25`, and `score_window_tactical_fallback=1`.
 - The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
 - Durable outcome: drainer-attack-prioritized root enumeration is archived as another direct ProV4 config no-go. Do not reopen drainer-attack priority enumeration toggles unless a future corpus/root feature first separates drainer-attack ordering wins from inner-wedge regressions and guarded baseline saves.
+
+## ProV4 Targeted-Drainer-Full-Pool No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_targeted_drainer_full_pool` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper, enabled targeted drainer-attack fallback roots, and kept them in the full root pool instead of forcing attack selection (`enable_targeted_drainer_attack_fallback=true`, `enable_drainer_attack_full_pool=true`) inside the guarded frontier runtime.
+- The tiny sampled Fast smoke reached only weak evidence on `split_flank_mana_rows`: `wins=2`, `losses=0`, `confidence=0.7500`, `duel_passes=false`, `candidate_avg_ms=190.10`, and `opponent_avg_ms=4.96`.
+- Branch coverage in the smoke was ordinary guarded execution, not a new route: `frontier_execute=82` turns, `late_black_shipping_fallback=8`, and `early_white_fallback=6`.
+- The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `8-4` across `12` games (`win_rate=0.6667`, `confidence=0.8062`), with `candidate_avg_ms=143.25` versus shipping `56.55`; weakest rows were `inner_wedge_mana_rows=1-1`, `split_flank_mana_rows=1-1`, and `forward_bridge_mana_rows=2-2`.
+- Other sampled rows showed partial upside but not promotion shape: `center_spoke_mana_rows=2-0` and `alternating_mana_rows=2-0`.
+- Dashboard branch coverage stayed mostly ordinary guarded execution: `frontier_execute=492`, `late_black_shipping_fallback=43`, `early_white_fallback=25`, and `score_window_tactical_fallback=1`.
+- The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
+- Durable outcome: targeted drainer fallback roots in the full pool are archived as another direct ProV4 config no-go. Do not reopen targeted/full-pool drainer fallback toggles unless a future corpus/root feature first separates useful added drainer roots from split sampled rows and guarded baseline saves.
