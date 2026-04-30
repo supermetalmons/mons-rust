@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Drainer-Pressure ProV4 Probe
+
+- Temporary test-only candidate source was cut and removed in the same session.
+- Two guarded-wrapper variants were tried. `frontier_pro_v4_conditional_drainer_attack` made forced drainer-attack filtering apply only when tied or behind. `frontier_pro_v4_drainer_attack_minimax` kept forced drainer pressure but searched within forced attack roots instead of accepting the tactical prepass attack immediately.
+- Both variants cleared the one-game sampled Fast smoke on `split_flank_mana_rows` at `2-0`; conditional attack averaged `202.77ms`, and minimax attack averaged `315.04ms`.
+- Both sampled dashboards fast-failed on the first Pro duel with the same shape: sampled Pro `7-5`, win rate `0.5833`, confidence `0.6128`, inner-wedge `0-2`, alternating split `1-1`, and forward-bridge split `2-2`. Candidate averages stayed below the ceiling at `140.77ms` and `142.09ms`.
+- Durable outcome: score-aware forced drainer attack and drainer-attack minimax selection are not promotable guarded ProV2 modes in this shape. They preserve cost but do not repair the sampled Pro floor, so future drainer-pressure work needs corpus evidence below attack forcing before source changes.
+
 ## Depth-Consensus ProV4 Probe
 
 - Temporary test-only candidate source was cut and removed in the same session.
