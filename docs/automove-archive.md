@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Two-Turn Resilience ProV4 Probe
+
+- Temporary test-only candidate source was cut and removed in the same session.
+- The candidate preserved guarded fallbacks, captured the root-selection snapshot only inside `frontier_execute`, and compared top scored roots with a bounded self-opponent-self continuation probe using a very cheap depth-1 config.
+- A one-game sampled Fast smoke compiled and fired the candidate `4` times in `96` candidate turns, winning `2-0` but already averaging `216.68ms` per candidate move.
+- The sampled-only promotion dashboard killed it without active-panel or corpus spend: Pro `8-4`, Normal `8-4`, Fast `7-5`, max candidate average `211.65ms`, and `PRO_PROMOTION_DASHBOARD_STOPLIGHT` `not_promising`. The probe fired `31 / 25 / 47` times across Pro/Normal/Fast and rotated weak rows across alternating, inner-wedge, split-flank, forward-bridge, center-spoke, and corner-chain slices.
+- Durable outcome: bounded two-turn online resilience is not the missing ProV4 feature. It is slower than guarded, weaker than the prior same-turn continuation line on sampled Normal/Fast, and overlaps the retired continuation/reply-spectrum family without producing promotion shape.
+
 ## Turn-Completion Stability ProV4 Probe
 
 - Temporary test-only candidate source was cut and removed in the same session.
