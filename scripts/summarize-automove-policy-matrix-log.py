@@ -1600,6 +1600,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_pool_access_delta",
                 "post_carrier_route",
                 "post_carrier_route_delta",
+                "post_carrier_contact",
+                "post_carrier_contact_delta",
                 "post_consumable",
                 "post_consumable_delta",
                 "post_consumable_base",
