@@ -2168,3 +2168,15 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Dashboard branch coverage stayed mostly ordinary guarded execution: `frontier_execute=492`, `late_black_shipping_fallback=43`, `early_white_fallback=25`, and `score_window_tactical_fallback=1`.
 - The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
 - Durable outcome: targeted drainer fallback roots in the full pool are archived as another direct ProV4 config no-go. Do not reopen targeted/full-pool drainer fallback toggles unless a future corpus/root feature first separates useful added drainer roots from split sampled rows and guarded baseline saves.
+
+## ProV4 Scoring-Context-Narrowing No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_scoring_ctx_narrowing` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper and enabled local scoring context, attack-reach summaries, attack/drainer target narrowing, child vulnerability context reuse, and tactical score-window narrowing for move-efficiency snapshots (`enable_local_scoring_eval_ctx=true`, `enable_scoring_attack_reach_summary=true`, `enable_scoring_attack_reach_target_narrowing=true`, `enable_scoring_drainer_attack_reach_target_narrowing=true`, `enable_child_vulnerability_scoring_ctx_reuse=true`, `enable_move_efficiency_tactical_score_window_narrowing=true`) inside the guarded frontier runtime.
+- The tiny sampled Fast smoke reached only weak evidence on `split_flank_mana_rows`: `wins=2`, `losses=0`, `confidence=0.7500`, `duel_passes=false`, `candidate_avg_ms=221.39`, and `opponent_avg_ms=4.43`.
+- Branch coverage in the smoke was ordinary guarded execution, not a new route: `frontier_execute=82` turns, `late_black_shipping_fallback=8`, and `early_white_fallback=6`.
+- The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `7-5` across `12` games (`win_rate=0.5833`, `confidence=0.6128`), with `candidate_avg_ms=146.16` versus shipping `61.14`; weakest variant was `inner_wedge_mana_rows=0-2`.
+- Other sampled rows showed split pressure rather than promotion shape: `alternating_mana_rows=1-1`, `forward_bridge_mana_rows=2-2`, `center_spoke_mana_rows=2-0`, and `split_flank_mana_rows=2-0`.
+- Dashboard branch coverage stayed mostly ordinary guarded execution: `frontier_execute=502`, `late_black_shipping_fallback=43`, `early_white_fallback=25`, and `score_window_tactical_fallback=1`.
+- The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, `weak_variant_rows=1`, and `reason=shipping_gate_failed`.
+- Durable outcome: local scoring-context narrowing is archived as another direct ProV4 config no-go. Do not reopen scoring-context / attack-reach narrowing toggles unless a future corpus/root feature first separates target-narrowed evaluation wins from inner-wedge regressions and guarded baseline saves.
