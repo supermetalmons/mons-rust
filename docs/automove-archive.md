@@ -1917,3 +1917,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `8-4` across `12` games (`win_rate=0.6667`, `confidence=0.8062`), with `candidate_avg_ms=145.31` versus shipping `60.42`; weakest variant was `inner_wedge_mana_rows=0-2`.
 - The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
 - Durable outcome: final Pro node-budget uplift toggling is archived as another direct ProV4 config no-go. Do not reopen node-budget uplift toggles unless a future corpus/root feature first separates stable sampled roots from inner-wedge regressions and baseline saves.
+
+## ProV4 No-Attacker-Proximity-Scoring No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_no_attacker_proximity_scoring` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper and reverted only the final guarded Pro attacker-proximity scoring weights to regular runtime scoring weights.
+- The tiny sampled Fast smoke failed immediately: `wins=1`, `losses=1`, `confidence=0.0000`, `duel_passes=false`, `candidate_avg_ms=203.43`, and `opponent_avg_ms=3.72` on `split_flank_mana_rows`.
+- Branch coverage in the smoke was ordinary guarded execution, not a new route: `frontier_execute=82` turns, `late_black_shipping_fallback=7`, and `early_white_fallback=6`.
+- Because the cheap smoke failed the hard threshold, no sampled dashboard or active panel spend was earned.
+- Durable outcome: attacker-proximity scoring toggling is archived as another direct ProV4 config no-go. Do not reopen final scoring-weight ablations unless a future corpus/root feature first separates stable sampled roots from scoring-context, utility/rank, and baseline-save contamination.
