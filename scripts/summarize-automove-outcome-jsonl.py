@@ -108,6 +108,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_carrier_route_delta",
     "post_carrier_contact",
     "post_carrier_contact_delta",
+    "post_carrier_escape",
+    "post_carrier_escape_delta",
     "post_consumable",
     "post_consumable_delta",
     "post_consumable_base",
@@ -224,6 +226,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_carrier_contact", ("family", "post_carrier_contact")),
     ("progress_carrier_contact_delta", ("progress", "post_carrier_contact_delta")),
     ("path_carrier_contact_delta", ("path", "post_carrier_contact_delta")),
+    ("family_carrier_escape", ("family", "post_carrier_escape")),
+    ("progress_carrier_escape_delta", ("progress", "post_carrier_escape_delta")),
+    ("path_carrier_escape_delta", ("path", "post_carrier_escape_delta")),
     ("family_consumable", ("family", "post_consumable")),
     ("progress_consumable_delta", ("progress", "post_consumable_delta")),
     ("path_consumable_delta", ("path", "post_consumable_delta")),
@@ -346,6 +351,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_carrier_route_delta",
     "post_carrier_contact",
     "post_carrier_contact_delta",
+    "post_carrier_escape",
+    "post_carrier_escape_delta",
     "post_consumable",
     "post_consumable_delta",
     "post_consumable_base",
@@ -2399,6 +2406,8 @@ def root_pool_signal_field_family(field):
         return "engagement"
     if "carrier_contact" in field:
         return "carrier_contact"
+    if "carrier_escape" in field:
+        return "carrier_escape"
     if "consumable_base" in field:
         return "consumable_base"
     if "consumable" in field:
@@ -2615,6 +2624,8 @@ def root_pool_sample_root(row):
         "post_mana_base_delta": row.get("post_mana_base_delta", ""),
         "post_carrier_contact": row.get("post_carrier_contact", ""),
         "post_carrier_contact_delta": row.get("post_carrier_contact_delta", ""),
+        "post_carrier_escape": row.get("post_carrier_escape", ""),
+        "post_carrier_escape_delta": row.get("post_carrier_escape_delta", ""),
         "post_consumable": row.get("post_consumable", ""),
         "post_consumable_delta": row.get("post_consumable_delta", ""),
         "post_consumable_base": row.get("post_consumable_base", ""),
