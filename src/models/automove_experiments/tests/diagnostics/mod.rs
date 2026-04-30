@@ -2382,6 +2382,32 @@ impl ProV4RootPoolDrainerGeometryFeatures {
 }
 
 #[derive(Default)]
+struct ProV4RootPoolRoleCoordinationPosture {
+    own_drainer_angel_distance: Option<i32>,
+    own_drainer_spirit_distance: Option<i32>,
+    own_high_carrier_angel_distance: Option<i32>,
+    own_regular_carrier_angel_distance: Option<i32>,
+    opp_drainer_angel_distance: Option<i32>,
+    opp_drainer_spirit_distance: Option<i32>,
+    opp_high_carrier_angel_distance: Option<i32>,
+    opp_regular_carrier_angel_distance: Option<i32>,
+}
+
+struct ProV4RootPoolRoleCoordinationFeatures {
+    post_role_coordination: String,
+    post_role_coordination_delta: String,
+}
+
+impl ProV4RootPoolRoleCoordinationFeatures {
+    fn omitted() -> Self {
+        Self {
+            post_role_coordination: "omitted".to_string(),
+            post_role_coordination_delta: "omitted".to_string(),
+        }
+    }
+}
+
+#[derive(Default)]
 struct ProV4RootPoolTerritoryPosture {
     own_front: usize,
     own_deep: usize,
@@ -3588,6 +3614,214 @@ fn pro_v4_root_pool_drainer_geometry_features(
             &before,
             &after,
             perspective,
+        ),
+    }
+}
+
+fn pro_v4_root_pool_role_coordination_update_min(target: &mut Option<i32>, candidate: Option<i32>) {
+    if let Some(candidate) = candidate {
+        *target = Some(target.map_or(candidate, |current| current.min(candidate)));
+    }
+}
+
+fn pro_v4_root_pool_role_coordination_distance(
+    source: Option<Location>,
+    target: Option<Location>,
+) -> Option<i32> {
+    source
+        .zip(target)
+        .map(|(source, target)| source.distance(&target))
+}
+
+fn pro_v4_root_pool_role_coordination_bucket(distance: Option<i32>) -> &'static str {
+    match distance {
+        None => "none",
+        Some(..=1) => "adjacent",
+        Some(2) => "near2",
+        Some(3 | 4) => "mid3_4",
+        Some(_) => "far5_plus",
+    }
+}
+
+fn pro_v4_root_pool_role_coordination_posture(
+    game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolRoleCoordinationPosture {
+    if game.winner_color().is_some() {
+        return ProV4RootPoolRoleCoordinationPosture::default();
+    }
+
+    let mut own_angel = None;
+    let mut own_drainer = None;
+    let mut own_spirit = None;
+    let mut own_high_carriers = Vec::new();
+    let mut own_regular_carriers = Vec::new();
+    let mut opp_angel = None;
+    let mut opp_drainer = None;
+    let mut opp_spirit = None;
+    let mut opp_high_carriers = Vec::new();
+    let mut opp_regular_carriers = Vec::new();
+
+    for (location, item) in game.board.occupied() {
+        let Some(mon) = item.mon() else {
+            continue;
+        };
+        if mon.is_fainted() {
+            continue;
+        }
+
+        let own = mon.color == perspective;
+        match (own, mon.kind) {
+            (true, MonKind::Angel) => own_angel = Some(location),
+            (true, MonKind::Drainer) => own_drainer = Some(location),
+            (true, MonKind::Spirit) => own_spirit = Some(location),
+            (false, MonKind::Angel) => opp_angel = Some(location),
+            (false, MonKind::Drainer) => opp_drainer = Some(location),
+            (false, MonKind::Spirit) => opp_spirit = Some(location),
+            _ => {}
+        }
+
+        let Some(mana) = item.mana().copied() else {
+            continue;
+        };
+        if mana.score(mon.color) >= 2 {
+            if own {
+                own_high_carriers.push(location);
+            } else {
+                opp_high_carriers.push(location);
+            }
+        } else if mana.score(mon.color) > 0 {
+            if own {
+                own_regular_carriers.push(location);
+            } else {
+                opp_regular_carriers.push(location);
+            }
+        }
+    }
+
+    let mut posture = ProV4RootPoolRoleCoordinationPosture {
+        own_drainer_angel_distance: pro_v4_root_pool_role_coordination_distance(
+            own_drainer,
+            own_angel,
+        ),
+        own_drainer_spirit_distance: pro_v4_root_pool_role_coordination_distance(
+            own_drainer,
+            own_spirit,
+        ),
+        opp_drainer_angel_distance: pro_v4_root_pool_role_coordination_distance(
+            opp_drainer,
+            opp_angel,
+        ),
+        opp_drainer_spirit_distance: pro_v4_root_pool_role_coordination_distance(
+            opp_drainer,
+            opp_spirit,
+        ),
+        ..Default::default()
+    };
+
+    for carrier in own_high_carriers {
+        pro_v4_root_pool_role_coordination_update_min(
+            &mut posture.own_high_carrier_angel_distance,
+            pro_v4_root_pool_role_coordination_distance(Some(carrier), own_angel),
+        );
+    }
+    for carrier in own_regular_carriers {
+        pro_v4_root_pool_role_coordination_update_min(
+            &mut posture.own_regular_carrier_angel_distance,
+            pro_v4_root_pool_role_coordination_distance(Some(carrier), own_angel),
+        );
+    }
+    for carrier in opp_high_carriers {
+        pro_v4_root_pool_role_coordination_update_min(
+            &mut posture.opp_high_carrier_angel_distance,
+            pro_v4_root_pool_role_coordination_distance(Some(carrier), opp_angel),
+        );
+    }
+    for carrier in opp_regular_carriers {
+        pro_v4_root_pool_role_coordination_update_min(
+            &mut posture.opp_regular_carrier_angel_distance,
+            pro_v4_root_pool_role_coordination_distance(Some(carrier), opp_angel),
+        );
+    }
+
+    posture
+}
+
+fn pro_v4_root_pool_role_coordination_snapshot_bucket(
+    game: &MonsGame,
+    posture: &ProV4RootPoolRoleCoordinationPosture,
+    perspective: Color,
+) -> String {
+    format!(
+        "status={};own_da={};own_ds={};own_high_angel={};own_regular_angel={};opp_da={};opp_ds={};opp_high_angel={};opp_regular_angel={}",
+        pro_v4_root_pool_status(game, perspective),
+        pro_v4_root_pool_role_coordination_bucket(posture.own_drainer_angel_distance),
+        pro_v4_root_pool_role_coordination_bucket(posture.own_drainer_spirit_distance),
+        pro_v4_root_pool_role_coordination_bucket(posture.own_high_carrier_angel_distance),
+        pro_v4_root_pool_role_coordination_bucket(posture.own_regular_carrier_angel_distance),
+        pro_v4_root_pool_role_coordination_bucket(posture.opp_drainer_angel_distance),
+        pro_v4_root_pool_role_coordination_bucket(posture.opp_drainer_spirit_distance),
+        pro_v4_root_pool_role_coordination_bucket(posture.opp_high_carrier_angel_distance),
+        pro_v4_root_pool_role_coordination_bucket(posture.opp_regular_carrier_angel_distance),
+    )
+}
+
+fn pro_v4_root_pool_role_coordination_delta_bucket(
+    before: &ProV4RootPoolRoleCoordinationPosture,
+    after: &ProV4RootPoolRoleCoordinationPosture,
+) -> String {
+    format!(
+        "own_da={};own_ds={};own_high_angel={};own_regular_angel={};opp_da={};opp_ds={};opp_high_angel={};opp_regular_angel={}",
+        pro_v4_root_pool_i32_delta_bucket(
+            before.own_drainer_angel_distance,
+            after.own_drainer_angel_distance,
+        ),
+        pro_v4_root_pool_i32_delta_bucket(
+            before.own_drainer_spirit_distance,
+            after.own_drainer_spirit_distance,
+        ),
+        pro_v4_root_pool_i32_delta_bucket(
+            before.own_high_carrier_angel_distance,
+            after.own_high_carrier_angel_distance,
+        ),
+        pro_v4_root_pool_i32_delta_bucket(
+            before.own_regular_carrier_angel_distance,
+            after.own_regular_carrier_angel_distance,
+        ),
+        pro_v4_root_pool_i32_delta_bucket(
+            before.opp_drainer_angel_distance,
+            after.opp_drainer_angel_distance,
+        ),
+        pro_v4_root_pool_i32_delta_bucket(
+            before.opp_drainer_spirit_distance,
+            after.opp_drainer_spirit_distance,
+        ),
+        pro_v4_root_pool_i32_delta_bucket(
+            before.opp_high_carrier_angel_distance,
+            after.opp_high_carrier_angel_distance,
+        ),
+        pro_v4_root_pool_i32_delta_bucket(
+            before.opp_regular_carrier_angel_distance,
+            after.opp_regular_carrier_angel_distance,
+        ),
+    )
+}
+
+fn pro_v4_root_pool_role_coordination_features(
+    before_game: &MonsGame,
+    after_game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolRoleCoordinationFeatures {
+    let before = pro_v4_root_pool_role_coordination_posture(before_game, perspective);
+    let after = pro_v4_root_pool_role_coordination_posture(after_game, perspective);
+    ProV4RootPoolRoleCoordinationFeatures {
+        post_role_coordination: pro_v4_root_pool_role_coordination_snapshot_bucket(
+            after_game,
+            &after,
+            perspective,
+        ),
+        post_role_coordination_delta: pro_v4_root_pool_role_coordination_delta_bucket(
+            &before, &after,
         ),
     }
 }
@@ -7928,6 +8162,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             attack_exposure_features,
             support_guard_features,
             drainer_geometry_features,
+            role_coordination_features,
             territory_features,
             mana_path_features,
             mana_contest_features,
@@ -8032,6 +8267,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 pro_v4_root_pool_support_guard_features(&game, &root.game, game.active_color);
             let drainer_geometry_features =
                 pro_v4_root_pool_drainer_geometry_features(&game, &root.game, game.active_color);
+            let role_coordination_features =
+                pro_v4_root_pool_role_coordination_features(&game, &root.game, game.active_color);
             let territory_features =
                 pro_v4_root_pool_territory_features(&game, &root.game, game.active_color);
             let mana_path_features =
@@ -8112,6 +8349,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 attack_exposure_features,
                 support_guard_features,
                 drainer_geometry_features,
+                role_coordination_features,
                 territory_features,
                 mana_path_features,
                 mana_contest_features,
@@ -8161,6 +8399,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 ProV4RootPoolAttackExposureFeatures::omitted(),
                 ProV4RootPoolSupportGuardFeatures::omitted(),
                 ProV4RootPoolDrainerGeometryFeatures::omitted(),
+                ProV4RootPoolRoleCoordinationFeatures::omitted(),
                 ProV4RootPoolTerritoryFeatures::omitted(),
                 ProV4RootPoolManaPathFeatures::omitted(),
                 ProV4RootPoolManaContestFeatures::omitted(),
@@ -8183,7 +8422,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_cooldown_tempo\":\"{}\",\"post_cooldown_tempo_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_drainer_geometry\":\"{}\",\"post_drainer_geometry_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pickup_access\":\"{}\",\"post_pickup_access_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_cooldown_tempo\":\"{}\",\"post_cooldown_tempo_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_drainer_geometry\":\"{}\",\"post_drainer_geometry_delta\":\"{}\",\"post_role_coordination\":\"{}\",\"post_role_coordination_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pickup_access\":\"{}\",\"post_pickup_access_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -8255,6 +8494,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             json_escape(&support_guard_features.post_support_guard_delta),
             json_escape(&drainer_geometry_features.post_drainer_geometry),
             json_escape(&drainer_geometry_features.post_drainer_geometry_delta),
+            json_escape(&role_coordination_features.post_role_coordination),
+            json_escape(&role_coordination_features.post_role_coordination_delta),
             json_escape(&territory_features.post_territory),
             json_escape(&territory_features.post_territory_delta),
             json_escape(&mana_path_features.post_mana_path),

@@ -1572,6 +1572,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_support_guard_delta",
                 "post_drainer_geometry",
                 "post_drainer_geometry_delta",
+                "post_role_coordination",
+                "post_role_coordination_delta",
                 "post_territory",
                 "post_territory_delta",
                 "post_mana_path",
