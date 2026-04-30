@@ -2734,6 +2734,18 @@ impl ProV4RootPoolTransitionFeatures {
     }
 }
 
+struct ProV4RootPoolSequenceFeatures {
+    root_sequence: String,
+}
+
+impl ProV4RootPoolSequenceFeatures {
+    fn omitted() -> Self {
+        Self {
+            root_sequence: "omitted".to_string(),
+        }
+    }
+}
+
 struct ProV4RootPoolWorstReplyFeatures {
     worst_reply_transition: String,
     worst_reply_effect: String,
@@ -5527,6 +5539,101 @@ fn pro_v4_root_pool_input_shape_bucket(inputs: &[Input]) -> String {
     )
 }
 
+fn pro_v4_root_pool_input_sequence_token(
+    game: &MonsGame,
+    input: &Input,
+    perspective: Color,
+) -> String {
+    match *input {
+        Input::Takeback => "takeback".to_string(),
+        Input::Modifier(Modifier::SelectPotion) => "mod_potion".to_string(),
+        Input::Modifier(Modifier::SelectBomb) => "mod_bomb".to_string(),
+        Input::Modifier(Modifier::Cancel) => "mod_cancel".to_string(),
+        Input::Location(location) => {
+            let zone = forced_root_oracle_zone(&game.board, perspective, location);
+            let item = game
+                .board
+                .item(location)
+                .map(|item| pro_v4_root_pool_item_transition_label(item, perspective))
+                .unwrap_or_else(|| "empty".to_string());
+            format!("{item}@{zone}")
+        }
+    }
+}
+
+fn pro_v4_root_pool_input_sequence_bucket(
+    game: &MonsGame,
+    inputs: &[Input],
+    perspective: Color,
+) -> String {
+    let mut tokens = Vec::new();
+    let mut zones = BTreeSet::<&'static str>::new();
+    let mut modifiers = BTreeSet::<&'static str>::new();
+    let mut repeated = false;
+    let mut seen_tokens = BTreeSet::<String>::new();
+    for input in inputs {
+        match *input {
+            Input::Location(location) => {
+                zones.insert(forced_root_oracle_zone(&game.board, perspective, location));
+            }
+            Input::Modifier(Modifier::SelectPotion) => {
+                modifiers.insert("potion");
+            }
+            Input::Modifier(Modifier::SelectBomb) => {
+                modifiers.insert("bomb");
+            }
+            Input::Modifier(Modifier::Cancel) => {
+                modifiers.insert("cancel");
+            }
+            Input::Takeback => {}
+        }
+        let token = pro_v4_root_pool_input_sequence_token(game, input, perspective);
+        repeated |= !seen_tokens.insert(token.clone());
+        tokens.push(token);
+    }
+    let first = tokens.first().map(String::as_str).unwrap_or("none");
+    let last = tokens.last().map(String::as_str).unwrap_or("none");
+    let zone_bucket = if zones.is_empty() {
+        "none".to_string()
+    } else {
+        zones.into_iter().collect::<Vec<_>>().join("+")
+    };
+    let modifier_bucket = if modifiers.is_empty() {
+        "none".to_string()
+    } else {
+        modifiers.into_iter().collect::<Vec<_>>().join("+")
+    };
+    let order = if tokens.is_empty() {
+        "none".to_string()
+    } else {
+        tokens.join(">")
+    };
+    format!(
+        "len={};first={};last={};zones={};mods={};repeat={};order={}",
+        pro_v4_root_pool_count_field(inputs.len()),
+        first,
+        last,
+        zone_bucket,
+        modifier_bucket,
+        repeated,
+        order,
+    )
+}
+
+fn pro_v4_root_pool_sequence_features(
+    before_game: &MonsGame,
+    root: &RootEvaluation,
+    perspective: Color,
+) -> ProV4RootPoolSequenceFeatures {
+    ProV4RootPoolSequenceFeatures {
+        root_sequence: pro_v4_root_pool_input_sequence_bucket(
+            before_game,
+            &root.inputs,
+            perspective,
+        ),
+    }
+}
+
 fn pro_v4_root_pool_location_delta_bucket(color: Color, from: Location, to: Location) -> String {
     let forward_delta =
         pro_v4_root_pool_forward_index(color, to) - pro_v4_root_pool_forward_index(color, from);
@@ -7045,6 +7152,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             role_state_features,
             base_recovery_features,
             lane_shape_features,
+            sequence_features,
             transition_features,
             worst_reply_features,
             reply_spectrum_features,
@@ -7157,6 +7265,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 pro_v4_root_pool_base_recovery_features(&game, &root.game, game.active_color);
             let lane_shape_features =
                 pro_v4_root_pool_lane_shape_features(&game, &root.game, game.active_color);
+            let sequence_features =
+                pro_v4_root_pool_sequence_features(&game, root, game.active_color);
             let transition_features =
                 pro_v4_root_pool_transition_features(&game, root, game.active_color);
             let worst_reply_features =
@@ -7217,6 +7327,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 role_state_features,
                 base_recovery_features,
                 lane_shape_features,
+                sequence_features,
                 transition_features,
                 worst_reply_features,
                 reply_spectrum_features,
@@ -7262,13 +7373,14 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 ProV4RootPoolRoleStateFeatures::omitted(),
                 ProV4RootPoolBaseRecoveryFeatures::omitted(),
                 ProV4RootPoolLaneShapeFeatures::omitted(),
+                ProV4RootPoolSequenceFeatures::omitted(),
                 ProV4RootPoolTransitionFeatures::omitted(),
                 ProV4RootPoolWorstReplyFeatures::omitted(),
                 ProV4RootPoolReplySpectrumFeatures::omitted(),
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -7360,6 +7472,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             json_escape(&base_recovery_features.post_base_recovery_delta),
             json_escape(&lane_shape_features.post_lane_shape),
             json_escape(&lane_shape_features.post_lane_shape_delta),
+            json_escape(&sequence_features.root_sequence),
             json_escape(&transition_features.root_transition),
             json_escape(&transition_features.root_transition_effect),
             json_escape(&worst_reply_features.worst_reply_transition),

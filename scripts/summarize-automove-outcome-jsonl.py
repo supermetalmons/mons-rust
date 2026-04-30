@@ -98,6 +98,7 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_base_recovery_delta",
     "post_lane_shape",
     "post_lane_shape_delta",
+    "root_sequence",
     "root_transition",
     "root_transition_effect",
     "worst_reply_transition",
@@ -176,6 +177,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_lane_shape", ("family", "post_lane_shape")),
     ("progress_lane_shape_delta", ("progress", "post_lane_shape_delta")),
     ("path_lane_shape_delta", ("path", "post_lane_shape_delta")),
+    ("family_root_sequence", ("family", "root_sequence")),
+    ("progress_root_sequence", ("progress", "root_sequence")),
+    ("path_root_sequence", ("path", "root_sequence")),
     ("family_root_transition", ("family", "root_transition")),
     ("progress_root_transition_effect", ("progress", "root_transition_effect")),
     ("path_root_transition_effect", ("path", "root_transition_effect")),
@@ -252,6 +256,7 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_base_recovery_delta",
     "post_lane_shape",
     "post_lane_shape_delta",
+    "root_sequence",
     "root_transition",
     "root_transition_effect",
     "worst_reply_transition",
@@ -2250,6 +2255,8 @@ def root_pool_signal_items(row):
 
 def root_pool_signal_field_family(field):
     field = str(field or "")
+    if "root_sequence" in field:
+        return "root_input_sequence"
     if "worst_reply" in field:
         return "worst_reply_event_footprint"
     if "root_transition" in field:
@@ -2452,6 +2459,7 @@ def root_pool_sample_root(row):
         "post_base_recovery_delta": row.get("post_base_recovery_delta", ""),
         "post_lane_shape": row.get("post_lane_shape", ""),
         "post_lane_shape_delta": row.get("post_lane_shape_delta", ""),
+        "root_sequence": row.get("root_sequence", ""),
         "root_transition": row.get("root_transition", ""),
         "root_transition_effect": row.get("root_transition_effect", ""),
         "worst_reply_transition": row.get("worst_reply_transition", ""),

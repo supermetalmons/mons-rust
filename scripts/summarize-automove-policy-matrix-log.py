@@ -1592,6 +1592,7 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_base_recovery_delta",
                 "post_lane_shape",
                 "post_lane_shape_delta",
+                "root_sequence",
                 "root_transition",
                 "root_transition_effect",
                 "worst_reply_transition",
