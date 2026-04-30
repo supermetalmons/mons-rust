@@ -2007,3 +2007,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Branch coverage in the smoke was ordinary guarded execution, not a new route: `frontier_execute=84` turns, `late_black_shipping_fallback=6`, and `early_white_fallback=6`.
 - Because the cheap smoke failed the hard threshold, no sampled dashboard or active panel spend was earned.
 - Durable outcome: root/child move-class coverage removal is archived as another direct ProV4 config no-go. Do not reopen move-class coverage toggles unless a future corpus/root feature first separates class-covered tactical wins from split-flank regressions and baseline saves.
+
+## ProV4 No-Potion-Mix No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_no_potion_mix` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper and disabled potion-action root mixing plus potion progress compensation (`enable_mana_start_mix_with_potion_actions=false`, `enable_potion_progress_compensation=false`).
+- The tiny sampled Fast smoke failed immediately on `split_flank_mana_rows`: `wins=1`, `losses=1`, `confidence=0.0000`, `duel_passes=false`, `candidate_avg_ms=223.21`, and `opponent_avg_ms=4.82`.
+- Branch coverage in the smoke was ordinary guarded execution, not a new route: `frontier_execute=83` turns, `late_black_shipping_fallback=6`, and `early_white_fallback=6`.
+- Because the cheap smoke failed the hard threshold, no sampled dashboard or active panel spend was earned.
+- Durable outcome: potion-action root mixing and potion progress compensation removal is archived as another direct ProV4 config no-go. Do not reopen potion-mix toggles unless a future corpus/root feature first separates potion-root wins from split-flank regressions, archived consumable-feature contamination, and baseline saves.
