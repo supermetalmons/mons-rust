@@ -86,6 +86,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_role_deployment_delta",
     "post_role_pressure",
     "post_role_pressure_delta",
+    "post_role_contact",
+    "post_role_contact_delta",
     "post_territory",
     "post_territory_delta",
     "post_mana_path",
@@ -181,6 +183,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_role_pressure", ("family", "post_role_pressure")),
     ("progress_role_pressure_delta", ("progress", "post_role_pressure_delta")),
     ("path_role_pressure_delta", ("path", "post_role_pressure_delta")),
+    ("family_role_contact", ("family", "post_role_contact")),
+    ("progress_role_contact_delta", ("progress", "post_role_contact_delta")),
+    ("path_role_contact_delta", ("path", "post_role_contact_delta")),
     ("family_territory", ("family", "post_territory")),
     ("progress_territory_delta", ("progress", "post_territory_delta")),
     ("path_territory_delta", ("path", "post_territory_delta")),
@@ -299,6 +304,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_role_deployment_delta",
     "post_role_pressure",
     "post_role_pressure_delta",
+    "post_role_contact",
+    "post_role_contact_delta",
     "post_territory",
     "post_territory_delta",
     "post_mana_path",
@@ -2350,6 +2357,8 @@ def root_pool_signal_field_family(field):
         return "action_reach"
     if "action_threat" in field:
         return "action_threat"
+    if "role_contact" in field:
+        return "role_contact"
     if "followup" in field:
         return "followup_transition_shape"
     if "role_mobility" in field:
@@ -2554,6 +2563,8 @@ def root_pool_sample_root(row):
         "post_role_deployment_delta": row.get("post_role_deployment_delta", ""),
         "post_role_pressure": row.get("post_role_pressure", ""),
         "post_role_pressure_delta": row.get("post_role_pressure_delta", ""),
+        "post_role_contact": row.get("post_role_contact", ""),
+        "post_role_contact_delta": row.get("post_role_contact_delta", ""),
         "post_territory": row.get("post_territory", ""),
         "post_territory_delta": row.get("post_territory_delta", ""),
         "post_mana_path": row.get("post_mana_path", ""),
