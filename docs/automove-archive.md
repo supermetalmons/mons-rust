@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Root-Breadth Rebalance ProV4 Probe
+
+- Temporary test-only candidate source was cut and removed in the same session.
+- The candidate preserved the guarded wrapper, widened root focus from `3` to `4`, shifted root focus share down to `6_500`, raised turn-engine seed/per-family/opponent/reply breadth to `16 / 5 / 7 / 4`, and raised expansion cap to `184`.
+- A one-game sampled Fast smoke compiled and won `2-0` on `split_flank_mana_rows`, averaging `151.84ms` per candidate move; the tiny sample still had insufficient confidence by design.
+- The sampled-only dashboard killed it before Fast or active-panel spend: sampled Pro `9-3`, win rate `0.7500`, confidence `0.9270`, candidate average `146.04ms`; sampled Normal `8-4`, win rate `0.6667`, confidence `0.8062`, candidate average `183.57ms`. Weak rows included Pro `inner_wedge_mana_rows` split `1-1`, Pro `forward_bridge_mana_rows` split `2-2`, Normal `forward_bridge_mana_rows` `0-2`, and Normal `alternating_mana_rows` / `inner_wedge_mana_rows` split `1-1`.
+- Durable outcome: widening guarded ProV2 root/followup breadth is not a promotable ProV4 mode in this shape. It rotates sampled weaknesses instead of clearing Pro/Normal floors, so root-focus and seed-cap breadth should not be reopened as direct config tuning without a new corpus-discovered root feature.
+
 ## Bounded Followup/Reply ProV4 Probe
 
 - Temporary test-only candidate source was cut and removed in the same session.
