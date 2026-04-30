@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Child-Ordering Shortlist ProV4 Probe
+
+- Temporary test-only candidate source was cut and removed in the same session.
+- The candidate preserved the guarded wrapper and enabled `enable_child_eval_bundle`, `enable_two_stage_child_ordering`, `child_ordering_shortlist_multiplier=1`, and `child_ordering_tactical_reserve=1` inside the guarded ProV2 runtime to test whether deeper child ordering quality/cost, rather than root policy, was suppressing broad Pro strength.
+- A one-game sampled Fast smoke compiled and split `1-1` on `split_flank_mana_rows`, averaging `159.25ms` per candidate move.
+- The sampled-only dashboard killed it before Fast or active-panel spend: sampled Pro `8-4`, win rate `0.6667`, confidence `0.8062`, candidate average `106.52ms`; sampled Normal `8-4`, win rate `0.6667`, confidence `0.8062`, candidate average `168.69ms`. Weak rows included Pro `center_spoke_mana_rows`, `alternating_mana_rows`, and `inner_wedge_mana_rows` split `1-1`, plus Normal `alternating_mana_rows` `0-2`, `forward_bridge_mana_rows` split `1-1`, and `corner_chain_mana_rows` split `1-1`.
+- Durable outcome: child eval bundles plus two-stage child ordering are not a promotable guarded ProV2 mode in this shape. The Pro bucket got cheaper but still failed strength gates, and Normal rotated into a hard alternating regression.
+
 ## Targeted Exact-Narrowing ProV4 Probe
 
 - Temporary test-only candidate source was cut and removed in the same session.
