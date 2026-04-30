@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Reply-Floor Progress ProV4 Probe
+
+- Temporary test-only candidate source was cut and removed in the same session.
+- The candidate preserved guarded fallbacks, captured the root-selection snapshot only inside `frontier_execute`, and compared top scored roots with a bounded worst-reply floor plus concrete progress/setup value. The first cut was inert on the smoke slice; the loosened cut admitted quiet safe reply-floor roots.
+- A one-game sampled Fast smoke compiled and fired the candidate `2` times in `96` candidate turns, splitting `1-1` and averaging `203.64ms` per candidate move.
+- The sampled-only promotion dashboard killed it without active-panel or corpus spend: Pro `7-5`, Normal `9-3`, Fast `6-6`, max candidate average `189.53ms`, and `PRO_PROMOTION_DASHBOARD_STOPLIGHT` `not_promising`. The probe fired `21 / 21 / 21` times across Pro/Normal/Fast and still split inner-wedge, alternating, center-spoke, corner-chain, offset-arc, split-flank, and forward-bridge rows.
+- Durable outcome: bounded reply-floor plus progress/setup reranking over existing root fields is another non-promotable ProV4 selector. It improved Normal relative to some recent probes but regressed Fast to flat and did not separate wins from guarded saves.
+
 ## Objective-Latency ProV4 Probe
 
 - Temporary test-only candidate source was cut and removed in the same session.
