@@ -14,6 +14,7 @@ This is the live decision board for automove work. Keep it short and decision-or
 - Latest ProV4 cross-budget static-eval consensus scout was not promotable: it preserved guarded fallbacks after an unsafe loose smoke, then fast-failed the sampled dashboard at Pro `6-6` and never appeared as a policy-corpus winner.
 - Latest ProV4 turn-completion stability scout was not promotable: it preserved guarded fallbacks and used a same-turn continuation rollout, but failed sampled Pro at `7-5`; a looser cut improved sampled Fast to `11-1` while still missing Pro `8-4` and Normal `10-2`, with no policy-corpus winner evidence.
 - Latest ProV4 two-turn resilience scout was not promotable: a self-opponent-self continuation probe failed the sampled dashboard at Pro `8-4`, Normal `8-4`, Fast `7-5`, with max average `211.65ms` and no reason to spend active panels.
+- Latest ProV4 move-efficiency delta scout was not promotable: it preserved guarded fallbacks and used cached move-efficiency delta against guarded, but failed sampled Pro/Normal/Fast at `7-5 / 10-2 / 6-6`.
 - Runtime source stays untouched unless a new corpus/root feature separates candidate wins from baseline saves across sampled and active evidence with low fragmentation.
 
 ## Reset Portfolio
@@ -47,7 +48,7 @@ Do not write runtime selectors from:
 
 - existing policy labels, branch labels, exact contexts, first moves, variants, or singleton-heavy corpus rows;
 - broad zero-window exact-pressure classes or current exact-pressure deltas;
-- current active Fast lower-live safe-step / ManaTempo pressure, ProV4 root-pool, guarded-delta, root-ordering profile, root-preservation, reply-floor, root-safety, utility/rank, cross-budget static-eval consensus, turn-completion stability, two-turn resilience, forced-root feature-axis, root-pool provenance, forced-root pool JSONL, root trajectory, race geometry, root-pool contrast, outcome contrast, family-overlap, state-discriminator, broad token, vulnerable-baseline token, or utility/rank token-pair evidence;
+- current active Fast lower-live safe-step / ManaTempo pressure, ProV4 root-pool, guarded-delta, root-ordering profile, move-efficiency delta, root-preservation, reply-floor, root-safety, utility/rank, cross-budget static-eval consensus, turn-completion stability, two-turn resilience, forced-root feature-axis, root-pool provenance, forced-root pool JSONL, root trajectory, race geometry, root-pool contrast, outcome contrast, family-overlap, state-discriminator, broad token, vulnerable-baseline token, or utility/rank token-pair evidence;
 - current post-root feature families: exact pressure, board-resource custody/material, scoreboard/turn-budget, legal-transition fanout, attack-exposure, support-guard, territory, mana-path, consumable, engagement, mobility, action-threat, role-state/loadout, base-recovery, lane-shape, root-transition/event footprint, worst-reply event footprint, and immediate reply-spectrum shape.
 
 Those paths produced no source permission because the evidence stayed `coverage_gap`, `baseline_save_risk`, `no_candidate_route`, singleton-only, policy/branch/pair fragmented, shared with blockers, or contaminated by guarded baseline saves. Their detailed run notes are archived in `docs/automove-archive.md`; durable rules live in `docs/automove-knowledge.md`.

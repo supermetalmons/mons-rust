@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Move-Efficiency Delta ProV4 Probe
+
+- Temporary test-only candidate source was cut and removed in the same session.
+- The candidate preserved guarded fallbacks, captured the root-selection snapshot only inside `frontier_execute`, and compared top scored roots by cached move-efficiency delta versus the guarded root, with a safety filter and `TurnEngineUtility` guard.
+- A one-game sampled Fast smoke compiled and fired the candidate `3` times in `96` candidate turns, winning `2-0` but averaging `201.01ms` per candidate move.
+- The sampled-only promotion dashboard killed it without active-panel or corpus spend: Pro `7-5`, Normal `10-2`, Fast `6-6`, max candidate average `189.17ms`, and `PRO_PROMOTION_DASHBOARD_STOPLIGHT` `not_promising`. The probe fired `16 / 24 / 21` times across Pro/Normal/Fast and still split inner-wedge, forward-bridge, center-spoke, and corner-chain rows.
+- Durable outcome: selector-time move-efficiency delta is another root-ordering feature, not a promotable ProV4 mode. It does not separate candidate wins from guarded saves and is weaker than guarded on sampled Fast.
+
 ## Two-Turn Resilience ProV4 Probe
 
 - Temporary test-only candidate source was cut and removed in the same session.
