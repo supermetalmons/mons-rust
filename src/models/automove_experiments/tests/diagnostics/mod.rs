@@ -2408,6 +2408,34 @@ impl ProV4RootPoolRoleCoordinationFeatures {
 }
 
 #[derive(Default)]
+struct ProV4RootPoolFormationBalancePosture {
+    own_width: Option<i32>,
+    own_depth: Option<i32>,
+    own_center_steps: Option<i32>,
+    own_front_count: usize,
+    own_back_count: usize,
+    opp_width: Option<i32>,
+    opp_depth: Option<i32>,
+    opp_center_steps: Option<i32>,
+    opp_front_count: usize,
+    opp_back_count: usize,
+}
+
+struct ProV4RootPoolFormationBalanceFeatures {
+    post_formation_balance: String,
+    post_formation_balance_delta: String,
+}
+
+impl ProV4RootPoolFormationBalanceFeatures {
+    fn omitted() -> Self {
+        Self {
+            post_formation_balance: "omitted".to_string(),
+            post_formation_balance_delta: "omitted".to_string(),
+        }
+    }
+}
+
+#[derive(Default)]
 struct ProV4RootPoolTerritoryPosture {
     own_front: usize,
     own_deep: usize,
@@ -3821,6 +3849,226 @@ fn pro_v4_root_pool_role_coordination_features(
             perspective,
         ),
         post_role_coordination_delta: pro_v4_root_pool_role_coordination_delta_bucket(
+            &before, &after,
+        ),
+    }
+}
+
+#[derive(Default)]
+struct ProV4RootPoolFormationBalanceSide {
+    min_j: Option<i32>,
+    max_j: Option<i32>,
+    min_forward: Option<i32>,
+    max_forward: Option<i32>,
+    min_center_steps: Option<i32>,
+    front_count: usize,
+    back_count: usize,
+}
+
+impl ProV4RootPoolFormationBalanceSide {
+    fn observe(&mut self, location: Location, side: Color) {
+        let forward = pro_v4_root_pool_forward_index(side, location);
+        let center_steps = location.distance(&Config::SUPERMANA_BASE);
+        self.min_j = Some(
+            self.min_j
+                .map_or(location.j, |current| current.min(location.j)),
+        );
+        self.max_j = Some(
+            self.max_j
+                .map_or(location.j, |current| current.max(location.j)),
+        );
+        self.min_forward = Some(
+            self.min_forward
+                .map_or(forward, |current| current.min(forward)),
+        );
+        self.max_forward = Some(
+            self.max_forward
+                .map_or(forward, |current| current.max(forward)),
+        );
+        self.min_center_steps = Some(
+            self.min_center_steps
+                .map_or(center_steps, |current| current.min(center_steps)),
+        );
+        if forward >= 6 {
+            self.front_count += 1;
+        }
+        if forward <= 3 {
+            self.back_count += 1;
+        }
+    }
+
+    fn width(&self) -> Option<i32> {
+        self.min_j.zip(self.max_j).map(|(min, max)| max - min)
+    }
+
+    fn depth(&self) -> Option<i32> {
+        self.min_forward
+            .zip(self.max_forward)
+            .map(|(min, max)| max - min)
+    }
+}
+
+fn pro_v4_root_pool_formation_balance_span_bucket(span: Option<i32>) -> &'static str {
+    match span {
+        None => "none",
+        Some(0..=2) => "tight0_2",
+        Some(3 | 4) => "mid3_4",
+        Some(5 | 6) => "wide5_6",
+        Some(_) => "wide7_plus",
+    }
+}
+
+fn pro_v4_root_pool_formation_balance_center_bucket(steps: Option<i32>) -> &'static str {
+    match steps {
+        None => "none",
+        Some(0 | 1) => "center0_1",
+        Some(2) => "near2",
+        Some(3 | 4) => "mid3_4",
+        Some(_) => "far5_plus",
+    }
+}
+
+fn pro_v4_root_pool_formation_balance_front_back_bucket(
+    width: Option<i32>,
+    front_count: usize,
+    back_count: usize,
+) -> &'static str {
+    if width.is_none() {
+        return "none";
+    }
+    match front_count as i32 - back_count as i32 {
+        ..=-2 => "back_heavy",
+        -1..=1 => "balanced",
+        _ => "front_heavy",
+    }
+}
+
+fn pro_v4_root_pool_formation_balance_posture(
+    game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolFormationBalancePosture {
+    if game.winner_color().is_some() {
+        return ProV4RootPoolFormationBalancePosture::default();
+    }
+
+    let mut own = ProV4RootPoolFormationBalanceSide::default();
+    let mut opp = ProV4RootPoolFormationBalanceSide::default();
+    for (location, item) in game.board.occupied() {
+        let Some(mon) = item.mon() else {
+            continue;
+        };
+        if mon.is_fainted() {
+            continue;
+        }
+        if mon.color == perspective {
+            own.observe(location, mon.color);
+        } else {
+            opp.observe(location, mon.color);
+        }
+    }
+
+    ProV4RootPoolFormationBalancePosture {
+        own_width: own.width(),
+        own_depth: own.depth(),
+        own_center_steps: own.min_center_steps,
+        own_front_count: own.front_count,
+        own_back_count: own.back_count,
+        opp_width: opp.width(),
+        opp_depth: opp.depth(),
+        opp_center_steps: opp.min_center_steps,
+        opp_front_count: opp.front_count,
+        opp_back_count: opp.back_count,
+    }
+}
+
+fn pro_v4_root_pool_formation_balance_bucket(
+    game: &MonsGame,
+    posture: &ProV4RootPoolFormationBalancePosture,
+    perspective: Color,
+) -> String {
+    format!(
+        "status={};own_width={};own_depth={};own_center={};own_fb={};own_front={};own_back={};opp_width={};opp_depth={};opp_center={};opp_fb={};opp_front={};opp_back={}",
+        pro_v4_root_pool_status(game, perspective),
+        pro_v4_root_pool_formation_balance_span_bucket(posture.own_width),
+        pro_v4_root_pool_formation_balance_span_bucket(posture.own_depth),
+        pro_v4_root_pool_formation_balance_center_bucket(posture.own_center_steps),
+        pro_v4_root_pool_formation_balance_front_back_bucket(
+            posture.own_width,
+            posture.own_front_count,
+            posture.own_back_count,
+        ),
+        pro_v4_root_pool_count_field(posture.own_front_count),
+        pro_v4_root_pool_count_field(posture.own_back_count),
+        pro_v4_root_pool_formation_balance_span_bucket(posture.opp_width),
+        pro_v4_root_pool_formation_balance_span_bucket(posture.opp_depth),
+        pro_v4_root_pool_formation_balance_center_bucket(posture.opp_center_steps),
+        pro_v4_root_pool_formation_balance_front_back_bucket(
+            posture.opp_width,
+            posture.opp_front_count,
+            posture.opp_back_count,
+        ),
+        pro_v4_root_pool_count_field(posture.opp_front_count),
+        pro_v4_root_pool_count_field(posture.opp_back_count),
+    )
+}
+
+fn pro_v4_root_pool_formation_balance_delta_bucket(
+    before: &ProV4RootPoolFormationBalancePosture,
+    after: &ProV4RootPoolFormationBalancePosture,
+) -> String {
+    format!(
+        "own_width={};own_depth={};own_center={};own_fb={};own_front={};own_back={};opp_width={};opp_depth={};opp_center={};opp_fb={};opp_front={};opp_back={}",
+        pro_v4_root_pool_i32_delta_bucket(before.own_width, after.own_width),
+        pro_v4_root_pool_i32_delta_bucket(before.own_depth, after.own_depth),
+        pro_v4_root_pool_i32_delta_bucket(before.own_center_steps, after.own_center_steps),
+        pro_v4_root_pool_label_delta_bucket(
+            pro_v4_root_pool_formation_balance_front_back_bucket(
+                before.own_width,
+                before.own_front_count,
+                before.own_back_count,
+            ),
+            pro_v4_root_pool_formation_balance_front_back_bucket(
+                after.own_width,
+                after.own_front_count,
+                after.own_back_count,
+            ),
+        ),
+        pro_v4_root_pool_count_delta_bucket(before.own_front_count, after.own_front_count),
+        pro_v4_root_pool_count_delta_bucket(before.own_back_count, after.own_back_count),
+        pro_v4_root_pool_i32_delta_bucket(before.opp_width, after.opp_width),
+        pro_v4_root_pool_i32_delta_bucket(before.opp_depth, after.opp_depth),
+        pro_v4_root_pool_i32_delta_bucket(before.opp_center_steps, after.opp_center_steps),
+        pro_v4_root_pool_label_delta_bucket(
+            pro_v4_root_pool_formation_balance_front_back_bucket(
+                before.opp_width,
+                before.opp_front_count,
+                before.opp_back_count,
+            ),
+            pro_v4_root_pool_formation_balance_front_back_bucket(
+                after.opp_width,
+                after.opp_front_count,
+                after.opp_back_count,
+            ),
+        ),
+        pro_v4_root_pool_count_delta_bucket(before.opp_front_count, after.opp_front_count),
+        pro_v4_root_pool_count_delta_bucket(before.opp_back_count, after.opp_back_count),
+    )
+}
+
+fn pro_v4_root_pool_formation_balance_features(
+    before_game: &MonsGame,
+    after_game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolFormationBalanceFeatures {
+    let before = pro_v4_root_pool_formation_balance_posture(before_game, perspective);
+    let after = pro_v4_root_pool_formation_balance_posture(after_game, perspective);
+    ProV4RootPoolFormationBalanceFeatures {
+        post_formation_balance: pro_v4_root_pool_formation_balance_bucket(
+            after_game,
+            &after,
+            perspective,
+        ),
+        post_formation_balance_delta: pro_v4_root_pool_formation_balance_delta_bucket(
             &before, &after,
         ),
     }
@@ -8163,6 +8411,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             support_guard_features,
             drainer_geometry_features,
             role_coordination_features,
+            formation_balance_features,
             territory_features,
             mana_path_features,
             mana_contest_features,
@@ -8269,6 +8518,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 pro_v4_root_pool_drainer_geometry_features(&game, &root.game, game.active_color);
             let role_coordination_features =
                 pro_v4_root_pool_role_coordination_features(&game, &root.game, game.active_color);
+            let formation_balance_features =
+                pro_v4_root_pool_formation_balance_features(&game, &root.game, game.active_color);
             let territory_features =
                 pro_v4_root_pool_territory_features(&game, &root.game, game.active_color);
             let mana_path_features =
@@ -8350,6 +8601,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 support_guard_features,
                 drainer_geometry_features,
                 role_coordination_features,
+                formation_balance_features,
                 territory_features,
                 mana_path_features,
                 mana_contest_features,
@@ -8400,6 +8652,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 ProV4RootPoolSupportGuardFeatures::omitted(),
                 ProV4RootPoolDrainerGeometryFeatures::omitted(),
                 ProV4RootPoolRoleCoordinationFeatures::omitted(),
+                ProV4RootPoolFormationBalanceFeatures::omitted(),
                 ProV4RootPoolTerritoryFeatures::omitted(),
                 ProV4RootPoolManaPathFeatures::omitted(),
                 ProV4RootPoolManaContestFeatures::omitted(),
@@ -8422,7 +8675,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_cooldown_tempo\":\"{}\",\"post_cooldown_tempo_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_drainer_geometry\":\"{}\",\"post_drainer_geometry_delta\":\"{}\",\"post_role_coordination\":\"{}\",\"post_role_coordination_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pickup_access\":\"{}\",\"post_pickup_access_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_cooldown_tempo\":\"{}\",\"post_cooldown_tempo_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_drainer_geometry\":\"{}\",\"post_drainer_geometry_delta\":\"{}\",\"post_role_coordination\":\"{}\",\"post_role_coordination_delta\":\"{}\",\"post_formation_balance\":\"{}\",\"post_formation_balance_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pickup_access\":\"{}\",\"post_pickup_access_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -8496,6 +8749,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             json_escape(&drainer_geometry_features.post_drainer_geometry_delta),
             json_escape(&role_coordination_features.post_role_coordination),
             json_escape(&role_coordination_features.post_role_coordination_delta),
+            json_escape(&formation_balance_features.post_formation_balance),
+            json_escape(&formation_balance_features.post_formation_balance_delta),
             json_escape(&territory_features.post_territory),
             json_escape(&territory_features.post_territory_delta),
             json_escape(&mana_path_features.post_mana_path),

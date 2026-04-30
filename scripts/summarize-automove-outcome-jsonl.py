@@ -80,6 +80,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_drainer_geometry_delta",
     "post_role_coordination",
     "post_role_coordination_delta",
+    "post_formation_balance",
+    "post_formation_balance_delta",
     "post_territory",
     "post_territory_delta",
     "post_mana_path",
@@ -162,6 +164,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_role_coordination", ("family", "post_role_coordination")),
     ("progress_role_coordination_delta", ("progress", "post_role_coordination_delta")),
     ("path_role_coordination_delta", ("path", "post_role_coordination_delta")),
+    ("family_formation_balance", ("family", "post_formation_balance")),
+    ("progress_formation_balance_delta", ("progress", "post_formation_balance_delta")),
+    ("path_formation_balance_delta", ("path", "post_formation_balance_delta")),
     ("family_territory", ("family", "post_territory")),
     ("progress_territory_delta", ("progress", "post_territory_delta")),
     ("path_territory_delta", ("path", "post_territory_delta")),
@@ -268,6 +273,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_drainer_geometry_delta",
     "post_role_coordination",
     "post_role_coordination_delta",
+    "post_formation_balance",
+    "post_formation_balance_delta",
     "post_territory",
     "post_territory_delta",
     "post_mana_path",
@@ -2333,6 +2340,8 @@ def root_pool_signal_field_family(field):
         return "drainer_geometry"
     if "role_coordination" in field:
         return "role_coordination"
+    if "formation_balance" in field:
+        return "formation_balance"
     if "support_guard" in field:
         return "support_guard"
     if "attack_exposure" in field:
@@ -2503,6 +2512,8 @@ def root_pool_sample_root(row):
         "post_drainer_geometry_delta": row.get("post_drainer_geometry_delta", ""),
         "post_role_coordination": row.get("post_role_coordination", ""),
         "post_role_coordination_delta": row.get("post_role_coordination_delta", ""),
+        "post_formation_balance": row.get("post_formation_balance", ""),
+        "post_formation_balance_delta": row.get("post_formation_balance_delta", ""),
         "post_territory": row.get("post_territory", ""),
         "post_territory_delta": row.get("post_territory_delta", ""),
         "post_mana_path": row.get("post_mana_path", ""),
