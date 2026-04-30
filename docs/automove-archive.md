@@ -2094,3 +2094,14 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Other sampled rows stayed split rather than promotable: broad injection had `alternating_mana_rows=1-1`, `inner_wedge_mana_rows=1-1`, `center_spoke_mana_rows=2-0`, `split_flank_mana_rows=2-0`; emergency-only had `alternating_mana_rows=1-1`, `forward_bridge_mana_rows=2-2`, `center_spoke_mana_rows=2-0`, `split_flank_mana_rows=2-0`.
 - Both stoplights were `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
 - Durable outcome: turn-engine root injection is archived as another direct ProV4 config no-go. Do not reopen broad or emergency-only root-injection toggles unless a future corpus/root feature first separates injected tactical/progress roots from forward-bridge and inner-wedge regressions plus guarded baseline saves.
+
+## ProV4 Exact-Lite-Progress No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_exact_lite_progress` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper and enabled budgeted exact-lite progress and spirit-window root analysis (`enable_exact_lite_progress_checks=true`, `enable_exact_lite_spirit_window_checks=true`, `exact_lite_root_call_budget=2`, `exact_lite_static_call_budget=1`).
+- The tiny sampled Fast smoke reached only weak evidence on `split_flank_mana_rows`: `wins=2`, `losses=0`, `confidence=0.7500`, `duel_passes=false`, `candidate_avg_ms=195.03`, and `opponent_avg_ms=5.07`.
+- Branch coverage in the smoke was ordinary guarded execution, not a new route: `frontier_execute=83` turns, `late_black_shipping_fallback=7`, and `early_white_fallback=6`.
+- The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `7-5` across `12` games (`win_rate=0.5833`, `confidence=0.6128`), with `candidate_avg_ms=142.88` versus shipping `59.49`; weakest variant was `inner_wedge_mana_rows=0-2`.
+- Other sampled rows showed split pressure rather than promotion shape: `alternating_mana_rows=1-1`, `forward_bridge_mana_rows=2-2`, `center_spoke_mana_rows=2-0`, and `split_flank_mana_rows=2-0`.
+- The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
+- Durable outcome: budgeted exact-lite progress/spirit-window root analysis is archived as another direct ProV4 config no-go. Do not reopen exact-lite progress toggles unless a future corpus/root feature first separates exact-lite-selected progress/setup wins from inner-wedge regressions and baseline saves.
