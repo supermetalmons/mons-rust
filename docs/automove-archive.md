@@ -1926,3 +1926,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Branch coverage in the smoke was ordinary guarded execution, not a new route: `frontier_execute=82` turns, `late_black_shipping_fallback=7`, and `early_white_fallback=6`.
 - Because the cheap smoke failed the hard threshold, no sampled dashboard or active panel spend was earned.
 - Durable outcome: attacker-proximity scoring toggling is archived as another direct ProV4 config no-go. Do not reopen final scoring-weight ablations unless a future corpus/root feature first separates stable sampled roots from scoring-context, utility/rank, and baseline-save contamination.
+
+## ProV4 No-Branch-Uplift No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_no_branch_uplift` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper and reversed only the final guarded Pro root/node branch-limit uplift, recomputing root and node enum limits from the reduced branch limits.
+- The tiny sampled Fast smoke reached only weak evidence: `wins=2`, `losses=0`, `confidence=0.7500`, `duel_passes=false`, `candidate_avg_ms=145.68`, and `opponent_avg_ms=4.21` on `split_flank_mana_rows`.
+- The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `6-6` across `12` games (`win_rate=0.5000`, `confidence=0.0000`), with `candidate_avg_ms=125.08` versus shipping `54.01`; weakest variant was `inner_wedge_mana_rows=0-2`.
+- The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
+- Durable outcome: final branch-limit uplift toggling is archived as another direct ProV4 config no-go. Do not reopen branch-limit uplift or nearby breadth-reduction toggles unless a future corpus/root feature first separates stable sampled roots from inner-wedge regressions and baseline saves.
