@@ -1578,6 +1578,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_mobility_delta",
                 "post_action_threat",
                 "post_action_threat_delta",
+                "post_step_threat",
+                "post_step_threat_delta",
                 "post_role_state",
                 "post_role_state_delta",
                 "post_base_recovery",
