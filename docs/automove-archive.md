@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Scoring-Context Robustness ProV4 Probe
+
+- Temporary test-only candidate source was cut and removed in the same session.
+- The candidate preserved guarded fallbacks, captured the root-selection snapshot only inside `frontier_execute`, and compared top scored roots across exact-on/off plus local/no-local static scoring contexts, with a safety filter and `TurnEngineUtility` guard.
+- A one-game sampled Fast smoke compiled and fired the candidate `8` times in `96` candidate turns, splitting `1-1` and averaging `235.99ms` per candidate move.
+- The sampled-only promotion dashboard killed it without active-panel or corpus spend: Pro `6-6`, Normal `8-4`, Fast `8-4`, max candidate average `198.50ms`, and `PRO_PROMOTION_DASHBOARD_STOPLIGHT` `not_promising`. The probe fired `82 / 71 / 68` times across Pro/Normal/Fast and still split center-spoke, inner-wedge, forward-bridge, split-flank, and corner-chain rows.
+- Durable outcome: exact/local scoring-context robustness is another static root-ordering signal, not a promotable ProV4 mode. It adds cost without separating candidate wins from guarded saves.
+
 ## Move-Efficiency Delta ProV4 Probe
 
 - Temporary test-only candidate source was cut and removed in the same session.
