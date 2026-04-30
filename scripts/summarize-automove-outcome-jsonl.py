@@ -134,6 +134,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_action_guard_profile_delta",
     "post_action_actor_profile",
     "post_action_actor_profile_delta",
+    "post_action_actor_safety_profile",
+    "post_action_actor_safety_profile_delta",
     "post_action_zone_profile",
     "post_action_zone_profile_delta",
     "post_action_payload_profile",
@@ -313,6 +315,18 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
         "path_action_actor_profile_delta",
         ("path", "post_action_actor_profile_delta"),
     ),
+    (
+        "family_action_actor_safety_profile",
+        ("family", "post_action_actor_safety_profile"),
+    ),
+    (
+        "progress_action_actor_safety_profile_delta",
+        ("progress", "post_action_actor_safety_profile_delta"),
+    ),
+    (
+        "path_action_actor_safety_profile_delta",
+        ("path", "post_action_actor_safety_profile_delta"),
+    ),
     ("family_action_zone_profile", ("family", "post_action_zone_profile")),
     (
         "progress_action_zone_profile_delta",
@@ -470,6 +484,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_action_guard_profile_delta",
     "post_action_actor_profile",
     "post_action_actor_profile_delta",
+    "post_action_actor_safety_profile",
+    "post_action_actor_safety_profile_delta",
     "post_action_zone_profile",
     "post_action_zone_profile_delta",
     "post_action_payload_profile",
@@ -2509,6 +2525,8 @@ def root_pool_signal_field_family(field):
         return "action_role_profile"
     if "action_guard_profile" in field:
         return "action_guard_profile"
+    if "action_actor_safety_profile" in field:
+        return "action_actor_safety_profile"
     if "action_actor_profile" in field:
         return "action_actor_profile"
     if "action_zone_profile" in field:
@@ -2782,6 +2800,12 @@ def root_pool_sample_root(row):
         "post_action_actor_profile": row.get("post_action_actor_profile", ""),
         "post_action_actor_profile_delta": row.get(
             "post_action_actor_profile_delta", ""
+        ),
+        "post_action_actor_safety_profile": row.get(
+            "post_action_actor_safety_profile", ""
+        ),
+        "post_action_actor_safety_profile_delta": row.get(
+            "post_action_actor_safety_profile_delta", ""
         ),
         "post_action_zone_profile": row.get("post_action_zone_profile", ""),
         "post_action_zone_profile_delta": row.get("post_action_zone_profile_delta", ""),
