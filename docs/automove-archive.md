@@ -2135,3 +2135,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Branch coverage in the smoke was ordinary guarded execution, not a new route: `frontier_execute=83` turns, `late_black_shipping_fallback=7`, and `early_white_fallback=6`.
 - No sampled promotion dashboard was run because the candidate missed the cheapest Fast gate.
 - Durable outcome: root drainer-safety prefilter disabling is archived as another direct ProV4 config no-go. Do not reopen it unless a future corpus/root feature first separates vulnerable-root wins from guarded baseline saves across sampled and active panels.
+
+## ProV4 No-Root-Efficiency No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_no_root_efficiency` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper and disabled root efficiency snapshots and deltas (`enable_root_efficiency=false`) inside the guarded frontier runtime.
+- The tiny sampled Fast smoke failed immediately on `split_flank_mana_rows`: `wins=1`, `losses=1`, `confidence=0.0000`, `duel_passes=false`, `candidate_avg_ms=150.82`, and `opponent_avg_ms=3.65`.
+- Branch coverage in the smoke was ordinary guarded execution, not a new route: `frontier_execute=83` turns, `late_black_shipping_fallback=6`, and `early_white_fallback=6`.
+- No sampled promotion dashboard was run because the candidate missed the cheapest Fast gate.
+- Durable outcome: root-efficiency disabling is archived as another direct ProV4 config no-go. Do not reopen it unless a future corpus/root feature first separates root-efficiency overfitting from guarded baseline saves across sampled and active panels.
