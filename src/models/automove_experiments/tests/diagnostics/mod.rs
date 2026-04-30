@@ -2388,6 +2388,36 @@ impl ProV4RootPoolManaPathFeatures {
 }
 
 #[derive(Default)]
+struct ProV4RootPoolManaContestPosture {
+    super_own_closer: usize,
+    super_opp_closer: usize,
+    super_tied: usize,
+    super_uncontested: usize,
+    own_regular_own_closer: usize,
+    own_regular_opp_closer: usize,
+    own_regular_tied: usize,
+    own_regular_uncontested: usize,
+    opp_regular_own_closer: usize,
+    opp_regular_opp_closer: usize,
+    opp_regular_tied: usize,
+    opp_regular_uncontested: usize,
+}
+
+struct ProV4RootPoolManaContestFeatures {
+    post_mana_contest: String,
+    post_mana_contest_delta: String,
+}
+
+impl ProV4RootPoolManaContestFeatures {
+    fn omitted() -> Self {
+        Self {
+            post_mana_contest: "omitted".to_string(),
+            post_mana_contest_delta: "omitted".to_string(),
+        }
+    }
+}
+
+#[derive(Default)]
 struct ProV4RootPoolCarrierRoutePosture {
     own_high_value_carrier: usize,
     own_high_value_score_step: usize,
@@ -3452,6 +3482,156 @@ fn pro_v4_root_pool_mana_path_features(
     ProV4RootPoolManaPathFeatures {
         post_mana_path: pro_v4_root_pool_mana_path_bucket(after_game, &after, perspective),
         post_mana_path_delta: pro_v4_root_pool_mana_path_delta_bucket(&before, &after),
+    }
+}
+
+fn pro_v4_root_pool_closest_awake_mon_distance(
+    game: &MonsGame,
+    color: Color,
+    target: Location,
+) -> Option<i32> {
+    game.board
+        .occupied()
+        .filter_map(|(location, item)| {
+            item.mon()
+                .is_some_and(|mon| mon.color == color && !mon.is_fainted())
+                .then_some(location.distance(&target))
+        })
+        .min()
+}
+
+fn pro_v4_root_pool_add_mana_contest_counts(
+    posture: &mut ProV4RootPoolManaContestPosture,
+    mana: Mana,
+    perspective: Color,
+    own_distance: Option<i32>,
+    opp_distance: Option<i32>,
+) {
+    let (own_closer, opp_closer, tied, uncontested) = match (own_distance, opp_distance) {
+        (Some(own), Some(opp)) if own < opp => (1, 0, 0, 0),
+        (Some(own), Some(opp)) if opp < own => (0, 1, 0, 0),
+        (Some(_), Some(_)) => (0, 0, 1, 0),
+        (Some(_), None) => (1, 0, 0, 0),
+        (None, Some(_)) => (0, 1, 0, 0),
+        (None, None) => (0, 0, 0, 1),
+    };
+    match mana {
+        Mana::Supermana => {
+            posture.super_own_closer += own_closer;
+            posture.super_opp_closer += opp_closer;
+            posture.super_tied += tied;
+            posture.super_uncontested += uncontested;
+        }
+        Mana::Regular(color) if color == perspective => {
+            posture.own_regular_own_closer += own_closer;
+            posture.own_regular_opp_closer += opp_closer;
+            posture.own_regular_tied += tied;
+            posture.own_regular_uncontested += uncontested;
+        }
+        Mana::Regular(_) => {
+            posture.opp_regular_own_closer += own_closer;
+            posture.opp_regular_opp_closer += opp_closer;
+            posture.opp_regular_tied += tied;
+            posture.opp_regular_uncontested += uncontested;
+        }
+    }
+}
+
+fn pro_v4_root_pool_mana_contest_posture(
+    game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolManaContestPosture {
+    if game.winner_color().is_some() {
+        return ProV4RootPoolManaContestPosture::default();
+    }
+    let mut posture = ProV4RootPoolManaContestPosture::default();
+    for (location, item) in game.board.occupied() {
+        let Item::Mana { mana } = item else {
+            continue;
+        };
+        pro_v4_root_pool_add_mana_contest_counts(
+            &mut posture,
+            *mana,
+            perspective,
+            pro_v4_root_pool_closest_awake_mon_distance(game, perspective, location),
+            pro_v4_root_pool_closest_awake_mon_distance(game, perspective.other(), location),
+        );
+    }
+    posture
+}
+
+fn pro_v4_root_pool_mana_contest_bucket(
+    game: &MonsGame,
+    posture: &ProV4RootPoolManaContestPosture,
+    perspective: Color,
+) -> String {
+    format!(
+        "status={};super_own={};super_opp={};super_tied={};super_uncontested={};own_regular_own={};own_regular_opp={};own_regular_tied={};own_regular_uncontested={};opp_regular_own={};opp_regular_opp={};opp_regular_tied={};opp_regular_uncontested={}",
+        pro_v4_root_pool_status(game, perspective),
+        pro_v4_root_pool_count_field(posture.super_own_closer),
+        pro_v4_root_pool_count_field(posture.super_opp_closer),
+        pro_v4_root_pool_count_field(posture.super_tied),
+        pro_v4_root_pool_count_field(posture.super_uncontested),
+        pro_v4_root_pool_count_field(posture.own_regular_own_closer),
+        pro_v4_root_pool_count_field(posture.own_regular_opp_closer),
+        pro_v4_root_pool_count_field(posture.own_regular_tied),
+        pro_v4_root_pool_count_field(posture.own_regular_uncontested),
+        pro_v4_root_pool_count_field(posture.opp_regular_own_closer),
+        pro_v4_root_pool_count_field(posture.opp_regular_opp_closer),
+        pro_v4_root_pool_count_field(posture.opp_regular_tied),
+        pro_v4_root_pool_count_field(posture.opp_regular_uncontested),
+    )
+}
+
+fn pro_v4_root_pool_mana_contest_delta_bucket(
+    before: &ProV4RootPoolManaContestPosture,
+    after: &ProV4RootPoolManaContestPosture,
+) -> String {
+    format!(
+        "super_own={};super_opp={};super_tied={};super_uncontested={};own_regular_own={};own_regular_opp={};own_regular_tied={};own_regular_uncontested={};opp_regular_own={};opp_regular_opp={};opp_regular_tied={};opp_regular_uncontested={}",
+        pro_v4_root_pool_count_delta_bucket(before.super_own_closer, after.super_own_closer),
+        pro_v4_root_pool_count_delta_bucket(before.super_opp_closer, after.super_opp_closer),
+        pro_v4_root_pool_count_delta_bucket(before.super_tied, after.super_tied),
+        pro_v4_root_pool_count_delta_bucket(before.super_uncontested, after.super_uncontested),
+        pro_v4_root_pool_count_delta_bucket(
+            before.own_regular_own_closer,
+            after.own_regular_own_closer,
+        ),
+        pro_v4_root_pool_count_delta_bucket(
+            before.own_regular_opp_closer,
+            after.own_regular_opp_closer,
+        ),
+        pro_v4_root_pool_count_delta_bucket(before.own_regular_tied, after.own_regular_tied),
+        pro_v4_root_pool_count_delta_bucket(
+            before.own_regular_uncontested,
+            after.own_regular_uncontested,
+        ),
+        pro_v4_root_pool_count_delta_bucket(
+            before.opp_regular_own_closer,
+            after.opp_regular_own_closer,
+        ),
+        pro_v4_root_pool_count_delta_bucket(
+            before.opp_regular_opp_closer,
+            after.opp_regular_opp_closer,
+        ),
+        pro_v4_root_pool_count_delta_bucket(before.opp_regular_tied, after.opp_regular_tied),
+        pro_v4_root_pool_count_delta_bucket(
+            before.opp_regular_uncontested,
+            after.opp_regular_uncontested,
+        ),
+    )
+}
+
+fn pro_v4_root_pool_mana_contest_features(
+    before_game: &MonsGame,
+    after_game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolManaContestFeatures {
+    let before = pro_v4_root_pool_mana_contest_posture(before_game, perspective);
+    let after = pro_v4_root_pool_mana_contest_posture(after_game, perspective);
+    ProV4RootPoolManaContestFeatures {
+        post_mana_contest: pro_v4_root_pool_mana_contest_bucket(after_game, &after, perspective),
+        post_mana_contest_delta: pro_v4_root_pool_mana_contest_delta_bucket(&before, &after),
     }
 }
 
@@ -6725,6 +6905,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             support_guard_features,
             territory_features,
             mana_path_features,
+            mana_contest_features,
             carrier_route_features,
             consumable_features,
             engagement_features,
@@ -6824,6 +7005,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 pro_v4_root_pool_territory_features(&game, &root.game, game.active_color);
             let mana_path_features =
                 pro_v4_root_pool_mana_path_features(&game, &root.game, game.active_color);
+            let mana_contest_features =
+                pro_v4_root_pool_mana_contest_features(&game, &root.game, game.active_color);
             let carrier_route_features =
                 pro_v4_root_pool_carrier_route_features(&game, &root.game, game.active_color);
             let consumable_features =
@@ -6891,6 +7074,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 support_guard_features,
                 territory_features,
                 mana_path_features,
+                mana_contest_features,
                 carrier_route_features,
                 consumable_features,
                 engagement_features,
@@ -6934,6 +7118,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 ProV4RootPoolSupportGuardFeatures::omitted(),
                 ProV4RootPoolTerritoryFeatures::omitted(),
                 ProV4RootPoolManaPathFeatures::omitted(),
+                ProV4RootPoolManaContestFeatures::omitted(),
                 ProV4RootPoolCarrierRouteFeatures::omitted(),
                 ProV4RootPoolConsumableFeatures::omitted(),
                 ProV4RootPoolEngagementFeatures::omitted(),
@@ -6949,7 +7134,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -7019,6 +7204,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             json_escape(&territory_features.post_territory_delta),
             json_escape(&mana_path_features.post_mana_path),
             json_escape(&mana_path_features.post_mana_path_delta),
+            json_escape(&mana_contest_features.post_mana_contest),
+            json_escape(&mana_contest_features.post_mana_contest_delta),
             json_escape(&carrier_route_features.post_carrier_route),
             json_escape(&carrier_route_features.post_carrier_route_delta),
             json_escape(&consumable_features.post_consumable),
