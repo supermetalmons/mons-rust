@@ -110,6 +110,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_role_mobility_delta",
     "post_action_threat",
     "post_action_threat_delta",
+    "post_action_reach",
+    "post_action_reach_delta",
     "post_step_threat",
     "post_step_threat_delta",
     "post_role_state",
@@ -215,6 +217,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_action_threat", ("family", "post_action_threat")),
     ("progress_action_threat_delta", ("progress", "post_action_threat_delta")),
     ("path_action_threat_delta", ("path", "post_action_threat_delta")),
+    ("family_action_reach", ("family", "post_action_reach")),
+    ("progress_action_reach_delta", ("progress", "post_action_reach_delta")),
+    ("path_action_reach_delta", ("path", "post_action_reach_delta")),
     ("family_step_threat", ("family", "post_step_threat")),
     ("progress_step_threat_delta", ("progress", "post_step_threat_delta")),
     ("path_step_threat_delta", ("path", "post_step_threat_delta")),
@@ -318,6 +323,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_role_mobility_delta",
     "post_action_threat",
     "post_action_threat_delta",
+    "post_action_reach",
+    "post_action_reach_delta",
     "post_step_threat",
     "post_step_threat_delta",
     "post_role_state",
@@ -2339,6 +2346,8 @@ def root_pool_signal_field_family(field):
         return "role_state"
     if "cooldown_tempo" in field:
         return "cooldown_tempo"
+    if "action_reach" in field:
+        return "action_reach"
     if "action_threat" in field:
         return "action_threat"
     if "followup" in field:
@@ -2563,6 +2572,8 @@ def root_pool_sample_root(row):
         "post_role_mobility_delta": row.get("post_role_mobility_delta", ""),
         "post_action_threat": row.get("post_action_threat", ""),
         "post_action_threat_delta": row.get("post_action_threat_delta", ""),
+        "post_action_reach": row.get("post_action_reach", ""),
+        "post_action_reach_delta": row.get("post_action_reach_delta", ""),
         "post_role_state": row.get("post_role_state", ""),
         "post_role_state_delta": row.get("post_role_state_delta", ""),
         "post_base_recovery": row.get("post_base_recovery", ""),
