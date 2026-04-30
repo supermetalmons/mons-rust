@@ -2126,3 +2126,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - Dashboard branch coverage stayed mostly ordinary guarded execution: `frontier_execute=502`, `late_black_shipping_fallback=43`, `early_white_fallback=25`, and `score_window_tactical_fallback=1`.
 - The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
 - Durable outcome: disabling exact tactics is archived as another direct ProV4 config no-go. Do not reopen pre-exact policy toggles unless a future corpus/root feature first separates exact-overfit losses from guarded baseline saves across sampled and active panels.
+
+## ProV4 No-Drainer-Safety-Prefilter No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_no_drainer_safety_prefilter` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper and disabled root drainer-safety prefiltering (`enable_root_drainer_safety_prefilter=false`) inside the guarded frontier runtime.
+- The tiny sampled Fast smoke failed immediately on `split_flank_mana_rows`: `wins=1`, `losses=1`, `confidence=0.0000`, `duel_passes=false`, `candidate_avg_ms=220.63`, and `opponent_avg_ms=4.68`.
+- Branch coverage in the smoke was ordinary guarded execution, not a new route: `frontier_execute=83` turns, `late_black_shipping_fallback=7`, and `early_white_fallback=6`.
+- No sampled promotion dashboard was run because the candidate missed the cheapest Fast gate.
+- Durable outcome: root drainer-safety prefilter disabling is archived as another direct ProV4 config no-go. Do not reopen it unless a future corpus/root feature first separates vulnerable-root wins from guarded baseline saves across sampled and active panels.
