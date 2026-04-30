@@ -1863,3 +1863,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `8-4` across `12` games (`win_rate=0.6667`, `confidence=0.8062`), with `candidate_avg_ms=154.89` versus shipping `75.45`; weakest variant was `inner_wedge_mana_rows=0-2`.
 - The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
 - Durable outcome: tactical quiescence toggling is archived as another direct ProV4 config no-go. Do not reopen quiescence leaf-extension toggles unless a future corpus/root feature first separates tactical-leaf wins from quiet-save losses.
+
+## ProV4 Tactical-Prepass No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_tactical_prepass` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper and restored `enable_forced_tactical_prepass=true` inside the guarded frontier runtime.
+- The tiny sampled Fast smoke ran successfully but did not meet the sweep pass threshold: `wins=2`, `losses=0`, `confidence=0.7500`, `duel_passes=false`, `candidate_avg_ms=195.01`, and `opponent_avg_ms=3.86`.
+- The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `6-6` across `12` games (`win_rate=0.5000`, `confidence=0.0000`), with `candidate_avg_ms=121.98` versus shipping `62.46`; weakest variant was `alternating_mana_rows=0-2`.
+- The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
+- Durable outcome: forced tactical prepass is archived as another direct ProV4 config no-go. Do not reopen tactical-prepass toggles unless a future corpus/root feature first separates tactical saves from quiet-save losses without drainer-pressure contamination.
