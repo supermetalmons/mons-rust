@@ -1908,3 +1908,12 @@ Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for
 - The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `7-5` across `12` games (`win_rate=0.5833`, `confidence=0.6128`), with `candidate_avg_ms=139.02` versus shipping `61.48`; weakest variant was `inner_wedge_mana_rows=0-2`.
 - The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
 - Durable outcome: event-ordering bonus toggling is archived as another direct ProV4 config no-go. Do not reopen event-ordering toggles unless a future corpus/root feature first separates stable sampled roots from inner-wedge regressions and baseline saves.
+
+## ProV4 No-Node-Uplift No-Go
+
+- No runtime or test-only Pro challenger survived this iteration. The temporary `frontier_pro_v4_no_node_uplift` sweep candidate was removed after validation; the retained output is knowledge only.
+- The candidate preserved the public `frontier_pro_v2_guarded` wrapper and reversed only the final guarded Pro node-budget uplift (`max_visited_nodes = max_visited_nodes * 8 / 9` after Pro tuning).
+- The tiny sampled Fast smoke ran successfully but did not meet the sweep pass threshold: `wins=2`, `losses=0`, `confidence=0.7500`, `duel_passes=false`, `candidate_avg_ms=199.36`, and `opponent_avg_ms=4.58`.
+- The sampled promotion dashboard fast-failed before Normal/Fast spend. Against shipping Pro it went `8-4` across `12` games (`win_rate=0.6667`, `confidence=0.8062`), with `candidate_avg_ms=145.31` versus shipping `60.42`; weakest variant was `inner_wedge_mana_rows=0-2`.
+- The stoplight was `not_promising` / `partial_dashboard`, with `shipping_strict_passes=0`, `shipping_directional_passes=0`, and `reason=shipping_gate_failed`.
+- Durable outcome: final Pro node-budget uplift toggling is archived as another direct ProV4 config no-go. Do not reopen node-budget uplift toggles unless a future corpus/root feature first separates stable sampled roots from inner-wedge regressions and baseline saves.
