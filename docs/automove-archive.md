@@ -4,6 +4,14 @@ This file keeps only short summaries of retired automove waves.
 
 Everything here is archive-only context. Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for the live workflow and `docs/automove-knowledge.md` for durable rules that still matter.
 
+## Objective-Latency ProV4 Probe
+
+- Temporary test-only candidate source was cut and removed in the same session.
+- The candidate preserved guarded fallbacks, captured the root-selection snapshot only inside `frontier_execute`, and compared top scored roots by a cheap concrete-objective timing score covering scoring, pickup, drainer pressure, safe progress, and spirit setup, with safety and `TurnEngineUtility` guards.
+- A one-game sampled Fast smoke compiled and fired the candidate `6` times in `88` candidate turns, splitting `1-1` and averaging `191.85ms` per candidate move.
+- The sampled-only promotion dashboard killed it without active-panel or corpus spend: Pro `6-6`, Normal `8-4`, Fast `8-4`, max candidate average `196.21ms`, and `PRO_PROMOTION_DASHBOARD_STOPLIGHT` `not_promising`. The probe fired `12 / 25 / 20` times across Pro/Normal/Fast and still split inner-wedge, center-spoke, alternating, forward-bridge, split-flank, and corner-chain rows.
+- Durable outcome: objective latency over existing root fields is another timing/root-ordering selector, not a promotable ProV4 mode. It does not separate candidate wins from guarded saves and should not be retried without a corpus-discovered timing discriminator.
+
 ## Scoring-Context Robustness ProV4 Probe
 
 - Temporary test-only candidate source was cut and removed in the same session.
