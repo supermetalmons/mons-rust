@@ -1554,6 +1554,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_exact_score_profile_delta",
                 "post_mana_identity_profile",
                 "post_mana_identity_profile_delta",
+                "post_edge_anchor_profile",
+                "post_edge_anchor_profile_delta",
                 "post_high_value_custody",
                 "post_high_value_delta",
                 "post_own_regular_custody",

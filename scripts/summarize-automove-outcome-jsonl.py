@@ -60,6 +60,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_exact_score_profile_delta",
     "post_mana_identity_profile",
     "post_mana_identity_profile_delta",
+    "post_edge_anchor_profile",
+    "post_edge_anchor_profile_delta",
     "post_high_value_custody",
     "post_high_value_delta",
     "post_own_regular_custody",
@@ -222,6 +224,15 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     (
         "path_mana_identity_profile_delta",
         ("path", "post_mana_identity_profile_delta"),
+    ),
+    ("family_edge_anchor_profile", ("family", "post_edge_anchor_profile")),
+    (
+        "progress_edge_anchor_profile_delta",
+        ("progress", "post_edge_anchor_profile_delta"),
+    ),
+    (
+        "path_edge_anchor_profile_delta",
+        ("path", "post_edge_anchor_profile_delta"),
     ),
     ("family_high_value_custody", ("family", "post_high_value_custody")),
     ("progress_high_value_delta", ("progress", "post_high_value_delta")),
@@ -577,6 +588,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_exact_score_profile_delta",
     "post_mana_identity_profile",
     "post_mana_identity_profile_delta",
+    "post_edge_anchor_profile",
+    "post_edge_anchor_profile_delta",
     "post_high_value_custody",
     "post_high_value_delta",
     "post_own_regular_custody",
@@ -2786,6 +2799,8 @@ def root_pool_signal_field_family(field):
         return "exact_score_profile"
     if "mana_identity_profile" in field:
         return "mana_identity_profile"
+    if "edge_anchor_profile" in field:
+        return "edge_anchor_profile"
     if "pickup_access" in field:
         return "pickup_access"
     if "mana_base" in field:
@@ -2959,6 +2974,10 @@ def root_pool_sample_root(row):
         "post_mana_identity_profile": row.get("post_mana_identity_profile", ""),
         "post_mana_identity_profile_delta": row.get(
             "post_mana_identity_profile_delta", ""
+        ),
+        "post_edge_anchor_profile": row.get("post_edge_anchor_profile", ""),
+        "post_edge_anchor_profile_delta": row.get(
+            "post_edge_anchor_profile_delta", ""
         ),
         "post_high_value_custody": row.get("post_high_value_custody", ""),
         "post_high_value_delta": row.get("post_high_value_delta", ""),
