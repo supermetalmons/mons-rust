@@ -56,6 +56,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_drainer_safety",
     "post_exact_pressure",
     "post_exact_delta",
+    "post_exact_score_profile",
+    "post_exact_score_profile_delta",
     "post_high_value_custody",
     "post_high_value_delta",
     "post_own_regular_custody",
@@ -197,6 +199,15 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_post_pressure", ("family", "post_exact_pressure")),
     ("progress_post_delta", ("progress", "post_exact_delta")),
     ("path_post_delta", ("path", "post_exact_delta")),
+    ("family_exact_score_profile", ("family", "post_exact_score_profile")),
+    (
+        "progress_exact_score_profile_delta",
+        ("progress", "post_exact_score_profile_delta"),
+    ),
+    (
+        "path_exact_score_profile_delta",
+        ("path", "post_exact_score_profile_delta"),
+    ),
     ("family_high_value_custody", ("family", "post_high_value_custody")),
     ("progress_high_value_delta", ("progress", "post_high_value_delta")),
     ("path_high_value_delta", ("path", "post_high_value_delta")),
@@ -535,6 +546,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_drainer_safety",
     "post_exact_pressure",
     "post_exact_delta",
+    "post_exact_score_profile",
+    "post_exact_score_profile_delta",
     "post_high_value_custody",
     "post_high_value_delta",
     "post_own_regular_custody",
@@ -2736,6 +2749,8 @@ def root_pool_signal_field_family(field):
         return "potion_stock"
     if "consumable" in field:
         return "consumable"
+    if "exact_score_profile" in field:
+        return "exact_score_profile"
     if "pickup_access" in field:
         return "pickup_access"
     if "mana_base" in field:
@@ -2902,6 +2917,10 @@ def root_pool_sample_root(row):
         "post_turn_status": row.get("post_turn_status", ""),
         "post_exact_pressure": row.get("post_exact_pressure", ""),
         "post_exact_delta": row.get("post_exact_delta", ""),
+        "post_exact_score_profile": row.get("post_exact_score_profile", ""),
+        "post_exact_score_profile_delta": row.get(
+            "post_exact_score_profile_delta", ""
+        ),
         "post_high_value_custody": row.get("post_high_value_custody", ""),
         "post_high_value_delta": row.get("post_high_value_delta", ""),
         "post_own_regular_custody": row.get("post_own_regular_custody", ""),
