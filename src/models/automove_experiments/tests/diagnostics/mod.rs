@@ -7442,16 +7442,28 @@ fn pro_v4_root_pool_adjacent_live_mon_count(
         .count()
 }
 
-fn pro_v4_root_pool_add_mana_base_counts(
-    posture: &mut ProV4RootPoolManaBasePosture,
-    perspective: Color,
+struct ProV4RootPoolManaBaseCountsInput {
     base_color: Color,
     free: bool,
     own_mon: bool,
     opp_mon: bool,
     own_adjacent: usize,
     opp_adjacent: usize,
+}
+
+fn pro_v4_root_pool_add_mana_base_counts(
+    posture: &mut ProV4RootPoolManaBasePosture,
+    perspective: Color,
+    counts: ProV4RootPoolManaBaseCountsInput,
 ) {
+    let ProV4RootPoolManaBaseCountsInput {
+        base_color,
+        free,
+        own_mon,
+        opp_mon,
+        own_adjacent,
+        opp_adjacent,
+    } = counts;
     if base_color == perspective {
         posture.own_base_free += usize::from(free);
         posture.own_base_own_mon += usize::from(own_mon);
@@ -7496,16 +7508,22 @@ fn pro_v4_root_pool_mana_base_posture(
                     pro_v4_root_pool_add_mana_base_counts(
                         &mut posture,
                         perspective,
-                        color,
-                        free,
-                        own_mon,
-                        opp_mon,
-                        pro_v4_root_pool_adjacent_live_mon_count(game, location, perspective),
-                        pro_v4_root_pool_adjacent_live_mon_count(
-                            game,
-                            location,
-                            perspective.other(),
-                        ),
+                        ProV4RootPoolManaBaseCountsInput {
+                            base_color: color,
+                            free,
+                            own_mon,
+                            opp_mon,
+                            own_adjacent: pro_v4_root_pool_adjacent_live_mon_count(
+                                game,
+                                location,
+                                perspective,
+                            ),
+                            opp_adjacent: pro_v4_root_pool_adjacent_live_mon_count(
+                                game,
+                                location,
+                                perspective.other(),
+                            ),
+                        },
                     );
                 }
                 Square::SupermanaBase => {
@@ -7731,16 +7749,28 @@ fn pro_v4_root_pool_is_carrier_regular_mana(mana: Mana, carrier_color: Color) ->
     matches!(mana, Mana::Regular(color) if color == carrier_color)
 }
 
-fn pro_v4_root_pool_add_carrier_route_counts(
-    posture: &mut ProV4RootPoolCarrierRoutePosture,
-    perspective: Color,
+struct ProV4RootPoolCarrierRouteCountsInput {
     carrier_color: Color,
     high_value: bool,
     regular: bool,
     score_step: bool,
     forward_step: bool,
     stuck: bool,
+}
+
+fn pro_v4_root_pool_add_carrier_route_counts(
+    posture: &mut ProV4RootPoolCarrierRoutePosture,
+    perspective: Color,
+    counts: ProV4RootPoolCarrierRouteCountsInput,
 ) {
+    let ProV4RootPoolCarrierRouteCountsInput {
+        carrier_color,
+        high_value,
+        regular,
+        score_step,
+        forward_step,
+        stuck,
+    } = counts;
     match (carrier_color == perspective, high_value, regular) {
         (true, true, _) => {
             posture.own_high_value_carrier += 1;
@@ -7801,12 +7831,14 @@ fn pro_v4_root_pool_carrier_route_posture(
         pro_v4_root_pool_add_carrier_route_counts(
             &mut posture,
             perspective,
-            mon.color,
-            pro_v4_root_pool_is_carrier_high_value_mana(*mana, mon.color),
-            pro_v4_root_pool_is_carrier_regular_mana(*mana, mon.color),
-            score_step,
-            forward_step,
-            legal_steps == 0,
+            ProV4RootPoolCarrierRouteCountsInput {
+                carrier_color: mon.color,
+                high_value: pro_v4_root_pool_is_carrier_high_value_mana(*mana, mon.color),
+                regular: pro_v4_root_pool_is_carrier_regular_mana(*mana, mon.color),
+                score_step,
+                forward_step,
+                stuck: legal_steps == 0,
+            },
         );
     }
     posture
@@ -8213,12 +8245,12 @@ fn pro_v4_root_pool_carrier_contact_features(
     }
 }
 
-fn pro_v4_root_pool_carrier_action_profile_counts_mut<'a>(
-    posture: &'a mut ProV4RootPoolCarrierActionProfilePosture,
+fn pro_v4_root_pool_carrier_action_profile_counts_mut(
+    posture: &mut ProV4RootPoolCarrierActionProfilePosture,
     perspective: Color,
     carrier_color: Color,
     high_value: bool,
-) -> &'a mut ProV4RootPoolCarrierActionProfileCounts {
+) -> &mut ProV4RootPoolCarrierActionProfileCounts {
     match (carrier_color == perspective, high_value) {
         (true, true) => &mut posture.own_high,
         (true, false) => &mut posture.own_regular,
@@ -8249,14 +8281,12 @@ fn pro_v4_root_pool_carrier_action_profile_threats(
             MonKind::Mystic => {
                 mystic |= actor_location
                     .reachable_by_mystic_action_ref()
-                    .iter()
-                    .any(|&target| target == carrier_location);
+                    .contains(&carrier_location);
             }
             MonKind::Demon => {
                 if actor_location
                     .reachable_by_demon_action_ref()
-                    .iter()
-                    .any(|&target| target == carrier_location)
+                    .contains(&carrier_location)
                 {
                     let between = actor_location.location_between(&carrier_location);
                     demon |= game.board.item(between).is_none()
@@ -8269,8 +8299,7 @@ fn pro_v4_root_pool_carrier_action_profile_threats(
             MonKind::Spirit => {
                 spirit |= actor_location
                     .reachable_by_spirit_action_ref()
-                    .iter()
-                    .any(|&target| target == carrier_location);
+                    .contains(&carrier_location);
             }
             MonKind::Angel | MonKind::Drainer => {}
         }
@@ -8408,13 +8437,13 @@ fn pro_v4_root_pool_carrier_action_profile_features(
     }
 }
 
-fn pro_v4_root_pool_carrier_escape_counts_mut<'a>(
-    posture: &'a mut ProV4RootPoolCarrierEscapePosture,
+fn pro_v4_root_pool_carrier_escape_counts_mut(
+    posture: &mut ProV4RootPoolCarrierEscapePosture,
     perspective: Color,
     carrier_color: Color,
     high_value: bool,
     regular: bool,
-) -> Option<&'a mut ProV4RootPoolCarrierEscapeCounts> {
+) -> Option<&mut ProV4RootPoolCarrierEscapeCounts> {
     match (carrier_color == perspective, high_value, regular) {
         (true, true, _) => Some(&mut posture.own_high),
         (true, false, true) => Some(&mut posture.own_regular),

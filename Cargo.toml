@@ -6,6 +6,15 @@ description = "super metal mons"
 license = "CC0-1.0"
 repository = "https://github.com/supermetalmons/mons-rust"
 readme = "README.md"
+exclude = [
+  "rules-tests/",
+  "rules-tests-chunks/",
+  "target/",
+  "pkg/",
+  ".DS_Store",
+  "src/.DS_Store",
+  "nohup.out",
+]
 
 [dependencies]
 rand = "0.8.5"
