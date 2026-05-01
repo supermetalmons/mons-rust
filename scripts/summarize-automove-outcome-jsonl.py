@@ -88,6 +88,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_legal_fanout_delta",
     "post_followup_shape",
     "post_followup_effect",
+    "post_followup_role_profile",
+    "post_followup_role_profile_delta",
     "post_attack_exposure",
     "post_attack_exposure_delta",
     "post_support_guard",
@@ -316,6 +318,15 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_followup_shape", ("family", "post_followup_shape")),
     ("progress_followup_effect", ("progress", "post_followup_effect")),
     ("path_followup_effect", ("path", "post_followup_effect")),
+    ("family_followup_role_profile", ("family", "post_followup_role_profile")),
+    (
+        "progress_followup_role_profile_delta",
+        ("progress", "post_followup_role_profile_delta"),
+    ),
+    (
+        "path_followup_role_profile_delta",
+        ("path", "post_followup_role_profile_delta"),
+    ),
     ("family_attack_exposure", ("family", "post_attack_exposure")),
     (
         "progress_attack_exposure_delta",
@@ -691,6 +702,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_legal_fanout_delta",
     "post_followup_shape",
     "post_followup_effect",
+    "post_followup_role_profile",
+    "post_followup_role_profile_delta",
     "post_attack_exposure",
     "post_attack_exposure_delta",
     "post_support_guard",
@@ -2856,6 +2869,8 @@ def root_pool_signal_field_family(field):
         return "role_contact"
     if "cohesion" in field:
         return "cohesion"
+    if "followup_role_profile" in field:
+        return "followup_role_profile"
     if "followup" in field:
         return "followup_transition_shape"
     if "role_escape" in field:
@@ -3120,6 +3135,10 @@ def root_pool_sample_root(row):
         "post_legal_fanout_delta": row.get("post_legal_fanout_delta", ""),
         "post_followup_shape": row.get("post_followup_shape", ""),
         "post_followup_effect": row.get("post_followup_effect", ""),
+        "post_followup_role_profile": row.get("post_followup_role_profile", ""),
+        "post_followup_role_profile_delta": row.get(
+            "post_followup_role_profile_delta", ""
+        ),
         "post_attack_exposure": row.get("post_attack_exposure", ""),
         "post_attack_exposure_delta": row.get("post_attack_exposure_delta", ""),
         "post_support_guard": row.get("post_support_guard", ""),

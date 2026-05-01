@@ -2545,6 +2545,10 @@ struct ProV4RootPoolLegalFanout {
     effect_faint: usize,
     effect_special: usize,
     turn_end: usize,
+    primary_actor_roles: [usize; PRO_V4_ROOT_POOL_ROLE_COUNT],
+    primary_action_actor_roles: [usize; PRO_V4_ROOT_POOL_ROLE_COUNT],
+    primary_pickup_actor_roles: [usize; PRO_V4_ROOT_POOL_ROLE_COUNT],
+    effect_faint_roles: [usize; PRO_V4_ROOT_POOL_ROLE_COUNT],
     capped: bool,
 }
 
@@ -2553,6 +2557,8 @@ struct ProV4RootPoolLegalFanoutFeatures {
     post_legal_fanout_delta: String,
     post_followup_shape: String,
     post_followup_effect: String,
+    post_followup_role_profile: String,
+    post_followup_role_profile_delta: String,
 }
 
 impl ProV4RootPoolLegalFanoutFeatures {
@@ -2562,6 +2568,8 @@ impl ProV4RootPoolLegalFanoutFeatures {
             post_legal_fanout_delta: "omitted".to_string(),
             post_followup_shape: "omitted".to_string(),
             post_followup_effect: "omitted".to_string(),
+            post_followup_role_profile: "omitted".to_string(),
+            post_followup_role_profile_delta: "omitted".to_string(),
         }
     }
 }
@@ -16398,6 +16406,66 @@ fn pro_v4_root_pool_bool_delta_bucket(before: bool, after: bool) -> &'static str
     }
 }
 
+fn pro_v4_root_pool_increment_role_count(
+    counts: &mut [usize; PRO_V4_ROOT_POOL_ROLE_COUNT],
+    kind: Option<MonKind>,
+) {
+    if let Some(kind) = kind {
+        counts[pro_v4_root_pool_role_index(kind)] += 1;
+    }
+}
+
+fn pro_v4_root_pool_event_actor_role(game: &MonsGame, event: &Event) -> Option<MonKind> {
+    match event {
+        Event::MonMove { item, .. } => item.mon().map(|mon| mon.kind),
+        Event::MysticAction { mystic, .. } => Some(mystic.kind),
+        Event::DemonAction { demon, .. } | Event::DemonAdditionalStep { demon, .. } => {
+            Some(demon.kind)
+        }
+        Event::SpiritTargetMove { by, .. } => {
+            game.board.item(*by).and_then(Item::mon).map(|mon| mon.kind)
+        }
+        Event::PickupBomb { by, .. } => Some(by.kind),
+        Event::PickupPotion { by, .. } => by.mon().map(|mon| mon.kind),
+        Event::UsePotion { from, .. } => game
+            .board
+            .item(*from)
+            .and_then(Item::mon)
+            .map(|mon| mon.kind),
+        Event::PickupMana { by, .. } | Event::BombAttack { by, .. } => Some(by.kind),
+        Event::ManaMove { .. }
+        | Event::ManaScored { .. }
+        | Event::MonFainted { .. }
+        | Event::ManaDropped { .. }
+        | Event::SupermanaBackToBase { .. }
+        | Event::BombExplosion { .. }
+        | Event::MonAwake { .. }
+        | Event::NextTurn { .. }
+        | Event::GameOver { .. }
+        | Event::Takeback => None,
+    }
+}
+
+fn pro_v4_root_pool_primary_action_actor_role(game: &MonsGame, event: &Event) -> Option<MonKind> {
+    match event {
+        Event::MysticAction { .. }
+        | Event::DemonAction { .. }
+        | Event::DemonAdditionalStep { .. }
+        | Event::SpiritTargetMove { .. }
+        | Event::UsePotion { .. }
+        | Event::BombAttack { .. } => pro_v4_root_pool_event_actor_role(game, event),
+        _ => None,
+    }
+}
+
+fn pro_v4_root_pool_primary_pickup_actor_role(event: &Event) -> Option<MonKind> {
+    match event {
+        Event::PickupBomb { by, .. } | Event::PickupMana { by, .. } => Some(by.kind),
+        Event::PickupPotion { by, .. } => by.mon().map(|mon| mon.kind),
+        _ => None,
+    }
+}
+
 fn pro_v4_root_pool_legal_fanout(
     game: &MonsGame,
     start_options: SuggestedStartInputOptions,
@@ -16417,6 +16485,20 @@ fn pro_v4_root_pool_legal_fanout(
     };
     for transition in transitions {
         let primary_event = transition.events.first();
+        if let Some(event) = primary_event {
+            pro_v4_root_pool_increment_role_count(
+                &mut fanout.primary_actor_roles,
+                pro_v4_root_pool_event_actor_role(game, event),
+            );
+            pro_v4_root_pool_increment_role_count(
+                &mut fanout.primary_action_actor_roles,
+                pro_v4_root_pool_primary_action_actor_role(game, event),
+            );
+            pro_v4_root_pool_increment_role_count(
+                &mut fanout.primary_pickup_actor_roles,
+                pro_v4_root_pool_primary_pickup_actor_role(event),
+            );
+        }
         let mut has_mon = false;
         let mut has_mana = false;
         let mut has_action = false;
@@ -16469,7 +16551,10 @@ fn pro_v4_root_pool_legal_fanout(
                 Event::PickupBomb { .. }
                 | Event::PickupPotion { .. }
                 | Event::PickupMana { .. } => has_pickup = true,
-                Event::MonFainted { .. } => has_faint = true,
+                Event::MonFainted { mon, .. } => {
+                    has_faint = true;
+                    fanout.effect_faint_roles[pro_v4_root_pool_role_index(mon.kind)] += 1;
+                }
                 Event::ManaDropped { .. }
                 | Event::SupermanaBackToBase { .. }
                 | Event::MonAwake { .. }
@@ -16593,6 +16678,58 @@ fn pro_v4_root_pool_followup_effect_bucket(
     )
 }
 
+fn pro_v4_root_pool_followup_role_profile_bucket(
+    game: &MonsGame,
+    fanout: &ProV4RootPoolLegalFanout,
+    perspective: Color,
+) -> String {
+    if game.winner_color().is_some() || game.active_color != perspective {
+        return pro_v4_root_pool_followup_inactive_bucket(
+            game,
+            perspective,
+            "actor=inactive;action_actor=inactive;pickup_actor=inactive;faint=inactive",
+        );
+    }
+    format!(
+        "status={};cap={};actor={};action_actor={};pickup_actor={};faint={}",
+        pro_v4_root_pool_status(game, perspective),
+        fanout.capped,
+        pro_v4_root_pool_role_set_bucket(&fanout.primary_actor_roles),
+        pro_v4_root_pool_role_set_bucket(&fanout.primary_action_actor_roles),
+        pro_v4_root_pool_role_set_bucket(&fanout.primary_pickup_actor_roles),
+        pro_v4_root_pool_role_set_bucket(&fanout.effect_faint_roles),
+    )
+}
+
+fn pro_v4_root_pool_followup_role_profile_delta_bucket(
+    before: &ProV4RootPoolLegalFanout,
+    after: &ProV4RootPoolLegalFanout,
+) -> String {
+    if before.capped || after.capped {
+        return "cap=true;actor=capped;action_actor=capped;pickup_actor=capped;faint=capped"
+            .to_string();
+    }
+    format!(
+        "cap=false;actor={};action_actor={};pickup_actor={};faint={}",
+        pro_v4_root_pool_role_delta_set_bucket(
+            &before.primary_actor_roles,
+            &after.primary_actor_roles,
+        ),
+        pro_v4_root_pool_role_delta_set_bucket(
+            &before.primary_action_actor_roles,
+            &after.primary_action_actor_roles,
+        ),
+        pro_v4_root_pool_role_delta_set_bucket(
+            &before.primary_pickup_actor_roles,
+            &after.primary_pickup_actor_roles,
+        ),
+        pro_v4_root_pool_role_delta_set_bucket(
+            &before.effect_faint_roles,
+            &after.effect_faint_roles
+        ),
+    )
+}
+
 fn pro_v4_root_pool_legal_fanout_features(
     before_game: &MonsGame,
     before_fanout: &ProV4RootPoolLegalFanout,
@@ -16622,6 +16759,20 @@ fn pro_v4_root_pool_legal_fanout_features(
             pro_v4_root_pool_legal_fanout_delta_bucket(before_fanout, &after_fanout)
         )
     };
+    let post_followup_role_profile_delta = if after_game.winner_color().is_some()
+        || after_game.active_color != before_game.active_color
+    {
+        format!(
+            "active={};cap=inactive;actor=inactive;action_actor=inactive;pickup_actor=inactive;faint=inactive",
+            active,
+        )
+    } else {
+        format!(
+            "active={};{}",
+            active,
+            pro_v4_root_pool_followup_role_profile_delta_bucket(before_fanout, &after_fanout)
+        )
+    };
     ProV4RootPoolLegalFanoutFeatures {
         post_legal_fanout: pro_v4_root_pool_legal_fanout_bucket(
             after_game,
@@ -16639,6 +16790,12 @@ fn pro_v4_root_pool_legal_fanout_features(
             &after_fanout,
             perspective,
         ),
+        post_followup_role_profile: pro_v4_root_pool_followup_role_profile_bucket(
+            after_game,
+            &after_fanout,
+            perspective,
+        ),
+        post_followup_role_profile_delta,
     }
 }
 
@@ -18222,7 +18379,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_exact_score_profile\":\"{}\",\"post_exact_score_profile_delta\":\"{}\",\"post_mana_identity_profile\":\"{}\",\"post_mana_identity_profile_delta\":\"{}\",\"post_edge_anchor_profile\":\"{}\",\"post_edge_anchor_profile_delta\":\"{}\",\"post_item_zone_profile\":\"{}\",\"post_item_zone_profile_delta\":\"{}\",\"post_objective_proximity_profile\":\"{}\",\"post_objective_proximity_profile_delta\":\"{}\",\"post_objective_control_profile\":\"{}\",\"post_objective_control_profile_delta\":\"{}\",\"post_objective_square_profile\":\"{}\",\"post_objective_square_profile_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_cooldown_tempo\":\"{}\",\"post_cooldown_tempo_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_score_term_profile\":\"{}\",\"post_score_term_profile_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_objective_screen\":\"{}\",\"post_objective_screen_delta\":\"{}\",\"post_drainer_geometry\":\"{}\",\"post_drainer_geometry_delta\":\"{}\",\"post_role_coordination\":\"{}\",\"post_role_coordination_delta\":\"{}\",\"post_formation_balance\":\"{}\",\"post_formation_balance_delta\":\"{}\",\"post_role_deployment\":\"{}\",\"post_role_deployment_delta\":\"{}\",\"post_role_pressure\":\"{}\",\"post_role_pressure_delta\":\"{}\",\"post_role_contact\":\"{}\",\"post_role_contact_delta\":\"{}\",\"post_cohesion\":\"{}\",\"post_cohesion_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_control_map\":\"{}\",\"post_control_map_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pickup_access\":\"{}\",\"post_pickup_access_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_carrier_score_profile\":\"{}\",\"post_carrier_score_profile_delta\":\"{}\",\"post_carrier_contact\":\"{}\",\"post_carrier_contact_delta\":\"{}\",\"post_carrier_action_profile\":\"{}\",\"post_carrier_action_profile_delta\":\"{}\",\"post_carrier_escape\":\"{}\",\"post_carrier_escape_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_bomb_threat_profile\":\"{}\",\"post_bomb_threat_profile_delta\":\"{}\",\"post_potion_stock\":\"{}\",\"post_potion_stock_delta\":\"{}\",\"post_consumable_base\":\"{}\",\"post_consumable_base_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_role_mobility\":\"{}\",\"post_role_mobility_delta\":\"{}\",\"post_role_escape\":\"{}\",\"post_role_escape_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_action_target_profile\":\"{}\",\"post_action_target_profile_delta\":\"{}\",\"post_spirit_item_profile\":\"{}\",\"post_spirit_item_profile_delta\":\"{}\",\"post_spirit_handoff_profile\":\"{}\",\"post_spirit_handoff_profile_delta\":\"{}\",\"post_action_role_profile\":\"{}\",\"post_action_role_profile_delta\":\"{}\",\"post_action_guard_profile\":\"{}\",\"post_action_guard_profile_delta\":\"{}\",\"post_action_actor_profile\":\"{}\",\"post_action_actor_profile_delta\":\"{}\",\"post_action_actor_safety_profile\":\"{}\",\"post_action_actor_safety_profile_delta\":\"{}\",\"post_action_zone_profile\":\"{}\",\"post_action_zone_profile_delta\":\"{}\",\"post_action_payload_profile\":\"{}\",\"post_action_payload_profile_delta\":\"{}\",\"post_action_escape_profile\":\"{}\",\"post_action_escape_profile_delta\":\"{}\",\"post_action_counter_profile\":\"{}\",\"post_action_counter_profile_delta\":\"{}\",\"post_action_target_safety_profile\":\"{}\",\"post_action_target_safety_profile_delta\":\"{}\",\"post_action_score_profile\":\"{}\",\"post_action_score_profile_delta\":\"{}\",\"post_action_denial_profile\":\"{}\",\"post_action_denial_profile_delta\":\"{}\",\"post_action_pickup_profile\":\"{}\",\"post_action_pickup_profile_delta\":\"{}\",\"post_action_square_profile\":\"{}\",\"post_action_square_profile_delta\":\"{}\",\"post_action_vector_profile\":\"{}\",\"post_action_vector_profile_delta\":\"{}\",\"post_demon_line_blocker\":\"{}\",\"post_demon_line_blocker_delta\":\"{}\",\"post_action_fork_profile\":\"{}\",\"post_action_fork_profile_delta\":\"{}\",\"post_action_reach\":\"{}\",\"post_action_reach_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_exact_score_profile\":\"{}\",\"post_exact_score_profile_delta\":\"{}\",\"post_mana_identity_profile\":\"{}\",\"post_mana_identity_profile_delta\":\"{}\",\"post_edge_anchor_profile\":\"{}\",\"post_edge_anchor_profile_delta\":\"{}\",\"post_item_zone_profile\":\"{}\",\"post_item_zone_profile_delta\":\"{}\",\"post_objective_proximity_profile\":\"{}\",\"post_objective_proximity_profile_delta\":\"{}\",\"post_objective_control_profile\":\"{}\",\"post_objective_control_profile_delta\":\"{}\",\"post_objective_square_profile\":\"{}\",\"post_objective_square_profile_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_cooldown_tempo\":\"{}\",\"post_cooldown_tempo_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_score_term_profile\":\"{}\",\"post_score_term_profile_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_followup_role_profile\":\"{}\",\"post_followup_role_profile_delta\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_objective_screen\":\"{}\",\"post_objective_screen_delta\":\"{}\",\"post_drainer_geometry\":\"{}\",\"post_drainer_geometry_delta\":\"{}\",\"post_role_coordination\":\"{}\",\"post_role_coordination_delta\":\"{}\",\"post_formation_balance\":\"{}\",\"post_formation_balance_delta\":\"{}\",\"post_role_deployment\":\"{}\",\"post_role_deployment_delta\":\"{}\",\"post_role_pressure\":\"{}\",\"post_role_pressure_delta\":\"{}\",\"post_role_contact\":\"{}\",\"post_role_contact_delta\":\"{}\",\"post_cohesion\":\"{}\",\"post_cohesion_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_control_map\":\"{}\",\"post_control_map_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pickup_access\":\"{}\",\"post_pickup_access_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_carrier_score_profile\":\"{}\",\"post_carrier_score_profile_delta\":\"{}\",\"post_carrier_contact\":\"{}\",\"post_carrier_contact_delta\":\"{}\",\"post_carrier_action_profile\":\"{}\",\"post_carrier_action_profile_delta\":\"{}\",\"post_carrier_escape\":\"{}\",\"post_carrier_escape_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_bomb_threat_profile\":\"{}\",\"post_bomb_threat_profile_delta\":\"{}\",\"post_potion_stock\":\"{}\",\"post_potion_stock_delta\":\"{}\",\"post_consumable_base\":\"{}\",\"post_consumable_base_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_role_mobility\":\"{}\",\"post_role_mobility_delta\":\"{}\",\"post_role_escape\":\"{}\",\"post_role_escape_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_action_target_profile\":\"{}\",\"post_action_target_profile_delta\":\"{}\",\"post_spirit_item_profile\":\"{}\",\"post_spirit_item_profile_delta\":\"{}\",\"post_spirit_handoff_profile\":\"{}\",\"post_spirit_handoff_profile_delta\":\"{}\",\"post_action_role_profile\":\"{}\",\"post_action_role_profile_delta\":\"{}\",\"post_action_guard_profile\":\"{}\",\"post_action_guard_profile_delta\":\"{}\",\"post_action_actor_profile\":\"{}\",\"post_action_actor_profile_delta\":\"{}\",\"post_action_actor_safety_profile\":\"{}\",\"post_action_actor_safety_profile_delta\":\"{}\",\"post_action_zone_profile\":\"{}\",\"post_action_zone_profile_delta\":\"{}\",\"post_action_payload_profile\":\"{}\",\"post_action_payload_profile_delta\":\"{}\",\"post_action_escape_profile\":\"{}\",\"post_action_escape_profile_delta\":\"{}\",\"post_action_counter_profile\":\"{}\",\"post_action_counter_profile_delta\":\"{}\",\"post_action_target_safety_profile\":\"{}\",\"post_action_target_safety_profile_delta\":\"{}\",\"post_action_score_profile\":\"{}\",\"post_action_score_profile_delta\":\"{}\",\"post_action_denial_profile\":\"{}\",\"post_action_denial_profile_delta\":\"{}\",\"post_action_pickup_profile\":\"{}\",\"post_action_pickup_profile_delta\":\"{}\",\"post_action_square_profile\":\"{}\",\"post_action_square_profile_delta\":\"{}\",\"post_action_vector_profile\":\"{}\",\"post_action_vector_profile_delta\":\"{}\",\"post_demon_line_blocker\":\"{}\",\"post_demon_line_blocker_delta\":\"{}\",\"post_action_fork_profile\":\"{}\",\"post_action_fork_profile_delta\":\"{}\",\"post_action_reach\":\"{}\",\"post_action_reach_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -18306,6 +18463,8 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             json_escape(&legal_fanout_features.post_legal_fanout_delta),
             json_escape(&legal_fanout_features.post_followup_shape),
             json_escape(&legal_fanout_features.post_followup_effect),
+            json_escape(&legal_fanout_features.post_followup_role_profile),
+            json_escape(&legal_fanout_features.post_followup_role_profile_delta),
             json_escape(&attack_exposure_features.post_attack_exposure),
             json_escape(&attack_exposure_features.post_attack_exposure_delta),
             json_escape(&support_guard_features.post_support_guard),

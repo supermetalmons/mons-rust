@@ -1582,6 +1582,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_legal_fanout_delta",
                 "post_followup_shape",
                 "post_followup_effect",
+                "post_followup_role_profile",
+                "post_followup_role_profile_delta",
                 "post_attack_exposure",
                 "post_attack_exposure_delta",
                 "post_support_guard",
