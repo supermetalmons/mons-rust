@@ -1590,6 +1590,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_cohesion_delta",
                 "post_territory",
                 "post_territory_delta",
+                "post_control_map",
+                "post_control_map_delta",
                 "post_mana_path",
                 "post_mana_path_delta",
                 "post_mana_contest",
