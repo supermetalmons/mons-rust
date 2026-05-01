@@ -106,6 +106,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_pool_access_delta",
     "post_carrier_route",
     "post_carrier_route_delta",
+    "post_carrier_score_profile",
+    "post_carrier_score_profile_delta",
     "post_carrier_contact",
     "post_carrier_contact_delta",
     "post_carrier_escape",
@@ -259,6 +261,15 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_carrier_route", ("family", "post_carrier_route")),
     ("progress_carrier_route_delta", ("progress", "post_carrier_route_delta")),
     ("path_carrier_route_delta", ("path", "post_carrier_route_delta")),
+    ("family_carrier_score_profile", ("family", "post_carrier_score_profile")),
+    (
+        "progress_carrier_score_profile_delta",
+        ("progress", "post_carrier_score_profile_delta"),
+    ),
+    (
+        "path_carrier_score_profile_delta",
+        ("path", "post_carrier_score_profile_delta"),
+    ),
     ("family_carrier_contact", ("family", "post_carrier_contact")),
     ("progress_carrier_contact_delta", ("progress", "post_carrier_contact_delta")),
     ("path_carrier_contact_delta", ("path", "post_carrier_contact_delta")),
@@ -547,6 +558,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_pool_access_delta",
     "post_carrier_route",
     "post_carrier_route_delta",
+    "post_carrier_score_profile",
+    "post_carrier_score_profile_delta",
     "post_carrier_contact",
     "post_carrier_contact_delta",
     "post_carrier_escape",
@@ -2674,6 +2687,8 @@ def root_pool_signal_field_family(field):
         return "mobility"
     if "engagement" in field:
         return "engagement"
+    if "carrier_score_profile" in field:
+        return "carrier_score_profile"
     if "carrier_contact" in field:
         return "carrier_contact"
     if "carrier_escape" in field:
@@ -2892,6 +2907,10 @@ def root_pool_sample_root(row):
         "post_pickup_access_delta": row.get("post_pickup_access_delta", ""),
         "post_mana_base": row.get("post_mana_base", ""),
         "post_mana_base_delta": row.get("post_mana_base_delta", ""),
+        "post_carrier_score_profile": row.get("post_carrier_score_profile", ""),
+        "post_carrier_score_profile_delta": row.get(
+            "post_carrier_score_profile_delta", ""
+        ),
         "post_carrier_contact": row.get("post_carrier_contact", ""),
         "post_carrier_contact_delta": row.get("post_carrier_contact_delta", ""),
         "post_carrier_escape": row.get("post_carrier_escape", ""),
