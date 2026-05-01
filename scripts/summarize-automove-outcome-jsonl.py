@@ -168,6 +168,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_action_square_profile_delta",
     "post_action_vector_profile",
     "post_action_vector_profile_delta",
+    "post_demon_line_blocker",
+    "post_demon_line_blocker_delta",
     "post_action_fork_profile",
     "post_action_fork_profile_delta",
     "post_action_reach",
@@ -490,6 +492,15 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
         "path_action_vector_profile_delta",
         ("path", "post_action_vector_profile_delta"),
     ),
+    ("family_demon_line_blocker", ("family", "post_demon_line_blocker")),
+    (
+        "progress_demon_line_blocker_delta",
+        ("progress", "post_demon_line_blocker_delta"),
+    ),
+    (
+        "path_demon_line_blocker_delta",
+        ("path", "post_demon_line_blocker_delta"),
+    ),
     ("family_action_fork_profile", ("family", "post_action_fork_profile")),
     (
         "progress_action_fork_profile_delta",
@@ -663,6 +674,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_action_square_profile_delta",
     "post_action_vector_profile",
     "post_action_vector_profile_delta",
+    "post_demon_line_blocker",
+    "post_demon_line_blocker_delta",
     "post_action_fork_profile",
     "post_action_fork_profile_delta",
     "post_action_reach",
@@ -3065,6 +3078,10 @@ def root_pool_sample_root(row):
         "post_action_vector_profile": row.get("post_action_vector_profile", ""),
         "post_action_vector_profile_delta": row.get(
             "post_action_vector_profile_delta", ""
+        ),
+        "post_demon_line_blocker": row.get("post_demon_line_blocker", ""),
+        "post_demon_line_blocker_delta": row.get(
+            "post_demon_line_blocker_delta", ""
         ),
         "post_action_fork_profile": row.get("post_action_fork_profile", ""),
         "post_action_fork_profile_delta": row.get(
