@@ -1560,6 +1560,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_item_zone_profile_delta",
                 "post_objective_proximity_profile",
                 "post_objective_proximity_profile_delta",
+                "post_objective_control_profile",
+                "post_objective_control_profile_delta",
                 "post_high_value_custody",
                 "post_high_value_delta",
                 "post_own_regular_custody",

@@ -66,6 +66,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_item_zone_profile_delta",
     "post_objective_proximity_profile",
     "post_objective_proximity_profile_delta",
+    "post_objective_control_profile",
+    "post_objective_control_profile_delta",
     "post_high_value_custody",
     "post_high_value_delta",
     "post_own_regular_custody",
@@ -258,6 +260,18 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     (
         "path_objective_proximity_profile_delta",
         ("path", "post_objective_proximity_profile_delta"),
+    ),
+    (
+        "family_objective_control_profile",
+        ("family", "post_objective_control_profile"),
+    ),
+    (
+        "progress_objective_control_profile_delta",
+        ("progress", "post_objective_control_profile_delta"),
+    ),
+    (
+        "path_objective_control_profile_delta",
+        ("path", "post_objective_control_profile_delta"),
     ),
     ("family_high_value_custody", ("family", "post_high_value_custody")),
     ("progress_high_value_delta", ("progress", "post_high_value_delta")),
@@ -619,6 +633,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_item_zone_profile_delta",
     "post_objective_proximity_profile",
     "post_objective_proximity_profile_delta",
+    "post_objective_control_profile",
+    "post_objective_control_profile_delta",
     "post_high_value_custody",
     "post_high_value_delta",
     "post_own_regular_custody",
@@ -2834,6 +2850,8 @@ def root_pool_signal_field_family(field):
         return "item_zone_profile"
     if "objective_proximity_profile" in field:
         return "objective_proximity_profile"
+    if "objective_control_profile" in field:
+        return "objective_control_profile"
     if "pickup_access" in field:
         return "pickup_access"
     if "mana_base" in field:
@@ -3021,6 +3039,12 @@ def root_pool_sample_root(row):
         ),
         "post_objective_proximity_profile_delta": row.get(
             "post_objective_proximity_profile_delta", ""
+        ),
+        "post_objective_control_profile": row.get(
+            "post_objective_control_profile", ""
+        ),
+        "post_objective_control_profile_delta": row.get(
+            "post_objective_control_profile_delta", ""
         ),
         "post_high_value_custody": row.get("post_high_value_custody", ""),
         "post_high_value_delta": row.get("post_high_value_delta", ""),
