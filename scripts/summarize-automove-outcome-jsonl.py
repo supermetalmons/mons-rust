@@ -114,6 +114,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_carrier_escape_delta",
     "post_consumable",
     "post_consumable_delta",
+    "post_bomb_threat_profile",
+    "post_bomb_threat_profile_delta",
     "post_potion_stock",
     "post_potion_stock_delta",
     "post_consumable_base",
@@ -283,6 +285,15 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_consumable", ("family", "post_consumable")),
     ("progress_consumable_delta", ("progress", "post_consumable_delta")),
     ("path_consumable_delta", ("path", "post_consumable_delta")),
+    ("family_bomb_threat_profile", ("family", "post_bomb_threat_profile")),
+    (
+        "progress_bomb_threat_profile_delta",
+        ("progress", "post_bomb_threat_profile_delta"),
+    ),
+    (
+        "path_bomb_threat_profile_delta",
+        ("path", "post_bomb_threat_profile_delta"),
+    ),
     ("family_potion_stock", ("family", "post_potion_stock")),
     ("progress_potion_stock_delta", ("progress", "post_potion_stock_delta")),
     ("path_potion_stock_delta", ("path", "post_potion_stock_delta")),
@@ -582,6 +593,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_carrier_escape_delta",
     "post_consumable",
     "post_consumable_delta",
+    "post_bomb_threat_profile",
+    "post_bomb_threat_profile_delta",
     "post_potion_stock",
     "post_potion_stock_delta",
     "post_consumable_base",
@@ -2717,6 +2730,8 @@ def root_pool_signal_field_family(field):
         return "carrier_escape"
     if "consumable_base" in field:
         return "consumable_base"
+    if "bomb_threat_profile" in field:
+        return "bomb_threat_profile"
     if "potion_stock" in field:
         return "potion_stock"
     if "consumable" in field:
@@ -2941,6 +2956,10 @@ def root_pool_sample_root(row):
         "post_carrier_escape_delta": row.get("post_carrier_escape_delta", ""),
         "post_consumable": row.get("post_consumable", ""),
         "post_consumable_delta": row.get("post_consumable_delta", ""),
+        "post_bomb_threat_profile": row.get("post_bomb_threat_profile", ""),
+        "post_bomb_threat_profile_delta": row.get(
+            "post_bomb_threat_profile_delta", ""
+        ),
         "post_potion_stock": row.get("post_potion_stock", ""),
         "post_potion_stock_delta": row.get("post_potion_stock_delta", ""),
         "post_consumable_base": row.get("post_consumable_base", ""),
