@@ -1576,6 +1576,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_score_delta",
                 "post_turn_budget",
                 "post_turn_budget_delta",
+                "post_score_term_profile",
+                "post_score_term_profile_delta",
                 "post_legal_fanout",
                 "post_legal_fanout_delta",
                 "post_followup_shape",
