@@ -1608,6 +1608,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_carrier_escape_delta",
                 "post_consumable",
                 "post_consumable_delta",
+                "post_potion_stock",
+                "post_potion_stock_delta",
                 "post_consumable_base",
                 "post_consumable_base_delta",
                 "post_engagement",

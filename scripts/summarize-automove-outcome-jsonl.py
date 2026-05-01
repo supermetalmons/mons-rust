@@ -114,6 +114,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_carrier_escape_delta",
     "post_consumable",
     "post_consumable_delta",
+    "post_potion_stock",
+    "post_potion_stock_delta",
     "post_consumable_base",
     "post_consumable_base_delta",
     "post_engagement",
@@ -281,6 +283,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_consumable", ("family", "post_consumable")),
     ("progress_consumable_delta", ("progress", "post_consumable_delta")),
     ("path_consumable_delta", ("path", "post_consumable_delta")),
+    ("family_potion_stock", ("family", "post_potion_stock")),
+    ("progress_potion_stock_delta", ("progress", "post_potion_stock_delta")),
+    ("path_potion_stock_delta", ("path", "post_potion_stock_delta")),
     ("family_consumable_base", ("family", "post_consumable_base")),
     ("progress_consumable_base_delta", ("progress", "post_consumable_base_delta")),
     ("path_consumable_base_delta", ("path", "post_consumable_base_delta")),
@@ -577,6 +582,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_carrier_escape_delta",
     "post_consumable",
     "post_consumable_delta",
+    "post_potion_stock",
+    "post_potion_stock_delta",
     "post_consumable_base",
     "post_consumable_base_delta",
     "post_engagement",
@@ -2710,6 +2717,8 @@ def root_pool_signal_field_family(field):
         return "carrier_escape"
     if "consumable_base" in field:
         return "consumable_base"
+    if "potion_stock" in field:
+        return "potion_stock"
     if "consumable" in field:
         return "consumable"
     if "pickup_access" in field:
@@ -2932,6 +2941,8 @@ def root_pool_sample_root(row):
         "post_carrier_escape_delta": row.get("post_carrier_escape_delta", ""),
         "post_consumable": row.get("post_consumable", ""),
         "post_consumable_delta": row.get("post_consumable_delta", ""),
+        "post_potion_stock": row.get("post_potion_stock", ""),
+        "post_potion_stock_delta": row.get("post_potion_stock_delta", ""),
         "post_consumable_base": row.get("post_consumable_base", ""),
         "post_consumable_base_delta": row.get("post_consumable_base_delta", ""),
         "post_engagement": row.get("post_engagement", ""),
