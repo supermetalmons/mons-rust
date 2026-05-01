@@ -90,6 +90,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_followup_effect",
     "post_followup_role_profile",
     "post_followup_role_profile_delta",
+    "post_followup_payload_profile",
+    "post_followup_payload_profile_delta",
     "post_attack_exposure",
     "post_attack_exposure_delta",
     "post_support_guard",
@@ -326,6 +328,15 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     (
         "path_followup_role_profile_delta",
         ("path", "post_followup_role_profile_delta"),
+    ),
+    ("family_followup_payload_profile", ("family", "post_followup_payload_profile")),
+    (
+        "progress_followup_payload_profile_delta",
+        ("progress", "post_followup_payload_profile_delta"),
+    ),
+    (
+        "path_followup_payload_profile_delta",
+        ("path", "post_followup_payload_profile_delta"),
     ),
     ("family_attack_exposure", ("family", "post_attack_exposure")),
     (
@@ -704,6 +715,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_followup_effect",
     "post_followup_role_profile",
     "post_followup_role_profile_delta",
+    "post_followup_payload_profile",
+    "post_followup_payload_profile_delta",
     "post_attack_exposure",
     "post_attack_exposure_delta",
     "post_support_guard",
@@ -2869,6 +2882,8 @@ def root_pool_signal_field_family(field):
         return "role_contact"
     if "cohesion" in field:
         return "cohesion"
+    if "followup_payload_profile" in field:
+        return "followup_payload_profile"
     if "followup_role_profile" in field:
         return "followup_role_profile"
     if "followup" in field:
@@ -3138,6 +3153,12 @@ def root_pool_sample_root(row):
         "post_followup_role_profile": row.get("post_followup_role_profile", ""),
         "post_followup_role_profile_delta": row.get(
             "post_followup_role_profile_delta", ""
+        ),
+        "post_followup_payload_profile": row.get(
+            "post_followup_payload_profile", ""
+        ),
+        "post_followup_payload_profile_delta": row.get(
+            "post_followup_payload_profile_delta", ""
         ),
         "post_attack_exposure": row.get("post_attack_exposure", ""),
         "post_attack_exposure_delta": row.get("post_attack_exposure_delta", ""),
