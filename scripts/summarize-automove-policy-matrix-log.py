@@ -1648,6 +1648,8 @@ def summarize_pro_v4_root_pool(events, limit=8):
                 "post_action_pickup_profile_delta",
                 "post_action_square_profile",
                 "post_action_square_profile_delta",
+                "post_action_vector_profile",
+                "post_action_vector_profile_delta",
                 "post_action_reach",
                 "post_action_reach_delta",
                 "post_step_threat",
