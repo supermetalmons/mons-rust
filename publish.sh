@@ -31,17 +31,21 @@ wasm-pack build --target web --out-dir pkg/web --out-name mons-web
 echo "Building node Wasm package..."
 wasm-pack build --target nodejs --out-dir pkg/node --out-name mons-rust
 
-# Publish web package
-cd pkg/web
 # Modify package.json to use mons-web as the name
-sed -i '' 's/"name": "mons-rust"/"name": "mons-web"/' package.json
+sed -i '' 's/"name": "mons-rust"/"name": "mons-web"/' pkg/web/package.json
 # Verify the change was made
-if grep -q '"name": "mons-web"' package.json; then
+if grep -q '"name": "mons-web"' pkg/web/package.json; then
     echo "Package name successfully changed to mons-web"
 else
     echo "Failed to change package name to mons-web"
     exit 1
 fi
+
+echo "Checking release package surface..."
+./scripts/assert-release-package-surface.sh pkg/web pkg/node
+
+# Publish web package
+cd pkg/web
 npm publish --access public
 
 # Publish nodejs package

@@ -65,4 +65,5 @@ Use `keep/<name>` for any branch that should survive repo cleanup.
 - Confirm `shipping_pro_search` remains available as the retained baseline.
 - Run `cargo test`.
 - Run `cargo test --release --lib smart_automove_release_mixed_runtime_speed_gate -- --ignored --nocapture`.
+- Run `./scripts/assert-release-package-surface.sh pkg/web pkg/node` after the Wasm packages are built.
 - Clean disposable experiment artifacts after validation with `./scripts/clean-experiment-artifacts.sh`.

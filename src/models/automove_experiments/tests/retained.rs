@@ -201,7 +201,7 @@ fn frontier_pro_v2_guarded_profile_prefers_v30_white_turn_three_mana_sibling_pro
             SmartAutomovePreference::Pro,
             &game
         ),
-        "l9,3;l10,4"
+        "l9,3;l8,4"
     );
 }
 
@@ -1484,8 +1484,10 @@ fn frontier_pro_v2_guarded_rejects_black_followup_spirit_head_duel_pro_root() {
         pro_v2_root_advisor_decision_snapshot(),
     );
     assert_eq!(shipping_selected, "l1,4;l3,4;l3,3");
-    assert_eq!(probe.pre_accept_input_fen, "l1,4;l3,4;l3,3");
-    assert_eq!(probe.selected_input_fen, "l1,4;l3,4;l3,3");
+    assert_eq!(probe.legacy_selected_input_fen, shipping_selected);
+    assert_eq!(probe.legacy_full_pool_selected_input_fen, "l1,4;l3,6;l2,7");
+    assert_eq!(probe.pre_accept_input_fen, "l1,4;l3,6;l2,7");
+    assert_eq!(probe.selected_input_fen, "l1,4;l3,6;l2,7");
     assert_eq!(probe.head_input_fen.as_deref(), Some("l1,4;l0,6;l1,7"));
     assert!(!probe.head_accepted);
 }
