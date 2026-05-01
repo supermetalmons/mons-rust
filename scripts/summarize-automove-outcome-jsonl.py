@@ -126,6 +126,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_carrier_score_profile_delta",
     "post_carrier_contact",
     "post_carrier_contact_delta",
+    "post_carrier_action_profile",
+    "post_carrier_action_profile_delta",
     "post_carrier_escape",
     "post_carrier_escape_delta",
     "post_consumable",
@@ -372,6 +374,15 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_carrier_contact", ("family", "post_carrier_contact")),
     ("progress_carrier_contact_delta", ("progress", "post_carrier_contact_delta")),
     ("path_carrier_contact_delta", ("path", "post_carrier_contact_delta")),
+    ("family_carrier_action_profile", ("family", "post_carrier_action_profile")),
+    (
+        "progress_carrier_action_profile_delta",
+        ("progress", "post_carrier_action_profile_delta"),
+    ),
+    (
+        "path_carrier_action_profile_delta",
+        ("path", "post_carrier_action_profile_delta"),
+    ),
     ("family_carrier_escape", ("family", "post_carrier_escape")),
     ("progress_carrier_escape_delta", ("progress", "post_carrier_escape_delta")),
     ("path_carrier_escape_delta", ("path", "post_carrier_escape_delta")),
@@ -707,6 +718,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_carrier_score_profile_delta",
     "post_carrier_contact",
     "post_carrier_contact_delta",
+    "post_carrier_action_profile",
+    "post_carrier_action_profile_delta",
     "post_carrier_escape",
     "post_carrier_escape_delta",
     "post_consumable",
@@ -2846,6 +2859,8 @@ def root_pool_signal_field_family(field):
         return "carrier_score_profile"
     if "carrier_contact" in field:
         return "carrier_contact"
+    if "carrier_action_profile" in field:
+        return "carrier_action_profile"
     if "carrier_escape" in field:
         return "carrier_escape"
     if "consumable_base" in field:
@@ -3122,6 +3137,10 @@ def root_pool_sample_root(row):
         ),
         "post_carrier_contact": row.get("post_carrier_contact", ""),
         "post_carrier_contact_delta": row.get("post_carrier_contact_delta", ""),
+        "post_carrier_action_profile": row.get("post_carrier_action_profile", ""),
+        "post_carrier_action_profile_delta": row.get(
+            "post_carrier_action_profile_delta", ""
+        ),
         "post_carrier_escape": row.get("post_carrier_escape", ""),
         "post_carrier_escape_delta": row.get("post_carrier_escape_delta", ""),
         "post_consumable": row.get("post_consumable", ""),
