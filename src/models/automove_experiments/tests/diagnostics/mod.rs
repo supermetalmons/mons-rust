@@ -3044,6 +3044,39 @@ impl ProV4RootPoolSpiritItemProfileFeatures {
 }
 
 #[derive(Clone, Copy, Default)]
+struct ProV4RootPoolSpiritHandoffProfileSide {
+    actors: usize,
+    mana_targets: usize,
+    drainer_targets: usize,
+    carrier_targets: usize,
+    pickup: usize,
+    score: usize,
+    high_value: usize,
+    regular: usize,
+    match_score: usize,
+}
+
+#[derive(Default)]
+struct ProV4RootPoolSpiritHandoffProfilePosture {
+    own: ProV4RootPoolSpiritHandoffProfileSide,
+    opp: ProV4RootPoolSpiritHandoffProfileSide,
+}
+
+struct ProV4RootPoolSpiritHandoffProfileFeatures {
+    post_spirit_handoff_profile: String,
+    post_spirit_handoff_profile_delta: String,
+}
+
+impl ProV4RootPoolSpiritHandoffProfileFeatures {
+    fn omitted() -> Self {
+        Self {
+            post_spirit_handoff_profile: "omitted".to_string(),
+            post_spirit_handoff_profile_delta: "omitted".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Default)]
 struct ProV4RootPoolActionRoleProfileSide {
     enemy_angel: usize,
     enemy_drainer: usize,
@@ -8126,6 +8159,392 @@ fn pro_v4_root_pool_spirit_item_profile_features(
             perspective,
         ),
         post_spirit_item_profile_delta: pro_v4_root_pool_spirit_item_profile_delta_bucket(
+            &before, &after,
+        ),
+    }
+}
+
+fn pro_v4_root_pool_spirit_handoff_profile_side_mut(
+    posture: &mut ProV4RootPoolSpiritHandoffProfilePosture,
+    perspective: Color,
+    actor_color: Color,
+) -> &mut ProV4RootPoolSpiritHandoffProfileSide {
+    if actor_color == perspective {
+        &mut posture.own
+    } else {
+        &mut posture.opp
+    }
+}
+
+fn pro_v4_root_pool_spirit_can_move_mana_to(
+    game: &MonsGame,
+    mana: Mana,
+    destination: Location,
+) -> bool {
+    let destination_item = game.board.item(destination);
+    let destination_square = game.board.square(destination);
+    match destination_item {
+        Some(Item::Mon { mon }) => {
+            mon.kind == MonKind::Drainer
+                && !mon.is_fainted()
+                && match destination_square {
+                    Square::Regular
+                    | Square::ConsumableBase
+                    | Square::ManaBase { .. }
+                    | Square::ManaPool { .. } => true,
+                    Square::SupermanaBase => mana == Mana::Supermana,
+                    Square::MonBase { .. } => false,
+                }
+        }
+        None => match destination_square {
+            Square::Regular
+            | Square::ConsumableBase
+            | Square::ManaBase { .. }
+            | Square::ManaPool { .. } => true,
+            Square::SupermanaBase => mana == Mana::Supermana,
+            Square::MonBase { .. } => false,
+        },
+        Some(
+            Item::Mana { .. }
+            | Item::Consumable { .. }
+            | Item::MonWithMana { .. }
+            | Item::MonWithConsumable { .. },
+        ) => false,
+    }
+}
+
+fn pro_v4_root_pool_spirit_can_move_target_to(
+    game: &MonsGame,
+    target_item: &Item,
+    target: Location,
+    destination: Location,
+) -> bool {
+    if !target.nearby_locations_ref().contains(&destination) {
+        return false;
+    }
+    let target_mon = target_item.mon();
+    let target_mana = target_item.mana();
+    let destination_item = game.board.item(destination);
+    let destination_square = game.board.square(destination);
+    let valid_destination = match destination_item {
+        Some(Item::Mon { .. }) => false,
+        Some(Item::Mana { .. }) => {
+            matches!(target_mon, Some(mon) if mon.kind == MonKind::Drainer && !mon.is_fainted())
+        }
+        Some(Item::MonWithMana { .. } | Item::MonWithConsumable { .. }) => false,
+        Some(Item::Consumable { consumable }) => matches!(
+            target_item,
+            Item::Mon { .. } | Item::MonWithMana { .. } | Item::MonWithConsumable { .. }
+                if *consumable == Consumable::BombOrPotion
+        ),
+        None => true,
+    };
+    if !valid_destination {
+        return false;
+    }
+    match destination_square {
+        Square::Regular
+        | Square::ConsumableBase
+        | Square::ManaBase { .. }
+        | Square::ManaPool { .. } => true,
+        Square::SupermanaBase => {
+            target_mana == Some(&Mana::Supermana)
+                || (target_mana.is_none()
+                    && matches!(target_mon.map(|mon| mon.kind), Some(MonKind::Drainer))
+                    && (destination_item.is_none()
+                        || matches!(
+                            destination_item,
+                            Some(Item::Mana {
+                                mana: Mana::Supermana
+                            })
+                        )))
+                || (matches!(target_mon.map(|mon| mon.kind), Some(MonKind::Drainer))
+                    && matches!(
+                        destination_item,
+                        Some(Item::Mana {
+                            mana: Mana::Supermana
+                        })
+                    ))
+        }
+        Square::MonBase { kind, color } => {
+            if let Some(mon) = target_mon {
+                mon.kind == kind
+                    && mon.color == color
+                    && target_mana.is_none()
+                    && target_item.consumable().is_none()
+            } else {
+                false
+            }
+        }
+    }
+}
+
+fn pro_v4_root_pool_spirit_handoff_value_flags(mana: Mana, actor_color: Color) -> (bool, bool) {
+    (
+        pro_v4_root_pool_is_high_value_mana(mana, actor_color),
+        pro_v4_root_pool_is_own_regular_mana(mana, actor_color),
+    )
+}
+
+fn pro_v4_root_pool_add_spirit_handoff_target_counts(
+    side: &mut ProV4RootPoolSpiritHandoffProfileSide,
+    pickup: bool,
+    score: bool,
+    high_value: bool,
+    regular: bool,
+    match_score: bool,
+) {
+    if !pickup && !score {
+        return;
+    }
+    side.pickup += usize::from(pickup);
+    side.score += usize::from(score);
+    side.high_value += usize::from(high_value);
+    side.regular += usize::from(regular);
+    side.match_score += usize::from(match_score);
+}
+
+fn pro_v4_root_pool_add_spirit_handoff_mana_target(
+    side: &mut ProV4RootPoolSpiritHandoffProfileSide,
+    game: &MonsGame,
+    actor_color: Color,
+    target: Location,
+    mana: Mana,
+) -> bool {
+    let mut pickup = false;
+    let mut score = false;
+    for &destination in target.nearby_locations_ref() {
+        if !pro_v4_root_pool_spirit_can_move_mana_to(game, mana, destination) {
+            continue;
+        }
+        pickup |= game
+            .board
+            .item(destination)
+            .and_then(Item::mon)
+            .is_some_and(|mon| {
+                mon.color == actor_color && mon.kind == MonKind::Drainer && !mon.is_fainted()
+            });
+        score |= mana.score(actor_color) > 0
+            && matches!(game.board.square(destination), Square::ManaPool { color } if color == actor_color);
+    }
+    if !pickup && !score {
+        return false;
+    }
+    let (high_value, regular) = pro_v4_root_pool_spirit_handoff_value_flags(mana, actor_color);
+    side.mana_targets += 1;
+    pro_v4_root_pool_add_spirit_handoff_target_counts(
+        side,
+        pickup,
+        score,
+        high_value,
+        regular,
+        score
+            && pro_v4_root_pool_score_for_color(game, actor_color) + mana.score(actor_color)
+                >= Config::TARGET_SCORE,
+    );
+    true
+}
+
+fn pro_v4_root_pool_add_spirit_handoff_mon_target(
+    side: &mut ProV4RootPoolSpiritHandoffProfileSide,
+    game: &MonsGame,
+    actor_color: Color,
+    target: Location,
+    target_item: &Item,
+    target_mon: Mon,
+    carried_mana: Option<Mana>,
+) -> bool {
+    if target_mon.is_fainted() {
+        return false;
+    }
+    let mut pickup = false;
+    let mut score = false;
+    let mut high_value = false;
+    let mut regular = false;
+    let mut match_score = false;
+    for &destination in target.nearby_locations_ref() {
+        if !pro_v4_root_pool_spirit_can_move_target_to(game, target_item, target, destination) {
+            continue;
+        }
+        if target_mon.color == actor_color && target_mon.kind == MonKind::Drainer {
+            if let Some(Item::Mana { mana }) = game.board.item(destination) {
+                pickup = true;
+                let (target_high, target_regular) =
+                    pro_v4_root_pool_spirit_handoff_value_flags(*mana, actor_color);
+                high_value |= target_high;
+                regular |= target_regular;
+            }
+        }
+        if let Some(mana) = carried_mana {
+            let scores_for_actor = mana.score(actor_color) > 0
+                && matches!(game.board.square(destination), Square::ManaPool { color } if color == actor_color);
+            if scores_for_actor {
+                score = true;
+                let (target_high, target_regular) =
+                    pro_v4_root_pool_spirit_handoff_value_flags(mana, actor_color);
+                high_value |= target_high;
+                regular |= target_regular;
+                match_score |= pro_v4_root_pool_score_for_color(game, actor_color)
+                    + mana.score(actor_color)
+                    >= Config::TARGET_SCORE;
+            }
+        }
+    }
+    if !pickup && !score {
+        return false;
+    }
+    side.drainer_targets += usize::from(pickup && target_mon.kind == MonKind::Drainer);
+    side.carrier_targets += usize::from(score && carried_mana.is_some());
+    pro_v4_root_pool_add_spirit_handoff_target_counts(
+        side,
+        pickup,
+        score,
+        high_value,
+        regular,
+        match_score,
+    );
+    true
+}
+
+fn pro_v4_root_pool_spirit_handoff_profile_posture(
+    game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolSpiritHandoffProfilePosture {
+    if game.winner_color().is_some() {
+        return ProV4RootPoolSpiritHandoffProfilePosture::default();
+    }
+    let mut posture = ProV4RootPoolSpiritHandoffProfilePosture::default();
+    for (location, item) in game.board.occupied() {
+        let Some(mon) = item.mon() else {
+            continue;
+        };
+        if mon.kind != MonKind::Spirit
+            || mon.is_fainted()
+            || matches!(game.board.square(location), Square::MonBase { .. })
+        {
+            continue;
+        }
+        let side =
+            pro_v4_root_pool_spirit_handoff_profile_side_mut(&mut posture, perspective, mon.color);
+        let mut actor_has_handoff = false;
+        for &target in location.reachable_by_spirit_action_ref() {
+            let Some(target_item) = game.board.item(target) else {
+                continue;
+            };
+            match target_item {
+                Item::Mana { mana } => {
+                    actor_has_handoff |= pro_v4_root_pool_add_spirit_handoff_mana_target(
+                        side, game, mon.color, target, *mana,
+                    );
+                }
+                Item::Mon { mon: target_mon } => {
+                    actor_has_handoff |= pro_v4_root_pool_add_spirit_handoff_mon_target(
+                        side,
+                        game,
+                        mon.color,
+                        target,
+                        target_item,
+                        *target_mon,
+                        None,
+                    );
+                }
+                Item::MonWithMana {
+                    mon: target_mon,
+                    mana,
+                } => {
+                    actor_has_handoff |= pro_v4_root_pool_add_spirit_handoff_mon_target(
+                        side,
+                        game,
+                        mon.color,
+                        target,
+                        target_item,
+                        *target_mon,
+                        Some(*mana),
+                    );
+                }
+                Item::Consumable { .. } | Item::MonWithConsumable { .. } => {}
+            }
+        }
+        if actor_has_handoff {
+            side.actors += 1;
+        }
+    }
+    posture
+}
+
+fn pro_v4_root_pool_spirit_handoff_profile_side_bucket(
+    side: &ProV4RootPoolSpiritHandoffProfileSide,
+) -> String {
+    format!(
+        "actor={},mana_target={},drainer_target={},carrier_target={},pickup={},score={},high_value={},regular={},match_score={}",
+        pro_v4_root_pool_count_field(side.actors),
+        pro_v4_root_pool_count_field(side.mana_targets),
+        pro_v4_root_pool_count_field(side.drainer_targets),
+        pro_v4_root_pool_count_field(side.carrier_targets),
+        pro_v4_root_pool_count_field(side.pickup),
+        pro_v4_root_pool_count_field(side.score),
+        pro_v4_root_pool_count_field(side.high_value),
+        pro_v4_root_pool_count_field(side.regular),
+        pro_v4_root_pool_count_field(side.match_score),
+    )
+}
+
+fn pro_v4_root_pool_spirit_handoff_profile_side_delta_bucket(
+    before: &ProV4RootPoolSpiritHandoffProfileSide,
+    after: &ProV4RootPoolSpiritHandoffProfileSide,
+) -> String {
+    format!(
+        "actor={},mana_target={},drainer_target={},carrier_target={},pickup={},score={},high_value={},regular={},match_score={}",
+        pro_v4_root_pool_count_delta_bucket(before.actors, after.actors),
+        pro_v4_root_pool_count_delta_bucket(before.mana_targets, after.mana_targets),
+        pro_v4_root_pool_count_delta_bucket(before.drainer_targets, after.drainer_targets),
+        pro_v4_root_pool_count_delta_bucket(before.carrier_targets, after.carrier_targets),
+        pro_v4_root_pool_count_delta_bucket(before.pickup, after.pickup),
+        pro_v4_root_pool_count_delta_bucket(before.score, after.score),
+        pro_v4_root_pool_count_delta_bucket(before.high_value, after.high_value),
+        pro_v4_root_pool_count_delta_bucket(before.regular, after.regular),
+        pro_v4_root_pool_count_delta_bucket(before.match_score, after.match_score),
+    )
+}
+
+fn pro_v4_root_pool_spirit_handoff_profile_bucket(
+    game: &MonsGame,
+    posture: &ProV4RootPoolSpiritHandoffProfilePosture,
+    perspective: Color,
+) -> String {
+    format!(
+        "status={};own={};opp={}",
+        pro_v4_root_pool_status(game, perspective),
+        pro_v4_root_pool_spirit_handoff_profile_side_bucket(&posture.own),
+        pro_v4_root_pool_spirit_handoff_profile_side_bucket(&posture.opp),
+    )
+}
+
+fn pro_v4_root_pool_spirit_handoff_profile_delta_bucket(
+    before: &ProV4RootPoolSpiritHandoffProfilePosture,
+    after: &ProV4RootPoolSpiritHandoffProfilePosture,
+) -> String {
+    format!(
+        "own={};opp={}",
+        pro_v4_root_pool_spirit_handoff_profile_side_delta_bucket(&before.own, &after.own),
+        pro_v4_root_pool_spirit_handoff_profile_side_delta_bucket(&before.opp, &after.opp),
+    )
+}
+
+fn pro_v4_root_pool_spirit_handoff_profile_features(
+    before_game: &MonsGame,
+    after_game: &MonsGame,
+    perspective: Color,
+) -> ProV4RootPoolSpiritHandoffProfileFeatures {
+    let before = pro_v4_root_pool_spirit_handoff_profile_posture(before_game, perspective);
+    let after = pro_v4_root_pool_spirit_handoff_profile_posture(after_game, perspective);
+    ProV4RootPoolSpiritHandoffProfileFeatures {
+        post_spirit_handoff_profile: pro_v4_root_pool_spirit_handoff_profile_bucket(
+            after_game,
+            &after,
+            perspective,
+        ),
+        post_spirit_handoff_profile_delta: pro_v4_root_pool_spirit_handoff_profile_delta_bucket(
             &before, &after,
         ),
     }
@@ -14767,6 +15186,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             action_threat_features,
             action_target_profile_features,
             spirit_item_profile_features,
+            spirit_handoff_profile_features,
             action_role_profile_features,
             action_guard_profile_features,
             action_actor_profile_features,
@@ -14934,6 +15354,11 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             );
             let spirit_item_profile_features =
                 pro_v4_root_pool_spirit_item_profile_features(&game, &root.game, game.active_color);
+            let spirit_handoff_profile_features = pro_v4_root_pool_spirit_handoff_profile_features(
+                &game,
+                &root.game,
+                game.active_color,
+            );
             let action_role_profile_features =
                 pro_v4_root_pool_action_role_profile_features(&game, &root.game, game.active_color);
             let action_guard_profile_features = pro_v4_root_pool_action_guard_profile_features(
@@ -15088,6 +15513,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 action_threat_features,
                 action_target_profile_features,
                 spirit_item_profile_features,
+                spirit_handoff_profile_features,
                 action_role_profile_features,
                 action_guard_profile_features,
                 action_actor_profile_features,
@@ -15168,6 +15594,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
                 ProV4RootPoolActionThreatFeatures::omitted(),
                 ProV4RootPoolActionTargetProfileFeatures::omitted(),
                 ProV4RootPoolSpiritItemProfileFeatures::omitted(),
+                ProV4RootPoolSpiritHandoffProfileFeatures::omitted(),
                 ProV4RootPoolActionRoleProfileFeatures::omitted(),
                 ProV4RootPoolActionGuardProfileFeatures::omitted(),
                 ProV4RootPoolActionActorProfileFeatures::omitted(),
@@ -15195,7 +15622,7 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             )
         };
         println!(
-            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_cooldown_tempo\":\"{}\",\"post_cooldown_tempo_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_objective_screen\":\"{}\",\"post_objective_screen_delta\":\"{}\",\"post_drainer_geometry\":\"{}\",\"post_drainer_geometry_delta\":\"{}\",\"post_role_coordination\":\"{}\",\"post_role_coordination_delta\":\"{}\",\"post_formation_balance\":\"{}\",\"post_formation_balance_delta\":\"{}\",\"post_role_deployment\":\"{}\",\"post_role_deployment_delta\":\"{}\",\"post_role_pressure\":\"{}\",\"post_role_pressure_delta\":\"{}\",\"post_role_contact\":\"{}\",\"post_role_contact_delta\":\"{}\",\"post_cohesion\":\"{}\",\"post_cohesion_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pickup_access\":\"{}\",\"post_pickup_access_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_carrier_score_profile\":\"{}\",\"post_carrier_score_profile_delta\":\"{}\",\"post_carrier_contact\":\"{}\",\"post_carrier_contact_delta\":\"{}\",\"post_carrier_escape\":\"{}\",\"post_carrier_escape_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_consumable_base\":\"{}\",\"post_consumable_base_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_role_mobility\":\"{}\",\"post_role_mobility_delta\":\"{}\",\"post_role_escape\":\"{}\",\"post_role_escape_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_action_target_profile\":\"{}\",\"post_action_target_profile_delta\":\"{}\",\"post_spirit_item_profile\":\"{}\",\"post_spirit_item_profile_delta\":\"{}\",\"post_action_role_profile\":\"{}\",\"post_action_role_profile_delta\":\"{}\",\"post_action_guard_profile\":\"{}\",\"post_action_guard_profile_delta\":\"{}\",\"post_action_actor_profile\":\"{}\",\"post_action_actor_profile_delta\":\"{}\",\"post_action_actor_safety_profile\":\"{}\",\"post_action_actor_safety_profile_delta\":\"{}\",\"post_action_zone_profile\":\"{}\",\"post_action_zone_profile_delta\":\"{}\",\"post_action_payload_profile\":\"{}\",\"post_action_payload_profile_delta\":\"{}\",\"post_action_escape_profile\":\"{}\",\"post_action_escape_profile_delta\":\"{}\",\"post_action_counter_profile\":\"{}\",\"post_action_counter_profile_delta\":\"{}\",\"post_action_target_safety_profile\":\"{}\",\"post_action_target_safety_profile_delta\":\"{}\",\"post_action_score_profile\":\"{}\",\"post_action_score_profile_delta\":\"{}\",\"post_action_denial_profile\":\"{}\",\"post_action_denial_profile_delta\":\"{}\",\"post_action_pickup_profile\":\"{}\",\"post_action_pickup_profile_delta\":\"{}\",\"post_action_square_profile\":\"{}\",\"post_action_square_profile_delta\":\"{}\",\"post_action_vector_profile\":\"{}\",\"post_action_vector_profile_delta\":\"{}\",\"post_action_fork_profile\":\"{}\",\"post_action_fork_profile_delta\":\"{}\",\"post_action_reach\":\"{}\",\"post_action_reach_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
+            "PRO_POLICY_MATRIX_PROV4_ROOT_POOL_ROOT {{\"panel\":\"{}\",\"baseline\":\"{}\",\"candidate\":\"{}\",\"candidates\":\"{}\",\"duel\":\"{}\",\"seed_tag\":\"{}\",\"repeat\":{},\"opening_index\":{},\"variant\":\"{}\",\"candidate_is_white\":{},\"portfolio_class\":\"{}\",\"outcome\":\"{}\",\"first_diff_ply\":{},\"board\":\"{}\",\"baseline_move\":\"{}\",\"candidate_move\":\"{}\",\"inputs\":\"{}\",\"origins\":\"{}\",\"origin_kinds\":\"{}\",\"policies\":\"{}\",\"live\":{},\"rank\":{},\"rank_bucket\":\"{}\",\"score\":{},\"family\":\"{}\",\"advisor\":\"{}\",\"advisor_bucket\":\"{}\",\"path\":\"{}\",\"safety_detail\":\"{}\",\"progress\":\"{}\",\"efficiency\":\"{}\",\"setup_gain\":\"{}\",\"soft_priority\":\"{}\",\"keeps_awake\":\"{}\",\"reply_floor\":\"{}\",\"reply_risk\":\"{}\",\"followup_floor\":\"{}\",\"utility\":\"{}\",\"post_turn_status\":\"{}\",\"post_exact_window\":\"{}\",\"post_exact_deny\":\"{}\",\"post_exact_attack\":\"{}\",\"post_drainer_safety\":\"{}\",\"post_exact_pressure\":\"{}\",\"post_exact_delta\":\"{}\",\"post_high_value_custody\":\"{}\",\"post_high_value_delta\":\"{}\",\"post_own_regular_custody\":\"{}\",\"post_own_regular_delta\":\"{}\",\"post_mon_material\":\"{}\",\"post_mon_material_delta\":\"{}\",\"post_cooldown_tempo\":\"{}\",\"post_cooldown_tempo_delta\":\"{}\",\"post_scoreboard\":\"{}\",\"post_score_delta\":\"{}\",\"post_turn_budget\":\"{}\",\"post_turn_budget_delta\":\"{}\",\"post_legal_fanout\":\"{}\",\"post_legal_fanout_delta\":\"{}\",\"post_followup_shape\":\"{}\",\"post_followup_effect\":\"{}\",\"post_attack_exposure\":\"{}\",\"post_attack_exposure_delta\":\"{}\",\"post_support_guard\":\"{}\",\"post_support_guard_delta\":\"{}\",\"post_objective_screen\":\"{}\",\"post_objective_screen_delta\":\"{}\",\"post_drainer_geometry\":\"{}\",\"post_drainer_geometry_delta\":\"{}\",\"post_role_coordination\":\"{}\",\"post_role_coordination_delta\":\"{}\",\"post_formation_balance\":\"{}\",\"post_formation_balance_delta\":\"{}\",\"post_role_deployment\":\"{}\",\"post_role_deployment_delta\":\"{}\",\"post_role_pressure\":\"{}\",\"post_role_pressure_delta\":\"{}\",\"post_role_contact\":\"{}\",\"post_role_contact_delta\":\"{}\",\"post_cohesion\":\"{}\",\"post_cohesion_delta\":\"{}\",\"post_territory\":\"{}\",\"post_territory_delta\":\"{}\",\"post_mana_path\":\"{}\",\"post_mana_path_delta\":\"{}\",\"post_mana_contest\":\"{}\",\"post_mana_contest_delta\":\"{}\",\"post_pickup_access\":\"{}\",\"post_pickup_access_delta\":\"{}\",\"post_mana_base\":\"{}\",\"post_mana_base_delta\":\"{}\",\"post_pool_access\":\"{}\",\"post_pool_access_delta\":\"{}\",\"post_carrier_route\":\"{}\",\"post_carrier_route_delta\":\"{}\",\"post_carrier_score_profile\":\"{}\",\"post_carrier_score_profile_delta\":\"{}\",\"post_carrier_contact\":\"{}\",\"post_carrier_contact_delta\":\"{}\",\"post_carrier_escape\":\"{}\",\"post_carrier_escape_delta\":\"{}\",\"post_consumable\":\"{}\",\"post_consumable_delta\":\"{}\",\"post_consumable_base\":\"{}\",\"post_consumable_base_delta\":\"{}\",\"post_engagement\":\"{}\",\"post_engagement_delta\":\"{}\",\"post_mobility\":\"{}\",\"post_mobility_delta\":\"{}\",\"post_role_mobility\":\"{}\",\"post_role_mobility_delta\":\"{}\",\"post_role_escape\":\"{}\",\"post_role_escape_delta\":\"{}\",\"post_action_threat\":\"{}\",\"post_action_threat_delta\":\"{}\",\"post_action_target_profile\":\"{}\",\"post_action_target_profile_delta\":\"{}\",\"post_spirit_item_profile\":\"{}\",\"post_spirit_item_profile_delta\":\"{}\",\"post_spirit_handoff_profile\":\"{}\",\"post_spirit_handoff_profile_delta\":\"{}\",\"post_action_role_profile\":\"{}\",\"post_action_role_profile_delta\":\"{}\",\"post_action_guard_profile\":\"{}\",\"post_action_guard_profile_delta\":\"{}\",\"post_action_actor_profile\":\"{}\",\"post_action_actor_profile_delta\":\"{}\",\"post_action_actor_safety_profile\":\"{}\",\"post_action_actor_safety_profile_delta\":\"{}\",\"post_action_zone_profile\":\"{}\",\"post_action_zone_profile_delta\":\"{}\",\"post_action_payload_profile\":\"{}\",\"post_action_payload_profile_delta\":\"{}\",\"post_action_escape_profile\":\"{}\",\"post_action_escape_profile_delta\":\"{}\",\"post_action_counter_profile\":\"{}\",\"post_action_counter_profile_delta\":\"{}\",\"post_action_target_safety_profile\":\"{}\",\"post_action_target_safety_profile_delta\":\"{}\",\"post_action_score_profile\":\"{}\",\"post_action_score_profile_delta\":\"{}\",\"post_action_denial_profile\":\"{}\",\"post_action_denial_profile_delta\":\"{}\",\"post_action_pickup_profile\":\"{}\",\"post_action_pickup_profile_delta\":\"{}\",\"post_action_square_profile\":\"{}\",\"post_action_square_profile_delta\":\"{}\",\"post_action_vector_profile\":\"{}\",\"post_action_vector_profile_delta\":\"{}\",\"post_action_fork_profile\":\"{}\",\"post_action_fork_profile_delta\":\"{}\",\"post_action_reach\":\"{}\",\"post_action_reach_delta\":\"{}\",\"post_step_threat\":\"{}\",\"post_step_threat_delta\":\"{}\",\"post_role_state\":\"{}\",\"post_role_state_delta\":\"{}\",\"post_base_recovery\":\"{}\",\"post_base_recovery_delta\":\"{}\",\"post_lane_shape\":\"{}\",\"post_lane_shape_delta\":\"{}\",\"root_sequence\":\"{}\",\"root_transition\":\"{}\",\"root_transition_effect\":\"{}\",\"worst_reply_transition\":\"{}\",\"worst_reply_effect\":\"{}\",\"post_reply_spectrum\":\"{}\",\"post_reply_spectrum_effect\":\"{}\"}}",
             json_escape(panel),
             json_escape(baseline.id),
             json_escape(candidate.id),
@@ -15319,6 +15746,10 @@ fn pro_v4_root_pool_print_snapshot(request: ProV4RootPoolSnapshotRequest<'_>) {
             json_escape(&action_target_profile_features.post_action_target_profile_delta),
             json_escape(&spirit_item_profile_features.post_spirit_item_profile),
             json_escape(&spirit_item_profile_features.post_spirit_item_profile_delta),
+            json_escape(&spirit_handoff_profile_features.post_spirit_handoff_profile),
+            json_escape(
+                &spirit_handoff_profile_features.post_spirit_handoff_profile_delta,
+            ),
             json_escape(&action_role_profile_features.post_action_role_profile),
             json_escape(&action_role_profile_features.post_action_role_profile_delta),
             json_escape(&action_guard_profile_features.post_action_guard_profile),

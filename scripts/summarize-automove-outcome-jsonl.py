@@ -130,6 +130,8 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "post_action_target_profile_delta",
     "post_spirit_item_profile",
     "post_spirit_item_profile_delta",
+    "post_spirit_handoff_profile",
+    "post_spirit_handoff_profile_delta",
     "post_action_role_profile",
     "post_action_role_profile_delta",
     "post_action_guard_profile",
@@ -314,6 +316,15 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     (
         "path_spirit_item_profile_delta",
         ("path", "post_spirit_item_profile_delta"),
+    ),
+    ("family_spirit_handoff_profile", ("family", "post_spirit_handoff_profile")),
+    (
+        "progress_spirit_handoff_profile_delta",
+        ("progress", "post_spirit_handoff_profile_delta"),
+    ),
+    (
+        "path_spirit_handoff_profile_delta",
+        ("path", "post_spirit_handoff_profile_delta"),
     ),
     ("family_action_role_profile", ("family", "post_action_role_profile")),
     (
@@ -582,6 +593,8 @@ ROOT_POOL_DELTA_CATEGORICAL_FIELDS = [
     "post_action_target_profile_delta",
     "post_spirit_item_profile",
     "post_spirit_item_profile_delta",
+    "post_spirit_handoff_profile",
+    "post_spirit_handoff_profile_delta",
     "post_action_role_profile",
     "post_action_role_profile_delta",
     "post_action_guard_profile",
@@ -2687,6 +2700,8 @@ def root_pool_signal_field_family(field):
         return "mobility"
     if "engagement" in field:
         return "engagement"
+    if "spirit_handoff_profile" in field:
+        return "spirit_handoff_profile"
     if "carrier_score_profile" in field:
         return "carrier_score_profile"
     if "carrier_contact" in field:
@@ -2935,6 +2950,10 @@ def root_pool_sample_root(row):
         ),
         "post_spirit_item_profile": row.get("post_spirit_item_profile", ""),
         "post_spirit_item_profile_delta": row.get("post_spirit_item_profile_delta", ""),
+        "post_spirit_handoff_profile": row.get("post_spirit_handoff_profile", ""),
+        "post_spirit_handoff_profile_delta": row.get(
+            "post_spirit_handoff_profile_delta", ""
+        ),
         "post_action_role_profile": row.get("post_action_role_profile", ""),
         "post_action_role_profile_delta": row.get("post_action_role_profile_delta", ""),
         "post_action_guard_profile": row.get("post_action_guard_profile", ""),
