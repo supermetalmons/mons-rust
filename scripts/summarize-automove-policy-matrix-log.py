@@ -664,6 +664,20 @@ def swing_bucket(value):
     return "minus2plus"
 
 
+def balance_bucket(value):
+    if value is None:
+        return "missing"
+    if value >= 3:
+        return "own3plus"
+    if value >= 1:
+        return "own1_2"
+    if value == 0:
+        return "even"
+    if value <= -3:
+        return "opp3plus"
+    return "opp1_2"
+
+
 def item_carrier_side(item, perspective_color):
     if not item:
         return "empty"
@@ -717,6 +731,40 @@ def terminal_swing_values(record):
         "material_swing": candidate_resources["material"]
         - baseline_resources["material"],
     }
+
+
+def source_board_values(record):
+    perspective_color = candidate_color_name(record)
+    board_fen = record.get("board", "")
+    if not game_score_pair(board_fen):
+        return None
+    resources = terminal_resource_scores(board_fen, perspective_color)
+    return {
+        "margin": score_margin(board_fen, perspective_color),
+        "custody": resources["custody"],
+        "material": resources["material"],
+        "actor": relative_color(active_color_name(record), perspective_color),
+    }
+
+
+def source_board_axes(record):
+    values = source_board_values(record)
+    if not values:
+        return []
+    return [
+        f"source_board_margin {margin_bucket(values['margin'])}",
+        (
+            "source_board_resource_balance "
+            f"custody={balance_bucket(values['custody'])} "
+            f"material={balance_bucket(values['material'])}"
+        ),
+        f"source_board_actor {values['actor']}_to_move",
+        (
+            "source_board_margin_resource "
+            f"margin={margin_bucket(values['margin'])} "
+            f"custody={balance_bucket(values['custody'])}"
+        ),
+    ]
 
 
 def terminal_swing_axes(record, record_class):
@@ -815,6 +863,7 @@ def corpus_record_axes(record, record_class):
     axes.extend(split_axis_field(record.get("timing_continuation_axes", "")))
     axes.extend(corpus_move_shape_axes(record, record_class))
     axes.extend(corpus_move_intent_axes(record, record_class))
+    axes.extend(source_board_axes(record))
     axes.extend(terminal_swing_axes(record, record_class))
     return axes or ["none"]
 
@@ -1799,6 +1848,7 @@ def policy_axis_items(record, record_class):
         (axis, "first_move_intent")
         for axis in corpus_move_intent_axes(record, record_class)
     )
+    items.extend((axis, "source_board") for axis in source_board_axes(record))
     items.extend(
         (axis, "terminal_outcome")
         for axis in terminal_swing_axes(record, record_class)
