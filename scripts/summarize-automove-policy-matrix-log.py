@@ -767,6 +767,57 @@ def source_board_axes(record):
     ]
 
 
+def split_policy_results(policy_results):
+    results = {}
+    for item in str(policy_results or "").split("|"):
+        if "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        if key:
+            results[key] = value
+    return results
+
+
+def split_winning_policies(record):
+    return [
+        item
+        for item in str(record.get("winning_policies", "") or "").split(",")
+        if item
+    ]
+
+
+def count_bucket(value):
+    if value <= 0:
+        return "count0"
+    if value == 1:
+        return "count1"
+    if value == 2:
+        return "count2"
+    return "count3plus"
+
+
+def portfolio_support_axes(record):
+    policy_results = split_policy_results(record.get("policy_results", ""))
+    winners = split_winning_policies(record)
+    baseline = record.get("baseline", "")
+    candidate = record.get("candidate", "")
+    candidate_winners = [winner for winner in winners if winner != baseline]
+    baseline_result = policy_results.get(baseline, record.get("baseline_result", ""))
+    candidate_result = policy_results.get(candidate, record.get("candidate_result", ""))
+    candidate_supported = candidate in winners
+    return [
+        f"portfolio_winner_count {count_bucket(len(winners))}",
+        f"portfolio_candidate_winner_count {count_bucket(len(candidate_winners))}",
+        f"portfolio_candidate_supported {str(candidate_supported).lower()}",
+        (
+            "portfolio_support_shape "
+            f"baseline={baseline_result} "
+            f"candidate={candidate_result} "
+            f"candidate_winners={count_bucket(len(candidate_winners))}"
+        ),
+    ]
+
+
 def terminal_swing_axes(record, record_class):
     values = terminal_swing_values(record)
     axes = [
@@ -864,6 +915,7 @@ def corpus_record_axes(record, record_class):
     axes.extend(corpus_move_shape_axes(record, record_class))
     axes.extend(corpus_move_intent_axes(record, record_class))
     axes.extend(source_board_axes(record))
+    axes.extend(portfolio_support_axes(record))
     axes.extend(terminal_swing_axes(record, record_class))
     return axes or ["none"]
 
@@ -1213,7 +1265,8 @@ def cross_budget_fragmented_dimensions(row):
 
 
 def future_only_axis(axis):
-    return str(axis or "").startswith("terminal_")
+    value = str(axis or "")
+    return value.startswith("terminal_") or value.startswith("portfolio_")
 
 
 def cross_budget_source_status(row):
@@ -1849,6 +1902,7 @@ def policy_axis_items(record, record_class):
         for axis in corpus_move_intent_axes(record, record_class)
     )
     items.extend((axis, "source_board") for axis in source_board_axes(record))
+    items.extend((axis, "portfolio_support") for axis in portfolio_support_axes(record))
     items.extend(
         (axis, "terminal_outcome")
         for axis in terminal_swing_axes(record, record_class)
