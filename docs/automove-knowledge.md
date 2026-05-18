@@ -38,6 +38,7 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for workflow, `AUTOMOVE_IDEAS.md` for the li
 - A complete policy portfolio with `no_policy_wins=0` is oracle coverage, not source permission. If repeated mechanisms remain singleton-heavy or contaminated by baseline saves, improve the corpus instead of writing source.
 - `coverage_gap`, `baseline_save_risk`, `singleton_no_source`, `no_candidate_route`, `fragmented_no_source`, `budget_conflict`, `partial_repair_coverage_gap`, `singleton_selector_pressure`, and `postprocess_only` are no-source decisions.
 - `repeated_mechanism_class` at count 2 is routing evidence only. It is not permission to encode a runtime selector.
+- A repeated active-Fast `exact_pressure window0/deny0/safe` class is still no-source when it fragments by policy, branch transition, or first-move pair. The 2026-05-18 bounded outcome-corpus slice had candidate-only wins and no baseline-only wins, but `source_candidate_axis_count=0` and all candidate-bearing axes were `singleton_non_regressing` or `fragmented_no_source`.
 - `promotable_shape` earns confirm spend; `sampled_only` and `active_only` require decision-record proof before more source work; `cost_blocked` kills or narrows the line; `not_promising` kills the candidate unless it exposed a harness issue.
 - Runtime source stays untouched unless a candidate separates wins from guarded saves across sampled and active evidence with low fragmentation and acceptable cost.
 

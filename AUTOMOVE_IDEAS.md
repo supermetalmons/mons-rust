@@ -16,6 +16,8 @@ Use `HOW_TO_ITERATE_ON_AUTOMOVE.md` for workflow, `docs/automove-major-reset-pla
 
 ## Latest No-Source Summary
 
+- 2026-05-18 active Fast outcome-corpus over the reset portfolio produced no source permission. The dashboard was `not_promising` for `frontier_pro_v2_guarded` (`7-5`, `win_rate=0.5833`, `confidence=0.6128`, `139.73ms`), and the postprocess ended `corpus_decision=postprocess_only`, `route_permission=postprocess_only`, `source_permission=no_source`.
+- The only repeated class was active-Fast `axis=exact_pressure window=window0 deny=deny0 attack=false drainer_safety=safe` with `candidate_only_games=6` over two states, but it fragmented across `3` policies, `3` branch transitions, and `6` first-move pairs. Workbench had `blocked_candidate_axis_count=105`, `source_candidate_axis_count=0`, and top blockers were `fragmented_no_source` or `singleton_non_regressing`.
 - Recent sampled/active outcome-corpus and root-pool work produced no source permission: routes stayed `coverage_gap`, `baseline_save_risk`, `singleton_no_source`, `no_candidate_route`, or fragmented by policy, branch, first move, budget, or guarded baseline saves.
 - Recent ProV4/root-policy scouts were not promotable. They preserved guarded fallbacks but failed sampled dashboards or tiny Fast smokes, usually rotating weaknesses across Pro, Normal, Fast, and active blockers rather than creating a stable floor.
 - Existing root-pool feature families are retained as diagnostic fields only. Do not write runtime selectors from current root-pool fields, guarded deltas, exact contexts, score terms, follow-up profiles, action profiles, carrier profiles, objective profiles, role/formation/mobility profiles, policy labels, branch labels, first moves, or singleton-heavy corpus rows.
@@ -54,7 +56,7 @@ First validate local hygiene:
 ./scripts/check-automove-hygiene.sh
 ```
 
-Then continue reset-mode diagnostics only with new evidence:
+Then continue only after adding or exposing a new below-policy measured corpus/root feature that is not already in the retired evidence list:
 
 ```sh
 SMART_PRO_POLICY_MATRIX_PANEL_FILTER=active_blockers \
