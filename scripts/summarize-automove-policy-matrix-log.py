@@ -473,6 +473,144 @@ def move_shape_delta(left_shape, right_shape, left_label):
     return "same_span_different_shape"
 
 
+def game_board_tokens(game_fen):
+    fields = str(game_fen or "").split()
+    if len(fields) not in {10, 11}:
+        return {}
+    board_fen = fields[9]
+    tokens = {}
+    for i, row in enumerate(board_fen.split("/")):
+        j = 0
+        index = 0
+        while index < len(row):
+            if row[index] == "n" and index + 2 < len(row):
+                try:
+                    j += int(row[index + 1 : index + 3])
+                except ValueError:
+                    return tokens
+                index += 3
+                continue
+            item = row[index : index + 3]
+            if len(item) == 3:
+                tokens[(i, j)] = item
+            j += 1
+            index += 3
+    return tokens
+
+
+def relative_color(color, active_color):
+    if color not in {"white", "black"} or active_color not in {"white", "black"}:
+        return "unknown"
+    return "own" if color == active_color else "opp"
+
+
+def active_color_name(record):
+    value = str(record.get("active_color", ""))
+    if value == "white":
+        return "white"
+    if value == "black":
+        return "black"
+    return "unknown"
+
+
+def payload_profile(payload, active_color):
+    if payload == "x" or payload == "":
+        return "none"
+    if payload == "U":
+        return "high"
+    if payload == "M":
+        return f"{relative_color('white', active_color)}_regular"
+    if payload == "m":
+        return f"{relative_color('black', active_color)}_regular"
+    if payload == "P":
+        return "potion"
+    if payload == "B":
+        return "bomb"
+    if payload == "Q":
+        return "consumable"
+    return "unknown"
+
+
+def item_intent_profile(item, active_color):
+    if not item:
+        return "empty"
+    mon = item[:2]
+    payload = payload_profile(item[2:], active_color)
+    if mon == "xx":
+        return f"free_{payload}"
+    role_map = {
+        "e": "demon",
+        "d": "drainer",
+        "a": "angel",
+        "s": "spirit",
+        "y": "mystic",
+    }
+    role = role_map.get(mon[:1].lower(), "unknown")
+    color = "white" if mon[:1].isupper() else "black"
+    side = relative_color(color, active_color)
+    return f"{side}_{role}_carry_{payload}"
+
+
+def move_intent_shape(record, move_fen):
+    locations = [
+        location
+        for token in str(move_fen or "").split(";")
+        for location in [move_shape_location(token)]
+        if location is not None
+    ]
+    if not locations:
+        return "none"
+    board = game_board_tokens(record.get("board", ""))
+    active_color = active_color_name(record)
+    source = item_intent_profile(board.get(locations[0]), active_color)
+    target = item_intent_profile(board.get(locations[-1]), active_color)
+    flow = f"{move_shape_zone(locations[0])}->{move_shape_zone(locations[-1])}"
+    return f"source={source};target={target};flow={flow}"
+
+
+def intent_focus(intent):
+    if intent in {"", "none"}:
+        return "none"
+    parts = {
+        key: value
+        for item in intent.split(";")
+        if "=" in item
+        for key, value in [item.split("=", 1)]
+    }
+    source = parts.get("source", "")
+    target = parts.get("target", "")
+    if "carry_high" in source or target == "free_high":
+        return "high_value"
+    if "regular" in source or "regular" in target:
+        return "regular_mana"
+    if "bomb" in source or "bomb" in target:
+        return "bomb"
+    if (
+        "potion" in source
+        or "potion" in target
+        or "consumable" in source
+        or "consumable" in target
+    ):
+        return "consumable"
+    if target.startswith("opp_"):
+        return "contact"
+    if target == "empty":
+        return "empty_target"
+    return "other"
+
+
+def move_intent_delta(candidate_intent, baseline_intent):
+    if not candidate_intent or not baseline_intent:
+        return "missing"
+    if candidate_intent == baseline_intent:
+        return "same_intent"
+    candidate_focus = intent_focus(candidate_intent)
+    baseline_focus = intent_focus(baseline_intent)
+    if candidate_focus == baseline_focus:
+        return f"same_focus_{candidate_focus}"
+    return f"candidate_{candidate_focus}_baseline_{baseline_focus}"
+
+
 def corpus_move_shape_axes(record, record_class):
     baseline_shape = move_input_shape(record.get("baseline_move", ""))
     candidate_shape = move_input_shape(record.get("candidate_move", ""))
@@ -504,6 +642,30 @@ def corpus_move_shape_axes(record, record_class):
     return axes
 
 
+def corpus_move_intent_axes(record, record_class):
+    baseline_intent = move_intent_shape(record, record.get("baseline_move", ""))
+    candidate_intent = move_intent_shape(record, record.get("candidate_move", ""))
+    if baseline_intent == "none" and candidate_intent == "none":
+        return []
+
+    axes = [
+        f"first_move_candidate_intent {candidate_intent}",
+        f"first_move_baseline_intent {baseline_intent}",
+        f"first_move_intent_delta {move_intent_delta(candidate_intent, baseline_intent)}",
+    ]
+    if record_class not in {"candidate_better", "baseline_better"}:
+        return axes
+
+    preferred_intent = baseline_intent if record_class == "baseline_better" else candidate_intent
+    axes.extend(
+        [
+            f"first_move_preferred_intent {preferred_intent}",
+            f"first_move_preferred_intent_focus {intent_focus(preferred_intent)}",
+        ]
+    )
+    return axes
+
+
 def corpus_record_axes(record, record_class):
     axes = []
     if record_class == "baseline_better":
@@ -512,6 +674,7 @@ def corpus_record_axes(record, record_class):
         axes.extend(split_axis_field(record.get("mechanism_axes", "")))
     axes.extend(split_axis_field(record.get("timing_continuation_axes", "")))
     axes.extend(corpus_move_shape_axes(record, record_class))
+    axes.extend(corpus_move_intent_axes(record, record_class))
     return axes or ["none"]
 
 
@@ -1481,6 +1644,10 @@ def policy_axis_items(record, record_class):
     items.extend(
         (axis, "first_move_shape")
         for axis in corpus_move_shape_axes(record, record_class)
+    )
+    items.extend(
+        (axis, "first_move_intent")
+        for axis in corpus_move_intent_axes(record, record_class)
     )
     return items or [("none", "missing")]
 
