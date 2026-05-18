@@ -1428,6 +1428,26 @@ def normalized_coverage_gap_state_row(entry):
     }
 
 
+def root_origin_profile(record):
+    kinds = {
+        item
+        for item in str(record.get("origin_kinds", "") or "").split("|")
+        if item
+    }
+    source_kinds = sorted(kinds - {"policy_output", "winning_policy_output"})
+    has_policy_output = "policy_output" in kinds or "winning_policy_output" in kinds
+    live_value = record.get("live", False)
+    live = live_value if isinstance(live_value, bool) else str(live_value).lower() == "true"
+    if source_kinds:
+        parts = source_kinds.copy()
+        if has_policy_output:
+            parts.append("policy")
+        return "+".join(parts)
+    if has_policy_output:
+        return "policy_only" if live else "omitted_policy"
+    return "other"
+
+
 def normalized_pro_v4_root_pool_row(event, row_type):
     record = event["data"]
     state_record = {field: record.get(field, "") for field in CORPUS_STATE_FIELDS}
@@ -1438,6 +1458,7 @@ def normalized_pro_v4_root_pool_row(event, row_type):
         "source_line": event["source_line"],
         "state_id": corpus_state_id(state_record),
         "cross_budget_state_id": cross_budget_state_id(state_record),
+        "root_origin_profile": root_origin_profile(record),
     }
 
 

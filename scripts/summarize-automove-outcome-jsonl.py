@@ -40,6 +40,7 @@ ROOT_POOL_SIGNAL_FIELDS = [
     "rank_bucket",
     "advisor_bucket",
     "path",
+    "root_origin_profile",
     "safety_detail",
     "progress",
     "efficiency",
@@ -216,6 +217,9 @@ ROOT_POOL_COMPOUND_SIGNAL_FIELDS = [
     ("family_reply", ("family", "reply_risk")),
     ("family_progress", ("family", "progress")),
     ("advisor_family", ("advisor_bucket", "family")),
+    ("family_root_origin_profile", ("family", "root_origin_profile")),
+    ("progress_root_origin_profile", ("progress", "root_origin_profile")),
+    ("path_root_origin_profile", ("path", "root_origin_profile")),
     ("path_safety", ("path", "safety_detail")),
     ("safety_progress", ("safety_detail", "progress")),
     ("reply_progress", ("reply_risk", "progress")),
@@ -2832,6 +2836,8 @@ def root_pool_signal_field_family(field):
         return "worst_reply_event_footprint"
     if "root_transition" in field:
         return "root_transition_event_footprint"
+    if "root_origin_profile" in field:
+        return "root_origin_profile"
     if "lane_shape" in field:
         return "lane_shape"
     if "base_recovery" in field:
@@ -3090,6 +3096,7 @@ def root_pool_sample_root(row):
         "rank_bucket": row.get("rank_bucket", ""),
         "advisor_bucket": row.get("advisor_bucket", ""),
         "path": row.get("path", ""),
+        "root_origin_profile": row.get("root_origin_profile", ""),
         "safety_detail": row.get("safety_detail", ""),
         "progress": row.get("progress", ""),
         "reply_risk": row.get("reply_risk", ""),
