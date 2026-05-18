@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -381,6 +382,128 @@ def split_axis_field(value):
     return [axis for axis in value.split("|") if axis]
 
 
+LOCATION_INPUT_RE = re.compile(r"^l(-?\d+),(-?\d+)$")
+BOARD_MAX_INDEX = 10
+
+
+def move_shape_location(token):
+    match = LOCATION_INPUT_RE.match(token)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def move_shape_zone(location):
+    i, j = location
+    if i in {0, BOARD_MAX_INDEX} and j in {0, BOARD_MAX_INDEX}:
+        return "corner"
+    if i in {0, BOARD_MAX_INDEX} or j in {0, BOARD_MAX_INDEX}:
+        return "edge"
+    if i <= 1 or i >= BOARD_MAX_INDEX - 1 or j <= 1 or j >= BOARD_MAX_INDEX - 1:
+        return "near_edge"
+    if 4 <= i <= 6 and 4 <= j <= 6:
+        return "center"
+    return "mid"
+
+
+def move_shape_span_bucket(locations):
+    if len(locations) < 2:
+        return "span0"
+    start = locations[0]
+    end = locations[-1]
+    distance = abs(start[0] - end[0]) + abs(start[1] - end[1])
+    if distance <= 1:
+        return "span1"
+    if distance <= 2:
+        return "span2"
+    if distance <= 4:
+        return "span3_4"
+    return "span5plus"
+
+
+def move_input_shape(move_fen):
+    value = str(move_fen or "")
+    if not value or value == "none":
+        return "none"
+    tokens = [token for token in value.split(";") if token]
+    locations = [
+        location
+        for token in tokens
+        for location in [move_shape_location(token)]
+        if location is not None
+    ]
+    modifiers = sorted(
+        token[1:] for token in tokens if token.startswith("m") and len(token) > 1
+    )
+    takebacks = sum(1 for token in tokens if token == "z")
+    location_count = len(locations)
+    modifier_key = "+".join(modifiers) if modifiers else "none"
+    flow = "no_location"
+    if locations:
+        flow = f"{move_shape_zone(locations[0])}->{move_shape_zone(locations[-1])}"
+    return (
+        f"loc{location_count};mod{len(modifiers)}:{modifier_key};"
+        f"z{takebacks};{move_shape_span_bucket(locations)};flow={flow}"
+    )
+
+
+def move_shape_span_rank(shape):
+    if "span5plus" in shape:
+        return 5
+    if "span3_4" in shape:
+        return 3
+    if "span2" in shape:
+        return 2
+    if "span1" in shape:
+        return 1
+    return 0
+
+
+def move_shape_delta(left_shape, right_shape, left_label):
+    if not left_shape or not right_shape:
+        return "missing"
+    if left_shape == right_shape:
+        return "same_shape"
+    left_span = move_shape_span_rank(left_shape)
+    right_span = move_shape_span_rank(right_shape)
+    if left_span > right_span:
+        return f"{left_label}_longer"
+    if left_span < right_span:
+        return f"{left_label}_shorter"
+    return "same_span_different_shape"
+
+
+def corpus_move_shape_axes(record, record_class):
+    baseline_shape = move_input_shape(record.get("baseline_move", ""))
+    candidate_shape = move_input_shape(record.get("candidate_move", ""))
+    if baseline_shape == "none" and candidate_shape == "none":
+        return []
+
+    axes = [
+        f"first_move_candidate_shape shape={candidate_shape}",
+        f"first_move_baseline_shape shape={baseline_shape}",
+        f"first_move_shape_delta {move_shape_delta(candidate_shape, baseline_shape, 'candidate')}",
+        f"first_move_shape_pair candidate={candidate_shape} baseline={baseline_shape}",
+    ]
+    if record_class not in {"candidate_better", "baseline_better"}:
+        return axes
+
+    if record_class == "baseline_better":
+        preferred_shape = baseline_shape
+        other_shape = candidate_shape
+    else:
+        preferred_shape = candidate_shape
+        other_shape = baseline_shape
+
+    axes.extend(
+        [
+            f"first_move_preferred_shape shape={preferred_shape}",
+            f"first_move_preferred_delta {move_shape_delta(preferred_shape, other_shape, 'preferred')}",
+        ]
+    )
+    return axes
+
+
 def corpus_record_axes(record, record_class):
     axes = []
     if record_class == "baseline_better":
@@ -388,6 +511,7 @@ def corpus_record_axes(record, record_class):
     else:
         axes.extend(split_axis_field(record.get("mechanism_axes", "")))
     axes.extend(split_axis_field(record.get("timing_continuation_axes", "")))
+    axes.extend(corpus_move_shape_axes(record, record_class))
     return axes or ["none"]
 
 
@@ -1354,6 +1478,10 @@ def policy_axis_items(record, record_class):
     )
     items = [(axis, primary_source) for axis in primary_axes]
     items.extend((axis, "timing_continuation") for axis in timing_axes)
+    items.extend(
+        (axis, "first_move_shape")
+        for axis in corpus_move_shape_axes(record, record_class)
+    )
     return items or [("none", "missing")]
 
 
